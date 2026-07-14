@@ -12,11 +12,12 @@ import {
   UserCircle,
 } from '@phosphor-icons/react';
 
-export type AdminView = 'manager' | 'delivery' | 'locations' | 'shops';
+export type AdminView = 'manager' | 'delivery' | 'stock_locations' | 'locations' | 'shops';
 
 const viewMeta: Record<AdminView, { label: string; shortLabel: string; icon: typeof Truck }> = {
   manager: { label: 'ควบคุมรอบส่ง', shortLabel: 'รอบส่ง', icon: Truck },
   delivery: { label: 'บัตรร้านและบันทึกส่ง', shortLabel: 'บันทึกส่ง', icon: Cube },
+  stock_locations: { label: 'จุดถือครองสต๊อก', shortLabel: 'จุดสต๊อก', icon: MapPin },
   locations: { label: 'ตึกและโซนย่อย', shortLabel: 'ตึกและโซน', icon: Buildings },
   shops: { label: 'ร้านค้า', shortLabel: 'ร้านค้า', icon: Storefront },
 };
@@ -113,4 +114,3 @@ export function AdminLayout({
     </div>
   );
 }
-

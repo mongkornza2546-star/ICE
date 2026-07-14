@@ -5,7 +5,7 @@
 ## สิ่งที่เริ่มทำแล้ว
 
 - migration `0002_phase_2_delivery_operations.sql` เพิ่ม RPC `create_delivery_round` ให้หัวหน้ารอบหรือแอดมินเปิดรอบแบบ atomic
-- migration `0006_rounds_without_routes.sql` ปรับ RPC ให้เปิดรอบโดยสร้างสมาชิก คัดลอกร้านที่เปิดใช้งานทั้งหมดเป็น `round_stops` และสร้างยอดยกออกของชนิดน้ำแข็งที่ยัง active โดยไม่ต้องกำหนดเส้นทาง
+- migration `0006_rounds_without_routes.sql` ปรับ RPC ให้เปิดรอบโดยสร้างสมาชิก คัดลอกร้านที่เปิดใช้งานทั้งหมดเป็น `round_stops` และสร้างแถวรองรับชนิดน้ำแข็งที่ยัง active โดยไม่ต้องกำหนดเส้นทาง; frontend ส่งค่า legacy นี้เป็นศูนย์เพราะยอดสต๊อกจริงเริ่มจากรายการสั่งโรงงานใน ledger รายวัน
 - RPC `record_delivery` ให้พนักงานที่เป็นสมาชิกของรอบ (หรือหัวหน้ารอบ/แอดมิน) บันทึกน้ำแข็งหรือสถานะปัญหาแบบ atomic พร้อม idempotency key, audit log และอัปเดตสถานะบัตรร้าน โดยตอบข้อมูลรายการและรายการน้ำแข็งเดิมในการ retry
 - RPC `get_round_shop_cards` คืนบัตรร้านเรียงตามอาคาร/โซน/รหัสร้าน กรองอาคารได้ และมีประวัติพร้อมยอดรวมของวันเดียวกันจากทุกรอบ
 - migration `0003_phase_2_round_assignment_helpers.sql` เพิ่ม RPC `get_assignable_round_members` เพื่อให้หัวหน้ารอบ/แอดมินดึงรายชื่อผู้ใช้ active ไปเลือกผู้ร่วมรอบได้โดยไม่ต้องเปิด `public.users` ทั้งตารางผ่าน RLS
@@ -21,15 +21,17 @@
 
 ## สัญญาเรียกใช้งาน
 
-เปิดรอบโดยเรียก `create_delivery_round(service_date, name, member_ids, loaded_quantities)` โดย `loaded_quantities` เป็น JSON array เช่น:
+เปิดรอบโดยเรียก `create_delivery_round(service_date, name, member_ids, loaded_quantities)` โดย `loaded_quantities` ยังอยู่เพื่อความเข้ากันได้ของ schema เดิม แต่ต้องส่งศูนย์ทุกชนิด เช่น:
 
 ```json
-[{"ice_type_id":"UUID","quantity":20}]
+[{"ice_type_id":"UUID","quantity":0}]
 ```
 
 บันทึกการส่งด้วย `record_delivery(round_stop_id, items, stop_status, note, client_recorded_at, idempotency_key)` โดย `items` เป็น JSON array รูปแบบเดียวกัน และ `idempotency_key` หนึ่งค่าใช้ต่อการกดยืนยันหนึ่งครั้งเท่านั้น
 
 เมื่อสร้าง frontend ให้เรียก `get_round_shop_cards(round_id, building_id)` เพื่อแสดงบัตรร้านทั้งหมดในรอบและยอดรวมของวัน แทนการประกอบประวัติหลายรอบบนอุปกรณ์เอง พนักงานเป็นผู้เลือกร้านที่จะไปส่งเอง
+
+ห้ามใช้ `loaded_quantities` เป็นยอดสต๊อกหรือยอดสั่งโรงงาน สต๊อกตั้งต้นต้องมาจาก `record_stock_movement(..., kind = 'factory_order', ...)` และต่อเนื่องข้ามทุกรอบในวันเดียวกัน
 
 ## วิธีรัน frontend scaffold
 

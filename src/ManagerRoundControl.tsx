@@ -1,11 +1,6 @@
 import { FormEvent, useEffect, useRef, useState } from 'react';
 import { supabase } from './lib/supabase';
-import type { DeliveryRound, RoundControlIceCount, RoundControlSummary } from './types/app';
-
-type CountDraft = Record<
-  string,
-  { replenished_quantity: number; remaining_quantity: number; damaged_quantity: number }
->;
+import type { DeliveryRound, RoundControlSummary } from './types/app';
 
 export function ManagerRoundControl({
   round,
@@ -16,7 +11,6 @@ export function ManagerRoundControl({
 }) {
   const [summary, setSummary] = useState<RoundControlSummary | null>(null);
   const [summaryRoundId, setSummaryRoundId] = useState<string | null>(null);
-  const [counts, setCounts] = useState<CountDraft>({});
   const [loading, setLoading] = useState(false);
   const [closing, setClosing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -50,42 +44,9 @@ export function ManagerRoundControl({
       const nextSummary = data as RoundControlSummary;
       setSummary(nextSummary);
       setSummaryRoundId(roundId);
-      setCounts(
-        Object.fromEntries(
-          nextSummary.ice_counts.map((item) => [
-            item.ice_type_id,
-            {
-              replenished_quantity: item.replenished_quantity,
-              remaining_quantity: item.remaining_quantity,
-              damaged_quantity: item.damaged_quantity,
-            },
-          ]),
-        ),
-      );
     }
     setLoading(false);
   }
-
-  const updateCount = (
-    iceTypeId: string,
-    field: keyof CountDraft[string],
-    value: number,
-  ) => {
-    setCounts((current) => ({
-      ...current,
-      [iceTypeId]: { ...current[iceTypeId], [field]: Math.max(0, value || 0) },
-    }));
-  };
-
-  const preview = (item: RoundControlIceCount) => {
-    const draft = counts[item.ice_type_id];
-    const expected =
-      item.loaded_quantity +
-      (draft?.replenished_quantity ?? 0) -
-      (draft?.remaining_quantity ?? 0) -
-      (draft?.damaged_quantity ?? 0);
-    return { expected, variance: expected - item.delivered_quantity };
-  };
 
   const handleClose = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -97,7 +58,9 @@ export function ManagerRoundControl({
     setError(null);
     const payload = summary.ice_counts.map((item) => ({
       ice_type_id: item.ice_type_id,
-      ...counts[item.ice_type_id],
+      replenished_quantity: item.replenished_quantity,
+      remaining_quantity: item.remaining_quantity,
+      damaged_quantity: item.damaged_quantity,
     }));
     const { error: closeError } = await supabase.rpc('close_delivery_round', {
       p_round_id: round.id,
@@ -132,48 +95,14 @@ export function ManagerRoundControl({
       </div>
 
       <div className="reconciliation-list">
-        {summary.ice_counts.map((item) => {
-          const result = preview(item);
-          return (
-            <section className="reconciliation-card" key={item.ice_type_id}>
-              <div className="panel-header">
-                <div>
-                  <p className="eyebrow">{item.unit}</p>
-                  <h3>{item.ice_type_name}</h3>
-                </div>
-                <span className={`variance ${result.variance === 0 ? 'variance--ok' : 'variance--warning'}`}>
-                  {result.variance === 0 ? 'ยอดตรง' : `ต่าง ${result.variance}`}
-                </span>
-              </div>
-              <p className="formula-line">
-                ยกออก {item.loaded_quantity} + เติม {counts[item.ice_type_id]?.replenished_quantity ?? 0}
-                {' − '}เหลือ {counts[item.ice_type_id]?.remaining_quantity ?? 0}
-                {' − '}เสีย {counts[item.ice_type_id]?.damaged_quantity ?? 0}
-                {' = '}ควรส่ง {result.expected} · ส่งจริง {item.delivered_quantity}
-              </p>
-              <div className="field-grid field-grid--three">
-                <NumberField
-                  disabled={round.status === 'closed'}
-                  label="เติมเพิ่ม"
-                  onChange={(value) => updateCount(item.ice_type_id, 'replenished_quantity', value)}
-                  value={counts[item.ice_type_id]?.replenished_quantity ?? 0}
-                />
-                <NumberField
-                  disabled={round.status === 'closed'}
-                  label="เหลือ"
-                  onChange={(value) => updateCount(item.ice_type_id, 'remaining_quantity', value)}
-                  value={counts[item.ice_type_id]?.remaining_quantity ?? 0}
-                />
-                <NumberField
-                  disabled={round.status === 'closed'}
-                  label="เสียหาย"
-                  onChange={(value) => updateCount(item.ice_type_id, 'damaged_quantity', value)}
-                  value={counts[item.ice_type_id]?.damaged_quantity ?? 0}
-                />
-              </div>
-            </section>
-          );
-        })}
+        {summary.ice_counts.map((item) => (
+          <section className="reconciliation-card" key={item.ice_type_id}>
+            <div className="panel-header">
+              <div><p className="eyebrow">ยอดขายในรอบ · {item.unit}</p><h3>{item.ice_type_name}</h3></div>
+              <strong>{item.delivered_quantity}</strong>
+            </div>
+          </section>
+        ))}
       </div>
       {error ? <p className="error-text">{error}</p> : null}
       <button
@@ -181,9 +110,9 @@ export function ManagerRoundControl({
         disabled={closing || round.status === 'closed' || summaryRoundId !== round.id}
         type="submit"
       >
-        {round.status === 'closed' ? 'รอบนี้ปิดแล้ว' : closing ? 'กำลังปิดรอบ...' : 'ยืนยันยอดและปิดรอบ'}
+        {round.status === 'closed' ? 'รอบนี้ปิดแล้ว' : closing ? 'กำลังปิดรอบ...' : 'ปิดรอบรายการขาย'}
       </button>
-      <p className="muted">ปิดรอบได้แม้มีร้านค้างหรือยอดต่าง ระบบจะเก็บ snapshot ไว้ตรวจย้อนหลัง</p>
+      <p className="muted">ปิดรอบได้แม้มีร้านที่ไม่มีรายการ เพราะรอบเป็นกลุ่มรายการขาย ไม่ใช่สต๊อก การนับจริงและปิดสต๊อกทำครั้งเดียวหลังจบทุกรอบของวัน</p>
     </form>
   );
 }
@@ -194,31 +123,5 @@ function Metric({ label, value, tone }: { label: string; value: number; tone?: '
       <span>{label}</span>
       <strong>{value}</strong>
     </div>
-  );
-}
-
-function NumberField({
-  label,
-  value,
-  disabled,
-  onChange,
-}: {
-  label: string;
-  value: number;
-  disabled: boolean;
-  onChange: (value: number) => void;
-}) {
-  return (
-    <label>
-      {label}
-      <input
-        disabled={disabled}
-        inputMode="numeric"
-        min={0}
-        onChange={(event) => onChange(Number(event.target.value))}
-        type="number"
-        value={value}
-      />
-    </label>
   );
 }

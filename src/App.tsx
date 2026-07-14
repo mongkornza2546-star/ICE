@@ -4,10 +4,11 @@ import { env } from './lib/env';
 import { supabase } from './lib/supabase';
 import { ManagerRoundControl } from './ManagerRoundControl';
 import { ManagerStockControl } from './ManagerStockControl';
+import { ManagerDeliveryAdjustments } from './ManagerDeliveryAdjustments';
 import { LocationSettings } from './LocationSettings';
+import { StockLocationSettings } from './StockLocationSettings';
 import { ShopSettings } from './ShopSettings';
 import { AdminLayout, type AdminView } from './AdminLayout';
-import { AdminPreview } from './AdminPreview';
 import type {
   DeliveryRound,
   IceTypeOption,
@@ -53,7 +54,6 @@ interface RoundCreationDraft {
   serviceDate: string;
   name: string;
   memberIds: string[];
-  loadedQuantities: Record<string, number>;
 }
 
 function todayIsoDate() {
@@ -119,10 +119,6 @@ function App() {
 
     return () => subscription.unsubscribe();
   }, []);
-
-  if (new URLSearchParams(window.location.search).get('preview') === 'admin') {
-    return <AdminPreview />;
-  }
 
   if (!env.isConfigured) {
     return (
@@ -316,8 +312,8 @@ function Workspace({ session }: { session: Session }) {
 
   const allowedViews: AdminView[] = canManageRounds
     ? profile.role === 'admin'
-      ? ['manager', 'delivery', 'locations', 'shops']
-      : ['manager', 'delivery']
+      ? ['manager', 'delivery', 'stock_locations', 'locations', 'shops']
+      : ['manager', 'delivery', 'stock_locations']
     : ['delivery'];
 
   return (
@@ -328,7 +324,15 @@ function Workspace({ session }: { session: Session }) {
       onSignOut={signOut}
       profileLabel={profile.display_name}
     >
-      {currentView === 'locations' ? <LocationSettings /> : currentView === 'shops' ? <ShopSettings /> : <RoundWorkspace mode={currentView} profile={profile} />}
+      {currentView === 'locations' ? (
+        <LocationSettings />
+      ) : currentView === 'stock_locations' ? (
+        <StockLocationSettings />
+      ) : currentView === 'shops' ? (
+        <ShopSettings />
+      ) : (
+        <RoundWorkspace mode={currentView} profile={profile} />
+      )}
     </AdminLayout>
   );
 }
@@ -350,7 +354,6 @@ function RoundWorkspace({ profile, mode }: { profile: UserProfile; mode: 'manage
     serviceDate: todayIsoDate(),
     name: '',
     memberIds: [],
-    loadedQuantities: {},
   });
 
   const canCreateRound = profile.role === 'admin' || profile.role === 'round_lead';
@@ -360,13 +363,8 @@ function RoundWorkspace({ profile, mode }: { profile: UserProfile; mode: 'manage
   }, []);
 
   useEffect(() => {
-    const seededQuantities = Object.fromEntries(
-      iceTypes.map((iceType) => [iceType.id, roundDraft.loadedQuantities[iceType.id] ?? 0]),
-    );
-
     setRoundDraft((current) => ({
       ...current,
-      loadedQuantities: seededQuantities,
       memberIds:
         current.memberIds.length > 0
           ? current.memberIds
@@ -374,7 +372,7 @@ function RoundWorkspace({ profile, mode }: { profile: UserProfile; mode: 'manage
             ? [profile.id]
             : current.memberIds,
     }));
-  }, [iceTypes, canCreateRound, profile.id, profile.role]);
+  }, [canCreateRound, profile.id, profile.role]);
 
   useEffect(() => {
     if (!selectedRoundId || mode === 'manager') {
@@ -535,7 +533,7 @@ function RoundWorkspace({ profile, mode }: { profile: UserProfile; mode: 'manage
 
     const payload = iceTypes.map((iceType) => ({
       ice_type_id: iceType.id,
-      quantity: roundDraft.loadedQuantities[iceType.id] ?? 0,
+      quantity: 0,
     }));
 
     const { data, error } = await supabase.rpc('create_delivery_round', {
@@ -555,7 +553,6 @@ function RoundWorkspace({ profile, mode }: { profile: UserProfile; mode: 'manage
     setRoundDraft((current) => ({
       ...current,
       name: '',
-      loadedQuantities: Object.fromEntries(iceTypes.map((iceType) => [iceType.id, 0])),
     }));
     await loadReferenceData();
     setSelectedRoundId(newRoundId);
@@ -644,32 +641,6 @@ function RoundWorkspace({ profile, mode }: { profile: UserProfile; mode: 'manage
                 </div>
               </fieldset>
 
-              <fieldset className="fieldset">
-                <legend>น้ำแข็งยกออกตั้งต้น</legend>
-                <div className="field-grid">
-                  {iceTypes.map((iceType) => (
-                    <label key={iceType.id}>
-                      {iceType.name}
-                      <input
-                        inputMode="numeric"
-                        min={0}
-                        type="number"
-                        value={roundDraft.loadedQuantities[iceType.id] ?? 0}
-                        onChange={(event) =>
-                          setRoundDraft((current) => ({
-                            ...current,
-                            loadedQuantities: {
-                              ...current.loadedQuantities,
-                              [iceType.id]: Math.max(0, Number(event.target.value) || 0),
-                            },
-                          }))
-                        }
-                      />
-                    </label>
-                  ))}
-                </div>
-              </fieldset>
-
               {createError ? <p className="error-text">{createError}</p> : null}
               <button
                 className="primary-button"
@@ -678,7 +649,7 @@ function RoundWorkspace({ profile, mode }: { profile: UserProfile; mode: 'manage
               >
                 {createLoading ? 'กำลังเปิดรอบ...' : 'เปิดรอบส่ง'}
               </button>
-              <p className="muted">รอบนี้แสดงทุกร้านที่เปิดใช้งาน พนักงานเลือกร้านที่จะไปส่งเองได้ตามหน้างาน</p>
+              <p className="muted">รอบใช้จัดกลุ่มผู้ปฏิบัติงานและรายการขายเท่านั้น น้ำแข็งจากโรงงานและการส่งมอบบันทึกในสต๊อกต่อเนื่องทั้งวัน</p>
             </form>
           </section>
         ) : null}
@@ -733,6 +704,8 @@ function RoundWorkspace({ profile, mode }: { profile: UserProfile; mode: 'manage
               }}
               round={selectedRound}
             />
+            <div className="manager-section-divider" />
+            <ManagerDeliveryAdjustments round={selectedRound} />
             <div className="manager-section-divider" />
             <ManagerStockControl round={selectedRound} />
           </section>

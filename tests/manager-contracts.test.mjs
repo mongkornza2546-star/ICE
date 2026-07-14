@@ -114,3 +114,88 @@ test('stock UI ignores a movement response after the selected round changes', ()
   assert.match(component, /activeRoundId\.current !== submittedRoundId/);
   assert.match(component, /const submittedRoundId = round\.id/);
 });
+
+test('round creation no longer treats round-loaded quantity as day stock', () => {
+  const app = read('src/App.tsx');
+  const roundControl = read('src/ManagerRoundControl.tsx');
+  const managerMigration = read('supabase/migrations/0008_complete_manager_operations.sql');
+  const finalRoundClose = managerMigration.slice(
+    managerMigration.indexOf('create or replace function public.close_delivery_round('),
+    managerMigration.indexOf('create or replace function public.revise_delivery_event('),
+  );
+
+  assert.doesNotMatch(app, /loadedQuantities|น้ำแข็งยกออกตั้งต้น/);
+  assert.match(app, /quantity: 0/);
+  assert.doesNotMatch(roundControl, /label="เติมเพิ่ม"|label="เหลือ"|label="เสียหาย"/);
+  assert.match(roundControl, /รอบเป็นกลุ่มรายการขาย ไม่ใช่สต๊อก/);
+  assert.match(finalRoundClose, /for update;/);
+  assert.match(finalRoundClose, /insert into public\.round_close_summaries/);
+  assert.doesNotMatch(finalRoundClose, /round_close_ice_summaries|update public\.round_ice_counts/);
+});
+
+test('operational stock locations are saved through a role-checked RPC', () => {
+  const migration = read('supabase/migrations/0008_complete_manager_operations.sql');
+  const component = read('src/StockLocationSettings.tsx');
+
+  assert.match(migration, /create or replace function public\.save_stock_location\(/);
+  assert.match(migration, /p_kind not in \('team', 'small_vehicle', 'reserve_bin', 'front_vehicle'\)/);
+  assert.match(migration, /add column assigned_user_id uuid references public\.users\(id\)/);
+  assert.match(migration, /An employee stock location must name its assigned user/);
+  assert.match(migration, /A stock location with an open balance cannot be deactivated or reassigned/);
+  assert.match(component, /supabase\.rpc\('save_stock_location'/);
+  assert.match(component, /p_assigned_user_id: draft\.assignedUserId/);
+});
+
+test('returned-stock counts snapshot system, actual, and unexplained variance', () => {
+  const migration = read('supabase/migrations/0008_complete_manager_operations.sql');
+  const component = read('src/ManagerStockControl.tsx');
+  const countFunction = migration.slice(
+    migration.indexOf('create or replace function public.record_location_count('),
+    migration.indexOf('create or replace function public.get_location_count_history('),
+  );
+
+  assert.match(migration, /create table public\.stock_count_snapshots/);
+  assert.match(migration, /variance_quantity = actual_quantity - system_quantity/);
+  assert.match(migration, /create or replace function public\.record_location_count\(/);
+  assert.match(
+    countFunction,
+    /pg_advisory_xact_lock[\s\S]*where service_date = v_service_date and status = 'closed'/,
+  );
+  assert.match(component, /supabase\.rpc\('record_location_count'/);
+  assert.match(component, /ไม่ปรับยอดอัตโนมัติ/);
+});
+
+test('manager delivery corrections restore stock and require an audit reason', () => {
+  const migration = read('supabase/migrations/0008_complete_manager_operations.sql');
+  const component = read('src/ManagerDeliveryAdjustments.tsx');
+
+  assert.match(migration, /create or replace function public\.revise_delivery_event\(/);
+  assert.match(migration, /A revision reason is required/);
+  assert.match(migration, /set status = 'cancelled'/);
+  assert.match(migration, /corrects_event_id/);
+  assert.match(migration, /stock_balance_at\(v_service_date, v_source_location_id, v_item\.ice_type_id\)/);
+  assert.match(component, /supabase\.rpc\('revise_delivery_event'/);
+  assert.match(component, /p_reason: reason\.trim\(\)/);
+});
+
+test('daily close counts every point, returns actual stock, and locks the service date', () => {
+  const migration = read('supabase/migrations/0008_complete_manager_operations.sql');
+  const component = read('src/ManagerStockControl.tsx');
+  const roundGuard = migration.slice(
+    migration.indexOf('create or replace function public.reject_round_on_closed_day()'),
+    migration.indexOf('create trigger delivery_rounds_reject_closed_day'),
+  );
+
+  assert.match(migration, /create table public\.daily_stock_closures/);
+  assert.match(migration, /perform pg_advisory_xact_lock\(hashtextextended\(v_service_date::text, 0\)\)/);
+  assert.match(migration, /Close every delivery round before closing daily stock/);
+  assert.match(migration, /'รวบรวมยอดนับจริงเพื่อส่งคืนโรงงาน'/);
+  assert.match(migration, /'ส่งยอดน้ำแข็งนับจริงคงเหลือทั้งหมดกลับโรงงาน'/);
+  assert.match(migration, /delivery_rounds_reject_closed_day/);
+  assert.match(
+    roundGuard,
+    /pg_advisory_xact_lock[\s\S]*where service_date = new.service_date and status = 'closed'/,
+  );
+  assert.match(component, /supabase\.rpc\('close_daily_stock'/);
+  assert.match(component, /ยืนยันยอดจริง ส่งคืนโรงงาน และปิดวัน/);
+});

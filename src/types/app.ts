@@ -110,6 +110,73 @@ export interface StockControlSummary {
   recent_movements: StockMovementEntry[];
 }
 
+export interface StockLocationSetting {
+  id: string;
+  code: string;
+  name: string;
+  kind: StockLocationKind;
+  building_id: string | null;
+  assigned_user_id: string | null;
+  is_active: boolean;
+}
+
+export interface StockCountItem {
+  ice_type_id: string;
+  ice_type_name: string;
+  unit: string;
+  system_quantity: number;
+  actual_quantity: number;
+  variance_quantity: number;
+}
+
+export interface StockCountSnapshot {
+  id: string;
+  counted_at: string;
+  note: string | null;
+  location_id: string;
+  location_name: string;
+  counted_by: string;
+  items: StockCountItem[];
+}
+
+export interface DailyStockCloseCount extends StockCountItem {
+  location_id: string;
+  location_name: string;
+  note: string | null;
+}
+
+export interface DailyStockCloseState {
+  service_date: string;
+  open_round_count: number;
+  is_closed: boolean;
+  closed_at: string | null;
+  closed_by: string | null;
+  note: string | null;
+  counts: DailyStockCloseCount[];
+}
+
+export interface ManagerDeliveryEventItem {
+  ice_type_id: string;
+  quantity: number;
+}
+
+export interface ManagerDeliveryEvent {
+  id: string;
+  round_stop_id: string;
+  shop_code: string;
+  shop_name: string;
+  recorded_by: string;
+  recorded_at: string;
+  note: string | null;
+  stop_status: ShopRoundStatus;
+  items: ManagerDeliveryEventItem[];
+}
+
+export interface ManagerDeliveryEventSummary {
+  ice_types: IceTypeOption[];
+  events: ManagerDeliveryEvent[];
+}
+
 export interface BuildingOption {
   id: string;
   code: string;
