@@ -1,0 +1,4 @@
+code,name,unit,is_active
+ICE-BLOCK,ก้อน,ถุง,true
+ICE-CRUSH,โม่,ถุง,true
+ICE-SMALL,เล็ก,ถุง,true

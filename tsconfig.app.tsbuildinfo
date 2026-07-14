@@ -1,0 +1,1 @@
+{"root":["./src/adminlayout.tsx","./src/adminpreview.tsx","./src/app.tsx","./src/locationsettings.tsx","./src/managerroundcontrol.tsx","./src/managerstockcontrol.tsx","./src/shopsettings.tsx","./src/main.tsx","./src/vite-env.d.ts","./src/lib/env.ts","./src/lib/supabase.ts","./src/types/app.ts"],"version":"5.9.3"}

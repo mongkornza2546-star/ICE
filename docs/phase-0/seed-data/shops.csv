@@ -1,0 +1,2 @@
+code,name,building_code,zone_code,image_path,normal_rounds_per_day,payment_status,contact_name,contact_phone,access_note,status
+SHOP-001,ร้านตัวอย่าง,BLDG-001,ZONE-01,,1,unknown,,,กรอกข้อสังเกตการเข้าร้าน,active
