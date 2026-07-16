@@ -13,9 +13,11 @@
     "@phosphor-icons/react": "^2.1.10",
     "@supabase/supabase-js": "^2.54.0",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "read-excel-file": "^6.0.1"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.4",
     "@types/react": "^18.3.18",
     "@types/react-dom": "^18.3.5",
     "@vitejs/plugin-react": "^4.4.1",

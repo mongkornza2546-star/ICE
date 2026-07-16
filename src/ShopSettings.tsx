@@ -1,5 +1,6 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from 'react';
 import { supabase } from './lib/supabase';
+import { parseShopImportFile, type ShopImportRow } from './lib/shopImport';
 import type { BuildingOption, BuildingZoneOption, ShopSetting } from './types/app';
 
 interface ShopDraft {
@@ -8,6 +9,7 @@ interface ShopDraft {
   name: string;
   building_id: string;
   zone_id: string;
+  government_shop_code: string;
   contact_name: string;
   contact_phone: string;
   normal_rounds_per_day: number;
@@ -21,6 +23,7 @@ const emptyDraft: ShopDraft = {
   name: '',
   building_id: '',
   zone_id: '',
+  government_shop_code: '',
   contact_name: '',
   contact_phone: '',
   normal_rounds_per_day: 1,
@@ -38,6 +41,11 @@ export function ShopSettings() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [importRows, setImportRows] = useState<ShopImportRow[]>([]);
+  const [importFileName, setImportFileName] = useState('');
+  const [importing, setImporting] = useState(false);
+  const [importError, setImportError] = useState<string | null>(null);
+  const [importSuccess, setImportSuccess] = useState<string | null>(null);
 
   useEffect(() => {
     void loadSettings();
@@ -50,7 +58,7 @@ export function ShopSettings() {
     const [shopsResponse, buildingsResponse, zonesResponse] = await Promise.all([
       supabase
         .from('shops')
-        .select('id, code, name, building_id, zone_id, floor_or_zone, contact_name, contact_phone, normal_rounds_per_day, access_note, status')
+        .select('id, code, name, building_id, zone_id, floor_or_zone, government_shop_code, contact_name, contact_phone, normal_rounds_per_day, access_note, status')
         .order('code'),
       supabase.from('buildings').select('id, code, name').eq('is_active', true).order('code'),
       supabase.from('building_zones').select('id, building_id, code, name, sort_order, is_active').eq('is_active', true).order('sort_order'),
@@ -70,7 +78,7 @@ export function ShopSettings() {
     const needle = query.trim().toLocaleLowerCase('th');
     if (!needle) return shops;
     return shops.filter((shop) =>
-      `${shop.code} ${shop.name}`.toLocaleLowerCase('th').includes(needle),
+      `${shop.code} ${shop.government_shop_code ?? ''} ${shop.name}`.toLocaleLowerCase('th').includes(needle),
     );
   }, [query, shops]);
 
@@ -81,6 +89,7 @@ export function ShopSettings() {
       name: shop.name,
       building_id: shop.building_id,
       zone_id: shop.zone_id,
+      government_shop_code: shop.government_shop_code ?? '',
       contact_name: shop.contact_name ?? '',
       contact_phone: shop.contact_phone ?? '',
       normal_rounds_per_day: shop.normal_rounds_per_day,
@@ -101,6 +110,39 @@ export function ShopSettings() {
     setSuccess(null);
   };
 
+  const chooseImportFile = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    setImportRows([]);
+    setImportFileName(file.name);
+    setImportError(null);
+    setImportSuccess(null);
+    try {
+      setImportRows(await parseShopImportFile(file));
+    } catch (parseError) {
+      setImportError(parseError instanceof Error ? parseError.message : 'อ่านไฟล์ Excel ไม่สำเร็จ');
+    }
+  };
+
+  const importCatalog = async () => {
+    if (!supabase || importRows.length === 0) return;
+    setImporting(true);
+    setImportError(null);
+    setImportSuccess(null);
+    const { data, error: rpcError } = await supabase.rpc('import_shop_catalog', { p_rows: importRows });
+    if (rpcError) {
+      setImportError(rpcError.message);
+    } else {
+      const result = data as { created_shop_count: number; updated_shop_count: number };
+      setImportSuccess(`นำเข้าสำเร็จ: เพิ่ม ${result.created_shop_count} ร้าน · อัปเดต ${result.updated_shop_count} ร้าน`);
+      setImportRows([]);
+      setImportFileName('');
+      await loadSettings();
+    }
+    setImporting(false);
+  };
+
   const handleSave = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!supabase) return;
@@ -118,6 +160,7 @@ export function ShopSettings() {
       p_normal_rounds_per_day: draft.normal_rounds_per_day,
       p_access_note: draft.access_note || null,
       p_status: draft.status,
+      p_government_shop_code: draft.government_shop_code || null,
     });
 
     if (saveError) {
@@ -136,6 +179,39 @@ export function ShopSettings() {
 
   return (
     <div className="settings-grid">
+      <section className="panel shop-import-panel">
+        <div className="panel-header">
+          <div>
+            <p className="eyebrow">นำเข้าหลายร้าน</p>
+            <h2>อัปโหลด Excel</h2>
+          </div>
+          <a className="ghost-button" download href="/templates/shop-import-template.xlsx">ดาวน์โหลดไฟล์แม่แบบ</a>
+        </div>
+        <p className="muted">หนึ่งแถวต่อหนึ่งร้าน ระบบใช้รหัสตัวพิมพ์ใหญ่ และจะไม่เปลี่ยนลำดับหรือเปิดใช้ตึก/โซนเดิมโดยอัตโนมัติ</p>
+        <div className="shop-import-actions">
+          <label className="secondary-button shop-import-file">
+            เลือกไฟล์ .xlsx
+            <input accept=".xlsx" onChange={chooseImportFile} type="file" />
+          </label>
+          {importFileName ? <span>{importFileName} · {importRows.length} ร้าน</span> : null}
+          <button className="primary-button" disabled={importing || importRows.length === 0} onClick={importCatalog} type="button">
+            {importing ? 'กำลังนำเข้า...' : `ยืนยันนำเข้า ${importRows.length || ''} ร้าน`}
+          </button>
+        </div>
+        {importRows.length > 0 ? (
+          <div className="data-table-wrap shop-import-preview">
+            <table className="data-table">
+              <thead><tr><th>รหัสร้าน</th><th>ชื่อร้าน</th><th>ตึก</th><th>โซนย่อย</th><th>สถานะ</th></tr></thead>
+              <tbody>{importRows.slice(0, 8).map((row) => (
+                <tr key={row.shop_code}><td>{row.shop_code}</td><td>{row.shop_name}</td><td>{row.building_code} · {row.building_name}</td><td>{row.zone_code} · {row.zone_name}</td><td>{row.status === 'active' ? 'ใช้งาน' : 'พักใช้งาน'}</td></tr>
+              ))}</tbody>
+            </table>
+            {importRows.length > 8 ? <p className="muted shop-import-more">และอีก {importRows.length - 8} ร้าน</p> : null}
+          </div>
+        ) : null}
+        {importError ? <p className="error-text shop-import-message">{importError}</p> : null}
+        {importSuccess ? <p className="success-text shop-import-message">{importSuccess}</p> : null}
+      </section>
       <section className="panel stack">
         <div className="panel-header">
           <div>
@@ -147,7 +223,7 @@ export function ShopSettings() {
         <input
           aria-label="ค้นหาร้าน"
           onChange={(event) => setQuery(event.target.value)}
-          placeholder="ค้นหารหัสหรือชื่อร้าน"
+          placeholder="ค้นหารหัส ชื่อร้าน หรือรหัสศูนย์ราชการ"
           value={query}
         />
         <div className="settings-list">
@@ -180,6 +256,7 @@ export function ShopSettings() {
         <form className="settings-form" onSubmit={handleSave}>
           <div className="field-grid">
             <TextField label="รหัสร้าน" required value={draft.code} onChange={(code) => setDraft({ ...draft, code })} />
+            <TextField label="รหัสศูนย์ราชการ" value={draft.government_shop_code} onChange={(government_shop_code) => setDraft({ ...draft, government_shop_code })} />
             <TextField label="ชื่อร้าน" required value={draft.name} onChange={(name) => setDraft({ ...draft, name })} />
             <label>
               อาคาร

@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { Session } from '@supabase/supabase-js';
 import { env } from './lib/env';
+import { getRecoverableSessionNotice } from './lib/authErrors';
 import { supabase } from './lib/supabase';
 import { ManagerRoundControl } from './ManagerRoundControl';
 import { ManagerStockControl } from './ManagerStockControl';
@@ -9,6 +10,9 @@ import { LocationSettings } from './LocationSettings';
 import { StockLocationSettings } from './StockLocationSettings';
 import { ShopSettings } from './ShopSettings';
 import { AdminLayout, type AdminView } from './AdminLayout';
+import { ManagerDashboard } from './ManagerDashboard';
+import { FactoryOrderPage, type FactoryOrderPreviewData } from './FactoryOrderPage';
+import { AdminReferenceSettings } from './AdminReferenceSettings';
 import type {
   DeliveryRound,
   IceTypeOption,
@@ -49,6 +53,57 @@ const ROLE_LABELS = {
 } as const;
 
 const numberPad = ['0', '1', '2', '3', '4', '5', '+'];
+
+const FACTORY_ORDER_PREVIEW: FactoryOrderPreviewData = {
+  trucks: [{ id: '10000000-0000-4000-8000-000000000001', code: 'TRUCK-01', name: 'รถบรรทุก 1', kind: 'truck' }],
+  recordedBy: 'คุณสมชาย',
+  summary: {
+    service_date: '2026-07-15',
+    order_count: 2,
+    ordered_totals: [
+      { ice_type_id: '20000000-0000-4000-8000-000000000001', ice_type_name: 'น้ำแข็งหลอด', unit: 'ถุง', quantity: 500 },
+      { ice_type_id: '20000000-0000-4000-8000-000000000002', ice_type_name: 'น้ำแข็งบด', unit: 'ถุง', quantity: 160 },
+    ],
+    locations: [{
+      id: '10000000-0000-4000-8000-000000000001',
+      code: 'TRUCK-01',
+      name: 'รถบรรทุก 1',
+      kind: 'truck',
+      balances: [
+        { ice_type_id: '20000000-0000-4000-8000-000000000001', ice_type_name: 'น้ำแข็งหลอด', unit: 'ถุง', quantity: 320 },
+        { ice_type_id: '20000000-0000-4000-8000-000000000002', ice_type_name: 'น้ำแข็งบด', unit: 'ถุง', quantity: 90 },
+      ],
+    }],
+    recent_movements: [
+      {
+        id: '30000000-0000-4000-8000-000000000001',
+        kind: 'factory_order',
+        recorded_at: '2026-07-15T06:20:00.000Z',
+        note: 'เติมของสำหรับช่วงบ่าย',
+        from_location_name: null,
+        to_location_name: 'รถบรรทุก 1',
+        recorded_by: 'คุณสมชาย',
+        items: [
+          { ice_type_id: '20000000-0000-4000-8000-000000000001', ice_type_name: 'น้ำแข็งหลอด', unit: 'ถุง', quantity: 150 },
+          { ice_type_id: '20000000-0000-4000-8000-000000000002', ice_type_name: 'น้ำแข็งบด', unit: 'ถุง', quantity: 100 },
+        ],
+      },
+      {
+        id: '30000000-0000-4000-8000-000000000002',
+        kind: 'factory_order',
+        recorded_at: '2026-07-15T03:15:00.000Z',
+        note: 'ยอดตั้งต้นก่อนเริ่มงาน',
+        from_location_name: null,
+        to_location_name: 'รถบรรทุก 1',
+        recorded_by: 'คุณกนิษฐา',
+        items: [
+          { ice_type_id: '20000000-0000-4000-8000-000000000001', ice_type_name: 'น้ำแข็งหลอด', unit: 'ถุง', quantity: 350 },
+          { ice_type_id: '20000000-0000-4000-8000-000000000002', ice_type_name: 'น้ำแข็งบด', unit: 'ถุง', quantity: 60 },
+        ],
+      },
+    ],
+  },
+};
 
 interface RoundCreationDraft {
   serviceDate: string;
@@ -97,15 +152,43 @@ function paymentTone(status: ShopCard['payment_status']) {
 
 function App() {
   const [session, setSession] = useState<Session | null>(null);
+  const [authNotice, setAuthNotice] = useState<string | null>(null);
   const [bootLoading, setBootLoading] = useState(true);
+  const factoryOrderPreview = import.meta.env.DEV
+    && new URLSearchParams(window.location.search).get('preview') === 'factory-order';
+
+  const recoverSession = async (message: string | null | undefined) => {
+    const notice = getRecoverableSessionNotice(message);
+    if (!notice) return false;
+
+    setAuthNotice(notice);
+    await supabase?.auth.signOut();
+    return true;
+  };
 
   useEffect(() => {
+    let cancelled = false;
+
+    if (factoryOrderPreview) {
+      setBootLoading(false);
+      return () => {
+        cancelled = true;
+      };
+    }
     if (!supabase) {
       setBootLoading(false);
-      return;
+      return () => {
+        cancelled = true;
+      };
     }
 
-    supabase.auth.getSession().then(({ data }) => {
+    void supabase.auth.getSession().then(async ({ data, error }) => {
+      if (cancelled) return;
+      if (await recoverSession(error?.message)) {
+        if (!cancelled) setBootLoading(false);
+        return;
+      }
+
       setSession(data.session ?? null);
       setBootLoading(false);
     });
@@ -113,12 +196,41 @@ function App() {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      if (nextSession) {
+        setAuthNotice(null);
+      }
       setSession(nextSession);
       setBootLoading(false);
     });
 
-    return () => subscription.unsubscribe();
-  }, []);
+    return () => {
+      cancelled = true;
+      subscription.unsubscribe();
+    };
+  }, [factoryOrderPreview]);
+
+  if (factoryOrderPreview) {
+    return (
+      <AdminLayout
+        activeView="factory_order"
+        allowedViews={[
+          'manager_overview',
+          'factory_order',
+          'manager',
+          'delivery',
+          'stock_operations',
+          'stock_locations',
+          'locations',
+          'shops',
+          'reference_settings',
+        ]}
+        onNavigate={() => undefined}
+        profileLabel="คุณสมชาย"
+      >
+        <FactoryOrderPage previewData={FACTORY_ORDER_PREVIEW} />
+      </AdminLayout>
+    );
+  }
 
   if (!env.isConfigured) {
     return (
@@ -147,15 +259,15 @@ function App() {
   }
 
   return session ? (
-    <Workspace session={session} />
+    <Workspace onRecoverableSessionError={recoverSession} session={session} />
   ) : (
     <div className="app-shell">
-      <SignInPanel />
+      <SignInPanel notice={authNotice} />
     </div>
   );
 }
 
-function SignInPanel() {
+function SignInPanel({ notice }: { notice: string | null }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -186,6 +298,7 @@ function SignInPanel() {
     <section className="panel auth-panel">
       <p className="eyebrow">บัตรร้านส่งน้ำแข็ง</p>
       <h1>เข้าสู่ระบบหน้างาน</h1>
+      {notice ? <p className="muted">{notice}</p> : null}
       <form className="auth-form" onSubmit={handleSubmit}>
         <label>
           อีเมล
@@ -218,11 +331,17 @@ function SignInPanel() {
   );
 }
 
-function Workspace({ session }: { session: Session }) {
+function Workspace({
+  session,
+  onRecoverableSessionError,
+}: {
+  session: Session;
+  onRecoverableSessionError: (message: string | null | undefined) => Promise<boolean>;
+}) {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [profileLoading, setProfileLoading] = useState(true);
   const [profileError, setProfileError] = useState<string | null>(null);
-  const [activeView, setActiveView] = useState<AdminView>('manager');
+  const [activeView, setActiveView] = useState<AdminView>('manager_overview');
 
   useEffect(() => {
     let cancelled = false;
@@ -246,6 +365,10 @@ function Workspace({ session }: { session: Session }) {
       }
 
       if (error) {
+        if (await onRecoverableSessionError(error.message)) {
+          setProfileLoading(false);
+          return;
+        }
         setProfileError(error.message);
       } else {
         setProfile(data as UserProfile | null);
@@ -259,7 +382,7 @@ function Workspace({ session }: { session: Session }) {
     return () => {
       cancelled = true;
     };
-  }, [session.user.id]);
+  }, [onRecoverableSessionError, session.user.id]);
 
   const signOut = async () => {
     await supabase?.auth.signOut();
@@ -312,8 +435,25 @@ function Workspace({ session }: { session: Session }) {
 
   const allowedViews: AdminView[] = canManageRounds
     ? profile.role === 'admin'
-      ? ['manager', 'delivery', 'stock_locations', 'locations', 'shops']
-      : ['manager', 'delivery', 'stock_locations']
+      ? [
+          'manager_overview',
+          'factory_order',
+          'manager',
+          'delivery',
+          'stock_operations',
+          'stock_locations',
+          'locations',
+          'shops',
+          'reference_settings',
+        ]
+      : [
+          'manager_overview',
+          'factory_order',
+          'manager',
+          'delivery',
+          'stock_operations',
+          'stock_locations',
+        ]
     : ['delivery'];
 
   return (
@@ -324,12 +464,23 @@ function Workspace({ session }: { session: Session }) {
       onSignOut={signOut}
       profileLabel={profile.display_name}
     >
-      {currentView === 'locations' ? (
+      {currentView === 'manager_overview' ? (
+        <ManagerDashboard
+          onNavigate={setActiveView}
+          profileRole={profile.role === 'admin' ? 'admin' : 'round_lead'}
+        />
+      ) : currentView === 'factory_order' ? (
+        <FactoryOrderPage />
+      ) : currentView === 'locations' ? (
         <LocationSettings />
       ) : currentView === 'stock_locations' ? (
         <StockLocationSettings />
       ) : currentView === 'shops' ? (
         <ShopSettings />
+      ) : currentView === 'reference_settings' ? (
+        <AdminReferenceSettings />
+      ) : currentView === 'stock_operations' ? (
+        <RoundWorkspace mode="stock" profile={profile} />
       ) : (
         <RoundWorkspace mode={currentView} profile={profile} />
       )}
@@ -337,7 +488,7 @@ function Workspace({ session }: { session: Session }) {
   );
 }
 
-function RoundWorkspace({ profile, mode }: { profile: UserProfile; mode: 'manager' | 'delivery' }) {
+function RoundWorkspace({ profile, mode }: { profile: UserProfile; mode: 'manager' | 'delivery' | 'stock' }) {
   const [rounds, setRounds] = useState<DeliveryRound[]>([]);
   const [iceTypes, setIceTypes] = useState<IceTypeOption[]>([]);
   const [memberOptions, setMemberOptions] = useState<RoundMemberOption[]>([]);
@@ -350,6 +501,7 @@ function RoundWorkspace({ profile, mode }: { profile: UserProfile; mode: 'manage
   const [workspaceError, setWorkspaceError] = useState<string | null>(null);
   const [createError, setCreateError] = useState<string | null>(null);
   const [createLoading, setCreateLoading] = useState(false);
+  const [stockServiceDate, setStockServiceDate] = useState(todayIsoDate());
   const [roundDraft, setRoundDraft] = useState<RoundCreationDraft>({
     serviceDate: todayIsoDate(),
     name: '',
@@ -375,7 +527,7 @@ function RoundWorkspace({ profile, mode }: { profile: UserProfile; mode: 'manage
   }, [canCreateRound, profile.id, profile.role]);
 
   useEffect(() => {
-    if (!selectedRoundId || mode === 'manager') {
+    if (!selectedRoundId || mode !== 'delivery') {
       setCards([]);
       setSelectedCardId('');
       return;
@@ -388,6 +540,7 @@ function RoundWorkspace({ profile, mode }: { profile: UserProfile; mode: 'manage
     () => rounds.find((round) => round.id === selectedRoundId) ?? null,
     [rounds, selectedRoundId],
   );
+  const stockRound = selectedRound?.service_date === stockServiceDate ? selectedRound : null;
 
   const buildingOptions = useMemo(() => {
     const seen = new Map<string, string>();
@@ -571,7 +724,7 @@ function RoundWorkspace({ profile, mode }: { profile: UserProfile; mode: 'manage
   return (
     <div className="workspace-grid">
       <section className="stack">
-        {canCreateRound ? (
+        {canCreateRound && mode === 'manager' ? (
           <section className="panel">
             <div className="panel-header">
               <div>
@@ -666,7 +819,10 @@ function RoundWorkspace({ profile, mode }: { profile: UserProfile; mode: 'manage
               <button
                 className={`round-item ${round.id === selectedRoundId ? 'round-item--selected' : ''}`}
                 key={round.id}
-                onClick={() => setSelectedRoundId(round.id)}
+                onClick={() => {
+                  setSelectedRoundId(round.id);
+                  if (mode === 'stock') setStockServiceDate(round.service_date);
+                }}
                 type="button"
               >
                 <span>{round.name}</span>
@@ -706,8 +862,24 @@ function RoundWorkspace({ profile, mode }: { profile: UserProfile; mode: 'manage
             />
             <div className="manager-section-divider" />
             <ManagerDeliveryAdjustments round={selectedRound} />
-            <div className="manager-section-divider" />
-            <ManagerStockControl round={selectedRound} />
+          </section>
+        ) : mode === 'stock' ? (
+          <section className="panel">
+            <div className="panel-header">
+              <div>
+                <p className="eyebrow">สต๊อกต่อเนื่องทั้งวัน</p>
+                <h2>{stockRound ? `${stockRound.name} · ${stockServiceDate}` : `วันที่ ${stockServiceDate}`}</h2>
+              </div>
+              <label className="toolbar-select">
+                วันที่สต๊อก
+                <input
+                  onChange={(event) => setStockServiceDate(event.target.value)}
+                  type="date"
+                  value={stockServiceDate}
+                />
+              </label>
+            </div>
+            <ManagerStockControl round={stockRound} serviceDate={stockServiceDate} />
           </section>
         ) : (
         <section className="panel">

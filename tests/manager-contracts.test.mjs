@@ -26,6 +26,25 @@ test('shop location is re-derived when any location column is written', () => {
   assert.match(migration, /new\.floor_or_zone := v_zone_name;/);
 });
 
+test('Excel shop import is parsed client-side and committed through one admin RPC', () => {
+  const migration = read('supabase/migrations/0010_shop_catalog_excel_import.sql');
+  const component = read('src/ShopSettings.tsx');
+  const parser = read('src/lib/shopImport.ts');
+
+  assert.match(migration, /create or replace function public\.import_shop_catalog\(p_rows jsonb\)/);
+  assert.match(migration, /Only an admin can import shop settings/);
+  assert.match(migration, /buildings_code_ci_uidx/);
+  assert.match(migration, /government_shop_code text/);
+  assert.doesNotMatch(migration, /1000000/);
+  assert.match(component, /parseShopImportFile/);
+  assert.match(component, /supabase\.rpc\('import_shop_catalog'/);
+  assert.match(component, /shop-import-template\.xlsx/);
+  assert.match(component, /p_government_shop_code/);
+  assert.match(parser, /readXlsxFile/);
+  assert.match(parser, /รหัสตึก/);
+  assert.match(parser, /รหัสศูนย์ราชการ/);
+});
+
 test('new rounds and shop settings do not depend on routes', () => {
   const migration = read('supabase/migrations/0006_rounds_without_routes.sql');
   const component = read('src/ShopSettings.tsx');
@@ -75,6 +94,75 @@ test('stock UI reuses the retry key for the same movement payload', () => {
   assert.match(component, /supabase\.rpc\('record_stock_movement'/);
 });
 
+test('manager overview does not replace the operational manager workspace', () => {
+  const app = read('src/App.tsx');
+
+  assert.match(app, /useState<AdminView>\('manager_overview'\)/);
+  assert.match(app, /currentView === 'manager_overview'[\s\S]*<ManagerDashboard[\s\S]*onNavigate=\{setActiveView\}/);
+  assert.doesNotMatch(app, /currentView === 'manager'\s*\?\s*\(\s*<ManagerDashboard/);
+  assert.match(app, /<RoundWorkspace mode=\{currentView\} profile=\{profile\} \/>/);
+});
+
+test('manager dashboard is driven by live round, stock, and daily-close data', () => {
+  const component = read('src/ManagerDashboard.tsx');
+
+  assert.match(component, /\.from\('delivery_rounds'\)/);
+  assert.match(component, /client\.rpc\('get_round_control_summary'/);
+  assert.match(component, /client\.rpc\('get_stock_control_summary'/);
+  assert.match(component, /client\.rpc\('get_daily_stock_close_state'/);
+  assert.match(component, /p_service_date: serviceDate/);
+  assert.doesNotMatch(component, /if \(rounds\.length === 0\)[\s\S]*stock: null/);
+  assert.match(component, /currentRequest !== requestId\.current/);
+  assert.doesNotMatch(component, /เครดิต|รับชำระ|ใบเสร็จ/);
+});
+
+test('stock operations and stock-location settings are separate views', () => {
+  const app = read('src/App.tsx');
+  const layout = read('src/AdminLayout.tsx');
+
+  assert.match(layout, /stock_operations: \{ label: 'โอน \/ ตรวจ \/ ปิดสต๊อก'/);
+  assert.match(layout, /stock_locations: \{ label: 'ตั้งค่าจุดถือครอง'/);
+  assert.match(app, /currentView === 'stock_operations'[\s\S]*<RoundWorkspace mode="stock"/);
+  assert.match(app, /mode === 'stock'[\s\S]*<ManagerStockControl round=\{stockRound\}/);
+  assert.match(app, /currentView === 'stock_locations'[\s\S]*<StockLocationSettings \/>/);
+  assert.match(app, /<ManagerStockControl[\s\S]*serviceDate=\{stockServiceDate\}/);
+});
+
+test('admin reference settings manage existing profiles and ice types without creating accounts', () => {
+  const app = read('src/App.tsx');
+  const component = read('src/AdminReferenceSettings.tsx');
+  const reviewFixMigration = read('supabase/migrations/0009_phase_3_review_fixes.sql');
+
+  assert.match(app, /profile\.role === 'admin'[\s\S]*'reference_settings'/);
+  assert.match(app, /currentView === 'reference_settings'[\s\S]*<AdminReferenceSettings \/>/);
+  assert.match(component, /profile\.role !== 'admin'/);
+  assert.match(component, /\.from\('users'\)[\s\S]*\.update\(/);
+  assert.doesNotMatch(component, /auth\.admin|signUp\(/);
+  assert.match(component, /isCurrentUser \? original\.role : userDraft\.role/);
+  assert.match(component, /client\.rpc\('save_ice_type'/);
+  assert.match(reviewFixMigration, /An ice type with stock on an open service day cannot be deactivated/);
+  assert.match(reviewFixMigration, /drop policy if exists "admins update ice types"/);
+});
+
+test('factory order persists by service date and active truck before reporting success', () => {
+  const component = read('src/FactoryOrderPage.tsx');
+  const migration = read('supabase/migrations/0011_round_independent_factory_orders.sql');
+
+  assert.match(component, /client\.rpc\('get_factory_order_summary'/);
+  assert.match(component, /supabase\.rpc\('record_factory_order'/);
+  assert.match(component, /p_service_date: serviceDate/);
+  assert.match(component, /p_truck_location_id: truckId/);
+  assert.match(component, /p_idempotency_key: requestKey/);
+  assert.match(component, /activeSelection\.current !== submittedSelection/);
+  assert.match(component, /setSummary\(null\);[\s\S]*setQuantities\(\{\}\);/);
+  assert.match(component, /if \(submitError\)[\s\S]*setError\(submitError\.message\)[\s\S]*else[\s\S]*setSuccess/);
+  assert.doesNotMatch(component, /setConfirmed\(true\)/);
+  assert.doesNotMatch(component, /\.from\('delivery_rounds'\)|p_round_id/);
+  assert.match(migration, /alter column round_id drop not null/);
+  assert.match(migration, /'order_count'[\s\S]*'ordered_totals'[\s\S]*'recent_movements'/);
+  assert.match(migration, /p_service_date[\s\S]*p_truck_location_id[\s\S]*round_id,[\s\S]*null,[\s\S]*'factory_order'/);
+});
+
 test('delivery writes share the day stock lock and reject insufficient stock', () => {
   const migration = read('supabase/migrations/0007_daily_mobile_stock.sql');
   const deliveryOverride = migration.slice(
@@ -106,6 +194,19 @@ test('closed rounds still allow final day stock movements', () => {
   assert.match(stockMovement, /p_kind = 'factory_order' and not v_day_has_open_round/);
   assert.doesNotMatch(stockMovement, /v_round_status <> 'open'/);
   assert.doesNotMatch(component, /disabled=\{submitting \|\| round\.status === 'closed'\}/);
+});
+
+test('recoverable auth session errors sign users out with actionable guidance', () => {
+  const app = read('src/App.tsx');
+  const authErrors = read('src/lib/authErrors.ts');
+
+  assert.match(authErrors, /jwt issued at future/i);
+  assert.match(authErrors, /เวลาในเครื่องหรือเซสชันไม่ตรงกับระบบ/);
+  assert.match(authErrors, /เซสชันหมดอายุแล้ว/);
+  assert.match(app, /const \[authNotice, setAuthNotice\] = useState<string \| null>\(null\)/);
+  assert.match(app, /await supabase\?\.auth\.signOut\(\)/);
+  assert.match(app, /<SignInPanel notice=\{authNotice\} \/>/);
+  assert.match(app, /if \(await onRecoverableSessionError\(error\.message\)\)/);
 });
 
 test('stock UI ignores a movement response after the selected round changes', () => {

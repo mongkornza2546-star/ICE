@@ -110,6 +110,11 @@ export interface StockControlSummary {
   recent_movements: StockMovementEntry[];
 }
 
+export interface FactoryOrderSummary extends StockControlSummary {
+  order_count: number;
+  ordered_totals: StockBalanceItem[];
+}
+
 export interface StockLocationSetting {
   id: string;
   code: string;
@@ -200,6 +205,7 @@ export interface ShopSetting {
   building_id: string;
   zone_id: string;
   floor_or_zone: string;
+  government_shop_code: string | null;
   contact_name: string | null;
   contact_phone: string | null;
   normal_rounds_per_day: number;

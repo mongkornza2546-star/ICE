@@ -16,6 +16,9 @@ const MOVEMENT_LABELS: Record<StockMovementKind, string> = {
   return_to_factory: 'ส่งคืนโรงงาน',
 };
 
+const STOCK_OPERATION_KINDS = ['transfer', 'damage', 'return_to_factory'] as const;
+type StockOperationKind = typeof STOCK_OPERATION_KINDS[number];
+
 const LOCATION_LABELS: Record<StockLocationBalance['kind'], string> = {
   truck: 'รถบรรทุก',
   team: 'ทีมส่ง',
@@ -27,10 +30,16 @@ const LOCATION_LABELS: Record<StockLocationBalance['kind'], string> = {
 
 type QuantityDraft = Record<string, number>;
 
-export function ManagerStockControl({ round }: { round: DeliveryRound | null }) {
+export function ManagerStockControl({
+  round,
+  serviceDate,
+}: {
+  round: DeliveryRound | null;
+  serviceDate: string;
+}) {
   const [summary, setSummary] = useState<StockControlSummary | null>(null);
   const [summaryRoundId, setSummaryRoundId] = useState<string | null>(null);
-  const [kind, setKind] = useState<StockMovementKind>('factory_order');
+  const [kind, setKind] = useState<StockOperationKind>('transfer');
   const [fromLocationId, setFromLocationId] = useState('');
   const [toLocationId, setToLocationId] = useState('');
   const [quantities, setQuantities] = useState<QuantityDraft>({});
@@ -52,22 +61,16 @@ export function ManagerStockControl({ round }: { round: DeliveryRound | null }) 
   const pendingRequest = useRef<{ signature: string; key: string } | null>(null);
   const pendingCloseRequest = useRef<{ signature: string; key: string } | null>(null);
   const activeRoundId = useRef<string | null>(round?.id ?? null);
+  const activeServiceDate = useRef(serviceDate);
   activeRoundId.current = round?.id ?? null;
+  activeServiceDate.current = serviceDate;
 
   useEffect(() => {
     pendingRequest.current = null;
     pendingCloseRequest.current = null;
     setSuccess(null);
-    if (!round) {
-      requestId.current += 1;
-      setSummary(null);
-      setSummaryRoundId(null);
-      setCountHistory([]);
-      setCloseState(null);
-      return;
-    }
-    void loadSummary(round.id);
-  }, [round?.id]);
+    void loadSummary(serviceDate, round?.id ?? null);
+  }, [round?.id, serviceDate]);
 
   const truckLocations = useMemo(
     () => summary?.locations.filter((location) => location.kind === 'truck') ?? [],
@@ -81,8 +84,9 @@ export function ManagerStockControl({ round }: { round: DeliveryRound | null }) 
     setQuantities((current) =>
       Object.fromEntries(iceTypes.map((ice) => [ice.ice_type_id, current[ice.ice_type_id] ?? 0])),
     );
-    setFromLocationId('');
-    setToLocationId(truckLocations[0]?.id || '');
+    const sourceId = truckLocations[0]?.id || summary.locations[0]?.id || '';
+    setFromLocationId(sourceId);
+    setToLocationId(summary.locations.find((location) => location.id !== sourceId)?.id || '');
   }, [summary]);
 
   useEffect(() => {
@@ -104,15 +108,24 @@ export function ManagerStockControl({ round }: { round: DeliveryRound | null }) 
     }
   }, [summary, countLocationId, closeState?.is_closed]);
 
-  async function loadSummary(roundId: string) {
+  async function loadSummary(requestedServiceDate: string, roundId: string | null) {
     if (!supabase) return;
     const currentRequest = ++requestId.current;
     setLoading(true);
     setError(null);
     const [summaryResponse, countResponse, closeResponse] = await Promise.all([
-      supabase.rpc('get_stock_control_summary', { p_round_id: roundId }),
-      supabase.rpc('get_location_count_history', { p_round_id: roundId }),
-      supabase.rpc('get_daily_stock_close_state', { p_round_id: roundId }),
+      supabase.rpc('get_stock_control_summary', {
+        p_round_id: roundId,
+        p_service_date: requestedServiceDate,
+      }),
+      supabase.rpc('get_location_count_history', {
+        p_round_id: roundId,
+        p_service_date: requestedServiceDate,
+      }),
+      supabase.rpc('get_daily_stock_close_state', {
+        p_round_id: roundId,
+        p_service_date: requestedServiceDate,
+      }),
     ]);
     if (currentRequest !== requestId.current) return;
 
@@ -132,7 +145,11 @@ export function ManagerStockControl({ round }: { round: DeliveryRound | null }) 
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!supabase || !round || summaryRoundId !== round.id) {
+    if (!round) {
+      setError('ต้องมีรอบส่งของวันที่เลือกก่อนบันทึกการโอน ของเสีย หรือส่งคืนระหว่างวัน');
+      return;
+    }
+    if (!supabase || summaryRoundId !== round.id) {
       setError('ข้อมูลสต๊อกยังโหลดไม่ครบ กรุณารอสักครู่แล้วลองใหม่');
       return;
     }
@@ -147,6 +164,14 @@ export function ManagerStockControl({ round }: { round: DeliveryRound | null }) 
 
     if (items.length === 0) {
       setError('กรอกจำนวนน้ำแข็งอย่างน้อย 1 รายการ');
+      return;
+    }
+    if (!fromLocationId) {
+      setError('เลือกจุดต้นทางก่อนบันทึกรายการ');
+      return;
+    }
+    if (kind === 'transfer' && !toLocationId) {
+      setError('เลือกจุดปลายทางก่อนบันทึกรายการโอน');
       return;
     }
     if (kind === 'transfer' && fromLocationId === toLocationId) {
@@ -165,8 +190,8 @@ export function ManagerStockControl({ round }: { round: DeliveryRound | null }) 
     const signature = JSON.stringify({
       roundId: round.id,
       kind,
-      fromLocationId: kind === 'factory_order' ? null : fromLocationId || null,
-      toLocationId: kind === 'factory_order' || kind === 'transfer' ? toLocationId || null : null,
+      fromLocationId: fromLocationId || null,
+      toLocationId: kind === 'transfer' ? toLocationId || null : null,
       items,
       note: note.trim() || null,
     });
@@ -179,8 +204,8 @@ export function ManagerStockControl({ round }: { round: DeliveryRound | null }) 
     const { data, error: movementError } = await supabase.rpc('record_stock_movement', {
       p_round_id: submittedRoundId,
       p_kind: kind,
-      p_from_location_id: kind === 'factory_order' ? null : fromLocationId || null,
-      p_to_location_id: kind === 'factory_order' || kind === 'transfer' ? toLocationId || null : null,
+      p_from_location_id: fromLocationId || null,
+      p_to_location_id: kind === 'transfer' ? toLocationId || null : null,
       p_items: items,
       p_note: note.trim() || null,
       p_idempotency_key: submittedRequestKey,
@@ -208,7 +233,7 @@ export function ManagerStockControl({ round }: { round: DeliveryRound | null }) 
 
   const handleLocationCount = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!supabase || !round || !summary || !countLocationId || closeState?.is_closed) return;
+    if (!supabase || !summary || !countLocationId || closeState?.is_closed) return;
     const selectedLocation = summary.locations.find((location) => location.id === countLocationId);
     if (!selectedLocation) return;
 
@@ -219,15 +244,17 @@ export function ManagerStockControl({ round }: { round: DeliveryRound | null }) 
       ice_type_id: balance.ice_type_id,
       actual_quantity: actualCounts[balance.ice_type_id] ?? 0,
     }));
-    const submittedRoundId = round.id;
+    const submittedRoundId = round?.id ?? null;
+    const submittedServiceDate = serviceDate;
     const { error: countError } = await supabase.rpc('record_location_count', {
       p_round_id: submittedRoundId,
+      p_service_date: submittedServiceDate,
       p_location_id: countLocationId,
       p_counts: counts,
       p_note: countNote.trim() || null,
     });
 
-    if (activeRoundId.current !== submittedRoundId) {
+    if (activeRoundId.current !== submittedRoundId || activeServiceDate.current !== submittedServiceDate) {
       setCountSubmitting(false);
       return;
     }
@@ -237,8 +264,9 @@ export function ManagerStockControl({ round }: { round: DeliveryRound | null }) 
     } else {
       const { data, error: historyError } = await supabase.rpc('get_location_count_history', {
         p_round_id: submittedRoundId,
+        p_service_date: submittedServiceDate,
       });
-      if (activeRoundId.current !== submittedRoundId) {
+      if (activeRoundId.current !== submittedRoundId || activeServiceDate.current !== submittedServiceDate) {
         setCountSubmitting(false);
         return;
       }
@@ -255,7 +283,7 @@ export function ManagerStockControl({ round }: { round: DeliveryRound | null }) 
 
   const handleCloseDay = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!supabase || !round || !summary || !closeState || closeState.is_closed) return;
+    if (!supabase || !summary || !closeState || closeState.is_closed) return;
     if (closeState.open_round_count > 0) {
       setError('ต้องปิดรอบส่งทุกช่วงของวันนี้ก่อนปิดสต๊อกสิ้นวัน');
       return;
@@ -267,7 +295,7 @@ export function ManagerStockControl({ round }: { round: DeliveryRound | null }) 
       actual_quantity: closeCounts[closeCountKey(location.id, balance.ice_type_id)] ?? 0,
       note: null,
     })));
-    const signature = JSON.stringify({ roundId: round.id, counts, note: closeNote.trim() });
+    const signature = JSON.stringify({ serviceDate, roundId: round?.id ?? null, counts, note: closeNote.trim() });
     if (pendingCloseRequest.current?.signature !== signature) {
       pendingCloseRequest.current = { signature, key: crypto.randomUUID() };
     }
@@ -276,15 +304,17 @@ export function ManagerStockControl({ round }: { round: DeliveryRound | null }) 
     setError(null);
     setSuccess(null);
     const requestKey = pendingCloseRequest.current.key;
-    const submittedRoundId = round.id;
+    const submittedRoundId = round?.id ?? null;
+    const submittedServiceDate = serviceDate;
     const { data, error: closeError } = await supabase.rpc('close_daily_stock', {
       p_round_id: submittedRoundId,
+      p_service_date: submittedServiceDate,
       p_counts: counts,
       p_note: closeNote.trim() || null,
       p_idempotency_key: requestKey,
     });
 
-    if (activeRoundId.current !== submittedRoundId) {
+    if (activeRoundId.current !== submittedRoundId || activeServiceDate.current !== submittedServiceDate) {
       setCloseSubmitting(false);
       return;
     }
@@ -295,12 +325,12 @@ export function ManagerStockControl({ round }: { round: DeliveryRound | null }) 
       pendingCloseRequest.current = null;
       setCloseState(data as DailyStockCloseState);
       setSuccess('ปิดสต๊อกสิ้นวันและบันทึกส่งยอดคงเหลือกลับโรงงานแล้ว');
-      await loadSummary(submittedRoundId);
+      await loadSummary(submittedServiceDate, submittedRoundId);
     }
     setCloseSubmitting(false);
   };
 
-  const selectMovementKind = (nextKind: StockMovementKind) => {
+  const selectMovementKind = (nextKind: StockOperationKind) => {
     if (!summary) return;
     const truckId = truckLocations[0]?.id || '';
     const firstLocationId = summary.locations[0]?.id || '';
@@ -310,10 +340,7 @@ export function ManagerStockControl({ round }: { round: DeliveryRound | null }) 
     setError(null);
     pendingRequest.current = null;
 
-    if (nextKind === 'factory_order') {
-      setFromLocationId('');
-      setToLocationId(truckId);
-    } else if (nextKind === 'transfer') {
+    if (nextKind === 'transfer') {
       const sourceId = truckId || firstLocationId;
       setFromLocationId(sourceId);
       setToLocationId(summary.locations.find((location) => location.id !== sourceId)?.id || '');
@@ -323,9 +350,6 @@ export function ManagerStockControl({ round }: { round: DeliveryRound | null }) 
     }
   };
 
-  if (!round) {
-    return <p className="empty-text">เลือกรอบส่งเพื่อจัดการสต๊อกของวัน</p>;
-  }
   if (loading) {
     return <p className="empty-text">กำลังรวมยอดสต๊อกทุกจุด...</p>;
   }
@@ -373,9 +397,10 @@ export function ManagerStockControl({ round }: { round: DeliveryRound | null }) 
           <p className="eyebrow">บันทึกเหตุการณ์จริง</p>
           <h3>เคลื่อนย้ายสต๊อก</h3>
         </div>
+        {!round ? <p className="muted">วันที่นี้ยังไม่มีรอบส่ง จึงดูยอด ตรวจนับ และปิดวันได้ แต่ยังบันทึกการเคลื่อนย้ายระหว่างวันไม่ได้</p> : null}
 
         <div className="movement-kind-grid" role="radiogroup" aria-label="ประเภทรายการสต๊อก">
-          {(Object.keys(MOVEMENT_LABELS) as StockMovementKind[]).map((movementKind) => (
+          {STOCK_OPERATION_KINDS.map((movementKind) => (
             <button
               aria-pressed={kind === movementKind}
               className={kind === movementKind ? 'choice-chip choice-chip--selected' : 'choice-chip'}
@@ -389,23 +414,17 @@ export function ManagerStockControl({ round }: { round: DeliveryRound | null }) 
           ))}
         </div>
 
-        {kind === 'factory_order' ? (
-          <p className="muted">ยอดนี้ใช้จำนวนที่สั่งเป็นยอดตั้งต้นของรถ โดยสมมุติว่าโรงงานส่งครบ เพราะหัวหน้าไม่ได้ตรวจนับตอนขึ้นรถ</p>
-        ) : null}
-
         <div className="field-grid">
-          {kind !== 'factory_order' ? (
-            <LocationSelect
-              label="ต้นทาง"
-              locations={kind === 'return_to_factory' ? truckLocations : summary.locations}
-              onChange={setFromLocationId}
-              value={fromLocationId}
-            />
-          ) : null}
-          {kind === 'factory_order' || kind === 'transfer' ? (
+          <LocationSelect
+            label="ต้นทาง"
+            locations={kind === 'return_to_factory' ? truckLocations : summary.locations}
+            onChange={setFromLocationId}
+            value={fromLocationId}
+          />
+          {kind === 'transfer' ? (
             <LocationSelect
               label="ปลายทาง"
-              locations={kind === 'factory_order' ? truckLocations : summary.locations.filter((location) => location.id !== fromLocationId)}
+              locations={summary.locations.filter((location) => location.id !== fromLocationId)}
               onChange={setToLocationId}
               value={toLocationId}
             />
@@ -447,11 +466,11 @@ export function ManagerStockControl({ round }: { round: DeliveryRound | null }) 
 
         {error ? <p className="error-text">{error}</p> : null}
         {success ? <p className="success-text">{success}</p> : null}
-        {round.status === 'closed' ? (
+        {round?.status === 'closed' ? (
           <p className="muted">รอบส่งปิดแล้ว แต่ยังโอนของกลับ บันทึกเสียหาย และส่งคืนโรงงานเพื่อปิดสต๊อกของวันได้</p>
         ) : null}
         {closeState?.is_closed ? <p className="muted">สต๊อกของวันนี้ปิดแล้ว รายการทั้งหมดเป็นประวัติอ่านอย่างเดียว</p> : null}
-        <button className="primary-button" disabled={submitting || closeState?.is_closed} type="submit">
+        <button className="primary-button" disabled={!round || submitting || closeState?.is_closed} type="submit">
           {closeState?.is_closed ? 'ปิดสต๊อกวันนี้แล้ว' : submitting ? 'กำลังบันทึก...' : `ยืนยัน ${MOVEMENT_LABELS[kind]}`}
         </button>
       </form>
