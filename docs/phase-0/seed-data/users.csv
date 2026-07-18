@@ -1,4 +1,0 @@
-code,display_name,phone,role,is_active
-ADMIN-001,ผู้ดูแลระบบ,,admin,true
-LEAD-001,หัวหน้ารอบ,,round_lead,true
-COURIER-001,พนักงานส่ง,,courier,true

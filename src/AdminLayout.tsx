@@ -45,6 +45,7 @@ export function AdminLayout({
   profileLabel,
   onNavigate,
   onSignOut,
+  signOutDisabled = false,
   children,
 }: {
   activeView: AdminView;
@@ -52,6 +53,7 @@ export function AdminLayout({
   profileLabel: string;
   onNavigate: (view: AdminView) => void;
   onSignOut?: () => void;
+  signOutDisabled?: boolean;
   children: ReactNode;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -141,7 +143,7 @@ export function AdminLayout({
               {!onSignOut ? <CaretDown size={16} /> : null}
             </div>
             {onSignOut ? (
-              <button aria-label="ออกจากระบบ" className="sign-out-button" onClick={onSignOut} title="ออกจากระบบ" type="button">
+              <button aria-label="ออกจากระบบ" className="sign-out-button" disabled={signOutDisabled} onClick={onSignOut} title={signOutDisabled ? 'กำลังบันทึกรายการ' : 'ออกจากระบบ'} type="button">
                 <SignOut size={18} />
               </button>
             ) : null}

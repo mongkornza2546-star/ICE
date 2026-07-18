@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from './lib/supabase';
+import { useRpcAction } from './hooks/useRpcAction';
 import type {
   DailyStockCloseState,
   DeliveryRound,
@@ -52,23 +53,11 @@ export function ManagerStockControl({
   const [closeCounts, setCloseCounts] = useState<Record<string, number>>({});
   const [closeNote, setCloseNote] = useState('');
   const [loading, setLoading] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [countSubmitting, setCountSubmitting] = useState(false);
-  const [closeSubmitting, setCloseSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
+  
   const requestId = useRef(0);
-  const pendingRequest = useRef<{ signature: string; key: string } | null>(null);
-  const pendingCloseRequest = useRef<{ signature: string; key: string } | null>(null);
-  const activeRoundId = useRef<string | null>(round?.id ?? null);
-  const activeServiceDate = useRef(serviceDate);
-  activeRoundId.current = round?.id ?? null;
-  activeServiceDate.current = serviceDate;
 
   useEffect(() => {
-    pendingRequest.current = null;
-    pendingCloseRequest.current = null;
-    setSuccess(null);
     void loadSummary(serviceDate, round?.id ?? null);
   }, [round?.id, serviceDate]);
 
@@ -143,18 +132,45 @@ export function ManagerStockControl({
     setLoading(false);
   }
 
+  const stockMovementAction = useRpcAction(
+    async (
+      args: { kind: StockOperationKind; fromLocationId: string; toLocationId: string; items: any[]; note: string },
+      idempotencyKey
+    ) => {
+      if (!supabase) throw new Error('Supabase is not initialized');
+      return supabase.rpc('record_stock_movement', {
+        p_round_id: round!.id,
+        p_kind: args.kind,
+        p_from_location_id: args.fromLocationId || null,
+        p_to_location_id: args.kind === 'transfer' ? args.toLocationId || null : null,
+        p_items: args.items,
+        p_note: args.note.trim() || null,
+        p_idempotency_key: idempotencyKey,
+      });
+    },
+    {
+      deps: [round?.id],
+      successMessage: (_, args) => `บันทึก “${MOVEMENT_LABELS[args.kind]}” แล้ว`,
+      onSuccess: (data) => {
+        setSummary(data as StockControlSummary);
+        setQuantities(Object.fromEntries(iceTypes.map((ice) => [ice.ice_type_id, 0])));
+        setNote('');
+      },
+    }
+  );
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!round) {
-      setError('ต้องมีรอบส่งของวันที่เลือกก่อนบันทึกการโอน ของเสีย หรือส่งคืนระหว่างวัน');
+      stockMovementAction.setError('ต้องมีรอบส่งของวันที่เลือกก่อนบันทึกการโอน ของเสีย หรือส่งคืนระหว่างวัน');
       return;
     }
     if (!supabase || summaryRoundId !== round.id) {
-      setError('ข้อมูลสต๊อกยังโหลดไม่ครบ กรุณารอสักครู่แล้วลองใหม่');
+      stockMovementAction.setError('ข้อมูลสต๊อกยังโหลดไม่ครบ กรุณารอสักครู่แล้วลองใหม่');
       return;
     }
     if (closeState?.is_closed) {
-      setError('สต๊อกของวันนี้ปิดแล้ว ไม่สามารถเพิ่มรายการเคลื่อนไหวได้');
+      stockMovementAction.setError('สต๊อกของวันนี้ปิดแล้ว ไม่สามารถเพิ่มรายการเคลื่อนไหวได้');
       return;
     }
 
@@ -163,73 +179,62 @@ export function ManagerStockControl({
       .filter((item) => item.quantity > 0);
 
     if (items.length === 0) {
-      setError('กรอกจำนวนน้ำแข็งอย่างน้อย 1 รายการ');
+      stockMovementAction.setError('กรอกจำนวนน้ำแข็งอย่างน้อย 1 รายการ');
       return;
     }
     if (!fromLocationId) {
-      setError('เลือกจุดต้นทางก่อนบันทึกรายการ');
+      stockMovementAction.setError('เลือกจุดต้นทางก่อนบันทึกรายการ');
       return;
     }
     if (kind === 'transfer' && !toLocationId) {
-      setError('เลือกจุดปลายทางก่อนบันทึกรายการโอน');
+      stockMovementAction.setError('เลือกจุดปลายทางก่อนบันทึกรายการโอน');
       return;
     }
     if (kind === 'transfer' && fromLocationId === toLocationId) {
-      setError('ต้นทางและปลายทางต้องเป็นคนละจุด');
+      stockMovementAction.setError('ต้นทางและปลายทางต้องเป็นคนละจุด');
       return;
     }
     if (kind === 'damage' && !note.trim()) {
-      setError('รายการเสียหายต้องมีหมายเหตุ');
+      stockMovementAction.setError('รายการเสียหายต้องมีหมายเหตุ');
       return;
     }
 
-    setSubmitting(true);
-    setError(null);
-    setSuccess(null);
+    const args = { kind, fromLocationId, toLocationId, items, note: note.trim() };
+    const signature = JSON.stringify({ roundId: round.id, ...args });
 
-    const signature = JSON.stringify({
-      roundId: round.id,
-      kind,
-      fromLocationId: fromLocationId || null,
-      toLocationId: kind === 'transfer' ? toLocationId || null : null,
-      items,
-      note: note.trim() || null,
-    });
-    if (pendingRequest.current?.signature !== signature) {
-      pendingRequest.current = { signature, key: crypto.randomUUID() };
-    }
-    const submittedRoundId = round.id;
-    const submittedRequestKey = pendingRequest.current.key;
-
-    const { data, error: movementError } = await supabase.rpc('record_stock_movement', {
-      p_round_id: submittedRoundId,
-      p_kind: kind,
-      p_from_location_id: fromLocationId || null,
-      p_to_location_id: kind === 'transfer' ? toLocationId || null : null,
-      p_items: items,
-      p_note: note.trim() || null,
-      p_idempotency_key: submittedRequestKey,
-    });
-
-    if (activeRoundId.current !== submittedRoundId) {
-      if (pendingRequest.current?.key === submittedRequestKey) {
-        pendingRequest.current = null;
-      }
-      setSubmitting(false);
-      return;
-    }
-
-    if (movementError) {
-      setError(movementError.message);
-    } else {
-      pendingRequest.current = null;
-      setSummary(data as StockControlSummary);
-      setQuantities(Object.fromEntries(iceTypes.map((ice) => [ice.ice_type_id, 0])));
-      setNote('');
-      setSuccess(`บันทึก “${MOVEMENT_LABELS[kind]}” แล้ว`);
-    }
-    setSubmitting(false);
+    await stockMovementAction.execute(args, { signature });
   };
+
+  const locationCountAction = useRpcAction(
+    async (args: { counts: any[]; note: string }) => {
+      if (!supabase) throw new Error('Supabase is not initialized');
+      const { error } = await supabase.rpc('record_location_count', {
+        p_round_id: round?.id ?? null,
+        p_service_date: serviceDate,
+        p_location_id: countLocationId,
+        p_counts: args.counts,
+        p_note: args.note.trim() || null,
+      });
+      if (error) return { data: null, error };
+
+      const { data, error: historyError } = await supabase.rpc('get_location_count_history', {
+        p_round_id: round?.id ?? null,
+        p_service_date: serviceDate,
+      });
+      return { data, error: historyError };
+    },
+    {
+      deps: [round?.id, serviceDate],
+      successMessage: () => {
+        const selectedLocation = summary?.locations.find((location) => location.id === countLocationId);
+        return `บันทึกยอดนับจริงของ “${selectedLocation?.name ?? ''}” แล้ว`;
+      },
+      onSuccess: (data) => {
+        setCountHistory((data ?? []) as StockCountSnapshot[]);
+        setCountNote('');
+      },
+    }
+  );
 
   const handleLocationCount = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -237,55 +242,40 @@ export function ManagerStockControl({
     const selectedLocation = summary.locations.find((location) => location.id === countLocationId);
     if (!selectedLocation) return;
 
-    setCountSubmitting(true);
-    setError(null);
-    setSuccess(null);
     const counts = selectedLocation.balances.map((balance) => ({
       ice_type_id: balance.ice_type_id,
       actual_quantity: actualCounts[balance.ice_type_id] ?? 0,
     }));
-    const submittedRoundId = round?.id ?? null;
-    const submittedServiceDate = serviceDate;
-    const { error: countError } = await supabase.rpc('record_location_count', {
-      p_round_id: submittedRoundId,
-      p_service_date: submittedServiceDate,
-      p_location_id: countLocationId,
-      p_counts: counts,
-      p_note: countNote.trim() || null,
-    });
 
-    if (activeRoundId.current !== submittedRoundId || activeServiceDate.current !== submittedServiceDate) {
-      setCountSubmitting(false);
-      return;
-    }
-
-    if (countError) {
-      setError(countError.message);
-    } else {
-      const { data, error: historyError } = await supabase.rpc('get_location_count_history', {
-        p_round_id: submittedRoundId,
-        p_service_date: submittedServiceDate,
-      });
-      if (activeRoundId.current !== submittedRoundId || activeServiceDate.current !== submittedServiceDate) {
-        setCountSubmitting(false);
-        return;
-      }
-      if (historyError) {
-        setError(historyError.message);
-      } else {
-        setCountHistory((data ?? []) as StockCountSnapshot[]);
-        setCountNote('');
-        setSuccess(`บันทึกยอดนับจริงของ “${selectedLocation.name}” แล้ว`);
-      }
-    }
-    setCountSubmitting(false);
+    await locationCountAction.execute({ counts, note: countNote });
   };
+
+  const closeDayAction = useRpcAction(
+    async (args: { counts: any[]; note: string }, idempotencyKey) => {
+      if (!supabase) throw new Error('Supabase is not initialized');
+      return supabase.rpc('close_daily_stock', {
+        p_round_id: round?.id ?? null,
+        p_service_date: serviceDate,
+        p_counts: args.counts,
+        p_note: args.note.trim() || null,
+        p_idempotency_key: idempotencyKey,
+      });
+    },
+    {
+      deps: [round?.id, serviceDate],
+      successMessage: 'ปิดสต๊อกสิ้นวันและบันทึกส่งยอดคงเหลือกลับโรงงานแล้ว',
+      onSuccess: async (data) => {
+        setCloseState(data as DailyStockCloseState);
+        await loadSummary(serviceDate, round?.id ?? null);
+      },
+    }
+  );
 
   const handleCloseDay = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!supabase || !summary || !closeState || closeState.is_closed) return;
     if (closeState.open_round_count > 0) {
-      setError('ต้องปิดรอบส่งทุกช่วงของวันนี้ก่อนปิดสต๊อกสิ้นวัน');
+      closeDayAction.setError('ต้องปิดรอบส่งทุกช่วงของวันนี้ก่อนปิดสต๊อกสิ้นวัน');
       return;
     }
 
@@ -295,39 +285,10 @@ export function ManagerStockControl({
       actual_quantity: closeCounts[closeCountKey(location.id, balance.ice_type_id)] ?? 0,
       note: null,
     })));
-    const signature = JSON.stringify({ serviceDate, roundId: round?.id ?? null, counts, note: closeNote.trim() });
-    if (pendingCloseRequest.current?.signature !== signature) {
-      pendingCloseRequest.current = { signature, key: crypto.randomUUID() };
-    }
+    const noteValue = closeNote.trim();
 
-    setCloseSubmitting(true);
-    setError(null);
-    setSuccess(null);
-    const requestKey = pendingCloseRequest.current.key;
-    const submittedRoundId = round?.id ?? null;
-    const submittedServiceDate = serviceDate;
-    const { data, error: closeError } = await supabase.rpc('close_daily_stock', {
-      p_round_id: submittedRoundId,
-      p_service_date: submittedServiceDate,
-      p_counts: counts,
-      p_note: closeNote.trim() || null,
-      p_idempotency_key: requestKey,
-    });
-
-    if (activeRoundId.current !== submittedRoundId || activeServiceDate.current !== submittedServiceDate) {
-      setCloseSubmitting(false);
-      return;
-    }
-
-    if (closeError) {
-      setError(closeError.message);
-    } else {
-      pendingCloseRequest.current = null;
-      setCloseState(data as DailyStockCloseState);
-      setSuccess('ปิดสต๊อกสิ้นวันและบันทึกส่งยอดคงเหลือกลับโรงงานแล้ว');
-      await loadSummary(submittedServiceDate, submittedRoundId);
-    }
-    setCloseSubmitting(false);
+    const signature = JSON.stringify({ serviceDate, roundId: round?.id ?? null, counts, note: noteValue });
+    await closeDayAction.execute({ counts, note: noteValue }, { signature });
   };
 
   const selectMovementKind = (nextKind: StockOperationKind) => {
@@ -336,9 +297,7 @@ export function ManagerStockControl({
     const firstLocationId = summary.locations[0]?.id || '';
 
     setKind(nextKind);
-    setSuccess(null);
-    setError(null);
-    pendingRequest.current = null;
+    stockMovementAction.reset();
 
     if (nextKind === 'transfer') {
       const sourceId = truckId || firstLocationId;
@@ -464,14 +423,14 @@ export function ManagerStockControl({
           />
         </label>
 
-        {error ? <p className="error-text">{error}</p> : null}
-        {success ? <p className="success-text">{success}</p> : null}
+        {stockMovementAction.error ? <p className="error-text">{stockMovementAction.error}</p> : null}
+        {stockMovementAction.success ? <p className="success-text">{stockMovementAction.success}</p> : null}
         {round?.status === 'closed' ? (
           <p className="muted">รอบส่งปิดแล้ว แต่ยังโอนของกลับ บันทึกเสียหาย และส่งคืนโรงงานเพื่อปิดสต๊อกของวันได้</p>
         ) : null}
         {closeState?.is_closed ? <p className="muted">สต๊อกของวันนี้ปิดแล้ว รายการทั้งหมดเป็นประวัติอ่านอย่างเดียว</p> : null}
-        <button className="primary-button" disabled={!round || submitting || closeState?.is_closed} type="submit">
-          {closeState?.is_closed ? 'ปิดสต๊อกวันนี้แล้ว' : submitting ? 'กำลังบันทึก...' : `ยืนยัน ${MOVEMENT_LABELS[kind]}`}
+        <button className="primary-button" disabled={!round || stockMovementAction.isSubmitting || closeState?.is_closed} type="submit">
+          {closeState?.is_closed ? 'ปิดสต๊อกวันนี้แล้ว' : stockMovementAction.isSubmitting ? 'กำลังบันทึก...' : `ยืนยัน ${MOVEMENT_LABELS[kind]}`}
         </button>
       </form>
 
@@ -523,8 +482,12 @@ export function ManagerStockControl({
             })}
           </div>
           <label>หมายเหตุส่วนต่าง (ถ้ามี)<textarea disabled={closeState?.is_closed} rows={2} value={countNote} onChange={(event) => setCountNote(event.target.value)} /></label>
-          <button className="primary-button" disabled={countSubmitting || closeState?.is_closed} type="submit">
-            {countSubmitting ? 'กำลังบันทึก...' : 'เก็บ snapshot ยอดนับจริง'}
+          
+          {locationCountAction.error ? <p className="error-text">{locationCountAction.error}</p> : null}
+          {locationCountAction.success ? <p className="success-text">{locationCountAction.success}</p> : null}
+          
+          <button className="primary-button" disabled={locationCountAction.isSubmitting || closeState?.is_closed} type="submit">
+            {locationCountAction.isSubmitting ? 'กำลังบันทึก...' : 'เก็บ snapshot ยอดนับจริง'}
           </button>
         </form>
         <div className="stock-ledger-list">
@@ -587,8 +550,12 @@ export function ManagerStockControl({
             </div>
             <label>หมายเหตุปิดวัน (ถ้ามี)<textarea rows={2} value={closeNote} onChange={(event) => setCloseNote(event.target.value)} /></label>
             {closeState && closeState.open_round_count > 0 ? <p className="error-text">ต้องปิดรอบส่งที่เหลือ {closeState.open_round_count} รอบก่อน</p> : null}
-            <button className="primary-button" disabled={closeSubmitting || !closeState || closeState.open_round_count > 0} type="submit">
-              {closeSubmitting ? 'กำลังปิดสต๊อก...' : 'ยืนยันยอดจริง ส่งคืนโรงงาน และปิดวัน'}
+            
+            {closeDayAction.error ? <p className="error-text">{closeDayAction.error}</p> : null}
+            {closeDayAction.success ? <p className="success-text">{closeDayAction.success}</p> : null}
+            
+            <button className="primary-button" disabled={closeDayAction.isSubmitting || !closeState || closeState.open_round_count > 0} type="submit">
+              {closeDayAction.isSubmitting ? 'กำลังปิดสต๊อก...' : 'ยืนยันยอดจริง ส่งคืนโรงงาน และปิดวัน'}
             </button>
           </form>
         )}

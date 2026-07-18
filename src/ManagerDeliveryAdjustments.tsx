@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from './lib/supabase';
+import { useRpcAction } from './hooks/useRpcAction';
 import type {
   DeliveryRound,
   ManagerDeliveryEvent,
@@ -23,17 +24,10 @@ export function ManagerDeliveryAdjustments({ round }: { round: DeliveryRound | n
   const [note, setNote] = useState('');
   const [reason, setReason] = useState('');
   const [loading, setLoading] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
   const requestId = useRef(0);
-  const pendingRequest = useRef<{ signature: string; key: string } | null>(null);
-  const activeRoundId = useRef<string | null>(round?.id ?? null);
-  activeRoundId.current = round?.id ?? null;
 
   useEffect(() => {
-    pendingRequest.current = null;
-    setSuccess(null);
     if (!round) {
       requestId.current += 1;
       setSummary(null);
@@ -60,7 +54,7 @@ export function ManagerDeliveryAdjustments({ round }: { round: DeliveryRound | n
         selectedEvent.items.find((item) => item.ice_type_id === ice.id)?.quantity ?? 0,
       ]),
     ));
-    pendingRequest.current = null;
+    revisionAction.reset();
   }, [selectedEvent?.id, summary?.ice_types]);
 
   async function loadEvents(roundId: string) {
@@ -87,6 +81,33 @@ export function ManagerDeliveryAdjustments({ round }: { round: DeliveryRound | n
     setLoading(false);
   }
 
+  const revisionAction = useRpcAction(
+    async (
+      args: { eventId: string; action: 'correct' | 'cancel'; items: any[]; status: string; note: string; reason: string },
+      idempotencyKey
+    ) => {
+      if (!supabase) throw new Error('Supabase is not initialized');
+      return supabase.rpc('revise_delivery_event', {
+        p_event_id: args.eventId,
+        p_action: args.action,
+        p_items: args.items,
+        p_stop_status: args.status,
+        p_note: args.note.trim() || null,
+        p_reason: args.reason.trim(),
+        p_idempotency_key: idempotencyKey,
+      });
+    },
+    {
+      deps: [round?.id],
+      successMessage: (_, args) => args.action === 'correct' ? 'แก้ไขรายการและเก็บประวัติแล้ว' : 'ยกเลิกรายการและคืนสต๊อกแล้ว',
+      onSuccess: (data) => {
+        const nextSummary = data as ManagerDeliveryEventSummary;
+        setSummary(nextSummary);
+        setSelectedId(nextSummary.events[0]?.id ?? '');
+      },
+    }
+  );
+
   async function submitRevision(
     event: FormEvent<HTMLFormElement> | null,
     action: 'correct' | 'cancel',
@@ -94,7 +115,7 @@ export function ManagerDeliveryAdjustments({ round }: { round: DeliveryRound | n
     event?.preventDefault();
     if (!supabase || !round || !selectedEvent || !summary) return;
     if (!reason.trim()) {
-      setError('ต้องระบุเหตุผลที่แก้ไขหรือยกเลิก');
+      revisionAction.setError('ต้องระบุเหตุผลที่แก้ไขหรือยกเลิก');
       return;
     }
 
@@ -105,56 +126,26 @@ export function ManagerDeliveryAdjustments({ round }: { round: DeliveryRound | n
       : [];
 
     if (action === 'correct' && status === 'delivered' && items.length === 0) {
-      setError('รายการส่งแล้วต้องมีน้ำแข็งอย่างน้อย 1 ชนิด');
+      revisionAction.setError('รายการส่งแล้วต้องมีน้ำแข็งอย่างน้อย 1 ชนิด');
       return;
     }
     if (action === 'correct' && status !== 'delivered' && !note.trim()) {
-      setError('สถานะที่ไม่ได้ส่งต้องมีหมายเหตุ');
+      revisionAction.setError('สถานะที่ไม่ได้ส่งต้องมีหมายเหตุ');
       return;
     }
 
-    const signature = JSON.stringify({
+    const args = {
       eventId: selectedEvent.id,
       action,
       items,
       status,
       note: note.trim(),
       reason: reason.trim(),
-    });
-    if (pendingRequest.current?.signature !== signature) {
-      pendingRequest.current = { signature, key: crypto.randomUUID() };
-    }
+    };
 
-    setSubmitting(true);
-    setError(null);
-    setSuccess(null);
-    const requestKey = pendingRequest.current.key;
-    const submittedRoundId = round.id;
-    const { data, error: revisionError } = await supabase.rpc('revise_delivery_event', {
-      p_event_id: selectedEvent.id,
-      p_action: action,
-      p_items: items,
-      p_stop_status: status,
-      p_note: note.trim() || null,
-      p_reason: reason.trim(),
-      p_idempotency_key: requestKey,
-    });
+    const signature = JSON.stringify(args);
 
-    if (activeRoundId.current !== submittedRoundId) {
-      setSubmitting(false);
-      return;
-    }
-
-    if (revisionError) {
-      setError(revisionError.message);
-    } else {
-      pendingRequest.current = null;
-      const nextSummary = data as ManagerDeliveryEventSummary;
-      setSummary(nextSummary);
-      setSelectedId(nextSummary.events[0]?.id ?? '');
-      setSuccess(action === 'correct' ? 'แก้ไขรายการและเก็บประวัติแล้ว' : 'ยกเลิกรายการและคืนสต๊อกแล้ว');
-    }
-    setSubmitting(false);
+    await revisionAction.execute(args, { signature });
   }
 
   if (!round) return <p className="empty-text">เลือกรอบเพื่อตรวจรายการส่ง</p>;
@@ -218,11 +209,11 @@ export function ManagerDeliveryAdjustments({ round }: { round: DeliveryRound | n
                 </div>
               ) : null}
               <label>หมายเหตุ<textarea disabled={round.status === 'closed'} rows={2} value={note} onChange={(event) => setNote(event.target.value)} /></label>
-              {error ? <p className="error-text">{error}</p> : null}
-              {success ? <p className="success-text">{success}</p> : null}
+              {revisionAction.error ? <p className="error-text">{revisionAction.error}</p> : null}
+              {revisionAction.success ? <p className="success-text">{revisionAction.success}</p> : null}
               <div className="manager-action-row">
-                <button className="primary-button" disabled={submitting || round.status === 'closed'} type="submit">{submitting ? 'กำลังบันทึก...' : 'บันทึกการแก้ไข'}</button>
-                <button className="ghost-button danger-button" disabled={submitting || round.status === 'closed'} onClick={() => void submitRevision(null, 'cancel')} type="button">ยกเลิกรายการ</button>
+                <button className="primary-button" disabled={revisionAction.isSubmitting || round.status === 'closed'} type="submit">{revisionAction.isSubmitting ? 'กำลังบันทึก...' : 'บันทึกการแก้ไข'}</button>
+                <button className="ghost-button danger-button" disabled={revisionAction.isSubmitting || round.status === 'closed'} onClick={() => void submitRevision(null, 'cancel')} type="button">ยกเลิกรายการ</button>
               </div>
               {round.status === 'closed' ? <p className="muted">รอบปิดแล้ว รายการแก้ไขได้เฉพาะก่อนปิดรอบเพื่อไม่ให้ snapshot เปลี่ยนย้อนหลัง</p> : null}
             </form>

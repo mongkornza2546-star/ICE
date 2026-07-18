@@ -1,0 +1,282 @@
+import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { supabase } from './lib/supabase';
+import { ManagerRoundControl } from './ManagerRoundControl';
+import { ManagerStockControl } from './ManagerStockControl';
+import { ManagerDeliveryAdjustments } from './ManagerDeliveryAdjustments';
+import { useReferenceData } from './hooks/useReferenceData';
+import type { UserProfile } from './types/app';
+
+const ROLE_LABELS = {
+  courier: 'พนักงานส่ง',
+  round_lead: 'หัวหน้ารอบ',
+  admin: 'แอดมิน',
+} as const;
+
+interface RoundCreationDraft {
+  serviceDate: string;
+  name: string;
+  memberIds: string[];
+}
+
+export function todayIsoDate() {
+  const now = new Date();
+  const offset = now.getTimezoneOffset();
+  return new Date(now.getTime() - offset * 60_000).toISOString().slice(0, 10);
+}
+
+export function RoundWorkspace({ profile, mode }: { profile: UserProfile; mode: 'manager' | 'stock' }) {
+  const canCreateRound = profile.role === 'admin' || profile.role === 'round_lead';
+
+  const {
+    rounds,
+    iceTypes,
+    memberOptions,
+    selectedRoundId,
+    setSelectedRoundId,
+    loadingRounds,
+    workspaceError,
+    loadReferenceData,
+  } = useReferenceData(canCreateRound);
+
+  const [createError, setCreateError] = useState<string | null>(null);
+  const [createLoading, setCreateLoading] = useState(false);
+  const [stockServiceDate, setStockServiceDate] = useState(todayIsoDate());
+  const [roundDraft, setRoundDraft] = useState<RoundCreationDraft>({
+    serviceDate: todayIsoDate(),
+    name: '',
+    memberIds: [],
+  });
+
+  useEffect(() => {
+    void loadReferenceData();
+  }, [loadReferenceData]);
+
+  useEffect(() => {
+    setRoundDraft((current) => ({
+      ...current,
+      memberIds:
+        current.memberIds.length > 0
+          ? current.memberIds
+          : canCreateRound && profile.role === 'round_lead'
+            ? [profile.id]
+            : current.memberIds,
+    }));
+  }, [canCreateRound, profile.id, profile.role]);
+
+  const selectedRound = useMemo(
+    () => rounds.find((round) => round.id === selectedRoundId) ?? null,
+    [rounds, selectedRoundId],
+  );
+  const stockRound = selectedRound?.service_date === stockServiceDate ? selectedRound : null;
+
+  const handleCreateRound = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!supabase) {
+      return;
+    }
+
+    setCreateLoading(true);
+    setCreateError(null);
+
+    const payload = iceTypes.map((iceType) => ({
+      ice_type_id: iceType.id,
+      quantity: 0,
+    }));
+
+    const { data, error } = await supabase.rpc('create_delivery_round', {
+      p_service_date: roundDraft.serviceDate,
+      p_name: roundDraft.name,
+      p_member_ids: roundDraft.memberIds,
+      p_loaded_quantities: payload,
+    });
+
+    if (error) {
+      setCreateError(error.message);
+      setCreateLoading(false);
+      return;
+    }
+
+    const newRoundId = data as string;
+    setRoundDraft((current) => ({
+      ...current,
+      name: '',
+    }));
+    await loadReferenceData();
+    setSelectedRoundId(newRoundId);
+    setCreateLoading(false);
+  };
+
+  if (loadingRounds) {
+    return (
+      <section className="panel center-panel">
+        <p className="eyebrow">กำลังโหลดข้อมูลรอบ</p>
+          <h2>ดึงรอบส่งและชนิดน้ำแข็ง</h2>
+      </section>
+    );
+  }
+
+  return (
+    <div className="workspace-grid">
+      <section className="stack">
+        {canCreateRound && mode === 'manager' ? (
+          <section className="panel">
+            <div className="panel-header">
+              <div>
+                <p className="eyebrow">หัวหน้ารอบ</p>
+                <h2>เปิดรอบส่งใหม่</h2>
+              </div>
+            </div>
+            <form className="round-form" onSubmit={handleCreateRound}>
+              <div className="field-grid">
+                <label>
+                  วันที่ให้บริการ
+                  <input
+                    type="date"
+                    value={roundDraft.serviceDate}
+                    onChange={(event) =>
+                      setRoundDraft((current) => ({
+                        ...current,
+                        serviceDate: event.target.value,
+                      }))
+                    }
+                    required
+                  />
+                </label>
+                <label>
+                  ชื่อรอบ
+                  <input
+                    placeholder="เช้ามืด / เช้า / รอบเพิ่ม"
+                    value={roundDraft.name}
+                    onChange={(event) =>
+                      setRoundDraft((current) => ({ ...current, name: event.target.value }))
+                    }
+                    required
+                  />
+                </label>
+              </div>
+
+              <fieldset className="fieldset">
+                <legend>ผู้ร่วมรอบ</legend>
+                <div className="chip-grid">
+                  {memberOptions.map((member) => {
+                    const checked = roundDraft.memberIds.includes(member.id);
+                    return (
+                      <label
+                        className={`choice-chip ${checked ? 'choice-chip--selected' : ''}`}
+                        key={member.id}
+                      >
+                        <input
+                          checked={checked}
+                          hidden
+                          onChange={() =>
+                            setRoundDraft((current) => ({
+                              ...current,
+                              memberIds: checked
+                                ? current.memberIds.filter((memberId) => memberId !== member.id)
+                                : [...current.memberIds, member.id],
+                            }))
+                          }
+                          type="checkbox"
+                        />
+                        <span>{member.display_name}</span>
+                        <small>
+                          {ROLE_LABELS[member.role]} · {member.code}
+                        </small>
+                      </label>
+                    );
+                  })}
+                </div>
+              </fieldset>
+
+              {createError ? <p className="error-text">{createError}</p> : null}
+              <button
+                className="primary-button"
+                disabled={createLoading || roundDraft.memberIds.length === 0}
+                type="submit"
+              >
+                {createLoading ? 'กำลังเปิดรอบ...' : 'เปิดรอบส่ง'}
+              </button>
+              <p className="muted">รอบใช้จัดกลุ่มผู้ปฏิบัติงานและรายการขายเท่านั้น น้ำแข็งจากโรงงานและการส่งมอบบันทึกในสต๊อกต่อเนื่องทั้งวัน</p>
+            </form>
+          </section>
+        ) : null}
+
+        <section className="panel">
+          <div className="panel-header">
+            <div>
+              <p className="eyebrow">รอบที่เข้าถึงได้</p>
+              <h2>เลือกรอบส่ง</h2>
+            </div>
+          </div>
+          <div className="round-list">
+            {rounds.map((round) => (
+              <button
+                className={`round-item ${round.id === selectedRoundId ? 'round-item--selected' : ''}`}
+                key={round.id}
+                onClick={() => {
+                  setSelectedRoundId(round.id);
+                  if (mode === 'stock') setStockServiceDate(round.service_date);
+                }}
+                type="button"
+              >
+                <span>{round.name}</span>
+                <small>
+                  {round.service_date} · {round.status === 'open' ? 'เปิดอยู่' : 'ปิดแล้ว'}
+                </small>
+              </button>
+            ))}
+            {rounds.length === 0 ? (
+              <p className="empty-text">ยังไม่มีรอบส่งที่บัญชีนี้เข้าถึงได้</p>
+            ) : null}
+          </div>
+        </section>
+
+        {workspaceError ? (
+          <section className="panel error-panel">
+            <p className="eyebrow">มีข้อผิดพลาด</p>
+            <h2>{workspaceError}</h2>
+          </section>
+        ) : null}
+      </section>
+
+      <section className="stack stack--wide">
+        {mode === 'manager' ? (
+          <section className="panel">
+            <div className="panel-header">
+              <div>
+                <p className="eyebrow">หัวหน้ารอบ</p>
+                <h2>{selectedRound ? `${selectedRound.name} · ${selectedRound.service_date}` : 'เลือกรอบส่งก่อน'}</h2>
+              </div>
+            </div>
+            <ManagerRoundControl
+              onClosed={async () => {
+                await loadReferenceData();
+              }}
+              round={selectedRound}
+            />
+            <div className="manager-section-divider" />
+            <ManagerDeliveryAdjustments round={selectedRound} />
+          </section>
+        ) : (
+          <section className="panel">
+            <div className="panel-header">
+              <div>
+                <p className="eyebrow">สต๊อกต่อเนื่องทั้งวัน</p>
+                <h2>{stockRound ? `${stockRound.name} · ${stockServiceDate}` : `วันที่ ${stockServiceDate}`}</h2>
+              </div>
+              <label className="toolbar-select">
+                วันที่สต๊อก
+                <input
+                  onChange={(event) => setStockServiceDate(event.target.value)}
+                  type="date"
+                  value={stockServiceDate}
+                />
+              </label>
+            </div>
+            <ManagerStockControl round={stockRound} serviceDate={stockServiceDate} />
+          </section>
+        )}
+      </section>
+    </div>
+  );
+}

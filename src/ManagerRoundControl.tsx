@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useRef, useState } from 'react';
 import { supabase } from './lib/supabase';
+import { useRpcAction } from './hooks/useRpcAction';
 import type { DeliveryRound, RoundControlSummary } from './types/app';
 
 export function ManagerRoundControl({
@@ -12,7 +13,6 @@ export function ManagerRoundControl({
   const [summary, setSummary] = useState<RoundControlSummary | null>(null);
   const [summaryRoundId, setSummaryRoundId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [closing, setClosing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const summaryRequestId = useRef(0);
 
@@ -48,31 +48,38 @@ export function ManagerRoundControl({
     setLoading(false);
   }
 
+  const closeRoundAction = useRpcAction(
+    async (payload: any[]) => {
+      if (!supabase) throw new Error('Supabase is not initialized');
+      return supabase.rpc('close_delivery_round', {
+        p_round_id: round!.id,
+        p_ice_counts: payload,
+      });
+    },
+    {
+      deps: [round?.id],
+      onSuccess: async () => {
+        await onClosed();
+        await loadSummary(round!.id);
+      },
+    }
+  );
+
   const handleClose = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!supabase || !round || !summary || summaryRoundId !== round.id) {
-      setError('ข้อมูลสรุปรอบยังโหลดไม่ครบ กรุณารอสักครู่แล้วลองใหม่');
+      closeRoundAction.setError('ข้อมูลสรุปรอบยังโหลดไม่ครบ กรุณารอสักครู่แล้วลองใหม่');
       return;
     }
-    setClosing(true);
-    setError(null);
+    
     const payload = summary.ice_counts.map((item) => ({
       ice_type_id: item.ice_type_id,
       replenished_quantity: item.replenished_quantity,
       remaining_quantity: item.remaining_quantity,
       damaged_quantity: item.damaged_quantity,
     }));
-    const { error: closeError } = await supabase.rpc('close_delivery_round', {
-      p_round_id: round.id,
-      p_ice_counts: payload,
-    });
-    if (closeError) {
-      setError(closeError.message);
-    } else {
-      await onClosed();
-      await loadSummary(round.id);
-    }
-    setClosing(false);
+    
+    await closeRoundAction.execute(payload);
   };
 
   if (!round) {
@@ -104,13 +111,16 @@ export function ManagerRoundControl({
           </section>
         ))}
       </div>
-      {error ? <p className="error-text">{error}</p> : null}
+      
+      {closeRoundAction.error ? <p className="error-text">{closeRoundAction.error}</p> : null}
+      {closeRoundAction.success ? <p className="success-text">{closeRoundAction.success}</p> : null}
+      
       <button
         className="primary-button"
-        disabled={closing || round.status === 'closed' || summaryRoundId !== round.id}
+        disabled={closeRoundAction.isSubmitting || round.status === 'closed' || summaryRoundId !== round.id}
         type="submit"
       >
-        {round.status === 'closed' ? 'รอบนี้ปิดแล้ว' : closing ? 'กำลังปิดรอบ...' : 'ปิดรอบรายการขาย'}
+        {round.status === 'closed' ? 'รอบนี้ปิดแล้ว' : closeRoundAction.isSubmitting ? 'กำลังปิดรอบ...' : 'ปิดรอบรายการขาย'}
       </button>
       <p className="muted">ปิดรอบได้แม้มีร้านที่ไม่มีรายการ เพราะรอบเป็นกลุ่มรายการขาย ไม่ใช่สต๊อก การนับจริงและปิดสต๊อกทำครั้งเดียวหลังจบทุกรอบของวัน</p>
     </form>

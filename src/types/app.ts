@@ -93,6 +93,20 @@ export interface StockLocationBalance {
   balances: StockBalanceItem[];
 }
 
+export interface EmployeeStockLocation {
+  id: string;
+  code: string;
+  name: string;
+  balances: StockBalanceItem[];
+}
+
+export interface EmployeeStockState {
+  round_id: string;
+  service_date: string;
+  truck_location: EmployeeStockLocation;
+  holding_location: EmployeeStockLocation;
+}
+
 export interface StockMovementEntry {
   id: string;
   kind: StockMovementKind;
@@ -218,6 +232,8 @@ export interface ShopCardHistoryEntry {
   recorded_at: string;
   round_name: string;
   recorded_by: string;
+  stop_status: Exclude<ShopRoundStatus, 'pending'>;
+  note: string | null;
   items: Record<string, number>;
 }
 

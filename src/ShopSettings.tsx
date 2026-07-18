@@ -3,6 +3,14 @@ import { supabase } from './lib/supabase';
 import { parseShopImportFile, type ShopImportRow } from './lib/shopImport';
 import type { BuildingOption, BuildingZoneOption, ShopSetting } from './types/app';
 
+const TANK_IMAGE_BUCKET = 'tank-images';
+const MAX_TANK_IMAGE_SIZE = 5 * 1024 * 1024;
+const TANK_IMAGE_EXTENSIONS: Record<string, string> = {
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'image/webp': 'webp',
+};
+
 interface ShopDraft {
   id: string;
   code: string;
@@ -15,6 +23,15 @@ interface ShopDraft {
   normal_rounds_per_day: number;
   access_note: string;
   status: 'active' | 'inactive';
+}
+
+interface ShopRentedTank {
+  id: string;
+  shop_id: string;
+  tank_code: string;
+  image_path: string;
+  rented_at: string;
+  image_url: string | null;
 }
 
 const emptyDraft: ShopDraft = {
@@ -46,6 +63,12 @@ export function ShopSettings() {
   const [importing, setImporting] = useState(false);
   const [importError, setImportError] = useState<string | null>(null);
   const [importSuccess, setImportSuccess] = useState<string | null>(null);
+  const [rentedTanks, setRentedTanks] = useState<ShopRentedTank[]>([]);
+  const [tankCode, setTankCode] = useState('');
+  const [tankImageFile, setTankImageFile] = useState<File | null>(null);
+  const [savingTank, setSavingTank] = useState(false);
+  const [tankError, setTankError] = useState<string | null>(null);
+  const [tankSuccess, setTankSuccess] = useState<string | null>(null);
 
   useEffect(() => {
     void loadSettings();
@@ -70,8 +93,33 @@ export function ShopSettings() {
       setShops((shopsResponse.data ?? []) as ShopSetting[]);
       setBuildings((buildingsResponse.data ?? []) as BuildingOption[]);
       setZones((zonesResponse.data ?? []) as BuildingZoneOption[]);
+      await refreshRentedTanks();
     }
     setLoading(false);
+  }
+
+  async function refreshRentedTanks() {
+    const client = supabase;
+    if (!client) return;
+
+    const { data, error: loadError } = await client
+      .from('shop_rented_tanks')
+      .select('id, shop_id, tank_code, image_path, rented_at')
+      .is('returned_at', null)
+      .order('tank_code');
+
+    if (loadError) {
+      setError(loadError.message);
+      return;
+    }
+
+    const tanksWithUrls = await Promise.all(((data ?? []) as Omit<ShopRentedTank, 'image_url'>[]).map(async (tank) => {
+      const { data: imageData, error: imageError } = await client.storage
+        .from(TANK_IMAGE_BUCKET)
+        .createSignedUrl(tank.image_path, 3600);
+      return { ...tank, image_url: imageError ? null : imageData.signedUrl };
+    }));
+    setRentedTanks(tanksWithUrls);
   }
 
   const filteredShops = useMemo(() => {
@@ -98,6 +146,7 @@ export function ShopSettings() {
     });
     setError(null);
     setSuccess(null);
+    resetTankDraft();
   };
 
   const startNew = () => {
@@ -108,7 +157,106 @@ export function ShopSettings() {
     });
     setError(null);
     setSuccess(null);
+    resetTankDraft();
   };
+
+  const activeShopTanks = useMemo(
+    () => rentedTanks.filter((tank) => tank.shop_id === draft.id),
+    [draft.id, rentedTanks],
+  );
+
+  function resetTankDraft() {
+    setTankCode('');
+    setTankImageFile(null);
+    setTankError(null);
+    setTankSuccess(null);
+  }
+
+  function chooseTankImage(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+
+    if (file.size > MAX_TANK_IMAGE_SIZE) {
+      setTankImageFile(null);
+      setTankError('รูปถังต้องมีขนาดไม่เกิน 5 MB');
+      return;
+    }
+
+    if (!TANK_IMAGE_EXTENSIONS[file.type]) {
+      setTankImageFile(null);
+      setTankError('รองรับรูปถังเฉพาะไฟล์ JPG, PNG หรือ WEBP');
+      return;
+    }
+
+    setTankImageFile(file);
+    setTankError(null);
+    setTankSuccess(null);
+  }
+
+  async function registerRentedTank() {
+    if (!supabase || !draft.id) return;
+    const normalizedCode = tankCode.trim().toLocaleUpperCase('en-US');
+    if (!normalizedCode || !tankImageFile) {
+      setTankError('กรุณาระบุรหัสถังและเลือกรูปถังให้ครบ');
+      return;
+    }
+
+    setSavingTank(true);
+    setTankError(null);
+    setTankSuccess(null);
+    const extension = TANK_IMAGE_EXTENSIONS[tankImageFile.type];
+    const imagePath = `${draft.id}/${crypto.randomUUID()}.${extension}`;
+
+    try {
+      const { error: uploadError } = await supabase.storage
+        .from(TANK_IMAGE_BUCKET)
+        .upload(imagePath, tankImageFile, {
+          cacheControl: '3600',
+          contentType: tankImageFile.type,
+          upsert: false,
+        });
+      if (uploadError) {
+        setTankError(uploadError.message);
+        return;
+      }
+
+      const { error: registerError } = await supabase.rpc('register_shop_rented_tank', {
+        p_shop_id: draft.id,
+        p_tank_code: normalizedCode,
+        p_image_path: imagePath,
+      });
+      if (registerError) {
+        await supabase.storage.from(TANK_IMAGE_BUCKET).remove([imagePath]);
+        setTankError(registerError.message);
+        return;
+      }
+
+      setTankCode('');
+      setTankImageFile(null);
+      setTankSuccess(`เพิ่มถัง ${normalizedCode} แล้ว`);
+      await refreshRentedTanks();
+    } catch (registerError) {
+      setTankError(registerError instanceof Error ? registerError.message : 'เพิ่มข้อมูลถังไม่สำเร็จ');
+    } finally {
+      setSavingTank(false);
+    }
+  }
+
+  async function returnRentedTank(tank: ShopRentedTank) {
+    if (!supabase || !window.confirm(`ยืนยันว่าร้านคืนถัง ${tank.tank_code} แล้ว`)) return;
+    setSavingTank(true);
+    setTankError(null);
+    setTankSuccess(null);
+    const { error: returnError } = await supabase.rpc('return_shop_rented_tank', { p_tank_id: tank.id });
+    if (returnError) {
+      setTankError(returnError.message);
+    } else {
+      setTankSuccess(`บันทึกรับคืนถัง ${tank.tank_code} แล้ว`);
+      await refreshRentedTanks();
+    }
+    setSavingTank(false);
+  }
 
   const chooseImportFile = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -298,6 +446,54 @@ export function ShopSettings() {
           <button className="primary-button" disabled={saving} type="submit">{saving ? 'กำลังบันทึก...' : 'บันทึกการตั้งค่าร้าน'}</button>
           <p className="muted">ร้านที่เปิดใช้งานจะปรากฏในรอบส่งใหม่ทั้งหมด พนักงานเลือกเองว่าจะไปร้านใด</p>
         </form>
+
+        <div className="rented-tank-section">
+          <div className="panel-header">
+            <div>
+              <p className="eyebrow">ทะเบียนถังประจำร้าน</p>
+              <h3>ถังเช่า {activeShopTanks.length} ใบ</h3>
+            </div>
+          </div>
+          {!draft.id ? (
+            <p className="muted">บันทึกข้อมูลร้านก่อน แล้วจึงเพิ่มรหัสและรูปถังเช่าแต่ละใบ</p>
+          ) : (
+            <>
+              <div className="rented-tank-list">
+                {activeShopTanks.map((tank) => (
+                  <article className="rented-tank-card" key={tank.id}>
+                    {tank.image_url ? (
+                      <img alt={`ถัง ${tank.tank_code}`} className="rented-tank-photo" src={tank.image_url} />
+                    ) : (
+                      <div className="rented-tank-photo rented-tank-photo--placeholder">ไม่มีรูปตัวอย่าง</div>
+                    )}
+                    <div>
+                      <strong>{tank.tank_code}</strong>
+                      <small>เริ่มเช่า {new Date(tank.rented_at).toLocaleDateString('th-TH')}</small>
+                    </div>
+                    <button className="ghost-button" disabled={savingTank} onClick={() => void returnRentedTank(tank)} type="button">
+                      รับคืนถัง
+                    </button>
+                  </article>
+                ))}
+                {activeShopTanks.length === 0 ? <p className="empty-text">ร้านนี้ยังไม่มีถังเช่า</p> : null}
+              </div>
+              <div className="rented-tank-entry">
+                <TextField label="รหัสถัง" required value={tankCode} onChange={setTankCode} />
+                <label className="secondary-button rented-tank-file">
+                  เลือกรูปถัง
+                  <input accept="image/jpeg,image/png,image/webp" onChange={chooseTankImage} type="file" />
+                </label>
+                <span className="muted">{tankImageFile?.name ?? 'ยังไม่ได้เลือกรูป'}</span>
+                <button className="primary-button" disabled={savingTank} onClick={() => void registerRentedTank()} type="button">
+                  {savingTank ? 'กำลังบันทึก...' : 'เพิ่มถังเช่า'}
+                </button>
+              </div>
+            </>
+          )}
+          {tankError ? <p className="error-text">{tankError}</p> : null}
+          {tankSuccess ? <p className="success-text">{tankSuccess}</p> : null}
+          <p className="muted">จำนวนถังเช่าคำนวณจากรายการรหัสถังที่ยังไม่ได้รับคืน จึงไม่ต้องกรอกจำนวนแยก</p>
+        </div>
       </section>
     </div>
   );

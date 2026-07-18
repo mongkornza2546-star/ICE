@@ -12,6 +12,7 @@ import {
   Truck,
 } from '@phosphor-icons/react';
 import { supabase } from './lib/supabase';
+import { useRpcAction } from './hooks/useRpcAction';
 import type { FactoryOrderSummary, StockBalanceItem, StockMovementEntry } from './types/app';
 
 type QuantityDraft = Record<string, number>;
@@ -21,12 +22,6 @@ export interface TruckOption {
   code: string;
   name: string;
   kind: 'truck';
-}
-
-export interface FactoryOrderPreviewData {
-  trucks: TruckOption[];
-  summary: FactoryOrderSummary;
-  recordedBy: string;
 }
 
 interface OrderedTotal {
@@ -86,28 +81,18 @@ function IceTypeIcon({ name, size = 29 }: { name: string; size?: number }) {
     : <Package aria-hidden="true" size={size} weight="duotone" />;
 }
 
-export function FactoryOrderPage({ previewData }: { previewData?: FactoryOrderPreviewData }) {
-  const initialServiceDate = previewData?.summary.service_date ?? currentServiceDate();
-  const initialTruckId = previewData?.trucks[0]?.id ?? '';
-  const initialTruckSummary = previewData?.summary.locations.find((location) => location.id === initialTruckId)
-    ?? previewData?.summary.locations[0];
-  const [serviceDate, setServiceDate] = useState(initialServiceDate);
-  const [trucks, setTrucks] = useState<TruckOption[]>(previewData?.trucks ?? []);
-  const [truckId, setTruckId] = useState(initialTruckId);
-  const [summary, setSummary] = useState<FactoryOrderSummary | null>(previewData?.summary ?? null);
-  const [loadedSelection, setLoadedSelection] = useState<string | null>(previewData ? `${initialServiceDate}:${initialTruckId}` : null);
-  const [quantities, setQuantities] = useState<QuantityDraft>(
-    Object.fromEntries((initialTruckSummary?.balances ?? []).map((ice) => [ice.ice_type_id, 0])),
-  );
+export function FactoryOrderPage() {
+  const [serviceDate, setServiceDate] = useState(currentServiceDate());
+  const [trucks, setTrucks] = useState<TruckOption[]>([]);
+  const [truckId, setTruckId] = useState('');
+  const [summary, setSummary] = useState<FactoryOrderSummary | null>(null);
+  const [loadedSelection, setLoadedSelection] = useState<string | null>(null);
+  const [quantities, setQuantities] = useState<QuantityDraft>({});
   const [note, setNote] = useState('');
-  const [loadingTrucks, setLoadingTrucks] = useState(!previewData);
+  const [loadingTrucks, setLoadingTrucks] = useState(true);
   const [loadingSummary, setLoadingSummary] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
-  const pendingRequest = useRef<{ signature: string; key: string } | null>(null);
   const summaryRequestId = useRef(0);
-  const submissionRequestId = useRef(0);
   const activeSelection = useRef(`${serviceDate}:${truckId}`);
   activeSelection.current = `${serviceDate}:${truckId}`;
 
@@ -151,7 +136,6 @@ export function FactoryOrderPage({ previewData }: { previewData?: FactoryOrderPr
   const isInitialOrder = orderCount === 0;
 
   useEffect(() => {
-    if (previewData) return undefined;
     if (!supabase) {
       setError('ยังไม่ได้ตั้งค่าการเชื่อมต่อ Supabase');
       setLoadingTrucks(false);
@@ -185,10 +169,9 @@ export function FactoryOrderPage({ previewData }: { previewData?: FactoryOrderPr
 
     void loadTrucks();
     return () => { cancelled = true; };
-  }, [previewData]);
+  }, []);
 
   useEffect(() => {
-    if (previewData) return undefined;
     if (!supabase || !serviceDate || !truckId) {
       setSummary(null);
       setLoadedSelection(null);
@@ -198,10 +181,8 @@ export function FactoryOrderPage({ previewData }: { previewData?: FactoryOrderPr
     const client = supabase;
     const requestedSelection = `${serviceDate}:${truckId}`;
     const currentRequest = ++summaryRequestId.current;
-    submissionRequestId.current += 1;
-    pendingRequest.current = null;
-    setSuccess(null);
-    setSubmitting(false);
+    
+    orderAction.reset();
     setSummary(null);
     setQuantities({});
     setLoadedSelection(null);
@@ -238,24 +219,51 @@ export function FactoryOrderPage({ previewData }: { previewData?: FactoryOrderPr
 
     void loadSummary();
     return () => { cancelled = true; };
-  }, [previewData, serviceDate, truckId]);
+  }, [serviceDate, truckId]);
+
+  const orderAction = useRpcAction(
+    async (
+      args: { serviceDate: string; truckId: string; items: any[]; note: string },
+      idempotencyKey
+    ) => {
+      if (!supabase) throw new Error('Supabase is not initialized');
+      return supabase.rpc('record_factory_order', {
+        p_service_date: args.serviceDate,
+        p_truck_location_id: args.truckId,
+        p_items: args.items,
+        p_note: args.note.trim() || null,
+        p_idempotency_key: idempotencyKey,
+      });
+    },
+    {
+      deps: [serviceDate, truckId],
+      successMessage: 'บันทึกคำสั่งซื้อและเพิ่มยอดเข้าสู่สต็อกรถแล้ว',
+      onSuccess: (data) => {
+        const nextSummary = data as FactoryOrderSummary;
+        const nextTruck = nextSummary.locations.find((location) => location.id === truckId)
+          ?? nextSummary.locations.find((location) => location.kind === 'truck');
+        setSummary(nextSummary);
+        setLoadedSelection(`${serviceDate}:${truckId}`);
+        setQuantities(Object.fromEntries((nextTruck?.balances ?? []).map((ice) => [ice.ice_type_id, 0])));
+        setNote('');
+      },
+    }
+  );
 
   const updateQuantity = (ice: StockBalanceItem, quantity: number) => {
-    setError(null);
-    setSuccess(null);
-    pendingRequest.current = null;
+    orderAction.reset();
     setQuantities((current) => ({ ...current, [ice.ice_type_id]: normalizeQuantity(quantity) }));
   };
 
   const submitOrder = async () => {
     if (
-      (!supabase && !previewData)
+      !supabase
       || !selectedTruck
       || !summary
       || loadedSelection !== selectionKey
       || loadingSummary
     ) {
-      setError('ข้อมูลสต็อกยังโหลดไม่ครบ กรุณารอสักครู่แล้วลองใหม่');
+      orderAction.setError('ข้อมูลสต็อกยังโหลดไม่ครบ กรุณารอสักครู่แล้วลองใหม่');
       return;
     }
 
@@ -263,99 +271,14 @@ export function FactoryOrderPage({ previewData }: { previewData?: FactoryOrderPr
       .map((ice) => ({ ice_type_id: ice.ice_type_id, quantity: quantities[ice.ice_type_id] ?? 0 }))
       .filter((item) => item.quantity > 0);
     if (items.length === 0) {
-      setError('กรอกจำนวนน้ำแข็งอย่างน้อย 1 รายการ');
+      orderAction.setError('กรอกจำนวนน้ำแข็งอย่างน้อย 1 รายการ');
       return;
     }
 
-    if (previewData) {
-      const orderItems = items.map((item) => {
-        const ice = iceTypes.find((candidate) => candidate.ice_type_id === item.ice_type_id);
-        return {
-          ice_type_id: item.ice_type_id,
-          ice_type_name: ice?.ice_type_name ?? 'น้ำแข็ง',
-          unit: ice?.unit ?? 'หน่วย',
-          quantity: item.quantity,
-        };
-      });
-      const totals = new Map(summary.ordered_totals.map((item) => [item.ice_type_id, { ...item }]));
-      for (const item of orderItems) {
-        const current = totals.get(item.ice_type_id);
-        totals.set(item.ice_type_id, { ...item, quantity: (current?.quantity ?? 0) + item.quantity });
-      }
-      const movement: StockMovementEntry = {
-        id: crypto.randomUUID(),
-        kind: 'factory_order',
-        recorded_at: new Date().toISOString(),
-        note: note.trim() || null,
-        from_location_name: null,
-        to_location_name: selectedTruck.name,
-        recorded_by: previewData.recordedBy,
-        items: orderItems,
-      };
-      const nextSummary: FactoryOrderSummary = {
-        ...summary,
-        order_count: summary.order_count + 1,
-        ordered_totals: [...totals.values()],
-        locations: summary.locations.map((location) => location.id !== truckId ? location : {
-          ...location,
-          balances: location.balances.map((balance) => ({
-            ...balance,
-            quantity: balance.quantity + (quantities[balance.ice_type_id] ?? 0),
-          })),
-        }),
-        recent_movements: [movement, ...summary.recent_movements].slice(0, 50),
-      };
-      pendingRequest.current = null;
-      setSummary(nextSummary);
-      setQuantities(Object.fromEntries(iceTypes.map((ice) => [ice.ice_type_id, 0])));
-      setNote('');
-      setError(null);
-      setSuccess('บันทึกคำสั่งซื้อและเพิ่มยอดเข้าสู่สต็อกรถแล้ว');
-      return;
-    }
+    const args = { serviceDate, truckId, items, note: note.trim() };
+    const signature = JSON.stringify(args);
 
-    if (!supabase) return;
-
-    const signature = JSON.stringify({ serviceDate, truckId, items, note: note.trim() || null });
-    if (pendingRequest.current?.signature !== signature) {
-      pendingRequest.current = { signature, key: crypto.randomUUID() };
-    }
-    const requestKey = pendingRequest.current.key;
-    const submittedSelection = selectionKey;
-    const submittedSummaryRequestId = summaryRequestId.current;
-    const submittedRequestId = ++submissionRequestId.current;
-    setSubmitting(true);
-    setError(null);
-    setSuccess(null);
-
-    const { data, error: submitError } = await supabase.rpc('record_factory_order', {
-      p_service_date: serviceDate,
-      p_truck_location_id: truckId,
-      p_items: items,
-      p_note: note.trim() || null,
-      p_idempotency_key: requestKey,
-    });
-
-    if (activeSelection.current !== submittedSelection) return;
-    if (
-      summaryRequestId.current !== submittedSummaryRequestId
-      || submissionRequestId.current !== submittedRequestId
-    ) return;
-
-    if (submitError) {
-      setError(submitError.message);
-    } else {
-      const nextSummary = data as FactoryOrderSummary;
-      const nextTruck = nextSummary.locations.find((location) => location.id === truckId)
-        ?? nextSummary.locations.find((location) => location.kind === 'truck');
-      pendingRequest.current = null;
-      setSummary(nextSummary);
-      setLoadedSelection(submittedSelection);
-      setQuantities(Object.fromEntries((nextTruck?.balances ?? []).map((ice) => [ice.ice_type_id, 0])));
-      setNote('');
-      setSuccess('บันทึกคำสั่งซื้อและเพิ่มยอดเข้าสู่สต็อกรถแล้ว');
-    }
-    setSubmitting(false);
+    await orderAction.execute(args, { signature });
   };
 
   return (
@@ -394,7 +317,7 @@ export function FactoryOrderPage({ previewData }: { previewData?: FactoryOrderPr
                 <span className="field-with-icon">
                   <CalendarBlank size={18} />
                   <input
-                    disabled={submitting}
+                    disabled={orderAction.isSubmitting}
                     onChange={(event) => setServiceDate(event.target.value)}
                     type="date"
                     value={serviceDate}
@@ -404,7 +327,7 @@ export function FactoryOrderPage({ previewData }: { previewData?: FactoryOrderPr
               <label>
                 รถที่รับสินค้า
                 <select
-                  disabled={loadingTrucks || submitting || trucks.length === 0}
+                  disabled={loadingTrucks || orderAction.isSubmitting || trucks.length === 0}
                   onChange={(event) => setTruckId(event.target.value)}
                   value={truckId}
                 >
@@ -448,13 +371,13 @@ export function FactoryOrderPage({ previewData }: { previewData?: FactoryOrderPr
                       <span className="stepper">
                         <button
                           aria-label={`ลดจำนวน ${ice.ice_type_name}`}
-                          disabled={submitting || draftQuantity === 0}
+                          disabled={orderAction.isSubmitting || draftQuantity === 0}
                           onClick={() => updateQuantity(ice, draftQuantity - 10)}
                           type="button"
                         ><Minus size={16} /></button>
                         <input
                           aria-label={`จำนวน ${ice.ice_type_name}`}
-                          disabled={submitting}
+                          disabled={orderAction.isSubmitting}
                           min={0}
                           onChange={(event) => updateQuantity(ice, Number(event.target.value) || 0)}
                           step={1}
@@ -463,7 +386,7 @@ export function FactoryOrderPage({ previewData }: { previewData?: FactoryOrderPr
                         />
                         <button
                           aria-label={`เพิ่มจำนวน ${ice.ice_type_name}`}
-                          disabled={submitting}
+                          disabled={orderAction.isSubmitting}
                           onClick={() => updateQuantity(ice, draftQuantity + 10)}
                           type="button"
                         ><Plus size={16} /></button>
@@ -493,11 +416,9 @@ export function FactoryOrderPage({ previewData }: { previewData?: FactoryOrderPr
               <label>
                 <span>หมายเหตุ <small>(ถ้ามี)</small></span>
                 <textarea
-                  disabled={submitting}
+                  disabled={orderAction.isSubmitting}
                   onChange={(event) => {
-                    setError(null);
-                    setSuccess(null);
-                    pendingRequest.current = null;
+                    orderAction.reset();
                     setNote(event.target.value);
                   }}
                   placeholder="เช่น เติมของสำหรับช่วงบ่าย"
@@ -508,18 +429,19 @@ export function FactoryOrderPage({ previewData }: { previewData?: FactoryOrderPr
 
             <div className="factory-order-feedback" aria-live="polite">
               {error ? <p className="error-text" role="alert">{error}</p> : null}
-              {success ? <p className="factory-order-success"><CheckCircle size={19} weight="fill" />{success}</p> : null}
+              {orderAction.error ? <p className="error-text" role="alert">{orderAction.error}</p> : null}
+              {orderAction.success ? <p className="factory-order-success"><CheckCircle size={19} weight="fill" />{orderAction.success}</p> : null}
             </div>
             <div className="factory-order-action">
               <span>ยอดที่จะเพิ่ม <strong>{formatCombinedQuantity(totalQuantity)}</strong></span>
               <button
                 className="primary-button"
-                disabled={submitting || loadingSummary || !selectedTruck || iceTypes.length === 0 || totalQuantity === 0}
+                disabled={orderAction.isSubmitting || loadingSummary || !selectedTruck || iceTypes.length === 0 || totalQuantity === 0}
                 onClick={submitOrder}
                 type="button"
               >
                 <ShoppingCart size={22} weight="bold" />
-                {submitting ? 'กำลังบันทึก...' : 'ยืนยันคำสั่งซื้อ'}
+                {orderAction.isSubmitting ? 'กำลังบันทึก...' : 'ยืนยันคำสั่งซื้อ'}
               </button>
             </div>
           </section>
@@ -534,7 +456,7 @@ export function FactoryOrderPage({ previewData }: { previewData?: FactoryOrderPr
             <div className="quick-order-buttons">
               {iceTypes.flatMap((ice) => [50, 100].map((amount) => (
                 <button
-                  disabled={submitting}
+                  disabled={orderAction.isSubmitting}
                   key={`${ice.ice_type_id}-${amount}`}
                   onClick={() => updateQuantity(ice, (quantities[ice.ice_type_id] ?? 0) + amount)}
                   type="button"

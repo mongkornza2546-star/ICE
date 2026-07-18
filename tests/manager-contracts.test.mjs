@@ -100,7 +100,22 @@ test('manager overview does not replace the operational manager workspace', () =
   assert.match(app, /useState<AdminView>\('manager_overview'\)/);
   assert.match(app, /currentView === 'manager_overview'[\s\S]*<ManagerDashboard[\s\S]*onNavigate=\{setActiveView\}/);
   assert.doesNotMatch(app, /currentView === 'manager'\s*\?\s*\(\s*<ManagerDashboard/);
-  assert.match(app, /<RoundWorkspace mode=\{currentView\} profile=\{profile\} \/>/);
+  assert.match(app, /currentView === 'delivery'[\s\S]*<EmployeeDeliveryWorkspace onDraftStateChange=\{setDeliveryDraftState\} requestScope=\{profile\.id\} stockSourceLabel="จุดสต๊อกของร้าน" \/>/);
+  assert.match(app, /<RoundWorkspace mode="manager" profile=\{profile\} \/>/);
+});
+
+test('couriers use the full-screen employee delivery workspace', () => {
+  const app = read('src/App.tsx');
+  const deliveryWorkspace = read('src/EmployeeDeliveryWorkspace.tsx');
+  const employeeLayout = read('src/EmployeeLayout.tsx');
+
+  assert.match(app, /profile\.role === 'courier'[\s\S]*<EmployeeLayout[\s\S]*signOutDisabled=\{deliveryDraftState\.submitting\}[\s\S]*<EmployeeDeliveryWorkspace enableAssignedStockFlow onDraftStateChange=\{setDeliveryDraftState\} requestScope=\{profile\.id\} \/>/);
+  assert.match(app, /deliveryDraftState\.submitting[\s\S]*deliveryDraftState\.dirty[\s\S]*window\.confirm/);
+  assert.match(employeeLayout, /disabled=\{signOutDisabled\}/);
+  assert.match(app, /addEventListener\('beforeunload', handleBeforeUnload\)/);
+  assert.match(app, /event\.preventDefault\(\)[\s\S]*event\.returnValue = ''/);
+  assert.match(deliveryWorkspace, /supabase\.rpc\('get_employee_stock_state',[\s\S]*p_round_id: roundId/);
+  assert.match(deliveryWorkspace, /supabase\.rpc\('record_employee_stock_transfer',[\s\S]*p_round_id: payload\.roundId[\s\S]*p_items: payload\.items[\s\S]*p_idempotency_key: payload\.idempotencyKey/);
 });
 
 test('manager dashboard is driven by live round, stock, and daily-close data', () => {
