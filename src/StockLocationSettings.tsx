@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useState } from 'react';
 import { supabase } from './lib/supabase';
 import type {
   BuildingOption,
@@ -7,9 +7,11 @@ import type {
   StockLocationSetting,
 } from './types/app';
 
-const EDITABLE_KINDS: Array<{ value: StockLocationKind; label: string }> = [
+const LOCATION_KINDS: Array<{ value: StockLocationKind; label: string }> = [
+  { value: 'truck', label: 'รถบรรทุก' },
   { value: 'team', label: 'พนักงาน / ทีมส่ง' },
   { value: 'small_vehicle', label: 'รถเล็ก' },
+  { value: 'work_site', label: 'จุดปฏิบัติงาน' },
   { value: 'reserve_bin', label: 'ถังสำรอง' },
   { value: 'front_vehicle', label: 'จุดหน้ารถ' },
 ];
@@ -30,6 +32,8 @@ interface LocationDraft {
   kind: StockLocationKind;
   buildingId: string;
   assignedUserId: string;
+  isCourierSource: boolean;
+  isDefaultForBuilding: boolean;
   isActive: boolean;
 }
 
@@ -40,6 +44,8 @@ const EMPTY_DRAFT: LocationDraft = {
   kind: 'team',
   buildingId: '',
   assignedUserId: '',
+  isCourierSource: false,
+  isDefaultForBuilding: false,
   isActive: true,
 };
 
@@ -57,18 +63,13 @@ export function StockLocationSettings() {
     void loadSettings();
   }, []);
 
-  const editableLocations = useMemo(
-    () => locations.filter((location) => EDITABLE_KINDS.some((kind) => kind.value === location.kind)),
-    [locations],
-  );
-
   async function loadSettings(preferredId?: string) {
     if (!supabase) return;
     setLoading(true);
     const [locationsResponse, buildingsResponse, membersResponse] = await Promise.all([
       supabase
         .from('stock_locations')
-        .select('id, code, name, kind, building_id, assigned_user_id, is_active')
+        .select('id, code, name, kind, building_id, assigned_user_id, is_courier_source, is_default_for_building, is_active')
         .order('kind')
         .order('name'),
       supabase.from('buildings').select('id, code, name, is_active').order('code'),
@@ -98,6 +99,8 @@ export function StockLocationSettings() {
       kind: location.kind,
       buildingId: location.building_id ?? '',
       assignedUserId: location.assigned_user_id ?? '',
+      isCourierSource: location.is_courier_source,
+      isDefaultForBuilding: location.is_default_for_building,
       isActive: location.is_active,
     });
     setError(null);
@@ -118,6 +121,8 @@ export function StockLocationSettings() {
       p_location_id: draft.id || null,
       p_building_id: draft.buildingId || null,
       p_assigned_user_id: draft.assignedUserId || null,
+      p_is_courier_source: draft.isCourierSource,
+      p_is_default_for_building: draft.isDefaultForBuilding,
       p_is_active: draft.isActive,
     });
 
@@ -139,15 +144,15 @@ export function StockLocationSettings() {
         <div className="panel-header">
           <div>
             <p className="eyebrow">จุดปฏิบัติงาน</p>
-            <h2>พนักงาน รถเล็ก และถังสำรอง</h2>
+            <h2>จุดถือครองสต๊อกทั้งหมด</h2>
           </div>
           <button className="ghost-button" onClick={() => setDraft(EMPTY_DRAFT)} type="button">
             + จุดใหม่
           </button>
         </div>
-        <p className="muted">รถบรรทุกหลักและจุดปฏิบัติงานของตึกถูกสร้างโดยระบบ หน้านี้ใช้เพิ่มผู้รับหรือจุดย่อยที่ตรวจนับได้จริง</p>
+        <p className="muted">เพิ่ม แก้ไข และพักใช้งานรถบรรทุก จุดปฏิบัติงาน หรือจุดถือครองอื่นได้จากหน้านี้</p>
         <div className="settings-list">
-          {editableLocations.map((location) => (
+          {locations.map((location) => (
             <button
               className={`round-item ${draft.id === location.id ? 'round-item--selected' : ''}`}
               key={location.id}
@@ -158,7 +163,7 @@ export function StockLocationSettings() {
               <small>{KIND_LABELS[location.kind]} · {location.is_active ? 'ใช้งาน' : 'พักใช้งาน'}</small>
             </button>
           ))}
-          {editableLocations.length === 0 ? <p className="empty-text">ยังไม่มีจุดย่อยที่เพิ่มเอง</p> : null}
+          {locations.length === 0 ? <p className="empty-text">ยังไม่มีจุดถือครอง กรุณาเพิ่มจุดแรก</p> : null}
         </div>
       </section>
 
@@ -176,7 +181,7 @@ export function StockLocationSettings() {
             <label>
               ประเภท
               <select value={draft.kind} onChange={(event) => setDraft({ ...draft, kind: event.target.value as StockLocationKind })}>
-                {EDITABLE_KINDS.map((kind) => <option key={kind.value} value={kind.value}>{kind.label}</option>)}
+                {LOCATION_KINDS.map((kind) => <option key={kind.value} value={kind.value}>{kind.label}</option>)}
               </select>
             </label>
             <label>
@@ -202,6 +207,14 @@ export function StockLocationSettings() {
             <input checked={draft.isActive} onChange={(event) => setDraft({ ...draft, isActive: event.target.checked })} type="checkbox" />
             เปิดใช้งานจุดนี้
           </label>
+          {draft.kind === 'truck' ? <label className="inline-check">
+            <input checked={draft.isCourierSource} onChange={(event) => setDraft({ ...draft, isCourierSource: event.target.checked })} type="checkbox" />
+            ใช้เป็นรถหลักสำหรับพนักงานส่ง
+          </label> : null}
+          {draft.kind === 'work_site' ? <label className="inline-check">
+            <input checked={draft.isDefaultForBuilding} onChange={(event) => setDraft({ ...draft, isDefaultForBuilding: event.target.checked })} type="checkbox" />
+            ใช้เป็นจุดสต๊อกหลักของตึก
+          </label> : null}
           {error ? <p className="error-text">{error}</p> : null}
           {success ? <p className="success-text">{success}</p> : null}
           <button className="primary-button" disabled={saving} type="submit">{saving ? 'กำลังบันทึก...' : 'บันทึกจุดถือครอง'}</button>

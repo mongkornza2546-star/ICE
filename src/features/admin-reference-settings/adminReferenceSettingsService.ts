@@ -43,15 +43,14 @@ export async function loadAdminSettings(isCancelled: () => boolean) {
     throw new Error('หน้านี้ใช้ได้เฉพาะบัญชีแอดมินที่เปิดใช้งาน');
   }
 
-  const [usersResponse, iceTypesResponse, shopsResponse] = await Promise.all([
+  const [usersResponse, iceTypesResponse] = await Promise.all([
     client.from('users').select(USER_FIELDS).order('code'),
     client.from('ice_types').select(ICE_TYPE_FIELDS).order('code'),
-    client.from('shops').select(SHOP_FIELDS).order('code'),
   ]);
   
   if (isCancelled()) return null;
 
-  const firstError = usersResponse.error ?? iceTypesResponse.error ?? shopsResponse.error;
+  const firstError = usersResponse.error ?? iceTypesResponse.error;
   if (firstError) {
     throw new Error(firstError.message);
   }
@@ -60,7 +59,6 @@ export async function loadAdminSettings(isCancelled: () => boolean) {
     currentUserId: authData.user.id,
     users: (usersResponse.data ?? []) as UserProfile[],
     iceTypes: (iceTypesResponse.data ?? []) as IceTypeSetting[],
-    shops: (shopsResponse.data ?? []) as ShopImageSetting[],
   };
 }
 

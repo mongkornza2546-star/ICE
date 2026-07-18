@@ -35,32 +35,21 @@ begin
     raise exception 'You are not assigned to this delivery round';
   end if;
 
+  select count(*)::integer
+  into v_active_truck_count
+  from public.stock_locations location
+  where location.kind = 'truck'
+    and location.is_active;
+
+  if v_active_truck_count <> 1 then
+    raise exception 'Employee stock requires exactly one active truck configured in stock locations';
+  end if;
+
   select location.id
   into v_truck_location_id
   from public.stock_locations location
-  where location.code = 'TRUCK-MAIN'
-    and location.kind = 'truck'
+  where location.kind = 'truck'
     and location.is_active;
-
-  if v_truck_location_id is null then
-    select count(*)::integer
-    into v_active_truck_count
-    from public.stock_locations location
-    where location.kind = 'truck'
-      and location.is_active;
-
-    if v_active_truck_count = 0 then
-      raise exception 'Employee stock requires an active truck; no active truck is configured';
-    elsif v_active_truck_count > 1 then
-      raise exception 'Employee stock requires one active truck when TRUCK-MAIN is unavailable';
-    end if;
-
-    select location.id
-    into v_truck_location_id
-    from public.stock_locations location
-    where location.kind = 'truck'
-      and location.is_active;
-  end if;
 
   select count(*)::integer
   into v_active_holding_count

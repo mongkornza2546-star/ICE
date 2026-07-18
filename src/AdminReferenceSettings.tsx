@@ -1,11 +1,10 @@
 import { useEffect, useState } from 'react';
-import { Cube, Storefront, UsersThree } from '@phosphor-icons/react';
+import { Cube, UsersThree } from '@phosphor-icons/react';
 import type { UserProfile } from './types/app';
-import type { IceTypeSetting, ShopImageSetting } from './features/admin-reference-settings/types';
+import type { IceTypeSetting } from './features/admin-reference-settings/types';
 import { loadAdminSettings } from './features/admin-reference-settings/adminReferenceSettingsService';
 import { UserEditor } from './features/admin-reference-settings/components/UserEditor';
 import { IceTypeEditor } from './features/admin-reference-settings/components/IceTypeEditor';
-import { ShopImageEditor } from './features/admin-reference-settings/components/ShopImageEditor';
 
 export function AdminReferenceSettings() {
   return <AdminReferenceSettingsContent />;
@@ -14,7 +13,6 @@ export function AdminReferenceSettings() {
 function AdminReferenceSettingsContent() {
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [iceTypes, setIceTypes] = useState<IceTypeSetting[]>([]);
-  const [shops, setShops] = useState<ShopImageSetting[]>([]);
   const [currentUserId, setCurrentUserId] = useState('');
   
   const [loading, setLoading] = useState(true);
@@ -36,7 +34,6 @@ function AdminReferenceSettingsContent() {
         setCurrentUserId(data.currentUserId);
         setUsers(data.users);
         setIceTypes(data.iceTypes);
-        setShops(data.shops);
         setAuthorized(true);
       } catch (error) {
         if (!cancelled) {
@@ -66,10 +63,6 @@ function AdminReferenceSettingsContent() {
         : [...current, savedIceType];
       return next.sort((left, right) => left.code.localeCompare(right.code));
     });
-  }
-
-  function handleShopSaved(savedShop: ShopImageSetting) {
-    setShops((current) => current.map((shop) => shop.id === savedShop.id ? savedShop : shop));
   }
 
   if (loading) {
@@ -106,14 +99,6 @@ function AdminReferenceSettingsContent() {
             <span>รายการ</span>
           </div>
         </article>
-        <article className="reference-stat-card">
-          <div className="reference-stat-card__icon"><Storefront size={34} /></div>
-          <div className="reference-stat-card__content">
-            <p>ร้านค้าที่ตั้งรูปได้</p>
-            <strong>{shops.length}</strong>
-            <span>ร้าน</span>
-          </div>
-        </article>
       </section>
 
       <UserEditor
@@ -125,11 +110,6 @@ function AdminReferenceSettingsContent() {
       <IceTypeEditor
         iceTypes={iceTypes}
         onIceTypeSaved={handleIceTypeSaved}
-      />
-
-      <ShopImageEditor
-        onShopSaved={handleShopSaved}
-        shops={shops}
       />
     </div>
   );

@@ -7,18 +7,18 @@ const migration = readFileSync(
   'utf8',
 );
 
-test('courier delivery source prefers TRUCK-MAIN and accepts only one fallback truck', () => {
+test('courier delivery source requires one configured active truck', () => {
   assert.match(migration, /if public\.current_app_role\(\) = 'courier' then/);
   assert.match(
     migration,
-    /where location\.code = 'TRUCK-MAIN'\s+and location\.kind = 'truck'\s+and location\.is_active/,
+    /where location\.kind = 'truck'\s+and location\.is_active/,
   );
   assert.match(
     migration,
-    /if v_source_location_id is null then[\s\S]*select count\(\*\)::integer into v_active_truck_count[\s\S]*where location\.kind = 'truck'\s+and location\.is_active/,
+    /select count\(\*\)::integer into v_active_truck_count[\s\S]*where location\.kind = 'truck'\s+and location\.is_active/,
   );
-  assert.match(migration, /if v_active_truck_count = 0 then[\s\S]*no active truck is configured/);
-  assert.match(migration, /elsif v_active_truck_count > 1 then[\s\S]*multiple active trucks exist without TRUCK-MAIN/);
+  assert.match(migration, /if v_active_truck_count <> 1 then[\s\S]*exactly one active truck configured in stock locations/);
+  assert.doesNotMatch(migration, /location\.code = 'TRUCK-MAIN'/);
   assert.match(
     migration,
     /select location\.id into v_source_location_id\s+from public\.stock_locations location\s+where location\.kind = 'truck'\s+and location\.is_active/,

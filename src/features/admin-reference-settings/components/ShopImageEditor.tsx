@@ -209,7 +209,6 @@ export function ShopImageEditor({ shops, onShopSaved }: ShopImageEditorProps) {
   return (
     <section className="reference-editor-panel">
       <div className="reference-editor-panel__header">
-        <span>3</span>
         <h2>จัดการรูปร้านค้า</h2>
       </div>
 

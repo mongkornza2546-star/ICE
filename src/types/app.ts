@@ -136,6 +136,8 @@ export interface StockLocationSetting {
   kind: StockLocationKind;
   building_id: string | null;
   assigned_user_id: string | null;
+  is_courier_source: boolean;
+  is_default_for_building: boolean;
   is_active: boolean;
 }
 
@@ -216,6 +218,7 @@ export interface ShopSetting {
   id: string;
   code: string;
   name: string;
+  image_path: string | null;
   building_id: string;
   zone_id: string;
   floor_or_zone: string;

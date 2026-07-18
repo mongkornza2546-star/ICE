@@ -16,8 +16,9 @@ test('employee stock state exposes only the courier truck and assigned holding b
   assert.match(migration, /not public\.is_round_member\(p_round_id\)/);
   assert.match(
     migration,
-    /location\.code = 'TRUCK-MAIN'[\s\S]*location\.kind = 'truck'[\s\S]*location\.is_active/,
+    /location\.kind = 'truck'[\s\S]*location\.is_active[\s\S]*v_active_truck_count <> 1/,
   );
+  assert.doesNotMatch(migration, /location\.code = 'TRUCK-MAIN'/);
   assert.match(
     migration,
     /location\.assigned_user_id = auth\.uid\(\)[\s\S]*location\.kind in \('team', 'small_vehicle'\)[\s\S]*location\.is_active/,

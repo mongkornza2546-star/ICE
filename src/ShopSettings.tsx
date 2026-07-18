@@ -2,6 +2,7 @@ import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from 'react';
 import { supabase } from './lib/supabase';
 import { parseShopImportFile, type ShopImportRow } from './lib/shopImport';
 import type { BuildingOption, BuildingZoneOption, ShopSetting } from './types/app';
+import { ShopImageEditor } from './features/admin-reference-settings/components/ShopImageEditor';
 
 const TANK_IMAGE_BUCKET = 'tank-images';
 const MAX_TANK_IMAGE_SIZE = 5 * 1024 * 1024;
@@ -81,7 +82,7 @@ export function ShopSettings() {
     const [shopsResponse, buildingsResponse, zonesResponse] = await Promise.all([
       supabase
         .from('shops')
-        .select('id, code, name, building_id, zone_id, floor_or_zone, government_shop_code, contact_name, contact_phone, normal_rounds_per_day, access_note, status')
+        .select('id, code, name, image_path, building_id, zone_id, floor_or_zone, government_shop_code, contact_name, contact_phone, normal_rounds_per_day, access_note, status')
         .order('code'),
       supabase.from('buildings').select('id, code, name').eq('is_active', true).order('code'),
       supabase.from('building_zones').select('id, building_id, code, name, sort_order, is_active').eq('is_active', true).order('sort_order'),
@@ -495,6 +496,13 @@ export function ShopSettings() {
           <p className="muted">จำนวนถังเช่าคำนวณจากรายการรหัสถังที่ยังไม่ได้รับคืน จึงไม่ต้องกรอกจำนวนแยก</p>
         </div>
       </section>
+
+      <div className="shop-image-editor">
+        <ShopImageEditor
+          onShopSaved={(savedShop) => setShops((current) => current.map((shop) => shop.id === savedShop.id ? { ...shop, image_path: savedShop.image_path } : shop))}
+          shops={shops}
+        />
+      </div>
     </div>
   );
 }

@@ -76,29 +76,19 @@ begin
   end if;
 
   if public.current_app_role() = 'courier' then
-    select location.id into v_source_location_id
+    select count(*)::integer into v_active_truck_count
     from public.stock_locations location
-    where location.code = 'TRUCK-MAIN'
-      and location.kind = 'truck'
+    where location.kind = 'truck'
       and location.is_active;
 
-    if v_source_location_id is null then
-      select count(*)::integer into v_active_truck_count
-      from public.stock_locations location
-      where location.kind = 'truck'
-        and location.is_active;
-
-      if v_active_truck_count = 0 then
-        raise exception 'Employee delivery requires an active stock source; no active truck is configured';
-      elsif v_active_truck_count > 1 then
-        raise exception 'Employee delivery requires an active stock source; multiple active trucks exist without TRUCK-MAIN';
-      end if;
-
-      select location.id into v_source_location_id
-      from public.stock_locations location
-      where location.kind = 'truck'
-        and location.is_active;
+    if v_active_truck_count <> 1 then
+      raise exception 'Employee delivery requires exactly one active truck configured in stock locations';
     end if;
+
+    select location.id into v_source_location_id
+    from public.stock_locations location
+    where location.kind = 'truck'
+      and location.is_active;
   else
     v_source_location_id := v_shop_source_location_id;
   end if;
