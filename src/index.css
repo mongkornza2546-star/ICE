@@ -266,7 +266,7 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .stack, .round-list, .auth-form, .round-form, .delivery-form, .history-list, .settings-list, .zone-grid, .reconciliation-list, .settings-form, .manager-control { display: flex; flex-direction: column; gap: 12px; }
 .workspace-grid { display: grid; grid-template-columns: minmax(250px, 320px) minmax(0, 1fr); align-items: start; gap: 14px; }
 .settings-grid, .location-settings { display: grid; grid-template-columns: minmax(300px,.78fr) minmax(0,1.22fr); gap: 14px; align-items: start; }
-.shop-image-editor { grid-column: 1 / -1; }
+.shop-image-editor { display: grid; gap: 12px; margin-top: 22px; padding-top: 18px; border-top: 1px solid #e2e8f0; }
 .shop-import-panel { grid-column: 1 / -1; }
 .shop-import-actions { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
 .shop-import-actions > span { min-width: 0; margin-right: auto; color: var(--muted); font-size: .74rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

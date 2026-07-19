@@ -1,14 +1,5 @@
-import { type ChangeEvent, type FormEvent, useEffect, useMemo, useState } from 'react';
-import {
-  CheckCircle,
-  Circle,
-  FunnelSimple,
-  Info,
-  ImageSquare,
-  MagnifyingGlass,
-  Trash,
-  UploadSimple,
-} from '@phosphor-icons/react';
+import { type ChangeEvent, type FormEvent, useEffect, useState } from 'react';
+import { Info, ImageSquare, Trash, UploadSimple } from '@phosphor-icons/react';
 import { ALLOWED_SHOP_IMAGE_TYPES, MAX_SHOP_IMAGE_SIZE, type ShopImageSetting } from '../types';
 import {
   getErrorMessage,
@@ -17,53 +8,28 @@ import {
   updateShopImagePath,
   removeShopImageFiles,
 } from '../adminReferenceSettingsService';
-import {
-  filterLabel,
-  matchesActiveFilter,
-  matchesQuery,
-  nextFilter,
-  type ActiveFilter,
-} from '../referenceEditorFilters';
 
 interface ShopImageEditorProps {
-  shops: ShopImageSetting[];
+  shop: ShopImageSetting | null;
   onShopSaved: (savedShop: ShopImageSetting) => void;
 }
 
-export function ShopImageEditor({ shops, onShopSaved }: ShopImageEditorProps) {
-  const [selectedShopId, setSelectedShopId] = useState<string>(() => shops.length > 0 ? shops[0].id : '');
-  const [shopQuery, setShopQuery] = useState('');
-  const [shopFilter, setShopFilter] = useState<ActiveFilter>('all');
-
+export function ShopImageEditor({ shop, onShopSaved }: ShopImageEditorProps) {
   const [shopPreviewUrl, setShopPreviewUrl] = useState<string | null>(null);
   const [shopPreviewLoading, setShopPreviewLoading] = useState(false);
   const [shopUploadFile, setShopUploadFile] = useState<File | null>(null);
   const [shopUploadPreviewUrl, setShopUploadPreviewUrl] = useState<string | null>(null);
-
   const [savingShopImage, setSavingShopImage] = useState(false);
   const [shopImageError, setShopImageError] = useState<string | null>(null);
   const [shopImageSuccess, setShopImageSuccess] = useState<string | null>(null);
 
-  const filteredShops = useMemo(
-    () => shops
-      .filter((shop) => matchesQuery(shopQuery, [shop.code, shop.name]))
-      .filter((shop) => matchesActiveFilter(shop.status === 'active', shopFilter)),
-    [shopFilter, shopQuery, shops],
-  );
-
-  const selectedShop = useMemo(
-    () => shops.find((shop) => shop.id === selectedShopId) ?? null,
-    [selectedShopId, shops],
-  );
-
   const shopPreviewSrc = shopUploadPreviewUrl ?? shopPreviewUrl;
 
-  function chooseShop(shop: ShopImageSetting) {
-    setSelectedShopId(shop.id);
+  useEffect(() => {
     setShopUploadFile(null);
     setShopImageError(null);
     setShopImageSuccess(null);
-  }
+  }, [shop?.id]);
 
   useEffect(() => {
     if (!shopUploadFile) {
@@ -78,7 +44,7 @@ export function ShopImageEditor({ shops, onShopSaved }: ShopImageEditorProps) {
 
   useEffect(() => {
     let cancelled = false;
-    const imagePath = selectedShop?.image_path;
+    const imagePath = shop?.image_path;
 
     if (shopUploadFile || !imagePath) {
       setShopPreviewLoading(false);
@@ -88,14 +54,11 @@ export function ShopImageEditor({ shops, onShopSaved }: ShopImageEditorProps) {
 
     setShopPreviewLoading(true);
     setShopPreviewUrl(null);
-
     getShopImageSignedUrl(imagePath)
       .then((url) => {
         if (!cancelled) setShopPreviewUrl(url);
       })
-      .catch(() => {
-        // Handle error silently for preview
-      })
+      .catch(() => {})
       .finally(() => {
         if (!cancelled) setShopPreviewLoading(false);
       });
@@ -103,7 +66,7 @@ export function ShopImageEditor({ shops, onShopSaved }: ShopImageEditorProps) {
     return () => {
       cancelled = true;
     };
-  }, [selectedShop?.image_path, shopUploadFile]);
+  }, [shop?.image_path, shopUploadFile]);
 
   function chooseShopImageFile(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -131,9 +94,7 @@ export function ShopImageEditor({ shops, onShopSaved }: ShopImageEditorProps) {
 
   async function saveShopImage(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!selectedShop) return;
-
-    if (!shopUploadFile) {
+    if (!shop || !shopUploadFile) {
       setShopImageError('กรุณาเลือกรูปร้านก่อนบันทึก');
       return;
     }
@@ -141,21 +102,15 @@ export function ShopImageEditor({ shops, onShopSaved }: ShopImageEditorProps) {
     setSavingShopImage(true);
     setShopImageError(null);
     setShopImageSuccess(null);
-
-    const previousPath = selectedShop.image_path;
+    const previousPath = shop.image_path;
 
     try {
-      const nextPath = await uploadShopImage(selectedShop.id, shopUploadFile);
-
+      const nextPath = await uploadShopImage(shop.id, shopUploadFile);
       try {
-        const savedShop = await updateShopImagePath(selectedShop.id, nextPath);
-        
+        const savedShop = await updateShopImagePath(shop.id, nextPath);
         if (previousPath && previousPath !== nextPath) {
-          await removeShopImageFiles([previousPath]).catch(() => {
-            // Ignore error when removing old file
-          });
+          await removeShopImageFiles([previousPath]).catch(() => {});
         }
-
         onShopSaved(savedShop);
         setShopUploadFile(null);
         setShopImageSuccess(previousPath ? 'อัปเดตรูปร้านแล้ว' : 'เพิ่มรูปร้านแล้ว');
@@ -171,9 +126,7 @@ export function ShopImageEditor({ shops, onShopSaved }: ShopImageEditorProps) {
   }
 
   async function removeShopImage() {
-    if (!selectedShop) return;
-
-    if (!selectedShop.image_path) {
+    if (!shop?.image_path) {
       setShopImageError('ร้านนี้ยังไม่มีรูปในระบบ');
       return;
     }
@@ -181,19 +134,16 @@ export function ShopImageEditor({ shops, onShopSaved }: ShopImageEditorProps) {
     setSavingShopImage(true);
     setShopImageError(null);
     setShopImageSuccess(null);
-
-    const previousPath = selectedShop.image_path;
+    const previousPath = shop.image_path;
 
     try {
-      const savedShop = await updateShopImagePath(selectedShop.id, null);
-      
+      const savedShop = await updateShopImagePath(shop.id, null);
       let removeError = false;
       try {
         await removeShopImageFiles([previousPath]);
-      } catch (e) {
+      } catch {
         removeError = true;
       }
-
       onShopSaved(savedShop);
       setShopUploadFile(null);
       setShopImageSuccess(removeError ? 'ลบการอ้างอิงรูปแล้ว แต่ลบไฟล์เก่าไม่สำเร็จ' : 'ลบรูปร้านแล้ว');
@@ -204,130 +154,37 @@ export function ShopImageEditor({ shops, onShopSaved }: ShopImageEditorProps) {
     }
   }
 
-  const shopFilterLabel = filterLabel(shopFilter);
-
   return (
-    <section className="reference-editor-panel">
-      <div className="reference-editor-panel__header">
-        <h2>จัดการรูปร้านค้า</h2>
-      </div>
-
-      <div className="reference-editor-panel__body">
-        <div className="reference-editor-panel__column reference-editor-panel__column--list">
-          <div className="reference-toolbar">
-            <label className="reference-search-field">
-              <MagnifyingGlass aria-hidden="true" size={20} />
-              <input
-                onChange={(event) => setShopQuery(event.target.value)}
-                placeholder="ค้นหาร้าน"
-                value={shopQuery}
-              />
-            </label>
-            <button
-              aria-label={`กรองร้าน: ${shopFilterLabel}`}
-              className={`reference-filter-button ${shopFilter !== 'all' ? 'reference-filter-button--active' : ''}`}
-              onClick={() => setShopFilter(nextFilter(shopFilter))}
-              title={`กรองร้าน: ${shopFilterLabel}`}
-              type="button"
-            >
-              <FunnelSimple size={20} />
-            </button>
+    <div className="shop-image-editor">
+      <div className="reference-form-heading"><h3>รูปร้าน</h3></div>
+      {shop ? (
+        <form className="reference-form" onSubmit={saveShopImage}>
+          <div className="reference-shop-preview">
+            {shopPreviewSrc ? <img alt={shop.name} className="reference-shop-preview__image" src={shopPreviewSrc} /> : (
+              <div className="reference-shop-preview__placeholder"><ImageSquare aria-hidden="true" size={42} /></div>
+            )}
+            <div className="reference-shop-preview__meta">
+              <strong>{shop.code} · {shop.name}</strong>
+              <small>{shop.image_path ? 'ร้านนี้มีรูปในระบบแล้ว' : 'ร้านนี้ยังไม่มีรูปในระบบ'}</small>
+              {shopUploadFile ? <small>ไฟล์ใหม่: {shopUploadFile.name}</small> : null}
+              {shopPreviewLoading && !shopUploadFile ? <small>กำลังโหลดรูปตัวอย่าง...</small> : null}
+            </div>
           </div>
-
-          <div className="reference-list">
-            {filteredShops.map((shop) => {
-              const selected = selectedShopId === shop.id;
-              return (
-                <button
-                  aria-current={selected ? 'true' : undefined}
-                  className={`reference-list-item ${selected ? 'reference-list-item--selected' : ''}`}
-                  key={shop.id}
-                  onClick={() => chooseShop(shop)}
-                  type="button"
-                >
-                  <span className="reference-list-item__radio" aria-hidden="true">
-                    {selected ? <CheckCircle size={20} weight="fill" /> : <Circle size={20} />}
-                  </span>
-                  <span className="reference-list-item__body">
-                    <strong>{shop.code}</strong>
-                    <small>{shop.name}</small>
-                  </span>
-                  <span className="reference-list-item__tags">
-                    <span className={`reference-pill ${shop.image_path ? 'reference-pill--blue' : 'reference-pill--gray'}`}>
-                      {shop.image_path ? 'มีรูป' : 'ยังไม่มีรูป'}
-                    </span>
-                    <span className={`reference-pill ${shop.status === 'active' ? 'reference-pill--green' : 'reference-pill--gray'}`}>
-                      {shop.status === 'active' ? 'ใช้งาน' : 'พักใช้งาน'}
-                    </span>
-                  </span>
-                </button>
-              );
-            })}
-            {filteredShops.length === 0 ? <p className="empty-text">ไม่พบร้านตามคำค้นหรือเงื่อนไขที่เลือก</p> : null}
+          <label className="secondary-button reference-upload-button">
+            <UploadSimple size={18} />
+            <span>{shop.image_path ? 'เลือกรูปใหม่' : 'เลือกรูป'}</span>
+            <input accept="image/jpeg,image/png,image/webp" onChange={chooseShopImageFile} type="file" />
+          </label>
+          <p className="reference-inline-note"><Info size={16} weight="fill" />รองรับ JPG, PNG, WEBP และขนาดไม่เกิน 5 MB</p>
+          {shopImageError ? <p className="error-text" role="alert">{shopImageError}</p> : null}
+          {shopImageSuccess ? <p aria-live="polite" className="success-text">{shopImageSuccess}</p> : null}
+          <div className="reference-form__actions">
+            {shopUploadFile ? <button className="secondary-button" onClick={() => setShopUploadFile(null)} type="button">ยกเลิกรูปใหม่</button> : null}
+            <button className="ghost-button" disabled={savingShopImage || !shop.image_path} onClick={() => void removeShopImage()} type="button"><Trash size={18} /><span>ลบรูป</span></button>
+            <button className="primary-button" disabled={savingShopImage || !shopUploadFile} type="submit">{savingShopImage ? 'กำลังบันทึก...' : 'บันทึกรูปร้าน'}</button>
           </div>
-
-          <p className="reference-list__meta">
-            แสดง {filteredShops.length === 0 ? 0 : 1}-{filteredShops.length} จาก {shops.length} ร้าน
-          </p>
-        </div>
-
-        <div className="reference-editor-panel__divider" aria-hidden="true" />
-
-        <div className="reference-editor-panel__column reference-editor-panel__column--form">
-          <div className="reference-form-heading">
-            <h3>เพิ่มหรือเปลี่ยนรูปร้าน</h3>
-          </div>
-          {selectedShop ? (
-            <form className="reference-form" onSubmit={saveShopImage}>
-              <div className="reference-shop-preview">
-                {shopPreviewSrc ? (
-                  <img alt={selectedShop.name} className="reference-shop-preview__image" src={shopPreviewSrc} />
-                ) : (
-                  <div className="reference-shop-preview__placeholder">
-                    <ImageSquare aria-hidden="true" size={42} />
-                  </div>
-                )}
-                <div className="reference-shop-preview__meta">
-                  <strong>{selectedShop.code} · {selectedShop.name}</strong>
-                  <small>{selectedShop.image_path ? 'ร้านนี้มีรูปในระบบแล้ว' : 'ร้านนี้ยังไม่มีรูปในระบบ'}</small>
-                  {shopUploadFile ? <small>ไฟล์ใหม่: {shopUploadFile.name}</small> : null}
-                  {shopPreviewLoading && !shopUploadFile ? <small>กำลังโหลดรูปตัวอย่าง...</small> : null}
-                </div>
-              </div>
-
-              <label className="secondary-button reference-upload-button">
-                <UploadSimple size={18} />
-                <span>{selectedShop.image_path ? 'เลือกรูปใหม่' : 'เลือกรูป'}</span>
-                <input accept="image/jpeg,image/png,image/webp" onChange={chooseShopImageFile} type="file" />
-              </label>
-
-              <p className="reference-inline-note"><Info size={16} weight="fill" />รองรับ JPG, PNG, WEBP และขนาดไม่เกิน 5 MB</p>
-              {shopImageError ? <p className="error-text" role="alert">{shopImageError}</p> : null}
-              {shopImageSuccess ? <p aria-live="polite" className="success-text">{shopImageSuccess}</p> : null}
-
-              <div className="reference-form__actions">
-                {shopUploadFile ? (
-                  <button className="secondary-button" onClick={() => setShopUploadFile(null)} type="button">
-                    ยกเลิกรูปใหม่
-                  </button>
-                ) : null}
-                <button
-                  className="ghost-button"
-                  disabled={savingShopImage || !selectedShop.image_path}
-                  onClick={() => void removeShopImage()}
-                  type="button"
-                >
-                  <Trash size={18} />
-                  <span>ลบรูป</span>
-                </button>
-                <button className="primary-button" disabled={savingShopImage || !shopUploadFile} type="submit">
-                  {savingShopImage ? 'กำลังบันทึก...' : 'บันทึกรูปร้าน'}
-                </button>
-              </div>
-            </form>
-          ) : <p className="empty-text">เลือกร้านจากรายการเพื่อเพิ่มหรือแก้ไขรูป</p>}
-        </div>
-      </div>
-    </section>
+        </form>
+      ) : <p className="muted">บันทึกข้อมูลร้านก่อน แล้วจึงเพิ่มหรือเปลี่ยนรูปร้านได้</p>}
+    </div>
   );
 }

@@ -165,6 +165,10 @@ export function ShopSettings() {
     () => rentedTanks.filter((tank) => tank.shop_id === draft.id),
     [draft.id, rentedTanks],
   );
+  const selectedShop = useMemo(
+    () => shops.find((shop) => shop.id === draft.id) ?? null,
+    [draft.id, shops],
+  );
 
   function resetTankDraft() {
     setTankCode('');
@@ -495,14 +499,12 @@ export function ShopSettings() {
           {tankSuccess ? <p className="success-text">{tankSuccess}</p> : null}
           <p className="muted">จำนวนถังเช่าคำนวณจากรายการรหัสถังที่ยังไม่ได้รับคืน จึงไม่ต้องกรอกจำนวนแยก</p>
         </div>
-      </section>
 
-      <div className="shop-image-editor">
         <ShopImageEditor
           onShopSaved={(savedShop) => setShops((current) => current.map((shop) => shop.id === savedShop.id ? { ...shop, image_path: savedShop.image_path } : shop))}
-          shops={shops}
+          shop={selectedShop}
         />
-      </div>
+      </section>
     </div>
   );
 }
