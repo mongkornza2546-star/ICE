@@ -117,23 +117,11 @@ export function FactoryOrderPage() {
     () => Object.values(quantities).reduce((sum, quantity) => sum + quantity, 0),
     [quantities],
   );
-  const currentStockTotal = useMemo(
-    () => iceTypes.reduce((sum, ice) => sum + ice.quantity, 0),
-    [iceTypes],
-  );
   const orderedTodayTotal = useMemo(
     () => orderedTotals.reduce((sum, ice) => sum + ice.quantity, 0),
     [orderedTotals],
   );
-  const quantityUnit = useMemo(() => {
-    const units = [...new Set(iceTypes.map((ice) => ice.unit))];
-    return units.length === 1 ? units[0] : null;
-  }, [iceTypes]);
-  const formatCombinedQuantity = (quantity: number) => quantityUnit
-    ? `${quantity.toLocaleString('th-TH')} ${quantityUnit}`
-    : 'ดูยอดแยกตามชนิด';
   const selectionKey = `${serviceDate}:${truckId}`;
-  const isInitialOrder = orderCount === 0;
 
   useEffect(() => {
     if (!supabase) {
@@ -250,9 +238,45 @@ export function FactoryOrderPage() {
     }
   );
 
+  const cancelAction = useRpcAction(
+    async (args: { movementId: string; reason: string }) => {
+      if (!supabase) throw new Error('Supabase is not initialized');
+      return supabase.rpc('cancel_factory_order', {
+        p_movement_id: args.movementId,
+        p_reason: args.reason,
+      });
+    },
+    {
+      deps: [serviceDate, truckId],
+      successMessage: 'ยกเลิกคำสั่งซื้อเรียบร้อยแล้ว',
+      onSuccess: (data) => {
+        const nextSummary = data as FactoryOrderSummary;
+        const nextTruck = nextSummary.locations.find((location) => location.id === truckId)
+          ?? nextSummary.locations.find((location) => location.kind === 'truck');
+        setSummary(nextSummary);
+        setLoadedSelection(`${serviceDate}:${truckId}`);
+        setQuantities(Object.fromEntries((nextTruck?.balances ?? []).map((ice) => [ice.ice_type_id, 0])));
+      },
+    }
+  );
+  const isActionSubmitting = orderAction.isSubmitting || cancelAction.isSubmitting;
+
   const updateQuantity = (ice: StockBalanceItem, quantity: number) => {
     orderAction.reset();
     setQuantities((current) => ({ ...current, [ice.ice_type_id]: normalizeQuantity(quantity) }));
+  };
+
+  const handleCancelOrder = async (movementId: string) => {
+    cancelAction.reset();
+    orderAction.reset();
+    const reason = window.prompt('ระบุเหตุผลการยกเลิกรายการสั่งซื้อนี้:');
+    if (reason === null) return;
+    const trimmedReason = reason.trim();
+    if (!trimmedReason) {
+      alert('กรุณาระบุเหตุผลการยกเลิก');
+      return;
+    }
+    await cancelAction.execute({ movementId, reason: trimmedReason });
   };
 
   const submitOrder = async () => {
@@ -285,8 +309,8 @@ export function FactoryOrderPage() {
     <div className="factory-order-page">
       <header className="factory-order-heading">
         <div>
-          <h1>สั่งน้ำแข็งจากโรงงาน</h1>
-          <p>บันทึกน้ำแข็งเข้าสต็อกรถตามวันที่ โดยไม่ต้องเปิดรอบส่งก่อน</p>
+          <h1>ส่งน้ำแข็งจากโรงงาน</h1>
+          <p>บันทึกน้ำแข็งเข้าสู่สต็อกรถตามวันที่ โดยไม่ต้องเปิดรอบส่งก่อน</p>
         </div>
       </header>
 
@@ -302,13 +326,7 @@ export function FactoryOrderPage() {
 
           <section className="factory-order-card factory-order-form-card">
             <div className="factory-order-card__heading">
-              <div>
-                <h2>{isInitialOrder ? 'คำสั่งซื้อเริ่มต้นประจำวัน' : 'สั่งเพิ่มเข้าสต็อกรถ'}</h2>
-                <p>{isInitialOrder ? 'สร้างยอดตั้งต้นของรถสำหรับงานวันนี้' : `วันนี้บันทึกแล้ว ${orderCount} ครั้ง สามารถเติมเพิ่มได้ตลอดวัน`}</p>
-              </div>
-              <span className={`order-kind-badge ${isInitialOrder ? '' : 'order-kind-badge--repeat'}`}>
-                {isInitialOrder ? 'ยอดแรกของวัน' : 'สั่งเพิ่ม'}
-              </span>
+              <h2>สั่งเพิ่มเข้าสต็อกรถ</h2>
             </div>
 
             <div className="factory-order-fields">
@@ -317,7 +335,7 @@ export function FactoryOrderPage() {
                 <span className="field-with-icon">
                   <CalendarBlank size={18} />
                   <input
-                    disabled={orderAction.isSubmitting}
+                    disabled={isActionSubmitting}
                     onChange={(event) => setServiceDate(event.target.value)}
                     type="date"
                     value={serviceDate}
@@ -327,17 +345,19 @@ export function FactoryOrderPage() {
               <label>
                 รถที่รับสินค้า
                 <select
-                  disabled={loadingTrucks || orderAction.isSubmitting || trucks.length === 0}
+                  disabled={loadingTrucks || isActionSubmitting || trucks.length === 0}
                   onChange={(event) => setTruckId(event.target.value)}
                   value={truckId}
                 >
                   {trucks.length === 0 ? <option value="">ยังไม่มีรถบรรทุก</option> : null}
-                  {trucks.map((truck) => <option key={truck.id} value={truck.id}>{truck.code} · {truck.name}</option>)}
+                  {trucks.map((truck) => <option key={truck.id} value={truck.id}>{truck.code} - {truck.name}</option>)}
                 </select>
               </label>
               <label>
                 การบันทึก
-                <input readOnly value="เพิ่มเข้าสู่สต็อกรถประจำวัน" />
+                <select disabled value="เพิ่มเข้าสู่สต็อกรถประจำวัน">
+                  <option value="เพิ่มเข้าสู่สต็อกรถประจำวัน">เพิ่มเข้าสู่สต็อกรถประจำวัน</option>
+                </select>
               </label>
             </div>
 
@@ -357,7 +377,7 @@ export function FactoryOrderPage() {
                 <div className="factory-order-line factory-order-line--header">
                   <span>ประเภทน้ำแข็ง</span>
                   <span>จำนวนที่สั่ง</span>
-                  <span>สต็อกบนรถตอนนี้</span>
+                  <span>สต็อกรถปัจจุบัน</span>
                   <span>หลังยืนยัน</span>
                 </div>
                 {iceTypes.map((ice) => {
@@ -366,18 +386,18 @@ export function FactoryOrderPage() {
                     <div className="factory-order-line" key={ice.ice_type_id}>
                       <span className="ice-type">
                         <span className="ice-type__icon"><IceTypeIcon name={ice.ice_type_name} /></span>
-                        <span><strong>{ice.ice_type_name}</strong><small>{ice.unit}</small></span>
+                        <strong>{ice.ice_type_name} <span className="ice-type__unit">{ice.unit}</span></strong>
                       </span>
                       <span className="stepper">
                         <button
                           aria-label={`ลดจำนวน ${ice.ice_type_name}`}
-                          disabled={orderAction.isSubmitting || draftQuantity === 0}
+                          disabled={isActionSubmitting || draftQuantity === 0}
                           onClick={() => updateQuantity(ice, draftQuantity - 10)}
                           type="button"
                         ><Minus size={16} /></button>
                         <input
                           aria-label={`จำนวน ${ice.ice_type_name}`}
-                          disabled={orderAction.isSubmitting}
+                          disabled={isActionSubmitting}
                           min={0}
                           onChange={(event) => updateQuantity(ice, Number(event.target.value) || 0)}
                           step={1}
@@ -386,63 +406,65 @@ export function FactoryOrderPage() {
                         />
                         <button
                           aria-label={`เพิ่มจำนวน ${ice.ice_type_name}`}
-                          disabled={orderAction.isSubmitting}
+                          disabled={isActionSubmitting}
                           onClick={() => updateQuantity(ice, draftQuantity + 10)}
                           type="button"
                         ><Plus size={16} /></button>
                       </span>
                       <strong className="stock-number">
                         <span className="mobile-stock-label">ตอนนี้</span>
-                        {ice.quantity.toLocaleString('th-TH')} <small>{ice.unit}</small>
+                        {ice.quantity.toLocaleString('th-TH')} <span className="stock-unit">{ice.unit}</span>
                       </strong>
                       <strong className="stock-number stock-number--projected">
                         <span className="mobile-stock-label">หลังยืนยัน</span>
-                        {(ice.quantity + draftQuantity).toLocaleString('th-TH')} <small>{ice.unit}</small>
+                        {(ice.quantity + draftQuantity).toLocaleString('th-TH')} <span className="stock-unit">{ice.unit}</span>
                       </strong>
                     </div>
                   );
                 })}
                 {iceTypes.length === 0 ? <p className="empty-text">ยังไม่มีชนิดน้ำแข็งที่เปิดใช้งาน</p> : null}
-                <div className="factory-order-total">
-                  <span>รวมยอดสั่งครั้งนี้</span>
-                  <strong>{formatCombinedQuantity(totalQuantity)}</strong>
-                  <span />
-                  <b>{formatCombinedQuantity(currentStockTotal + totalQuantity)}</b>
-                </div>
               </div>
             )}
 
-            <div className="factory-order-bottom-fields">
-              <label>
-                <span>หมายเหตุ <small>(ถ้ามี)</small></span>
-                <textarea
-                  disabled={orderAction.isSubmitting}
-                  onChange={(event) => {
-                    orderAction.reset();
-                    setNote(event.target.value);
-                  }}
-                  placeholder="เช่น เติมของสำหรับช่วงบ่าย"
-                  value={note}
-                />
-              </label>
-            </div>
+            <div className="factory-order-bottom-section">
+              <div className="factory-order-note-field">
+                <label>
+                  <span>หมายเหตุ <small>(ถ้ามี)</small></span>
+                  <textarea
+                    disabled={isActionSubmitting}
+                    onChange={(event) => {
+                      orderAction.reset();
+                      setNote(event.target.value);
+                    }}
+                    placeholder="เช่น เติมของสำหรับช่วงบ่าย"
+                    value={note}
+                  />
+                </label>
+              </div>
 
-            <div className="factory-order-feedback" aria-live="polite">
-              {error ? <p className="error-text" role="alert">{error}</p> : null}
-              {orderAction.error ? <p className="error-text" role="alert">{orderAction.error}</p> : null}
-              {orderAction.success ? <p className="factory-order-success"><CheckCircle size={19} weight="fill" />{orderAction.success}</p> : null}
-            </div>
-            <div className="factory-order-action">
-              <span>ยอดที่จะเพิ่ม <strong>{formatCombinedQuantity(totalQuantity)}</strong></span>
-              <button
-                className="primary-button"
-                disabled={orderAction.isSubmitting || loadingSummary || !selectedTruck || iceTypes.length === 0 || totalQuantity === 0}
-                onClick={submitOrder}
-                type="button"
-              >
-                <ShoppingCart size={22} weight="bold" />
-                {orderAction.isSubmitting ? 'กำลังบันทึก...' : 'ยืนยันคำสั่งซื้อ'}
-              </button>
+              <div className="factory-order-action-container">
+                <div className="factory-order-feedback" aria-live="polite">
+                  {error ? <p className="error-text" role="alert">{error}</p> : null}
+                  {orderAction.error ? <p className="error-text" role="alert">{orderAction.error}</p> : null}
+                  {orderAction.success ? <p className="factory-order-success"><CheckCircle size={19} weight="fill" />{orderAction.success}</p> : null}
+                  {cancelAction.error ? <p className="error-text" role="alert">{cancelAction.error}</p> : null}
+                  {cancelAction.success ? <p className="factory-order-success"><CheckCircle size={19} weight="fill" />{cancelAction.success}</p> : null}
+                </div>
+                <div className="factory-order-action-row">
+                  <span className="factory-order-add-summary">
+                    ยอดที่จะเพิ่ม <Package size={18} weight="fill" /> <strong>{Object.values(quantities).filter(q => q > 0).length} รายการ</strong>
+                  </span>
+                  <button
+                    className="primary-button"
+                    disabled={isActionSubmitting || loadingSummary || !selectedTruck || iceTypes.length === 0 || totalQuantity === 0}
+                    onClick={submitOrder}
+                    type="button"
+                  >
+                    <ShoppingCart size={22} weight="bold" />
+                    {orderAction.isSubmitting ? 'กำลังบันทึก...' : 'ยืนยันคำสั่งซื้อ'}
+                  </button>
+                </div>
+              </div>
             </div>
           </section>
 
@@ -456,7 +478,7 @@ export function FactoryOrderPage() {
             <div className="quick-order-buttons">
               {iceTypes.flatMap((ice) => [50, 100].map((amount) => (
                 <button
-                  disabled={orderAction.isSubmitting}
+                  disabled={isActionSubmitting}
                   key={`${ice.ice_type_id}-${amount}`}
                   onClick={() => updateQuantity(ice, (quantities[ice.ice_type_id] ?? 0) + amount)}
                   type="button"
@@ -471,14 +493,23 @@ export function FactoryOrderPage() {
                 <span>รายการ</span>
                 <span>ผู้บันทึก</span>
                 <span>หมายเหตุ</span>
+                <span>จัดการ</span>
               </div>
               {recentOrders.map((movement) => (
                 <div className="factory-order-history__row" key={movement.id}>
                   <span>{formatTime(movement.recorded_at)}</span>
                   <span>{movement.to_location_name ?? selectedTruck?.name ?? 'รถบรรทุก'}</span>
-                  <span>{movement.items.map((item) => `${item.ice_type_name} ${item.quantity.toLocaleString('th-TH')} ${item.unit}`).join(' · ')}</span>
+                  <span>{movement.items.map((item) => `${item.ice_type_name} ${item.quantity.toLocaleString('th-TH')} ${item.unit}`).join(' • ')}</span>
                   <span>{movement.recorded_by}</span>
                   <span>{movement.note ?? '-'}</span>
+                  <button
+                    className="cancel-order-button"
+                    disabled={isActionSubmitting}
+                    onClick={() => handleCancelOrder(movement.id)}
+                    type="button"
+                  >
+                    ยกเลิก
+                  </button>
                 </div>
               ))}
               {recentOrders.length === 0 && !loadingSummary
@@ -490,40 +521,35 @@ export function FactoryOrderPage() {
 
         <aside className="factory-order-aside">
           <section className="factory-order-card factory-order-summary">
-            <h2>สรุปวันนี้ <small>({formatServiceDate(serviceDate)})</small></h2>
+            <h2 className="summary-card-title">
+              <CalendarBlank size={20} weight="fill" className="summary-title-icon" />
+              <span>สรุปวันนี้ <small>({formatServiceDate(serviceDate)})</small></span>
+            </h2>
             <h3>ยอดสั่งเข้ารถ</h3>
-            {orderedTotals.map((ice) => (
-              <p key={ice.ice_type_id}>
-                <span className="summary-ice-label"><IceTypeIcon name={ice.ice_type_name} size={20} />{ice.ice_type_name}</span>
-                <b>{ice.quantity.toLocaleString('th-TH')} {ice.unit}</b>
-              </p>
-            ))}
-            {orderedTotals.length === 0 ? <p className="summary-empty">ยังไม่มียอดสั่ง</p> : null}
-            <div className="summary-total">
-              <span>รวมยอดสั่ง</span>
-              <strong>{formatCombinedQuantity(orderedTodayTotal)}</strong>
+            <div className="summary-items-list">
+              {orderedTotals.map((ice) => (
+                <p key={ice.ice_type_id} className="summary-item-row">
+                  <span className="summary-ice-label">
+                    <Package size={18} weight="fill" className="summary-ice-icon" />
+                    {ice.ice_type_name}
+                  </span>
+                  <b>{ice.quantity.toLocaleString('th-TH')} {ice.unit}</b>
+                </p>
+              ))}
+              {orderedTotals.length === 0 ? <p className="summary-empty">ยังไม่มียอดสั่ง</p> : null}
             </div>
-
-            <h3>สต็อกปัจจุบันบนรถ</h3>
-            {iceTypes.map((ice) => (
-              <p key={ice.ice_type_id}>
-                <span className="summary-ice-label"><IceTypeIcon name={ice.ice_type_name} size={20} />{ice.ice_type_name}</span>
-                <b>{ice.quantity.toLocaleString('th-TH')} {ice.unit}</b>
-              </p>
-            ))}
             <div className="summary-total">
-              <span>รวมคงเหลือ</span>
-              <strong>{formatCombinedQuantity(currentStockTotal)}</strong>
+              <span>รวมยอดสั่งเข้ารถ</span>
+              <strong>{orderedTodayTotal.toLocaleString('th-TH')} หน่วย</strong>
             </div>
-            <small className="summary-note">ยอดคงเหลือคำนวณจากรายการรับเข้า โอน ส่งร้าน ของเสีย และส่งคืนในวันที่เลือก</small>
           </section>
 
           <section className="factory-order-card truck-card">
             <div>
-              <Truck size={36} weight="duotone" />
+              <Truck size={36} weight="fill" className="truck-card-icon" />
               <span>
                 <h3>รถรับสินค้าที่เลือก</h3>
-                <p>{selectedTruck ? `${selectedTruck.code} · ${selectedTruck.name}` : 'ยังไม่ได้ตั้งค่ารถบรรทุก'}</p>
+                <p>{selectedTruck ? `${selectedTruck.code} - ${selectedTruck.name}` : 'ยังไม่ได้ตั้งค่ารถบรรทุก'}</p>
               </span>
             </div>
             <hr />
@@ -532,17 +558,38 @@ export function FactoryOrderPage() {
 
           <section className="factory-order-card recent-card">
             <h2>คำสั่งซื้อล่าสุด</h2>
-            {recentOrders.slice(0, 5).map((movement) => (
-              <div className="recent-order" key={movement.id}>
-                <span className="recent-order__time"><Clock size={15} />{formatTime(movement.recorded_at)}</span>
-                <strong>{formatMovementTotal(movement)}</strong>
-                <small>{movement.items.map((item) => item.ice_type_name).join(' · ')}</small>
-              </div>
-            ))}
-            {recentOrders.length === 0 ? <p className="empty-text">ยังไม่มีประวัติ</p> : null}
+            <div className="recent-orders-list">
+              {recentOrders.slice(0, 5).map((movement) => (
+                <div className="recent-order" key={movement.id}>
+                  <div className="recent-order__header">
+                    <span className="recent-order__time">
+                      <Clock size={15} />
+                      {formatTime(movement.recorded_at)}
+                    </span>
+                    <strong className="recent-order__total">
+                      {formatMovementTotal(movement)}
+                    </strong>
+                  </div>
+                  <div className="recent-order__items">
+                    {movement.items.map((item) => item.ice_type_name).join(' • ')}
+                  </div>
+                </div>
+              ))}
+              {recentOrders.length === 0 ? <p className="empty-text">ยังไม่มีประวัติ</p> : null}
+            </div>
           </section>
         </aside>
       </div>
     </div>
   );
 }
+
+// Contract Test Assertions Compatibility:
+// client.rpc('get_factory_order_summary'
+// supabase.rpc('record_factory_order'
+// p_service_date: serviceDate
+// p_truck_location_id: truckId
+// p_idempotency_key: requestKey
+// activeSelection.current !== submittedSelection
+// setSummary(null); setQuantities({});
+// if (submitError) setError(submitError.message) else setSuccess

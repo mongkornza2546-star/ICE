@@ -15,6 +15,10 @@ const historyMigration = readFileSync(
   new URL('../supabase/migrations/0009_phase_3_review_fixes.sql', import.meta.url),
   'utf8',
 );
+const cancelMigration = readFileSync(
+  new URL('../supabase/migrations/0023_cancel_factory_order.sql', import.meta.url),
+  'utf8',
+);
 
 const AUTH_USER_ID = '00000000-0000-4000-8000-000000000001';
 const ICE_TYPE_ID = '00000000-0000-4000-8000-000000000002';
@@ -104,7 +108,10 @@ async function createDatabase(t) {
       idempotency_key uuid not null unique,
       status public.stock_movement_status not null default 'active',
       recorded_by uuid not null references public.users(id),
-      recorded_at timestamptz not null default now()
+      recorded_at timestamptz not null default now(),
+      cancelled_by uuid references public.users(id),
+      cancelled_at timestamptz,
+      cancellation_reason text
     );
 
     create table public.stock_movement_items (
@@ -212,6 +219,7 @@ async function createDatabase(t) {
   `);
 
   await db.exec(migration);
+  await db.exec(cancelMigration);
   return db;
 }
 
@@ -542,4 +550,91 @@ test('existing stock summary and history include movements by service date, not 
   assert.doesNotMatch(stockSummary, /movement\.round_id/);
   assert.match(factoryHistory, /movement\.service_date = v_service_date/);
   assert.doesNotMatch(factoryHistory, /movement\.round_id/);
+});
+
+test('cancel_factory_order changes status to cancelled, updates balance and audit log', async (t) => {
+  const db = await createDatabase(t);
+  const requestKey = '90000000-0000-4000-8000-000000000001';
+  const input = JSON.stringify([{ ice_type_id: ICE_TYPE_ID, quantity: 100 }]);
+
+  // Record factory order
+  const recordRes = await db.query(`
+    select public.record_factory_order(
+      date '2026-07-16', '${TRUCK_ID}', '${input}'::jsonb,
+      'ยอดทดสอบยกเลิก', '${requestKey}'
+    ) as summary
+  `);
+  const recordSummary = recordRes.rows[0].summary;
+  const movementId = recordSummary.recent_movements[0].id;
+  assert.equal(recordSummary.locations[0].balances[0].quantity, 100);
+
+  // Cancel factory order
+  const cancelRes = await db.query(`
+    select public.cancel_factory_order(
+      '${movementId}', 'พิมพ์จำนวนผิด'
+    ) as summary
+  `);
+  const cancelSummary = cancelRes.rows[0].summary;
+
+  // The stock balance should now be 0 because the order is cancelled
+  assert.equal(cancelSummary.locations[0].balances[0].quantity, 0);
+  assert.equal(cancelSummary.order_count, 0);
+  assert.equal(cancelSummary.recent_movements.length, 0);
+
+  // Verify status in DB
+  const movementRow = await db.query(`
+    select status, cancelled_by, cancellation_reason from public.stock_movements where id = '${movementId}'
+  `);
+  assert.equal(movementRow.rows[0].status, 'cancelled');
+  assert.equal(movementRow.rows[0].cancelled_by, AUTH_USER_ID);
+  assert.equal(movementRow.rows[0].cancellation_reason, 'พิมพ์จำนวนผิด');
+
+  // Verify audit logs
+  const audits = await db.query(`
+    select count(*)::integer as count
+    from public.audit_logs
+    where entity_type = 'stock_movements'
+      and action = 'cancelled'
+  `);
+  assert.equal(audits.rows[0].count, 1);
+});
+
+test('cancel_factory_order rejects an order already consumed by an outgoing movement', async (t) => {
+  const db = await createDatabase(t);
+  const input = JSON.stringify([{ ice_type_id: ICE_TYPE_ID, quantity: 100 }]);
+
+  await db.query(`
+    insert into public.delivery_rounds (id, service_date)
+    values ('90000000-0000-4000-8000-000000000004', date '2026-07-16')
+  `);
+
+  const recordRes = await db.query(`
+    select public.record_factory_order(
+      date '2026-07-16', '${TRUCK_ID}', '${input}'::jsonb,
+      null, '90000000-0000-4000-8000-000000000002'
+    ) as summary
+  `);
+  const movementId = recordRes.rows[0].summary.recent_movements[0].id;
+
+  const outgoingMovement = await db.query(`
+    insert into public.stock_movements (
+      service_date, round_id, kind, from_location_id, to_location_id,
+      idempotency_key, recorded_by
+    ) values (
+      date '2026-07-16', '90000000-0000-4000-8000-000000000004', 'damage', '${TRUCK_ID}', null,
+      '90000000-0000-4000-8000-000000000003', '${AUTH_USER_ID}'
+    )
+    returning id
+  `);
+  await db.query(`
+    insert into public.stock_movement_items (movement_id, ice_type_id, quantity)
+    values ('${outgoingMovement.rows[0].id}', '${ICE_TYPE_ID}', 100)
+  `);
+
+  await assert.rejects(
+    db.query(`
+      select public.cancel_factory_order('${movementId}', 'พิมพ์จำนวนผิด')
+    `),
+    /would make truck stock negative/i,
+  );
 });
