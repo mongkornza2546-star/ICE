@@ -33,6 +33,12 @@ export interface IceTypeOption {
   unit: string;
 }
 
+export interface DeliveryRoundNameOption {
+  id: string;
+  name: string;
+  sort_order: number;
+}
+
 export interface RoundMemberOption {
   id: string;
   code: string;

@@ -263,6 +263,28 @@ export function ShopSettings() {
     setSavingTank(false);
   }
 
+  async function deactivateShop() {
+    if (!supabase || !draft.id) return;
+    if (activeShopTanks.length > 0) {
+      setError(`ยังปิดร้านไม่ได้: กรุณารับคืนถังเช่า ${activeShopTanks.length} ใบให้ครบก่อน`);
+      return;
+    }
+    if (!window.confirm(`ยืนยันปิดร้าน ${draft.name || draft.code}?\n\nร้านจะไม่ปรากฏในงานส่งใหม่ แต่ประวัติการส่งจะยังคงอยู่`)) return;
+
+    setSaving(true);
+    setError(null);
+    setSuccess(null);
+    const { error: deactivateError } = await supabase.rpc('deactivate_shop', { p_shop_id: draft.id });
+    if (deactivateError) {
+      setError(deactivateError.message);
+    } else {
+      setDraft((current) => ({ ...current, status: 'inactive' }));
+      setSuccess('ปิดร้านแล้ว ร้านจะไม่ปรากฏในงานส่งใหม่');
+      await loadSettings();
+    }
+    setSaving(false);
+  }
+
   const chooseImportFile = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     event.target.value = '';
@@ -405,6 +427,11 @@ export function ShopSettings() {
             <p className="eyebrow">ตั้งค่าร้านค้า</p>
             <h2>{draft.id ? `แก้ไข ${draft.name}` : 'เพิ่มร้านใหม่'}</h2>
           </div>
+          {draft.id && draft.status === 'active' ? (
+            <button className="ghost-button" disabled={saving} onClick={() => void deactivateShop()} type="button">
+              ปิดร้าน / ย้ายออก
+            </button>
+          ) : null}
         </div>
         <form className="settings-form" onSubmit={handleSave}>
           <div className="field-grid">
@@ -449,7 +476,7 @@ export function ShopSettings() {
           {error ? <p className="error-text">{error}</p> : null}
           {success ? <p className="success-text">{success}</p> : null}
           <button className="primary-button" disabled={saving} type="submit">{saving ? 'กำลังบันทึก...' : 'บันทึกการตั้งค่าร้าน'}</button>
-          <p className="muted">ร้านที่เปิดใช้งานจะปรากฏในรอบส่งใหม่ทั้งหมด พนักงานเลือกเองว่าจะไปร้านใด</p>
+          <p className="muted">ร้านที่เปิดใช้งานจะปรากฏในรอบส่งใหม่ทั้งหมด พนักงานเลือกเองว่าจะไปร้านใด การปิดร้านจะเก็บประวัติเดิมไว้ และต้องรับคืนถังเช่าให้ครบก่อน</p>
         </form>
 
         <div className="rented-tank-section">

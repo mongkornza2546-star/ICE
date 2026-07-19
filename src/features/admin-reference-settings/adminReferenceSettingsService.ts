@@ -4,9 +4,11 @@ import type { UserProfile, AppRole } from '../../types/app';
 import {
   USER_FIELDS,
   ICE_TYPE_FIELDS,
+  DELIVERY_ROUND_NAME_FIELDS,
   SHOP_FIELDS,
   SHOP_IMAGE_BUCKET,
   type IceTypeSetting,
+  type DeliveryRoundNameSetting,
   type ShopImageSetting,
 } from './types';
 
@@ -43,14 +45,15 @@ export async function loadAdminSettings(isCancelled: () => boolean) {
     throw new Error('หน้านี้ใช้ได้เฉพาะบัญชีแอดมินที่เปิดใช้งาน');
   }
 
-  const [usersResponse, iceTypesResponse] = await Promise.all([
+  const [usersResponse, iceTypesResponse, roundNamesResponse] = await Promise.all([
     client.from('users').select(USER_FIELDS).order('code'),
     client.from('ice_types').select(ICE_TYPE_FIELDS).order('code'),
+    client.from('delivery_round_name_options').select(DELIVERY_ROUND_NAME_FIELDS).order('sort_order').order('name'),
   ]);
   
   if (isCancelled()) return null;
 
-  const firstError = usersResponse.error ?? iceTypesResponse.error;
+  const firstError = usersResponse.error ?? iceTypesResponse.error ?? roundNamesResponse.error;
   if (firstError) {
     throw new Error(firstError.message);
   }
@@ -59,7 +62,26 @@ export async function loadAdminSettings(isCancelled: () => boolean) {
     currentUserId: authData.user.id,
     users: (usersResponse.data ?? []) as UserProfile[],
     iceTypes: (iceTypesResponse.data ?? []) as IceTypeSetting[],
+    roundNames: (roundNamesResponse.data ?? []) as DeliveryRoundNameSetting[],
   };
+}
+
+export async function saveDeliveryRoundName(
+  id: string | null,
+  payload: { name: string; sort_order: number; is_active: boolean },
+): Promise<DeliveryRoundNameSetting> {
+  const client = supabase;
+  if (!client) throw new Error('Supabase client not initialized');
+
+  const { data, error } = await client.rpc('save_delivery_round_name_option', {
+    p_option_id: id || null,
+    p_name: payload.name,
+    p_sort_order: payload.sort_order,
+    p_is_active: payload.is_active,
+  });
+
+  if (error) throw new Error(error.message);
+  return data as DeliveryRoundNameSetting;
 }
 
 export async function updateUser(

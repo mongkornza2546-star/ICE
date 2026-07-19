@@ -25,6 +25,20 @@ export interface IceTypeDraft {
   isActive: boolean;
 }
 
+export interface DeliveryRoundNameSetting {
+  id: string;
+  name: string;
+  sort_order: number;
+  is_active: boolean;
+}
+
+export interface DeliveryRoundNameDraft {
+  id: string;
+  name: string;
+  sortOrder: string;
+  isActive: boolean;
+}
+
 export interface ShopImageSetting {
   id: string;
   code: string;
@@ -41,11 +55,19 @@ export const EMPTY_ICE_TYPE: IceTypeDraft = {
   isActive: true,
 };
 
+export const EMPTY_DELIVERY_ROUND_NAME: DeliveryRoundNameDraft = {
+  id: '',
+  name: '',
+  sortOrder: '',
+  isActive: true,
+};
+
 export const ALLOWED_SHOP_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 export const MAX_SHOP_IMAGE_SIZE = 5 * 1024 * 1024;
 export const SHOP_IMAGE_BUCKET = 'shop-images';
 export const USER_FIELDS = 'id, code, display_name, phone, role, is_active';
 export const ICE_TYPE_FIELDS = 'id, code, name, unit, is_active';
+export const DELIVERY_ROUND_NAME_FIELDS = 'id, name, sort_order, is_active';
 export const SHOP_FIELDS = 'id, code, name, image_path, status';
 
 export const ROLE_OPTIONS: Array<{ value: AppRole; label: string }> = [

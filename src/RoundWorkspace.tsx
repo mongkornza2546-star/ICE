@@ -30,6 +30,7 @@ export function RoundWorkspace({ profile, mode }: { profile: UserProfile; mode: 
   const {
     rounds,
     iceTypes,
+    roundNameOptions,
     memberOptions,
     selectedRoundId,
     setSelectedRoundId,
@@ -144,14 +145,18 @@ export function RoundWorkspace({ profile, mode }: { profile: UserProfile; mode: 
                 </label>
                 <label>
                   ชื่อรอบ
-                  <input
-                    placeholder="เช้ามืด / เช้า / รอบเพิ่ม"
+                  <select
                     value={roundDraft.name}
                     onChange={(event) =>
                       setRoundDraft((current) => ({ ...current, name: event.target.value }))
                     }
                     required
-                  />
+                  >
+                    <option value="" disabled>เลือกรอบจากตั้งค่า</option>
+                    {roundNameOptions.map((option) => (
+                      <option key={option.id} value={option.name}>{option.name}</option>
+                    ))}
+                  </select>
                 </label>
               </div>
 
@@ -179,9 +184,7 @@ export function RoundWorkspace({ profile, mode }: { profile: UserProfile; mode: 
                           type="checkbox"
                         />
                         <span>{member.display_name}</span>
-                        <small>
-                          {ROLE_LABELS[member.role]} · {member.code}
-                        </small>
+                        <small>{ROLE_LABELS[member.role]}</small>
                       </label>
                     );
                   })}
@@ -191,11 +194,12 @@ export function RoundWorkspace({ profile, mode }: { profile: UserProfile; mode: 
               {createError ? <p className="error-text">{createError}</p> : null}
               <button
                 className="primary-button"
-                disabled={createLoading || roundDraft.memberIds.length === 0}
+                disabled={createLoading || roundDraft.memberIds.length === 0 || !roundDraft.name}
                 type="submit"
               >
                 {createLoading ? 'กำลังเปิดรอบ...' : 'เปิดรอบส่ง'}
               </button>
+              {roundNameOptions.length === 0 ? <p className="error-text">ยังไม่มีชื่อรอบที่เปิดใช้งาน กรุณาตั้งค่าชื่อรอบก่อน</p> : null}
               <p className="muted">รอบใช้จัดกลุ่มผู้ปฏิบัติงานและรายการขายเท่านั้น น้ำแข็งจากโรงงานและการส่งมอบบันทึกในสต๊อกต่อเนื่องทั้งวัน</p>
             </form>
           </section>

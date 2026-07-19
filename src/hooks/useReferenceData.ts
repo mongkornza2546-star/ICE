@@ -1,10 +1,11 @@
 import { useState, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
-import type { DeliveryRound, IceTypeOption, RoundMemberOption } from '../types/app';
+import type { DeliveryRound, DeliveryRoundNameOption, IceTypeOption, RoundMemberOption } from '../types/app';
 
 export function useReferenceData(canCreateRound: boolean) {
   const [rounds, setRounds] = useState<DeliveryRound[]>([]);
   const [iceTypes, setIceTypes] = useState<IceTypeOption[]>([]);
+  const [roundNameOptions, setRoundNameOptions] = useState<DeliveryRoundNameOption[]>([]);
   const [memberOptions, setMemberOptions] = useState<RoundMemberOption[]>([]);
   const [selectedRoundId, setSelectedRoundId] = useState<string>('');
   const [loadingRounds, setLoadingRounds] = useState(true);
@@ -18,7 +19,7 @@ export function useReferenceData(canCreateRound: boolean) {
     setLoadingRounds(true);
     setWorkspaceError(null);
 
-    const [roundsResponse, iceTypesResponse, membersResponse] = await Promise.all([
+    const [roundsResponse, iceTypesResponse, roundNamesResponse, membersResponse] = await Promise.all([
       supabase
         .from('delivery_rounds')
         .select('id, service_date, name, status, opened_at')
@@ -29,6 +30,12 @@ export function useReferenceData(canCreateRound: boolean) {
         .select('id, code, name, unit')
         .eq('is_active', true)
         .order('code'),
+      supabase
+        .from('delivery_round_name_options')
+        .select('id, name, sort_order')
+        .eq('is_active', true)
+        .order('sort_order')
+        .order('name'),
       canCreateRound
         ? supabase.rpc('get_assignable_round_members')
         : Promise.resolve({ data: [], error: null }),
@@ -50,6 +57,12 @@ export function useReferenceData(canCreateRound: boolean) {
       setIceTypes((iceTypesResponse.data ?? []) as IceTypeOption[]);
     }
 
+    if (roundNamesResponse.error) {
+      setWorkspaceError(roundNamesResponse.error.message);
+    } else {
+      setRoundNameOptions((roundNamesResponse.data ?? []) as DeliveryRoundNameOption[]);
+    }
+
     if (membersResponse.error) {
       setWorkspaceError(membersResponse.error.message);
     } else {
@@ -62,6 +75,7 @@ export function useReferenceData(canCreateRound: boolean) {
   return {
     rounds,
     iceTypes,
+    roundNameOptions,
     memberOptions,
     selectedRoundId,
     setSelectedRoundId,

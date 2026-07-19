@@ -2,9 +2,11 @@ import { useEffect, useState } from 'react';
 import { Cube, UsersThree } from '@phosphor-icons/react';
 import type { UserProfile } from './types/app';
 import type { IceTypeSetting } from './features/admin-reference-settings/types';
+import type { DeliveryRoundNameSetting } from './features/admin-reference-settings/types';
 import { loadAdminSettings } from './features/admin-reference-settings/adminReferenceSettingsService';
 import { UserEditor } from './features/admin-reference-settings/components/UserEditor';
 import { IceTypeEditor } from './features/admin-reference-settings/components/IceTypeEditor';
+import { DeliveryRoundNameEditor } from './features/admin-reference-settings/components/DeliveryRoundNameEditor';
 
 export function AdminReferenceSettings() {
   return <AdminReferenceSettingsContent />;
@@ -13,6 +15,7 @@ export function AdminReferenceSettings() {
 function AdminReferenceSettingsContent() {
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [iceTypes, setIceTypes] = useState<IceTypeSetting[]>([]);
+  const [roundNames, setRoundNames] = useState<DeliveryRoundNameSetting[]>([]);
   const [currentUserId, setCurrentUserId] = useState('');
   
   const [loading, setLoading] = useState(true);
@@ -34,6 +37,7 @@ function AdminReferenceSettingsContent() {
         setCurrentUserId(data.currentUserId);
         setUsers(data.users);
         setIceTypes(data.iceTypes);
+        setRoundNames(data.roundNames);
         setAuthorized(true);
       } catch (error) {
         if (!cancelled) {
@@ -62,6 +66,14 @@ function AdminReferenceSettingsContent() {
         ? current.map((iceType) => iceType.id === savedIceType.id ? savedIceType : iceType)
         : [...current, savedIceType];
       return next.sort((left, right) => left.code.localeCompare(right.code));
+    });
+  }
+
+  function handleRoundNameSaved(savedRoundName: DeliveryRoundNameSetting) {
+    setRoundNames((current) => {
+      const exists = current.some((option) => option.id === savedRoundName.id);
+      const next = exists ? current.map((option) => option.id === savedRoundName.id ? savedRoundName : option) : [...current, savedRoundName];
+      return next.sort((left, right) => left.sort_order - right.sort_order || left.name.localeCompare(right.name));
     });
   }
 
@@ -111,6 +123,7 @@ function AdminReferenceSettingsContent() {
         iceTypes={iceTypes}
         onIceTypeSaved={handleIceTypeSaved}
       />
+      <DeliveryRoundNameEditor options={roundNames} onSaved={handleRoundNameSaved} />
     </div>
   );
 }
