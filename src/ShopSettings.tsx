@@ -1,11 +1,15 @@
-import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from 'react';
+import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { Buildings, CaretRight, ImageSquare, MagnifyingGlass, MapPin, Phone, Plus, Storefront } from '@phosphor-icons/react';
 import { supabase } from './lib/supabase';
 import { parseShopImportFile, type ShopImportRow } from './lib/shopImport';
 import type { BuildingOption, BuildingZoneOption, ShopSetting } from './types/app';
 import { ShopImageEditor } from './features/admin-reference-settings/components/ShopImageEditor';
+import { getShopImageSignedUrls } from './features/admin-reference-settings/adminReferenceSettingsService';
 
 const TANK_IMAGE_BUCKET = 'tank-images';
 const MAX_TANK_IMAGE_SIZE = 5 * 1024 * 1024;
+const SHOP_IMAGE_URL_REFRESH_MS = 55 * 60 * 1000;
+const SHOP_IMAGE_URL_RETRY_MS = 60 * 1000;
 const TANK_IMAGE_EXTENSIONS: Record<string, string> = {
   'image/jpeg': 'jpg',
   'image/png': 'png',
@@ -70,10 +74,52 @@ export function ShopSettings() {
   const [savingTank, setSavingTank] = useState(false);
   const [tankError, setTankError] = useState<string | null>(null);
   const [tankSuccess, setTankSuccess] = useState<string | null>(null);
+  const [shopImageUrls, setShopImageUrls] = useState<Record<string, string>>({});
+  const [failedShopImages, setFailedShopImages] = useState<Record<string, boolean>>({});
+  const editorRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     void loadSettings();
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const shopsWithImages = shops.filter((shop) => shop.image_path);
+    let refreshTimer: ReturnType<typeof setTimeout> | undefined;
+
+    if (shopsWithImages.length === 0) {
+      setShopImageUrls({});
+      setFailedShopImages({});
+      return () => { cancelled = true; };
+    }
+
+    const refreshImageUrls = async () => {
+      let nextRefreshMs = SHOP_IMAGE_URL_REFRESH_MS;
+      try {
+        const urlsByPath = await getShopImageSignedUrls(shopsWithImages.map((shop) => shop.image_path!));
+        if (!cancelled) {
+          setShopImageUrls(Object.fromEntries(
+            shopsWithImages.flatMap((shop) => {
+              const url = urlsByPath[shop.image_path!];
+              return url ? [[shop.id, url]] : [];
+            }),
+          ));
+          setFailedShopImages({});
+        }
+      } catch {
+        nextRefreshMs = SHOP_IMAGE_URL_RETRY_MS;
+      } finally {
+        if (!cancelled) refreshTimer = setTimeout(() => void refreshImageUrls(), nextRefreshMs);
+      }
+    };
+
+    void refreshImageUrls();
+
+    return () => {
+      cancelled = true;
+      if (refreshTimer) clearTimeout(refreshTimer);
+    };
+  }, [shops]);
 
   async function loadSettings() {
     if (!supabase) return;
@@ -148,6 +194,7 @@ export function ShopSettings() {
     setError(null);
     setSuccess(null);
     resetTankDraft();
+    editorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
   const startNew = () => {
@@ -159,6 +206,7 @@ export function ShopSettings() {
     setError(null);
     setSuccess(null);
     resetTankDraft();
+    editorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
   const activeShopTanks = useMemo(
@@ -387,41 +435,67 @@ export function ShopSettings() {
         {importError ? <p className="error-text shop-import-message">{importError}</p> : null}
         {importSuccess ? <p className="success-text shop-import-message">{importSuccess}</p> : null}
       </section>
-      <section className="panel stack">
-        <div className="panel-header">
+      <section className="shop-catalog">
+        <div className="shop-catalog__header">
           <div>
             <p className="eyebrow">ข้อมูลหลัก</p>
             <h2>ร้านค้าทั้งหมด</h2>
+            <p className="muted">เลือกการ์ดเพื่อดูรายละเอียดและแก้ไขข้อมูลร้าน</p>
           </div>
-          <button className="ghost-button" onClick={startNew} type="button">+ ร้านใหม่</button>
+          <button className="primary-button" onClick={startNew} type="button"><Plus size={18} weight="bold" />ร้านใหม่</button>
         </div>
-        <input
-          aria-label="ค้นหาร้าน"
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder="ค้นหารหัส ชื่อร้าน หรือรหัสศูนย์ราชการ"
-          value={query}
-        />
-        <div className="settings-list">
+        <div className="shop-catalog__toolbar">
+          <label className="shop-search-field">
+            <MagnifyingGlass aria-hidden="true" size={20} />
+            <input
+              aria-label="ค้นหาร้าน"
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="ค้นหารหัส ชื่อร้าน หรือรหัสศูนย์ราชการ"
+              value={query}
+            />
+          </label>
+          <span className="shop-catalog__count">พบ {filteredShops.length} ร้าน</span>
+        </div>
+        <div className="shop-card-grid">
           {filteredShops.map((shop) => {
             const building = buildings.find((item) => item.id === shop.building_id);
             const zone = zones.find((item) => item.id === shop.zone_id);
+            const imageUrl = shopImageUrls[shop.id];
             return (
               <button
-                className={`round-item ${draft.id === shop.id ? 'round-item--selected' : ''}`}
+                aria-pressed={draft.id === shop.id}
+                className={`shop-directory-card ${draft.id === shop.id ? 'shop-directory-card--selected' : ''}`}
                 key={shop.id}
                 onClick={() => selectShop(shop)}
                 type="button"
               >
-                <span>{shop.code} · {shop.name}</span>
-                <small>{building?.name ?? 'ไม่พบตึก'} · {zone?.name ?? shop.floor_or_zone} · {shop.status === 'active' ? 'ใช้งาน' : 'พักใช้งาน'}</small>
+                <span className="shop-directory-card__visual">
+                  {imageUrl && !failedShopImages[shop.id] ? (
+                    <img alt="" onError={() => setFailedShopImages((current) => ({ ...current, [shop.id]: true }))} src={imageUrl} />
+                  ) : <Storefront aria-hidden="true" size={40} weight="duotone" />}
+                  <span className={`shop-directory-card__status shop-directory-card__status--${shop.status}`}>{shop.status === 'active' ? 'ใช้งาน' : 'พักใช้งาน'}</span>
+                </span>
+                <span className="shop-directory-card__body">
+                  <span className="shop-directory-card__code">{shop.code}</span>
+                  <strong>{shop.name}</strong>
+                  <span className="shop-directory-card__location"><Buildings aria-hidden="true" size={16} />{building?.name ?? 'ไม่พบตึก'}</span>
+                  <span className="shop-directory-card__location"><MapPin aria-hidden="true" size={16} />{zone?.name ?? shop.floor_or_zone}</span>
+                  {shop.contact_phone ? <span className="shop-directory-card__phone"><Phone aria-hidden="true" size={15} />{shop.contact_phone}</span> : <span className="shop-directory-card__phone shop-directory-card__phone--empty">ยังไม่มีเบอร์ผู้ติดต่อ</span>}
+                </span>
+                <span className="shop-directory-card__footer">
+                  <span>{shop.normal_rounds_per_day} รอบ/วัน</span>
+                  <CaretRight aria-hidden="true" size={18} weight="bold" />
+                </span>
               </button>
             );
           })}
-          {filteredShops.length === 0 ? <p className="empty-text">ไม่พบร้าน</p> : null}
+          {filteredShops.length === 0 ? (
+            <div className="shop-catalog__empty"><ImageSquare aria-hidden="true" size={32} weight="duotone" /><strong>ไม่พบร้านที่ค้นหา</strong><span>ลองค้นหาด้วยรหัสร้านหรือชื่อร้านอีกครั้ง</span></div>
+          ) : null}
         </div>
       </section>
 
-      <section className="panel">
+      <section className="panel shop-settings-editor" ref={editorRef}>
         <div className="panel-header">
           <div>
             <p className="eyebrow">ตั้งค่าร้านค้า</p>

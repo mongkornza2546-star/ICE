@@ -156,6 +156,21 @@ export async function getShopImageSignedUrl(imagePath: string): Promise<string> 
   return data.signedUrl;
 }
 
+export async function getShopImageSignedUrls(imagePaths: string[]): Promise<Record<string, string>> {
+  const client = supabase;
+  if (!client) throw new Error('Supabase client not initialized');
+  if (imagePaths.length === 0) return {};
+
+  const { data, error } = await client.storage
+    .from(SHOP_IMAGE_BUCKET)
+    .createSignedUrls(imagePaths, 3600);
+
+  if (error) throw new Error(error.message);
+  return Object.fromEntries(
+    (data ?? []).flatMap((entry) => entry.path && entry.signedUrl ? [[entry.path, entry.signedUrl]] : []),
+  );
+}
+
 export async function uploadShopImage(shopId: string, file: File): Promise<string> {
   const client = supabase;
   if (!client) throw new Error('Supabase client not initialized');
