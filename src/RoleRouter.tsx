@@ -7,8 +7,7 @@ import { FactoryOrderPage } from './FactoryOrderPage';
 import { AdminReferenceSettings } from './AdminReferenceSettings';
 import { EmployeeLayout } from './EmployeeLayout';
 import { EmployeeDeliveryWorkspace } from './EmployeeDeliveryWorkspace';
-import { LocationSettings } from './LocationSettings';
-import { StockLocationSettings } from './StockLocationSettings';
+import { LocationManagementSettings } from './LocationManagementSettings';
 import { ShopSettings } from './ShopSettings';
 import { RoundWorkspace } from './RoundWorkspace';
 import type { UserProfile } from './types/app';
@@ -148,8 +147,7 @@ export function RoleRouter({
           'manager',
           'delivery',
           'stock_operations',
-          'stock_locations',
-          'locations',
+          'location_management',
           'shops',
           'reference_settings',
         ]
@@ -159,7 +157,7 @@ export function RoleRouter({
           'manager',
           'delivery',
           'stock_operations',
-          'stock_locations',
+          'location_management',
         ]
     : ['delivery'];
 
@@ -184,10 +182,8 @@ export function RoleRouter({
         />
       ) : currentView === 'factory_order' ? (
         <FactoryOrderPage />
-      ) : currentView === 'locations' ? (
-        <LocationSettings />
-      ) : currentView === 'stock_locations' ? (
-        <StockLocationSettings />
+      ) : currentView === 'location_management' ? (
+        <LocationManagementSettings canManageBuildings={profile.role === 'admin'} />
       ) : currentView === 'shops' ? (
         <ShopSettings />
       ) : currentView === 'reference_settings' ? (

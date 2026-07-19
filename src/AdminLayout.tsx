@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import {
-  Buildings,
   ClipboardText,
   CalendarBlank,
   CaretDown,
@@ -22,8 +21,7 @@ export type AdminView =
   | 'manager'
   | 'delivery'
   | 'stock_operations'
-  | 'stock_locations'
-  | 'locations'
+  | 'location_management'
   | 'shops'
   | 'reference_settings';
 
@@ -33,8 +31,7 @@ const viewMeta: Record<AdminView, { label: string; shortLabel: string; icon: typ
   manager: { label: 'ควบคุมรอบส่ง', shortLabel: 'ควบคุมรอบ', icon: ClipboardText },
   delivery: { label: 'บันทึกส่งน้ำแข็ง', shortLabel: 'บันทึกส่ง', icon: Truck },
   stock_operations: { label: 'โอน / ตรวจ / ปิดสต๊อก', shortLabel: 'จัดการสต๊อก', icon: MapPin },
-  stock_locations: { label: 'ตั้งค่าจุดถือครอง', shortLabel: 'จุดถือครอง', icon: Gear },
-  locations: { label: 'ตึกและโซนย่อย', shortLabel: 'ตึกและโซน', icon: Buildings },
+  location_management: { label: 'สถานที่และจุดถือครอง', shortLabel: 'สถานที่', icon: Gear },
   shops: { label: 'ร้านค้า', shortLabel: 'ร้านค้า', icon: Storefront },
   reference_settings: { label: 'ผู้ใช้และชนิดน้ำแข็ง', shortLabel: 'ข้อมูลระบบ', icon: IdentificationCard },
 };

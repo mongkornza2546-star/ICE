@@ -131,16 +131,16 @@ test('manager dashboard is driven by live round, stock, and daily-close data', (
   assert.doesNotMatch(component, /เครดิต|รับชำระ|ใบเสร็จ/);
 });
 
-test('stock operations and stock-location settings are separate views', () => {
-  const app = read('src/App.tsx');
+test('stock operations stay separate while the router exposes combined location management', () => {
+  const router = read('src/RoleRouter.tsx');
   const layout = read('src/AdminLayout.tsx');
+  const workspace = read('src/RoundWorkspace.tsx');
 
   assert.match(layout, /stock_operations: \{ label: 'โอน \/ ตรวจ \/ ปิดสต๊อก'/);
-  assert.match(layout, /stock_locations: \{ label: 'ตั้งค่าจุดถือครอง'/);
-  assert.match(app, /currentView === 'stock_operations'[\s\S]*<RoundWorkspace mode="stock"/);
-  assert.match(app, /mode === 'stock'[\s\S]*<ManagerStockControl round=\{stockRound\}/);
-  assert.match(app, /currentView === 'stock_locations'[\s\S]*<StockLocationSettings \/>/);
-  assert.match(app, /<ManagerStockControl[\s\S]*serviceDate=\{stockServiceDate\}/);
+  assert.match(layout, /location_management: \{ label: 'สถานที่และจุดถือครอง'/);
+  assert.match(router, /currentView === 'stock_operations'[\s\S]*<RoundWorkspace mode="stock"/);
+  assert.match(router, /currentView === 'location_management'[\s\S]*<LocationManagementSettings canManageBuildings=\{profile\.role === 'admin'\} \/>/);
+  assert.match(workspace, /<ManagerStockControl[\s\S]*serviceDate=\{stockServiceDate\}/);
 });
 
 test('admin reference settings manage existing profiles and ice types without creating accounts', () => {

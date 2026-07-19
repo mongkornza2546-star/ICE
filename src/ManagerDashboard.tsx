@@ -27,7 +27,7 @@ export type ManagerDashboardView =
   | 'manager'
   | 'delivery'
   | 'stock_operations'
-  | 'stock_locations';
+  | 'location_management';
 
 interface RoundOverview {
   round: DeliveryRound;
@@ -65,7 +65,7 @@ const QUICK_ACTIONS: Array<{
   { view: 'factory_order', label: 'สั่งจากโรงงาน', icon: Factory },
   { view: 'delivery', label: 'บันทึกส่งน้ำแข็ง', icon: Truck },
   { view: 'stock_operations', label: 'โอน / ตรวจ / ปิดสต๊อก', icon: ArrowsLeftRight },
-  { view: 'stock_locations', label: 'ตั้งค่าจุดถือครอง', icon: Gear },
+  { view: 'location_management', label: 'สถานที่และจุดถือครอง', icon: Gear },
 ];
 
 function todayIsoDate() {
