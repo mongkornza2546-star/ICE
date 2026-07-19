@@ -5,6 +5,7 @@ import {
   FunnelSimple,
   Info,
   MagnifyingGlass,
+  Plus,
 } from '@phosphor-icons/react';
 import { EMPTY_ICE_TYPE, type IceTypeSetting, type IceTypeDraft } from '../types';
 import { saveIceType, getErrorMessage } from '../adminReferenceSettingsService';
@@ -120,6 +121,14 @@ export function IceTypeEditor({ iceTypes, onIceTypeSaved }: IceTypeEditorProps) 
               type="button"
             >
               <FunnelSimple size={20} />
+            </button>
+            <button
+              className="primary-button reference-add-button"
+              onClick={startNewIceType}
+              type="button"
+            >
+              <Plus size={18} weight="bold" />
+              เพิ่มชนิดน้ำแข็ง
             </button>
           </div>
 
