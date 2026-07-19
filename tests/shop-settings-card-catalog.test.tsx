@@ -6,7 +6,6 @@ import { ShopSettings } from '../src/ShopSettings';
 const mocks = vi.hoisted(() => ({
   bulkSignedUrls: vi.fn(),
   from: vi.fn(),
-  scrollIntoView: vi.fn(),
 }));
 
 vi.mock('../src/lib/supabase', () => ({
@@ -89,14 +88,9 @@ describe('ShopSettings card catalog', () => {
     mocks.bulkSignedUrls.mockResolvedValue({
       'shops/shop-a/photo.jpg': 'https://example.test/shop-a.jpg',
     });
-    mocks.scrollIntoView.mockClear();
-    Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
-      configurable: true,
-      value: mocks.scrollIntoView,
-    });
   });
 
-  it('filters cards, reports the match count, and selects a shop into the editor', async () => {
+  it('filters cards, reports the match count, and opens the selected shop in a dialog', async () => {
     const user = userEvent.setup();
     render(<ShopSettings />);
 
@@ -108,8 +102,34 @@ describe('ShopSettings card catalog', () => {
     expect(screen.queryByText('ร้านเจ๊อ้อย')).toBeNull();
     await user.click(screen.getByRole('button', { name: /BB02 ร้านน้ำฝน/ }));
 
+    expect(screen.getByRole('dialog', { name: 'แก้ไข ร้านน้ำฝน' })).toBeTruthy();
     expect((screen.getByRole('textbox', { name: 'รหัสร้าน' }) as HTMLInputElement).value).toBe('BB02');
-    expect(mocks.scrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth', block: 'start' });
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.queryByRole('dialog')).toBeNull();
+
+    await user.click(screen.getByRole('button', { name: /BB02 ร้านน้ำฝน/ }));
+    await user.click(screen.getByRole('button', { name: 'ปิดหน้าต่างข้อมูลร้าน' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+
+    await user.click(screen.getByRole('button', { name: /BB02 ร้านน้ำฝน/ }));
+    fireEvent.mouseDown(document.querySelector('.shop-settings-backdrop')!);
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('cycles the status filter above the shop cards', async () => {
+    const user = userEvent.setup();
+    render(<ShopSettings />);
+
+    await screen.findByText('พบ 2 ร้าน');
+    await user.click(screen.getByRole('button', { name: 'กรองร้านค้า: ทั้งหมด' }));
+
+    expect(screen.getByText('พบ 1 ร้าน')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /ร้านเจ๊อ้อย/ })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /ร้านน้ำฝน/ })).toBeNull();
+
+    await user.click(screen.getByRole('button', { name: 'กรองร้านค้า: เฉพาะที่ใช้งาน' }));
+    expect(screen.getByRole('button', { name: /ร้านน้ำฝน/ })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /ร้านเจ๊อ้อย/ })).toBeNull();
   });
 
   it('bulk-signs stored photos and falls back when a signed image fails to load', async () => {

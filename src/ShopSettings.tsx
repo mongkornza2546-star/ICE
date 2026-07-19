@@ -1,10 +1,11 @@
-import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from 'react';
-import { Buildings, CaretRight, ImageSquare, MagnifyingGlass, MapPin, Phone, Plus, Storefront } from '@phosphor-icons/react';
+import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from 'react';
+import { Buildings, CaretRight, FunnelSimple, ImageSquare, MagnifyingGlass, MapPin, Phone, Plus, Storefront, X } from '@phosphor-icons/react';
 import { supabase } from './lib/supabase';
 import { parseShopImportFile, type ShopImportRow } from './lib/shopImport';
 import type { BuildingOption, BuildingZoneOption, ShopSetting } from './types/app';
 import { ShopImageEditor } from './features/admin-reference-settings/components/ShopImageEditor';
 import { getShopImageSignedUrls } from './features/admin-reference-settings/adminReferenceSettingsService';
+import { filterLabel, matchesActiveFilter, nextFilter, type ActiveFilter } from './features/admin-reference-settings/referenceEditorFilters';
 
 const TANK_IMAGE_BUCKET = 'tank-images';
 const MAX_TANK_IMAGE_SIZE = 5 * 1024 * 1024;
@@ -59,6 +60,8 @@ export function ShopSettings() {
   const [zones, setZones] = useState<BuildingZoneOption[]>([]);
   const [draft, setDraft] = useState<ShopDraft>(emptyDraft);
   const [query, setQuery] = useState('');
+  const [shopFilter, setShopFilter] = useState<ActiveFilter>('all');
+  const [editorOpen, setEditorOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -76,11 +79,26 @@ export function ShopSettings() {
   const [tankSuccess, setTankSuccess] = useState<string | null>(null);
   const [shopImageUrls, setShopImageUrls] = useState<Record<string, string>>({});
   const [failedShopImages, setFailedShopImages] = useState<Record<string, boolean>>({});
-  const editorRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     void loadSettings();
   }, []);
+
+  useEffect(() => {
+    if (!editorOpen) return;
+
+    const previousOverflow = document.body.style.overflow;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !saving && !savingTank) setEditorOpen(false);
+    };
+
+    document.body.style.overflow = 'hidden';
+    window.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [editorOpen, saving, savingTank]);
 
   useEffect(() => {
     let cancelled = false;
@@ -171,11 +189,11 @@ export function ShopSettings() {
 
   const filteredShops = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase('th');
-    if (!needle) return shops;
-    return shops.filter((shop) =>
-      `${shop.code} ${shop.government_shop_code ?? ''} ${shop.name}`.toLocaleLowerCase('th').includes(needle),
-    );
-  }, [query, shops]);
+    return shops.filter((shop) => {
+      const matchesSearch = !needle || `${shop.code} ${shop.government_shop_code ?? ''} ${shop.name}`.toLocaleLowerCase('th').includes(needle);
+      return matchesSearch && matchesActiveFilter(shop.status === 'active', shopFilter);
+    });
+  }, [query, shopFilter, shops]);
 
   const selectShop = (shop: ShopSetting) => {
     setDraft({
@@ -194,7 +212,7 @@ export function ShopSettings() {
     setError(null);
     setSuccess(null);
     resetTankDraft();
-    editorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    setEditorOpen(true);
   };
 
   const startNew = () => {
@@ -206,7 +224,12 @@ export function ShopSettings() {
     setError(null);
     setSuccess(null);
     resetTankDraft();
-    editorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    setEditorOpen(true);
+  };
+
+  const closeEditor = () => {
+    if (saving || savingTank) return;
+    setEditorOpen(false);
   };
 
   const activeShopTanks = useMemo(
@@ -454,6 +477,16 @@ export function ShopSettings() {
               value={query}
             />
           </label>
+          <button
+            aria-label={`กรองร้านค้า: ${filterLabel(shopFilter)}`}
+            className={`shop-filter-button ${shopFilter !== 'all' ? 'shop-filter-button--active' : ''}`}
+            onClick={() => setShopFilter(nextFilter(shopFilter))}
+            title={`กรองร้านค้า: ${filterLabel(shopFilter)}`}
+            type="button"
+          >
+            <FunnelSimple aria-hidden="true" size={20} />
+            <span>{filterLabel(shopFilter)}</span>
+          </button>
           <span className="shop-catalog__count">พบ {filteredShops.length} ร้าน</span>
         </div>
         <div className="shop-card-grid">
@@ -495,17 +528,26 @@ export function ShopSettings() {
         </div>
       </section>
 
-      <section className="panel shop-settings-editor" ref={editorRef}>
+      {editorOpen ? (
+        <div className="modal-backdrop shop-settings-backdrop" onMouseDown={(event) => {
+          if (event.target === event.currentTarget) closeEditor();
+        }}>
+          <section aria-labelledby="shop-editor-title" aria-modal="true" className="panel shop-settings-editor shop-settings-dialog" role="dialog">
         <div className="panel-header">
           <div>
             <p className="eyebrow">ตั้งค่าร้านค้า</p>
-            <h2>{draft.id ? `แก้ไข ${draft.name}` : 'เพิ่มร้านใหม่'}</h2>
+            <h2 id="shop-editor-title">{draft.id ? `แก้ไข ${draft.name}` : 'เพิ่มร้านใหม่'}</h2>
           </div>
-          {draft.id && draft.status === 'active' ? (
-            <button className="ghost-button" disabled={saving} onClick={() => void deactivateShop()} type="button">
-              ปิดร้าน / ย้ายออก
+          <div className="shop-settings-dialog__actions">
+            {draft.id && draft.status === 'active' ? (
+              <button className="ghost-button" disabled={saving} onClick={() => void deactivateShop()} type="button">
+                ปิดร้าน / ย้ายออก
+              </button>
+            ) : null}
+            <button aria-label="ปิดหน้าต่างข้อมูลร้าน" autoFocus className="shop-settings-dialog__close" disabled={saving || savingTank} onClick={closeEditor} type="button">
+              <X aria-hidden="true" size={22} />
             </button>
-          ) : null}
+          </div>
         </div>
         <form className="settings-form" onSubmit={handleSave}>
           <div className="field-grid">
@@ -605,7 +647,9 @@ export function ShopSettings() {
           onShopSaved={(savedShop) => setShops((current) => current.map((shop) => shop.id === savedShop.id ? { ...shop, image_path: savedShop.image_path } : shop))}
           shop={selectedShop}
         />
-      </section>
+          </section>
+        </div>
+      ) : null}
     </div>
   );
 }

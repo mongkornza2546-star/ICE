@@ -293,6 +293,9 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .shop-search-field { position: relative; flex: 1; display: block; }
 .shop-search-field > svg { position: absolute; top: 50%; left: 14px; color: #63809e; transform: translateY(-50%); }
 .shop-search-field input { min-height: 46px; padding-left: 44px; border-radius: 12px; background: #fff; font-size: .86rem; }
+.shop-filter-button { flex: 0 0 auto; min-height: 46px; display: inline-flex; align-items: center; gap: 7px; padding: 0 13px; border: 1px solid #d6e0ec; border-radius: 12px; color: #5a6f8c; background: #fff; font-size: .76rem; font-weight: 700; white-space: nowrap; transition: border-color 140ms ease, background 140ms ease, color 140ms ease; }
+.shop-filter-button:hover { border-color: #91b4e5; color: #176cff; background: #f5f9ff; }
+.shop-filter-button--active { border-color: #b8d1ff; color: #176cff; background: #eff5ff; }
 .shop-catalog__count { flex: 0 0 auto; color: #59728e; font-size: .78rem; font-weight: 600; white-space: nowrap; }
 .shop-card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; }
 .shop-directory-card { position: relative; display: grid; grid-template-rows: 126px minmax(0, 1fr) auto; min-width: 0; overflow: hidden; padding: 0; border: 1px solid #dce6f0; border-radius: 14px; color: #1d3655; background: #fff; text-align: left; box-shadow: 0 5px 16px rgba(22, 57, 100, .055); transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease; }
@@ -319,6 +322,13 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .shop-catalog__empty strong { color: #38546f; font-size: .92rem; }
 .shop-catalog__empty span { font-size: .74rem; }
 .shop-settings-editor { grid-column: 1 / -1; }
+.shop-settings-backdrop { z-index: 60; }
+.shop-settings-dialog { width: min(920px, 100%); max-height: calc(100dvh - 40px); overflow-y: auto; padding: 22px; border-radius: 16px; box-shadow: 0 28px 80px rgba(5, 31, 64, .3); }
+.shop-settings-dialog > .panel-header { align-items: flex-start; }
+.shop-settings-dialog__actions { display: flex; align-items: center; gap: 8px; }
+.shop-settings-dialog__close { flex: 0 0 auto; width: 42px; height: 42px; display: grid; place-items: center; border: 1px solid #d6e0ec; border-radius: 11px; color: #526b88; background: #fff; }
+.shop-settings-dialog__close:hover { border-color: #91b4e5; color: #176cff; background: #f5f9ff; }
+.shop-settings-dialog__close:disabled { cursor: not-allowed; opacity: .55; }
 .rented-tank-section { display: grid; gap: 12px; margin-top: 22px; padding-top: 18px; border-top: 1px solid #e2e8f0; }
 .rented-tank-list { display: grid; gap: 8px; }
 .rented-tank-card { display: grid; grid-template-columns: 64px minmax(0,1fr) auto; align-items: center; gap: 10px; padding: 9px; border: 1px solid #dce4ed; border-radius: 8px; background: #fbfdff; }
@@ -567,6 +577,7 @@ input:disabled, select:disabled, textarea:disabled { background: #f2f5f8; color:
   .shop-catalog__header { flex-direction: column; }
   .shop-catalog__header .primary-button { width: 100%; }
   .shop-catalog__toolbar { align-items: stretch; flex-direction: column; gap: 7px; }
+  .shop-filter-button { justify-content: center; }
   .shop-catalog__count { padding-left: 2px; }
   .shop-card-grid { grid-template-columns: 1fr; gap: 11px; }
   .shop-directory-card { grid-template-columns: 108px minmax(0, 1fr); grid-template-rows: minmax(118px, auto) auto; }
@@ -577,6 +588,10 @@ input:disabled, select:disabled, textarea:disabled { background: #f2f5f8; color:
   .rented-tank-file { width: 100%; }
   .rented-tank-card { grid-template-columns: 64px minmax(0,1fr); }
   .rented-tank-card .ghost-button { grid-column: 1 / -1; }
+  .shop-settings-backdrop { align-items: end; padding: 0; }
+  .shop-settings-dialog { width: 100%; max-height: calc(100dvh - 16px); padding: 18px 14px max(18px, env(safe-area-inset-bottom)); border-radius: 18px 18px 0 0; }
+  .shop-settings-dialog > .panel-header { flex-direction: row; gap: 10px; }
+  .shop-settings-dialog__actions { align-items: flex-start; }
   .page-actions__buttons button { flex: 1; }
   .round-overview-grid { grid-template-columns: 1fr; }
   .round-overview-card { min-height: 112px; }
