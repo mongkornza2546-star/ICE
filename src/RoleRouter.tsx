@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Session } from '@supabase/supabase-js';
 import { supabase } from './lib/supabase';
 import { AdminLayout, type AdminView } from './AdminLayout';
@@ -12,6 +12,20 @@ import { ShopSettings } from './ShopSettings';
 import { RoundWorkspace } from './RoundWorkspace';
 import type { UserProfile } from './types/app';
 
+/**
+ * Wrapper that keeps its children mounted once rendered,
+ * but hides them with display:none when not active.
+ * This preserves component state (fetched data, scroll position, form input)
+ * across tab switches without re-mounting / re-fetching.
+ */
+function KeepAlive({ active, children }: { active: boolean; children: ReactNode }) {
+  return (
+    <div style={{ display: active ? undefined : 'none' }}>
+      {children}
+    </div>
+  );
+}
+
 export function RoleRouter({
   session,
   onRecoverableSessionError,
@@ -24,6 +38,9 @@ export function RoleRouter({
   const [profileError, setProfileError] = useState<string | null>(null);
   const [activeView, setActiveView] = useState<AdminView>('manager_overview');
   const [deliveryDraftState, setDeliveryDraftState] = useState({ dirty: false, submitting: false });
+  // Track which views have been visited so we only mount them on first visit
+  // (lazy mount) but keep them alive afterwards (no unmount on tab switch).
+  const [visitedViews, setVisitedViews] = useState<Set<AdminView>>(() => new Set(['manager_overview']));
 
   useEffect(() => {
     let cancelled = false;
@@ -139,6 +156,15 @@ export function RoleRouter({
   const canManageRounds = profile.role === 'admin' || profile.role === 'round_lead';
   const currentView = canManageRounds ? activeView : 'delivery';
 
+  // Mark the current view as visited (lazy mount)
+  if (!visitedViews.has(currentView)) {
+    setVisitedViews((prev) => {
+      const next = new Set(prev);
+      next.add(currentView);
+      return next;
+    });
+  }
+
   const allowedViews: AdminView[] = canManageRounds
     ? profile.role === 'admin'
       ? [
@@ -175,26 +201,51 @@ export function RoleRouter({
       profileLabel={profile.display_name}
       signOutDisabled={deliveryDraftState.submitting}
     >
-      {currentView === 'manager_overview' ? (
-        <ManagerDashboard
-          onNavigate={setActiveView}
-          profileRole={profile.role === 'admin' ? 'admin' : 'round_lead'}
-        />
-      ) : currentView === 'factory_order' ? (
-        <FactoryOrderPage />
-      ) : currentView === 'location_management' ? (
-        <LocationManagementSettings canManageBuildings={profile.role === 'admin'} />
-      ) : currentView === 'shops' ? (
-        <ShopSettings />
-      ) : currentView === 'reference_settings' ? (
-        <AdminReferenceSettings />
-      ) : currentView === 'stock_operations' ? (
-        <RoundWorkspace mode="stock" profile={profile} />
-      ) : currentView === 'delivery' ? (
-        <EmployeeDeliveryWorkspace onDraftStateChange={setDeliveryDraftState} requestScope={profile.id} stockSourceLabel="จุดสต๊อกของร้าน" />
-      ) : (
-        <RoundWorkspace mode="manager" profile={profile} />
+      {/* Keep-alive views: mount on first visit, stay mounted (hidden) on tab switch */}
+      {visitedViews.has('manager_overview') && (
+        <KeepAlive active={currentView === 'manager_overview'}>
+          <ManagerDashboard
+            onNavigate={setActiveView}
+            profileRole={profile.role === 'admin' ? 'admin' : 'round_lead'}
+          />
+        </KeepAlive>
+      )}
+      {visitedViews.has('factory_order') && (
+        <KeepAlive active={currentView === 'factory_order'}>
+          <FactoryOrderPage />
+        </KeepAlive>
+      )}
+      {visitedViews.has('location_management') && (
+        <KeepAlive active={currentView === 'location_management'}>
+          <LocationManagementSettings canManageBuildings={profile.role === 'admin'} />
+        </KeepAlive>
+      )}
+      {visitedViews.has('shops') && (
+        <KeepAlive active={currentView === 'shops'}>
+          <ShopSettings />
+        </KeepAlive>
+      )}
+      {visitedViews.has('reference_settings') && (
+        <KeepAlive active={currentView === 'reference_settings'}>
+          <AdminReferenceSettings />
+        </KeepAlive>
+      )}
+      {visitedViews.has('stock_operations') && (
+        <KeepAlive active={currentView === 'stock_operations'}>
+          <RoundWorkspace mode="stock" profile={profile} />
+        </KeepAlive>
+      )}
+      {visitedViews.has('delivery') && (
+        <KeepAlive active={currentView === 'delivery'}>
+          <EmployeeDeliveryWorkspace onDraftStateChange={setDeliveryDraftState} requestScope={profile.id} stockSourceLabel="จุดสต๊อกของร้าน" />
+        </KeepAlive>
+      )}
+      {visitedViews.has('manager') && (
+        <KeepAlive active={currentView === 'manager'}>
+          <RoundWorkspace mode="manager" profile={profile} />
+        </KeepAlive>
       )}
     </AdminLayout>
   );
 }
+

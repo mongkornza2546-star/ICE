@@ -1,4 +1,16 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Check,
+  CheckCircle,
+  Cube,
+  Info,
+  Minus,
+  Plus,
+  Snowflake,
+  Trash,
+  Truck,
+  UserCircle,
+} from '@phosphor-icons/react';
 import { supabase } from './lib/supabase';
 import { useRpcAction } from './hooks/useRpcAction';
 import type {
@@ -28,15 +40,17 @@ export function ManagerStockControl({
   operationRound,
   round,
   serviceDate,
+  demoSummary,
 }: {
   operationRound: DeliveryRound | null;
   round: DeliveryRound | null;
   serviceDate: string;
+  demoSummary?: StockControlSummary;
 }) {
   const isRoundSnapshot = round?.status === 'closed';
   const actionRound = operationRound ?? round;
-  const [summary, setSummary] = useState<StockControlSummary | null>(null);
-  const [summaryRoundId, setSummaryRoundId] = useState<string | null>(null);
+  const [summary, setSummary] = useState<StockControlSummary | null>(demoSummary ?? null);
+  const [summaryRoundId, setSummaryRoundId] = useState<string | null>(demoSummary ? round?.id ?? null : null);
   const [activeTab, setActiveTab] = useState<TabKind>('transfer');
   const [kind, setKind] = useState<StockOperationKind>('transfer');
   const [fromLocationId, setFromLocationId] = useState('');
@@ -78,8 +92,9 @@ export function ManagerStockControl({
   const requestId = useRef(0);
 
   useEffect(() => {
+    if (demoSummary) return;
     void loadSummary(serviceDate, round?.id ?? null);
-  }, [round?.id, serviceDate]);
+  }, [demoSummary, round?.id, serviceDate]);
 
   useEffect(() => {
     setConfirmSkipUncounted(false);
@@ -100,9 +115,14 @@ export function ManagerStockControl({
     const truckId = truckLocations[0]?.id || '';
     const firstLocationId = summary.locations[0]?.id || '';
     if (kind === 'transfer') {
-      const sourceId = truckId || firstLocationId;
-      setFromLocationId(sourceId);
-      setToLocationId(summary.locations.find((location) => location.id !== sourceId)?.id || '');
+      setFromLocationId((current) => (
+        summary.locations.some((location) => location.id === current)
+          ? current
+          : truckId || firstLocationId
+      ));
+      setToLocationId((current) => (
+        summary.locations.some((location) => location.id === current) ? current : ''
+      ));
     } else {
       setFromLocationId(kind === 'return_to_factory' ? truckId : truckId || firstLocationId);
       setToLocationId('');
@@ -166,6 +186,7 @@ export function ManagerStockControl({
       args: { kind: StockOperationKind; fromLocationId: string; toLocationId: string; items: any[]; note: string },
       idempotencyKey
     ) => {
+      if (demoSummary) return { data: { preview: true }, error: null };
       if (!supabase) throw new Error('Supabase is not initialized');
       return supabase.rpc('record_stock_movement', {
         p_round_id: actionRound!.id,
@@ -178,11 +199,14 @@ export function ManagerStockControl({
       });
     },
     {
-      deps: [actionRound?.id, round?.id, serviceDate],
+      deps: [actionRound?.id, demoSummary, round?.id, serviceDate],
       successMessage: (_, args) => `บันทึก “${MOVEMENT_LABELS[args.kind]}” แล้ว`,
       onSuccess: async () => {
-        await loadSummary(serviceDate, round?.id ?? null);
-        setQuantities(Object.fromEntries(iceTypes.map((ice) => [ice.ice_type_id, 0])));
+        if (!demoSummary) {
+          await loadSummary(serviceDate, round?.id ?? null);
+        }
+        setQuantities({});
+        setToLocationId('');
         setNote('');
       },
     }
@@ -198,7 +222,7 @@ export function ManagerStockControl({
       stockMovementAction.setError('ต้องมีรอบส่งของวันที่เลือกก่อนบันทึกรายการสต๊อก');
       return;
     }
-    if (!supabase || summaryRoundId !== (round?.id ?? null)) {
+    if (!demoSummary && (!supabase || summaryRoundId !== (round?.id ?? null))) {
       stockMovementAction.setError('ข้อมูลสต๊อกยังโหลดไม่ครบ กรุณารอสักครู่แล้วลองใหม่');
       return;
     }
@@ -207,7 +231,9 @@ export function ManagerStockControl({
       return;
     }
 
-    const items = iceTypes
+    const movementBalances = summary?.locations.find((location) => location.id === fromLocationId)?.balances
+      ?? iceTypes;
+    const items = movementBalances
       .map((ice) => ({ ice_type_id: ice.ice_type_id, quantity: quantities[ice.ice_type_id] ?? 0 }))
       .filter((item) => item.quantity > 0);
 
@@ -335,7 +361,7 @@ export function ManagerStockControl({
     if (nextKind === 'transfer') {
       const sourceId = truckId || firstLocationId;
       setFromLocationId(sourceId);
-      setToLocationId(summary.locations.find((location) => location.id !== sourceId)?.id || '');
+      setToLocationId('');
     } else {
       setFromLocationId(nextKind === 'return_to_factory' ? truckId : truckId || firstLocationId);
       setToLocationId('');
@@ -355,10 +381,24 @@ export function ManagerStockControl({
   const sourceLocations = kind === 'return_to_factory' ? truckLocations : summary.locations;
   const destinationLocations = summary.locations.filter((location) => location.id !== fromLocationId);
   const stockTimestamp = isRoundSnapshot ? summary.snapshot_at : loadedAt;
+  const selectedSource = summary.locations.find((location) => location.id === fromLocationId)
+    ?? truckLocations[0]
+    ?? summary.locations[0];
+  const selectedRecipient = destinationLocations.find((location) => location.id === toLocationId) ?? null;
+  const recipientLocations = destinationLocations;
+  const movementIceTypes = selectedSource?.balances ?? iceTypes;
+  const cartItems = movementIceTypes.filter((ice) => (quantities[ice.ice_type_id] ?? 0) > 0);
+  const cartTotal = cartItems.reduce((total, ice) => total + (quantities[ice.ice_type_id] ?? 0), 0);
+
+  const updateQuantity = (iceTypeId: string, value: number, available: number) => {
+    const nextValue = Math.min(available, Math.max(0, Math.round(value * 2) / 2));
+    setQuantities((current) => ({ ...current, [iceTypeId]: nextValue }));
+    stockMovementAction.reset();
+  };
 
   return (
     <div className="stock-control">
-      <div className="stock-layout-panel">
+      {activeTab !== 'transfer' ? <div className="stock-layout-panel">
         <div className="stock-layout-header">
           <h3 className="stock-layout-title">
             {isRoundSnapshot ? 'สต๊อกทั้งวัน ณ เวลาปิดรอบ' : 'สต๊อกปัจจุบันของวัน'}
@@ -405,7 +445,7 @@ export function ManagerStockControl({
             );
           })}
         </div>
-      </div>
+      </div> : null}
 
       {!isRoundSnapshot ? (
         <div className="stock-layout-panel">
@@ -445,7 +485,216 @@ export function ManagerStockControl({
             </button>
           </div>
 
-          {activeTab !== 'count' ? (
+          {activeTab === 'transfer' ? (
+            <form className="holder-pos" onSubmit={handleSubmit}>
+              <div className="holder-pos__main">
+                <section className="holder-pos__section" aria-labelledby="holder-step-title">
+                  <div className="holder-pos__section-heading">
+                    <span>1.</span>
+                    <h3 id="holder-step-title">เลือกต้นทางและจุดรับสต๊อก</h3>
+                  </div>
+                  <div className="holder-pos__source-control">
+                    <Truck aria-hidden="true" size={18} weight="fill" />
+                    <LocationSelect
+                      label="ต้นทาง (จาก)"
+                      locations={sourceLocations}
+                      onChange={(nextSourceId) => {
+                        setFromLocationId(nextSourceId);
+                        setToLocationId((current) => current === nextSourceId ? '' : current);
+                        setQuantities({});
+                        stockMovementAction.reset();
+                      }}
+                      value={fromLocationId}
+                    />
+                  </div>
+
+                  <div className="holder-card-grid">
+                    {recipientLocations.map((location) => {
+                      const isSelected = location.id === toLocationId;
+                      const totalBalance = location.balances.reduce((total, balance) => total + balance.quantity, 0);
+                      return (
+                        <button
+                          aria-pressed={isSelected}
+                          className={`holder-card ${isSelected ? 'holder-card--selected' : ''}`}
+                          key={location.id}
+                          onClick={() => {
+                            setToLocationId(location.id);
+                            stockMovementAction.reset();
+                          }}
+                          type="button"
+                        >
+                          {isSelected ? <CheckCircle className="holder-card__check" size={21} weight="fill" /> : null}
+                          <span className="holder-card__avatar" aria-hidden="true">
+                            <UserCircle size={48} weight="duotone" />
+                          </span>
+                          <span className="holder-card__identity">
+                            <strong>{location.name}</strong>
+                            <small>{location.code}</small>
+                          </span>
+                          <span className={`holder-card__balance ${totalBalance === 0 ? 'holder-card__balance--empty' : ''}`}>
+                            คงเหลือที่จุดรับ <strong>{formatStockQuantity(totalBalance)}</strong> หน่วย
+                          </span>
+                        </button>
+                      );
+                    })}
+                    {recipientLocations.length === 0 ? (
+                      <p className="holder-pos__empty">ยังไม่มีจุดรับสต๊อกที่พร้อมรับสินค้า</p>
+                    ) : null}
+                  </div>
+                </section>
+
+                <section className="holder-pos__section" aria-labelledby="product-step-title">
+                  <div className="holder-pos__section-heading">
+                    <span>2.</span>
+                    <h3 id="product-step-title">เลือกชนิดและจำนวน</h3>
+                  </div>
+                  <div className="product-card-grid">
+                    {movementIceTypes.map((ice, index) => {
+                      const quantity = quantities[ice.ice_type_id] ?? 0;
+                      const selected = quantity > 0;
+                      const ProductIcon = index % 2 === 0 ? Cube : Snowflake;
+                      return (
+                        <article className={`product-quantity-card ${selected ? 'product-quantity-card--selected' : ''}`} key={ice.ice_type_id}>
+                          {selected ? <CheckCircle className="product-quantity-card__check" size={21} weight="fill" /> : null}
+                          <div className="product-quantity-card__header">
+                            <span className="product-quantity-card__icon" aria-hidden="true"><ProductIcon size={37} weight="duotone" /></span>
+                            <span>
+                              <strong>{ice.ice_type_name}</strong>
+                              <small>บนรถ {formatStockQuantity(ice.quantity)} {ice.unit}</small>
+                            </span>
+                          </div>
+                          <div className="quantity-stepper">
+                            <button
+                              aria-label={`ลด ${ice.ice_type_name}`}
+                              disabled={quantity <= 0 || closeState?.is_closed}
+                              onClick={() => updateQuantity(ice.ice_type_id, quantity - 0.5, ice.quantity)}
+                              type="button"
+                            >
+                              <Minus size={18} weight="bold" />
+                            </button>
+                            <input
+                              aria-label={`จำนวน ${ice.ice_type_name}`}
+                              disabled={closeState?.is_closed}
+                              inputMode="decimal"
+                              max={ice.quantity}
+                              min={0}
+                              onChange={(event) => updateQuantity(ice.ice_type_id, Number(event.target.value) || 0, ice.quantity)}
+                              placeholder="0"
+                              step={0.5}
+                              type="number"
+                              value={quantity || ''}
+                            />
+                            <button
+                              aria-label={`เพิ่ม ${ice.ice_type_name}`}
+                              disabled={quantity >= ice.quantity || closeState?.is_closed}
+                              onClick={() => updateQuantity(ice.ice_type_id, quantity + 0.5, ice.quantity)}
+                              type="button"
+                            >
+                              <Plus size={18} weight="bold" />
+                            </button>
+                          </div>
+                          <div className="quantity-quick-actions" aria-label={`ปุ่มลัด ${ice.ice_type_name}`}>
+                            {[1, 5, 10].map((amount) => (
+                              <button
+                                disabled={quantity >= ice.quantity || closeState?.is_closed}
+                                key={amount}
+                                onClick={() => updateQuantity(ice.ice_type_id, quantity + amount, ice.quantity)}
+                                type="button"
+                              >
+                                +{amount}
+                              </button>
+                            ))}
+                          </div>
+                        </article>
+                      );
+                    })}
+                  </div>
+                </section>
+
+                <label className="holder-pos__note">
+                  <span>หมายเหตุเพิ่มเติม (ถ้ามี)</span>
+                  <textarea
+                    disabled={closeState?.is_closed}
+                    onChange={(event) => setNote(event.target.value)}
+                    placeholder="ระบุหมายเหตุเพิ่มเติม..."
+                    rows={3}
+                    value={note}
+                  />
+                </label>
+              </div>
+
+              <aside className="holder-cart" aria-labelledby="cart-title">
+                <h3 id="cart-title">3. สรุปรายการเบิก</h3>
+                {selectedRecipient ? (
+                  <div className="holder-cart__recipient">
+                    <UserCircle aria-hidden="true" size={50} weight="duotone" />
+                    <span>
+                      <small>กำลังโอนไปยัง:</small>
+                      <strong>{selectedRecipient.name}</strong>
+                      <small>{selectedRecipient.code}</small>
+                    </span>
+                  </div>
+                ) : (
+                  <div className="holder-cart__placeholder">เลือกจุดรับสต๊อกเพื่อเริ่มรายการ</div>
+                )}
+
+                <div className="holder-cart__items" aria-live="polite">
+                  {cartItems.map((ice, index) => {
+                    const ProductIcon = index % 2 === 0 ? Cube : Snowflake;
+                    return (
+                      <div className="holder-cart__item" key={ice.ice_type_id}>
+                        <ProductIcon aria-hidden="true" size={31} weight="duotone" />
+                        <span>{ice.ice_type_name}</span>
+                        <strong>{formatStockQuantity(quantities[ice.ice_type_id] ?? 0)} <small>{ice.unit}</small></strong>
+                      </div>
+                    );
+                  })}
+                  {cartItems.length === 0 ? <p>ยังไม่ได้เลือกสินค้า</p> : null}
+                </div>
+
+                <div className="holder-cart__totals">
+                  <span>รวมรายการ <strong>{cartItems.length} ชนิด</strong></span>
+                  <span>รวมจำนวน <strong>{formatStockQuantity(cartTotal)} หน่วย</strong></span>
+                </div>
+
+                <div className="holder-cart__notice">
+                  <Info aria-hidden="true" size={21} weight="fill" />
+                  <span>หลังยืนยัน ระบบจะตัดจาก {selectedSource?.name ?? 'รถหลัก'} และเพิ่มเข้าสู่สต๊อกของผู้รับทันที</span>
+                </div>
+
+                {stockMovementAction.error ? <p className="holder-cart__feedback error-text" role="alert">{stockMovementAction.error}</p> : null}
+                {stockMovementAction.success ? <p className="holder-cart__feedback success-text" role="status">{stockMovementAction.success}</p> : null}
+
+                <button
+                  aria-label="ยืนยัน โอนระหว่างจุด"
+                  className="primary-button holder-cart__confirm"
+                  disabled={!actionRound || !selectedRecipient || cartItems.length === 0 || stockMovementAction.isSubmitting || closeState?.is_closed}
+                  type="submit"
+                >
+                  <Check size={19} weight="bold" />
+                  {closeState?.is_closed
+                    ? 'ปิดสต๊อกวันนี้แล้ว'
+                    : stockMovementAction.isSubmitting
+                      ? 'กำลังบันทึก...'
+                      : `ยืนยันโอนไป${selectedRecipient?.name ?? 'จุดรับ'}`}
+                </button>
+                <button
+                  className="holder-cart__clear"
+                  disabled={cartItems.length === 0 && !selectedRecipient}
+                  onClick={() => {
+                    setQuantities(Object.fromEntries(movementIceTypes.map((ice) => [ice.ice_type_id, 0])));
+                    setToLocationId('');
+                    setNote('');
+                    stockMovementAction.reset();
+                  }}
+                  type="button"
+                >
+                  <Trash size={18} />
+                  ล้างรายการ
+                </button>
+              </aside>
+            </form>
+          ) : activeTab !== 'count' ? (
             <form onSubmit={handleSubmit}>
               <div className={`action-form-grid ${requiresSource && requiresDestination ? '' : 'action-form-grid--single'}`}>
                 {requiresSource ? <div>
@@ -802,6 +1051,10 @@ function formatStockDateTime(value: string) {
     dateStyle: 'medium',
     timeStyle: 'short',
   }).format(new Date(value));
+}
+
+function formatStockQuantity(value: number) {
+  return Number.isInteger(value) ? String(value) : value.toFixed(1);
 }
 
 function closeCountKey(locationId: string, iceTypeId: string) {

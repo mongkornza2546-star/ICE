@@ -6,7 +6,9 @@ import {
   type EmployeeStockTransferPayload,
 } from './EmployeeDeliveryWorkspace';
 import { EmployeeLayout } from './EmployeeLayout';
-import type { DeliveryRound, EmployeeStockState, IceTypeOption, ShopCard, ShopCardHistoryEntry } from './types/app';
+import { AdminLayout } from './AdminLayout';
+import { ManagerStockControl } from './ManagerStockControl';
+import type { DeliveryRound, EmployeeStockState, IceTypeOption, ShopCard, ShopCardHistoryEntry, StockControlSummary } from './types/app';
 
 const demoRounds: DeliveryRound[] = [
   {
@@ -171,6 +173,46 @@ const demoOpeningStockState: EmployeeStockState = {
   },
 };
 
+const managerStockDemoRound: DeliveryRound = {
+  id: 'demo-manager-round',
+  service_date: '2026-07-20',
+  name: 'รอบงานวันนี้',
+  status: 'open',
+  opened_at: '2026-07-20T01:00:00.000Z',
+};
+
+const managerStockDemoSummary: StockControlSummary = {
+  service_date: managerStockDemoRound.service_date,
+  locations: [
+    {
+      id: 'truck-main',
+      code: 'TRUCK-MAIN',
+      name: 'รถบรรทุกหลัก',
+      kind: 'truck',
+      balances: [
+        { ice_type_id: 'tube', ice_type_name: 'หลอดเล็ก', unit: 'ถุง', quantity: 47.5 },
+        { ice_type_id: 'crushed', ice_type_name: 'โม่', unit: 'ถุง', quantity: 9 },
+        { ice_type_id: 'half', ice_type_name: 'หลอดเล็กโม่', unit: 'ถุง', quantity: 22 },
+        { ice_type_id: 'cube', ice_type_name: 'น้ำแข็งก้อน', unit: 'แถว', quantity: 1 },
+        { ice_type_id: 'melt', ice_type_name: 'เปลือย (หลอดใหญ่)', unit: 'ถุง', quantity: 3 },
+      ],
+    },
+    {
+      id: 'holder-somchai', code: 'พื้นที่ A · Skywalk', name: 'รถเข็นสมชาย', kind: 'team',
+      balances: [{ ice_type_id: 'tube', ice_type_name: 'หลอดเล็ก', unit: 'ถุง', quantity: 12 }],
+    },
+    {
+      id: 'holder-vichai', code: 'พื้นที่ B', name: 'รถเข็นวิชัย', kind: 'team',
+      balances: [{ ice_type_id: 'tube', ice_type_name: 'หลอดเล็ก', unit: 'ถุง', quantity: 8 }],
+    },
+    {
+      id: 'holder-nid', code: 'พื้นที่ C', name: 'รถเข็นนิด', kind: 'team',
+      balances: [{ ice_type_id: 'tube', ice_type_name: 'หลอดเล็ก', unit: 'ถุง', quantity: 0 }],
+    },
+  ],
+  recent_movements: [],
+};
+
 function cloneCards(cards: ShopCard[]) {
   return cards.map((card) => ({
     ...card,
@@ -294,6 +336,24 @@ export function LocalDemoApp() {
   const [gatewayVersion, setGatewayVersion] = useState(0);
   const [draftState, setDraftState] = useState({ dirty: false, submitting: false });
   const gateway = useMemo(() => buildDemoGateway(), [gatewayVersion]);
+
+  if (new URLSearchParams(window.location.search).get('screen') === 'stock-layout') {
+    return (
+      <AdminLayout
+        activeView="stock_operations"
+        allowedViews={['stock_operations']}
+        onNavigate={() => undefined}
+        profileLabel="หัวหน้างาน · Demo"
+      >
+        <ManagerStockControl
+          demoSummary={managerStockDemoSummary}
+          operationRound={managerStockDemoRound}
+          round={managerStockDemoRound}
+          serviceDate={managerStockDemoRound.service_date}
+        />
+      </AdminLayout>
+    );
+  }
 
   return (
     <EmployeeLayout profileLabel="Local Demo">

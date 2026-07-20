@@ -98,6 +98,7 @@ describe('ManagerStockControl movement tabs', () => {
 
   it('submits a transfer with different source and destination locations', async () => {
     const { user, form } = await renderMovementForm('โอนระหว่างจุด');
+    await user.click(within(form).getByRole('button', { name: /A · จุดปฏิบัติงาน/ }));
     await user.type(within(form).getByRole('spinbutton'), '2');
     await user.click(within(form).getByRole('button', { name: 'ยืนยัน โอนระหว่างจุด' }));
 
@@ -106,6 +107,35 @@ describe('ManagerStockControl movement tabs', () => {
       p_from_location_id: 'truck-1',
       p_to_location_id: 'site-1',
     });
+  });
+
+  it('keeps every stock location available as a transfer source', async () => {
+    const { user, form } = await renderMovementForm('โอนระหว่างจุด');
+    const source = within(form).getByRole('combobox', { name: 'ต้นทาง (จาก)' }) as HTMLSelectElement;
+
+    expect(Array.from(source.options).map((option) => option.value)).toEqual(['', 'truck-1', 'site-1']);
+    expect(within(form).queryByRole('combobox', { name: 'ปลายทาง (ไปยัง)' })).toBeNull();
+
+    await user.selectOptions(source, 'site-1');
+    await user.click(within(form).getByRole('button', { name: /รถบรรทุก/ }));
+    await user.type(within(form).getByRole('spinbutton'), '2');
+    await user.click(within(form).getByRole('button', { name: 'ยืนยัน โอนระหว่างจุด' }));
+
+    await expectMovementPayload({
+      p_kind: 'transfer',
+      p_from_location_id: 'site-1',
+      p_to_location_id: 'truck-1',
+    });
+  });
+
+  it('clears the selected destination after a successful transfer', async () => {
+    const { user, form } = await renderMovementForm('โอนระหว่างจุด');
+    await user.click(within(form).getByRole('button', { name: /A · จุดปฏิบัติงาน/ }));
+    await user.type(within(form).getByRole('spinbutton'), '2');
+    await user.click(within(form).getByRole('button', { name: 'ยืนยัน โอนระหว่างจุด' }));
+
+    expect(await within(form).findByText('เลือกจุดรับสต๊อกเพื่อเริ่มรายการ')).toBeTruthy();
+    expect((within(form).getByRole('button', { name: 'ยืนยัน โอนระหว่างจุด' }) as HTMLButtonElement).disabled).toBe(true);
   });
 
   it('submits damage with a source, no destination, and a required note', async () => {
@@ -141,6 +171,8 @@ describe('ManagerStockControl movement tabs', () => {
     const user = userEvent.setup();
     render(<ManagerStockControl operationRound={round} round={round} serviceDate={round.service_date} />);
 
+    await screen.findByRole('heading', { name: 'เลือกต้นทางและจุดรับสต๊อก' });
+    await user.click(screen.getByRole('button', { name: 'เสียหาย / ละลาย' }));
     expect(await screen.findByRole('heading', { name: 'สต๊อกปัจจุบันของวัน' })).toBeTruthy();
     const summaryCallsBeforeRefresh = mocks.rpc.mock.calls.filter(([name]) => name === 'get_stock_control_summary').length;
     await user.click(screen.getByRole('button', { name: 'รีเฟรชข้อมูลสต๊อก' }));
@@ -247,7 +279,7 @@ describe('ManagerStockControl daily close', () => {
 async function renderMovementForm(tabName: string) {
   const user = userEvent.setup();
   render(<ManagerStockControl operationRound={round} round={round} serviceDate={round.service_date} />);
-  await screen.findByRole('heading', { name: 'สต๊อกปัจจุบันของวัน' });
+  await screen.findByRole('heading', { name: 'เลือกต้นทางและจุดรับสต๊อก' });
   await user.click(screen.getByRole('button', { name: tabName }));
   const submitButton = screen.getByRole('button', { name: `ยืนยัน ${tabName}` });
   return { user, form: submitButton.closest('form') as HTMLFormElement };
