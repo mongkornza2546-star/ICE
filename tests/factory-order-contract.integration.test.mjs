@@ -19,6 +19,14 @@ const cancelMigration = readFileSync(
   new URL('../supabase/migrations/0023_cancel_factory_order.sql', import.meta.url),
   'utf8',
 );
+const halfBagCountMigration = readFileSync(
+  new URL('../supabase/migrations/0025_half_bag_location_counts.sql', import.meta.url),
+  'utf8',
+);
+const halfBagMovementMigration = readFileSync(
+  new URL('../supabase/migrations/0028_half_bag_stock_movements.sql', import.meta.url),
+  'utf8',
+);
 
 const AUTH_USER_ID = '00000000-0000-4000-8000-000000000001';
 const ICE_TYPE_ID = '00000000-0000-4000-8000-000000000002';
@@ -27,6 +35,7 @@ const TRUCK_ID = '00000000-0000-4000-8000-000000000004';
 const INACTIVE_TRUCK_ID = '00000000-0000-4000-8000-000000000005';
 const OLD_ORDER_ID = '00000000-0000-4000-8000-000000000006';
 const OLD_ORDER_KEY = '00000000-0000-4000-8000-000000000007';
+const TEAM_ID = '00000000-0000-4000-8000-000000000008';
 
 async function createDatabase(t) {
   const db = new PGlite();
@@ -512,6 +521,142 @@ test('a stock date created without a round can be counted and closed', async (t)
     where service_date = date '${serviceDate}'
   `);
   assert.equal(closures.rows[0].count, 1);
+});
+
+test('half-bag transfers remain exact through balances and daily close', async (t) => {
+  const db = await createDatabase(t);
+  const serviceDate = '2026-07-21';
+  const roundId = '60000000-0000-4000-8000-000000000001';
+
+  await db.exec(`
+    create table public.round_stock_snapshot_items (
+      round_id uuid not null,
+      location_id uuid not null,
+      ice_type_id uuid not null,
+      quantity integer not null,
+      primary key (round_id, location_id, ice_type_id)
+    );
+
+    create table public.round_stops (
+      id uuid primary key,
+      round_id uuid not null references public.delivery_rounds(id)
+    );
+
+    create table public.delivery_events (
+      id uuid primary key,
+      round_stop_id uuid not null references public.round_stops(id),
+      source_stock_location_id uuid references public.stock_locations(id),
+      status text not null
+    );
+
+    create table public.delivery_items (
+      delivery_event_id uuid not null references public.delivery_events(id),
+      ice_type_id uuid not null references public.ice_types(id),
+      quantity integer not null
+    );
+
+    insert into public.delivery_rounds (id, service_date)
+    values ('${roundId}', date '${serviceDate}');
+
+    insert into public.stock_locations (id, code, name, kind, is_active)
+    values ('${TEAM_ID}', 'TEAM-01', 'ทีมทดสอบ', 'team', true);
+  `);
+
+  await db.exec(halfBagCountMigration);
+  await db.exec(halfBagMovementMigration);
+
+  await db.query(`
+    select public.record_factory_order(
+      date '${serviceDate}', '${TRUCK_ID}',
+      '${JSON.stringify([{ ice_type_id: ICE_TYPE_ID, quantity: 2 }])}'::jsonb,
+      null, '60000000-0000-4000-8000-000000000002'
+    )
+  `);
+
+  await assert.rejects(
+    db.query(`
+      select public.record_stock_movement(
+        '${roundId}', 'transfer', '${TRUCK_ID}', '${TEAM_ID}',
+        '${JSON.stringify([{ ice_type_id: ICE_TYPE_ID, quantity: 0.54 }])}'::jsonb,
+        null, '60000000-0000-4000-8000-000000000003'
+      )
+    `),
+    /whole or half-bag quantity/i,
+  );
+
+  await db.query(`
+    select public.record_stock_movement(
+      '${roundId}', 'transfer', '${TRUCK_ID}', '${TEAM_ID}',
+      '${JSON.stringify([{ ice_type_id: ICE_TYPE_ID, quantity: 0.5 }])}'::jsonb,
+      null, '60000000-0000-4000-8000-000000000004'
+    )
+  `);
+
+  const balances = await db.query(`
+    select
+      public.stock_balance_at(date '${serviceDate}', '${TRUCK_ID}', '${ICE_TYPE_ID}') as truck,
+      public.stock_balance_at(date '${serviceDate}', '${TEAM_ID}', '${ICE_TYPE_ID}') as team
+  `);
+  assert.equal(balances.rows[0].truck, '1.5');
+  assert.equal(balances.rows[0].team, '0.5');
+
+  await db.exec(`
+    insert into public.round_stock_snapshot_items (round_id, location_id, ice_type_id, quantity)
+    values ('${roundId}', '${TEAM_ID}', '${ICE_TYPE_ID}', 0.5);
+
+    update public.delivery_rounds set status = 'closed' where id = '${roundId}';
+  `);
+
+  const counts = JSON.stringify([
+    { location_id: TRUCK_ID, ice_type_id: ICE_TYPE_ID, actual_quantity: 1.5, note: null },
+    { location_id: TEAM_ID, ice_type_id: ICE_TYPE_ID, actual_quantity: 0.5, note: null },
+  ]);
+
+  await assert.rejects(
+    db.query(`
+      select public.close_daily_stock(
+        p_round_id => '${roundId}',
+        p_counts => '${JSON.stringify([
+          { location_id: TRUCK_ID, ice_type_id: ICE_TYPE_ID, actual_quantity: 1.5, note: null },
+          { location_id: TEAM_ID, ice_type_id: ICE_TYPE_ID, actual_quantity: 0.54, note: null },
+        ])}'::jsonb,
+        p_idempotency_key => '60000000-0000-4000-8000-000000000005'
+      )
+    `),
+    /whole or half-bag actual count/i,
+  );
+
+  await db.query(`
+    select public.close_daily_stock(
+      p_round_id => '${roundId}',
+      p_counts => '${counts}'::jsonb,
+      p_idempotency_key => '60000000-0000-4000-8000-000000000006'
+    )
+  `);
+
+  const stored = await db.query(`
+    select
+      (select quantity from public.round_stock_snapshot_items
+        where round_id = '${roundId}' and location_id = '${TEAM_ID}') as round_quantity,
+      (select actual_quantity from public.daily_stock_closure_items
+        where service_date = date '${serviceDate}' and location_id = '${TEAM_ID}') as close_quantity,
+      (select quantity from public.stock_movement_items item
+        join public.stock_movements movement on movement.id = item.movement_id
+        where movement.service_date = date '${serviceDate}'
+          and movement.kind = 'transfer'
+          and movement.from_location_id = '${TEAM_ID}') as collected_quantity
+  `);
+  assert.equal(stored.rows[0].round_quantity, '0.5');
+  assert.equal(stored.rows[0].close_quantity, '0.5');
+  assert.equal(stored.rows[0].collected_quantity, '0.5');
+
+  const finalBalances = await db.query(`
+    select
+      public.stock_balance_at(date '${serviceDate}', '${TRUCK_ID}', '${ICE_TYPE_ID}') as truck,
+      public.stock_balance_at(date '${serviceDate}', '${TEAM_ID}', '${ICE_TYPE_ID}') as team
+  `);
+  assert.equal(finalBalances.rows[0].truck, '0.0');
+  assert.equal(finalBalances.rows[0].team, '0.0');
 });
 
 test('factory-order writes lock the retry key and service date before closed-day check', () => {

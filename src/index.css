@@ -346,9 +346,9 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .shop-directory-card { position: relative; display: grid; grid-template-rows: 126px minmax(0, 1fr) auto; min-width: 0; overflow: hidden; padding: 0; border: 1px solid #dce6f0; border-radius: 14px; color: #1d3655; background: #fff; text-align: left; box-shadow: 0 5px 16px rgba(22, 57, 100, .055); transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease; }
 .shop-directory-card:hover { border-color: #91bee9; box-shadow: 0 12px 26px rgba(21, 99, 194, .12); transform: translateY(-3px); }
 .shop-directory-card--selected { border-color: #176cff; box-shadow: 0 0 0 2px rgba(23, 108, 255, .13), 0 13px 28px rgba(23, 108, 255, .14); }
-.shop-directory-card__visual { position: relative; display: grid; place-items: center; overflow: hidden; color: #4a94e8; background: linear-gradient(135deg, #e7f4ff, #d6ebff); }
+.shop-directory-card__visual { position: relative; display: grid; min-height: 0; place-items: center; overflow: hidden; color: #4a94e8; background: linear-gradient(135deg, #e7f4ff, #d6ebff); }
 .shop-directory-card__visual::after { position: absolute; inset: auto -22px -42px auto; width: 142px; height: 142px; border-radius: 50%; background: rgba(255, 255, 255, .32); content: ''; }
-.shop-directory-card__visual img { width: 100%; height: 100%; object-fit: cover; }
+.shop-directory-card__visual img { position: absolute; inset: 0; display: block; width: 100%; height: 100%; min-width: 0; min-height: 0; object-fit: cover; }
 .shop-directory-card__visual > svg { position: relative; z-index: 1; }
 .shop-directory-card__status { position: absolute; top: 10px; right: 10px; z-index: 2; display: inline-flex; align-items: center; min-height: 25px; padding: 0 9px; border-radius: 999px; font-size: .65rem; font-weight: 700; box-shadow: 0 3px 8px rgba(26, 51, 83, .11); }
 .shop-directory-card__status--active { color: #117a45; background: #e7f8ee; }

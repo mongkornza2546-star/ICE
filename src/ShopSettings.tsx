@@ -60,6 +60,8 @@ export function ShopSettings() {
   const [zones, setZones] = useState<BuildingZoneOption[]>([]);
   const [draft, setDraft] = useState<ShopDraft>(emptyDraft);
   const [query, setQuery] = useState('');
+  const [buildingFilter, setBuildingFilter] = useState('');
+  const [zoneFilter, setZoneFilter] = useState('');
   const [shopFilter, setShopFilter] = useState<ActiveFilter>('all');
   const [editorOpen, setEditorOpen] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -191,9 +193,11 @@ export function ShopSettings() {
     const needle = query.trim().toLocaleLowerCase('th');
     return shops.filter((shop) => {
       const matchesSearch = !needle || `${shop.code} ${shop.government_shop_code ?? ''} ${shop.name}`.toLocaleLowerCase('th').includes(needle);
-      return matchesSearch && matchesActiveFilter(shop.status === 'active', shopFilter);
+      const matchesBuilding = !buildingFilter || shop.building_id === buildingFilter;
+      const matchesZone = !zoneFilter || shop.zone_id === zoneFilter;
+      return matchesSearch && matchesActiveFilter(shop.status === 'active', shopFilter) && matchesBuilding && matchesZone;
     });
-  }, [query, shopFilter, shops]);
+  }, [query, shopFilter, buildingFilter, zoneFilter, shops]);
 
   const selectShop = (shop: ShopSetting) => {
     setDraft({
@@ -477,6 +481,32 @@ export function ShopSettings() {
               value={query}
             />
           </label>
+          <select 
+            aria-label="กรองตึก"
+            className="shop-filter-button"
+            onChange={(e) => {
+              setBuildingFilter(e.target.value);
+              setZoneFilter('');
+            }}
+            value={buildingFilter}
+          >
+            <option value="">ทุกตึก</option>
+            {buildings.map((b) => (
+              <option key={b.id} value={b.id}>{b.code} · {b.name}</option>
+            ))}
+          </select>
+          <select 
+            aria-label="กรองโซนย่อย"
+            className="shop-filter-button"
+            disabled={!buildingFilter}
+            onChange={(e) => setZoneFilter(e.target.value)}
+            value={zoneFilter}
+          >
+            <option value="">ทุกโซน</option>
+            {zones.filter((z) => z.building_id === buildingFilter).map((z) => (
+              <option key={z.id} value={z.id}>{z.code} · {z.name}</option>
+            ))}
+          </select>
           <button
             aria-label={`กรองร้านค้า: ${filterLabel(shopFilter)}`}
             className={`shop-filter-button ${shopFilter !== 'all' ? 'shop-filter-button--active' : ''}`}

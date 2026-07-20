@@ -411,9 +411,10 @@ export function ManagerStockControl({
               <label key={ice.ice_type_id}>
                 {ice.ice_type_name} ({ice.unit})
                 <input
-                  inputMode="numeric"
+                  inputMode="decimal"
                   disabled={closeState?.is_closed}
                   min={0}
+                  step={0.5}
                   onChange={(event) => setQuantities((current) => ({
                     ...current,
                     [ice.ice_type_id]: Math.max(0, Number(event.target.value) || 0),
@@ -552,7 +553,7 @@ export function ManagerStockControl({
                     return (
                       <label key={balance.ice_type_id}>
                         {balance.ice_type_name} · ระบบ {balance.quantity}
-                        <input min={0} type="number" value={actual} onChange={(event) => setCloseCounts((current) => ({ ...current, [key]: Math.max(0, Number(event.target.value) || 0) }))} />
+                        <input min={0} step={0.5} type="number" value={actual} onChange={(event) => setCloseCounts((current) => ({ ...current, [key]: Math.max(0, Number(event.target.value) || 0) }))} />
                         <small className={variance === 0 ? 'success-text' : 'error-text'}>{variance === 0 ? 'ยอดตรง' : `ต่าง ${variance > 0 ? '+' : ''}${variance}`}</small>
                       </label>
                     );

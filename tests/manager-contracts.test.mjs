@@ -332,6 +332,27 @@ test('returned-stock snapshots accept half-bag quantities', () => {
   assert.match(component, /step=\{0\.5\}/);
 });
 
+test('stock transfers preserve half-bag quantities through daily close', () => {
+  const migration = read('supabase/migrations/0028_half_bag_stock_movements.sql');
+  const component = read('src/ManagerStockControl.tsx');
+  const movementFunction = migration.slice(
+    migration.indexOf('create or replace function public.record_stock_movement('),
+    migration.indexOf('create or replace function public.close_daily_stock('),
+  );
+  const closeFunction = migration.slice(
+    migration.indexOf('create or replace function public.close_daily_stock('),
+  );
+
+  assert.match(migration, /stock_movement_items[\s\S]*quantity type numeric\(12, 1\)/);
+  assert.match(migration, /returns numeric\(12, 1\)/);
+  assert.match(movementFunction, /quantity numeric\)/);
+  assert.match(closeFunction, /actual_quantity numeric, note text\)/);
+  assert.doesNotMatch(movementFunction, /jsonb_to_recordset\(p_items\)[^\n]*numeric\(12, 1\)/);
+  assert.doesNotMatch(closeFunction, /actual_quantity numeric\(12, 1\), note text\)/);
+  assert.match(migration, /positive whole or half-bag quantity/);
+  assert.match(component, /inputMode="decimal"[\s\S]*step=\{0\.5\}/);
+});
+
 test('manager delivery corrections restore stock and require an audit reason', () => {
   const migration = read('supabase/migrations/0008_complete_manager_operations.sql');
   const component = read('src/ManagerDeliveryAdjustments.tsx');
