@@ -180,7 +180,19 @@ export function StockLocationSettings() {
           <div className="field-grid">
             <label>
               ประเภท
-              <select value={draft.kind} onChange={(event) => setDraft({ ...draft, kind: event.target.value as StockLocationKind })}>
+              <select
+                value={draft.kind}
+                onChange={(event) => {
+                  const kind = event.target.value as StockLocationKind;
+                  setDraft({
+                    ...draft,
+                    kind,
+                    assignedUserId: kind === 'work_site' && draft.kind !== 'work_site'
+                      ? ''
+                      : draft.assignedUserId,
+                  });
+                }}
+              >
                 {LOCATION_KINDS.map((kind) => <option key={kind.value} value={kind.value}>{kind.label}</option>)}
               </select>
             </label>
@@ -192,8 +204,9 @@ export function StockLocationSettings() {
               </select>
             </label>
             <label>
-              ผู้รับผิดชอบ {draft.kind === 'team' ? '(จำเป็น)' : '(ถ้ามี)'}
+              ผู้ถือสต๊อก {draft.kind === 'team' ? '(จำเป็น)' : '(ถ้ามี)'}
               <select
+                disabled={draft.kind === 'work_site'}
                 required={draft.kind === 'team'}
                 value={draft.assignedUserId}
                 onChange={(event) => setDraft({ ...draft, assignedUserId: event.target.value })}
@@ -203,6 +216,9 @@ export function StockLocationSettings() {
               </select>
             </label>
           </div>
+          {draft.kind === 'work_site' ? (
+            <p className="muted">พนักงานประจำจุดกำหนดได้จากหน้า “ผู้ใช้และชนิดน้ำแข็ง” โดยไม่กระทบผู้ถือสต๊อกใน ledger</p>
+          ) : null}
           <label className="inline-check">
             <input checked={draft.isActive} onChange={(event) => setDraft({ ...draft, isActive: event.target.checked })} type="checkbox" />
             เปิดใช้งานจุดนี้

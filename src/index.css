@@ -275,6 +275,7 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .reference-list-item__body { min-width: 0; display: grid; gap: 4px; }
 .reference-list-item__body strong { overflow: hidden; color: #334a67; font-size: 1rem; text-overflow: ellipsis; white-space: nowrap; }
 .reference-list-item__body small { overflow: hidden; color: #596d87; font-size: .92rem; text-overflow: ellipsis; white-space: nowrap; }
+.reference-list-item__body .reference-list-item__assignment { color: #8290a3; font-size: .76rem; }
 .reference-list-item__tags { display: flex; align-items: center; gap: 8px; justify-self: end; }
 .reference-pill { display: inline-flex; align-items: center; min-height: 28px; padding: 0 10px; border-radius: 999px; font-size: .74rem; font-weight: 700; white-space: nowrap; }
 .reference-pill--blue { color: #2d76e2; background: #edf4ff; }
@@ -290,6 +291,18 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .reference-form input[readonly] { background: #f4f7fb; color: #8391a3; }
 .reference-checkbox { color: #2060c5; font-weight: 600; }
 .reference-checkbox input { accent-color: #176cff; }
+.reference-assignment-fieldset { min-width: 0; display: grid; gap: 10px; padding: 14px; border: 1px solid #dbe5f1; border-radius: 14px; background: #f8fbff; }
+.reference-assignment-fieldset legend { padding: 0 6px; color: #294b76; font-size: .9rem; font-weight: 700; }
+.reference-assignment-fieldset > .muted { margin: 0; font-size: .8rem; line-height: 1.45; }
+.reference-assignment-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+.reference-assignment-option { min-width: 0; min-height: 48px; display: flex; align-items: center; gap: 10px; padding: 9px 11px; border: 1px solid #d6e1ee; border-radius: 11px; background: #fff; cursor: pointer; }
+.reference-assignment-option--selected { border-color: #6da3f7; background: #edf5ff; box-shadow: 0 0 0 1px rgba(23, 108, 255, .08); }
+.reference-assignment-option input { flex: 0 0 auto; min-height: auto; accent-color: #176cff; }
+.reference-assignment-option span { min-width: 0; display: grid; gap: 2px; }
+.reference-assignment-option strong, .reference-assignment-option small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.reference-assignment-option strong { color: #29435f; font-size: .82rem; }
+.reference-assignment-option small { color: #73849a; font-size: .72rem; }
+.reference-assignment-fieldset:disabled .reference-assignment-option { cursor: not-allowed; opacity: .55; }
 .reference-inline-note { display: flex; align-items: center; gap: 8px; color: #7b8aa0; font-size: .84rem; line-height: 1.5; }
 .reference-inline-note svg { flex: 0 0 auto; color: #3d86ff; }
 .reference-form__actions { display: flex; justify-content: flex-end; gap: 12px; padding-top: 6px; }
@@ -454,6 +467,7 @@ input:disabled, select:disabled, textarea:disabled { background: #f2f5f8; color:
   .field-grid, .field-grid--three { grid-template-columns: 1fr; }
   .reference-form__actions { flex-direction: column-reverse; }
   .reference-form__actions .primary-button, .reference-form__actions .secondary-button, .reference-form__actions .ghost-button, .reference-upload-button { width: 100%; }
+  .reference-assignment-list { grid-template-columns: 1fr; }
 }
 .metric-card--warning .metric-icon { color: var(--orange); background: #fff0dd; }
 .metric-card--danger .metric-icon { color: var(--red); background: #ffe7e9; }

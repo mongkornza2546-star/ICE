@@ -6,8 +6,13 @@ import {
   MagnifyingGlass,
 } from '@phosphor-icons/react';
 import type { UserProfile, AppRole } from '../../../types/app';
-import { ROLE_OPTIONS, type UserDraft } from '../types';
-import { updateUser, getErrorMessage } from '../adminReferenceSettingsService';
+import {
+  ROLE_OPTIONS,
+  type EmployeeWorkSiteAssignment,
+  type UserDraft,
+  type WorkSiteOption,
+} from '../types';
+import { saveUserWithWorkSiteAssignments, getErrorMessage } from '../adminReferenceSettingsService';
 import {
   filterLabel,
   matchesActiveFilter,
@@ -18,11 +23,18 @@ import {
 
 interface UserEditorProps {
   users: UserProfile[];
+  workSites: WorkSiteOption[];
+  workSiteAssignments: EmployeeWorkSiteAssignment[];
   currentUserId: string;
-  onUserSaved: (savedUser: UserProfile) => void;
+  onUserSaved: (savedUser: UserProfile, workSiteIds: string[]) => void;
 }
 
-function toUserDraft(user: UserProfile): UserDraft {
+function toUserDraft(
+  user: UserProfile,
+  workSiteAssignments: EmployeeWorkSiteAssignment[],
+  workSites: WorkSiteOption[],
+): UserDraft {
+  const activeWorkSiteIds = new Set(workSites.map((workSite) => workSite.id));
   return {
     id: user.id,
     code: user.code,
@@ -30,6 +42,10 @@ function toUserDraft(user: UserProfile): UserDraft {
     phone: user.phone ?? '',
     role: user.role,
     isActive: user.is_active,
+    workSiteIds: workSiteAssignments
+      .filter((assignment) => assignment.user_id === user.id)
+      .map((assignment) => assignment.stock_location_id)
+      .filter((workSiteId) => activeWorkSiteIds.has(workSiteId)),
   };
 }
 
@@ -37,8 +53,16 @@ function roleLabel(role: AppRole) {
   return ROLE_OPTIONS.find((option) => option.value === role)?.label ?? role;
 }
 
-export function UserEditor({ users, currentUserId, onUserSaved }: UserEditorProps) {
-  const [userDraft, setUserDraft] = useState<UserDraft | null>(() => users.length > 0 ? toUserDraft(users[0]) : null);
+export function UserEditor({
+  users,
+  workSites,
+  workSiteAssignments,
+  currentUserId,
+  onUserSaved,
+}: UserEditorProps) {
+  const [userDraft, setUserDraft] = useState<UserDraft | null>(() => (
+    users.length > 0 ? toUserDraft(users[0], workSiteAssignments, workSites) : null
+  ));
   const [userQuery, setUserQuery] = useState('');
   const [userFilter, setUserFilter] = useState<ActiveFilter>('all');
   
@@ -46,15 +70,32 @@ export function UserEditor({ users, currentUserId, onUserSaved }: UserEditorProp
   const [userError, setUserError] = useState<string | null>(null);
   const [userSuccess, setUserSuccess] = useState<string | null>(null);
 
+  const assignedWorkSitesByUser = useMemo(() => {
+    const workSiteById = new Map(workSites.map((workSite) => [workSite.id, workSite]));
+    const result = new Map<string, WorkSiteOption[]>();
+    for (const assignment of workSiteAssignments) {
+      const workSite = workSiteById.get(assignment.stock_location_id);
+      if (!workSite) continue;
+      result.set(assignment.user_id, [...(result.get(assignment.user_id) ?? []), workSite]);
+    }
+    return result;
+  }, [workSiteAssignments, workSites]);
+
   const filteredUsers = useMemo(
     () => users
-      .filter((user) => matchesQuery(userQuery, [user.code, user.display_name, user.phone, roleLabel(user.role)]))
+      .filter((user) => matchesQuery(userQuery, [
+        user.code,
+        user.display_name,
+        user.phone,
+        roleLabel(user.role),
+        ...(assignedWorkSitesByUser.get(user.id) ?? []).flatMap((workSite) => [workSite.code, workSite.name]),
+      ]))
       .filter((user) => matchesActiveFilter(user.is_active, userFilter)),
-    [userFilter, userQuery, users],
+    [assignedWorkSitesByUser, userFilter, userQuery, users],
   );
 
   function chooseUser(user: UserProfile) {
-    setUserDraft(toUserDraft(user));
+    setUserDraft(toUserDraft(user, workSiteAssignments, workSites));
     setUserError(null);
     setUserSuccess(null);
   }
@@ -81,16 +122,19 @@ export function UserEditor({ users, currentUserId, onUserSaved }: UserEditorProp
     setUserSuccess(null);
 
     try {
-      const savedUser = await updateUser(original.id, {
+      const saved = await saveUserWithWorkSiteAssignments(original.id, {
         display_name: displayName,
         phone: userDraft.phone.trim() || null,
         role: isCurrentUser ? original.role : userDraft.role,
         is_active: isCurrentUser ? original.is_active : userDraft.isActive,
-      });
+      }, userDraft.role === 'courier' && userDraft.isActive ? userDraft.workSiteIds : []);
 
-      onUserSaved(savedUser);
-      setUserDraft(toUserDraft(savedUser));
-      setUserSuccess('บันทึกข้อมูลผู้ใช้แล้ว');
+      onUserSaved(saved.user, saved.work_site_ids);
+      setUserDraft({
+        ...toUserDraft(saved.user, [], workSites),
+        workSiteIds: saved.work_site_ids,
+      });
+      setUserSuccess('บันทึกข้อมูลผู้ใช้และจุดประจำแล้ว');
     } catch (error) {
       setUserError(getErrorMessage(error));
     } finally {
@@ -133,6 +177,7 @@ export function UserEditor({ users, currentUserId, onUserSaved }: UserEditorProp
           <div className="reference-list">
             {filteredUsers.map((user) => {
               const selected = userDraft?.id === user.id;
+              const assignedWorkSites = assignedWorkSitesByUser.get(user.id) ?? [];
               return (
                 <button
                   aria-current={selected ? 'true' : undefined}
@@ -147,6 +192,11 @@ export function UserEditor({ users, currentUserId, onUserSaved }: UserEditorProp
                   <span className="reference-list-item__body">
                     <strong>{user.code}</strong>
                     <small>{user.display_name}</small>
+                    <small className="reference-list-item__assignment">
+                      {assignedWorkSites.length > 0
+                        ? `ประจำ ${assignedWorkSites.map((workSite) => workSite.name).join(', ')}`
+                        : 'ยังไม่กำหนดจุดประจำ'}
+                    </small>
                   </span>
                   <span className="reference-list-item__tags">
                     <span className="reference-pill reference-pill--blue">{roleLabel(user.role)}</span>
@@ -179,11 +229,48 @@ export function UserEditor({ users, currentUserId, onUserSaved }: UserEditorProp
                 <label>เบอร์โทร<input placeholder="ระบุเบอร์โทร (ถ้ามี)" type="tel" value={userDraft.phone} onChange={(event) => setUserDraft({ ...userDraft, phone: event.target.value })} /></label>
                 <label>
                   บทบาท
-                  <select disabled={editingCurrentUser} value={userDraft.role} onChange={(event) => setUserDraft({ ...userDraft, role: event.target.value as AppRole })}>
+                  <select
+                    disabled={editingCurrentUser}
+                    value={userDraft.role}
+                    onChange={(event) => {
+                      const role = event.target.value as AppRole;
+                      setUserDraft({
+                        ...userDraft,
+                        role,
+                        workSiteIds: role === 'courier' ? userDraft.workSiteIds : [],
+                      });
+                    }}
+                  >
                     {ROLE_OPTIONS.map((role) => <option key={role.value} value={role.value}>{role.label}</option>)}
                   </select>
                 </label>
               </div>
+              <fieldset className="reference-assignment-fieldset" disabled={userDraft.role !== 'courier' || !userDraft.isActive}>
+                <legend>จุดปฏิบัติงานประจำ</legend>
+                <p className="muted">เลือกได้มากกว่าหนึ่งจุด ข้อมูลนี้ใช้ระบุว่าพนักงานแต่ละคนดูแลจุดใดบ้าง</p>
+                <div className="reference-assignment-list">
+                  {workSites.map((workSite) => {
+                    const checked = userDraft.workSiteIds.includes(workSite.id);
+                    return (
+                      <label className={`reference-assignment-option ${checked ? 'reference-assignment-option--selected' : ''}`} key={workSite.id}>
+                        <input
+                          checked={checked}
+                          onChange={(event) => setUserDraft({
+                            ...userDraft,
+                            workSiteIds: event.target.checked
+                              ? [...userDraft.workSiteIds, workSite.id]
+                              : userDraft.workSiteIds.filter((id) => id !== workSite.id),
+                          })}
+                          type="checkbox"
+                        />
+                        <span><strong>{workSite.name}</strong><small>{workSite.code}</small></span>
+                      </label>
+                    );
+                  })}
+                  {workSites.length === 0 ? <p className="empty-text">ยังไม่มีจุดปฏิบัติงานที่เปิดใช้งาน</p> : null}
+                </div>
+                {userDraft.role !== 'courier' ? <p className="muted">การกำหนดจุดประจำใช้กับบทบาทพนักงานส่งเท่านั้น</p> : null}
+              </fieldset>
               <label className="inline-check reference-checkbox">
                 <input checked={userDraft.isActive} disabled={editingCurrentUser} onChange={(event) => setUserDraft({ ...userDraft, isActive: event.target.checked })} type="checkbox" />
                 เปิดใช้งานบัญชีนี้

@@ -1,8 +1,12 @@
 import { useEffect, useState } from 'react';
 import { Cube, UsersThree } from '@phosphor-icons/react';
 import type { UserProfile } from './types/app';
-import type { IceTypeSetting } from './features/admin-reference-settings/types';
-import type { DeliveryRoundNameSetting } from './features/admin-reference-settings/types';
+import type {
+  DeliveryRoundNameSetting,
+  EmployeeWorkSiteAssignment,
+  IceTypeSetting,
+  WorkSiteOption,
+} from './features/admin-reference-settings/types';
 import { loadAdminSettings } from './features/admin-reference-settings/adminReferenceSettingsService';
 import { UserEditor } from './features/admin-reference-settings/components/UserEditor';
 import { IceTypeEditor } from './features/admin-reference-settings/components/IceTypeEditor';
@@ -14,6 +18,8 @@ export function AdminReferenceSettings() {
 
 function AdminReferenceSettingsContent() {
   const [users, setUsers] = useState<UserProfile[]>([]);
+  const [workSites, setWorkSites] = useState<WorkSiteOption[]>([]);
+  const [workSiteAssignments, setWorkSiteAssignments] = useState<EmployeeWorkSiteAssignment[]>([]);
   const [iceTypes, setIceTypes] = useState<IceTypeSetting[]>([]);
   const [roundNames, setRoundNames] = useState<DeliveryRoundNameSetting[]>([]);
   const [currentUserId, setCurrentUserId] = useState('');
@@ -36,6 +42,8 @@ function AdminReferenceSettingsContent() {
 
         setCurrentUserId(data.currentUserId);
         setUsers(data.users);
+        setWorkSites(data.workSites);
+        setWorkSiteAssignments(data.workSiteAssignments);
         setIceTypes(data.iceTypes);
         setRoundNames(data.roundNames);
         setAuthorized(true);
@@ -55,8 +63,15 @@ function AdminReferenceSettingsContent() {
     };
   }, []);
 
-  function handleUserSaved(savedUser: UserProfile) {
+  function handleUserSaved(savedUser: UserProfile, workSiteIds: string[]) {
     setUsers((current) => current.map((user) => user.id === savedUser.id ? savedUser : user));
+    setWorkSiteAssignments((current) => [
+      ...current.filter((assignment) => assignment.user_id !== savedUser.id),
+      ...workSiteIds.map((stockLocationId) => ({
+        user_id: savedUser.id,
+        stock_location_id: stockLocationId,
+      })),
+    ]);
   }
 
   function handleIceTypeSaved(savedIceType: IceTypeSetting) {
@@ -117,6 +132,8 @@ function AdminReferenceSettingsContent() {
         currentUserId={currentUserId}
         onUserSaved={handleUserSaved}
         users={users}
+        workSiteAssignments={workSiteAssignments}
+        workSites={workSites}
       />
 
       <IceTypeEditor

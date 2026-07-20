@@ -3,6 +3,8 @@ import { isMissingRpc } from '../../lib/rpc';
 import type { UserProfile, AppRole } from '../../types/app';
 import {
   USER_FIELDS,
+  WORK_SITE_FIELDS,
+  EMPLOYEE_WORK_SITE_ASSIGNMENT_FIELDS,
   ICE_TYPE_FIELDS,
   DELIVERY_ROUND_NAME_FIELDS,
   SHOP_FIELDS,
@@ -11,6 +13,8 @@ import {
   type IceTypeSetting,
   type DeliveryRoundNameSetting,
   type ShopImageSetting,
+  type WorkSiteOption,
+  type EmployeeWorkSiteAssignment,
 } from './types';
 
 export function getErrorMessage(error: unknown) {
@@ -46,15 +50,28 @@ export async function loadAdminSettings(isCancelled: () => boolean) {
     throw new Error('หน้านี้ใช้ได้เฉพาะบัญชีแอดมินที่เปิดใช้งาน');
   }
 
-  const [usersResponse, iceTypesResponse, roundNamesResponse] = await Promise.all([
+  const [usersResponse, workSitesResponse, assignmentsResponse, iceTypesResponse, roundNamesResponse] = await Promise.all([
     client.from('users').select(USER_FIELDS).order('code'),
+    client
+      .from('stock_locations')
+      .select(WORK_SITE_FIELDS)
+      .eq('kind', 'work_site')
+      .eq('is_active', true)
+      .order('code'),
+    client
+      .from('employee_work_site_assignments')
+      .select(EMPLOYEE_WORK_SITE_ASSIGNMENT_FIELDS),
     client.from('ice_types').select(ICE_TYPE_FIELDS).order('code'),
     client.from('delivery_round_name_options').select(DELIVERY_ROUND_NAME_FIELDS).order('sort_order').order('name'),
   ]);
   
   if (isCancelled()) return null;
 
-  const firstError = usersResponse.error ?? iceTypesResponse.error ?? roundNamesResponse.error;
+  const firstError = usersResponse.error
+    ?? workSitesResponse.error
+    ?? assignmentsResponse.error
+    ?? iceTypesResponse.error
+    ?? roundNamesResponse.error;
   if (firstError) {
     throw new Error(firstError.message);
   }
@@ -62,6 +79,8 @@ export async function loadAdminSettings(isCancelled: () => boolean) {
   return {
     currentUserId: authData.user.id,
     users: (usersResponse.data ?? []) as UserProfile[],
+    workSites: (workSitesResponse.data ?? []) as WorkSiteOption[],
+    workSiteAssignments: (assignmentsResponse.data ?? []) as EmployeeWorkSiteAssignment[],
     iceTypes: (iceTypesResponse.data ?? []) as IceTypeSetting[],
     roundNames: (roundNamesResponse.data ?? []) as DeliveryRoundNameSetting[],
   };
@@ -85,22 +104,29 @@ export async function saveDeliveryRoundName(
   return data as DeliveryRoundNameSetting;
 }
 
-export async function updateUser(
+export async function saveUserWithWorkSiteAssignments(
   userId: string,
-  updates: { display_name: string; phone: string | null; role: AppRole; is_active: boolean }
-): Promise<UserProfile> {
+  updates: { display_name: string; phone: string | null; role: AppRole; is_active: boolean },
+  workSiteIds: string[],
+): Promise<{ user: UserProfile; work_site_ids: string[] }> {
   const client = supabase;
   if (!client) throw new Error('Supabase client not initialized');
 
-  const { data, error } = await client
-    .from('users')
-    .update(updates)
-    .eq('id', userId)
-    .select(USER_FIELDS)
-    .single();
+  const { data, error } = await client.rpc('save_user_with_work_site_assignments', {
+    p_user_id: userId,
+    p_display_name: updates.display_name,
+    p_phone: updates.phone,
+    p_role: updates.role,
+    p_is_active: updates.is_active,
+    p_work_site_ids: workSiteIds,
+  });
 
   if (error) throw new Error(error.message);
-  return data as UserProfile;
+  const result = data as { user?: UserProfile; work_site_ids?: string[] } | null;
+  if (!result?.user || !Array.isArray(result.work_site_ids)) {
+    throw new Error('Supabase did not return the saved user and work-site assignments');
+  }
+  return { user: result.user, work_site_ids: result.work_site_ids };
 }
 
 export async function saveIceType(

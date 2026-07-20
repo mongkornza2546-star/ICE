@@ -7,6 +7,18 @@ export interface UserDraft {
   phone: string;
   role: AppRole;
   isActive: boolean;
+  workSiteIds: string[];
+}
+
+export interface WorkSiteOption {
+  id: string;
+  code: string;
+  name: string;
+}
+
+export interface EmployeeWorkSiteAssignment {
+  user_id: string;
+  stock_location_id: string;
 }
 
 export interface IceTypeSetting {
@@ -73,6 +85,8 @@ export const ALLOWED_SHOP_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'ima
 export const MAX_SHOP_IMAGE_SIZE = 5 * 1024 * 1024;
 export const SHOP_IMAGE_BUCKET = 'shop-images';
 export const USER_FIELDS = 'id, code, display_name, phone, role, is_active';
+export const WORK_SITE_FIELDS = 'id, code, name';
+export const EMPLOYEE_WORK_SITE_ASSIGNMENT_FIELDS = 'user_id, stock_location_id';
 export const ICE_TYPE_FIELDS = 'id, code, name, unit, image_path, is_active';
 export const DELIVERY_ROUND_NAME_FIELDS = 'id, name, sort_order, is_active';
 export const SHOP_FIELDS = 'id, code, name, image_path, status';
