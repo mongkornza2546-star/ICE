@@ -63,6 +63,8 @@ export function ShopSettings() {
   const [buildingFilter, setBuildingFilter] = useState('');
   const [zoneFilter, setZoneFilter] = useState('');
   const [shopFilter, setShopFilter] = useState<ActiveFilter>('all');
+  const [page, setPage] = useState(0);
+  const PAGE_SIZE = 12;
   const [editorOpen, setEditorOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -198,6 +200,12 @@ export function ShopSettings() {
       return matchesSearch && matchesActiveFilter(shop.status === 'active', shopFilter) && matchesBuilding && matchesZone;
     });
   }, [query, shopFilter, buildingFilter, zoneFilter, shops]);
+
+  // Reset to page 0 whenever filters change
+  useEffect(() => { setPage(0); }, [query, shopFilter, buildingFilter, zoneFilter]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredShops.length / PAGE_SIZE));
+  const pagedShops = filteredShops.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
 
   const selectShop = (shop: ShopSetting) => {
     setDraft({
@@ -481,46 +489,48 @@ export function ShopSettings() {
               value={query}
             />
           </label>
-          <select 
-            aria-label="กรองตึก"
-            className="shop-filter-button"
-            onChange={(e) => {
-              setBuildingFilter(e.target.value);
-              setZoneFilter('');
-            }}
-            value={buildingFilter}
-          >
-            <option value="">ทุกตึก</option>
-            {buildings.map((b) => (
-              <option key={b.id} value={b.id}>{b.code} · {b.name}</option>
-            ))}
-          </select>
-          <select 
-            aria-label="กรองโซนย่อย"
-            className="shop-filter-button"
-            disabled={!buildingFilter}
-            onChange={(e) => setZoneFilter(e.target.value)}
-            value={zoneFilter}
-          >
-            <option value="">ทุกโซน</option>
-            {zones.filter((z) => z.building_id === buildingFilter).map((z) => (
-              <option key={z.id} value={z.id}>{z.code} · {z.name}</option>
-            ))}
-          </select>
-          <button
-            aria-label={`กรองร้านค้า: ${filterLabel(shopFilter)}`}
-            className={`shop-filter-button ${shopFilter !== 'all' ? 'shop-filter-button--active' : ''}`}
-            onClick={() => setShopFilter(nextFilter(shopFilter))}
-            title={`กรองร้านค้า: ${filterLabel(shopFilter)}`}
-            type="button"
-          >
-            <FunnelSimple aria-hidden="true" size={20} />
-            <span>{filterLabel(shopFilter)}</span>
-          </button>
-          <span className="shop-catalog__count">พบ {filteredShops.length} ร้าน</span>
+          <div className="shop-catalog__filters">
+            <select 
+              aria-label="กรองตึก"
+              className="shop-filter-button"
+              onChange={(e) => {
+                setBuildingFilter(e.target.value);
+                setZoneFilter('');
+              }}
+              value={buildingFilter}
+            >
+              <option value="">ทุกตึก</option>
+              {buildings.map((b) => (
+                <option key={b.id} value={b.id}>{b.code} · {b.name}</option>
+              ))}
+            </select>
+            <select 
+              aria-label="กรองโซนย่อย"
+              className="shop-filter-button"
+              disabled={!buildingFilter}
+              onChange={(e) => setZoneFilter(e.target.value)}
+              value={zoneFilter}
+            >
+              <option value="">ทุกโซน</option>
+              {zones.filter((z) => z.building_id === buildingFilter).map((z) => (
+                <option key={z.id} value={z.id}>{z.code} · {z.name}</option>
+              ))}
+            </select>
+            <button
+              aria-label={`กรองร้านค้า: ${filterLabel(shopFilter)}`}
+              className={`shop-filter-button ${shopFilter !== 'all' ? 'shop-filter-button--active' : ''}`}
+              onClick={() => setShopFilter(nextFilter(shopFilter))}
+              title={`กรองร้านค้า: ${filterLabel(shopFilter)}`}
+              type="button"
+            >
+              <FunnelSimple aria-hidden="true" size={20} />
+              <span>{filterLabel(shopFilter)}</span>
+            </button>
+            <span className="shop-catalog__count">พบ {filteredShops.length} ร้าน</span>
+          </div>
         </div>
         <div className="shop-card-grid">
-          {filteredShops.map((shop) => {
+          {pagedShops.map((shop) => {
             const building = buildings.find((item) => item.id === shop.building_id);
             const zone = zones.find((item) => item.id === shop.zone_id);
             const imageUrl = shopImageUrls[shop.id];
@@ -556,6 +566,23 @@ export function ShopSettings() {
             <div className="shop-catalog__empty"><ImageSquare aria-hidden="true" size={32} weight="duotone" /><strong>ไม่พบร้านที่ค้นหา</strong><span>ลองค้นหาด้วยรหัสร้านหรือชื่อร้านอีกครั้ง</span></div>
           ) : null}
         </div>
+        {totalPages > 1 ? (
+          <div className="shop-catalog__pagination">
+            <button
+              className="shop-filter-button"
+              disabled={page === 0}
+              onClick={() => setPage((p) => Math.max(0, p - 1))}
+              type="button"
+            >‹ ก่อนหน้า</button>
+            <span className="shop-catalog__page-info">หน้า {page + 1} / {totalPages}</span>
+            <button
+              className="shop-filter-button"
+              disabled={page >= totalPages - 1}
+              onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+              type="button"
+            >ถัดไป ›</button>
+          </div>
+        ) : null}
       </section>
 
       {editorOpen ? (
