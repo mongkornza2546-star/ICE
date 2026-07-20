@@ -7,6 +7,7 @@ import {
   DELIVERY_ROUND_NAME_FIELDS,
   SHOP_FIELDS,
   SHOP_IMAGE_BUCKET,
+  ICE_TYPE_IMAGE_BUCKET,
   type IceTypeSetting,
   type DeliveryRoundNameSetting,
   type ShopImageSetting,
@@ -141,7 +142,17 @@ export async function saveIceType(
     }
     return fallbackResponse.data as IceTypeSetting;
   }
-  return response.data as IceTypeSetting;
+  const savedId = (response.data as { id?: string } | null)?.id;
+  if (!savedId) throw new Error('Supabase did not return the saved ice type id');
+
+  const { data, error } = await client
+    .from('ice_types')
+    .select(ICE_TYPE_FIELDS)
+    .eq('id', savedId)
+    .single();
+
+  if (error) throw new Error(error.message);
+  return data as IceTypeSetting;
 }
 
 export async function getShopImageSignedUrl(imagePath: string): Promise<string> {
@@ -151,7 +162,7 @@ export async function getShopImageSignedUrl(imagePath: string): Promise<string> 
   const { data, error } = await client.storage
     .from(SHOP_IMAGE_BUCKET)
     .createSignedUrl(imagePath, 3600);
-    
+
   if (error) throw new Error(error.message);
   return data.signedUrl;
 }
@@ -208,8 +219,63 @@ export async function updateShopImagePath(shopId: string, imagePath: string | nu
 export async function removeShopImageFiles(paths: string[]): Promise<void> {
   const client = supabase;
   if (!client) throw new Error('Supabase client not initialized');
-  
+
   if (paths.length === 0) return;
   const { error } = await client.storage.from(SHOP_IMAGE_BUCKET).remove(paths);
+  if (error) throw new Error(error.message);
+}
+
+export async function getIceTypeImageSignedUrl(imagePath: string): Promise<string> {
+  const client = supabase;
+  if (!client) throw new Error('Supabase client not initialized');
+
+  const { data, error } = await client.storage
+    .from(ICE_TYPE_IMAGE_BUCKET)
+    .createSignedUrl(imagePath, 3600);
+
+  if (error) throw new Error(error.message);
+  return data.signedUrl;
+}
+
+export async function uploadIceTypeImage(iceTypeId: string, file: File): Promise<string> {
+  const client = supabase;
+  if (!client) throw new Error('Supabase client not initialized');
+
+  const extension = file.name.includes('.') ? file.name.split('.').pop()?.toLowerCase() ?? 'jpg' : 'jpg';
+  const nextPath = `ice_types/${iceTypeId}/${Date.now()}-${crypto.randomUUID()}.${extension}`;
+
+  const { error: uploadError } = await client.storage
+    .from(ICE_TYPE_IMAGE_BUCKET)
+    .upload(nextPath, file, {
+      cacheControl: '3600',
+      contentType: file.type || undefined,
+      upsert: false,
+    });
+
+  if (uploadError) throw new Error(uploadError.message);
+  return nextPath;
+}
+
+export async function updateIceTypeImagePath(iceTypeId: string, imagePath: string | null): Promise<IceTypeSetting> {
+  const client = supabase;
+  if (!client) throw new Error('Supabase client not initialized');
+
+  const { data, error } = await client
+    .from('ice_types')
+    .update({ image_path: imagePath })
+    .eq('id', iceTypeId)
+    .select(ICE_TYPE_FIELDS)
+    .single();
+
+  if (error) throw new Error(error.message);
+  return data as IceTypeSetting;
+}
+
+export async function removeIceTypeImageFiles(paths: string[]): Promise<void> {
+  const client = supabase;
+  if (!client) throw new Error('Supabase client not initialized');
+
+  if (paths.length === 0) return;
+  const { error } = await client.storage.from(ICE_TYPE_IMAGE_BUCKET).remove(paths);
   if (error) throw new Error(error.message);
 }

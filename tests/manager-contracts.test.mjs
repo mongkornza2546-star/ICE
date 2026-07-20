@@ -65,6 +65,34 @@ test('manager summary rejects stale round responses before close', () => {
   assert.match(component, /summaryRoundId !== round\.id/);
 });
 
+test('round leads can cancel an unused open round with a required audit reason', () => {
+  const migration = read('supabase/migrations/0027_cancel_delivery_round.sql');
+  const component = read('src/ManagerRoundControl.tsx');
+  const dashboard = read('src/ManagerDashboard.tsx');
+
+  assert.match(migration, /create or replace function public\.delivery_round_cancellation_blockers\(/);
+  assert.match(migration, /create or replace function public\.get_delivery_round_cancellation_state\(/);
+  assert.match(migration, /create or replace function public\.cancel_delivery_round\(/);
+  assert.match(migration, /current_app_role\(\) not in \('admin', 'round_lead'\)/);
+  assert.match(migration, /A cancellation reason is required/);
+  assert.match(migration, /from public\.delivery_events event/);
+  assert.match(migration, /from public\.stock_movements movement/);
+  assert.match(migration, /set status = 'closed'/);
+  assert.match(migration, /cancellation_reason = trim\(p_reason\)/);
+  assert.match(migration, /insert into public\.audit_logs/);
+  assert.match(migration, /stock_movements_reject_cancelled_round/);
+  assert.match(migration, /for key share/);
+  assert.match(migration, /insert into public\.round_stock_snapshots/);
+  assert.match(migration, /v_captured_at := clock_timestamp\(\)/);
+  assert.match(component, /supabase\.rpc\('cancel_delivery_round'/);
+  assert.match(component, /supabase\.rpc\('get_delivery_round_cancellation_state'/);
+  assert.match(component, /ยกเลิกการเปิดรอบ/);
+  assert.match(component, /ยืนยันยกเลิกรอบ/);
+  assert.match(dashboard, /round\.cancelled_at \? \(/);
+  assert.match(dashboard, /round\.cancellation_reason/);
+  assert.match(dashboard, /ไม่นับรวมในงานค้าง/);
+});
+
 test('day-wide stock movements are serialized and idempotent', () => {
   const migration = read('supabase/migrations/0007_daily_mobile_stock.sql');
 
@@ -198,9 +226,11 @@ test('stock ledger starts with new delivery events instead of rewriting history'
   assert.match(migration, /Existing delivery events intentionally remain outside the stock ledger/);
 });
 
-test('closed rounds still allow final day stock movements', () => {
+test('closed rounds show a read-only stock snapshot while the day view stays live', () => {
   const migration = read('supabase/migrations/0007_daily_mobile_stock.sql');
+  const snapshotMigration = read('supabase/migrations/0026_round_stock_snapshots.sql');
   const component = read('src/ManagerStockControl.tsx');
+  const workspace = read('src/RoundWorkspace.tsx');
   const stockMovement = migration.slice(
     migration.indexOf('create or replace function public.record_stock_movement('),
     migration.indexOf('create or replace function public.record_delivery('),
@@ -208,7 +238,18 @@ test('closed rounds still allow final day stock movements', () => {
 
   assert.match(stockMovement, /p_kind = 'factory_order' and not v_day_has_open_round/);
   assert.doesNotMatch(stockMovement, /v_round_status <> 'open'/);
-  assert.doesNotMatch(component, /disabled=\{submitting \|\| round\.status === 'closed'\}/);
+  assert.match(snapshotMigration, /create table public\.round_stock_snapshot_items/);
+  assert.match(snapshotMigration, /insert into public\.round_stock_snapshot_items/);
+  assert.match(snapshotMigration, /'is_snapshot', v_is_snapshot/);
+  assert.match(snapshotMigration, /'snapshot_at', v_snapshot_at/);
+  assert.match(component, /const isRoundSnapshot = round\?\.status === 'closed'/);
+  assert.match(component, /สต๊อกทั้งวัน ณ เวลาปิดรอบ/);
+  assert.match(component, /!isRoundSnapshot \? \(/);
+  assert.match(workspace, /สต๊อกปัจจุบันของวัน/);
+  assert.match(workspace, /stockRound\?\.status === 'open' \? stockRound : null/);
+  assert.match(workspace, /selectedRound\?\.service_date === stockServiceDate && !selectedRound\.cancelled_at/);
+  assert.match(snapshotMigration, /stock_movements_stamp_effective_time/);
+  assert.match(snapshotMigration, /new\.recorded_at := clock_timestamp\(\)/);
 });
 
 test('recoverable auth session errors sign users out with actionable guidance', () => {
@@ -279,6 +320,16 @@ test('returned-stock counts snapshot system, actual, and unexplained variance', 
   );
   assert.match(component, /supabase\.rpc\('record_location_count'/);
   assert.match(component, /ไม่ปรับยอดอัตโนมัติ/);
+});
+
+test('returned-stock snapshots accept half-bag quantities', () => {
+  const migration = read('supabase/migrations/0025_half_bag_location_counts.sql');
+  const component = read('src/ManagerStockControl.tsx');
+
+  assert.match(migration, /actual_quantity type numeric\(12, 1\)/);
+  assert.match(migration, /actual_quantity numeric\(12, 1\)/);
+  assert.match(migration, /whole or half-bag count/);
+  assert.match(component, /step=\{0\.5\}/);
 });
 
 test('manager delivery corrections restore stock and require an audit reason', () => {

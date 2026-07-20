@@ -16,6 +16,7 @@ import {
   nextFilter,
   type ActiveFilter,
 } from '../referenceEditorFilters';
+import { IceTypeImageEditor } from './IceTypeImageEditor';
 
 interface IceTypeEditorProps {
   iceTypes: IceTypeSetting[];
@@ -28,6 +29,7 @@ function toIceTypeDraft(iceType: IceTypeSetting): IceTypeDraft {
     code: iceType.code,
     name: iceType.name,
     unit: iceType.unit,
+    image_path: iceType.image_path,
     isActive: iceType.is_active,
   };
 }
@@ -205,6 +207,11 @@ export function IceTypeEditor({ iceTypes, onIceTypeSaved }: IceTypeEditorProps) 
               </button>
             </div>
           </form>
+
+          <IceTypeImageEditor
+            iceType={iceTypes.find((iceType) => iceType.id === iceTypeDraft.id) ?? null}
+            onIceTypeSaved={onIceTypeSaved}
+          />
         </div>
       </div>
     </section>

@@ -68,7 +68,20 @@ export function RoundWorkspace({ profile, mode }: { profile: UserProfile; mode: 
     () => rounds.find((round) => round.id === selectedRoundId) ?? null,
     [rounds, selectedRoundId],
   );
-  const stockRound = selectedRound?.service_date === stockServiceDate ? selectedRound : null;
+  const stockRound = selectedRound?.service_date === stockServiceDate && !selectedRound.cancelled_at
+    ? selectedRound
+    : null;
+  const stockOperationRound = useMemo(
+    () => (stockRound?.status === 'open' ? stockRound : null)
+      ?? rounds.find((round) => round.service_date === stockServiceDate && round.status === 'open')
+      ?? rounds.find((round) => round.service_date === stockServiceDate && !round.cancelled_at)
+      ?? null,
+    [rounds, stockRound, stockServiceDate],
+  );
+  const visibleRounds = useMemo(
+    () => mode === 'stock' ? rounds.filter((round) => !round.cancelled_at) : rounds,
+    [mode, rounds],
+  );
 
   const handleCreateRound = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -208,12 +221,22 @@ export function RoundWorkspace({ profile, mode }: { profile: UserProfile; mode: 
         <section className="panel">
           <div className="panel-header">
             <div>
-              <p className="eyebrow">รอบที่เข้าถึงได้</p>
-              <h2>เลือกรอบส่ง</h2>
+              <p className="eyebrow">{mode === 'stock' ? 'มุมมองสต๊อก' : 'รอบที่เข้าถึงได้'}</p>
+              <h2>{mode === 'stock' ? 'เลือกปัจจุบันหรือประวัติรอบ' : 'เลือกรอบส่ง'}</h2>
             </div>
           </div>
           <div className="round-list">
-            {rounds.map((round) => (
+            {mode === 'stock' ? (
+              <button
+                className={`round-item ${stockRound === null ? 'round-item--selected' : ''}`}
+                onClick={() => setSelectedRoundId('')}
+                type="button"
+              >
+                <span>สต๊อกปัจจุบันของวัน</span>
+                <small>{stockServiceDate} · อัปเดตต่อเนื่อง</small>
+              </button>
+            ) : null}
+            {visibleRounds.map((round) => (
               <button
                 className={`round-item ${round.id === selectedRoundId ? 'round-item--selected' : ''}`}
                 key={round.id}
@@ -223,13 +246,16 @@ export function RoundWorkspace({ profile, mode }: { profile: UserProfile; mode: 
                 }}
                 type="button"
               >
-                <span>{round.name}</span>
+                <span>{round.name} — {roundStatusLabel(round)}</span>
                 <small>
-                  {round.service_date} · {round.status === 'open' ? 'เปิดอยู่' : 'ปิดแล้ว'}
+                  {round.service_date} · เริ่ม {formatRoundTime(round.opened_at)}
+                  {round.cancelled_at
+                    ? ` · ยกเลิก ${formatRoundTime(round.cancelled_at)}`
+                    : round.status === 'closed' ? ` · ปิด ${formatRoundTime(round.closed_at)}` : ''}
                 </small>
               </button>
             ))}
-            {rounds.length === 0 ? (
+            {visibleRounds.length === 0 ? (
               <p className="empty-text">ยังไม่มีรอบส่งที่บัญชีนี้เข้าถึงได้</p>
             ) : null}
           </div>
@@ -253,6 +279,9 @@ export function RoundWorkspace({ profile, mode }: { profile: UserProfile; mode: 
               </div>
             </div>
             <ManagerRoundControl
+              onCancelled={async () => {
+                await loadReferenceData();
+              }}
               onClosed={async () => {
                 await loadReferenceData();
               }}
@@ -265,8 +294,8 @@ export function RoundWorkspace({ profile, mode }: { profile: UserProfile; mode: 
           <section className="panel">
             <div className="panel-header">
               <div>
-                <p className="eyebrow">สต๊อกต่อเนื่องทั้งวัน</p>
-                <h2>{stockRound ? `${stockRound.name} · ${stockServiceDate}` : `วันที่ ${stockServiceDate}`}</h2>
+                <p className="eyebrow">{stockRound?.status === 'closed' ? 'ประวัติสต๊อก ณ เวลาปิดรอบ' : 'สต๊อกต่อเนื่องทั้งวัน'}</p>
+                <h2>{stockRound ? `${stockRound.name} — ${stockRound.status === 'closed' ? 'ปิดแล้ว' : 'เปิดอยู่'} · ${stockServiceDate}` : `วันที่ ${stockServiceDate}`}</h2>
               </div>
               <label className="toolbar-select">
                 วันที่สต๊อก
@@ -277,10 +306,23 @@ export function RoundWorkspace({ profile, mode }: { profile: UserProfile; mode: 
                 />
               </label>
             </div>
-            <ManagerStockControl round={stockRound} serviceDate={stockServiceDate} />
+            <ManagerStockControl operationRound={stockOperationRound} round={stockRound} serviceDate={stockServiceDate} />
           </section>
         )}
       </section>
     </div>
   );
+}
+
+function formatRoundTime(value?: string | null) {
+  if (!value) return '-';
+  return new Intl.DateTimeFormat('th-TH', {
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(value));
+}
+
+function roundStatusLabel(round: { status: 'open' | 'closed'; cancelled_at?: string | null }) {
+  if (round.cancelled_at) return 'ยกเลิกแล้ว';
+  return round.status === 'open' ? 'เปิดอยู่' : 'ปิดแล้ว';
 }

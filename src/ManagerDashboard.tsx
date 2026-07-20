@@ -143,7 +143,7 @@ export function ManagerDashboard({
         const serviceDate = todayIsoDate();
         const roundsResponse = await client
           .from('delivery_rounds')
-          .select('id, service_date, name, status, opened_at')
+          .select('id, service_date, name, status, opened_at, cancelled_at, cancellation_reason')
           .eq('service_date', serviceDate)
           .order('opened_at', { ascending: false });
 
@@ -227,8 +227,9 @@ export function ManagerDashboard({
   }
 
   const openRoundCount = data.rounds.filter(({ round }) => round.status === 'open').length;
-  const closedRoundCount = data.rounds.length - openRoundCount;
-  const stopTotals = data.rounds.reduce(
+  const closedRoundCount = data.rounds.filter(({ round }) => round.status === 'closed' && !round.cancelled_at).length;
+  const cancelledRoundCount = data.rounds.filter(({ round }) => Boolean(round.cancelled_at)).length;
+  const stopTotals = data.rounds.filter(({ round }) => !round.cancelled_at).reduce(
     (totals, { summary }) => ({
       total: totals.total + summary.stop_counts.total,
       delivered: totals.delivered + summary.stop_counts.delivered,
@@ -253,7 +254,10 @@ export function ManagerDashboard({
             <p className="eyebrow">สถานะการส่งวันนี้</p>
             <h2>รอบส่งและร้านค้า</h2>
           </div>
-          <span className="status-badge status-badge--info">{data.rounds.length.toLocaleString('th-TH')} รอบ</span>
+          <span className="status-badge status-badge--info">
+            {data.rounds.length.toLocaleString('th-TH')} รอบ
+            {cancelledRoundCount > 0 ? ` · ยกเลิก ${cancelledRoundCount.toLocaleString('th-TH')}` : ''}
+          </span>
         </div>
 
         <div className="metric-grid">
@@ -274,14 +278,24 @@ export function ManagerDashboard({
               <button className="round-overview-card" key={round.id} onClick={() => onNavigate('manager')} type="button">
                 <span className="round-overview-card__top">
                   <strong>{round.name}</strong>
-                  <span className={`status-badge status-badge--${round.status === 'open' ? 'warning' : 'success'}`}>
-                    {round.status === 'open' ? 'เปิดอยู่' : 'ปิดแล้ว'}
+                  <span className={`status-badge status-badge--${round.cancelled_at ? 'danger' : round.status === 'open' ? 'warning' : 'success'}`}>
+                    {round.cancelled_at ? 'ยกเลิกแล้ว' : round.status === 'open' ? 'เปิดอยู่' : 'ปิดแล้ว'}
                   </span>
                 </span>
                 <small>เปิดเวลา {formatTime(round.opened_at)}</small>
-                <p><strong>{summary.stop_counts.delivered}</strong> <span>/ {summary.stop_counts.total} ร้าน</span></p>
-                <span className="progress-track" aria-label={`ส่งสำเร็จ ${progress}%`}><i style={{ width: `${progress}%` }} /></span>
-                <b>ค้าง {summary.stop_counts.pending} · ปัญหา {summary.stop_counts.problem}</b>
+                {round.cancelled_at ? (
+                  <>
+                    <p><strong>ยกเลิก {formatTime(round.cancelled_at)}</strong></p>
+                    <span>{round.cancellation_reason ?? 'ไม่ได้ระบุเหตุผล'}</span>
+                    <b>ไม่นับรวมในงานค้าง</b>
+                  </>
+                ) : (
+                  <>
+                    <p><strong>{summary.stop_counts.delivered}</strong> <span>/ {summary.stop_counts.total} ร้าน</span></p>
+                    <span className="progress-track" aria-label={`ส่งสำเร็จ ${progress}%`}><i style={{ width: `${progress}%` }} /></span>
+                    <b>ค้าง {summary.stop_counts.pending} · ปัญหา {summary.stop_counts.problem}</b>
+                  </>
+                )}
               </button>
             );
           })}

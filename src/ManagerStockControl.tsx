@@ -32,12 +32,16 @@ const LOCATION_LABELS: Record<StockLocationBalance['kind'], string> = {
 type QuantityDraft = Record<string, number>;
 
 export function ManagerStockControl({
+  operationRound,
   round,
   serviceDate,
 }: {
+  operationRound: DeliveryRound | null;
   round: DeliveryRound | null;
   serviceDate: string;
 }) {
+  const isRoundSnapshot = round?.status === 'closed';
+  const actionRound = operationRound ?? round;
   const [summary, setSummary] = useState<StockControlSummary | null>(null);
   const [summaryRoundId, setSummaryRoundId] = useState<string | null>(null);
   const [kind, setKind] = useState<StockOperationKind>('transfer');
@@ -139,7 +143,7 @@ export function ManagerStockControl({
     ) => {
       if (!supabase) throw new Error('Supabase is not initialized');
       return supabase.rpc('record_stock_movement', {
-        p_round_id: round!.id,
+        p_round_id: actionRound!.id,
         p_kind: args.kind,
         p_from_location_id: args.fromLocationId || null,
         p_to_location_id: args.kind === 'transfer' ? args.toLocationId || null : null,
@@ -149,10 +153,10 @@ export function ManagerStockControl({
       });
     },
     {
-      deps: [round?.id],
+      deps: [actionRound?.id, round?.id, serviceDate],
       successMessage: (_, args) => `บันทึก “${MOVEMENT_LABELS[args.kind]}” แล้ว`,
-      onSuccess: (data) => {
-        setSummary(data as StockControlSummary);
+      onSuccess: async () => {
+        await loadSummary(serviceDate, round?.id ?? null);
         setQuantities(Object.fromEntries(iceTypes.map((ice) => [ice.ice_type_id, 0])));
         setNote('');
       },
@@ -161,11 +165,15 @@ export function ManagerStockControl({
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!round) {
+    if (isRoundSnapshot) {
+      stockMovementAction.setError('รอบปิดแล้วเป็นประวัติอ่านอย่างเดียว');
+      return;
+    }
+    if (!actionRound) {
       stockMovementAction.setError('ต้องมีรอบส่งของวันที่เลือกก่อนบันทึกการโอน ของเสีย หรือส่งคืนระหว่างวัน');
       return;
     }
-    if (!supabase || summaryRoundId !== round.id) {
+    if (!supabase || summaryRoundId !== (round?.id ?? null)) {
       stockMovementAction.setError('ข้อมูลสต๊อกยังโหลดไม่ครบ กรุณารอสักครู่แล้วลองใหม่');
       return;
     }
@@ -200,7 +208,7 @@ export function ManagerStockControl({
     }
 
     const args = { kind, fromLocationId, toLocationId, items, note: note.trim() };
-    const signature = JSON.stringify({ roundId: round.id, ...args });
+    const signature = JSON.stringify({ roundId: actionRound.id, ...args });
 
     await stockMovementAction.execute(args, { signature });
   };
@@ -209,7 +217,7 @@ export function ManagerStockControl({
     async (args: { counts: any[]; note: string }) => {
       if (!supabase) throw new Error('Supabase is not initialized');
       const { error } = await supabase.rpc('record_location_count', {
-        p_round_id: round?.id ?? null,
+        p_round_id: actionRound?.id ?? null,
         p_service_date: serviceDate,
         p_location_id: countLocationId,
         p_counts: args.counts,
@@ -218,13 +226,13 @@ export function ManagerStockControl({
       if (error) return { data: null, error };
 
       const { data, error: historyError } = await supabase.rpc('get_location_count_history', {
-        p_round_id: round?.id ?? null,
+        p_round_id: actionRound?.id ?? null,
         p_service_date: serviceDate,
       });
       return { data, error: historyError };
     },
     {
-      deps: [round?.id, serviceDate],
+      deps: [actionRound?.id, round?.id, serviceDate],
       successMessage: () => {
         const selectedLocation = summary?.locations.find((location) => location.id === countLocationId);
         return `บันทึกยอดนับจริงของ “${selectedLocation?.name ?? ''}” แล้ว`;
@@ -238,7 +246,7 @@ export function ManagerStockControl({
 
   const handleLocationCount = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!supabase || !summary || !countLocationId || closeState?.is_closed) return;
+    if (!supabase || !summary || !countLocationId || isRoundSnapshot || closeState?.is_closed) return;
     const selectedLocation = summary.locations.find((location) => location.id === countLocationId);
     if (!selectedLocation) return;
 
@@ -254,7 +262,7 @@ export function ManagerStockControl({
     async (args: { counts: any[]; note: string }, idempotencyKey) => {
       if (!supabase) throw new Error('Supabase is not initialized');
       return supabase.rpc('close_daily_stock', {
-        p_round_id: round?.id ?? null,
+        p_round_id: actionRound?.id ?? null,
         p_service_date: serviceDate,
         p_counts: args.counts,
         p_note: args.note.trim() || null,
@@ -262,7 +270,7 @@ export function ManagerStockControl({
       });
     },
     {
-      deps: [round?.id, serviceDate],
+      deps: [actionRound?.id, round?.id, serviceDate],
       successMessage: 'ปิดสต๊อกสิ้นวันและบันทึกส่งยอดคงเหลือกลับโรงงานแล้ว',
       onSuccess: async (data) => {
         setCloseState(data as DailyStockCloseState);
@@ -273,7 +281,7 @@ export function ManagerStockControl({
 
   const handleCloseDay = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!supabase || !summary || !closeState || closeState.is_closed) return;
+    if (!supabase || !summary || !closeState || isRoundSnapshot || closeState.is_closed) return;
     if (closeState.open_round_count > 0) {
       closeDayAction.setError('ต้องปิดรอบส่งทุกช่วงของวันนี้ก่อนปิดสต๊อกสิ้นวัน');
       return;
@@ -287,7 +295,7 @@ export function ManagerStockControl({
     })));
     const noteValue = closeNote.trim();
 
-    const signature = JSON.stringify({ serviceDate, roundId: round?.id ?? null, counts, note: noteValue });
+    const signature = JSON.stringify({ serviceDate, roundId: actionRound?.id ?? null, counts, note: noteValue });
     await closeDayAction.execute({ counts, note: noteValue }, { signature });
   };
 
@@ -322,11 +330,16 @@ export function ManagerStockControl({
     <div className="stock-control">
       <div className="panel-header">
         <div>
-          <p className="eyebrow">สต๊อกต่อเนื่องทั้งวัน · {summary.service_date}</p>
-          <h3>น้ำแข็งอยู่ที่ไหนตอนนี้</h3>
+          <p className="eyebrow">{isRoundSnapshot ? 'Snapshot รอบปิด' : 'สต๊อกต่อเนื่องทั้งวัน'} · {summary.service_date}</p>
+          <h3>{isRoundSnapshot ? 'สต๊อกทั้งวัน ณ เวลาปิดรอบ' : 'น้ำแข็งอยู่ที่ไหนตอนนี้'}</h3>
         </div>
-        <span className="status-badge status-badge--neutral">{summary.locations.length} จุด</span>
+        <span className={`status-badge ${isRoundSnapshot ? 'status-badge--success' : 'status-badge--neutral'}`}>
+          {isRoundSnapshot ? 'ประวัติ · ดูอย่างเดียว' : `${summary.locations.length} จุด`}
+        </span>
       </div>
+      {isRoundSnapshot ? (
+        <p className="muted">ยอดนี้หยุดที่ {summary.snapshot_at ? formatStockDateTime(summary.snapshot_at) : 'เวลาปิดรอบ'} และจะไม่เปลี่ยนตามรายการของรอบปัจจุบัน</p>
+      ) : null}
 
       <div className="stock-location-grid">
         {summary.locations.map((location) => {
@@ -351,12 +364,13 @@ export function ManagerStockControl({
         })}
       </div>
 
+      {!isRoundSnapshot ? (<>
       <form className="stock-movement-form" onSubmit={handleSubmit}>
         <div>
           <p className="eyebrow">บันทึกเหตุการณ์จริง</p>
           <h3>เคลื่อนย้ายสต๊อก</h3>
         </div>
-        {!round ? <p className="muted">วันที่นี้ยังไม่มีรอบส่ง จึงดูยอด ตรวจนับ และปิดวันได้ แต่ยังบันทึกการเคลื่อนย้ายระหว่างวันไม่ได้</p> : null}
+        {!actionRound ? <p className="muted">วันที่นี้ยังไม่มีรอบส่ง จึงดูยอด ตรวจนับ และปิดวันได้ แต่ยังบันทึกการเคลื่อนย้ายระหว่างวันไม่ได้</p> : null}
 
         <div className="movement-kind-grid" role="radiogroup" aria-label="ประเภทรายการสต๊อก">
           {STOCK_OPERATION_KINDS.map((movementKind) => (
@@ -425,11 +439,8 @@ export function ManagerStockControl({
 
         {stockMovementAction.error ? <p className="error-text">{stockMovementAction.error}</p> : null}
         {stockMovementAction.success ? <p className="success-text">{stockMovementAction.success}</p> : null}
-        {round?.status === 'closed' ? (
-          <p className="muted">รอบส่งปิดแล้ว แต่ยังโอนของกลับ บันทึกเสียหาย และส่งคืนโรงงานเพื่อปิดสต๊อกของวันได้</p>
-        ) : null}
         {closeState?.is_closed ? <p className="muted">สต๊อกของวันนี้ปิดแล้ว รายการทั้งหมดเป็นประวัติอ่านอย่างเดียว</p> : null}
-        <button className="primary-button" disabled={!round || stockMovementAction.isSubmitting || closeState?.is_closed} type="submit">
+        <button className="primary-button" disabled={!actionRound || stockMovementAction.isSubmitting || closeState?.is_closed} type="submit">
           {closeState?.is_closed ? 'ปิดสต๊อกวันนี้แล้ว' : stockMovementAction.isSubmitting ? 'กำลังบันทึก...' : `ยืนยัน ${MOVEMENT_LABELS[kind]}`}
         </button>
       </form>
@@ -467,6 +478,7 @@ export function ManagerStockControl({
                   <input
                     disabled={closeState?.is_closed}
                     min={0}
+                    step={0.5}
                     type="number"
                     value={actual}
                     onChange={(event) => setActualCounts((current) => ({
@@ -560,11 +572,12 @@ export function ManagerStockControl({
           </form>
         )}
       </section>
+      </>) : null}
 
       <section className="stock-ledger">
         <div>
-          <p className="eyebrow">ประวัติล่าสุดของวัน</p>
-          <h3>รายการที่ตรวจนับได้</h3>
+          <p className="eyebrow">{isRoundSnapshot ? 'ประวัติจนถึงเวลาปิดรอบ' : 'ประวัติล่าสุดของวัน'}</p>
+          <h3>{isRoundSnapshot ? 'รายการก่อน Snapshot' : 'รายการที่ตรวจนับได้'}</h3>
         </div>
         <div className="stock-ledger-list">
           {summary.recent_movements.map((movement) => (

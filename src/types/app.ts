@@ -24,6 +24,9 @@ export interface DeliveryRound {
   name: string;
   status: DeliveryRoundStatus;
   opened_at: string;
+  closed_at?: string | null;
+  cancelled_at?: string | null;
+  cancellation_reason?: string | null;
 }
 
 export interface IceTypeOption {
@@ -126,6 +129,8 @@ export interface StockMovementEntry {
 
 export interface StockControlSummary {
   service_date: string;
+  is_snapshot?: boolean;
+  snapshot_at?: string | null;
   locations: StockLocationBalance[];
   recent_movements: StockMovementEntry[];
 }

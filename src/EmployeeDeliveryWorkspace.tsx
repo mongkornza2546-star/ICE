@@ -42,7 +42,7 @@ function createSupabaseGateway(): EmployeeDeliveryGateway {
       const [roundsResponse, iceTypesResponse] = await Promise.all([
         supabase
           .from('delivery_rounds')
-          .select('id, service_date, name, status, opened_at')
+          .select('id, service_date, name, status, opened_at, cancelled_at')
           .order('service_date', { ascending: false })
           .order('opened_at', { ascending: false }),
         supabase
@@ -189,7 +189,7 @@ export function EmployeeDeliveryWorkspace({
         {data.selectedRound ? (
           <div className={`employee-round-badge ${data.selectedRound.status === 'closed' ? 'employee-round-badge--closed' : ''}`}>
             <strong>{data.selectedRound.name}</strong>
-            <span>{data.selectedRound.service_date} · {data.selectedRound.status === 'open' ? 'เปิดอยู่' : 'ปิดแล้ว'}</span>
+            <span>{data.selectedRound.service_date} · {data.selectedRound.cancelled_at ? 'ยกเลิกแล้ว' : data.selectedRound.status === 'open' ? 'เปิดอยู่' : 'ปิดแล้ว'}</span>
           </div>
         ) : null}
       </section>
@@ -201,7 +201,7 @@ export function EmployeeDeliveryWorkspace({
             <option value="">เลือกรอบส่ง</option>
             {data.rounds.map((round) => (
               <option key={round.id} value={round.id}>
-                {round.name} · {round.service_date} · {round.status === 'open' ? 'เปิด' : 'ปิด'}
+                {round.name} · {round.service_date} · {round.cancelled_at ? 'ยกเลิก' : round.status === 'open' ? 'เปิด' : 'ปิด'}
               </option>
             ))}
           </select>
