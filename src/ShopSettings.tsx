@@ -1,11 +1,11 @@
 import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from 'react';
-import { Buildings, CaretRight, FunnelSimple, ImageSquare, MagnifyingGlass, MapPin, Phone, Plus, Storefront, X } from '@phosphor-icons/react';
+import { Buildings, CaretRight, ImageSquare, MagnifyingGlass, MapPin, Phone, Plus, Storefront, X } from '@phosphor-icons/react';
 import { supabase } from './lib/supabase';
 import { parseShopImportFile, type ShopImportRow } from './lib/shopImport';
 import type { BuildingOption, BuildingZoneOption, ShopSetting } from './types/app';
 import { ShopImageEditor } from './features/admin-reference-settings/components/ShopImageEditor';
 import { getShopImageSignedUrls } from './features/admin-reference-settings/adminReferenceSettingsService';
-import { filterLabel, matchesActiveFilter, nextFilter, type ActiveFilter } from './features/admin-reference-settings/referenceEditorFilters';
+import { matchesActiveFilter, type ActiveFilter } from './features/admin-reference-settings/referenceEditorFilters';
 
 const TANK_IMAGE_BUCKET = 'tank-images';
 const MAX_TANK_IMAGE_SIZE = 5 * 1024 * 1024;
@@ -62,7 +62,7 @@ export function ShopSettings() {
   const [query, setQuery] = useState('');
   const [buildingFilter, setBuildingFilter] = useState('');
   const [zoneFilter, setZoneFilter] = useState('');
-  const [shopFilter, setShopFilter] = useState<ActiveFilter>('all');
+  const [shopFilter] = useState<ActiveFilter>('all');
   const [page, setPage] = useState(0);
   const PAGE_SIZE = 12;
   const [editorOpen, setEditorOpen] = useState(false);
@@ -516,16 +516,6 @@ export function ShopSettings() {
                 <option key={z.id} value={z.id}>{z.code} · {z.name}</option>
               ))}
             </select>
-            <button
-              aria-label={`กรองร้านค้า: ${filterLabel(shopFilter)}`}
-              className={`shop-filter-button ${shopFilter !== 'all' ? 'shop-filter-button--active' : ''}`}
-              onClick={() => setShopFilter(nextFilter(shopFilter))}
-              title={`กรองร้านค้า: ${filterLabel(shopFilter)}`}
-              type="button"
-            >
-              <FunnelSimple aria-hidden="true" size={20} />
-              <span>{filterLabel(shopFilter)}</span>
-            </button>
             <span className="shop-catalog__count">พบ {filteredShops.length} ร้าน</span>
           </div>
         </div>
