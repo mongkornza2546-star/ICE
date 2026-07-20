@@ -126,7 +126,7 @@ create table public.shop_payment_profiles (
         and allow_outstanding
         and credit_due_rule is not null
         and (
-          (credit_due_rule = 'net_days' and credit_days > 0)
+          (credit_due_rule = 'net_days' and credit_days is not null and credit_days > 0)
           or (credit_due_rule = 'end_of_month' and credit_days is null)
         )
       else
@@ -189,7 +189,7 @@ create table public.delivery_charges (
   payment_term public.payment_term not null,
   original_amount numeric(12,2) not null check (original_amount > 0),
   due_date date,
-  approval_request_id uuid references public.financial_approval_requests(id) on delete restrict,
+  approval_request_id uuid unique references public.financial_approval_requests(id) on delete restrict,
   status public.financial_record_status not null default 'active',
   created_at timestamptz not null default now(),
   voided_by uuid references public.users(id) on delete restrict,
@@ -265,6 +265,300 @@ create table public.payment_allocations (
   primary key (payment_id, charge_id)
 );
 
+create or replace function public.assert_payment_allocation_integrity(target_payment_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_declared_amount numeric(12,2);
+  v_actual_amount numeric(12,2);
+  v_shop_id uuid;
+begin
+  select payment.shop_id
+  into v_shop_id
+  from public.payments payment
+  where payment.id = target_payment_id;
+
+  if not found then
+    return;
+  end if;
+
+  perform pg_advisory_xact_lock(hashtextextended('financial-shop:' || v_shop_id::text, 0));
+
+  select payment.allocated_amount
+  into v_declared_amount
+  from public.payments payment
+  where payment.id = target_payment_id;
+
+  if not found then
+    return;
+  end if;
+
+  select coalesce(sum(allocation.amount), 0)::numeric(12,2)
+  into v_actual_amount
+  from public.payment_allocations allocation
+  where allocation.payment_id = target_payment_id;
+
+  if v_actual_amount <> v_declared_amount then
+    raise exception 'Payment allocated amount must equal its allocation rows';
+  end if;
+
+  if exists (
+    select 1
+    from public.payment_allocations allocation
+    join public.delivery_charges charge on charge.id = allocation.charge_id
+    where allocation.payment_id = target_payment_id
+      and charge.shop_id <> v_shop_id
+  ) then
+    raise exception 'A payment can only allocate charges for the same shop';
+  end if;
+end;
+$$;
+
+create or replace function public.assert_charge_allocation_integrity(target_charge_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_original_amount numeric(12,2);
+  v_allocated_amount numeric(12,2);
+  v_status public.financial_record_status;
+  v_shop_id uuid;
+begin
+  select charge.shop_id
+  into v_shop_id
+  from public.delivery_charges charge
+  where charge.id = target_charge_id;
+
+  if not found then
+    return;
+  end if;
+
+  perform pg_advisory_xact_lock(hashtextextended('financial-shop:' || v_shop_id::text, 0));
+
+  select charge.original_amount, charge.status
+  into v_original_amount, v_status
+  from public.delivery_charges charge
+  where charge.id = target_charge_id;
+
+  if not found then
+    return;
+  end if;
+
+  select coalesce(sum(allocation.amount), 0)::numeric(12,2)
+  into v_allocated_amount
+  from public.payment_allocations allocation
+  join public.payments payment on payment.id = allocation.payment_id
+  where allocation.charge_id = target_charge_id
+    and payment.status = 'active';
+
+  if v_status = 'voided' and v_allocated_amount > 0 then
+    raise exception 'Void active payments before voiding their delivery charge';
+  elsif v_allocated_amount > v_original_amount then
+    raise exception 'Active payment allocations cannot exceed the original charge amount';
+  end if;
+end;
+$$;
+
+create or replace function public.check_payment_allocation_integrity()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_related_id uuid;
+begin
+  if tg_table_name = 'payments' then
+    perform public.assert_payment_allocation_integrity(
+      case when tg_op = 'DELETE' then old.id else new.id end
+    );
+
+    for v_related_id in
+      select distinct allocation.charge_id
+      from public.payment_allocations allocation
+      where allocation.payment_id = case when tg_op = 'DELETE' then old.id else new.id end
+    loop
+      perform public.assert_charge_allocation_integrity(v_related_id);
+    end loop;
+  elsif tg_table_name = 'delivery_charges' then
+    perform public.assert_charge_allocation_integrity(
+      case when tg_op = 'DELETE' then old.id else new.id end
+    );
+
+    for v_related_id in
+      select distinct allocation.payment_id
+      from public.payment_allocations allocation
+      where allocation.charge_id = case when tg_op = 'DELETE' then old.id else new.id end
+    loop
+      perform public.assert_payment_allocation_integrity(v_related_id);
+    end loop;
+  else
+    if tg_op <> 'INSERT' then
+      perform public.assert_payment_allocation_integrity(old.payment_id);
+      perform public.assert_charge_allocation_integrity(old.charge_id);
+    end if;
+    if tg_op <> 'DELETE' then
+      perform public.assert_payment_allocation_integrity(new.payment_id);
+      perform public.assert_charge_allocation_integrity(new.charge_id);
+    end if;
+  end if;
+
+  return null;
+end;
+$$;
+
+create constraint trigger payments_allocation_integrity
+  after insert or update or delete on public.payments
+  deferrable initially deferred
+  for each row execute function public.check_payment_allocation_integrity();
+
+create constraint trigger payment_allocations_integrity
+  after insert or update or delete on public.payment_allocations
+  deferrable initially deferred
+  for each row execute function public.check_payment_allocation_integrity();
+
+create constraint trigger delivery_charges_allocation_integrity
+  after insert or update or delete on public.delivery_charges
+  deferrable initially deferred
+  for each row execute function public.check_payment_allocation_integrity();
+
+create or replace function public.assert_financial_approval_integrity(target_approval_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_status public.financial_approval_status;
+  v_shop_id uuid;
+  v_delivery_event_id uuid;
+begin
+  select approval.status, approval.shop_id, approval.consumed_by_delivery_event_id
+  into v_status, v_shop_id, v_delivery_event_id
+  from public.financial_approval_requests approval
+  where approval.id = target_approval_id;
+
+  if not found then
+    return;
+  end if;
+
+  if v_status = 'consumed' then
+    if not exists (
+      select 1
+      from public.delivery_charges charge
+      where charge.approval_request_id = target_approval_id
+        and charge.delivery_event_id = v_delivery_event_id
+        and charge.shop_id = v_shop_id
+    ) then
+      raise exception 'A consumed approval must match exactly one delivery charge';
+    end if;
+  elsif exists (
+    select 1
+    from public.delivery_charges charge
+    where charge.approval_request_id = target_approval_id
+  ) then
+    raise exception 'A delivery charge can only use a consumed approval';
+  end if;
+end;
+$$;
+
+create or replace function public.check_financial_approval_integrity()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if tg_table_name = 'financial_approval_requests' then
+    perform public.assert_financial_approval_integrity(
+      case when tg_op = 'DELETE' then old.id else new.id end
+    );
+  else
+    if tg_op <> 'INSERT' and old.approval_request_id is not null then
+      perform public.assert_financial_approval_integrity(old.approval_request_id);
+    end if;
+    if tg_op <> 'DELETE' and new.approval_request_id is not null then
+      perform public.assert_financial_approval_integrity(new.approval_request_id);
+    end if;
+  end if;
+
+  return null;
+end;
+$$;
+
+create constraint trigger financial_approval_requests_integrity
+  after insert or update or delete on public.financial_approval_requests
+  deferrable initially deferred
+  for each row execute function public.check_financial_approval_integrity();
+
+create constraint trigger delivery_charges_approval_integrity
+  after insert or update or delete on public.delivery_charges
+  deferrable initially deferred
+  for each row execute function public.check_financial_approval_integrity();
+
+create or replace function public.protect_financial_delivery_revision()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if new.corrects_event_id is not null
+    and (tg_op = 'INSERT' or new.corrects_event_id is distinct from old.corrects_event_id)
+    and exists (
+      select 1
+      from public.delivery_charges charge
+      where charge.delivery_event_id = new.corrects_event_id
+    ) then
+    raise exception 'Financial delivery corrections require the financial-aware revision RPC';
+  end if;
+
+  if tg_op = 'UPDATE'
+    and old.status = 'active' and new.status = 'cancelled' and exists (
+    select 1
+    from public.delivery_charges charge
+    where charge.delivery_event_id = new.id and charge.status = 'active'
+  ) then
+    if exists (
+      select 1
+      from public.delivery_charges charge
+      join public.payment_allocations allocation on allocation.charge_id = charge.id
+      join public.payments payment on payment.id = allocation.payment_id
+      where charge.delivery_event_id = new.id
+        and charge.status = 'active'
+        and payment.status = 'active'
+    ) then
+      raise exception 'Void active payment allocations before cancelling this delivery';
+    end if;
+
+    update public.delivery_charges
+    set status = 'voided',
+        voided_by = new.cancelled_by,
+        voided_at = new.cancelled_at,
+        void_reason = new.cancellation_reason
+    where delivery_event_id = new.id and status = 'active';
+  elsif tg_op = 'UPDATE'
+    and old.status = 'cancelled' and new.status = 'active' and exists (
+      select 1
+      from public.delivery_charges charge
+      where charge.delivery_event_id = new.id
+    ) then
+    raise exception 'A financial delivery cannot be reactivated after cancellation';
+  end if;
+
+  return new;
+end;
+$$;
+
+create trigger delivery_events_protect_financial_revision
+  before insert or update of status, corrects_event_id on public.delivery_events
+  for each row execute function public.protect_financial_delivery_revision();
+
 create index ice_type_prices_lookup_idx
   on public.ice_type_prices (ice_type_id, valid_from, valid_to) where is_active;
 create index shop_ice_type_prices_lookup_idx
@@ -278,8 +572,26 @@ create index payment_allocations_charge_idx
 create index financial_approvals_shop_status_idx
   on public.financial_approval_requests (shop_id, status, requested_at desc);
 
+create or replace function public.is_financial_charge_visible(target_charge_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select public.is_active_user() and exists (
+    select 1
+    from public.delivery_charges charge
+    where charge.id = target_charge_id
+      and (
+        public.current_app_role() in ('admin', 'round_lead')
+        or public.is_delivery_event_visible(charge.delivery_event_id)
+      )
+  );
+$$;
+
 create view public.delivery_charge_balances
-with (security_invoker = true)
+with (security_invoker = false, security_barrier = true)
 as
 select
   charge.id as charge_id,
@@ -309,6 +621,7 @@ from public.delivery_charges charge
 left join public.payment_allocations allocation on allocation.charge_id = charge.id
 left join public.payments payment on payment.id = allocation.payment_id
 where charge.status = 'active'
+  and public.is_financial_charge_visible(charge.id)
 group by charge.id;
 
 create or replace function public.is_collection_run_member(target_collection_run_id uuid)
@@ -323,24 +636,6 @@ as $$
     from public.collection_run_members member
     where member.collection_run_id = target_collection_run_id
       and member.user_id = auth.uid()
-  );
-$$;
-
-create or replace function public.is_financial_charge_visible(target_charge_id uuid)
-returns boolean
-language sql
-stable
-security definer
-set search_path = public
-as $$
-  select public.is_active_user() and exists (
-    select 1
-    from public.delivery_charges charge
-    where charge.id = target_charge_id
-      and (
-        public.current_app_role() in ('admin', 'round_lead')
-        or public.is_delivery_event_visible(charge.delivery_event_id)
-      )
   );
 $$;
 
@@ -359,15 +654,88 @@ as $$
         public.current_app_role() in ('admin', 'round_lead')
         or payment.recorded_by = auth.uid()
         or public.is_collection_run_member(payment.collection_run_id)
-        or exists (
-          select 1
-          from public.payment_allocations allocation
-          where allocation.payment_id = payment.id
-            and public.is_financial_charge_visible(allocation.charge_id)
-        )
       )
   );
 $$;
+
+create or replace function public.is_shop_financial_context_visible(target_shop_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select public.is_active_user() and (
+    public.current_app_role() in ('admin', 'round_lead')
+    or exists (
+      select 1
+      from public.round_stops stop
+      join public.delivery_round_members member on member.round_id = stop.round_id
+      where stop.shop_id = target_shop_id
+        and member.user_id = auth.uid()
+    )
+  );
+$$;
+
+create or replace function public.protect_effective_price_history()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_source public.price_source;
+  v_is_used boolean;
+begin
+  v_source := case
+    when tg_table_name = 'ice_type_prices' then 'standard'::public.price_source
+    else 'shop_override'::public.price_source
+  end;
+
+  select exists (
+    select 1
+    from public.delivery_items item
+    where item.price_source = v_source
+      and item.price_source_id = old.id
+  ) into v_is_used;
+
+  if v_is_used and (
+    new.unit_price is distinct from old.unit_price
+    or new.ice_type_id is distinct from old.ice_type_id
+    or new.valid_from is distinct from old.valid_from
+    or new.is_active is distinct from old.is_active
+    or new.created_by is distinct from old.created_by
+    or new.created_at is distinct from old.created_at
+    or (
+      tg_table_name = 'shop_ice_type_prices'
+      and to_jsonb(new) ->> 'shop_id' is distinct from to_jsonb(old) ->> 'shop_id'
+    )
+  ) then
+    raise exception 'Used effective price history is immutable; create a new price row';
+  end if;
+
+  if v_is_used and new.valid_to is distinct from old.valid_to and new.valid_to is not null
+    and exists (
+      select 1
+      from public.delivery_items item
+      join public.delivery_charges charge on charge.delivery_event_id = item.delivery_event_id
+      where item.price_source = v_source
+        and item.price_source_id = old.id
+        and charge.service_date > new.valid_to
+    ) then
+    raise exception 'An effective price cannot end before a delivery that used it';
+  end if;
+
+  return new;
+end;
+$$;
+
+create trigger ice_type_prices_protect_history
+  before update on public.ice_type_prices
+  for each row execute function public.protect_effective_price_history();
+create trigger shop_ice_type_prices_protect_history
+  before update on public.shop_ice_type_prices
+  for each row execute function public.protect_effective_price_history();
 
 create trigger ice_type_prices_updated_at
   before update on public.ice_type_prices
@@ -396,15 +764,15 @@ create policy "admins create standard prices" on public.ice_type_prices for inse
 create policy "admins update standard prices" on public.ice_type_prices for update
   using (public.current_app_role() = 'admin') with check (public.current_app_role() = 'admin');
 
-create policy "active users read shop prices" on public.shop_ice_type_prices for select
-  using (public.is_active_user());
+create policy "assigned users read shop prices" on public.shop_ice_type_prices for select
+  using (public.is_shop_financial_context_visible(shop_id));
 create policy "admins create shop prices" on public.shop_ice_type_prices for insert
   with check (public.current_app_role() = 'admin');
 create policy "admins update shop prices" on public.shop_ice_type_prices for update
   using (public.current_app_role() = 'admin') with check (public.current_app_role() = 'admin');
 
-create policy "active users read payment profiles" on public.shop_payment_profiles for select
-  using (public.is_active_user());
+create policy "assigned users read payment profiles" on public.shop_payment_profiles for select
+  using (public.is_shop_financial_context_visible(shop_id));
 create policy "admins create payment profiles" on public.shop_payment_profiles for insert
   with check (public.current_app_role() = 'admin');
 create policy "admins update payment profiles" on public.shop_payment_profiles for update
@@ -442,7 +810,11 @@ create policy "assigned users read payment allocations" on public.payment_alloca
 revoke all on function public.is_collection_run_member(uuid) from public;
 revoke all on function public.is_financial_charge_visible(uuid) from public;
 revoke all on function public.is_payment_visible(uuid) from public;
+revoke all on function public.is_shop_financial_context_visible(uuid) from public;
+revoke all on function public.assert_payment_allocation_integrity(uuid) from public;
+revoke all on function public.assert_charge_allocation_integrity(uuid) from public;
+revoke all on function public.assert_financial_approval_integrity(uuid) from public;
 grant execute on function public.is_collection_run_member(uuid) to authenticated;
 grant execute on function public.is_financial_charge_visible(uuid) to authenticated;
 grant execute on function public.is_payment_visible(uuid) to authenticated;
-
+grant execute on function public.is_shop_financial_context_visible(uuid) to authenticated;

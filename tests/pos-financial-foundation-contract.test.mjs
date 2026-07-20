@@ -29,7 +29,7 @@ test('payment profiles keep defaults valid and credit exclusive', () => {
   assert.match(migration, /default_payment_term = any\(allowed_payment_terms\)/);
   assert.match(migration, /default_payment_method = any\(allowed_payment_methods\)/);
   assert.match(migration, /when 'credit' = any\(allowed_payment_terms\)[\s\S]*cardinality\(allowed_payment_terms\) = 1/);
-  assert.match(migration, /credit_due_rule = 'net_days' and credit_days > 0/);
+  assert.match(migration, /credit_due_rule = 'net_days' and credit_days is not null and credit_days > 0/);
   assert.match(migration, /credit_due_rule = 'end_of_month' and credit_days is null/);
 });
 
@@ -66,4 +66,41 @@ test('payment and delivery retries retain request fingerprints', () => {
   assert.match(migration, /alter table public\.delivery_events[\s\S]*add column request_fingerprint text/);
   assert.match(migration, /create table public\.payments[\s\S]*idempotency_key uuid not null unique[\s\S]*request_fingerprint text not null/);
   assert.match(migration, /financial_approval_requests[\s\S]*request_fingerprint text not null/);
+});
+
+test('ledger relationships are reconciled at transaction commit', () => {
+  assert.match(migration, /approval_request_id uuid unique references public\.financial_approval_requests/);
+  assert.match(migration, /create constraint trigger payments_allocation_integrity[\s\S]*deferrable initially deferred/);
+  assert.match(migration, /create constraint trigger payment_allocations_integrity[\s\S]*deferrable initially deferred/);
+  assert.match(migration, /pg_advisory_xact_lock\(hashtextextended\('financial-shop:' \|\| v_shop_id::text, 0\)\)/);
+  assert.match(migration, /Payment allocated amount must equal its allocation rows/);
+  assert.match(migration, /Active payment allocations cannot exceed the original charge amount/);
+  assert.match(migration, /A consumed approval must match exactly one delivery charge/);
+});
+
+test('financial revisions and shop configuration reads are guarded centrally', () => {
+  assert.match(migration, /create trigger delivery_events_protect_financial_revision/);
+  assert.match(migration, /Void active payment allocations before cancelling this delivery/);
+  assert.match(migration, /Financial delivery corrections require the financial-aware revision RPC/);
+  assert.match(
+    migration,
+    /create policy "assigned users read shop prices"[\s\S]*is_shop_financial_context_visible\(shop_id\)/,
+  );
+  assert.match(
+    migration,
+    /create policy "assigned users read payment profiles"[\s\S]*is_shop_financial_context_visible\(shop_id\)/,
+  );
+  assert.match(migration, /create trigger ice_type_prices_protect_history/);
+  assert.match(migration, /create trigger shop_ice_type_prices_protect_history/);
+});
+
+test('payment visibility does not expand through an allocated delivery charge', () => {
+  const paymentVisibility = migration.match(
+    /create or replace function public\.is_payment_visible\(target_payment_id uuid\)[\s\S]*?\n\$\$;/,
+  )?.[0];
+
+  assert.ok(paymentVisibility);
+  assert.doesNotMatch(paymentVisibility, /is_financial_charge_visible/);
+  assert.match(migration, /security_invoker = false, security_barrier = true/);
+  assert.match(migration, /where charge\.status = 'active'[\s\S]*is_financial_charge_visible\(charge\.id\)/);
 });

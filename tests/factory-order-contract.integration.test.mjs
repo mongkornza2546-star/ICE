@@ -27,6 +27,10 @@ const halfBagMovementMigration = readFileSync(
   new URL('../supabase/migrations/0028_half_bag_stock_movements.sql', import.meta.url),
   'utf8',
 );
+const dailyCountReadinessMigration = readFileSync(
+  new URL('../supabase/migrations/0031_daily_stock_count_readiness.sql', import.meta.url),
+  'utf8',
+);
 
 const AUTH_USER_ID = '00000000-0000-4000-8000-000000000001';
 const ICE_TYPE_ID = '00000000-0000-4000-8000-000000000002';
@@ -546,7 +550,9 @@ test('half-bag transfers remain exact through balances and daily close', async (
       id uuid primary key,
       round_stop_id uuid not null references public.round_stops(id),
       source_stock_location_id uuid references public.stock_locations(id),
-      status text not null
+      status text not null,
+      recorded_at timestamptz not null default now(),
+      cancelled_at timestamptz
     );
 
     create table public.delivery_items (
@@ -564,6 +570,7 @@ test('half-bag transfers remain exact through balances and daily close', async (
 
   await db.exec(halfBagCountMigration);
   await db.exec(halfBagMovementMigration);
+  await db.exec(dailyCountReadinessMigration);
 
   await db.query(`
     select public.record_factory_order(
@@ -600,17 +607,78 @@ test('half-bag transfers remain exact through balances and daily close', async (
   assert.equal(balances.rows[0].truck, '1.5');
   assert.equal(balances.rows[0].team, '0.5');
 
+  await db.query(`
+    select public.record_location_count(
+      p_round_id => '${roundId}',
+      p_location_id => '${TRUCK_ID}',
+      p_counts => '${JSON.stringify([{ ice_type_id: ICE_TYPE_ID, actual_quantity: 1.5 }])}'::jsonb
+    )
+  `);
+  await db.query(`
+    select public.record_location_count(
+      p_round_id => '${roundId}',
+      p_location_id => '${TEAM_ID}',
+      p_counts => '${JSON.stringify([{ ice_type_id: ICE_TYPE_ID, actual_quantity: 0.5 }])}'::jsonb
+    )
+  `);
+
+  await db.exec(`
+    update public.stock_count_snapshots
+    set counted_at = counted_at - interval '1 second'
+    where service_date = date '${serviceDate}'
+  `);
+
+  await db.query(`
+    select public.record_stock_movement(
+      '${roundId}', 'transfer', '${TEAM_ID}', '${TRUCK_ID}',
+      '${JSON.stringify([{ ice_type_id: ICE_TYPE_ID, quantity: 0.5 }])}'::jsonb,
+      null, '60000000-0000-4000-8000-000000000007'
+    )
+  `);
+  await db.query(`
+    select public.record_stock_movement(
+      '${roundId}', 'transfer', '${TRUCK_ID}', '${TEAM_ID}',
+      '${JSON.stringify([{ ice_type_id: ICE_TYPE_ID, quantity: 0.5 }])}'::jsonb,
+      null, '60000000-0000-4000-8000-000000000008'
+    )
+  `);
+
+  const staleReadiness = await db.query(`
+    select public.get_daily_stock_count_readiness(
+      p_round_id => '${roundId}'
+    ) as readiness
+  `);
+  assert.equal(staleReadiness.rows[0].readiness.every((item) => item.status === 'stale'), true);
+
+  await db.query(`
+    select public.record_location_count(
+      p_round_id => '${roundId}',
+      p_location_id => '${TRUCK_ID}',
+      p_counts => '${JSON.stringify([{ ice_type_id: ICE_TYPE_ID, actual_quantity: 1.5 }])}'::jsonb
+    )
+  `);
+  await db.query(`
+    select public.record_location_count(
+      p_round_id => '${roundId}',
+      p_location_id => '${TEAM_ID}',
+      p_counts => '${JSON.stringify([{ ice_type_id: ICE_TYPE_ID, actual_quantity: 0.5 }])}'::jsonb
+    )
+  `);
+
+  const readiness = await db.query(`
+    select public.get_daily_stock_count_readiness(
+      p_round_id => '${roundId}'
+    ) as readiness
+  `);
+  assert.equal(readiness.rows[0].readiness.length, 2);
+  assert.equal(readiness.rows[0].readiness.every((item) => item.status === 'current'), true);
+
   await db.exec(`
     insert into public.round_stock_snapshot_items (round_id, location_id, ice_type_id, quantity)
     values ('${roundId}', '${TEAM_ID}', '${ICE_TYPE_ID}', 0.5);
 
     update public.delivery_rounds set status = 'closed' where id = '${roundId}';
   `);
-
-  const counts = JSON.stringify([
-    { location_id: TRUCK_ID, ice_type_id: ICE_TYPE_ID, actual_quantity: 1.5, note: null },
-    { location_id: TEAM_ID, ice_type_id: ICE_TYPE_ID, actual_quantity: 0.5, note: null },
-  ]);
 
   await assert.rejects(
     db.query(`
@@ -626,13 +694,19 @@ test('half-bag transfers remain exact through balances and daily close', async (
     /whole or half-bag actual count/i,
   );
 
-  await db.query(`
-    select public.close_daily_stock(
+  const closed = await db.query(`
+    select public.close_daily_stock_from_latest_counts(
       p_round_id => '${roundId}',
-      p_counts => '${counts}'::jsonb,
       p_idempotency_key => '60000000-0000-4000-8000-000000000006'
-    )
+    ) as state
   `);
+  const retry = await db.query(`
+    select public.close_daily_stock_from_latest_counts(
+      p_round_id => '${roundId}',
+      p_idempotency_key => '60000000-0000-4000-8000-000000000006'
+    ) as state
+  `);
+  assert.deepEqual(retry.rows[0].state, closed.rows[0].state);
 
   const stored = await db.query(`
     select
@@ -644,7 +718,8 @@ test('half-bag transfers remain exact through balances and daily close', async (
         join public.stock_movements movement on movement.id = item.movement_id
         where movement.service_date = date '${serviceDate}'
           and movement.kind = 'transfer'
-          and movement.from_location_id = '${TEAM_ID}') as collected_quantity
+          and movement.from_location_id = '${TEAM_ID}'
+          and movement.note = 'รวบรวมยอดนับจริงเพื่อส่งคืนโรงงาน') as collected_quantity
   `);
   assert.equal(stored.rows[0].round_quantity, '0.5');
   assert.equal(stored.rows[0].close_quantity, '0.5');

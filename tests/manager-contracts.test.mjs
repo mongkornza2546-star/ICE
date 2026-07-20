@@ -368,6 +368,7 @@ test('manager delivery corrections restore stock and require an audit reason', (
 
 test('daily close counts every point, returns actual stock, and locks the service date', () => {
   const migration = read('supabase/migrations/0008_complete_manager_operations.sql');
+  const readinessMigration = read('supabase/migrations/0031_daily_stock_count_readiness.sql');
   const component = read('src/ManagerStockControl.tsx');
   const roundGuard = migration.slice(
     migration.indexOf('create or replace function public.reject_round_on_closed_day()'),
@@ -384,6 +385,8 @@ test('daily close counts every point, returns actual stock, and locks the servic
     roundGuard,
     /pg_advisory_xact_lock[\s\S]*where service_date = new.service_date and status = 'closed'/,
   );
-  assert.match(component, /supabase\.rpc\('close_daily_stock'/);
-  assert.match(component, /ยืนยันยอดจริง ส่งคืนโรงงาน และปิดวัน/);
+  assert.match(readinessMigration, /create or replace function public\.close_daily_stock_from_latest_counts\(/);
+  assert.match(readinessMigration, /perform pg_advisory_xact_lock\(hashtextextended\(v_service_date::text, 0\)\)/);
+  assert.match(component, /supabase\.rpc\('close_daily_stock_from_latest_counts'/);
+  assert.match(component, /ปิดสต๊อกวันนี้/);
 });

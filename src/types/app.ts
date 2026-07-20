@@ -174,6 +174,13 @@ export interface StockCountSnapshot {
   items: StockCountItem[];
 }
 
+export interface StockCountReadiness {
+  location_id: string;
+  location_name: string;
+  status: 'current' | 'stale' | 'uncounted';
+  snapshot: StockCountSnapshot | null;
+}
+
 export interface DailyStockCloseCount extends StockCountItem {
   location_id: string;
   location_name: string;

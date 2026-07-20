@@ -2,7 +2,12 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ManagerStockControl } from '../src/ManagerStockControl';
-import type { DailyStockCloseState, DeliveryRound, StockControlSummary } from '../src/types/app';
+import type {
+  DailyStockCloseState,
+  DeliveryRound,
+  StockControlSummary,
+  StockCountReadiness,
+} from '../src/types/app';
 
 const mocks = vi.hoisted(() => ({ rpc: vi.fn() }));
 
@@ -16,13 +21,6 @@ const round: DeliveryRound = {
   name: '04:00',
   status: 'open',
   opened_at: '2026-07-20T04:00:00+07:00',
-};
-
-const closedOperationRound: DeliveryRound = {
-  ...round,
-  id: 'round-closed',
-  status: 'closed',
-  closed_at: '2026-07-20T08:00:00+07:00',
 };
 
 const summary: StockControlSummary = {
@@ -58,6 +56,33 @@ const closeState: DailyStockCloseState = {
   counts: [],
 };
 
+const closeReadyState: DailyStockCloseState = {
+  ...closeState,
+  open_round_count: 0,
+};
+
+const currentReadiness: StockCountReadiness[] = summary.locations.map((location) => ({
+  location_id: location.id,
+  location_name: location.name,
+  status: 'current',
+  snapshot: {
+    id: `count-${location.id}`,
+    counted_at: '2026-07-20T18:00:00+07:00',
+    note: null,
+    location_id: location.id,
+    location_name: location.name,
+    counted_by: 'หัวหน้าทดสอบ',
+    items: location.balances.map((balance) => ({
+      ice_type_id: balance.ice_type_id,
+      ice_type_name: balance.ice_type_name,
+      unit: balance.unit,
+      system_quantity: balance.quantity,
+      actual_quantity: balance.quantity,
+      variance_quantity: 0,
+    })),
+  },
+}));
+
 describe('ManagerStockControl movement tabs', () => {
   beforeEach(() => {
     mocks.rpc.mockImplementation(async (name: string) => {
@@ -65,6 +90,7 @@ describe('ManagerStockControl movement tabs', () => {
         return { data: summary, error: null };
       }
       if (name === 'get_location_count_history') return { data: [], error: null };
+      if (name === 'get_daily_stock_count_readiness') return { data: [], error: null };
       if (name === 'get_daily_stock_close_state') return { data: closeState, error: null };
       return { data: null, error: null };
     });
@@ -79,20 +105,6 @@ describe('ManagerStockControl movement tabs', () => {
       p_kind: 'transfer',
       p_from_location_id: 'truck-1',
       p_to_location_id: 'site-1',
-    });
-  });
-
-  it('submits a factory receipt with no source and an active truck destination', async () => {
-    const { user, form } = await renderMovementForm('รับจากโรงงาน');
-    expect(within(form).queryByRole('combobox', { name: 'ต้นทาง (จาก)' })).toBeNull();
-    expect((within(form).getByRole('combobox', { name: 'รถบรรทุกที่รับน้ำแข็ง' }) as HTMLSelectElement).value).toBe('truck-1');
-    await user.type(within(form).getByRole('spinbutton'), '3');
-    await user.click(within(form).getByRole('button', { name: 'ยืนยัน รับจากโรงงาน' }));
-
-    await expectMovementPayload({
-      p_kind: 'factory_order',
-      p_from_location_id: null,
-      p_to_location_id: 'truck-1',
     });
   });
 
@@ -125,20 +137,6 @@ describe('ManagerStockControl movement tabs', () => {
     });
   });
 
-  it('explains that the integrated factory receipt requires an open round', async () => {
-    const user = userEvent.setup();
-    render(<ManagerStockControl operationRound={closedOperationRound} round={null} serviceDate={round.service_date} />);
-    await screen.findByRole('heading', { name: 'สต๊อกปัจจุบันของวัน' });
-    await user.click(screen.getByRole('button', { name: 'รับจากโรงงาน' }));
-    const submitButton = screen.getByRole('button', { name: 'ยืนยัน รับจากโรงงาน' });
-    const form = submitButton.closest('form') as HTMLFormElement;
-    await user.type(within(form).getByRole('spinbutton'), '2');
-    await user.click(submitButton);
-
-    expect(await within(form).findByText('ต้องมีรอบส่งที่เปิดอยู่ก่อนรับน้ำแข็งจากโรงงานในหน้านี้')).toBeTruthy();
-    expect(mocks.rpc.mock.calls.some(([name]) => name === 'record_stock_movement')).toBe(false);
-  });
-
   it('labels live stock as day-wide and refreshes it on demand', async () => {
     const user = userEvent.setup();
     render(<ManagerStockControl operationRound={round} round={round} serviceDate={round.service_date} />);
@@ -150,6 +148,98 @@ describe('ManagerStockControl movement tabs', () => {
     await waitFor(() => {
       const calls = mocks.rpc.mock.calls.filter(([name]) => name === 'get_stock_control_summary');
       expect(calls).toHaveLength(summaryCallsBeforeRefresh + 1);
+    });
+  });
+});
+
+describe('ManagerStockControl daily close', () => {
+  beforeEach(() => {
+    mocks.rpc.mockImplementation(async (name: string) => {
+      if (name === 'get_stock_control_summary') return { data: summary, error: null };
+      if (name === 'get_location_count_history') return { data: [], error: null };
+      if (name === 'get_daily_stock_count_readiness') return { data: currentReadiness, error: null };
+      if (name === 'get_daily_stock_close_state') return { data: closeReadyState, error: null };
+      if (name === 'close_daily_stock_from_latest_counts') return { data: closeReadyState, error: null };
+      return { data: null, error: null };
+    });
+  });
+
+  it('closes from current server-side count snapshots without sending client-computed counts', async () => {
+    const user = userEvent.setup();
+    render(<ManagerStockControl operationRound={round} round={round} serviceDate={round.service_date} />);
+
+    const closeButton = await screen.findByRole('button', { name: 'ปิดสต๊อกวันนี้' });
+    expect((closeButton as HTMLButtonElement).disabled).toBe(false);
+    expect(screen.queryByRole('checkbox', { name: /หัวหน้างานยืนยัน/ })).toBeNull();
+    await user.click(closeButton);
+
+    await waitFor(() => expect(mocks.rpc).toHaveBeenCalledWith(
+      'close_daily_stock_from_latest_counts',
+      expect.objectContaining({
+        p_service_date: round.service_date,
+        p_use_system_for_uncounted: false,
+        p_idempotency_key: expect.any(String),
+      }),
+    ));
+    const closeCall = mocks.rpc.mock.calls.find(([name]) => name === 'close_daily_stock_from_latest_counts');
+    expect(closeCall?.[1]).not.toHaveProperty('p_counts');
+  });
+
+  it('requires an explicit override for missing or stale counts', async () => {
+    mocks.rpc.mockImplementation(async (name: string) => {
+      if (name === 'get_stock_control_summary') return { data: summary, error: null };
+      if (name === 'get_location_count_history') return { data: [], error: null };
+      if (name === 'get_daily_stock_count_readiness') {
+        return {
+          data: [
+            currentReadiness[0],
+            { ...currentReadiness[1], status: 'stale' },
+          ],
+          error: null,
+        };
+      }
+      if (name === 'get_daily_stock_close_state') return { data: closeReadyState, error: null };
+      if (name === 'close_daily_stock_from_latest_counts') return { data: closeReadyState, error: null };
+      return { data: null, error: null };
+    });
+    const user = userEvent.setup();
+    render(<ManagerStockControl operationRound={round} round={round} serviceDate={round.service_date} />);
+
+    expect(await screen.findByText(/ต้องตรวจใหม่/)).toBeTruthy();
+    const closeButton = screen.getByRole('button', { name: 'ปิดสต๊อกวันนี้' });
+    const override = screen.getByRole('checkbox', { name: /หัวหน้างานยืนยัน/ });
+    expect((closeButton as HTMLButtonElement).disabled).toBe(true);
+    await user.click(override);
+    expect((closeButton as HTMLButtonElement).disabled).toBe(false);
+    await user.click(closeButton);
+
+    await waitFor(() => expect(mocks.rpc).toHaveBeenCalledWith(
+      'close_daily_stock_from_latest_counts',
+      expect.objectContaining({ p_use_system_for_uncounted: true }),
+    ));
+  });
+
+  it('resets the uncounted override when the service date changes', async () => {
+    mocks.rpc.mockImplementation(async (name: string) => {
+      if (name === 'get_stock_control_summary') return { data: summary, error: null };
+      if (name === 'get_location_count_history') return { data: [], error: null };
+      if (name === 'get_daily_stock_count_readiness') return { data: [], error: null };
+      if (name === 'get_daily_stock_close_state') return { data: closeReadyState, error: null };
+      return { data: null, error: null };
+    });
+    const user = userEvent.setup();
+    const { rerender } = render(
+      <ManagerStockControl operationRound={null} round={null} serviceDate={round.service_date} />,
+    );
+
+    const override = await screen.findByRole('checkbox', { name: /หัวหน้างานยืนยัน/ });
+    await user.click(override);
+    expect((override as HTMLInputElement).checked).toBe(true);
+
+    rerender(<ManagerStockControl operationRound={null} round={null} serviceDate="2026-07-21" />);
+    await waitFor(() => {
+      const checkbox = screen.getByRole('checkbox', { name: /หัวหน้างานยืนยัน/ }) as HTMLInputElement;
+      expect(checkbox.checked).toBe(false);
     });
   });
 });
