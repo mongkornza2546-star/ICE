@@ -245,7 +245,7 @@ test('closed rounds show a read-only stock snapshot while the day view stays liv
   assert.match(component, /const isRoundSnapshot = round\?\.status === 'closed'/);
   assert.match(component, /สต๊อกทั้งวัน ณ เวลาปิดรอบ/);
   assert.match(component, /!isRoundSnapshot \? \(/);
-  assert.match(workspace, /สต๊อกปัจจุบันของวัน/);
+  assert.match(component, /สต๊อกปัจจุบันของวัน/);
   assert.match(workspace, /stockRound\?\.status === 'open' \? stockRound : null/);
   assert.match(workspace, /selectedRound\?\.service_date === stockServiceDate && !selectedRound\.cancelled_at/);
   assert.match(snapshotMigration, /stock_movements_stamp_effective_time/);

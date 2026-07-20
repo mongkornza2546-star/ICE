@@ -218,48 +218,111 @@ export function RoundWorkspace({ profile, mode }: { profile: UserProfile; mode: 
           </section>
         ) : null}
 
-        <section className="panel">
-          <div className="panel-header">
-            <div>
-              <p className="eyebrow">{mode === 'stock' ? 'มุมมองสต๊อก' : 'รอบที่เข้าถึงได้'}</p>
-              <h2>{mode === 'stock' ? 'เลือกปัจจุบันหรือประวัติรอบ' : 'เลือกรอบส่ง'}</h2>
+        {mode === 'stock' ? (
+          <section className="panel left-panel-custom">
+            <div className="panel-header" style={{ marginBottom: 16 }}>
+              <h3 className="stock-layout-title">
+                เลือกรอบขนส่ง
+                <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4m0-4h.01"/></svg>
+              </h3>
             </div>
-          </div>
-          <div className="round-list">
-            {mode === 'stock' ? (
+            <div className="round-list" style={{ gap: 12, padding: 0, border: 'none', background: 'transparent' }}>
               <button
-                className={`round-item ${stockRound === null ? 'round-item--selected' : ''}`}
+                className={`round-item-custom ${stockRound === null ? 'selected' : ''}`}
                 onClick={() => setSelectedRoundId('')}
                 type="button"
               >
-                <span>สต๊อกปัจจุบันของวัน</span>
-                <small>{stockServiceDate} · อัปเดตต่อเนื่อง</small>
+                <div className="round-item-custom-header">
+                  <span>ตลอดวัน</span>
+                  <span className="status-badge-custom open">เปิดอยู่</span>
+                </div>
+                <div className="round-item-custom-date">
+                  {stockServiceDate}
+                </div>
               </button>
-            ) : null}
-            {visibleRounds.map((round) => (
-              <button
-                className={`round-item ${round.id === selectedRoundId ? 'round-item--selected' : ''}`}
-                key={round.id}
-                onClick={() => {
-                  setSelectedRoundId(round.id);
-                  if (mode === 'stock') setStockServiceDate(round.service_date);
-                }}
-                type="button"
-              >
-                <span>{round.name} — {roundStatusLabel(round)}</span>
-                <small>
-                  {round.service_date} · เริ่ม {formatRoundTime(round.opened_at)}
-                  {round.cancelled_at
-                    ? ` · ยกเลิก ${formatRoundTime(round.cancelled_at)}`
-                    : round.status === 'closed' ? ` · ปิด ${formatRoundTime(round.closed_at)}` : ''}
-                </small>
-              </button>
-            ))}
-            {visibleRounds.length === 0 ? (
-              <p className="empty-text">ยังไม่มีรอบส่งที่บัญชีนี้เข้าถึงได้</p>
-            ) : null}
-          </div>
-        </section>
+              {visibleRounds.map((round) => (
+                <button
+                  className={`round-item-custom ${round.id === selectedRoundId ? 'selected' : ''}`}
+                  key={round.id}
+                  onClick={() => {
+                    setSelectedRoundId(round.id);
+                    if (mode === 'stock') setStockServiceDate(round.service_date);
+                  }}
+                  type="button"
+                >
+                  <div className="round-item-custom-header">
+                    <span>{round.name}</span>
+                    <span className={`status-badge-custom ${round.status === 'open' && !round.cancelled_at ? 'open' : 'closed'}`}>
+                      {roundStatusLabel(round)}
+                    </span>
+                  </div>
+                  <div className="round-item-custom-date">
+                    {new Date(round.service_date).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' })}
+                  </div>
+                </button>
+              ))}
+              {visibleRounds.length === 0 ? (
+                <p className="empty-text">ยังไม่มีรอบส่งที่บัญชีนี้เข้าถึงได้</p>
+              ) : null}
+            </div>
+
+            {stockRound && (
+              <div className="selected-round-card">
+                <h4>รอบที่เลือก</h4>
+                <div className="round-item-custom-header" style={{ marginBottom: 12 }}>
+                  <span style={{ fontSize: '1.2rem' }}>{stockRound.name}</span>
+                  <span className={`status-badge-custom ${stockRound.status === 'open' && !stockRound.cancelled_at ? 'open' : 'closed'}`}>
+                    {roundStatusLabel(stockRound)}
+                  </span>
+                </div>
+                <div className="detail-row">
+                  <span className="detail-label">วันที่</span>
+                  <span>{new Date(stockRound.service_date).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                </div>
+                <div className="detail-row">
+                  <span className="detail-label">ศูนย์</span>
+                  <span>ศูนย์ราชการ</span>
+                </div>
+                <div className="detail-row">
+                  <span className="detail-label">เริ่มรอบ</span>
+                  <span>{formatRoundTime(stockRound.opened_at)} น.</span>
+                </div>
+              </div>
+            )}
+          </section>
+        ) : (
+          <section className="panel">
+            <div className="panel-header">
+              <div>
+                <p className="eyebrow">รอบที่เข้าถึงได้</p>
+                <h2>เลือกรอบส่ง</h2>
+              </div>
+            </div>
+            <div className="round-list">
+              {visibleRounds.map((round) => (
+                <button
+                  className={`round-item ${round.id === selectedRoundId ? 'round-item--selected' : ''}`}
+                  key={round.id}
+                  onClick={() => {
+                    setSelectedRoundId(round.id);
+                  }}
+                  type="button"
+                >
+                  <span>{round.name} — {roundStatusLabel(round)}</span>
+                  <small>
+                    {round.service_date} · เริ่ม {formatRoundTime(round.opened_at)}
+                    {round.cancelled_at
+                      ? ` · ยกเลิก ${formatRoundTime(round.cancelled_at)}`
+                      : round.status === 'closed' ? ` · ปิด ${formatRoundTime(round.closed_at)}` : ''}
+                  </small>
+                </button>
+              ))}
+              {visibleRounds.length === 0 ? (
+                <p className="empty-text">ยังไม่มีรอบส่งที่บัญชีนี้เข้าถึงได้</p>
+              ) : null}
+            </div>
+          </section>
+        )}
 
         {workspaceError ? (
           <section className="panel error-panel">
@@ -291,23 +354,9 @@ export function RoundWorkspace({ profile, mode }: { profile: UserProfile; mode: 
             <ManagerDeliveryAdjustments round={selectedRound} />
           </section>
         ) : (
-          <section className="panel">
-            <div className="panel-header">
-              <div>
-                <p className="eyebrow">{stockRound?.status === 'closed' ? 'ประวัติสต๊อก ณ เวลาปิดรอบ' : 'สต๊อกต่อเนื่องทั้งวัน'}</p>
-                <h2>{stockRound ? `${stockRound.name} — ${stockRound.status === 'closed' ? 'ปิดแล้ว' : 'เปิดอยู่'} · ${stockServiceDate}` : `วันที่ ${stockServiceDate}`}</h2>
-              </div>
-              <label className="toolbar-select">
-                วันที่สต๊อก
-                <input
-                  onChange={(event) => setStockServiceDate(event.target.value)}
-                  type="date"
-                  value={stockServiceDate}
-                />
-              </label>
-            </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             <ManagerStockControl operationRound={stockOperationRound} round={stockRound} serviceDate={stockServiceDate} />
-          </section>
+          </div>
         )}
       </section>
     </div>

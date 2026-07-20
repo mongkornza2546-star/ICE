@@ -8,6 +8,9 @@ export type ShopRoundStatus =
   | 'no_access'
   | 'issue';
 export type ShopPaymentStatus = 'unknown' | 'paid' | 'unpaid';
+export type PaymentTerm = 'immediate' | 'end_of_day' | 'credit';
+export type PaymentMethod = 'cash' | 'bank_transfer' | 'qr';
+export type FinancialPaymentStatus = 'unpaid' | 'partial' | 'paid';
 
 export interface UserProfile {
   id: string;
