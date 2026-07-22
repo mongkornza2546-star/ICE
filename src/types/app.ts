@@ -102,6 +102,9 @@ export interface StockLocationBalance {
   code: string;
   name: string;
   kind: StockLocationKind;
+  holds_inventory?: boolean;
+  requires_daily_count?: boolean;
+  is_courier_source?: boolean;
   balances: StockBalanceItem[];
 }
 
@@ -128,6 +131,12 @@ export interface StockMovementEntry {
   to_location_name: string | null;
   recorded_by: string;
   items: StockBalanceItem[];
+  status?: 'active' | 'cancelled';
+  cancelled_by_name?: string | null;
+  cancelled_at?: string | null;
+  cancellation_reason?: string | null;
+  original_movement_id?: string | null;
+  replacement_movement_id?: string | null;
 }
 
 export interface StockControlSummary {
@@ -153,6 +162,38 @@ export interface StockLocationSetting {
   is_courier_source: boolean;
   is_default_for_building: boolean;
   is_active: boolean;
+  holds_inventory: boolean;
+  requires_daily_count: boolean;
+}
+
+export interface StockHolderAreaAssignment {
+  id: string;
+  stock_location_id: string;
+  building_id: string | null;
+  building_name?: string | null;
+  zone_id: string | null;
+  zone_name?: string | null;
+  assigned_by: string;
+  assigned_at: string;
+}
+
+export interface StockCountVarianceReview {
+  id: string;
+  service_date: string;
+  location_id: string;
+  location_name: string;
+  ice_type_id: string;
+  ice_type_name: string;
+  unit: string;
+  system_quantity: number;
+  actual_quantity: number;
+  variance_quantity: number;
+  status: 'pending' | 'approved' | 'rejected';
+  reviewed_by?: string | null;
+  reviewed_by_name?: string | null;
+  reviewed_at?: string | null;
+  review_note?: string | null;
+  created_at: string;
 }
 
 export interface StockCountItem {
@@ -277,4 +318,72 @@ export interface ShopCard {
   stop_note: string | null;
   today_history: ShopCardHistoryEntry[];
   today_totals: Record<string, number>;
+}
+
+export type CreditDueRule = 'net_days' | 'end_of_month';
+
+export interface IceTypePriceSetting {
+  id: string;
+  ice_type_id: string;
+  ice_type_code?: string;
+  ice_type_name?: string;
+  unit?: string;
+  unit_price: number;
+  valid_from: string;
+  valid_to: string | null;
+  is_active: boolean;
+  created_at?: string;
+  created_by?: string;
+}
+
+export interface ShopPaymentProfileSetting {
+  id?: string;
+  shop_id: string;
+  allowed_payment_terms: PaymentTerm[];
+  default_payment_term: PaymentTerm;
+  allowed_payment_methods: PaymentMethod[];
+  default_payment_method: PaymentMethod;
+  cash_reference_required: boolean;
+  cash_evidence_required: boolean;
+  bank_transfer_reference_required: boolean;
+  bank_transfer_evidence_required: boolean;
+  qr_reference_required: boolean;
+  qr_evidence_required: boolean;
+  allow_outstanding: boolean;
+  credit_due_rule: CreditDueRule | null;
+  credit_days: number | null;
+  credit_limit: number | null;
+}
+
+export interface ShopIcePriceSetting {
+  id: string;
+  shop_id: string;
+  ice_type_id: string;
+  ice_type_code?: string;
+  ice_type_name?: string;
+  unit?: string;
+  unit_price: number;
+  valid_from: string;
+  valid_to: string | null;
+  is_active: boolean;
+}
+
+export interface ShopReadinessItem {
+  shop_id: string;
+  shop_code: string;
+  shop_name: string;
+  building_name?: string;
+  zone_name?: string;
+  has_payment_profile: boolean;
+  missing_special_prices_count: number;
+  has_issues: boolean;
+  issue_details: string[];
+}
+
+export interface POSReadinessReport {
+  total_active_shops: number;
+  shops_ready_count: number;
+  shops_missing_payment_profile: number;
+  ice_types_missing_standard_price: number;
+  items: ShopReadinessItem[];
 }

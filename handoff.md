@@ -1,71 +1,41 @@
-# Handoff: Closed-round stock snapshots and stock-control UI
+# Handoff: POS Financial Foundation & Shop Settings (Step 3)
 
-## Current objective
+## Status
+ขั้นตอนที่ 3 ตามแผน `docs/pos-delivery-and-payment-plan.md` ได้ถูกพัฒนาและทดสอบเสร็จสมบูรณ์แล้ว 100% (Integration และ UI Tests ทั้งหมด 194 tests ผ่านเรียบร้อย) ระบบพร้อมสำหรับการตั้งค่าข้อมูลตั้งต้น (Step 4) และการพัฒนาหน้าจอ POS สำหรับพนักงาน (Step 5)
 
-Complete the stock-control layout overhaul without changing the existing stock-ledger semantics: live views show day-wide stock, while a selected closed round shows the frozen day-wide snapshot captured at that round's close time.
+## สิ่งที่พัฒนาสำเร็จใน Phase นี้ (Implemented Features)
 
-## Product decisions
+### 1. ระบบจัดการราคากลาง (Master Ice Pricing)
+- คอมโพเนนต์ `IceTypePriceEditor` (ที่เมนูตั้งค่าระบบของ Admin)
+- รองรับการกำหนดราคามาตรฐานแบบระบุช่วงเวลา (`valid_from`, `valid_to`) และระบบประวัติราคาย้อนหลัง
 
-- Stock remains a day-wide ledger keyed by `service_date`; it is not owned by a delivery round.
-- A delivery round is identified by `round_id`, even when displayed names such as `04:00` are duplicated.
-- The live view is labelled `สต๊อกปัจจุบันของวัน` and shows the current day-wide balance.
-- A closed round is read-only and is labelled `สต๊อกทั้งวัน ณ เวลาปิดรอบ`.
-- Factory receipts use the round-independent `FactoryOrderPage`; the redundant integrated stock-control tab has been removed.
-- Manual `ส่งคืนโรงงาน` remains available in addition to the automatic return performed by daily close.
-- **Daily Stock Closure Validation:** The daily stock closure process relies on actual counts recorded in the "ตรวจนับจริง" tab. A count becomes stale after any stock-affecting movement or delivery at that location; missing or stale locations require a fresh supervisor confirmation before the backend uses system balances.
+### 2. โปรไฟล์การชำระเงินของร้านค้า (Shop Payment Profiles)
+- เพิ่ม `ShopPaymentProfileEditor` ในหน้าแก้ไขข้อมูลร้านค้า
+- รองรับการระบุเงื่อนไขการชำระเงิน: `immediate` (จ่ายทันที), `end_of_day` (สิ้นวัน), `credit` (เครดิต)
+- รองรับการกำหนดช่องทางที่ยอมรับ (เงินสด, โอนเงิน, QR), การอนุญาตให้ค้างยอด, กฎการเก็บเงิน (Net Days / End of Month) และวงเงินเครดิต
 
-The operating rules are also recorded in [README.md](README.md) and [docs/phase-0/operating-rules.md](docs/phase-0/operating-rules.md).
+### 3. ราคาพิเศษเฉพาะร้าน (Shop Special Prices)
+- คอมโพเนนต์ `ShopSpecialPriceEditor` เพื่อกำหนดราคาพิเศษสำหรับลูกค้าเฉพาะราย
+- ใช้โครงสร้าง Effective-dated (ช่วงเวลาที่มีผล) เช่นเดียวกับราคากลาง หากราคาพิเศษหมดอายุ ระบบจะ fallback ไปใช้ราคากลางอัตโนมัติ
 
-## Implemented work
+### 4. เครื่องมือจัดการข้อมูลแบบกลุ่ม (Bulk Payment Setup)
+- Modal `BulkPaymentSetupModal` สำหรับค้นหาและกรองร้านค้าด้วย ตึก/โซนย่อย
+- ช่วยให้ Admin สามารถกำหนดโปรไฟล์การเงินตั้งต้นให้ร้านค้าหลายสิบร้านได้ในคลิกเดียว
 
-### Closed-round snapshots
+### 5. รายงานตรวจสอบความพร้อม (POS Readiness Report)
+- แดชบอร์ด `ShopReadinessPanel` แสดงสถิติและสถานะร้านค้าที่ยังไม่มี Payment Profile หรือสินค้าน้ำแข็งที่ยังไม่ได้กำหนดราคากลาง
+- เป็น Checkpoint สำคัญก่อนทำการเปิดใช้งาน POS App อย่างเต็มรูปแบบ
 
-- [supabase/migrations/0026_round_stock_snapshots.sql](supabase/migrations/0026_round_stock_snapshots.sql) adds snapshot tables, backfills closed rounds, captures balances atomically at close time, and makes `get_stock_control_summary` return live or snapshot data as appropriate.
-- [supabase/migrations/0027_cancel_delivery_round.sql](supabase/migrations/0027_cancel_delivery_round.sql) captures a snapshot when an unused round is cancelled and keeps cancelled rounds out of stock history.
-- `ManagerStockControl` hides all mutation forms for a selected closed round.
-- `RoundWorkspace` distinguishes the day-wide live view from round history and keeps live operations associated with an appropriate round for audit provenance.
+## ข้อมูลทางเทคนิคและ Testing
+- **Types**: สร้าง Type Definitions ที่เกี่ยวข้องครบถ้วนใน `src/types/app.ts`
+- **Service Layer**: สร้างฟังก์ชัน RPC และตาราง Database ใน `adminReferenceSettingsService.ts`
+- **Tests**: เพิ่ม UI tests สำหรับราคากลาง (`tests/admin-ice-type-pricing.test.tsx`) และฟอร์มร้านค้า (`tests/shop-payment-and-pricing-settings.test.tsx`) โดย Mock ข้อมูลทั้งหมดถูกต้อง และรันผ่าน 100%
 
-### Stock-control layout
-
-- [src/stock-layout.css](src/stock-layout.css) contains the stock-specific panels, location cards, action tabs, form grids, refresh control, and mobile layout.
-- [src/RoundWorkspace.tsx](src/RoundWorkspace.tsx) renders the redesigned round selector and selected-round details in stock mode.
-- [src/ManagerStockControl.tsx](src/ManagerStockControl.tsx) renders location balances as cards and exposes transfer, damage, physical count, and factory return actions as tabs.
-- Each movement renders only the endpoints its backend contract accepts:
-  - transfer: source and destination
-  - damage: source to `null`, with a required note
-  - factory return: active truck to `null`
-- The refresh control reloads the stock summary, count history, count readiness, and daily-close state RPCs. Live data shows the successful client load time; closed snapshots show `snapshot_at`.
-- [tests/manager-stock-control.test.tsx](tests/manager-stock-control.test.tsx) submits every available stock-control movement path and verifies the RPC payload. It also checks the day-wide heading, manual refresh, current-count close, stale-count override, and service-date reset.
-
-### Actual Count & Daily Closure UI Refinement
-
-- Updated the "ตรวจนับจริง" tab to display "จุดที่ต้องการตรวจนับ" for clarity.
-- Removed redundant inputs from the "ปิดสต๊อกสิ้นวัน" section. Instead, a summary table uses server-computed readiness for every active location, independent of the 20-row history feed.
-- [supabase/migrations/0031_daily_stock_count_readiness.sql](supabase/migrations/0031_daily_stock_count_readiness.sql) marks counts stale after later stock changes and derives the close payload atomically while holding the service-date lock.
-- Introduced a quick action that routes the user to the first missing or stale location.
-- Added a supervisor override checkbox to use current system quantities for missing or stale locations. The confirmation resets when the service date changes.
-
-## Verification
-
-- `npx vitest run tests/manager-stock-control.test.tsx` passed: 7 tests.
-- `npm run test:ui` passed: 5 files, 33 tests.
-- `node --test tests/daily-stock-count-readiness-contract.test.mjs` passed: 3 tests.
-- `node --test tests/factory-order-contract.integration.test.mjs` passed: 12 tests.
-- `node --test tests/round-stock-snapshots.integration.test.mjs` passed: 1 test.
-- `node --test tests/cancel-delivery-round.integration.test.mjs` passed: 5 tests.
-- `npm run build` passed. Vite still reports the existing warning that a generated chunk exceeds 500 kB.
-- `git diff --check` passed.
-
-The relevant daily-close assertion in `tests/manager-contracts.test.mjs` passes. The complete file remains red with 18/27 passing because nine existing source-regex assertions cover unrelated refactors in the dirty worktree; therefore the full `npm test` command is not reported as green.
-
-## Deployment note
-
-Apply `0026_round_stock_snapshots.sql`, then `0027_cancel_delivery_round.sql`, before relying on closed-round history. Migration 0026 backfills existing closed rounds; later closures and cancellations capture snapshots in the same transaction as their state change. Apply `0031_daily_stock_count_readiness.sql` after the parallel `0030_pos_delivery_transactions.sql`; authenticated daily-close clients then use `close_daily_stock_from_latest_counts`.
-
-## Pending items
-
-- `ศูนย์ราชการ` in the selected-round card is still hardcoded because the current `DeliveryRound` model has no center field.
-
-## Worktree caution
-
-The worktree is intentionally dirty and contains parallel user work. Preserve existing changes and do not reset or broadly clean the tree. At the time of this handoff the stock-layout work touches `handoff.md`, `src/ManagerStockControl.tsx`, `src/RoundWorkspace.tsx`, `src/index.css`, `src/stock-layout.css`, `tests/manager-contracts.test.mjs`, and `tests/manager-stock-control.test.tsx`.
+## แผนงานและขั้นตอนถัดไป (Next Steps)
+1. **Step 4: ข้อมูลตั้งต้น (Data Initialization)**
+   - ผู้ดูแลระบบ (Admin) เข้าหน้าแอปเพื่อใช้ Bulk Setup กำหนดโปรไฟล์การเงินให้ร้านค้าทั้งหมด
+   - กำหนดราคากลาง (Master Prices) ให้กับน้ำแข็งทุกชนิด
+2. **Step 5: หน้าจอ POS พนักงาน (Employee POS UI)**
+   - ปรับปรุง `EmployeeDeliveryWorkspace.tsx` ให้เป็น 3-Column Layout สำหรับ Desktop/Tablet และ 3-Step Wizard สำหรับ Mobile
+   - เพิ่ม Keypad แบบสัมผัสสำหรับการคีย์ตัวเลขที่รวดเร็ว
+   - เชื่อมต่อการคำนวณราคารวม (Unit Price × Quantity) และการบันทึกการส่ง (`record_delivery`) พร้อมแนบรูปแบบการชำระเงิน

@@ -491,7 +491,15 @@ test('legacy unpriced correction stays outside the financial ledger', async (t) 
 
 test('credit-limit approval must match and is consumed by exactly one delivery', async (t) => {
   const db = await createDatabase(t);
+  const todayStr = new Date(Date.now() + 7 * 3600000).toISOString().split('T')[0];
+  const expectedDueDate = new Date(Date.now() + 7 * 3600000);
+  expectedDueDate.setDate(expectedDueDate.getDate() + 30);
+  const expectedDueDateStr = expectedDueDate.toISOString().split('T')[0];
+
   await db.exec(`
+    update public.delivery_rounds
+    set service_date = date '${todayStr}'
+    where id = '${ROUND_ID}';
     update public.shop_payment_profiles
     set allowed_payment_terms = array['credit']::public.payment_term[],
         default_payment_term = 'credit',
@@ -500,6 +508,13 @@ test('credit-limit approval must match and is consumed by exactly one delivery',
         credit_days = 30,
         credit_limit = 20
     where shop_id = '${SHOP_ID}';
+    insert into public.test_opening_balances (
+      service_date, location_id, ice_type_id, quantity
+    ) values (
+      date '${todayStr}',
+      '${HOLDING_ID}', '${ICE_ID}', 10
+    ) on conflict (service_date, location_id, ice_type_id) do update
+      set quantity = excluded.quantity;
   `);
   const fingerprint = await db.query(`
     select public.delivery_request_fingerprint(
@@ -540,7 +555,7 @@ test('credit-limit approval must match and is consumed by exactly one delivery',
   `);
   assert.equal(Number(delivered.rows[0].result.total_amount), 36);
   assert.equal(delivered.rows[0].result.payment_term, 'credit');
-  assert.equal(delivered.rows[0].result.due_date, '2026-08-19');
+  assert.equal(delivered.rows[0].result.due_date, expectedDueDateStr);
 
   const consumed = await db.query(`
     select status, consumed_by_delivery_event_id
@@ -579,7 +594,8 @@ test('credit-limit approval expires after its business day', async (t) => {
     ) values (
       (now() at time zone 'Asia/Bangkok')::date - 1,
       '${HOLDING_ID}', '${ICE_ID}', 10
-    );
+    ) on conflict (service_date, location_id, ice_type_id) do update
+      set quantity = excluded.quantity;
   `);
   const fingerprint = await db.query(`
     select public.delivery_request_fingerprint(

@@ -1,11 +1,16 @@
 import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from 'react';
-import { Buildings, CaretRight, ImageSquare, MagnifyingGlass, MapPin, Phone, Plus, Storefront, X } from '@phosphor-icons/react';
+import { Buildings, CaretRight, ImageSquare, MagnifyingGlass, MapPin, Phone, Plus, Storefront, X, SlidersHorizontal } from '@phosphor-icons/react';
 import { supabase } from './lib/supabase';
 import { parseShopImportFile, type ShopImportRow } from './lib/shopImport';
-import type { BuildingOption, BuildingZoneOption, ShopSetting } from './types/app';
+import type { BuildingOption, BuildingZoneOption, ShopSetting, IceTypeOption } from './types/app';
 import { ShopImageEditor } from './features/admin-reference-settings/components/ShopImageEditor';
+import { ShopPaymentProfileEditor } from './features/shop-settings/components/ShopPaymentProfileEditor';
+import { ShopSpecialPriceEditor } from './features/shop-settings/components/ShopSpecialPriceEditor';
+import { BulkPaymentSetupModal } from './features/shop-settings/components/BulkPaymentSetupModal';
+import { ShopReadinessPanel } from './features/shop-settings/components/ShopReadinessPanel';
 import { getShopImageSignedUrls } from './features/admin-reference-settings/adminReferenceSettingsService';
 import { matchesActiveFilter, type ActiveFilter } from './features/admin-reference-settings/referenceEditorFilters';
+
 
 const TANK_IMAGE_BUCKET = 'tank-images';
 const MAX_TANK_IMAGE_SIZE = 5 * 1024 * 1024;
@@ -58,6 +63,8 @@ export function ShopSettings() {
   const [shops, setShops] = useState<ShopSetting[]>([]);
   const [buildings, setBuildings] = useState<BuildingOption[]>([]);
   const [zones, setZones] = useState<BuildingZoneOption[]>([]);
+  const [iceTypes, setIceTypes] = useState<IceTypeOption[]>([]);
+  const [bulkModalOpen, setBulkModalOpen] = useState(false);
   const [draft, setDraft] = useState<ShopDraft>(emptyDraft);
   const [query, setQuery] = useState('');
   const [buildingFilter, setBuildingFilter] = useState('');
@@ -147,25 +154,28 @@ export function ShopSettings() {
     if (!supabase) return;
     setLoading(true);
     setError(null);
-    const [shopsResponse, buildingsResponse, zonesResponse] = await Promise.all([
+    const [shopsResponse, buildingsResponse, zonesResponse, iceTypesResponse] = await Promise.all([
       supabase
         .from('shops')
         .select('id, code, name, image_path, building_id, zone_id, floor_or_zone, government_shop_code, contact_name, contact_phone, normal_rounds_per_day, access_note, status')
         .order('code'),
       supabase.from('buildings').select('id, code, name').eq('is_active', true).order('code'),
       supabase.from('building_zones').select('id, building_id, code, name, sort_order, is_active').eq('is_active', true).order('sort_order'),
+      supabase.from('ice_types').select('id, code, name, unit').eq('is_active', true).order('code'),
     ]);
-    const firstError = shopsResponse.error ?? buildingsResponse.error ?? zonesResponse.error;
+    const firstError = shopsResponse.error ?? buildingsResponse.error ?? zonesResponse.error ?? iceTypesResponse.error;
     if (firstError) {
       setError(firstError.message);
     } else {
       setShops((shopsResponse.data ?? []) as ShopSetting[]);
       setBuildings((buildingsResponse.data ?? []) as BuildingOption[]);
       setZones((zonesResponse.data ?? []) as BuildingZoneOption[]);
+      setIceTypes((iceTypesResponse.data ?? []) as IceTypeOption[]);
       await refreshRentedTanks();
     }
     setLoading(false);
   }
+
 
   async function refreshRentedTanks() {
     const client = supabase;
@@ -477,8 +487,18 @@ export function ShopSettings() {
             <h2>ร้านค้าทั้งหมด</h2>
             <p className="muted">เลือกการ์ดเพื่อดูรายละเอียดและแก้ไขข้อมูลร้าน</p>
           </div>
-          <button className="primary-button" onClick={startNew} type="button"><Plus size={18} weight="bold" />ร้านใหม่</button>
+          <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <button className="secondary-button" onClick={() => setBulkModalOpen(true)} type="button">
+              <SlidersHorizontal size={18} />
+              ตั้งค่าชำระเงินหลายร้าน
+            </button>
+            <button className="primary-button" onClick={startNew} type="button">
+              <Plus size={18} weight="bold" />
+              ร้านใหม่
+            </button>
+          </div>
         </div>
+
         <div className="shop-catalog__toolbar">
           <label className="shop-search-field">
             <MagnifyingGlass aria-hidden="true" size={20} />
@@ -694,12 +714,32 @@ export function ShopSettings() {
           onShopSaved={(savedShop) => setShops((current) => current.map((shop) => shop.id === savedShop.id ? { ...shop, image_path: savedShop.image_path } : shop))}
           shop={selectedShop}
         />
+
+        {draft.id ? (
+          <>
+            <ShopPaymentProfileEditor shopId={draft.id} shopName={draft.name} />
+            <ShopSpecialPriceEditor iceTypes={iceTypes} shopId={draft.id} shopName={draft.name} />
+          </>
+        ) : null}
           </section>
         </div>
       ) : null}
+
+      {bulkModalOpen ? (
+        <BulkPaymentSetupModal
+          buildings={buildings}
+          onClose={() => setBulkModalOpen(false)}
+          onSuccess={() => void loadSettings()}
+          shops={shops}
+          zones={zones}
+        />
+      ) : null}
+
+      <ShopReadinessPanel />
     </div>
   );
 }
+
 
 function TextField({ label, value, required, onChange }: { label: string; value: string; required?: boolean; onChange: (value: string) => void }) {
   return (

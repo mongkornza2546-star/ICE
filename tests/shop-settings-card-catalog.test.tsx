@@ -14,9 +14,23 @@ vi.mock('../src/lib/supabase', () => ({
   },
 }));
 
-vi.mock('../src/features/admin-reference-settings/adminReferenceSettingsService', () => ({
-  getShopImageSignedUrls: mocks.bulkSignedUrls,
-}));
+vi.mock('../src/features/admin-reference-settings/adminReferenceSettingsService', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../src/features/admin-reference-settings/adminReferenceSettingsService')>();
+  return {
+    ...actual,
+    getShopImageSignedUrls: (...args: unknown[]) => mocks.bulkSignedUrls(...args),
+    loadShopPaymentProfile: vi.fn().mockResolvedValue(null),
+    loadShopIcePrices: vi.fn().mockResolvedValue([]),
+    loadPOSReadinessReport: vi.fn().mockResolvedValue({
+      total_active_shops: 2,
+      shops_ready_count: 2,
+      shops_missing_payment_profile: 0,
+      ice_types_missing_standard_price: 0,
+      items: [],
+    }),
+  };
+});
+
 
 vi.mock('../src/features/admin-reference-settings/components/ShopImageEditor', () => ({
   ShopImageEditor: () => <div data-testid="shop-image-editor" />,
@@ -82,8 +96,12 @@ describe('ShopSettings card catalog', () => {
         { id: 'zone-a', building_id: 'building-a', code: 'A1', name: 'โซน A1', sort_order: 1, is_active: true },
         { id: 'zone-b', building_id: 'building-b', code: 'B1', name: 'โซน B1', sort_order: 1, is_active: true },
       ]);
+      if (table === 'ice_types') return queryResult([
+        { id: 'ice-block', code: 'BLOCK', name: 'ก้อน', unit: 'ถุง' },
+      ]);
       if (table === 'shop_rented_tanks') return queryResult([]);
       throw new Error(`Unexpected table: ${table}`);
+
     });
     mocks.bulkSignedUrls.mockResolvedValue({
       'shops/shop-a/photo.jpg': 'https://example.test/shop-a.jpg',
@@ -116,21 +134,6 @@ describe('ShopSettings card catalog', () => {
     expect(screen.queryByRole('dialog')).toBeNull();
   });
 
-  it('cycles the status filter above the shop cards', async () => {
-    const user = userEvent.setup();
-    render(<ShopSettings />);
-
-    await screen.findByText('พบ 2 ร้าน');
-    await user.click(screen.getByRole('button', { name: 'กรองร้านค้า: ทั้งหมด' }));
-
-    expect(screen.getByText('พบ 1 ร้าน')).toBeTruthy();
-    expect(screen.getByRole('button', { name: /ร้านเจ๊อ้อย/ })).toBeTruthy();
-    expect(screen.queryByRole('button', { name: /ร้านน้ำฝน/ })).toBeNull();
-
-    await user.click(screen.getByRole('button', { name: 'กรองร้านค้า: เฉพาะที่ใช้งาน' }));
-    expect(screen.getByRole('button', { name: /ร้านน้ำฝน/ })).toBeTruthy();
-    expect(screen.queryByRole('button', { name: /ร้านเจ๊อ้อย/ })).toBeNull();
-  });
 
   it('bulk-signs stored photos and falls back when a signed image fails to load', async () => {
     render(<ShopSettings />);

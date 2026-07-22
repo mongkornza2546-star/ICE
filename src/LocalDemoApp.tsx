@@ -189,6 +189,9 @@ const managerStockDemoSummary: StockControlSummary = {
       code: 'TRUCK-MAIN',
       name: 'รถบรรทุกหลัก',
       kind: 'truck',
+      holds_inventory: true,
+      requires_daily_count: true,
+      is_courier_source: true,
       balances: [
         { ice_type_id: 'tube', ice_type_name: 'หลอดเล็ก', unit: 'ถุง', quantity: 47.5 },
         { ice_type_id: 'crushed', ice_type_name: 'โม่', unit: 'ถุง', quantity: 9 },
@@ -199,14 +202,17 @@ const managerStockDemoSummary: StockControlSummary = {
     },
     {
       id: 'holder-somchai', code: 'พื้นที่ A · Skywalk', name: 'รถเข็นสมชาย', kind: 'team',
+      holds_inventory: true, requires_daily_count: true, is_courier_source: false,
       balances: [{ ice_type_id: 'tube', ice_type_name: 'หลอดเล็ก', unit: 'ถุง', quantity: 12 }],
     },
     {
       id: 'holder-vichai', code: 'พื้นที่ B', name: 'รถเข็นวิชัย', kind: 'team',
+      holds_inventory: true, requires_daily_count: true, is_courier_source: false,
       balances: [{ ice_type_id: 'tube', ice_type_name: 'หลอดเล็ก', unit: 'ถุง', quantity: 8 }],
     },
     {
       id: 'holder-nid', code: 'พื้นที่ C', name: 'รถเข็นนิด', kind: 'team',
+      holds_inventory: true, requires_daily_count: true, is_courier_source: false,
       balances: [{ ice_type_id: 'tube', ice_type_name: 'หลอดเล็ก', unit: 'ถุง', quantity: 0 }],
     },
   ],

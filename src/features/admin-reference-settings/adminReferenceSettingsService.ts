@@ -1,6 +1,6 @@
 import { supabase } from '../../lib/supabase';
 import { isMissingRpc } from '../../lib/rpc';
-import type { UserProfile, AppRole } from '../../types/app';
+import type { UserProfile, AppRole, IceTypePriceSetting, ShopPaymentProfileSetting, ShopIcePriceSetting, POSReadinessReport, ShopReadinessItem } from '../../types/app';
 import {
   USER_FIELDS,
   WORK_SITE_FIELDS,
@@ -17,13 +17,13 @@ import {
   type EmployeeWorkSiteAssignment,
 } from './types';
 
+
 export function getErrorMessage(error: unknown) {
   if (typeof error === 'object' && error && 'message' in error && typeof error.message === 'string') {
     return error.message;
   }
   return 'เกิดข้อผิดพลาดขณะติดต่อ Supabase';
 }
-
 export async function loadAdminSettings(isCancelled: () => boolean) {
   const client = supabase;
   if (!client) throw new Error('ยังไม่ได้ตั้งค่า Supabase สำหรับหน้านี้');
@@ -304,4 +304,354 @@ export async function removeIceTypeImageFiles(paths: string[]): Promise<void> {
   if (paths.length === 0) return;
   const { error } = await client.storage.from(ICE_TYPE_IMAGE_BUCKET).remove(paths);
   if (error) throw new Error(error.message);
+}
+
+export async function loadIceTypePrices(iceTypeId?: string): Promise<IceTypePriceSetting[]> {
+  const client = supabase;
+  if (!client) throw new Error('Supabase client not initialized');
+
+  let query = client
+    .from('ice_type_prices')
+    .select(`
+      id,
+      ice_type_id,
+      unit_price,
+      valid_from,
+      valid_to,
+      is_active,
+      created_at,
+      ice_types ( code, name, unit )
+    `)
+    .order('valid_from', { ascending: false });
+
+  if (iceTypeId) {
+    query = query.eq('ice_type_id', iceTypeId);
+  }
+
+  const { data, error } = await query;
+  if (error) throw new Error(error.message);
+
+  return (data ?? []).map((row: any) => ({
+    id: row.id,
+    ice_type_id: row.ice_type_id,
+    ice_type_code: row.ice_types?.code,
+    ice_type_name: row.ice_types?.name,
+    unit: row.ice_types?.unit,
+    unit_price: Number(row.unit_price),
+    valid_from: row.valid_from,
+    valid_to: row.valid_to,
+    is_active: row.is_active,
+    created_at: row.created_at,
+  }));
+}
+
+export async function saveIceTypePrice(payload: {
+  ice_type_id: string;
+  unit_price: number;
+  valid_from: string;
+  valid_to: string | null;
+}): Promise<IceTypePriceSetting> {
+  const client = supabase;
+  if (!client) throw new Error('Supabase client not initialized');
+
+  const { data: authData } = await client.auth.getUser();
+  if (!authData?.user) throw new Error('ไม่พบบัญชีผู้ใช้');
+
+  const { data, error } = await client
+    .from('ice_type_prices')
+    .insert({
+      ice_type_id: payload.ice_type_id,
+      unit_price: payload.unit_price,
+      valid_from: payload.valid_from,
+      valid_to: payload.valid_to || null,
+      created_by: authData.user.id,
+    })
+    .select(`
+      id,
+      ice_type_id,
+      unit_price,
+      valid_from,
+      valid_to,
+      is_active,
+      created_at,
+      ice_types ( code, name, unit )
+    `)
+    .single();
+
+  if (error) throw new Error(error.message);
+
+  const row = data as any;
+  return {
+    id: row.id,
+    ice_type_id: row.ice_type_id,
+    ice_type_code: row.ice_types?.code,
+    ice_type_name: row.ice_types?.name,
+    unit: row.ice_types?.unit,
+    unit_price: Number(row.unit_price),
+    valid_from: row.valid_from,
+    valid_to: row.valid_to,
+    is_active: row.is_active,
+    created_at: row.created_at,
+  };
+}
+
+export async function loadShopPaymentProfile(shopId: string): Promise<ShopPaymentProfileSetting | null> {
+  const client = supabase;
+  if (!client) throw new Error('Supabase client not initialized');
+
+  const { data, error } = await client
+    .from('shop_payment_profiles')
+    .select('*')
+    .eq('shop_id', shopId)
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+  if (!data) return null;
+
+  return {
+    ...data,
+    credit_limit: data.credit_limit !== null ? Number(data.credit_limit) : null,
+  } as ShopPaymentProfileSetting;
+}
+
+export async function saveShopPaymentProfile(
+  profile: ShopPaymentProfileSetting
+): Promise<ShopPaymentProfileSetting> {
+  const client = supabase;
+  if (!client) throw new Error('Supabase client not initialized');
+
+  const { data: authData } = await client.auth.getUser();
+  if (!authData?.user) throw new Error('ไม่พบบัญชีผู้ใช้');
+
+  const payload = {
+    shop_id: profile.shop_id,
+    allowed_payment_terms: profile.allowed_payment_terms,
+    default_payment_term: profile.default_payment_term,
+    allowed_payment_methods: profile.allowed_payment_methods,
+    default_payment_method: profile.default_payment_method,
+    cash_reference_required: profile.cash_reference_required,
+    cash_evidence_required: profile.cash_evidence_required,
+    bank_transfer_reference_required: profile.bank_transfer_reference_required,
+    bank_transfer_evidence_required: profile.bank_transfer_evidence_required,
+    qr_reference_required: profile.qr_reference_required,
+    qr_evidence_required: profile.qr_evidence_required,
+    allow_outstanding: profile.allow_outstanding,
+    credit_due_rule: profile.credit_due_rule,
+    credit_days: profile.credit_days,
+    credit_limit: profile.credit_limit,
+    created_by: authData.user.id,
+  };
+
+  const { data, error } = await client
+    .from('shop_payment_profiles')
+    .upsert(payload, { onConflict: 'shop_id' })
+    .select('*')
+    .single();
+
+  if (error) throw new Error(error.message);
+  return {
+    ...data,
+    credit_limit: data.credit_limit !== null ? Number(data.credit_limit) : null,
+  } as ShopPaymentProfileSetting;
+}
+
+export async function loadShopIcePrices(shopId: string): Promise<ShopIcePriceSetting[]> {
+  const client = supabase;
+  if (!client) throw new Error('Supabase client not initialized');
+
+  const { data, error } = await client
+    .from('shop_ice_type_prices')
+    .select(`
+      id,
+      shop_id,
+      ice_type_id,
+      unit_price,
+      valid_from,
+      valid_to,
+      is_active,
+      ice_types ( code, name, unit )
+    `)
+    .eq('shop_id', shopId)
+    .order('valid_from', { ascending: false });
+
+  if (error) throw new Error(error.message);
+
+  return (data ?? []).map((row: any) => ({
+    id: row.id,
+    shop_id: row.shop_id,
+    ice_type_id: row.ice_type_id,
+    ice_type_code: row.ice_types?.code,
+    ice_type_name: row.ice_types?.name,
+    unit: row.ice_types?.unit,
+    unit_price: Number(row.unit_price),
+    valid_from: row.valid_from,
+    valid_to: row.valid_to,
+    is_active: row.is_active,
+  }));
+}
+
+export async function saveShopIcePrice(payload: {
+  shop_id: string;
+  ice_type_id: string;
+  unit_price: number;
+  valid_from: string;
+  valid_to: string | null;
+}): Promise<ShopIcePriceSetting> {
+  const client = supabase;
+  if (!client) throw new Error('Supabase client not initialized');
+
+  const { data: authData } = await client.auth.getUser();
+  if (!authData?.user) throw new Error('ไม่พบบัญชีผู้ใช้');
+
+  const { data, error } = await client
+    .from('shop_ice_type_prices')
+    .insert({
+      shop_id: payload.shop_id,
+      ice_type_id: payload.ice_type_id,
+      unit_price: payload.unit_price,
+      valid_from: payload.valid_from,
+      valid_to: payload.valid_to || null,
+      created_by: authData.user.id,
+    })
+    .select(`
+      id,
+      shop_id,
+      ice_type_id,
+      unit_price,
+      valid_from,
+      valid_to,
+      is_active,
+      ice_types ( code, name, unit )
+    `)
+    .single();
+
+  if (error) throw new Error(error.message);
+
+  const row = data as any;
+  return {
+    id: row.id,
+    shop_id: row.shop_id,
+    ice_type_id: row.ice_type_id,
+    ice_type_code: row.ice_types?.code,
+    ice_type_name: row.ice_types?.name,
+    unit: row.ice_types?.unit,
+    unit_price: Number(row.unit_price),
+    valid_from: row.valid_from,
+    valid_to: row.valid_to,
+    is_active: row.is_active,
+  };
+}
+
+export async function bulkSaveShopPaymentProfiles(
+  shopIds: string[],
+  templateProfile: Omit<ShopPaymentProfileSetting, 'shop_id' | 'id'>
+): Promise<number> {
+  const client = supabase;
+  if (!client) throw new Error('Supabase client not initialized');
+  if (shopIds.length === 0) return 0;
+
+  const { data: authData } = await client.auth.getUser();
+  if (!authData?.user) throw new Error('ไม่พบบัญชีผู้ใช้');
+
+  const rows = shopIds.map((shop_id) => ({
+    shop_id,
+    allowed_payment_terms: templateProfile.allowed_payment_terms,
+    default_payment_term: templateProfile.default_payment_term,
+    allowed_payment_methods: templateProfile.allowed_payment_methods,
+    default_payment_method: templateProfile.default_payment_method,
+    cash_reference_required: templateProfile.cash_reference_required,
+    cash_evidence_required: templateProfile.cash_evidence_required,
+    bank_transfer_reference_required: templateProfile.bank_transfer_reference_required,
+    bank_transfer_evidence_required: templateProfile.bank_transfer_evidence_required,
+    qr_reference_required: templateProfile.qr_reference_required,
+    qr_evidence_required: templateProfile.qr_evidence_required,
+    allow_outstanding: templateProfile.allow_outstanding,
+    credit_due_rule: templateProfile.credit_due_rule,
+    credit_days: templateProfile.credit_days,
+    credit_limit: templateProfile.credit_limit,
+    created_by: authData.user.id,
+  }));
+
+  const { error } = await client
+    .from('shop_payment_profiles')
+    .upsert(rows, { onConflict: 'shop_id' });
+
+  if (error) throw new Error(error.message);
+  return shopIds.length;
+}
+
+export async function loadPOSReadinessReport(): Promise<POSReadinessReport> {
+  const client = supabase;
+  if (!client) throw new Error('Supabase client not initialized');
+
+  const todayStr = new Date().toISOString().split('T')[0];
+
+  const [shopsRes, profilesRes, iceTypesRes, midPricesRes, specialPricesRes] = await Promise.all([
+    client.from('shops').select('id, code, name, buildings(name), building_zones(name)').eq('status', 'active').order('code'),
+    client.from('shop_payment_profiles').select('shop_id'),
+    client.from('ice_types').select('id, code, name').eq('is_active', true),
+    client.from('ice_type_prices').select('ice_type_id, valid_from, valid_to').eq('is_active', true),
+    client.from('shop_ice_type_prices').select('shop_id, ice_type_id, valid_from, valid_to').eq('is_active', true),
+  ]);
+
+  const activeShops = (shopsRes.data ?? []) as any[];
+  const profileSet = new Set((profilesRes.data ?? []).map((p: any) => p.shop_id));
+  const activeIceTypes = (iceTypesRes.data ?? []) as any[];
+  const midPrices = (midPricesRes.data ?? []) as any[];
+  const specialPrices = (specialPricesRes.data ?? []) as any[];
+
+  const iceTypesWithPriceToday = new Set(
+    midPrices
+      .filter((p) => p.valid_from <= todayStr && (!p.valid_to || p.valid_to >= todayStr))
+      .map((p) => p.ice_type_id)
+  );
+
+  const missingMidPriceCount = activeIceTypes.filter((it) => !iceTypesWithPriceToday.has(it.id)).length;
+
+  const items: ShopReadinessItem[] = activeShops.map((shop) => {
+    const hasProfile = profileSet.has(shop.id);
+    const issueDetails: string[] = [];
+
+    if (!hasProfile) {
+      issueDetails.push('ยังไม่มี Payment Profile');
+    }
+
+    let missingPricesForShop = 0;
+    for (const iceType of activeIceTypes) {
+      const hasSpecial = specialPrices.some(
+        (sp) => sp.shop_id === shop.id && sp.ice_type_id === iceType.id && sp.valid_from <= todayStr && (!sp.valid_to || sp.valid_to >= todayStr)
+      );
+      const hasStd = iceTypesWithPriceToday.has(iceType.id);
+      if (!hasSpecial && !hasStd) {
+        missingPricesForShop++;
+      }
+    }
+
+    if (missingPricesForShop > 0) {
+      issueDetails.push(`ไม่มีราคาสินค้า ${missingPricesForShop} ชนิด`);
+    }
+
+    return {
+      shop_id: shop.id,
+      shop_code: shop.code,
+      shop_name: shop.name,
+      building_name: shop.buildings?.name,
+      zone_name: shop.building_zones?.name,
+      has_payment_profile: hasProfile,
+      missing_special_prices_count: missingPricesForShop,
+      has_issues: issueDetails.length > 0,
+      issue_details: issueDetails,
+    };
+  });
+
+  const readyCount = items.filter((item) => !item.has_issues).length;
+  const missingProfilesCount = items.filter((item) => !item.has_payment_profile).length;
+
+  return {
+    total_active_shops: activeShops.length,
+    shops_ready_count: readyCount,
+    shops_missing_payment_profile: missingProfilesCount,
+    ice_types_missing_standard_price: missingMidPriceCount,
+    items,
+  };
 }

@@ -10,6 +10,7 @@ import type {
 import { loadAdminSettings } from './features/admin-reference-settings/adminReferenceSettingsService';
 import { UserEditor } from './features/admin-reference-settings/components/UserEditor';
 import { IceTypeEditor } from './features/admin-reference-settings/components/IceTypeEditor';
+import { IceTypePriceEditor } from './features/admin-reference-settings/components/IceTypePriceEditor';
 import { DeliveryRoundNameEditor } from './features/admin-reference-settings/components/DeliveryRoundNameEditor';
 
 export function AdminReferenceSettings() {
@@ -140,6 +141,7 @@ function AdminReferenceSettingsContent() {
         iceTypes={iceTypes}
         onIceTypeSaved={handleIceTypeSaved}
       />
+      <IceTypePriceEditor iceTypes={iceTypes} />
       <DeliveryRoundNameEditor options={roundNames} onSaved={handleRoundNameSaved} />
     </div>
   );

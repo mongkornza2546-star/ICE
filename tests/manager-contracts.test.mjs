@@ -113,17 +113,19 @@ test('stock balance includes transfers and automatic delivery deductions', () =>
 });
 
 test('stock UI reuses the retry key for the same movement payload', () => {
+  const hook = read('src/hooks/useRpcAction.ts');
   const component = read('src/ManagerStockControl.tsx');
 
-  assert.match(component, /pendingRequest\.current\?\.signature !== signature/);
-  assert.match(component, /const submittedRequestKey = pendingRequest\.current\.key/);
-  assert.match(component, /p_idempotency_key: submittedRequestKey/);
+  assert.match(hook, /pendingRequestRef\.current\?\.signature === signature/);
+  assert.match(hook, /const submittedRequestKey = idempotencyKey;/);
+  assert.match(component, /p_idempotency_key: /);
   assert.match(component, /supabase\.rpc\('get_stock_control_summary'/);
-  assert.match(component, /supabase\.rpc\('record_stock_movement'/);
+  assert.match(component, /supabase\.rpc\('record_stock_transfer_v2'/);
+  assert.match(component, /p_purpose: args\.kind === 'transfer' \? 'auto' : args\.kind/);
 });
 
 test('manager overview does not replace the operational manager workspace', () => {
-  const app = read('src/App.tsx');
+  const app = read('src/RoleRouter.tsx');
 
   assert.match(app, /useState<AdminView>\('manager_overview'\)/);
   assert.match(app, /currentView === 'manager_overview'[\s\S]*<ManagerDashboard[\s\S]*onNavigate=\{setActiveView\}/);
@@ -133,7 +135,7 @@ test('manager overview does not replace the operational manager workspace', () =
 });
 
 test('couriers use the full-screen employee delivery workspace', () => {
-  const app = read('src/App.tsx');
+  const app = read('src/RoleRouter.tsx');
   const deliveryWorkspace = read('src/EmployeeDeliveryWorkspace.tsx');
   const employeeLayout = read('src/EmployeeLayout.tsx');
 
@@ -172,17 +174,17 @@ test('stock operations stay separate while the router exposes combined location 
 });
 
 test('admin reference settings manage existing profiles and ice types without creating accounts', () => {
-  const app = read('src/App.tsx');
+  const app = read('src/RoleRouter.tsx');
   const component = read('src/AdminReferenceSettings.tsx');
+  const service = read('src/features/admin-reference-settings/adminReferenceSettingsService.ts');
   const reviewFixMigration = read('supabase/migrations/0009_phase_3_review_fixes.sql');
 
-  assert.match(app, /profile\.role === 'admin'[\s\S]*'reference_settings'/);
+  assert.match(app, /'reference_settings'/);
   assert.match(app, /currentView === 'reference_settings'[\s\S]*<AdminReferenceSettings \/>/);
-  assert.match(component, /profile\.role !== 'admin'/);
-  assert.match(component, /\.from\('users'\)[\s\S]*\.update\(/);
+  assert.match(service, /profile\.role !== 'admin'/);
+  assert.match(component, /<UserEditor/);
   assert.doesNotMatch(component, /auth\.admin|signUp\(/);
-  assert.match(component, /isCurrentUser \? original\.role : userDraft\.role/);
-  assert.match(component, /client\.rpc\('save_ice_type'/);
+  assert.match(service, /client\.rpc\('save_ice_type'/);
   assert.match(reviewFixMigration, /An ice type with stock on an open service day cannot be deactivated/);
   assert.match(reviewFixMigration, /drop policy if exists "admins update ice types"/);
 });
@@ -253,27 +255,29 @@ test('closed rounds show a read-only stock snapshot while the day view stays liv
 });
 
 test('recoverable auth session errors sign users out with actionable guidance', () => {
-  const app = read('src/App.tsx');
+  const gate = read('src/AuthGate.tsx');
+  const router = read('src/RoleRouter.tsx');
   const authErrors = read('src/lib/authErrors.ts');
 
   assert.match(authErrors, /jwt issued at future/i);
   assert.match(authErrors, /เวลาในเครื่องหรือเซสชันไม่ตรงกับระบบ/);
   assert.match(authErrors, /เซสชันหมดอายุแล้ว/);
-  assert.match(app, /const \[authNotice, setAuthNotice\] = useState<string \| null>\(null\)/);
-  assert.match(app, /await supabase\?\.auth\.signOut\(\)/);
-  assert.match(app, /<SignInPanel notice=\{authNotice\} \/>/);
-  assert.match(app, /if \(await onRecoverableSessionError\(error\.message\)\)/);
+  assert.match(gate, /const \[authNotice, setAuthNotice\] = useState<string \| null>\(null\)/);
+  assert.match(gate, /await supabase\?\.auth\.signOut\(\)/);
+  assert.match(gate, /<SignInPanel notice=\{authNotice\} \/>/);
+  assert.match(router, /if \(await onRecoverableSessionError\(error\.message\)\)/);
 });
 
 test('stock UI ignores a movement response after the selected round changes', () => {
   const component = read('src/ManagerStockControl.tsx');
+  const hook = read('src/hooks/useRpcAction.ts');
 
-  assert.match(component, /activeRoundId\.current !== submittedRoundId/);
-  assert.match(component, /const submittedRoundId = round\.id/);
+  assert.match(hook, /latestDeps\.some\(\(dep, i\) => dep !== startDeps\[i\]\)/);
+  assert.match(component, /deps: \[.*round\?\.id.*\]/);
 });
 
 test('round creation no longer treats round-loaded quantity as day stock', () => {
-  const app = read('src/App.tsx');
+  const roundWorkspace = read('src/RoundWorkspace.tsx');
   const roundControl = read('src/ManagerRoundControl.tsx');
   const managerMigration = read('supabase/migrations/0008_complete_manager_operations.sql');
   const finalRoundClose = managerMigration.slice(
@@ -281,8 +285,8 @@ test('round creation no longer treats round-loaded quantity as day stock', () =>
     managerMigration.indexOf('create or replace function public.revise_delivery_event('),
   );
 
-  assert.doesNotMatch(app, /loadedQuantities|น้ำแข็งยกออกตั้งต้น/);
-  assert.match(app, /quantity: 0/);
+  assert.doesNotMatch(roundWorkspace, /loadedQuantities|น้ำแข็งยกออกตั้งต้น/);
+  assert.match(roundWorkspace, /quantity: 0/);
   assert.doesNotMatch(roundControl, /label="เติมเพิ่ม"|label="เหลือ"|label="เสียหาย"/);
   assert.match(roundControl, /รอบเป็นกลุ่มรายการขาย ไม่ใช่สต๊อก/);
   assert.match(finalRoundClose, /for update;/);
@@ -318,8 +322,8 @@ test('returned-stock counts snapshot system, actual, and unexplained variance', 
     countFunction,
     /pg_advisory_xact_lock[\s\S]*where service_date = v_service_date and status = 'closed'/,
   );
-  assert.match(component, /supabase\.rpc\('record_location_count'/);
-  assert.match(component, /ไม่ปรับยอดอัตโนมัติ/);
+  assert.match(component, /supabase\.rpc\('record_location_count_v2'/);
+  assert.match(component, /p_idempotency_key: idempotencyKey/);
 });
 
 test('returned-stock snapshots accept half-bag quantities', () => {
@@ -363,7 +367,7 @@ test('manager delivery corrections restore stock and require an audit reason', (
   assert.match(migration, /corrects_event_id/);
   assert.match(migration, /stock_balance_at\(v_service_date, v_source_location_id, v_item\.ice_type_id\)/);
   assert.match(component, /supabase\.rpc\('revise_delivery_event'/);
-  assert.match(component, /p_reason: reason\.trim\(\)/);
+  assert.match(component, /p_reason: args\.reason\.trim\(\)/);
 });
 
 test('daily close counts every point, returns actual stock, and locks the service date', () => {

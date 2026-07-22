@@ -246,6 +246,11 @@ async function recordDelivery(db, quantity, idempotencyKey) {
 
 test('courier snapshots TRUCK-MAIN and stock validation follows that source', async (t) => {
   const db = await createDatabase(t);
+  await db.exec(`
+    update public.stock_locations
+    set is_active = false
+    where id = '${TRUCK_ALT_ID}';
+  `);
   const requestKey = '70000000-0000-4000-8000-000000000001';
 
   const response = await recordDelivery(db, 4, requestKey);
@@ -288,17 +293,12 @@ test('round lead snapshots and deducts the shop configured source', async (t) =>
   assert.deepEqual(balances.rows[0], { truck: 5, shop: 4 });
 });
 
-test('courier rejects ambiguous active trucks when TRUCK-MAIN is absent', async (t) => {
+test('courier rejects ambiguous active trucks when multiple exist', async (t) => {
   const db = await createDatabase(t);
-  await db.exec(`
-    update public.stock_locations
-    set code = 'TRUCK-PRIMARY'
-    where id = '${TRUCK_MAIN_ID}'
-  `);
 
   await assert.rejects(
     recordDelivery(db, 1, '90000000-0000-4000-8000-000000000001'),
-    /multiple active trucks exist without TRUCK-MAIN/i,
+    /exactly one active truck/i,
   );
 
   const events = await db.query(`select count(*)::integer as count from public.delivery_events`);

@@ -10,6 +10,7 @@ import {
   Trash,
   Truck,
   UserCircle,
+  Warning,
 } from '@phosphor-icons/react';
 import { supabase } from './lib/supabase';
 import { useRpcAction } from './hooks/useRpcAction';
@@ -21,7 +22,12 @@ import type {
   StockControlSummary,
   StockLocationBalance,
   StockMovementKind,
+  StockCountVarianceReview,
 } from './types/app';
+
+import { StockCountPanel } from './features/stock-control/components/StockCountPanel';
+import { StockVarianceReviewModal } from './features/stock-control/components/StockVarianceReviewModal';
+import { StockCloseSummaryPanel } from './features/stock-control/components/StockCloseSummaryPanel';
 
 const MOVEMENT_LABELS: Record<StockMovementKind, string> = {
   factory_order: 'รับจากโรงงาน',
@@ -58,8 +64,6 @@ export function ManagerStockControl({
   const [quantities, setQuantities] = useState<QuantityDraft>({});
   const [note, setNote] = useState('');
   const [countLocationId, setCountLocationId] = useState('');
-  const [actualCounts, setActualCounts] = useState<QuantityDraft>({});
-  const [countNote, setCountNote] = useState('');
   const [countHistory, setCountHistory] = useState<StockCountSnapshot[]>([]);
   const [countReadiness, setCountReadiness] = useState<StockCountReadiness[]>([]);
   const [closeState, setCloseState] = useState<DailyStockCloseState | null>(null);
@@ -68,6 +72,11 @@ export function ManagerStockControl({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loadedAt, setLoadedAt] = useState<string | null>(null);
+
+  const [varianceReviews, setVarianceReviews] = useState<StockCountVarianceReview[]>([]);
+  const [isVarianceModalOpen, setIsVarianceModalOpen] = useState(false);
+  const [reviewSubmitting, setReviewSubmitting] = useState(false);
+  const [reviewError, setReviewError] = useState<string | null>(null);
 
   const latestCounts = useMemo(() => {
     const map = new Map<string, StockCountSnapshot>();
@@ -86,7 +95,11 @@ export function ManagerStockControl({
 
   const uncountedLocations = useMemo(() => {
     if (!summary) return [];
-    return summary.locations.filter((location) => !latestCounts.has(location.id));
+    return summary.locations.filter((location) => (
+      location.holds_inventory === true
+      && location.requires_daily_count === true
+      && !latestCounts.has(location.id)
+    ));
   }, [summary, latestCounts]);
 
   const requestId = useRef(0);
@@ -101,7 +114,14 @@ export function ManagerStockControl({
   }, [serviceDate]);
 
   const truckLocations = useMemo(
-    () => summary?.locations.filter((location) => location.kind === 'truck') ?? [],
+    () => summary?.locations.filter((location) => (
+      location.kind === 'truck' && location.holds_inventory === true
+    )) ?? [],
+    [summary],
+  );
+
+  const stockHolderLocations = useMemo(
+    () => summary?.locations.filter((location) => location.holds_inventory === true) ?? [],
     [summary],
   );
 
@@ -113,15 +133,15 @@ export function ManagerStockControl({
       Object.fromEntries(iceTypes.map((ice) => [ice.ice_type_id, current[ice.ice_type_id] ?? 0])),
     );
     const truckId = truckLocations[0]?.id || '';
-    const firstLocationId = summary.locations[0]?.id || '';
+    const firstLocationId = stockHolderLocations[0]?.id || '';
     if (kind === 'transfer') {
       setFromLocationId((current) => (
-        summary.locations.some((location) => location.id === current)
+        stockHolderLocations.some((location) => location.id === current)
           ? current
           : truckId || firstLocationId
       ));
       setToLocationId((current) => (
-        summary.locations.some((location) => location.id === current) ? current : ''
+        stockHolderLocations.some((location) => location.id === current) ? current : ''
       ));
     } else {
       setFromLocationId(kind === 'return_to_factory' ? truckId : truckId || firstLocationId);
@@ -131,13 +151,10 @@ export function ManagerStockControl({
 
   useEffect(() => {
     if (!summary) return;
-    const selectedLocation = summary.locations.find((location) => location.id === countLocationId)
-      ?? summary.locations.find((location) => location.kind !== 'truck')
-      ?? summary.locations[0];
+    const selectedLocation = stockHolderLocations.find((location) => location.id === countLocationId)
+      ?? stockHolderLocations.find((location) => location.kind !== 'truck')
+      ?? stockHolderLocations[0];
     setCountLocationId(selectedLocation?.id ?? '');
-    setActualCounts(Object.fromEntries(
-      (selectedLocation?.balances ?? []).map((balance) => [balance.ice_type_id, Math.max(0, balance.quantity)]),
-    ));
   }, [summary, countLocationId, closeState?.is_closed]);
 
   async function loadSummary(requestedServiceDate: string, roundId: string | null) {
@@ -145,7 +162,7 @@ export function ManagerStockControl({
     const currentRequest = ++requestId.current;
     setLoading(true);
     setError(null);
-    const [summaryResponse, countResponse, readinessResponse, closeResponse] = await Promise.all([
+    const [summaryResponse, countResponse, readinessResponse, closeResponse, reviewsResponse] = await Promise.all([
       supabase.rpc('get_stock_control_summary', {
         p_round_id: roundId,
         p_service_date: requestedServiceDate,
@@ -162,10 +179,17 @@ export function ManagerStockControl({
         p_round_id: roundId,
         p_service_date: requestedServiceDate,
       }),
+      supabase.rpc('get_stock_count_variance_reviews', {
+        p_service_date: requestedServiceDate,
+      }),
     ]);
     if (currentRequest !== requestId.current) return;
 
-    const firstError = summaryResponse.error ?? countResponse.error ?? readinessResponse.error ?? closeResponse.error;
+    const firstError = summaryResponse.error
+      ?? countResponse.error
+      ?? readinessResponse.error
+      ?? closeResponse.error
+      ?? reviewsResponse.error;
     if (firstError) {
       setError(firstError.message);
       setSummary(null);
@@ -175,6 +199,7 @@ export function ManagerStockControl({
       setCountHistory((countResponse.data ?? []) as StockCountSnapshot[]);
       setCountReadiness((readinessResponse.data ?? []) as StockCountReadiness[]);
       setCloseState(closeResponse.data as DailyStockCloseState);
+      setVarianceReviews((reviewsResponse.data ?? []) as StockCountVarianceReview[]);
       setSummaryRoundId(roundId);
       setLoadedAt(new Date().toISOString());
     }
@@ -188,9 +213,10 @@ export function ManagerStockControl({
     ) => {
       if (demoSummary) return { data: { preview: true }, error: null };
       if (!supabase) throw new Error('Supabase is not initialized');
-      return supabase.rpc('record_stock_movement', {
-        p_round_id: actionRound!.id,
-        p_kind: args.kind,
+
+      return supabase.rpc('record_stock_transfer_v2', {
+        p_service_date: serviceDate,
+        p_purpose: args.kind === 'transfer' ? 'auto' : args.kind,
         p_from_location_id: args.fromLocationId || null,
         p_to_location_id: args.kind === 'transfer' ? args.toLocationId || null : null,
         p_items: args.items,
@@ -265,14 +291,14 @@ export function ManagerStockControl({
   };
 
   const locationCountAction = useRpcAction(
-    async (args: { counts: any[]; note: string }) => {
+    async (args: { counts: any[]; note: string }, idempotencyKey) => {
       if (!supabase) throw new Error('Supabase is not initialized');
-      return supabase.rpc('record_location_count', {
-        p_round_id: actionRound?.id ?? null,
+      return supabase.rpc('record_location_count_v2', {
         p_service_date: serviceDate,
         p_location_id: countLocationId,
         p_counts: args.counts,
         p_note: args.note.trim() || null,
+        p_idempotency_key: idempotencyKey,
       });
     },
     {
@@ -282,24 +308,39 @@ export function ManagerStockControl({
         return `บันทึกยอดนับจริงของ “${selectedLocation?.name ?? ''}” แล้ว`;
       },
       onSuccess: async () => {
-        setCountNote('');
         await loadSummary(serviceDate, round?.id ?? null);
       },
     }
   );
 
-  const handleLocationCount = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!supabase || !summary || !countLocationId || isRoundSnapshot || closeState?.is_closed) return;
-    const selectedLocation = summary.locations.find((location) => location.id === countLocationId);
-    if (!selectedLocation) return;
-
-    const counts = selectedLocation.balances.map((balance) => ({
-      ice_type_id: balance.ice_type_id,
-      actual_quantity: actualCounts[balance.ice_type_id] ?? 0,
-    }));
-
-    await locationCountAction.execute({ counts, note: countNote });
+  const handleReviewSubmit = async (reviewId: string, status: 'approved' | 'rejected', reviewNote: string) => {
+    if (!supabase) return;
+    setReviewSubmitting(true);
+    setReviewError(null);
+    const { error: reviewError } = await supabase.rpc('approve_stock_count_variance', {
+      p_review_id: reviewId,
+      p_status: status,
+      p_note: reviewNote.trim() || null,
+    });
+    if (reviewError) {
+      setReviewError(reviewError.message);
+    } else {
+      const { data: reviewsData, error: reloadError } = await supabase.rpc(
+        'get_stock_count_variance_reviews',
+        { p_service_date: serviceDate },
+      );
+      if (reloadError) {
+        setReviewError(reloadError.message);
+      } else {
+        setVarianceReviews((reviewsData ?? []) as StockCountVarianceReview[]);
+        if (status === 'rejected') {
+          const rejectedReview = varianceReviews.find((review) => review.id === reviewId);
+          setReviewError('ปฏิเสธยอดแล้ว กรุณาตรวจนับจุดนั้นใหม่ก่อนปิดสต๊อก');
+          if (rejectedReview) setCountLocationId(rejectedReview.location_id);
+        }
+      }
+    }
+    setReviewSubmitting(false);
   };
 
   const closeDayAction = useRpcAction(
@@ -356,7 +397,7 @@ export function ManagerStockControl({
     stockMovementAction.reset();
 
     const truckId = truckLocations[0]?.id || '';
-    const firstLocationId = summary.locations[0]?.id || '';
+    const firstLocationId = stockHolderLocations[0]?.id || '';
 
     if (nextKind === 'transfer') {
       const sourceId = truckId || firstLocationId;
@@ -374,16 +415,17 @@ export function ManagerStockControl({
   if (!summary) {
     return <p className="error-text">{error ?? 'ไม่พบข้อมูลสต๊อก'}</p>;
   }
-  const countedLocation = summary.locations.find((location) => location.id === countLocationId)
-    ?? summary.locations[0];
+  const countedLocation = stockHolderLocations.find((location) => location.id === countLocationId)
+    ?? stockHolderLocations[0];
   const requiresSource = true;
   const requiresDestination = kind === 'transfer';
-  const sourceLocations = kind === 'return_to_factory' ? truckLocations : summary.locations;
-  const destinationLocations = summary.locations.filter((location) => location.id !== fromLocationId);
+  const sourceLocations = kind === 'return_to_factory' ? truckLocations : stockHolderLocations;
+  const selectedSource = sourceLocations.find((location) => location.id === fromLocationId)
+    ?? sourceLocations[0];
+  const destinationLocations = kind === 'transfer'
+    ? stockHolderLocations.filter((location) => isAllowedTransferDestination(selectedSource, location))
+    : [];
   const stockTimestamp = isRoundSnapshot ? summary.snapshot_at : loadedAt;
-  const selectedSource = summary.locations.find((location) => location.id === fromLocationId)
-    ?? truckLocations[0]
-    ?? summary.locations[0];
   const selectedRecipient = destinationLocations.find((location) => location.id === toLocationId) ?? null;
   const recipientLocations = destinationLocations;
   const movementIceTypes = selectedSource?.balances ?? iceTypes;
@@ -396,8 +438,39 @@ export function ManagerStockControl({
     stockMovementAction.reset();
   };
 
+  const pendingReviewsCount = varianceReviews.filter((r) => r.status === 'pending').length;
+
   return (
     <div className="stock-control">
+      {/* V2 Stock Variance Review Alert */}
+      {pendingReviewsCount > 0 && !isRoundSnapshot && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3.5 flex justify-between items-center shadow-sm" style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Warning size={20} color="#d97706" weight="fill" />
+            <span style={{ fontSize: '0.85rem', fontWeight: 600, color: '#92400e' }}>
+              คุณมียอดเบี่ยงเบนรอตรวจสอบ {pendingReviewsCount} รายการ
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setIsVarianceModalOpen(true)}
+            style={{ padding: '6px 12px', backgroundColor: '#d97706', border: 'none', color: '#fff', borderRadius: 6, fontSize: '0.75rem', fontWeight: 'bold', cursor: 'pointer' }}
+          >
+            เปิดตรวจสอบ
+          </button>
+        </div>
+      )}
+
+      {/* V2 Stock Variance Review Modal */}
+      <StockVarianceReviewModal
+        isOpen={isVarianceModalOpen}
+        onClose={() => setIsVarianceModalOpen(false)}
+        reviews={varianceReviews}
+        onReviewSubmit={handleReviewSubmit}
+        loading={reviewSubmitting}
+        error={reviewError}
+      />
+
       {activeTab !== 'transfer' ? <div className="stock-layout-panel">
         <div className="stock-layout-header">
           <h3 className="stock-layout-title">
@@ -769,63 +842,32 @@ export function ManagerStockControl({
               </div>
             </form>
           ) : (
-            <form onSubmit={handleLocationCount}>
+            <div>
               <div style={{ marginBottom: 24 }}>
                 <LocationSelect
                   label="จุดที่ต้องการตรวจนับ"
-                  locations={summary.locations}
+                  locations={stockHolderLocations}
                   onChange={setCountLocationId}
                   value={countLocationId}
                 />
               </div>
-              <p className="eyebrow" style={{ color: '#1a2332', fontWeight: 600, fontSize: '0.95rem', marginBottom: 12 }}>ตรวจนับและเปรียบเทียบ</p>
-              <div className="inputs-2col">
-                {countedLocation?.balances.map((balance) => {
-                  const actual = actualCounts[balance.ice_type_id] ?? 0;
-                  const variance = actual - balance.quantity;
-                  return (
-                    <div className="input-row" key={balance.ice_type_id}>
-                      <span>{balance.ice_type_name} (ระบบ {balance.quantity})</span>
-                      <div className="input-wrapper" style={{ flexDirection: 'column', alignItems: 'flex-end', width: 'auto' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <input
-                            disabled={closeState?.is_closed}
-                            min={0}
-                            step={0.5}
-                            type="number"
-                            value={actual || ''}
-                            placeholder="0"
-                            onChange={(event) => setActualCounts((current) => ({
-                              ...current,
-                              [balance.ice_type_id]: Math.max(0, Number(event.target.value) || 0),
-                            }))}
-                            style={{ width: 100 }}
-                          />
-                          <small>{balance.unit}</small>
-                        </div>
-                        <small className={variance === 0 ? 'success-text' : 'error-text'} style={{ width: 'auto', textAlign: 'right' }}>
-                          {variance === 0 ? 'ยอดตรง' : `ต่าง ${variance > 0 ? '+' : ''}${variance}`}
-                        </small>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-              <div style={{ marginTop: 24 }}>
-                <p className="eyebrow" style={{ color: '#1a2332', fontWeight: 600, fontSize: '0.95rem', marginBottom: 12 }}>หมายเหตุ (ถ้ามี)</p>
-                <textarea disabled={closeState?.is_closed} rows={2} value={countNote} onChange={(event) => setCountNote(event.target.value)} style={{ width: '100%' }} />
-              </div>
-
-              {locationCountAction.error ? <p className="error-text" style={{ marginTop: 16 }}>{locationCountAction.error}</p> : null}
-              {locationCountAction.success ? <p className="success-text" style={{ marginTop: 16 }}>{locationCountAction.success}</p> : null}
-
-              <div className="submit-btn-container">
-                <button className="primary-button" disabled={locationCountAction.isSubmitting || closeState?.is_closed} type="submit">
-                  <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/></svg>
-                  {locationCountAction.isSubmitting ? 'กำลังบันทึก...' : 'บันทึกยอดนับจริง'}
-                </button>
-              </div>
-
+              {countedLocation ? (
+                <StockCountPanel
+                  location={countedLocation}
+                  onSaveCount={async (counts, countNote) => {
+                    const args = { counts, note: countNote };
+                    const signature = JSON.stringify({
+                      serviceDate,
+                      locationId: countLocationId,
+                      ...args,
+                    });
+                    await locationCountAction.execute(args, { signature });
+                  }}
+                  loading={locationCountAction.isSubmitting}
+                  error={locationCountAction.error}
+                  successMessage={locationCountAction.success}
+                />
+              ) : <p className="empty-text">ยังไม่มีจุดถือครองสต๊อกที่ใช้งานได้</p>}
               <div className="stock-ledger-list" style={{ marginTop: 24, paddingTop: 24, borderTop: '1px solid #e1e7ef' }}>
                 <p className="eyebrow" style={{ color: '#1a2332', fontWeight: 600, fontSize: '0.95rem', marginBottom: 16 }}>ประวัติการตรวจนับวันนี้</p>
                 {countHistory.slice(0, 6).map((snapshot) => (
@@ -837,153 +879,145 @@ export function ManagerStockControl({
                 ))}
                 {countHistory.length === 0 ? <p className="empty-text">ยังไม่มี snapshot ยอดนับกลับของวันนี้</p> : null}
               </div>
-            </form>
+            </div>
           )}
         </div>
       ) : null}
 
       {!isRoundSnapshot ? (
         <section className="daily-close-section" style={{ marginTop: 24 }}>
-          <div className="panel-header">
-            <div>
-              <p className="eyebrow">หลังจบทุกรอบของวัน</p>
-              <h3>ตรวจนับและปิดสต๊อกสิ้นวัน</h3>
-            </div>
-            <span className={`status-badge ${closeState?.is_closed ? 'status-badge--success' : 'status-badge--neutral'}`}>
-              {closeState?.is_closed ? 'ปิดแล้ว' : `เหลือ ${closeState?.open_round_count ?? 0} รอบเปิด`}
-            </span>
-          </div>
+          {closeState ? (
+            closeState.is_closed ? (
+              <StockCloseSummaryPanel closeState={closeState} />
+            ) : (
+              <form className="stock-movement-form" onSubmit={handleCloseDay}>
+                <div className="panel-header">
+                  <div>
+                    <p className="eyebrow">หลังจบทุกรอบของวัน</p>
+                    <h3>ตรวจนับและปิดสต๊อกสิ้นวัน</h3>
+                  </div>
+                  <span className={`status-badge status-badge--neutral`}>
+                    เหลือ {closeState.open_round_count ?? 0} รอบเปิด
+                  </span>
+                </div>
+                <p className="muted">ตรวจสอบผลการตรวจนับล่าสุดของแต่ละจุด ระบบจะรวมยอดเพื่อปิดสต๊อกและส่งคืนโรงงานตามยอดนี้</p>
 
-          {closeState?.is_closed ? (
-            <div className="stack">
-              <p className="success-text">ปิดโดย {closeState.closed_by ?? '-'} · {closeState.closed_at ? formatStockDateTime(closeState.closed_at) : '-'}</p>
-              <p className="muted">ระบบเก็บยอดตามระบบ ยอดนับจริง และส่วนต่างไว้แล้ว พร้อมบันทึกการรวบรวมของทุกจุดและส่งยอดคงเหลือกลับโรงงานจนยอดทุกจุดเป็นศูนย์</p>
-              <div className="stock-ledger-list">
-                {closeState.counts.map((item) => (
-                  <article className="stock-ledger-item" key={closeCountKey(item.location_id, item.ice_type_id)}>
-                    <strong>{item.location_name} · {item.ice_type_name}</strong>
-                    <small>ระบบ {item.system_quantity} · นับจริง {item.actual_quantity} · ต่าง {item.variance_quantity > 0 ? '+' : ''}{item.variance_quantity} {item.unit}</small>
-                  </article>
-                ))}
-              </div>
-            </div>
-          ) : (
-            <form className="stock-movement-form" onSubmit={handleCloseDay}>
-              <p className="muted">ตรวจสอบผลการตรวจนับล่าสุดของแต่ละจุด ระบบจะรวมยอดเพื่อปิดสต๊อกและส่งคืนโรงงานตามยอดนี้</p>
+                <div className="table-responsive" style={{ margin: '16px 0', border: '1px solid #e1e7ef', borderRadius: 8, overflow: 'hidden' }}>
+                  <table className="data-table" style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.9rem' }}>
+                    <thead style={{ backgroundColor: '#f8fafc', borderBottom: '1px solid #e1e7ef' }}>
+                      <tr>
+                        <th style={{ padding: '12px 16px', color: '#64748b', fontWeight: 600 }}>จุด</th>
+                        <th style={{ padding: '12px 16px', color: '#64748b', fontWeight: 600 }}>สถานะ</th>
+                        <th style={{ padding: '12px 16px', color: '#64748b', fontWeight: 600 }}>ผลตรวจ</th>
+                      </tr>
+                    </thead>
+                    <tbody style={{ backgroundColor: '#fff' }}>
+                      {summary.locations.filter((location) => (
+                        location.holds_inventory === true && location.requires_daily_count === true
+                      )).map((location) => {
+                        const readiness = readinessByLocation.get(location.id);
+                        const latest = readiness?.snapshot;
+                        let statusStr = 'ยังไม่ตรวจ';
+                        let statusColor = '#64748b';
+                        let resultStr = '—';
+                        let resultColor = '#64748b';
 
-              <div className="table-responsive" style={{ margin: '16px 0', border: '1px solid #e1e7ef', borderRadius: 8, overflow: 'hidden' }}>
-                <table className="data-table" style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.9rem' }}>
-                  <thead style={{ backgroundColor: '#f8fafc', borderBottom: '1px solid #e1e7ef' }}>
-                    <tr>
-                      <th style={{ padding: '12px 16px', color: '#64748b', fontWeight: 600 }}>จุด</th>
-                      <th style={{ padding: '12px 16px', color: '#64748b', fontWeight: 600 }}>สถานะ</th>
-                      <th style={{ padding: '12px 16px', color: '#64748b', fontWeight: 600 }}>ผลตรวจ</th>
-                    </tr>
-                  </thead>
-                  <tbody style={{ backgroundColor: '#fff' }}>
-                    {summary.locations.map((location) => {
-                      const readiness = readinessByLocation.get(location.id);
-                      const latest = readiness?.snapshot;
-                      let statusStr = 'ยังไม่ตรวจ';
-                      let statusColor = '#64748b';
-                      let resultStr = '—';
-                      let resultColor = '#64748b';
+                        if (readiness?.status === 'stale' && latest) {
+                          statusStr = `ต้องตรวจใหม่ · ตรวจล่าสุด ${formatStockTime(latest.counted_at)} น.`;
+                          statusColor = '#c2410c';
+                          resultStr = 'มีรายการสต๊อกหลังการตรวจ';
+                          resultColor = '#c2410c';
+                        } else if (readiness?.status === 'current' && latest) {
+                          statusStr = `ตรวจแล้ว ${formatStockTime(latest.counted_at)} น.`;
+                          statusColor = '#0f172a';
 
-                      if (readiness?.status === 'stale' && latest) {
-                        statusStr = `ต้องตรวจใหม่ · ตรวจล่าสุด ${formatStockTime(latest.counted_at)} น.`;
-                        statusColor = '#c2410c';
-                        resultStr = 'มีรายการสต๊อกหลังการตรวจ';
-                        resultColor = '#c2410c';
-                      } else if (readiness?.status === 'current' && latest) {
-                        statusStr = `ตรวจแล้ว ${formatStockTime(latest.counted_at)} น.`;
-                        statusColor = '#0f172a';
+                          let totalVariance = 0;
+                          const variances: string[] = [];
+                          latest.items.forEach(item => {
+                            totalVariance += item.variance_quantity;
+                            if (item.variance_quantity !== 0) {
+                              variances.push(`${item.ice_type_name} ${item.variance_quantity > 0 ? '+' : ''}${item.variance_quantity}`);
+                            }
+                          });
 
-                        let totalVariance = 0;
-                        const variances: string[] = [];
-                        latest.items.forEach(item => {
-                          totalVariance += item.variance_quantity;
-                          if (item.variance_quantity !== 0) {
-                            variances.push(`${item.ice_type_name} ${item.variance_quantity > 0 ? '+' : ''}${item.variance_quantity}`);
+                          if (totalVariance === 0 && variances.length === 0) {
+                            resultStr = 'ตรง';
+                            resultColor = '#10b981';
+                          } else {
+                            resultStr = variances.join(', ');
+                            resultColor = '#ef4444';
                           }
-                        });
-
-                        if (totalVariance === 0 && variances.length === 0) {
-                          resultStr = 'ตรง';
-                          resultColor = '#10b981';
-                        } else {
-                          resultStr = variances.join(', ');
-                          resultColor = '#ef4444';
                         }
-                      }
 
-                      return (
-                        <tr key={location.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                          <td style={{ padding: '12px 16px', fontWeight: 500 }}>{location.name}</td>
-                          <td style={{ padding: '12px 16px', color: statusColor }}>{statusStr}</td>
-                          <td style={{ padding: '12px 16px', color: resultColor, fontWeight: 500 }}>{resultStr}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+                        return (
+                          <tr key={location.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                            <td style={{ padding: '12px 16px', fontWeight: 500 }}>{location.name}</td>
+                            <td style={{ padding: '12px 16px', color: statusColor }}>{statusStr}</td>
+                            <td style={{ padding: '12px 16px', color: resultColor, fontWeight: 500 }}>{resultStr}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
 
-              <div style={{ display: 'flex', gap: 16, marginBottom: 24, flexWrap: 'wrap' }}>
-                {uncountedLocations.length > 0 && (
+                <div style={{ display: 'flex', gap: 16, marginBottom: 24, flexWrap: 'wrap' }}>
+                  {uncountedLocations.length > 0 && (
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      onClick={() => {
+                        setActiveTab('count');
+                        setCountLocationId(uncountedLocations[0].id);
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                      }}
+                    >
+                      <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" style={{ marginRight: 6, verticalAlign: 'text-bottom' }}><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/></svg>
+                      ตรวจจุดที่ยังไม่ครบหรือข้อมูลเก่า ({uncountedLocations.length})
+                    </button>
+                  )}
                   <button
                     type="button"
                     className="secondary-button"
                     onClick={() => {
-                      setActiveTab('count');
-                      setCountLocationId(uncountedLocations[0].id);
-                      window.scrollTo({ top: 0, behavior: 'smooth' });
+                      const ledger = document.querySelector('.stock-ledger');
+                      if (ledger) ledger.scrollIntoView({ behavior: 'smooth' });
                     }}
                   >
-                    <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" style={{ marginRight: 6, verticalAlign: 'text-bottom' }}><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/></svg>
-                    ตรวจจุดที่ยังไม่ครบหรือข้อมูลเก่า ({uncountedLocations.length})
+                    <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" style={{ marginRight: 6, verticalAlign: 'text-bottom' }}><path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                    ดูประวัติการทำรายการ
                   </button>
+                </div>
+
+                {uncountedLocations.length > 0 && (
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px', backgroundColor: '#fff7ed', border: '1px solid #fdba74', borderRadius: 8, marginBottom: 16 }}>
+                    <input
+                      type="checkbox"
+                      checked={confirmSkipUncounted}
+                      onChange={(event) => setConfirmSkipUncounted(event.target.checked)}
+                    />
+                    <span style={{ color: '#c2410c', fontSize: '0.9rem', fontWeight: 500 }}>
+                      หัวหน้างานยืนยัน: ปิดวันโดยใช้ยอดตามระบบสำหรับจุดที่ยังไม่มีผลตรวจปัจจุบัน ({uncountedLocations.length} จุด)
+                    </span>
+                  </label>
                 )}
+
+                <label>เหตุผลหรือหมายเหตุปิดวัน (ถ้ามี)<textarea rows={2} value={closeNote} onChange={(event) => setCloseNote(event.target.value)} /></label>
+                {closeState.open_round_count > 0 ? <p className="error-text">ต้องปิดรอบส่งที่เหลือ {closeState.open_round_count} รอบก่อน</p> : null}
+
+                {closeDayAction.error ? <p className="error-text">{closeDayAction.error}</p> : null}
+                {closeDayAction.success ? <p className="success-text">{closeDayAction.success}</p> : null}
+
                 <button
-                  type="button"
-                  className="secondary-button"
-                  onClick={() => {
-                    const ledger = document.querySelector('.stock-ledger');
-                    if (ledger) ledger.scrollIntoView({ behavior: 'smooth' });
-                  }}
+                  className="primary-button"
+                  disabled={closeDayAction.isSubmitting || closeState.open_round_count > 0 || (uncountedLocations.length > 0 && !confirmSkipUncounted)}
+                  type="submit"
                 >
-                  <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" style={{ marginRight: 6, verticalAlign: 'text-bottom' }}><path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                  ดูประวัติการทำรายการ
+                  {closeDayAction.isSubmitting ? 'กำลังปิดสต๊อก...' : 'ปิดสต๊อกวันนี้'}
                 </button>
-              </div>
-
-              {uncountedLocations.length > 0 && (
-                <label style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px', backgroundColor: '#fff7ed', border: '1px solid #fdba74', borderRadius: 8, marginBottom: 16 }}>
-                  <input
-                    type="checkbox"
-                    checked={confirmSkipUncounted}
-                    onChange={(event) => setConfirmSkipUncounted(event.target.checked)}
-                  />
-                  <span style={{ color: '#c2410c', fontSize: '0.9rem', fontWeight: 500 }}>
-                    หัวหน้างานยืนยัน: ปิดวันโดยใช้ยอดตามระบบสำหรับจุดที่ยังไม่มีผลตรวจปัจจุบัน ({uncountedLocations.length} จุด)
-                  </span>
-                </label>
-              )}
-
-              <label>เหตุผลหรือหมายเหตุปิดวัน (ถ้ามี)<textarea rows={2} value={closeNote} onChange={(event) => setCloseNote(event.target.value)} /></label>
-              {closeState && closeState.open_round_count > 0 ? <p className="error-text">ต้องปิดรอบส่งที่เหลือ {closeState.open_round_count} รอบก่อน</p> : null}
-
-              {closeDayAction.error ? <p className="error-text">{closeDayAction.error}</p> : null}
-              {closeDayAction.success ? <p className="success-text">{closeDayAction.success}</p> : null}
-
-              <button
-                className="primary-button"
-                disabled={closeDayAction.isSubmitting || !closeState || closeState.open_round_count > 0 || (uncountedLocations.length > 0 && !confirmSkipUncounted)}
-                type="submit"
-              >
-                {closeDayAction.isSubmitting ? 'กำลังปิดสต๊อก...' : 'ปิดสต๊อกวันนี้'}
-              </button>
-            </form>
-          )}
+              </form>
+            )
+          ) : null}
         </section>
       ) : null}
 
@@ -1057,6 +1091,21 @@ function formatStockQuantity(value: number) {
   return Number.isInteger(value) ? String(value) : value.toFixed(1);
 }
 
-function closeCountKey(locationId: string, iceTypeId: string) {
-  return `${locationId}:${iceTypeId}`;
+function isAllowedTransferDestination(
+  source: StockLocationBalance | undefined,
+  destination: StockLocationBalance,
+) {
+  if (!source || source.id === destination.id || destination.holds_inventory !== true) return false;
+
+  if (source.kind === 'truck' && source.is_courier_source) {
+    return destination.kind === 'team' || destination.kind === 'small_vehicle';
+  }
+
+  if (source.kind === 'team' || source.kind === 'small_vehicle') {
+    return destination.kind === 'team'
+      || destination.kind === 'small_vehicle'
+      || (destination.kind === 'truck' && destination.is_courier_source === true);
+  }
+
+  return destination.kind === 'truck' && destination.is_courier_source === true;
 }

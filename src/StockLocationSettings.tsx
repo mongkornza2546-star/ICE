@@ -35,6 +35,8 @@ interface LocationDraft {
   isCourierSource: boolean;
   isDefaultForBuilding: boolean;
   isActive: boolean;
+  holdsInventory: boolean;
+  requiresDailyCount: boolean;
 }
 
 const EMPTY_DRAFT: LocationDraft = {
@@ -47,6 +49,8 @@ const EMPTY_DRAFT: LocationDraft = {
   isCourierSource: false,
   isDefaultForBuilding: false,
   isActive: true,
+  holdsInventory: true,
+  requiresDailyCount: false,
 };
 
 export function StockLocationSettings() {
@@ -69,7 +73,7 @@ export function StockLocationSettings() {
     const [locationsResponse, buildingsResponse, membersResponse] = await Promise.all([
       supabase
         .from('stock_locations')
-        .select('id, code, name, kind, building_id, assigned_user_id, is_courier_source, is_default_for_building, is_active')
+        .select('id, code, name, kind, building_id, assigned_user_id, is_courier_source, is_default_for_building, is_active, holds_inventory, requires_daily_count')
         .order('kind')
         .order('name'),
       supabase.from('buildings').select('id, code, name, is_active').order('code'),
@@ -102,6 +106,8 @@ export function StockLocationSettings() {
       isCourierSource: location.is_courier_source,
       isDefaultForBuilding: location.is_default_for_building,
       isActive: location.is_active,
+      holdsInventory: location.holds_inventory !== false,
+      requiresDailyCount: !!location.requires_daily_count,
     });
     setError(null);
     setSuccess(null);
@@ -124,6 +130,8 @@ export function StockLocationSettings() {
       p_is_courier_source: draft.isCourierSource,
       p_is_default_for_building: draft.isDefaultForBuilding,
       p_is_active: draft.isActive,
+      p_holds_inventory: draft.kind === 'work_site' ? false : draft.holdsInventory,
+      p_requires_daily_count: draft.kind === 'work_site' ? false : draft.requiresDailyCount,
     });
 
     if (saveError) {
@@ -187,9 +195,8 @@ export function StockLocationSettings() {
                   setDraft({
                     ...draft,
                     kind,
-                    assignedUserId: kind === 'work_site' && draft.kind !== 'work_site'
-                      ? ''
-                      : draft.assignedUserId,
+                    assignedUserId: kind === 'work_site' && draft.kind !== 'work_site' ? '' : draft.assignedUserId,
+                    isCourierSource: kind === 'truck' ? draft.isCourierSource : false,
                   });
                 }}
               >
@@ -220,11 +227,52 @@ export function StockLocationSettings() {
             <p className="muted">พนักงานประจำจุดกำหนดได้จากหน้า “ผู้ใช้และชนิดน้ำแข็ง” โดยไม่กระทบผู้ถือสต๊อกใน ledger</p>
           ) : null}
           <label className="inline-check">
-            <input checked={draft.isActive} onChange={(event) => setDraft({ ...draft, isActive: event.target.checked })} type="checkbox" />
+            <input
+              checked={draft.isActive}
+              onChange={(event) => setDraft({
+                ...draft,
+                isActive: event.target.checked,
+                isCourierSource: event.target.checked ? draft.isCourierSource : false,
+              })}
+              type="checkbox"
+            />
             เปิดใช้งานจุดนี้
           </label>
+          <label className="inline-check" style={draft.kind === 'work_site' ? { opacity: 0.6, cursor: 'not-allowed' } : {}}>
+            <input
+              checked={draft.kind === 'work_site' ? false : draft.holdsInventory}
+              disabled={draft.kind === 'work_site'}
+              onChange={(event) => setDraft({
+                ...draft,
+                holdsInventory: event.target.checked,
+                requiresDailyCount: event.target.checked ? draft.requiresDailyCount : false,
+                isCourierSource: event.target.checked ? draft.isCourierSource : false,
+              })}
+              type="checkbox"
+            />
+            เก็บสต๊อกคงเหลือจริง (Holds Inventory)
+          </label>
+          {draft.kind === 'work_site' && (
+            <p style={{ color: '#c2410c', fontSize: '0.8rem', margin: '4px 0 12px 24px', fontWeight: 500 }}>
+              ⚠️ จุดบริการ (work_site) บังคับเป็น Report-Only ในโมเดลใหม่ ไม่เก็บสต๊อกคงเหลือเคลื่อนไหวโดยตรง
+            </p>
+          )}
+          <label className="inline-check">
+            <input
+              checked={draft.kind === 'work_site' ? false : draft.requiresDailyCount}
+              disabled={draft.kind === 'work_site' || !draft.holdsInventory}
+              onChange={(event) => setDraft({ ...draft, requiresDailyCount: event.target.checked })}
+              type="checkbox"
+            />
+            ต้องตรวจนับสต๊อกสิ้นวัน (Requires Daily Count)
+          </label>
           {draft.kind === 'truck' ? <label className="inline-check">
-            <input checked={draft.isCourierSource} onChange={(event) => setDraft({ ...draft, isCourierSource: event.target.checked })} type="checkbox" />
+            <input
+              checked={draft.isCourierSource}
+              disabled={!draft.holdsInventory}
+              onChange={(event) => setDraft({ ...draft, isCourierSource: event.target.checked })}
+              type="checkbox"
+            />
             ใช้เป็นรถหลักสำหรับพนักงานส่ง
           </label> : null}
           {draft.kind === 'work_site' ? <label className="inline-check">
