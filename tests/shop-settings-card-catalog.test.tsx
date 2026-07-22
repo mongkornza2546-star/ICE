@@ -146,4 +146,29 @@ describe('ShopSettings card catalog', () => {
     fireEvent.error(image!);
     expect(card.querySelector('img')).toBeNull();
   });
+
+  it('signs photos for only the visible catalog page', async () => {
+    const manyShops = Array.from({ length: 13 }, (_, index) => ({
+      ...shops[0],
+      id: `shop-${index + 1}`,
+      code: `AA${String(index + 1).padStart(2, '0')}`,
+      image_path: `shops/shop-${index + 1}/photo.jpg`,
+    }));
+    mocks.from.mockImplementation((table: string) => {
+      if (table === 'shops') return queryResult(manyShops);
+      if (table === 'buildings') return queryResult([{ id: 'building-a', code: 'A', name: 'ตึก A' }]);
+      if (table === 'building_zones') return queryResult([{ id: 'zone-a', building_id: 'building-a', code: 'A1', name: 'โซน A1', sort_order: 1, is_active: true }]);
+      if (table === 'ice_types') return queryResult([{ id: 'ice-block', code: 'BLOCK', name: 'ก้อน', unit: 'ถุง' }]);
+      if (table === 'shop_rented_tanks') return queryResult([]);
+      throw new Error(`Unexpected table: ${table}`);
+    });
+    mocks.bulkSignedUrls.mockResolvedValue({});
+
+    render(<ShopSettings />);
+
+    await waitFor(() => expect(mocks.bulkSignedUrls).toHaveBeenCalled());
+    expect(mocks.bulkSignedUrls).toHaveBeenCalledWith(
+      manyShops.slice(0, 12).map((shop) => shop.image_path),
+    );
+  });
 });

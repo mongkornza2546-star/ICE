@@ -13,6 +13,10 @@ const adminSettingsFixMigration = readFileSync(
   new URL('../supabase/migrations/0037_admin_financial_settings_fixes.sql', import.meta.url),
   'utf8',
 );
+const bulkShopPriceMigration = readFileSync(
+  new URL('../supabase/migrations/0041_bulk_shop_ice_type_prices.sql', import.meta.url),
+  'utf8',
+);
 
 const USER_ID = '00000000-0000-4000-8000-000000000001';
 const SHOP_ID = '00000000-0000-4000-8000-000000000002';
@@ -60,7 +64,10 @@ async function createDatabase(t) {
       role public.app_role not null,
       is_active boolean not null default true
     );
-    create table public.shops (id uuid primary key);
+    create table public.shops (
+      id uuid primary key,
+      status text not null default 'active'
+    );
     create table public.ice_types (id uuid primary key);
     create table public.round_stops (
       id uuid primary key,
@@ -152,6 +159,7 @@ async function createDatabase(t) {
 
   await db.exec(migration);
   await db.exec(adminSettingsFixMigration);
+  await db.exec(bulkShopPriceMigration);
   return db;
 }
 
@@ -209,6 +217,119 @@ test('admin price setters atomically close open-ended prices before inserting su
     { unit_price: '18.00', valid_from: '2026-07-01', valid_to: '2026-07-31' },
     { unit_price: '22.00', valid_from: '2026-08-01', valid_to: null },
   ]);
+});
+
+test('bulk shop price setter is idempotent and preserves scheduled successors', async (t) => {
+  const db = await createDatabase(t);
+
+  await queryAsUser(
+    db,
+    ADMIN_ID,
+    `select public.bulk_set_shop_ice_type_price(
+      array['${SHOP_ID}', '${OTHER_SHOP_ID}', '${SHOP_ID}']::uuid[],
+      '${ICE_TYPE_ID}', 40, date '2026-09-01', null
+    ) as saved_count`,
+  );
+  const bulkResult = await queryAsUser(
+    db,
+    ADMIN_ID,
+    `select public.bulk_set_shop_ice_type_price(
+      array['${SHOP_ID}', '${OTHER_SHOP_ID}']::uuid[],
+      '${ICE_TYPE_ID}', 35, date '2026-08-01', null
+    ) as saved_count`,
+  );
+  await queryAsUser(
+    db,
+    ADMIN_ID,
+    `select public.bulk_set_shop_ice_type_price(
+      array['${SHOP_ID}', '${OTHER_SHOP_ID}']::uuid[],
+      '${ICE_TYPE_ID}', 36, date '2026-08-01', null
+    )`,
+  );
+
+  assert.equal(bulkResult.rows[0].saved_count, 2);
+  const prices = await db.query(`
+    select shop_id, unit_price, valid_from::text, valid_to::text
+    from public.shop_ice_type_prices
+    where ice_type_id = '${ICE_TYPE_ID}'
+    order by shop_id, valid_from
+  `);
+  assert.deepEqual(prices.rows, [
+    { shop_id: SHOP_ID, unit_price: '36.00', valid_from: '2026-08-01', valid_to: '2026-08-31' },
+    { shop_id: SHOP_ID, unit_price: '40.00', valid_from: '2026-09-01', valid_to: null },
+    { shop_id: OTHER_SHOP_ID, unit_price: '36.00', valid_from: '2026-08-01', valid_to: '2026-08-31' },
+    { shop_id: OTHER_SHOP_ID, unit_price: '40.00', valid_from: '2026-09-01', valid_to: null },
+  ]);
+});
+
+test('bulk shop price setter rolls back every shop when one price is immutable', async (t) => {
+  const db = await createDatabase(t);
+
+  const protectedPrice = await queryAsUser(
+    db,
+    ADMIN_ID,
+    `select id from public.set_shop_ice_type_price(
+      '${OTHER_SHOP_ID}', '${ICE_TYPE_ID}', 18, date '2026-08-01', null
+    )`,
+  );
+  await db.query(`
+    update public.delivery_items
+    set unit_price = 18,
+        price_source = 'shop_override',
+        price_source_id = $1
+    where delivery_event_id = '${EVENT_ID}'
+  `, [protectedPrice.rows[0].id]);
+
+  await assert.rejects(
+    queryAsUser(
+      db,
+      ADMIN_ID,
+      `select public.bulk_set_shop_ice_type_price(
+        array['${SHOP_ID}', '${OTHER_SHOP_ID}']::uuid[],
+        '${ICE_TYPE_ID}', 35, date '2026-08-01', null
+      )`,
+    ),
+    /effective price|price history|immutable/i,
+  );
+
+  const prices = await db.query(`
+    select shop_id, unit_price
+    from public.shop_ice_type_prices
+    where ice_type_id = '${ICE_TYPE_ID}'
+    order by shop_id
+  `);
+  assert.deepEqual(prices.rows, [{ shop_id: OTHER_SHOP_ID, unit_price: '18.00' }]);
+});
+
+test('bulk shop price setter rejects non-admin users and inactive shops', async (t) => {
+  const db = await createDatabase(t);
+
+  await assert.rejects(
+    queryAsUser(
+      db,
+      USER_ID,
+      `select public.bulk_set_shop_ice_type_price(
+        array['${SHOP_ID}']::uuid[], '${ICE_TYPE_ID}', 35, date '2026-08-01', null
+      )`,
+    ),
+    /Only admins can manage shop prices/,
+  );
+
+  await db.exec(`update public.shops set status = 'inactive' where id = '${OTHER_SHOP_ID}'`);
+  await assert.rejects(
+    queryAsUser(
+      db,
+      ADMIN_ID,
+      `select public.bulk_set_shop_ice_type_price(
+        array['${SHOP_ID}', '${OTHER_SHOP_ID}']::uuid[],
+        '${ICE_TYPE_ID}', 35, date '2026-08-01', null
+      )`,
+    ),
+    /do not exist or are inactive/,
+  );
+
+  const prices = await db.query('select id from public.shop_ice_type_prices');
+  assert.equal(prices.rows.length, 0);
 });
 
 test('migration preserves legacy rows and enforces financial invariants', async (t) => {

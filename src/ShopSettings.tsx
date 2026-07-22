@@ -7,6 +7,7 @@ import { ShopImageEditor } from './features/admin-reference-settings/components/
 import { ShopPaymentProfileEditor } from './features/shop-settings/components/ShopPaymentProfileEditor';
 import { ShopSpecialPriceEditor } from './features/shop-settings/components/ShopSpecialPriceEditor';
 import { BulkPaymentSetupModal } from './features/shop-settings/components/BulkPaymentSetupModal';
+import { BulkShopPriceSetupModal } from './features/shop-settings/components/BulkShopPriceSetupModal';
 import { ShopReadinessPanel } from './features/shop-settings/components/ShopReadinessPanel';
 import { getShopImageSignedUrls } from './features/admin-reference-settings/adminReferenceSettingsService';
 import { matchesActiveFilter, type ActiveFilter } from './features/admin-reference-settings/referenceEditorFilters';
@@ -65,6 +66,7 @@ export function ShopSettings() {
   const [zones, setZones] = useState<BuildingZoneOption[]>([]);
   const [iceTypes, setIceTypes] = useState<IceTypeOption[]>([]);
   const [bulkModalOpen, setBulkModalOpen] = useState(false);
+  const [bulkPriceModalOpen, setBulkPriceModalOpen] = useState(false);
   const [draft, setDraft] = useState<ShopDraft>(emptyDraft);
   const [query, setQuery] = useState('');
   const [buildingFilter, setBuildingFilter] = useState('');
@@ -110,45 +112,6 @@ export function ShopSettings() {
       window.removeEventListener('keydown', closeOnEscape);
     };
   }, [editorOpen, saving, savingTank]);
-
-  useEffect(() => {
-    let cancelled = false;
-    const shopsWithImages = shops.filter((shop) => shop.image_path);
-    let refreshTimer: ReturnType<typeof setTimeout> | undefined;
-
-    if (shopsWithImages.length === 0) {
-      setShopImageUrls({});
-      setFailedShopImages({});
-      return () => { cancelled = true; };
-    }
-
-    const refreshImageUrls = async () => {
-      let nextRefreshMs = SHOP_IMAGE_URL_REFRESH_MS;
-      try {
-        const urlsByPath = await getShopImageSignedUrls(shopsWithImages.map((shop) => shop.image_path!));
-        if (!cancelled) {
-          setShopImageUrls(Object.fromEntries(
-            shopsWithImages.flatMap((shop) => {
-              const url = urlsByPath[shop.image_path!];
-              return url ? [[shop.id, url]] : [];
-            }),
-          ));
-          setFailedShopImages({});
-        }
-      } catch {
-        nextRefreshMs = SHOP_IMAGE_URL_RETRY_MS;
-      } finally {
-        if (!cancelled) refreshTimer = setTimeout(() => void refreshImageUrls(), nextRefreshMs);
-      }
-    };
-
-    void refreshImageUrls();
-
-    return () => {
-      cancelled = true;
-      if (refreshTimer) clearTimeout(refreshTimer);
-    };
-  }, [shops]);
 
   async function loadSettings() {
     if (!supabase) return;
@@ -215,7 +178,52 @@ export function ShopSettings() {
   useEffect(() => { setPage(0); }, [query, shopFilter, buildingFilter, zoneFilter]);
 
   const totalPages = Math.max(1, Math.ceil(filteredShops.length / PAGE_SIZE));
-  const pagedShops = filteredShops.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+  const pagedShops = useMemo(
+    () => filteredShops.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE),
+    [filteredShops, page],
+  );
+  const visibleShopsWithImages = useMemo(
+    () => pagedShops.filter((shop) => shop.image_path),
+    [pagedShops],
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    let refreshTimer: ReturnType<typeof setTimeout> | undefined;
+
+    if (visibleShopsWithImages.length === 0) {
+      setShopImageUrls({});
+      setFailedShopImages({});
+      return () => { cancelled = true; };
+    }
+
+    const refreshImageUrls = async () => {
+      let nextRefreshMs = SHOP_IMAGE_URL_REFRESH_MS;
+      try {
+        const urlsByPath = await getShopImageSignedUrls(visibleShopsWithImages.map((shop) => shop.image_path!));
+        if (!cancelled) {
+          setShopImageUrls(Object.fromEntries(
+            visibleShopsWithImages.flatMap((shop) => {
+              const url = urlsByPath[shop.image_path!];
+              return url ? [[shop.id, url]] : [];
+            }),
+          ));
+          setFailedShopImages({});
+        }
+      } catch {
+        nextRefreshMs = SHOP_IMAGE_URL_RETRY_MS;
+      } finally {
+        if (!cancelled) refreshTimer = setTimeout(() => void refreshImageUrls(), nextRefreshMs);
+      }
+    };
+
+    void refreshImageUrls();
+
+    return () => {
+      cancelled = true;
+      if (refreshTimer) clearTimeout(refreshTimer);
+    };
+  }, [visibleShopsWithImages]);
 
   const selectShop = (shop: ShopSetting) => {
     setDraft({
@@ -488,6 +496,10 @@ export function ShopSettings() {
             <p className="muted">เลือกการ์ดเพื่อดูรายละเอียดและแก้ไขข้อมูลร้าน</p>
           </div>
           <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <button className="secondary-button" onClick={() => setBulkPriceModalOpen(true)} type="button">
+              <SlidersHorizontal size={18} />
+              ตั้งราคาหลายร้าน
+            </button>
             <button className="secondary-button" onClick={() => setBulkModalOpen(true)} type="button">
               <SlidersHorizontal size={18} />
               ตั้งค่าชำระเงินหลายร้าน
@@ -729,6 +741,17 @@ export function ShopSettings() {
         <BulkPaymentSetupModal
           buildings={buildings}
           onClose={() => setBulkModalOpen(false)}
+          onSuccess={() => void loadSettings()}
+          shops={shops}
+          zones={zones}
+        />
+      ) : null}
+
+      {bulkPriceModalOpen ? (
+        <BulkShopPriceSetupModal
+          buildings={buildings}
+          iceTypes={iceTypes}
+          onClose={() => setBulkPriceModalOpen(false)}
           onSuccess={() => void loadSettings()}
           shops={shops}
           zones={zones}

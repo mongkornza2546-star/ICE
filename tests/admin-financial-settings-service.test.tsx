@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  bulkSaveShopIcePrices,
   loadPOSReadinessReport,
   saveIceTypePrice,
   saveShopIcePrice,
@@ -56,6 +57,26 @@ describe('admin financial settings service', () => {
     });
     expect(mocks.rpc).toHaveBeenNthCalledWith(2, 'set_shop_ice_type_price', {
       target_shop_id: 'shop-1',
+      target_ice_type_id: 'ice-1',
+      target_unit_price: 35,
+      target_valid_from: '2026-07-22',
+      target_valid_to: null,
+    });
+  });
+
+  it('uses one RPC for bulk shop prices', async () => {
+    mocks.rpc.mockResolvedValue({ data: 2, error: null });
+
+    const savedCount = await bulkSaveShopIcePrices(['shop-1', 'shop-2'], {
+      ice_type_id: 'ice-1',
+      unit_price: 35,
+      valid_from: '2026-07-22',
+      valid_to: null,
+    });
+
+    expect(savedCount).toBe(2);
+    expect(mocks.rpc).toHaveBeenCalledWith('bulk_set_shop_ice_type_price', {
+      target_shop_ids: ['shop-1', 'shop-2'],
       target_ice_type_id: 'ice-1',
       target_unit_price: 35,
       target_valid_from: '2026-07-22',

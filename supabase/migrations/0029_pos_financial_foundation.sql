@@ -2,7 +2,8 @@
 -- delivery charge snapshots, payments, collection runs, and approvals.
 -- Existing delivery rows intentionally remain unpriced and outside this ledger.
 
-create extension if not exists btree_gist;
+create schema if not exists extensions;
+create extension if not exists btree_gist with schema extensions;
 
 do $$
 begin

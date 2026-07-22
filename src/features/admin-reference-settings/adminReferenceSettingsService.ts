@@ -507,6 +507,25 @@ export async function saveShopIcePrice(payload: {
   };
 }
 
+export async function bulkSaveShopIcePrices(
+  shopIds: string[],
+  price: Omit<Parameters<typeof saveShopIcePrice>[0], 'shop_id'>,
+): Promise<number> {
+  const client = supabase;
+  if (!client) throw new Error('Supabase client not initialized');
+  if (shopIds.length === 0) return 0;
+
+  const { data, error } = await client.rpc('bulk_set_shop_ice_type_price', {
+    target_shop_ids: shopIds,
+    target_ice_type_id: price.ice_type_id,
+    target_unit_price: price.unit_price,
+    target_valid_from: price.valid_from,
+    target_valid_to: price.valid_to,
+  });
+  if (error) throw new Error(error.message);
+  return Number(data);
+}
+
 export async function bulkSaveShopPaymentProfiles(
   shopIds: string[],
   templateProfile: Omit<ShopPaymentProfileSetting, 'shop_id' | 'id'>

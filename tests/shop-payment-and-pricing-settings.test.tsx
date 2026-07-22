@@ -5,6 +5,7 @@ import { ShopPaymentProfileEditor } from '../src/features/shop-settings/componen
 import { ShopSpecialPriceEditor } from '../src/features/shop-settings/components/ShopSpecialPriceEditor';
 import { ShopReadinessPanel } from '../src/features/shop-settings/components/ShopReadinessPanel';
 import { BulkPaymentSetupModal } from '../src/features/shop-settings/components/BulkPaymentSetupModal';
+import { BulkShopPriceSetupModal } from '../src/features/shop-settings/components/BulkShopPriceSetupModal';
 import * as service from '../src/features/admin-reference-settings/adminReferenceSettingsService';
 import type { IceTypeOption, ShopPaymentProfileSetting } from '../src/types/app';
 
@@ -18,6 +19,7 @@ vi.mock('../src/features/admin-reference-settings/adminReferenceSettingsService'
     saveShopIcePrice: vi.fn(),
     loadPOSReadinessReport: vi.fn(),
     bulkSaveShopPaymentProfiles: vi.fn(),
+    bulkSaveShopIcePrices: vi.fn(),
   };
 });
 
@@ -78,6 +80,7 @@ describe('Shop Payment and Pricing Settings Components', () => {
       ],
     });
     vi.mocked(service.bulkSaveShopPaymentProfiles).mockResolvedValue(1);
+    vi.mocked(service.bulkSaveShopIcePrices).mockResolvedValue(1);
   });
 
   it('renders and updates shop payment profile', async () => {
@@ -185,5 +188,60 @@ describe('Shop Payment and Pricing Settings Components', () => {
 
     expect(screen.getByText(/\(0\/1\)/)).toBeTruthy();
     expect((screen.getByRole('button', { name: 'ยืนยันตั้งค่า 0 ร้าน' }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('applies one price to selected shops in bulk', async () => {
+    const user = userEvent.setup();
+    render(
+      <BulkShopPriceSetupModal
+        buildings={[]}
+        iceTypes={iceTypes}
+        onClose={vi.fn()}
+        onSuccess={vi.fn()}
+        shops={[{
+          id: 'shop-1', code: 'S01', name: 'ร้านทดสอบ', image_path: null,
+          building_id: 'building-a', zone_id: 'zone-a', floor_or_zone: 'ชั้น 1',
+          government_shop_code: null, contact_name: null, contact_phone: null,
+          normal_rounds_per_day: 1, access_note: null, status: 'active',
+        }]}
+        zones={[]}
+      />,
+    );
+
+    await user.click(screen.getByRole('checkbox', { name: /S01/ }));
+    await user.type(screen.getByLabelText('ราคา (บาท/หน่วย)'), '35.00');
+    await user.click(screen.getByRole('button', { name: 'ยืนยันตั้งราคา 1 ร้าน' }));
+
+    await waitFor(() => expect(service.bulkSaveShopIcePrices).toHaveBeenCalledWith(
+      ['shop-1'],
+      expect.objectContaining({ ice_type_id: 'ice-block', unit_price: 35, valid_to: null }),
+    ));
+  });
+
+  it('requires an effective start date for bulk prices', async () => {
+    const user = userEvent.setup();
+    render(
+      <BulkShopPriceSetupModal
+        buildings={[]}
+        iceTypes={iceTypes}
+        onClose={vi.fn()}
+        onSuccess={vi.fn()}
+        shops={[{
+          id: 'shop-1', code: 'S01', name: 'ร้านทดสอบ', image_path: null,
+          building_id: 'building-a', zone_id: 'zone-a', floor_or_zone: 'ชั้น 1',
+          government_shop_code: null, contact_name: null, contact_phone: null,
+          normal_rounds_per_day: 1, access_note: null, status: 'active',
+        }]}
+        zones={[]}
+      />,
+    );
+
+    await user.click(screen.getByRole('checkbox', { name: /S01/ }));
+    await user.type(screen.getByLabelText('ราคา (บาท\/หน่วย)'), '35.00');
+    await user.clear(screen.getByLabelText('เริ่มมีผล'));
+    await user.click(screen.getByRole('button', { name: 'ยืนยันตั้งราคา 1 ร้าน' }));
+
+    expect(screen.getByRole('alert').textContent).toContain('กรุณาระบุวันเริ่มมีผล');
+    expect(service.bulkSaveShopIcePrices).not.toHaveBeenCalled();
   });
 });
