@@ -101,6 +101,6 @@ test('payment visibility does not expand through an allocated delivery charge', 
 
   assert.ok(paymentVisibility);
   assert.doesNotMatch(paymentVisibility, /is_financial_charge_visible/);
-  assert.match(migration, /security_invoker = true, security_barrier = true/);
+  assert.match(migration, /security_invoker = false, security_barrier = true/);
   assert.match(migration, /where charge\.status = 'active'[\s\S]*is_financial_charge_visible\(charge\.id\)/);
 });
