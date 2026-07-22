@@ -1,7 +1,7 @@
 # Handoff: Daily Work Session Architecture (1 Work Session per `service_date`)
 
 ## Status
-โค้ดปรับจาก **"รอบย่อยตามเวลา"** เป็น **"งานประจำวัน 1 งานต่อ 1 `service_date`"** แล้ว และผ่าน rework จาก end-to-end review เรียบร้อย ยังไม่ได้ deploy migration ขึ้น production
+โค้ดปรับจาก **"รอบย่อยตามเวลา"** เป็น **"งานประจำวัน 1 งานต่อ 1 `service_date`"** แล้ว และผ่าน rework จาก end-to-end review เรียบร้อย; migration `0042` deploy ขึ้น production แล้ว
 ผลยืนยันล่าสุด: 182 tests ผ่านทั้งหมด (Node Integration/Contract 128 + UI 54) และ `npm run build` ผ่าน
 
 ---
@@ -60,7 +60,6 @@
      - **สต๊อกคงเหลือตามจุดถือครอง** และประวัติรายการล่าสุด
 
 2. **การเปิดใช้งาน POS บนสภาพแวดล้อมจริง (Production Cutover & Usage)**
-   - Deploy migration `0042_daily_work_session_architecture.sql` ก่อนเปิด POS ของวัน
    - สั่งน้ำแข็งครั้งแรกของวันเพื่อทดสอบการเปิดงานประจำวันอัตโนมัติ
    - พนักงานเข้า POS บันทึกส่งและเติมสต๊อกต่อเนื่องได้ตลอดทั้งวัน
    - ตรวจนับสต๊อกสิ้นวันและปิดสต๊อกเพื่อปิดงานประจำวันและสร้าง Snapshot สต๊อกคงเหลือ
