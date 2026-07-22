@@ -232,7 +232,7 @@ export function RoleRouter({
       )}
       {visitedViews.has('stock_operations') && (
         <KeepAlive active={currentView === 'stock_operations'}>
-          <RoundWorkspace mode="stock" profile={profile} />
+          <RoundWorkspace mode="stock" />
         </KeepAlive>
       )}
       {visitedViews.has('delivery') && (
@@ -242,10 +242,9 @@ export function RoleRouter({
       )}
       {visitedViews.has('manager') && (
         <KeepAlive active={currentView === 'manager'}>
-          <RoundWorkspace mode="manager" profile={profile} />
+          <RoundWorkspace mode="manager" />
         </KeepAlive>
       )}
     </AdminLayout>
   );
 }
-

@@ -131,7 +131,7 @@ test('manager overview does not replace the operational manager workspace', () =
   assert.match(app, /currentView === 'manager_overview'[\s\S]*<ManagerDashboard[\s\S]*onNavigate=\{setActiveView\}/);
   assert.doesNotMatch(app, /currentView === 'manager'\s*\?\s*\(\s*<ManagerDashboard/);
   assert.match(app, /currentView === 'delivery'[\s\S]*<EmployeeDeliveryWorkspace onDraftStateChange=\{setDeliveryDraftState\} requestScope=\{profile\.id\} stockSourceLabel="จุดสต๊อกของร้าน" \/>/);
-  assert.match(app, /<RoundWorkspace mode="manager" profile=\{profile\} \/>/);
+  assert.match(app, /<RoundWorkspace mode="manager" \/>/);
 });
 
 test('couriers use the full-screen employee delivery workspace', () => {
@@ -146,6 +146,7 @@ test('couriers use the full-screen employee delivery workspace', () => {
   assert.match(app, /event\.preventDefault\(\)[\s\S]*event\.returnValue = ''/);
   assert.match(deliveryWorkspace, /supabase\.rpc\('get_employee_stock_state',[\s\S]*p_round_id: roundId/);
   assert.match(deliveryWorkspace, /supabase\.rpc\('record_employee_stock_transfer',[\s\S]*p_round_id: payload\.roundId[\s\S]*p_items: payload\.items[\s\S]*p_idempotency_key: payload\.idempotencyKey/);
+  assert.match(deliveryWorkspace, /supabase\.rpc\('get_employee_active_session',[\s\S]*p_service_date: toBangkokDateString\(\)/);
 });
 
 test('manager dashboard is driven by live round, stock, and daily-close data', () => {
@@ -276,7 +277,7 @@ test('stock UI ignores a movement response after the selected round changes', ()
   assert.match(component, /deps: \[.*round\?\.id.*\]/);
 });
 
-test('round creation no longer treats round-loaded quantity as day stock', () => {
+test('daily work tracking does not expose legacy round creation', () => {
   const roundWorkspace = read('src/RoundWorkspace.tsx');
   const roundControl = read('src/ManagerRoundControl.tsx');
   const managerMigration = read('supabase/migrations/0008_complete_manager_operations.sql');
@@ -285,8 +286,8 @@ test('round creation no longer treats round-loaded quantity as day stock', () =>
     managerMigration.indexOf('create or replace function public.revise_delivery_event('),
   );
 
-  assert.doesNotMatch(roundWorkspace, /loadedQuantities|น้ำแข็งยกออกตั้งต้น/);
-  assert.match(roundWorkspace, /quantity: 0/);
+  assert.doesNotMatch(roundWorkspace, /create_delivery_round|เปิดรอบส่งใหม่|loadedQuantities|น้ำแข็งยกออกตั้งต้น/);
+  assert.match(roundWorkspace, /ติดตามงานประจำวัน/);
   assert.doesNotMatch(roundControl, /label="เติมเพิ่ม"|label="เหลือ"|label="เสียหาย"/);
   assert.match(roundControl, /รอบเป็นกลุ่มรายการขาย ไม่ใช่สต๊อก/);
   assert.match(finalRoundClose, /for update;/);

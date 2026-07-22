@@ -439,7 +439,7 @@ describe('EmployeeDeliveryWorkspace', () => {
     });
     render(<EmployeeDeliveryWorkspace gateway={gateway} />);
 
-    const roundSelect = await screen.findByRole('combobox', { name: 'รอบส่ง' });
+    const roundSelect = await screen.findByRole('combobox', { name: 'เลือกงาน' });
     await user.selectOptions(roundSelect, round.id);
     await waitFor(() => expect(loadShopCards).toHaveBeenCalledWith(round.id));
     await user.selectOptions(roundSelect, secondRound.id);

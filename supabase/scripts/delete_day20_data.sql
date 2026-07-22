@@ -212,7 +212,15 @@ BEGIN;
     WHERE service_date = '2026-07-20'
   );
 
-  -- 2L. ลบ round_stock_snapshot_items → round_stock_snapshots
+  -- 2L. ลบ daily_stock_closure_items → daily_stock_closures
+  -- (daily_stock_closures มี round_id NOT NULL FK ไปหา delivery_rounds)
+  DELETE FROM public.daily_stock_closure_items
+  WHERE service_date = '2026-07-20';
+
+  DELETE FROM public.daily_stock_closures
+  WHERE service_date = '2026-07-20';
+
+  -- 2M. ลบ round_stock_snapshot_items → round_stock_snapshots
   DELETE FROM public.round_stock_snapshot_items
   WHERE round_id IN (
     SELECT id FROM public.delivery_rounds

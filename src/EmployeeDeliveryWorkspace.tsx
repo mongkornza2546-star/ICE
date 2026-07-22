@@ -6,6 +6,7 @@ import { EmployeeStockTransferSection } from './features/employee-delivery/Emplo
 import { EmployeeShopPicker } from './features/employee-delivery/EmployeeShopPicker';
 import { EmployeeDeliveryReview } from './features/employee-delivery/EmployeeDeliveryReview';
 import { useEmployeeDeliveryData } from './features/employee-delivery/useEmployeeDeliveryData';
+import { toBangkokDateString } from './lib/serviceDate';
 
 export interface EmployeeDeliveryPayload {
   roundStopId: string;
@@ -39,22 +40,19 @@ function createSupabaseGateway(): EmployeeDeliveryGateway {
   return {
     async loadReferenceData() {
       if (!supabase) throw new Error('ยังไม่ได้ตั้งค่า Supabase');
-      const [roundsResponse, iceTypesResponse] = await Promise.all([
-        supabase
-          .from('delivery_rounds')
-          .select('id, service_date, name, status, opened_at, cancelled_at')
-          .order('service_date', { ascending: false })
-          .order('opened_at', { ascending: false }),
+      const [sessionResponse, iceTypesResponse] = await Promise.all([
+        supabase.rpc('get_employee_active_session', { p_service_date: toBangkokDateString() }),
         supabase
           .from('ice_types')
           .select('id, code, name, unit')
           .eq('is_active', true)
           .order('code'),
       ]);
-      if (roundsResponse.error) throw roundsResponse.error;
+
+      if (sessionResponse.error) throw sessionResponse.error;
       if (iceTypesResponse.error) throw iceTypesResponse.error;
       return {
-        rounds: (roundsResponse.data ?? []) as DeliveryRound[],
+        rounds: (sessionResponse.data?.sessions ?? []) as DeliveryRound[],
         iceTypes: (iceTypesResponse.data ?? []) as IceTypeOption[],
       };
     },
@@ -143,7 +141,7 @@ export function EmployeeDeliveryWorkspace({
   });
 
   if (data.loadingReference) {
-    return <EmployeeState title="กำลังโหลดงานวันนี้" detail="ดึงรอบส่งและชนิดน้ำแข็ง" />;
+    return <EmployeeState title="กำลังโหลดงานวันนี้" detail="ดึงงานประจำวันและชนิดน้ำแข็ง" />;
   }
 
   if (!data.error && data.iceTypes.length === 0) {
@@ -176,6 +174,8 @@ export function EmployeeDeliveryWorkspace({
     );
   }
 
+  const openRounds = data.rounds.filter((r) => r.status === 'open' && !r.cancelled_at);
+
   return (
     <div className="employee-workspace">
       <section className="employee-intro">
@@ -188,25 +188,27 @@ export function EmployeeDeliveryWorkspace({
         </div>
         {data.selectedRound ? (
           <div className={`employee-round-badge ${data.selectedRound.status === 'closed' ? 'employee-round-badge--closed' : ''}`}>
-            <strong>{data.selectedRound.name}</strong>
-            <span>{data.selectedRound.service_date} · {data.selectedRound.cancelled_at ? 'ยกเลิกแล้ว' : data.selectedRound.status === 'open' ? 'เปิดอยู่' : 'ปิดแล้ว'}</span>
+            <strong>งานวันนี้: {data.selectedRound.name}</strong>
+            <span>{data.selectedRound.service_date} · {data.selectedRound.cancelled_at ? 'ยกเลิกแล้ว' : data.selectedRound.status === 'open' ? 'กำลังดำเนินการ' : 'ปิดแล้ว'}</span>
           </div>
         ) : null}
       </section>
 
-      <section className="employee-filters employee-filters--round" aria-label="เลือกรอบส่ง">
-        <label className="employee-round-select">
-          <span>รอบส่ง</span>
-          <select disabled={data.anySubmitting} value={data.selectedRoundId} onChange={(event) => data.chooseRound(event.target.value)}>
-            <option value="">เลือกรอบส่ง</option>
-            {data.rounds.map((round) => (
-              <option key={round.id} value={round.id}>
-                {round.name} · {round.service_date} · {round.cancelled_at ? 'ยกเลิก' : round.status === 'open' ? 'เปิด' : 'ปิด'}
-              </option>
-            ))}
-          </select>
-        </label>
-      </section>
+      {openRounds.length > 1 ? (
+        <section className="employee-filters employee-filters--round" aria-label="เลือกงาน">
+          <label className="employee-round-select">
+            <span>เลือกงาน</span>
+            <select disabled={data.anySubmitting} value={data.selectedRoundId} onChange={(event) => data.chooseRound(event.target.value)}>
+              <option value="">เลือกงาน</option>
+              {data.rounds.map((round) => (
+                <option key={round.id} value={round.id}>
+                  {round.name} · {round.service_date} · {round.cancelled_at ? 'ยกเลิก' : round.status === 'open' ? 'กำลังดำเนินการ' : 'ปิดแล้ว'}
+                </option>
+              ))}
+            </select>
+          </label>
+        </section>
+      ) : null}
 
       {data.success ? <p aria-live="polite" className="employee-success"><CheckCircle aria-hidden="true" size={22} weight="fill" />{data.success}</p> : null}
       {data.error ? (

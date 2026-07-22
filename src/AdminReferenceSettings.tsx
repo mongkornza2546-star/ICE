@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { Cube, UsersThree } from '@phosphor-icons/react';
 import type { UserProfile } from './types/app';
 import type {
-  DeliveryRoundNameSetting,
   EmployeeWorkSiteAssignment,
   IceTypeSetting,
   WorkSiteOption,
@@ -11,7 +10,6 @@ import { loadAdminSettings } from './features/admin-reference-settings/adminRefe
 import { UserEditor } from './features/admin-reference-settings/components/UserEditor';
 import { IceTypeEditor } from './features/admin-reference-settings/components/IceTypeEditor';
 import { IceTypePriceEditor } from './features/admin-reference-settings/components/IceTypePriceEditor';
-import { DeliveryRoundNameEditor } from './features/admin-reference-settings/components/DeliveryRoundNameEditor';
 
 export function AdminReferenceSettings() {
   return <AdminReferenceSettingsContent />;
@@ -22,7 +20,6 @@ function AdminReferenceSettingsContent() {
   const [workSites, setWorkSites] = useState<WorkSiteOption[]>([]);
   const [workSiteAssignments, setWorkSiteAssignments] = useState<EmployeeWorkSiteAssignment[]>([]);
   const [iceTypes, setIceTypes] = useState<IceTypeSetting[]>([]);
-  const [roundNames, setRoundNames] = useState<DeliveryRoundNameSetting[]>([]);
   const [currentUserId, setCurrentUserId] = useState('');
   
   const [loading, setLoading] = useState(true);
@@ -46,7 +43,6 @@ function AdminReferenceSettingsContent() {
         setWorkSites(data.workSites);
         setWorkSiteAssignments(data.workSiteAssignments);
         setIceTypes(data.iceTypes);
-        setRoundNames(data.roundNames);
         setAuthorized(true);
       } catch (error) {
         if (!cancelled) {
@@ -82,14 +78,6 @@ function AdminReferenceSettingsContent() {
         ? current.map((iceType) => iceType.id === savedIceType.id ? savedIceType : iceType)
         : [...current, savedIceType];
       return next.sort((left, right) => left.code.localeCompare(right.code));
-    });
-  }
-
-  function handleRoundNameSaved(savedRoundName: DeliveryRoundNameSetting) {
-    setRoundNames((current) => {
-      const exists = current.some((option) => option.id === savedRoundName.id);
-      const next = exists ? current.map((option) => option.id === savedRoundName.id ? savedRoundName : option) : [...current, savedRoundName];
-      return next.sort((left, right) => left.sort_order - right.sort_order || left.name.localeCompare(right.name));
     });
   }
 
@@ -142,7 +130,6 @@ function AdminReferenceSettingsContent() {
         onIceTypeSaved={handleIceTypeSaved}
       />
       <IceTypePriceEditor iceTypes={iceTypes} />
-      <DeliveryRoundNameEditor options={roundNames} onSaved={handleRoundNameSaved} />
     </div>
   );
 }

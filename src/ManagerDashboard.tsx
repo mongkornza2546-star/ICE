@@ -61,7 +61,7 @@ const QUICK_ACTIONS: Array<{
   label: string;
   icon: Icon;
 }> = [
-  { view: 'manager', label: 'ควบคุมรอบส่ง', icon: ClipboardText },
+  { view: 'manager', label: 'ติดตามงานวันนี้', icon: ClipboardText },
   { view: 'factory_order', label: 'สั่งจากโรงงาน', icon: Factory },
   { view: 'delivery', label: 'บันทึกส่งน้ำแข็ง', icon: Truck },
   { view: 'stock_operations', label: 'โอน / ตรวจ / ปิดสต๊อก', icon: ArrowsLeftRight },

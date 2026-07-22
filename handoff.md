@@ -1,45 +1,66 @@
-# Handoff: POS Financial Foundation & Shop Settings (Step 3)
+# Handoff: Daily Work Session Architecture (1 Work Session per `service_date`)
 
 ## Status
-ขั้นตอนที่ 3 ตามแผน `docs/pos-delivery-and-payment-plan.md` พร้อม review fixes ได้พัฒนาและทดสอบแล้ว ชุดทดสอบปัจจุบันผ่าน 165 tests (Integration/Contract 115 และ UI 50) และ production build ผ่าน ก่อนเริ่มตั้งค่าข้อมูลตั้งต้น (Step 4) ต้อง deploy migration `0037_admin_financial_settings_fixes.sql` ก่อน
+โค้ดปรับจาก **"รอบย่อยตามเวลา"** เป็น **"งานประจำวัน 1 งานต่อ 1 `service_date`"** แล้ว และผ่าน rework จาก end-to-end review เรียบร้อย ยังไม่ได้ deploy migration ขึ้น production
+ผลยืนยันล่าสุด: 182 tests ผ่านทั้งหมด (Node Integration/Contract 128 + UI 54) และ `npm run build` ผ่าน
+
+---
 
 ## สิ่งที่พัฒนาสำเร็จใน Phase นี้ (Implemented Features)
 
-### 1. ระบบจัดการราคากลาง (Master Ice Pricing)
-- คอมโพเนนต์ `IceTypePriceEditor` (ที่เมนูตั้งค่าระบบของ Admin)
-- รองรับการกำหนดราคามาตรฐานแบบระบุช่วงเวลา (`valid_from`, `valid_to`) และระบบประวัติราคาย้อนหลัง
-- การเพิ่มราคาถัดไปจะปิดช่วงราคาเดิมและสร้างแถวใหม่แบบ atomic ผ่าน RPC
+### 1. โครงสร้างฐานข้อมูลงานประจำวัน (Migration `0042_daily_work_session_architecture.sql`)
+- **Upgrade-safe classification**: เพิ่ม `round_type` (`'daily'` | `'special'`) โดย backfill รอบเก่าทั้งหมดเป็น `special` ก่อนสร้าง `delivery_rounds_daily_unique_idx` จึงรองรับฐานข้อมูลเดิมที่มีหลายรอบต่อวัน
+- **System-name invariant**: `daily` ต้องใช้ชื่อ `"งานประจำวัน"` เท่านั้น; `special` ยังต้องผ่าน configured-name validation
+- **Internal auto-creation helper**: `ensure_daily_delivery_round(p_service_date)` ตรวจ active admin/round lead, idempotent ภายใต้ service-date lock และถูก revoke จาก anonymous/authenticated client
+- **คำสั่งซื้อโรงงานครั้งแรกของวัน**: ปรับปรุง `record_factory_order` ให้เรียก `ensure_daily_delivery_round` อัตโนมัติเมื่อมีการสั่งน้ำแข็งจากโรงงานครั้งแรกของวัน
+- **Read-only session resolution**: `get_employee_active_session(p_service_date)` ไม่สร้างงานเอง, กรองตามสมาชิก/สิทธิ์ และใช้วัน Asia/Bangkok
 
-### 2. โปรไฟล์การชำระเงินของร้านค้า (Shop Payment Profiles)
-- เพิ่ม `ShopPaymentProfileEditor` ในหน้าแก้ไขข้อมูลร้านค้า
-- รองรับการระบุเงื่อนไขการชำระเงิน: `immediate` (จ่ายทันที), `end_of_day` (สิ้นวัน), `credit` (เครดิต)
-- รองรับการกำหนดช่องทางที่ยอมรับ (เงินสด, โอนเงิน, QR), การอนุญาตให้ค้างยอด, กฎการเก็บเงิน (Net Days / End of Month) และวงเงินเครดิต
+### 2. การปิดสต๊อกและปิดงานสิ้นวันแบบ Atomic Transaction
+- ปรับปรุง `close_daily_stock_v2` ให้ทำการ:
+  1. ค้นหางานประจำวันที่เปิดอยู่ของ `service_date`
+  2. บันทึกผลนับจริงและ variance ที่อนุมัติใน `daily_stock_closures` / `daily_stock_closure_items`
+  3. คำนวณสรุปผลและบันทึก `round_close_summaries`
+  4. บันทึก Snapshot จากยอดนับจริงหลัง reconciliation
+  5. อัปเดตสถานะงานประจำวันเป็น `'closed'`
+  6. โอนสต๊อกนับจริงคงเหลือส่งคืนโรงงาน และปิด `daily_stock_closures`
+  - **ทำทั้งหมดใน 1 SQL Transaction Block** หากขั้นตอนใดล้มเหลว ระบบจะ Rollback ทั้งหมดทันที
 
-### 3. ราคาพิเศษเฉพาะร้าน (Shop Special Prices)
-- คอมโพเนนต์ `ShopSpecialPriceEditor` เพื่อกำหนดราคาพิเศษสำหรับลูกค้าเฉพาะราย
-- ใช้โครงสร้าง Effective-dated (ช่วงเวลาที่มีผล) เช่นเดียวกับราคากลาง หากราคาพิเศษหมดอายุ ระบบจะ fallback ไปใช้ราคากลางอัตโนมัติ
+### 3. ปรับปรุง UX/UI หน้าจอพนักงานและผู้ดูแลระบบ
+- **POS หน้าจอพนักงาน (`EmployeeDeliveryWorkspace.tsx`)**:
+  - เชื่อมต่อ `get_employee_active_session` ดึงงานประจำวันอัตโนมัติ
+  - ซ่อน Dropdown เลือกรอบในวันทำงานปกติ (กรณีมีงานเดียว)
+  - แสดงป้ายสถานะอ่านอย่างเดียว: **`งานวันนี้: งานประจำวัน`** (`กำลังดำเนินการ`)
+- **หน้าจอติดตามงาน (`AdminLayout.tsx`, `ManagerDashboard.tsx`)**:
+  - เปลี่ยนชื่อเมนูและหัวข้อหน้าจอจาก **"ควบคุมรอบส่ง"** เป็น **"ติดตามงานวันนี้"**
+  - นำฟอร์มเปิดรอบแบบเดิมออกจาก `RoundWorkspace`; งานประจำวันเปิดจาก factory order เท่านั้น
+- **หน้าตั้งค่าแอดมิน (`AdminReferenceSettings.tsx`)**:
+  - ซ่อนคอมโพเนนต์ตั้งค่าชื่อรอบย่อยตามเวลาออกจาก UX
 
-### 4. เครื่องมือจัดการข้อมูลแบบกลุ่ม (Bulk Payment Setup)
-- Modal `BulkPaymentSetupModal` สำหรับค้นหาและกรองร้านค้าด้วย ตึก/โซนย่อย
-- ช่วยให้ Admin สามารถกำหนดโปรไฟล์การเงินตั้งต้นให้ร้านค้าหลายสิบร้านได้ในคลิกเดียว
-- รองรับ default term/method, immediate + end-of-day, credit, ยอดค้าง และกฎเครดิต โดยคง database invariants ก่อนบันทึก
-
-### 5. รายงานตรวจสอบความพร้อม (POS Readiness Report)
-- แดชบอร์ด `ShopReadinessPanel` แสดงสถิติและสถานะร้านค้าที่ยังไม่มี Payment Profile หรือสินค้าน้ำแข็งที่ยังไม่ได้กำหนดราคากลาง
-- เป็น Checkpoint สำคัญก่อนทำการเปิดใช้งาน POS App อย่างเต็มรูปแบบ
-- ใช้วันที่ Asia/Bangkok และแสดง error หากโหลดข้อมูลไม่สำเร็จ จึงไม่รายงานผลพร้อมแบบ false-positive
+---
 
 ## ข้อมูลทางเทคนิคและ Testing
-- **Types**: สร้าง Type Definitions ที่เกี่ยวข้องครบถ้วนใน `src/types/app.ts`
-- **Service Layer**: `adminReferenceSettingsService.ts` เชื่อม atomic price RPCs ใน migration `0037_admin_financial_settings_fixes.sql` และตรวจ query errors ของ readiness report
-- **Tests**: ทดสอบ UI/service/date รวมถึง integration test บน PGlite สำหรับการปิดช่วงราคาเดิมและเพิ่มราคาถัดไป
+
+- **Migrations**:
+  - `supabase/migrations/0042_daily_work_session_architecture.sql`
+- **Integration Test Suite**:
+  - `tests/daily-work-session.integration.test.mjs` 10 tests: legacy multi-round upgrade, helper permissions, name invariant, idempotency, factory validation/auto-creation, read-only session resolution, actual-count snapshot และ atomic close
+- **Verification Commands**:
+  - Integration & UI Tests: `npm test` (128 Node tests + 54 Vitest UI tests passed)
+  - TypeScript Build Check: `npm run build` (Passed cleanly, 0 compilation errors)
+
+---
 
 ## แผนงานและขั้นตอนถัดไป (Next Steps)
-1. **Step 4: ข้อมูลตั้งต้น (Data Initialization)**
-   - Deploy migration `0037_admin_financial_settings_fixes.sql`
-   - ผู้ดูแลระบบ (Admin) เข้าหน้าแอปเพื่อใช้ Bulk Setup กำหนดโปรไฟล์การเงินให้ร้านค้าทั้งหมด
-   - กำหนดราคากลาง (Master Prices) ให้กับน้ำแข็งทุกชนิด
-2. **Step 5: หน้าจอ POS พนักงาน (Employee POS UI)**
-   - ปรับปรุง `EmployeeDeliveryWorkspace.tsx` ให้เป็น 3-Column Layout สำหรับ Desktop/Tablet และ 3-Step Wizard สำหรับ Mobile
-   - เพิ่ม Keypad แบบสัมผัสสำหรับการคีย์ตัวเลขที่รวดเร็ว
-   - เชื่อมต่อการคำนวณราคารวม (Unit Price × Quantity) และการบันทึกการส่ง (`record_delivery`) พร้อมแนบรูปแบบการชำระเงิน
+
+1. **การปรับปรุงแดชบอร์ด "ติดตามงานวันนี้" (Phase 2 Dashboard)**
+   - แสดงตัวเลขสรุปงานประจำวันอย่างละเอียด:
+     - **พนักงานที่ได้รับมอบหมาย:** (สมาชิกทั้งหมดใน Session)
+     - **พนักงานที่มีการเคลื่อนไหววันนี้:** (พนักงานที่มีการบันทึกส่งหรือโอนสต๊อกจริง)
+     - **ยอดขายรวมและร้านค้าที่ส่งจริง** (ตัด KPI ร้านที่ไม่ซื้อออกจากงานค้าง)
+     - **สต๊อกคงเหลือตามจุดถือครอง** และประวัติรายการล่าสุด
+
+2. **การเปิดใช้งาน POS บนสภาพแวดล้อมจริง (Production Cutover & Usage)**
+   - Deploy migration `0042_daily_work_session_architecture.sql` ก่อนเปิด POS ของวัน
+   - สั่งน้ำแข็งครั้งแรกของวันเพื่อทดสอบการเปิดงานประจำวันอัตโนมัติ
+   - พนักงานเข้า POS บันทึกส่งและเติมสต๊อกต่อเนื่องได้ตลอดทั้งวัน
+   - ตรวจนับสต๊อกสิ้นวันและปิดสต๊อกเพื่อปิดงานประจำวันและสร้าง Snapshot สต๊อกคงเหลือ

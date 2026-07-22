@@ -28,7 +28,7 @@ export type AdminView =
 const viewMeta: Record<AdminView, { label: string; shortLabel: string; icon: typeof Truck }> = {
   manager_overview: { label: 'ภาพรวมงานวันนี้', shortLabel: 'ภาพรวม', icon: ClipboardText },
   factory_order: { label: 'สั่งน้ำแข็งจากโรงงาน', shortLabel: 'สั่งน้ำแข็ง', icon: ShoppingCart },
-  manager: { label: 'ควบคุมรอบส่ง', shortLabel: 'ควบคุมรอบ', icon: ClipboardText },
+  manager: { label: 'ติดตามงานวันนี้', shortLabel: 'ติดตามงาน', icon: ClipboardText },
   delivery: { label: 'บันทึกส่งน้ำแข็ง', shortLabel: 'บันทึกส่ง', icon: Truck },
   stock_operations: { label: 'โอน / ตรวจ / ปิดสต๊อก', shortLabel: 'จัดการสต๊อก', icon: MapPin },
   location_management: { label: 'สถานที่และจุดถือครอง', shortLabel: 'สถานที่', icon: Gear },
