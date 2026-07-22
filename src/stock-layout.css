@@ -256,6 +256,12 @@
   justify-content: center;
   font-size: 0.85rem;
 }
+.stock-location-responsibility {
+  margin: -8px 0 12px 32px;
+  color: #1769e0;
+  font-size: .76rem;
+  line-height: 1.4;
+}
 .stock-location-card-custom-body {
   display: flex;
   flex-direction: column;

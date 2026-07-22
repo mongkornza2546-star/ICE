@@ -46,6 +46,7 @@ const summary: StockControlSummary = {
       holds_inventory: false,
       requires_daily_count: false,
       is_courier_source: false,
+      assigned_employees: [{ id: 'employee-1', code: 'EMP-1', display_name: 'สมชาย ใจดี' }],
       balances: [{ ice_type_id: 'ice-1', ice_type_name: 'หลอดเล็ก', unit: 'ถุง', quantity: 0 }],
     },
     {
@@ -56,6 +57,8 @@ const summary: StockControlSummary = {
       holds_inventory: true,
       requires_daily_count: true,
       is_courier_source: false,
+      assigned_employee: { id: 'employee-1', code: 'EMP-1', display_name: 'สมชาย ใจดี' },
+      assigned_work_sites: [{ id: 'site-1', code: 'A', name: 'A · จุดปฏิบัติงาน' }],
       balances: [{ ice_type_id: 'ice-1', ice_type_name: 'หลอดเล็ก', unit: 'ถุง', quantity: 5 }],
     },
   ],
@@ -145,6 +148,22 @@ describe('ManagerStockControl movement tabs', () => {
       p_from_location_id: 'team-1',
       p_to_location_id: 'truck-1',
     });
+  });
+
+  it('shows the responsible employee and work sites on the actionable stock holder', async () => {
+    const user = userEvent.setup();
+    render(<ManagerStockControl operationRound={round} round={round} serviceDate={round.service_date} />);
+
+    const recipient = await screen.findByRole('button', { name: /รถเข็นสมชาย/ });
+    expect(within(recipient).getByText(/สมชาย ใจดี/)).toBeTruthy();
+    expect(within(recipient).getByText('A · จุดปฏิบัติงาน')).toBeTruthy();
+
+    const transferSource = screen.getByRole('combobox', { name: 'ต้นทาง (จาก)' }) as HTMLSelectElement;
+    expect(Array.from(transferSource.options).map((option) => option.value)).not.toContain('site-1');
+
+    await user.click(screen.getByRole('button', { name: 'ตรวจนับจริง' }));
+    const countLocation = screen.getByRole('combobox', { name: 'จุดที่ต้องการตรวจนับ' }) as HTMLSelectElement;
+    expect(Array.from(countLocation.options).find((option) => option.value === 'team-1')?.textContent).toContain('สมชาย ใจดี');
   });
 
   it('clears the selected destination after a successful transfer', async () => {

@@ -505,6 +505,12 @@ export function ManagerStockControl({
                   </div>
                   {location.name}
                 </div>
+                {!isRoundSnapshot && location.kind === 'work_site' && (location.assigned_employees?.length ?? 0) > 0 ? (
+                  <p className="stock-location-responsibility">ผู้ดูแล: {location.assigned_employees?.map(formatEmployeeName).join(', ')}</p>
+                ) : null}
+                {!isRoundSnapshot && location.assigned_employee ? (
+                  <p className="stock-location-responsibility">ผู้รับผิดชอบ: {formatLocationResponsibility(location)}</p>
+                ) : null}
                 <div className="stock-location-card-custom-body">
                   {location.balances.map((balance) => (
                     <div className="stock-balance-row" key={balance.ice_type_id}>
@@ -603,6 +609,8 @@ export function ManagerStockControl({
                           <span className="holder-card__identity">
                             <strong>{location.name}</strong>
                             <small>{location.code}</small>
+                            {location.assigned_employee ? <small>ผู้รับผิดชอบ: {formatEmployeeName(location.assigned_employee)}</small> : null}
+                            {(location.assigned_work_sites?.length ?? 0) > 0 ? <small>{location.assigned_work_sites?.map((site) => site.name).join(', ')}</small> : null}
                           </span>
                           <span className={`holder-card__balance ${totalBalance === 0 ? 'holder-card__balance--empty' : ''}`}>
                             คงเหลือที่จุดรับ <strong>{formatStockQuantity(totalBalance)}</strong> หน่วย
@@ -705,6 +713,8 @@ export function ManagerStockControl({
                       <small>กำลังโอนไปยัง:</small>
                       <strong>{selectedRecipient.name}</strong>
                       <small>{selectedRecipient.code}</small>
+                      {selectedRecipient.assigned_employee ? <small>ผู้รับผิดชอบ: {formatEmployeeName(selectedRecipient.assigned_employee)}</small> : null}
+                      {(selectedRecipient.assigned_work_sites?.length ?? 0) > 0 ? <small>{selectedRecipient.assigned_work_sites?.map((site) => site.name).join(', ')}</small> : null}
                     </span>
                   </div>
                 ) : (
@@ -951,7 +961,10 @@ export function ManagerStockControl({
 
                         return (
                           <tr key={location.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                            <td style={{ padding: '12px 16px', fontWeight: 500 }}>{location.name}</td>
+                            <td style={{ padding: '12px 16px', fontWeight: 500 }}>
+                              {location.name}
+                              {location.assigned_employee ? <small style={{ display: 'block', marginTop: 3, color: '#64748b' }}>{formatLocationResponsibility(location)}</small> : null}
+                            </td>
                             <td style={{ padding: '12px 16px', color: statusColor }}>{statusStr}</td>
                             <td style={{ padding: '12px 16px', color: resultColor, fontWeight: 500 }}>{resultStr}</td>
                           </tr>
@@ -1067,7 +1080,7 @@ function LocationSelect({
       <select required value={value} onChange={(event) => onChange(event.target.value)}>
         <option value="">เลือกจุด</option>
         {locations.map((location) => (
-          <option key={location.id} value={location.id}>{location.name}</option>
+          <option key={location.id} value={location.id}>{formatLocationOption(location)}</option>
         ))}
       </select>
     </label>
@@ -1090,6 +1103,23 @@ function formatStockDateTime(value: string) {
 
 function formatStockQuantity(value: number) {
   return Number.isInteger(value) ? String(value) : value.toFixed(1);
+}
+
+function formatEmployeeName(employee: NonNullable<StockLocationBalance['assigned_employee']>) {
+  return employee.nickname ? `${employee.display_name} (${employee.nickname})` : employee.display_name;
+}
+
+function formatLocationResponsibility(location: StockLocationBalance) {
+  if (!location.assigned_employee) return '';
+  const workSites = location.assigned_work_sites?.map((site) => site.name).join(', ');
+  return workSites
+    ? `${formatEmployeeName(location.assigned_employee)} · ${workSites}`
+    : formatEmployeeName(location.assigned_employee);
+}
+
+function formatLocationOption(location: StockLocationBalance) {
+  const responsibility = formatLocationResponsibility(location);
+  return responsibility ? `${location.name} — ${responsibility}` : location.name;
 }
 
 function isAllowedTransferDestination(

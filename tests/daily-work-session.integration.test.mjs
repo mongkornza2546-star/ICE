@@ -11,6 +11,10 @@ const migration0043 = readFileSync(
   new URL('../supabase/migrations/0043_daily_work_dashboard_and_cancellation.sql', import.meta.url),
   'utf8',
 );
+const migration0044 = readFileSync(
+  new URL('../supabase/migrations/0044_backfill_delivery_round_created_at.sql', import.meta.url),
+  'utf8',
+);
 
 const USER_ID = '10000000-0000-4000-8000-000000000001';
 const LATE_USER_ID = '10000000-0000-4000-8000-000000000002';
@@ -62,7 +66,6 @@ async function createDb({ legacyRounds = false } = {}) {
       opened_at timestamptz not null default now(),
       closed_by uuid references public.users(id),
       closed_at timestamptz,
-      created_at timestamptz not null default now(),
       cancelled_by uuid references public.users(id),
       cancelled_at timestamptz,
       cancellation_reason text
@@ -321,6 +324,7 @@ async function createDb({ legacyRounds = false } = {}) {
 
   await db.exec(migration0042);
   await db.exec(migration0043);
+  await db.exec(migration0044);
   return db;
 }
 

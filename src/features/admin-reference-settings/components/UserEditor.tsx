@@ -1,9 +1,11 @@
-import { type FormEvent, useMemo, useState } from 'react';
+import { type ChangeEvent, type FormEvent, useEffect, useMemo, useState } from 'react';
 import {
   CheckCircle,
   Circle,
   FunnelSimple,
+  ImageSquare,
   MagnifyingGlass,
+  UploadSimple,
 } from '@phosphor-icons/react';
 import type { UserProfile, AppRole } from '../../../types/app';
 import {
@@ -11,8 +13,16 @@ import {
   type EmployeeWorkSiteAssignment,
   type UserDraft,
   type WorkSiteOption,
+  ALLOWED_USER_AVATAR_TYPES,
+  MAX_USER_AVATAR_SIZE,
 } from '../types';
-import { saveUserWithWorkSiteAssignments, getErrorMessage } from '../adminReferenceSettingsService';
+import {
+  getErrorMessage,
+  getUserAvatarSignedUrl,
+  removeUserAvatarFiles,
+  saveUserWithWorkSiteAssignments,
+  uploadUserAvatar,
+} from '../adminReferenceSettingsService';
 import {
   filterLabel,
   matchesActiveFilter,
@@ -39,6 +49,8 @@ function toUserDraft(
     id: user.id,
     code: user.code,
     displayName: user.display_name,
+    nickname: user.nickname ?? '',
+    avatarPath: user.avatar_path ?? null,
     phone: user.phone ?? '',
     role: user.role,
     isActive: user.is_active,
@@ -51,6 +63,22 @@ function toUserDraft(
 
 function roleLabel(role: AppRole) {
   return ROLE_OPTIONS.find((option) => option.value === role)?.label ?? role;
+}
+
+function UserAvatar({ path }: { path: string }) {
+  const [url, setUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    getUserAvatarSignedUrl(path).then((nextUrl) => {
+      if (!cancelled) setUrl(nextUrl);
+    }).catch(() => {
+      if (!cancelled) setUrl(null);
+    });
+    return () => { cancelled = true; };
+  }, [path]);
+
+  return url ? <img alt="" src={url} /> : <ImageSquare size={18} />;
 }
 
 export function UserEditor({
@@ -69,6 +97,9 @@ export function UserEditor({
   const [savingUser, setSavingUser] = useState(false);
   const [userError, setUserError] = useState<string | null>(null);
   const [userSuccess, setUserSuccess] = useState<string | null>(null);
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [avatarPreviewUrl, setAvatarPreviewUrl] = useState<string | null>(null);
 
   const assignedWorkSitesByUser = useMemo(() => {
     const workSiteById = new Map(workSites.map((workSite) => [workSite.id, workSite]));
@@ -94,10 +125,52 @@ export function UserEditor({
     [assignedWorkSitesByUser, userFilter, userQuery, users],
   );
 
+  useEffect(() => {
+    if (!avatarFile) {
+      setAvatarPreviewUrl(null);
+      return undefined;
+    }
+    const objectUrl = URL.createObjectURL(avatarFile);
+    setAvatarPreviewUrl(objectUrl);
+    return () => URL.revokeObjectURL(objectUrl);
+  }, [avatarFile]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const avatarPath = userDraft?.avatarPath;
+    if (avatarFile || !avatarPath) {
+      setAvatarUrl(null);
+      return undefined;
+    }
+    getUserAvatarSignedUrl(avatarPath).then((url) => {
+      if (!cancelled) setAvatarUrl(url);
+    }).catch(() => {
+      if (!cancelled) setAvatarUrl(null);
+    });
+    return () => { cancelled = true; };
+  }, [avatarFile, userDraft?.avatarPath]);
+
   function chooseUser(user: UserProfile) {
     setUserDraft(toUserDraft(user, workSiteAssignments, workSites));
+    setAvatarFile(null);
     setUserError(null);
     setUserSuccess(null);
+  }
+
+  function chooseAvatarFile(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    if (file.size > MAX_USER_AVATAR_SIZE) {
+      setUserError('รูปต้องมีขนาดไม่เกิน 5 MB');
+      return;
+    }
+    if (file.type && !ALLOWED_USER_AVATAR_TYPES.has(file.type)) {
+      setUserError('รองรับเฉพาะไฟล์ JPG, PNG หรือ WEBP');
+      return;
+    }
+    setAvatarFile(file);
+    setUserError(null);
   }
 
   async function saveUser(event: FormEvent<HTMLFormElement>) {
@@ -120,22 +193,36 @@ export function UserEditor({
     setSavingUser(true);
     setUserError(null);
     setUserSuccess(null);
+    let uploadedAvatarPath: string | null = null;
 
     try {
+      let avatarPath = userDraft.avatarPath;
+      if (avatarFile) {
+        avatarPath = await uploadUserAvatar(original.id, avatarFile);
+        uploadedAvatarPath = avatarPath;
+      }
+
       const saved = await saveUserWithWorkSiteAssignments(original.id, {
         display_name: displayName,
+        nickname: userDraft.nickname.trim() || null,
+        avatar_path: avatarPath,
         phone: userDraft.phone.trim() || null,
         role: isCurrentUser ? original.role : userDraft.role,
         is_active: isCurrentUser ? original.is_active : userDraft.isActive,
       }, userDraft.role === 'courier' && userDraft.isActive ? userDraft.workSiteIds : []);
 
+      if (avatarFile && userDraft.avatarPath && userDraft.avatarPath !== avatarPath) {
+        await removeUserAvatarFiles([userDraft.avatarPath]).catch(() => {});
+      }
       onUserSaved(saved.user, saved.work_site_ids);
       setUserDraft({
         ...toUserDraft(saved.user, [], workSites),
         workSiteIds: saved.work_site_ids,
       });
+      setAvatarFile(null);
       setUserSuccess('บันทึกข้อมูลผู้ใช้และจุดประจำแล้ว');
     } catch (error) {
+      if (uploadedAvatarPath) await removeUserAvatarFiles([uploadedAvatarPath]).catch(() => {});
       setUserError(getErrorMessage(error));
     } finally {
       setSavingUser(false);
@@ -189,9 +276,12 @@ export function UserEditor({
                   <span className="reference-list-item__radio" aria-hidden="true">
                     {selected ? <CheckCircle size={20} weight="fill" /> : <Circle size={20} />}
                   </span>
+                  <span className="user-avatar user-avatar--list" aria-hidden="true">
+                    {user.avatar_path ? <UserAvatar path={user.avatar_path} /> : <ImageSquare size={18} />}
+                  </span>
                   <span className="reference-list-item__body">
                     <strong>{user.code}</strong>
-                    <small>{user.display_name}</small>
+                    <small>{user.display_name}{user.nickname ? ` (${user.nickname})` : ''}</small>
                     <small className="reference-list-item__assignment">
                       {assignedWorkSites.length > 0
                         ? `ประจำ ${assignedWorkSites.map((workSite) => workSite.name).join(', ')}`
@@ -226,6 +316,7 @@ export function UserEditor({
               <div className="field-grid">
                 <label>รหัสผู้ใช้<input readOnly value={userDraft.code} /></label>
                 <label>ชื่อแสดง<input required value={userDraft.displayName} onChange={(event) => setUserDraft({ ...userDraft, displayName: event.target.value })} /></label>
+                <label>ชื่อเล่น<input placeholder="เช่น บอย" value={userDraft.nickname} onChange={(event) => setUserDraft({ ...userDraft, nickname: event.target.value })} /></label>
                 <label>เบอร์โทร<input placeholder="ระบุเบอร์โทร (ถ้ามี)" type="tel" value={userDraft.phone} onChange={(event) => setUserDraft({ ...userDraft, phone: event.target.value })} /></label>
                 <label>
                   บทบาท
@@ -244,6 +335,16 @@ export function UserEditor({
                     {ROLE_OPTIONS.map((role) => <option key={role.value} value={role.value}>{role.label}</option>)}
                   </select>
                 </label>
+              </div>
+              <div className="reference-user-avatar-editor">
+                <span className="user-avatar user-avatar--preview">
+                  {avatarPreviewUrl ?? avatarUrl ? <img alt={`รูปของ ${userDraft.displayName}`} src={avatarPreviewUrl ?? avatarUrl ?? ''} /> : <ImageSquare aria-hidden="true" size={32} />}
+                </span>
+                <div>
+                  <strong>รูปพนักงาน</strong>
+                  <small>รองรับ JPG, PNG, WEBP ขนาดไม่เกิน 5 MB</small>
+                  <label className="secondary-button reference-upload-button"><UploadSimple size={18} /><span>{userDraft.avatarPath ? 'เปลี่ยนรูป' : 'เลือกรูป'}</span><input accept="image/jpeg,image/png,image/webp" aria-label="รูปพนักงาน" onChange={chooseAvatarFile} type="file" /></label>
+                </div>
               </div>
               <fieldset className="reference-assignment-fieldset" disabled={userDraft.role !== 'courier' || !userDraft.isActive}>
                 <legend>จุดปฏิบัติงานประจำ</legend>

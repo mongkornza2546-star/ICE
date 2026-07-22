@@ -16,6 +16,8 @@ export interface UserProfile {
   id: string;
   code: string;
   display_name: string;
+  nickname?: string | null;
+  avatar_path?: string | null;
   phone: string | null;
   role: AppRole;
   is_active: boolean;
@@ -98,6 +100,19 @@ export interface StockBalanceItem {
   quantity: number;
 }
 
+export interface WorkSiteEmployee {
+  id: string;
+  code: string;
+  display_name: string;
+  nickname?: string | null;
+}
+
+export interface WorkSiteReference {
+  id: string;
+  code: string;
+  name: string;
+}
+
 export interface StockLocationBalance {
   id: string;
   code: string;
@@ -106,6 +121,9 @@ export interface StockLocationBalance {
   holds_inventory?: boolean;
   requires_daily_count?: boolean;
   is_courier_source?: boolean;
+  assigned_employee?: WorkSiteEmployee | null;
+  assigned_work_sites?: WorkSiteReference[];
+  assigned_employees?: WorkSiteEmployee[];
   balances: StockBalanceItem[];
 }
 
