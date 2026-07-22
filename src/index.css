@@ -143,8 +143,8 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .stepper { display: flex; align-items: center; border: 1px solid #cbd5e1; border-radius: 6px; overflow: hidden; width: fit-content; margin: 0 auto; }
 .stepper button { display: flex; align-items: center; justify-content: center; width: 32px; height: 30px; border: 0; color: #475569; background: #fff; transition: background 0.15s; }
 .stepper button:hover:not(:disabled) { color: #2563eb; background: #f1f5f9; }
-.stepper input { width: 44px; height: 30px; border: 0; border-left: 1px solid #cbd5e1; border-right: 1px solid #cbd5e1; text-align: center; font-weight: 600; color: #0f172a; outline: none; }
-.stepper input::-webkit-outer-spin-button, .stepper input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.stepper input { width: 68px; min-width: 68px; height: 30px; min-height: 30px; padding: 0 4px; box-sizing: border-box; border: 0; border-left: 1px solid #cbd5e1; border-right: 1px solid #cbd5e1; text-align: center; font-weight: 600; color: #0f172a; outline: none; appearance: textfield; -webkit-appearance: none; -moz-appearance: textfield; }
+.stepper input::-webkit-outer-spin-button, .stepper input::-webkit-inner-spin-button { -webkit-appearance: none; appearance: none; margin: 0; }
 .stock-number { color: #0f172a; text-align: right; font-size: .88rem; font-weight: 700; }
 .stock-number .stock-unit { color: #64748b; font-size: .8rem; font-weight: 400; margin-left: 4px; }
 .stock-number--projected { color: #2563eb; }
@@ -680,7 +680,7 @@ input:disabled, select:disabled, textarea:disabled { background: #f2f5f8; color:
   .factory-order-fields, .factory-order-bottom-fields { grid-template-columns: 1fr; gap: 9px; }
   .factory-order-card input, .factory-order-card select { min-height: 44px; }
   .factory-order-card__heading { align-items: flex-start; }
-  .factory-order-line { grid-template-columns: minmax(0, 1fr) minmax(135px, .9fr); gap: 9px; padding: 11px; }
+  .factory-order-line { grid-template-columns: minmax(0, 1fr) minmax(140px, .9fr); gap: 9px; padding: 11px; }
   .factory-order-line > * { padding: 0; }
   .factory-order-line--header { display: none; }
   .stock-number { display: grid; grid-template-columns: 1fr auto; align-items: center; padding: 7px 8px; border: 1px solid #e0e8f1; border-radius: 6px; background: #f8fafc; text-align: right; }
