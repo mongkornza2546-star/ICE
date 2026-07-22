@@ -591,7 +591,7 @@ as $$
 $$;
 
 create view public.delivery_charge_balances
-with (security_invoker = false, security_barrier = true)
+with (security_invoker = true, security_barrier = true)
 as
 select
   charge.id as charge_id,

@@ -1,4 +1,5 @@
 import { supabase } from '../../lib/supabase';
+import { toBangkokDateString } from '../../lib/serviceDate';
 import { isMissingRpc } from '../../lib/rpc';
 import type { UserProfile, AppRole, IceTypePriceSetting, ShopPaymentProfileSetting, ShopIcePriceSetting, POSReadinessReport, ShopReadinessItem } from '../../types/app';
 import {
@@ -354,28 +355,13 @@ export async function saveIceTypePrice(payload: {
   const client = supabase;
   if (!client) throw new Error('Supabase client not initialized');
 
-  const { data: authData } = await client.auth.getUser();
-  if (!authData?.user) throw new Error('ไม่พบบัญชีผู้ใช้');
-
   const { data, error } = await client
-    .from('ice_type_prices')
-    .insert({
-      ice_type_id: payload.ice_type_id,
-      unit_price: payload.unit_price,
-      valid_from: payload.valid_from,
-      valid_to: payload.valid_to || null,
-      created_by: authData.user.id,
+    .rpc('set_ice_type_price', {
+      target_ice_type_id: payload.ice_type_id,
+      target_unit_price: payload.unit_price,
+      target_valid_from: payload.valid_from,
+      target_valid_to: payload.valid_to || null,
     })
-    .select(`
-      id,
-      ice_type_id,
-      unit_price,
-      valid_from,
-      valid_to,
-      is_active,
-      created_at,
-      ice_types ( code, name, unit )
-    `)
     .single();
 
   if (error) throw new Error(error.message);
@@ -384,9 +370,6 @@ export async function saveIceTypePrice(payload: {
   return {
     id: row.id,
     ice_type_id: row.ice_type_id,
-    ice_type_code: row.ice_types?.code,
-    ice_type_name: row.ice_types?.name,
-    unit: row.ice_types?.unit,
     unit_price: Number(row.unit_price),
     valid_from: row.valid_from,
     valid_to: row.valid_to,
@@ -500,29 +483,14 @@ export async function saveShopIcePrice(payload: {
   const client = supabase;
   if (!client) throw new Error('Supabase client not initialized');
 
-  const { data: authData } = await client.auth.getUser();
-  if (!authData?.user) throw new Error('ไม่พบบัญชีผู้ใช้');
-
   const { data, error } = await client
-    .from('shop_ice_type_prices')
-    .insert({
-      shop_id: payload.shop_id,
-      ice_type_id: payload.ice_type_id,
-      unit_price: payload.unit_price,
-      valid_from: payload.valid_from,
-      valid_to: payload.valid_to || null,
-      created_by: authData.user.id,
+    .rpc('set_shop_ice_type_price', {
+      target_shop_id: payload.shop_id,
+      target_ice_type_id: payload.ice_type_id,
+      target_unit_price: payload.unit_price,
+      target_valid_from: payload.valid_from,
+      target_valid_to: payload.valid_to || null,
     })
-    .select(`
-      id,
-      shop_id,
-      ice_type_id,
-      unit_price,
-      valid_from,
-      valid_to,
-      is_active,
-      ice_types ( code, name, unit )
-    `)
     .single();
 
   if (error) throw new Error(error.message);
@@ -532,9 +500,6 @@ export async function saveShopIcePrice(payload: {
     id: row.id,
     shop_id: row.shop_id,
     ice_type_id: row.ice_type_id,
-    ice_type_code: row.ice_types?.code,
-    ice_type_name: row.ice_types?.name,
-    unit: row.ice_types?.unit,
     unit_price: Number(row.unit_price),
     valid_from: row.valid_from,
     valid_to: row.valid_to,
@@ -580,11 +545,9 @@ export async function bulkSaveShopPaymentProfiles(
   return shopIds.length;
 }
 
-export async function loadPOSReadinessReport(): Promise<POSReadinessReport> {
+export async function loadPOSReadinessReport(serviceDate = toBangkokDateString()): Promise<POSReadinessReport> {
   const client = supabase;
   if (!client) throw new Error('Supabase client not initialized');
-
-  const todayStr = new Date().toISOString().split('T')[0];
 
   const [shopsRes, profilesRes, iceTypesRes, midPricesRes, specialPricesRes] = await Promise.all([
     client.from('shops').select('id, code, name, buildings(name), building_zones(name)').eq('status', 'active').order('code'),
@@ -594,6 +557,10 @@ export async function loadPOSReadinessReport(): Promise<POSReadinessReport> {
     client.from('shop_ice_type_prices').select('shop_id, ice_type_id, valid_from, valid_to').eq('is_active', true),
   ]);
 
+  for (const result of [shopsRes, profilesRes, iceTypesRes, midPricesRes, specialPricesRes]) {
+    if (result.error) throw new Error(result.error.message);
+  }
+
   const activeShops = (shopsRes.data ?? []) as any[];
   const profileSet = new Set((profilesRes.data ?? []).map((p: any) => p.shop_id));
   const activeIceTypes = (iceTypesRes.data ?? []) as any[];
@@ -602,7 +569,7 @@ export async function loadPOSReadinessReport(): Promise<POSReadinessReport> {
 
   const iceTypesWithPriceToday = new Set(
     midPrices
-      .filter((p) => p.valid_from <= todayStr && (!p.valid_to || p.valid_to >= todayStr))
+      .filter((p) => p.valid_from <= serviceDate && (!p.valid_to || p.valid_to >= serviceDate))
       .map((p) => p.ice_type_id)
   );
 
@@ -619,7 +586,7 @@ export async function loadPOSReadinessReport(): Promise<POSReadinessReport> {
     let missingPricesForShop = 0;
     for (const iceType of activeIceTypes) {
       const hasSpecial = specialPrices.some(
-        (sp) => sp.shop_id === shop.id && sp.ice_type_id === iceType.id && sp.valid_from <= todayStr && (!sp.valid_to || sp.valid_to >= todayStr)
+        (sp) => sp.shop_id === shop.id && sp.ice_type_id === iceType.id && sp.valid_from <= serviceDate && (!sp.valid_to || sp.valid_to >= serviceDate)
       );
       const hasStd = iceTypesWithPriceToday.has(iceType.id);
       if (!hasSpecial && !hasStd) {

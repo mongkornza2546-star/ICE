@@ -9,6 +9,10 @@ const migration = readFileSync(
   new URL('../supabase/migrations/0029_pos_financial_foundation.sql', import.meta.url),
   'utf8',
 );
+const adminSettingsFixMigration = readFileSync(
+  new URL('../supabase/migrations/0037_admin_financial_settings_fixes.sql', import.meta.url),
+  'utf8',
+);
 
 const USER_ID = '00000000-0000-4000-8000-000000000001';
 const SHOP_ID = '00000000-0000-4000-8000-000000000002';
@@ -147,8 +151,65 @@ async function createDatabase(t) {
   `);
 
   await db.exec(migration);
+  await db.exec(adminSettingsFixMigration);
   return db;
 }
+
+test('admin price setters atomically close open-ended prices before inserting successors', async (t) => {
+  const db = await createDatabase(t);
+
+  await queryAsUser(
+    db,
+    ADMIN_ID,
+    `select id from public.set_ice_type_price(
+      '${ICE_TYPE_ID}', 20, date '2026-07-01', null
+    )`,
+  );
+  await queryAsUser(
+    db,
+    ADMIN_ID,
+    `select id from public.set_ice_type_price(
+      '${ICE_TYPE_ID}', 25, date '2026-08-01', null
+    )`,
+  );
+
+  const standardPrices = await db.query(`
+    select unit_price, valid_from::text, valid_to::text
+    from public.ice_type_prices
+    where ice_type_id = '${ICE_TYPE_ID}'
+    order by valid_from
+  `);
+  assert.deepEqual(standardPrices.rows, [
+    { unit_price: '20.00', valid_from: '2026-07-01', valid_to: '2026-07-31' },
+    { unit_price: '25.00', valid_from: '2026-08-01', valid_to: null },
+  ]);
+
+  await queryAsUser(
+    db,
+    ADMIN_ID,
+    `select id from public.set_shop_ice_type_price(
+      '${SHOP_ID}', '${ICE_TYPE_ID}', 18, date '2026-07-01', null
+    )`,
+  );
+  await queryAsUser(
+    db,
+    ADMIN_ID,
+    `select id from public.set_shop_ice_type_price(
+      '${SHOP_ID}', '${ICE_TYPE_ID}', 22, date '2026-08-01', null
+    )`,
+  );
+
+  const shopPrices = await db.query(`
+    select unit_price, valid_from::text, valid_to::text
+    from public.shop_ice_type_prices
+    where shop_id = '${SHOP_ID}' and ice_type_id = '${ICE_TYPE_ID}'
+    order by valid_from
+  `);
+  assert.deepEqual(shopPrices.rows, [
+    { unit_price: '18.00', valid_from: '2026-07-01', valid_to: '2026-07-31' },
+    { unit_price: '22.00', valid_from: '2026-08-01', valid_to: null },
+  ]);
+});
 
 test('migration preserves legacy rows and enforces financial invariants', async (t) => {
   const db = await createDatabase(t);

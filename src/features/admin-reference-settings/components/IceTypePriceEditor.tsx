@@ -1,6 +1,7 @@
 import { type FormEvent, useEffect, useState } from 'react';
 import { CurrencyDollar, Plus, Calendar } from '@phosphor-icons/react';
 import type { IceTypePriceSetting, IceTypeOption } from '../../../types/app';
+import { toBangkokDateString } from '../../../lib/serviceDate';
 import { loadIceTypePrices, saveIceTypePrice, getErrorMessage } from '../adminReferenceSettingsService';
 
 
@@ -18,7 +19,7 @@ export function IceTypePriceEditor({ iceTypes }: IceTypePriceEditorProps) {
 
   // Form draft
   const [unitPrice, setUnitPrice] = useState<string>('');
-  const [validFrom, setValidFrom] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [validFrom, setValidFrom] = useState<string>(toBangkokDateString());
   const [validTo, setValidTo] = useState<string>('');
 
   useEffect(() => {

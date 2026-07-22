@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { X } from '@phosphor-icons/react';
-import type { ShopSetting, BuildingOption, BuildingZoneOption, PaymentTerm, PaymentMethod, ShopPaymentProfileSetting } from '../../../types/app';
+import type { ShopSetting, BuildingOption, BuildingZoneOption, PaymentTerm, PaymentMethod, CreditDueRule, ShopPaymentProfileSetting } from '../../../types/app';
 import { bulkSaveShopPaymentProfiles, getErrorMessage } from '../../admin-reference-settings/adminReferenceSettingsService';
 
 interface BulkPaymentSetupModalProps {
@@ -18,10 +18,13 @@ export function BulkPaymentSetupModal({ shops, buildings, zones, onClose, onSucc
 
   // Profile template
   const [allowedPaymentTerms, setAllowedPaymentTerms] = useState<PaymentTerm[]>(['immediate']);
-  const [defaultPaymentTerm] = useState<PaymentTerm>('immediate');
+  const [defaultPaymentTerm, setDefaultPaymentTerm] = useState<PaymentTerm>('immediate');
   const [allowedPaymentMethods, setAllowedPaymentMethods] = useState<PaymentMethod[]>(['cash', 'bank_transfer', 'qr']);
-  const [defaultPaymentMethod] = useState<PaymentMethod>('cash');
-  const [allowOutstanding] = useState(false);
+  const [defaultPaymentMethod, setDefaultPaymentMethod] = useState<PaymentMethod>('cash');
+  const [allowOutstanding, setAllowOutstanding] = useState(false);
+  const [creditDueRule, setCreditDueRule] = useState<CreditDueRule>('net_days');
+  const [creditDays, setCreditDays] = useState(30);
+  const [creditLimit, setCreditLimit] = useState<number | null>(null);
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -31,6 +34,34 @@ export function BulkPaymentSetupModal({ shops, buildings, zones, onClose, onSucc
     if (selectedZoneId && s.zone_id !== selectedZoneId) return false;
     return s.status === 'active';
   });
+
+  function togglePaymentTerm(term: PaymentTerm) {
+    if (term === 'credit') {
+      setAllowedPaymentTerms(['credit']);
+      setDefaultPaymentTerm('credit');
+      setAllowOutstanding(true);
+      return;
+    }
+
+    const nonCreditTerms = allowedPaymentTerms.filter((value) => value !== 'credit');
+    const nextTerms: PaymentTerm[] = nonCreditTerms.includes(term)
+      ? nonCreditTerms.filter((value) => value !== term)
+      : [...nonCreditTerms, term];
+    if (nextTerms.length === 0) return;
+
+    setAllowedPaymentTerms(nextTerms);
+    if (!nextTerms.includes(defaultPaymentTerm)) setDefaultPaymentTerm(nextTerms[0]);
+  }
+
+  function togglePaymentMethod(method: PaymentMethod) {
+    const nextMethods = allowedPaymentMethods.includes(method)
+      ? allowedPaymentMethods.filter((value) => value !== method)
+      : [...allowedPaymentMethods, method];
+    if (nextMethods.length === 0) return;
+
+    setAllowedPaymentMethods(nextMethods);
+    if (!nextMethods.includes(defaultPaymentMethod)) setDefaultPaymentMethod(nextMethods[0]);
+  }
 
   function toggleSelectAll() {
     if (selectedShopIds.length === filteredShops.length) {
@@ -69,9 +100,9 @@ export function BulkPaymentSetupModal({ shops, buildings, zones, onClose, onSucc
       qr_reference_required: true,
       qr_evidence_required: false,
       allow_outstanding: allowedPaymentTerms.includes('credit') ? true : allowOutstanding,
-      credit_due_rule: allowedPaymentTerms.includes('credit') ? 'net_days' : null,
-      credit_days: allowedPaymentTerms.includes('credit') ? 30 : null,
-      credit_limit: null,
+      credit_due_rule: allowedPaymentTerms.includes('credit') ? creditDueRule : null,
+      credit_days: allowedPaymentTerms.includes('credit') && creditDueRule === 'net_days' ? creditDays : null,
+      credit_limit: allowedPaymentTerms.includes('credit') ? creditLimit : null,
     };
 
     try {
@@ -101,7 +132,7 @@ export function BulkPaymentSetupModal({ shops, buildings, zones, onClose, onSucc
         <div className="field-grid" style={{ marginBottom: '1rem' }}>
           <label>
             กรองตามอาคาร
-            <select onChange={(e) => { setSelectedBuildingId(e.target.value); setSelectedZoneId(''); }} value={selectedBuildingId}>
+            <select onChange={(e) => { setSelectedBuildingId(e.target.value); setSelectedZoneId(''); setSelectedShopIds([]); }} value={selectedBuildingId}>
               <option value="">ทุกอาคาร ({shops.length} ร้าน)</option>
               {buildings.map((b) => (
                 <option key={b.id} value={b.id}>{b.code} · {b.name}</option>
@@ -110,7 +141,7 @@ export function BulkPaymentSetupModal({ shops, buildings, zones, onClose, onSucc
           </label>
           <label>
             กรองตามโซนย่อย
-            <select disabled={!selectedBuildingId} onChange={(e) => setSelectedZoneId(e.target.value)} value={selectedZoneId}>
+            <select disabled={!selectedBuildingId} onChange={(e) => { setSelectedZoneId(e.target.value); setSelectedShopIds([]); }} value={selectedZoneId}>
               <option value="">ทุกโซน</option>
               {zones.filter((z) => z.building_id === selectedBuildingId).map((z) => (
                 <option key={z.id} value={z.id}>{z.code} · {z.name}</option>
@@ -151,9 +182,7 @@ export function BulkPaymentSetupModal({ shops, buildings, zones, onClose, onSucc
                 <label className="inline-check">
                   <input
                     checked={allowedPaymentTerms.includes('immediate')}
-                    onChange={(e) => {
-                      if (e.target.checked) setAllowedPaymentTerms(['immediate']);
-                    }}
+                    onChange={() => togglePaymentTerm('immediate')}
                     type="checkbox"
                   />
                   จ่ายทันที
@@ -161,15 +190,32 @@ export function BulkPaymentSetupModal({ shops, buildings, zones, onClose, onSucc
                 <label className="inline-check">
                   <input
                     checked={allowedPaymentTerms.includes('end_of_day')}
-                    onChange={(e) => {
-                      if (e.target.checked) setAllowedPaymentTerms(['end_of_day']);
-                    }}
+                    onChange={() => togglePaymentTerm('end_of_day')}
                     type="checkbox"
                   />
                   เก็บท้ายวัน
                 </label>
+                <label className="inline-check">
+                  <input
+                    checked={allowedPaymentTerms.includes('credit')}
+                    onChange={() => togglePaymentTerm('credit')}
+                    type="checkbox"
+                  />
+                  เครดิต
+                </label>
               </div>
             </div>
+
+            <label>
+              รูปแบบเริ่มต้น
+              <select onChange={(e) => setDefaultPaymentTerm(e.target.value as PaymentTerm)} value={defaultPaymentTerm}>
+                {allowedPaymentTerms.map((term) => (
+                  <option key={term} value={term}>
+                    {term === 'immediate' ? 'จ่ายทันที' : term === 'end_of_day' ? 'เก็บท้ายวัน' : 'เครดิต'}
+                  </option>
+                ))}
+              </select>
+            </label>
 
             <div>
               <label>ช่องทางการเงินที่อนุญาต</label>
@@ -177,10 +223,7 @@ export function BulkPaymentSetupModal({ shops, buildings, zones, onClose, onSucc
                 <label className="inline-check">
                   <input
                     checked={allowedPaymentMethods.includes('cash')}
-                    onChange={(e) => {
-                      if (e.target.checked) setAllowedPaymentMethods([...allowedPaymentMethods, 'cash']);
-                      else setAllowedPaymentMethods(allowedPaymentMethods.filter((m) => m !== 'cash'));
-                    }}
+                    onChange={() => togglePaymentMethod('cash')}
                     type="checkbox"
                   />
                   เงินสด
@@ -188,10 +231,7 @@ export function BulkPaymentSetupModal({ shops, buildings, zones, onClose, onSucc
                 <label className="inline-check">
                   <input
                     checked={allowedPaymentMethods.includes('bank_transfer')}
-                    onChange={(e) => {
-                      if (e.target.checked) setAllowedPaymentMethods([...allowedPaymentMethods, 'bank_transfer']);
-                      else setAllowedPaymentMethods(allowedPaymentMethods.filter((m) => m !== 'bank_transfer'));
-                    }}
+                    onChange={() => togglePaymentMethod('bank_transfer')}
                     type="checkbox"
                   />
                   โอน
@@ -199,17 +239,52 @@ export function BulkPaymentSetupModal({ shops, buildings, zones, onClose, onSucc
                 <label className="inline-check">
                   <input
                     checked={allowedPaymentMethods.includes('qr')}
-                    onChange={(e) => {
-                      if (e.target.checked) setAllowedPaymentMethods([...allowedPaymentMethods, 'qr']);
-                      else setAllowedPaymentMethods(allowedPaymentMethods.filter((m) => m !== 'qr'));
-                    }}
+                    onChange={() => togglePaymentMethod('qr')}
                     type="checkbox"
                   />
                   QR
                 </label>
               </div>
             </div>
+
+            <label>
+              ช่องทางเริ่มต้น
+              <select onChange={(e) => setDefaultPaymentMethod(e.target.value as PaymentMethod)} value={defaultPaymentMethod}>
+                {allowedPaymentMethods.map((method) => (
+                  <option key={method} value={method}>
+                    {method === 'cash' ? 'เงินสด' : method === 'bank_transfer' ? 'โอน' : 'QR'}
+                  </option>
+                ))}
+              </select>
+            </label>
           </div>
+
+          {allowedPaymentTerms.includes('credit') ? (
+            <div className="field-grid" style={{ marginTop: '1rem' }}>
+              <label>
+                กฎวันครบกำหนด
+                <select onChange={(e) => setCreditDueRule(e.target.value as CreditDueRule)} value={creditDueRule}>
+                  <option value="net_days">จำนวนวันเครดิต</option>
+                  <option value="end_of_month">สิ้นเดือน</option>
+                </select>
+              </label>
+              {creditDueRule === 'net_days' ? (
+                <label>
+                  จำนวนวันเครดิต
+                  <input min="1" onChange={(e) => setCreditDays(Number(e.target.value) || 1)} type="number" value={creditDays} />
+                </label>
+              ) : null}
+              <label>
+                วงเงินเครดิต (เว้นว่างหากไม่จำกัด)
+                <input min="0" onChange={(e) => setCreditLimit(e.target.value ? Number(e.target.value) : null)} type="number" value={creditLimit ?? ''} />
+              </label>
+            </div>
+          ) : (
+            <label className="inline-check" style={{ marginTop: '1rem' }}>
+              <input checked={allowOutstanding} onChange={(e) => setAllowOutstanding(e.target.checked)} type="checkbox" />
+              อนุญาตยอดค้างชำระ
+            </label>
+          )}
         </div>
 
         {error ? <p className="error-text" role="alert">{error}</p> : null}

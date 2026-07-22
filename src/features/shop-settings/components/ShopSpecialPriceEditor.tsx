@@ -1,6 +1,7 @@
 import { type FormEvent, useEffect, useState } from 'react';
 import { Tag, Plus } from '@phosphor-icons/react';
 import type { ShopIcePriceSetting, IceTypeOption } from '../../../types/app';
+import { toBangkokDateString } from '../../../lib/serviceDate';
 import { loadShopIcePrices, saveShopIcePrice, getErrorMessage } from '../../admin-reference-settings/adminReferenceSettingsService';
 
 interface ShopSpecialPriceEditorProps {
@@ -19,7 +20,7 @@ export function ShopSpecialPriceEditor({ shopId, shopName, iceTypes }: ShopSpeci
   // Form draft
   const [selectedIceTypeId, setSelectedIceTypeId] = useState<string>('');
   const [unitPrice, setUnitPrice] = useState<string>('');
-  const [validFrom, setValidFrom] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [validFrom, setValidFrom] = useState<string>(toBangkokDateString());
   const [validTo, setValidTo] = useState<string>('');
 
   useEffect(() => {
