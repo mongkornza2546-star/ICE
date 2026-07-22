@@ -296,7 +296,8 @@ describe('ManagerStockControl daily close', () => {
     const user = userEvent.setup();
     render(<ManagerStockControl operationRound={round} round={round} serviceDate={round.service_date} />);
 
-    const closeButton = await screen.findByRole('button', { name: 'ปิดสต๊อกวันนี้' });
+    const closeButton = await screen.findByRole('button', { name: 'ปิดสต๊อกและจบงานวันนี้' });
+
     expect((closeButton as HTMLButtonElement).disabled).toBe(false);
     expect(screen.queryByRole('checkbox', { name: /หัวหน้างานยืนยัน/ })).toBeNull();
     await user.click(closeButton);
@@ -335,8 +336,9 @@ describe('ManagerStockControl daily close', () => {
     render(<ManagerStockControl operationRound={round} round={round} serviceDate={round.service_date} />);
 
     expect(await screen.findByText(/ต้องตรวจใหม่/)).toBeTruthy();
-    const closeButton = screen.getByRole('button', { name: 'ปิดสต๊อกวันนี้' });
+    const closeButton = screen.getByRole('button', { name: 'ปิดสต๊อกและจบงานวันนี้' });
     const override = screen.getByRole('checkbox', { name: /หัวหน้างานยืนยัน/ });
+
     expect((closeButton as HTMLButtonElement).disabled).toBe(true);
     await user.click(override);
     expect((closeButton as HTMLButtonElement).disabled).toBe(false);

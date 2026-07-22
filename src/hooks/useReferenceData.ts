@@ -22,7 +22,7 @@ export function useReferenceData(canCreateRound: boolean) {
     const [roundsResponse, iceTypesResponse, roundNamesResponse, membersResponse] = await Promise.all([
       supabase
         .from('delivery_rounds')
-        .select('id, service_date, name, status, opened_at, closed_at, cancelled_at, cancellation_reason')
+        .select('id, service_date, name, round_type, status, opened_at, closed_at, cancelled_at, cancellation_reason')
         .order('service_date', { ascending: false })
         .order('opened_at', { ascending: false }),
       supabase

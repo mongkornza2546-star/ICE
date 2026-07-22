@@ -241,11 +241,11 @@ export function ManagerStockControl({
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (isRoundSnapshot) {
-      stockMovementAction.setError('รอบปิดแล้วเป็นประวัติอ่านอย่างเดียว');
+      stockMovementAction.setError('งานวันนี้ปิดแล้วและเป็นประวัติอ่านอย่างเดียว');
       return;
     }
     if (!actionRound) {
-      stockMovementAction.setError('ต้องมีรอบส่งของวันที่เลือกก่อนบันทึกรายการสต๊อก');
+      stockMovementAction.setError('ต้องเริ่มงานวันนี้ก่อนบันทึกรายการสต๊อก');
       return;
     }
     if (!demoSummary && (!supabase || summaryRoundId !== (round?.id ?? null))) {
@@ -368,7 +368,7 @@ export function ManagerStockControl({
     event.preventDefault();
     if (!supabase || !summary || !closeState || isRoundSnapshot || closeState.is_closed) return;
     if (closeState.open_round_count > 0) {
-      closeDayAction.setError('ต้องปิดรอบส่งทุกช่วงของวันนี้ก่อนปิดสต๊อกสิ้นวัน');
+      closeDayAction.setError('ต้องจัดการรายการค้างเดิมทั้งหมดก่อนปิดสต๊อกสิ้นวัน');
       return;
     }
 
@@ -474,7 +474,7 @@ export function ManagerStockControl({
       {activeTab !== 'transfer' ? <div className="stock-layout-panel">
         <div className="stock-layout-header">
           <h3 className="stock-layout-title">
-            {isRoundSnapshot ? 'สต๊อกทั้งวัน ณ เวลาปิดรอบ' : 'สต๊อกปัจจุบันของวัน'}
+            {isRoundSnapshot ? 'สต๊อกทั้งวัน ณ เวลาปิดงาน' : 'สต๊อกปัจจุบันของวัน'}
           </h3>
           <div className="stock-layout-subtitle">
             <span>{isRoundSnapshot ? 'ข้อมูล ณ' : 'โหลดล่าสุด'} {stockTimestamp ? formatStockTime(stockTimestamp) : '-'} น.</span>
@@ -491,7 +491,7 @@ export function ManagerStockControl({
         </div>
 
         {isRoundSnapshot ? (
-          <p className="muted" style={{ marginBottom: 16 }}>ยอดนี้หยุดที่ {summary.snapshot_at ? formatStockDateTime(summary.snapshot_at) : 'เวลาปิดรอบ'} และจะไม่เปลี่ยนตามรายการของรอบปัจจุบัน</p>
+          <p className="muted" style={{ marginBottom: 16 }}>ยอดนี้หยุดที่ {summary.snapshot_at ? formatStockDateTime(summary.snapshot_at) : 'เวลาปิดงาน'} และจะไม่เปลี่ยนตามรายการปัจจุบัน</p>
         ) : null}
 
         <div className="stock-location-grid-custom">
@@ -893,11 +893,11 @@ export function ManagerStockControl({
               <form className="stock-movement-form" onSubmit={handleCloseDay}>
                 <div className="panel-header">
                   <div>
-                    <p className="eyebrow">หลังจบทุกรอบของวัน</p>
+                    <p className="eyebrow">เมื่อสิ้นสุดการทำงานของวัน</p>
                     <h3>ตรวจนับและปิดสต๊อกสิ้นวัน</h3>
                   </div>
                   <span className={`status-badge status-badge--neutral`}>
-                    เหลือ {closeState.open_round_count ?? 0} รอบเปิด
+                    {closeState.open_round_count > 0 ? 'มีรายการค้างที่ต้องปิดก่อน' : 'พร้อมปิดงาน'}
                   </span>
                 </div>
                 <p className="muted">ตรวจสอบผลการตรวจนับล่าสุดของแต่ละจุด ระบบจะรวมยอดเพื่อปิดสต๊อกและส่งคืนโรงงานตามยอดนี้</p>
@@ -1003,7 +1003,7 @@ export function ManagerStockControl({
                 )}
 
                 <label>เหตุผลหรือหมายเหตุปิดวัน (ถ้ามี)<textarea rows={2} value={closeNote} onChange={(event) => setCloseNote(event.target.value)} /></label>
-                {closeState.open_round_count > 0 ? <p className="error-text">ต้องปิดรอบส่งที่เหลือ {closeState.open_round_count} รอบก่อน</p> : null}
+                {closeState.open_round_count > 0 ? <p className="error-text">ต้องปิดรายการค้างเดิมก่อนปิดสต๊อก</p> : null}
 
                 {closeDayAction.error ? <p className="error-text">{closeDayAction.error}</p> : null}
                 {closeDayAction.success ? <p className="success-text">{closeDayAction.success}</p> : null}
@@ -1013,8 +1013,9 @@ export function ManagerStockControl({
                   disabled={closeDayAction.isSubmitting || closeState.open_round_count > 0 || (uncountedLocations.length > 0 && !confirmSkipUncounted)}
                   type="submit"
                 >
-                  {closeDayAction.isSubmitting ? 'กำลังปิดสต๊อก...' : 'ปิดสต๊อกวันนี้'}
+                  {closeDayAction.isSubmitting ? 'กำลังปิดสต๊อกและจบงานวันนี้...' : 'ปิดสต๊อกและจบงานวันนี้'}
                 </button>
+
               </form>
             )
           ) : null}
@@ -1023,7 +1024,7 @@ export function ManagerStockControl({
 
       <section className="stock-ledger" style={{ marginTop: 24 }}>
         <div>
-          <p className="eyebrow">{isRoundSnapshot ? 'ประวัติจนถึงเวลาปิดรอบ' : 'ประวัติล่าสุดของวัน'}</p>
+          <p className="eyebrow">{isRoundSnapshot ? 'ประวัติจนถึงเวลาปิดงาน' : 'ประวัติล่าสุดของวัน'}</p>
           <h3>{isRoundSnapshot ? 'รายการก่อน Snapshot' : 'รายการที่ตรวจนับได้'}</h3>
         </div>
         <div className="stock-ledger-list">

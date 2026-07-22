@@ -46,27 +46,27 @@ describe('ManagerRoundControl cancellation', () => {
     });
   });
 
-  it('confirms an unused round with an explicit reason', async () => {
+  it('confirms an unused legacy record with an explicit reason', async () => {
     const user = userEvent.setup();
     const onCancelled = vi.fn(async () => undefined);
     render(<ManagerRoundControl onCancelled={onCancelled} onClosed={vi.fn()} round={round} />);
 
-    await user.click(await screen.findByRole('button', { name: 'ยกเลิกการเปิดรอบ' }));
-    expect(screen.getByRole('dialog', { name: 'ยกเลิกการเปิดรอบนี้?' })).toBeTruthy();
+    await user.click(await screen.findByRole('button', { name: 'ยกเลิกรายการเดิม' }));
+    expect(screen.getByRole('dialog', { name: 'ยกเลิกรายการเดิมนี้?' })).toBeTruthy();
     expect(screen.getByText('รายการส่ง').textContent).toContain('0');
 
     await user.selectOptions(screen.getByRole('combobox', { name: 'เหตุผลการยกเลิก' }), 'อื่น ๆ');
-    await user.type(screen.getByRole('textbox', { name: 'รายละเอียด (จำเป็น)' }), 'ทดสอบเปิดรอบผิด');
-    await user.click(screen.getByRole('button', { name: 'ยืนยันยกเลิกรอบ' }));
+    await user.type(screen.getByRole('textbox', { name: 'รายละเอียด (จำเป็น)' }), 'ทดสอบเปิดรายการผิด');
+    await user.click(screen.getByRole('button', { name: 'ยืนยันยกเลิกรายการเดิม' }));
 
     await waitFor(() => expect(mocks.rpc).toHaveBeenCalledWith('cancel_delivery_round', {
       p_round_id: round.id,
-      p_reason: 'ทดสอบเปิดรอบผิด',
+      p_reason: 'ทดสอบเปิดรายการผิด',
     }));
     expect(onCancelled).toHaveBeenCalledOnce();
   });
 
-  it('explains why a round with delivery activity cannot be cancelled', async () => {
+  it('explains why a legacy record with delivery activity cannot be cancelled', async () => {
     const user = userEvent.setup();
     mocks.rpc.mockImplementation(async (name: string) => {
       if (name === 'get_round_control_summary') {
@@ -82,9 +82,9 @@ describe('ManagerRoundControl cancellation', () => {
     });
     render(<ManagerRoundControl onCancelled={vi.fn()} onClosed={vi.fn()} round={round} />);
 
-    await user.click(await screen.findByRole('button', { name: 'ยกเลิกการเปิดรอบ' }));
+    await user.click(await screen.findByRole('button', { name: 'ยกเลิกรายการเดิม' }));
     expect(screen.getByRole('alert').textContent).toContain('มีการทำรายการแล้ว');
-    expect(screen.queryByRole('button', { name: 'ยืนยันยกเลิกรอบ' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'ยืนยันยกเลิกรายการเดิม' })).toBeNull();
   });
 
   it('uses database blockers that are not visible in delivered totals', async () => {
@@ -98,9 +98,9 @@ describe('ManagerRoundControl cancellation', () => {
     });
     render(<ManagerRoundControl onCancelled={vi.fn()} onClosed={vi.fn()} round={round} />);
 
-    await user.click(await screen.findByRole('button', { name: 'ยกเลิกการเปิดรอบ' }));
+    await user.click(await screen.findByRole('button', { name: 'ยกเลิกรายการเดิม' }));
     expect(screen.getByRole('alert').textContent).toContain('มีรายการสต๊อก');
-    expect(screen.getByRole('alert').textContent).toContain('มียอดน้ำแข็งในรอบ');
-    expect(screen.queryByRole('button', { name: 'ยืนยันยกเลิกรอบ' })).toBeNull();
+    expect(screen.getByRole('alert').textContent).toContain('มียอดน้ำแข็งที่บันทึกแล้ว');
+    expect(screen.queryByRole('button', { name: 'ยืนยันยกเลิกรายการเดิม' })).toBeNull();
   });
 });

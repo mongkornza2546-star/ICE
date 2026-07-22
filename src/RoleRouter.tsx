@@ -170,7 +170,6 @@ export function RoleRouter({
       ? [
           'manager_overview',
           'factory_order',
-          'manager',
           'delivery',
           'stock_operations',
           'location_management',
@@ -180,7 +179,6 @@ export function RoleRouter({
       : [
           'manager_overview',
           'factory_order',
-          'manager',
           'delivery',
           'stock_operations',
           'location_management',
@@ -205,6 +203,7 @@ export function RoleRouter({
       {visitedViews.has('manager_overview') && (
         <KeepAlive active={currentView === 'manager_overview'}>
           <ManagerDashboard
+            isActive={currentView === 'manager_overview'}
             onNavigate={setActiveView}
             profileRole={profile.role === 'admin' ? 'admin' : 'round_lead'}
           />
@@ -232,7 +231,7 @@ export function RoleRouter({
       )}
       {visitedViews.has('stock_operations') && (
         <KeepAlive active={currentView === 'stock_operations'}>
-          <RoundWorkspace mode="stock" />
+          <RoundWorkspace isActive={currentView === 'stock_operations'} />
         </KeepAlive>
       )}
       {visitedViews.has('delivery') && (
@@ -240,11 +239,7 @@ export function RoleRouter({
           <EmployeeDeliveryWorkspace onDraftStateChange={setDeliveryDraftState} requestScope={profile.id} stockSourceLabel="จุดสต๊อกของร้าน" />
         </KeepAlive>
       )}
-      {visitedViews.has('manager') && (
-        <KeepAlive active={currentView === 'manager'}>
-          <RoundWorkspace mode="manager" />
-        </KeepAlive>
-      )}
     </AdminLayout>
   );
+
 }

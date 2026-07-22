@@ -97,7 +97,7 @@ export function ManagerRoundControl({
     },
     {
       deps: [round?.id],
-      successMessage: 'ยกเลิกการเปิดรอบเรียบร้อยแล้ว',
+      successMessage: 'ยกเลิกรายการเดิมเรียบร้อยแล้ว',
       onSuccess: async () => {
         setCancelDialogOpen(false);
         await onCancelled();
@@ -119,7 +119,7 @@ export function ManagerRoundControl({
   const handleClose = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!supabase || !round || !summary || summaryRoundId !== round.id) {
-      closeRoundAction.setError('ข้อมูลสรุปรอบยังโหลดไม่ครบ กรุณารอสักครู่แล้วลองใหม่');
+      closeRoundAction.setError('ข้อมูลสรุปรายการเดิมยังโหลดไม่ครบ กรุณารอสักครู่แล้วลองใหม่');
       return;
     }
     
@@ -141,20 +141,20 @@ export function ManagerRoundControl({
       ? detail
       : detail ? `${cancelReason}: ${detail}` : cancelReason;
     if (!reason) {
-      cancelRoundAction.setError('กรุณาระบุเหตุผลการยกเลิกรอบ');
+      cancelRoundAction.setError('กรุณาระบุเหตุผลการยกเลิกรายการเดิม');
       return;
     }
     await cancelRoundAction.execute(reason);
   };
 
   if (!round) {
-    return <p className="empty-text">เลือกรอบส่งเพื่อดูภาพรวมของหัวหน้า</p>;
+    return <p className="empty-text">เลือกรายการเดิมเพื่อดูรายละเอียด</p>;
   }
   if (loading) {
-    return <p className="empty-text">กำลังคำนวณยอดรอบ...</p>;
+    return <p className="empty-text">กำลังคำนวณยอดรายการเดิม...</p>;
   }
   if (!summary) {
-    return <p className="error-text">{error ?? 'ไม่พบข้อมูลรอบ'}</p>;
+    return <p className="error-text">{error ?? 'ไม่พบข้อมูลรายการเดิม'}</p>;
   }
 
   const canCancel = cancellationState?.can_cancel === true;
@@ -163,7 +163,7 @@ export function ManagerRoundControl({
     <>
       <div className="round-control-actions">
         <span className={`status-badge status-badge--${round.cancelled_at ? 'danger' : round.status === 'open' ? 'warning' : 'success'}`}>
-          {round.cancelled_at ? 'ยกเลิกแล้ว' : round.status === 'open' ? 'เปิดอยู่' : 'ปิดแล้ว'}
+          {round.cancelled_at ? 'ยกเลิกแล้ว' : round.status === 'open' ? 'กำลังดำเนินการ' : 'ปิดแล้ว'}
         </span>
         {round.status === 'open' ? (
           <button
@@ -174,7 +174,7 @@ export function ManagerRoundControl({
             }}
             type="button"
           >
-            ยกเลิกการเปิดรอบ
+            ยกเลิกรายการเดิม
           </button>
         ) : null}
       </div>
@@ -191,7 +191,7 @@ export function ManagerRoundControl({
           {summary.ice_counts.map((item) => (
             <section className="reconciliation-card" key={item.ice_type_id}>
               <div className="panel-header">
-                <div><p className="eyebrow">ยอดขายในรอบ · {item.unit}</p><h3>{item.ice_type_name}</h3></div>
+                <div><p className="eyebrow">ยอดขายในรายการเดิม · {item.unit}</p><h3>{item.ice_type_name}</h3></div>
                 <strong>{item.delivered_quantity}</strong>
               </div>
             </section>
@@ -206,9 +206,9 @@ export function ManagerRoundControl({
           disabled={closeRoundAction.isSubmitting || round.status === 'closed' || summaryRoundId !== round.id}
           type="submit"
         >
-          {round.cancelled_at ? 'รอบนี้ยกเลิกแล้ว' : round.status === 'closed' ? 'รอบนี้ปิดแล้ว' : closeRoundAction.isSubmitting ? 'กำลังปิดรอบ...' : 'ปิดรอบรายการขาย'}
+          {round.cancelled_at ? 'รายการนี้ยกเลิกแล้ว' : round.status === 'closed' ? 'รายการนี้ปิดแล้ว' : closeRoundAction.isSubmitting ? 'กำลังปิดรายการ...' : 'ปิดรายการเดิม'}
         </button>
-        <p className="muted">ปิดรอบได้แม้มีร้านที่ไม่มีรายการ เพราะรอบเป็นกลุ่มรายการขาย ไม่ใช่สต๊อก การนับจริงและปิดสต๊อกทำครั้งเดียวหลังจบทุกรอบของวัน</p>
+        <p className="muted">ข้อมูลเดิมนี้ต้องจัดการให้เสร็จก่อนปิดสต๊อกของวัน</p>
       </form>
 
       {cancelDialogOpen ? (
@@ -221,12 +221,12 @@ export function ManagerRoundControl({
             role="dialog"
           >
             <div>
-              <p className="eyebrow">การจัดการรอบส่ง</p>
-              <h2 id="cancel-round-title">ยกเลิกการเปิดรอบนี้?</h2>
-              <p className="muted">รอบ {round.name} · {formatServiceDate(round.service_date)}</p>
+              <p className="eyebrow">การจัดการข้อมูลเดิม</p>
+              <h2 id="cancel-round-title">ยกเลิกรายการเดิมนี้?</h2>
+              <p className="muted">{round.name} · {formatServiceDate(round.service_date)}</p>
             </div>
 
-            <div className="cancel-round-impact" aria-label="สรุปรายการในรอบ">
+            <div className="cancel-round-impact" aria-label="สรุปรายการเดิม">
               <span>รายการส่ง <strong>{summary.stop_counts.delivered}</strong></span>
               <span>รายการมีปัญหา <strong>{summary.stop_counts.problem}</strong></span>
               <span>ยอดน้ำแข็งที่ส่ง <strong>{summary.ice_counts.reduce((total, item) => total + item.delivered_quantity, 0)}</strong></span>
@@ -234,17 +234,17 @@ export function ManagerRoundControl({
 
             {!canCancel ? (
               <p className="error-text" role="alert">
-                รอบนี้มีการทำรายการแล้ว ({cancellationBlockerLabel(cancellationState?.blockers ?? [])}) จึงไม่สามารถยกเลิกการเปิดรอบได้
+                รายการนี้มีการทำรายการแล้ว ({cancellationBlockerLabel(cancellationState?.blockers ?? [])}) จึงไม่สามารถยกเลิกได้
               </p>
             ) : (
               <>
-                <p className="info-note">เมื่อยืนยัน รอบนี้จะเปลี่ยนเป็น “ยกเลิกแล้ว” และไม่สามารถใช้บันทึกรายการใหม่ได้</p>
+                <p className="info-note">เมื่อยืนยัน รายการนี้จะเปลี่ยนเป็น “ยกเลิกแล้ว” และไม่สามารถใช้บันทึกรายการใหม่ได้</p>
                 <label>
                   เหตุผลการยกเลิก
                   <select value={cancelReason} onChange={(event) => setCancelReason(event.target.value)}>
                     <option>เปิดผิดวันที่หรือเวลา</option>
-                    <option>เลือกรอบผิด</option>
-                    <option>เปิดรอบซ้ำ</option>
+                    <option>เลือกรายการผิด</option>
+                    <option>เปิดรายการซ้ำ</option>
                     <option>อื่น ๆ</option>
                   </select>
                 </label>
@@ -273,7 +273,7 @@ export function ManagerRoundControl({
               </button>
               {canCancel ? (
                 <button className="primary-button destructive-button" disabled={cancelRoundAction.isSubmitting} type="submit">
-                  {cancelRoundAction.isSubmitting ? 'กำลังยกเลิก...' : 'ยืนยันยกเลิกรอบ'}
+                  {cancelRoundAction.isSubmitting ? 'กำลังยกเลิก...' : 'ยืนยันยกเลิกรายการเดิม'}
                 </button>
               ) : null}
             </div>
@@ -289,7 +289,7 @@ function cancellationBlockerLabel(blockers: CancellationBlocker[]) {
     delivery_events: 'มีรายการส่ง',
     stock_movements: 'มีรายการสต๊อก',
     non_pending_stops: 'มีสถานะร้านที่เปลี่ยนแล้ว',
-    round_ice_counts: 'มียอดน้ำแข็งในรอบ',
+    round_ice_counts: 'มียอดน้ำแข็งที่บันทึกแล้ว',
   };
   return blockers.map((blocker) => labels[blocker]).join(', ') || 'ไม่สามารถยกเลิกได้';
 }

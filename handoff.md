@@ -1,40 +1,48 @@
-# Handoff: Daily Work Session Architecture (1 Work Session per `service_date`)
+# Handoff: Daily Work Session Architecture (1 Work Session per `service_date`) & Unified "งานวันนี้" Dashboard
 
 ## Status
-โค้ดปรับจาก **"รอบย่อยตามเวลา"** เป็น **"งานประจำวัน 1 งานต่อ 1 `service_date`"** แล้ว และผ่าน rework จาก end-to-end review เรียบร้อย; migration `0042` deploy ขึ้น production แล้ว
-ผลยืนยันล่าสุด: 182 tests ผ่านทั้งหมด (Node Integration/Contract 128 + UI 54) และ `npm run build` ผ่าน
+- รวมการจัดการงานปัจจุบันไว้ที่หน้าหลัก **"งานวันนี้"**; รายการเดิมที่ backfill เป็น `special` จัดการได้เฉพาะจากส่วน **"รายการเดิมที่ต้องจัดการก่อนปิดสต๊อก"**
+- Migration `0042_daily_work_session_architecture.sql` และ `0043_daily_work_dashboard_and_cancellation.sql` พร้อมใช้งาน
+- ผลการทดสอบล่าสุด: Integration Tests **15/15**, Vitest UI/Component Tests **55/55**, และ `npm run build` ผ่าน (มี Vite chunk-size warning เดิม)
 
 ---
 
 ## สิ่งที่พัฒนาสำเร็จใน Phase นี้ (Implemented Features)
 
-### 1. โครงสร้างฐานข้อมูลงานประจำวัน (Migration `0042_daily_work_session_architecture.sql`)
-- **Upgrade-safe classification**: เพิ่ม `round_type` (`'daily'` | `'special'`) โดย backfill รอบเก่าทั้งหมดเป็น `special` ก่อนสร้าง `delivery_rounds_daily_unique_idx` จึงรองรับฐานข้อมูลเดิมที่มีหลายรอบต่อวัน
-- **System-name invariant**: `daily` ต้องใช้ชื่อ `"งานประจำวัน"` เท่านั้น; `special` ยังต้องผ่าน configured-name validation
-- **Internal auto-creation helper**: `ensure_daily_delivery_round(p_service_date)` ตรวจ active admin/round lead, idempotent ภายใต้ service-date lock และถูก revoke จาก anonymous/authenticated client
-- **คำสั่งซื้อโรงงานครั้งแรกของวัน**: ปรับปรุง `record_factory_order` ให้เรียก `ensure_daily_delivery_round` อัตโนมัติเมื่อมีการสั่งน้ำแข็งจากโรงงานครั้งแรกของวัน
-- **Read-only session resolution**: `get_employee_active_session(p_service_date)` ไม่สร้างงานเอง, กรองตามสมาชิก/สิทธิ์ และใช้วัน Asia/Bangkok
+### 1. โครงสร้างฐานข้อมูลและการจัดการ Session (Migrations `0042` & `0043`)
+- **Upgrade-safe classification**: เพิ่ม `round_type` (`'daily'` | `'special'`) โดย backfill รอบเก่าทั้งหมดเป็น `special` รองรับฐานข้อมูลเดิมที่มีหลายรอบต่อวัน
+- **System-name invariant**: `daily` ใช้ชื่อ `"งานประจำวัน"` เท่านั้น
+- **คำสั่งซื้อโรงงานครั้งแรกของวัน**: `record_factory_order` สร้าง Daily Session อัตโนมัติและเปลี่ยนสถานะเป็น "กำลังทำงาน" โดยไม่มีปุ่มเปิดงานด้วยตนเอง
+- **RPC `get_daily_work_dashboard(service_date)`**: คืนค่าข้อมูล Dashboard รวม:
+  - `session`: สถานะงาน (`not_started`, `in_progress`, `completed`, `cancelled`), เวลาเริ่ม/ปิด/ยกเลิกงาน และผู้ทำรายการ
+  - `members`: รายชื่อพนักงานแยกตามบทบาท (`round_lead` แสดงว่า `หัวหน้างาน`) พร้อมเวลากิจกรรมล่าสุดประเภทต่างๆ
+  - `deliverySummary`: จำนวนรายการส่ง active, จำนวนร้านที่ส่งจริง, ปัญหาที่ถูกบันทึก
+  - `salesSummary`: มูลค่ายอดขายสุทธิ (THB) และยอดขายแยกตามชนิดน้ำแข็ง (สุทธิ ไม่นับ void/cancelled)
+  - `cancellationState`: ตรวจสอบสิทธิ์ Admin และสถานะบล็อกเกอร์การยกเลิกงาน
+- **RPC `cancel_daily_work_session(service_date, reason)`**:
+  - อนุญาตเฉพาะสิทธิ์ `admin` เท่านั้น
+  - ตรวจสอบรายการย้อนหลัง รวมถึง **factory order ที่ยัง active**; ต้องยกเลิกคำสั่งโรงงานผ่าน `cancel_factory_order` ก่อนจึงจะยกเลิกงานว่างได้
+  - งานว่างที่ยกเลิกได้จะบันทึกเหตุผล ผู้ยกเลิก เวลา และ audit log พร้อมเปิดให้คำสั่งโรงงานถัดไปสร้าง session ใหม่ในวันเดียวกันได้
+- **RPC `get_daily_stock_close_state`**:
+  - ปรับปรุง query ให้นับเฉพาะรายการ `special` เดิมที่เป็นบล็อกเกอร์; Daily Session ที่เปิดอยู่ไม่บล็อกการปิดวัน และผู้ใช้จัดการรายการเดิมได้จากหน้าสต๊อก
 
-### 2. การปิดสต๊อกและปิดงานสิ้นวันแบบ Atomic Transaction
-- ปรับปรุง `close_daily_stock_v2` ให้ทำการ:
-  1. ค้นหางานประจำวันที่เปิดอยู่ของ `service_date`
-  2. บันทึกผลนับจริงและ variance ที่อนุมัติใน `daily_stock_closures` / `daily_stock_closure_items`
-  3. คำนวณสรุปผลและบันทึก `round_close_summaries`
-  4. บันทึก Snapshot จากยอดนับจริงหลัง reconciliation
-  5. อัปเดตสถานะงานประจำวันเป็น `'closed'`
-  6. โอนสต๊อกนับจริงคงเหลือส่งคืนโรงงาน และปิด `daily_stock_closures`
-  - **ทำทั้งหมดใน 1 SQL Transaction Block** หากขั้นตอนใดล้มเหลว ระบบจะ Rollback ทั้งหมดทันที
-
-### 3. ปรับปรุง UX/UI หน้าจอพนักงานและผู้ดูแลระบบ
-- **POS หน้าจอพนักงาน (`EmployeeDeliveryWorkspace.tsx`)**:
-  - เชื่อมต่อ `get_employee_active_session` ดึงงานประจำวันอัตโนมัติ
-  - ซ่อน Dropdown เลือกรอบในวันทำงานปกติ (กรณีมีงานเดียว)
-  - แสดงป้ายสถานะอ่านอย่างเดียว: **`งานวันนี้: งานประจำวัน`** (`กำลังดำเนินการ`)
-- **หน้าจอติดตามงาน (`AdminLayout.tsx`, `ManagerDashboard.tsx`)**:
-  - เปลี่ยนชื่อเมนูและหัวข้อหน้าจอจาก **"ควบคุมรอบส่ง"** เป็น **"ติดตามงานวันนี้"**
-  - นำฟอร์มเปิดรอบแบบเดิมออกจาก `RoundWorkspace`; งานประจำวันเปิดจาก factory order เท่านั้น
-- **หน้าตั้งค่าแอดมิน (`AdminReferenceSettings.tsx`)**:
-  - ซ่อนคอมโพเนนต์ตั้งค่าชื่อรอบย่อยตามเวลาออกจาก UX
+### 2. การปรับปรุง UI & Navigation
+- **เมนูหลักและคำศัพท์**:
+  - เปลี่ยนชื่อเมนูหลักเป็น **`งานวันนี้`**
+  - ตัดเมนูและหน้า `ติดตามงานวันนี้` (`manager`) ออกจากระบบ
+  - งานปัจจุบันไม่ใช้คำสั่งเปิด/ปิด/เลือกรอบ; กรณีข้อมูลเดิมจะแสดงเป็น **รายการเดิม** เฉพาะเมื่อยังค้างอยู่
+  - แสดงชื่อบทบาท `round_lead` ใน UI ว่า **`หัวหน้างาน`**
+- **Dashboard งานวันนี้ (`ManagerDashboard.tsx`)**:
+  - การ์ดสถานะงาน: แสดง `ยังไม่เริ่มงาน`, `กำลังทำงาน`, `ปิดงานแล้ว`, `ยกเลิกแล้ว`
+  - หากยังไม่เริ่มงาน แสดงข้อความ *"งานจะเริ่มอัตโนมัติเมื่อบันทึกคำสั่งจากโรงงานครั้งแรก"* (ไม่มีปุ่มเปิดงาน)
+  - เมนูเพิ่มเติม (Three-dots) สำหรับ Admin บนการ์ดสถานะ เพื่อเรียก **`ยกเลิกงานวันนี้`**
+  - แสดงสมาชิกทีมปฏิบัติงานพร้อมประเภทและเวลากิจกรรมล่าสุด
+  - แสดง KPI รายการส่งจริง ร้านที่ส่งจริง ปัญหา มูลค่ายอดขายสุทธิ และยอดขายแยกชนิดน้ำแข็ง
+  - โหลดข้อมูลใหม่ทุกครั้งที่กลับเข้าหน้า เพื่อไม่ให้สถานะ/KPI ค้างหลังทำรายการจากหน้าอื่น
+  - ตัด `ร้านทั้งหมด`, `ยังไม่ส่ง`, progress bar จากร้านทั้งหมด และข้อความ `ค้าง ... ร้าน` ออกจาก UI
+- **การปิดสต๊อกและจบงานสิ้นวัน (`ManagerStockControl.tsx`)**:
+  - ปุ่มยืนยันสุดท้ายปรับเป็น **`ปิดสต๊อกและจบงานวันนี้`**
+  - `close_daily_stock_v2` ปิด Daily Session ภายใน transaction เดียวกับการปิดสต๊อก
 
 ---
 
@@ -42,24 +50,28 @@
 
 - **Migrations**:
   - `supabase/migrations/0042_daily_work_session_architecture.sql`
+  - `supabase/migrations/0043_daily_work_dashboard_and_cancellation.sql`
 - **Integration Test Suite**:
-  - `tests/daily-work-session.integration.test.mjs` 10 tests: legacy multi-round upgrade, helper permissions, name invariant, idempotency, factory validation/auto-creation, read-only session resolution, actual-count snapshot และ atomic close
+  - `tests/daily-work-session.integration.test.mjs` (15 tests passed)
+- **Vitest Test Suite**:
+  - 11 test files (55 tests passed)
 - **Verification Commands**:
-  - Integration & UI Tests: `npm test` (128 Node tests + 54 Vitest UI tests passed)
-  - TypeScript Build Check: `npm run build` (Passed cleanly, 0 compilation errors)
+  - Integration Tests: `node --test tests/daily-work-session.integration.test.mjs` (PASSED)
+  - Vitest Suite: `npx vitest run` (PASSED)
+  - Production Build: `npm run build` (PASSED; มี Vite chunk-size warning)
 
 ---
 
-## แผนงานและขั้นตอนถัดไป (Next Steps)
+## ขั้นตอนการใช้งานและทดสอบใน Production
 
-1. **การปรับปรุงแดชบอร์ด "ติดตามงานวันนี้" (Phase 2 Dashboard)**
-   - แสดงตัวเลขสรุปงานประจำวันอย่างละเอียด:
-     - **พนักงานที่ได้รับมอบหมาย:** (สมาชิกทั้งหมดใน Session)
-     - **พนักงานที่มีการเคลื่อนไหววันนี้:** (พนักงานที่มีการบันทึกส่งหรือโอนสต๊อกจริง)
-     - **ยอดขายรวมและร้านค้าที่ส่งจริง** (ตัด KPI ร้านที่ไม่ซื้อออกจากงานค้าง)
-     - **สต๊อกคงเหลือตามจุดถือครอง** และประวัติรายการล่าสุด
-
-2. **การเปิดใช้งาน POS บนสภาพแวดล้อมจริง (Production Cutover & Usage)**
-   - สั่งน้ำแข็งครั้งแรกของวันเพื่อทดสอบการเปิดงานประจำวันอัตโนมัติ
-   - พนักงานเข้า POS บันทึกส่งและเติมสต๊อกต่อเนื่องได้ตลอดทั้งวัน
-   - ตรวจนับสต๊อกสิ้นวันและปิดสต๊อกเพื่อปิดงานประจำวันและสร้าง Snapshot สต๊อกคงเหลือ
+1. **เริ่มต้นวันใหม่**:
+   - เมื่อเริ่มต้นวันใหม่ ระบบจะขึ้นสถานะ **`ยังไม่เริ่มงาน`**
+2. **เริ่มงานอัตโนมัติ**:
+   - บันทึกคำสั่งโรงงานครั้งแรกในหน้า `สั่งน้ำแข็งจากโรงงาน` ระบบจะสร้าง Daily Work Session ให้อัตโนมัติ และเปลี่ยนสถานะเป็น **`กำลังทำงาน`**
+3. **การปฏิบัติงานประจำวัน**:
+   - พนักงานและหัวหน้างานบันทึกการส่งน้ำแข็ง และโอนสต๊อกตามปกติ
+   - เมื่อกลับหน้าแดชบอร์ด **`งานวันนี้`** ระบบจะโหลดข้อมูลล่าสุดของยอดขายสุทธิ จำนวนร้านที่มีการส่งจริง และกิจกรรมล่าสุดของพนักงาน
+4. **การยกเลิกงาน (กรณีเปิดงานผิดโดยไม่มีธุรกรรม)**:
+   - หากคำสั่งโรงงานแรกบันทึกผิด ให้ยกเลิกคำสั่งนั้นจากหน้า `สั่งน้ำแข็งจากโรงงาน` ก่อน แล้ว Admin จึงกด **`ยกเลิกงานวันนี้`** พร้อมใส่เหตุผลได้
+5. **ปิดสต๊อกและจบงานสิ้นวัน**:
+   - ตรวจนับสต๊อกและกดปุ่ม **`ปิดสต๊อกและจบงานวันนี้`** ในหน้า `โอน / ตรวจ / ปิดสต๊อก` ระบบจะปิดสต๊อก รวบรวมน้ำแข็งส่งคืนโรงงาน และปิดงานประจำวันใน transaction เดียวกัน

@@ -7,8 +7,14 @@ const migration0042 = readFileSync(
   new URL('../supabase/migrations/0042_daily_work_session_architecture.sql', import.meta.url),
   'utf8',
 );
+const migration0043 = readFileSync(
+  new URL('../supabase/migrations/0043_daily_work_dashboard_and_cancellation.sql', import.meta.url),
+  'utf8',
+);
 
 const USER_ID = '10000000-0000-4000-8000-000000000001';
+const LATE_USER_ID = '10000000-0000-4000-8000-000000000002';
+
 const ICE_TYPE_ID = '40000000-0000-4000-8000-000000000001';
 const BUILDING_ID = '50000000-0000-4000-8000-000000000001';
 const SHOP_ID = '60000000-0000-4000-8000-000000000001';
@@ -26,10 +32,11 @@ async function createDb({ legacyRounds = false } = {}) {
 
     create table public.users (
       id uuid primary key,
+      display_name text not null default 'Test Lead',
       role text not null default 'round_lead',
       is_active boolean not null default true
     );
-    insert into public.users (id, role, is_active) values ('${USER_ID}', 'round_lead', true);
+    insert into public.users (id, display_name, role, is_active) values ('${USER_ID}', 'หัวหน้างานทดสอบ', 'round_lead', true);
 
     create function auth.uid() returns uuid language sql stable as
       'select ''${USER_ID}''::uuid';
@@ -56,10 +63,11 @@ async function createDb({ legacyRounds = false } = {}) {
       closed_by uuid references public.users(id),
       closed_at timestamptz,
       created_at timestamptz not null default now(),
+      cancelled_by uuid references public.users(id),
       cancelled_at timestamptz,
-      check ((status = 'open' and closed_by is null and closed_at is null)
-        or (status = 'closed' and closed_by is not null and closed_at is not null))
+      cancellation_reason text
     );
+
 
     create function public.validate_delivery_round_name()
     returns trigger language plpgsql security definer set search_path = public as $$
@@ -118,8 +126,11 @@ async function createDb({ legacyRounds = false } = {}) {
       floor_or_zone_snapshot text,
       sequence_no integer not null default 1,
       status public.shop_round_status not null default 'pending',
-      updated_by uuid not null references public.users(id)
+      note text,
+      updated_by uuid not null references public.users(id),
+      updated_at timestamptz not null default now()
     );
+
 
     create table public.round_ice_counts (
       round_id uuid not null references public.delivery_rounds(id),
@@ -253,6 +264,32 @@ async function createDb({ legacyRounds = false } = {}) {
       created_at timestamptz not null default now()
     );
 
+    create table public.delivery_events (
+      id uuid primary key default gen_random_uuid(),
+      round_stop_id uuid not null references public.round_stops(id),
+      recorded_by uuid not null references public.users(id),
+      recorded_at timestamptz not null default now()
+    );
+
+    create table public.delivery_items (
+      delivery_event_id uuid not null references public.delivery_events(id),
+      ice_type_id uuid not null references public.ice_types(id),
+      quantity numeric not null,
+      unit_price numeric not null,
+      primary key (delivery_event_id, ice_type_id)
+    );
+
+    create table public.delivery_charges (
+      id uuid primary key default gen_random_uuid(),
+      delivery_event_id uuid not null unique references public.delivery_events(id),
+      shop_id uuid not null references public.shops(id),
+      service_date date not null,
+      payment_term text not null default 'immediate',
+      original_amount numeric not null,
+      status text not null default 'active',
+      created_at timestamptz not null default now()
+    );
+
     create function public.stock_balance_at(p_date date, p_loc uuid, p_ice uuid)
     returns numeric language sql stable as $$
       select 10 + coalesce((
@@ -269,8 +306,8 @@ async function createDb({ legacyRounds = false } = {}) {
     create function public.get_factory_order_summary(p_date date, p_loc uuid, p_limit integer default 50)
     returns jsonb language sql stable as 'select jsonb_build_object(''status'', ''ok'')';
 
-    create function public.get_daily_stock_close_state(p_round_id uuid, p_service_date date)
-    returns jsonb language sql stable as 'select jsonb_build_object(''status'', ''closed'')';
+    create function public.get_daily_stock_count_readiness(p_round_id uuid, p_service_date date)
+    returns jsonb language sql stable as 'select ''[]''::jsonb';
   `);
 
   if (legacyRounds) {
@@ -283,8 +320,35 @@ async function createDb({ legacyRounds = false } = {}) {
   }
 
   await db.exec(migration0042);
+  await db.exec(migration0043);
   return db;
 }
+
+async function insertDeliveryCharge(db, {
+  serviceDate,
+  amount,
+  quantity,
+  status = 'active',
+}) {
+  const round = await db.query(`select public.ensure_daily_delivery_round('${serviceDate}') as id;`);
+  const stop = await db.query(`
+    select id from public.round_stops where round_id = '${round.rows[0].id}' limit 1;
+  `);
+  const event = await db.query(`
+    insert into public.delivery_events (round_stop_id, recorded_by)
+    values ('${stop.rows[0].id}', '${USER_ID}') returning id;
+  `);
+  await db.query(`
+    insert into public.delivery_items (delivery_event_id, ice_type_id, quantity, unit_price)
+    values ('${event.rows[0].id}', '${ICE_TYPE_ID}', ${quantity}, 20);
+  `);
+  await db.query(`
+    insert into public.delivery_charges (
+      delivery_event_id, service_date, shop_id, original_amount, status
+    ) values ('${event.rows[0].id}', '${serviceDate}', '${SHOP_ID}', ${amount}, '${status}');
+  `);
+}
+
 
 test('validate_delivery_round_name exempts system daily round name', async () => {
   const db = await createDb();
@@ -448,4 +512,115 @@ test('close_daily_stock_v2 atomically closes open daily delivery round', async (
 
   const closureRes = await db.query(`select status from public.daily_stock_closures where service_date = '2026-07-22';`);
   assert.equal(closureRes.rows[0].status, 'closed');
+});
+
+test('get_daily_work_dashboard returns correct session status lifecycle', async () => {
+  const db = await createDb();
+  // 1. Before session creation
+  const res1 = await db.query(`select public.get_daily_work_dashboard('2026-07-22') as dash;`);
+  assert.equal(res1.rows[0].dash.session.status, 'not_started');
+  assert.deepEqual(res1.rows[0].dash.members, []);
+
+  // 2. After factory order auto-start
+  const payload = JSON.stringify([{ ice_type_id: ICE_TYPE_ID, quantity: 50 }]);
+  await db.query(`
+    select public.record_factory_order('2026-07-22', '${TRUCK_ID}', '${payload}'::jsonb, 'Test order');
+  `);
+  await db.query(`
+    insert into public.users (id, display_name, role, is_active)
+    values ('${LATE_USER_ID}', 'พนักงานที่เพิ่มภายหลัง', 'courier', true);
+  `);
+  const res2 = await db.query(`select public.get_daily_work_dashboard('2026-07-22') as dash;`);
+  assert.equal(res2.rows[0].dash.session.status, 'in_progress');
+
+  // 3. Only snapshotted session members are present, with last activity
+  const members = res2.rows[0].dash.members;
+  assert.equal(members.length, 1);
+  assert.equal(members[0].id, USER_ID);
+  assert.equal(members[0].role_label, 'หัวหน้างาน');
+  assert.equal(members[0].last_activity.type, 'stock_movement');
+});
+
+test('cancel_daily_work_session requires admin and requires its factory order to be reversed first', async () => {
+  const db = await createDb();
+  const payload = JSON.stringify([{ ice_type_id: ICE_TYPE_ID, quantity: 50 }]);
+  await db.query(`
+    select public.record_factory_order('2026-07-22', '${TRUCK_ID}', '${payload}'::jsonb, 'Test order');
+  `);
+
+  // Non-admin user cannot cancel
+  await assert.rejects(
+    db.query(`select public.cancel_daily_work_session('2026-07-22', 'Test cancel');`),
+    /เฉพาะแอดมินเท่านั้นที่ยกเลิกงานวันนี้ได้/,
+  );
+
+  // Switch role to admin
+  await db.exec(`
+    create or replace function public.current_app_role() returns text language sql stable as
+      'select ''admin''::text';
+  `);
+
+  // The first factory order is active stock, so the daily session cannot be cancelled yet.
+  await assert.rejects(
+    db.query(`select public.cancel_daily_work_session('2026-07-22', 'Attempt while stock is active');`),
+    /ยกเลิกไม่ได้ เนื่องจากเริ่มทำรายการแล้ว/,
+  );
+
+  // Simulate the completed cancel_factory_order flow, which marks the order cancelled.
+  await db.query(`update public.stock_movements set status = 'cancelled' where kind = 'factory_order';`);
+
+  // An empty session can now be cancelled by Admin.
+  const cancelRes = await db.query(`select public.cancel_daily_work_session('2026-07-22', 'Empty session cancel') as res;`);
+  assert.equal(cancelRes.rows[0].res.status, 'cancelled');
+
+  const dashRes = await db.query(`select public.get_daily_work_dashboard('2026-07-22') as dash;`);
+  assert.equal(dashRes.rows[0].dash.session.status, 'cancelled');
+  assert.equal(dashRes.rows[0].dash.session.cancel_reason, 'Empty session cancel');
+});
+
+test('get_daily_work_dashboard only totals items from active charges on the requested date', async () => {
+  const db = await createDb();
+
+  await insertDeliveryCharge(db, { serviceDate: '2026-07-22', amount: 100, quantity: 5 });
+  await insertDeliveryCharge(db, { serviceDate: '2026-07-21', amount: 600, quantity: 30 });
+  await insertDeliveryCharge(db, {
+    serviceDate: '2026-07-22',
+    amount: 200,
+    quantity: 10,
+    status: 'voided',
+  });
+
+  const result = await db.query(`select public.get_daily_work_dashboard('2026-07-22') as dash;`);
+  const sale = result.rows[0].dash.salesSummary.iceTypeSales.find((item) => item.ice_type_id === ICE_TYPE_ID);
+  assert.equal(result.rows[0].dash.salesSummary.netSalesValue, 100);
+  assert.equal(sale.quantity, 5);
+});
+
+test('cancel_daily_work_session blocks cancellation when transactions exist', async () => {
+  const db = await createDb();
+  const payload = JSON.stringify([{ ice_type_id: ICE_TYPE_ID, quantity: 50 }]);
+  await db.query(`
+    select public.record_factory_order('2026-07-22', '${TRUCK_ID}', '${payload}'::jsonb, 'Test order');
+  `);
+  await db.query(`update public.stock_movements set status = 'cancelled' where kind = 'factory_order';`);
+
+  // Add a delivery charge transaction
+  await insertDeliveryCharge(db, { serviceDate: '2026-07-22', amount: 500, quantity: 25 });
+
+  await db.exec(`
+    create or replace function public.current_app_role() returns text language sql stable as
+      'select ''admin''::text';
+  `);
+
+  await assert.rejects(
+    db.query(`select public.cancel_daily_work_session('2026-07-22', 'Attempt cancel with charge');`),
+    /ยกเลิกไม่ได้ เนื่องจากเริ่มทำรายการแล้ว/,
+  );
+});
+
+test('get_daily_stock_close_state does not treat active daily session as open round blocker', async () => {
+  const db = await createDb();
+  await db.query(`select public.ensure_daily_delivery_round('2026-07-22');`);
+  const res = await db.query(`select public.get_daily_stock_close_state(null, '2026-07-22') as state;`);
+  assert.equal(res.rows[0].state.open_round_count, 0);
 });

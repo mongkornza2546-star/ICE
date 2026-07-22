@@ -65,10 +65,9 @@ test('manager summary rejects stale round responses before close', () => {
   assert.match(component, /summaryRoundId !== round\.id/);
 });
 
-test('round leads can cancel an unused open round with a required audit reason', () => {
+test('legacy records can still be cancelled with a required audit reason', () => {
   const migration = read('supabase/migrations/0027_cancel_delivery_round.sql');
   const component = read('src/ManagerRoundControl.tsx');
-  const dashboard = read('src/ManagerDashboard.tsx');
 
   assert.match(migration, /create or replace function public\.delivery_round_cancellation_blockers\(/);
   assert.match(migration, /create or replace function public\.get_delivery_round_cancellation_state\(/);
@@ -86,11 +85,8 @@ test('round leads can cancel an unused open round with a required audit reason',
   assert.match(migration, /v_captured_at := clock_timestamp\(\)/);
   assert.match(component, /supabase\.rpc\('cancel_delivery_round'/);
   assert.match(component, /supabase\.rpc\('get_delivery_round_cancellation_state'/);
-  assert.match(component, /ยกเลิกการเปิดรอบ/);
-  assert.match(component, /ยืนยันยกเลิกรอบ/);
-  assert.match(dashboard, /round\.cancelled_at \? \(/);
-  assert.match(dashboard, /round\.cancellation_reason/);
-  assert.match(dashboard, /ไม่นับรวมในงานค้าง/);
+  assert.match(component, /ยกเลิกรายการเดิม/);
+  assert.match(component, /ยืนยันยกเลิกรายการเดิม/);
 });
 
 test('day-wide stock movements are serialized and idempotent', () => {
@@ -124,14 +120,15 @@ test('stock UI reuses the retry key for the same movement payload', () => {
   assert.match(component, /p_purpose: args\.kind === 'transfer' \? 'auto' : args\.kind/);
 });
 
-test('manager overview does not replace the operational manager workspace', () => {
+test('manager overview remains the default while legacy records are managed from stock operations', () => {
   const app = read('src/RoleRouter.tsx');
 
   assert.match(app, /useState<AdminView>\('manager_overview'\)/);
   assert.match(app, /currentView === 'manager_overview'[\s\S]*<ManagerDashboard[\s\S]*onNavigate=\{setActiveView\}/);
   assert.doesNotMatch(app, /currentView === 'manager'\s*\?\s*\(\s*<ManagerDashboard/);
   assert.match(app, /currentView === 'delivery'[\s\S]*<EmployeeDeliveryWorkspace onDraftStateChange=\{setDeliveryDraftState\} requestScope=\{profile\.id\} stockSourceLabel="จุดสต๊อกของร้าน" \/>/);
-  assert.match(app, /<RoundWorkspace mode="manager" \/>/);
+  assert.doesNotMatch(app, /<RoundWorkspace mode="manager" \/>/);
+  assert.match(app, /<RoundWorkspace isActive=\{currentView === 'stock_operations'\} \/>/);
 });
 
 test('couriers use the full-screen employee delivery workspace', () => {
@@ -149,16 +146,18 @@ test('couriers use the full-screen employee delivery workspace', () => {
   assert.match(deliveryWorkspace, /supabase\.rpc\('get_employee_active_session',[\s\S]*p_service_date: toBangkokDateString\(\)/);
 });
 
-test('manager dashboard is driven by live round, stock, and daily-close data', () => {
+test('manager dashboard reloads from the daily-work RPC whenever its keep-alive view becomes active', () => {
   const component = read('src/ManagerDashboard.tsx');
+  const router = read('src/RoleRouter.tsx');
 
-  assert.match(component, /\.from\('delivery_rounds'\)/);
-  assert.match(component, /client\.rpc\('get_round_control_summary'/);
+  assert.match(component, /isActive: boolean/);
+  assert.match(component, /if \(!isActive\) return undefined;/);
+  assert.match(component, /client\.rpc\('get_daily_work_dashboard'/);
   assert.match(component, /client\.rpc\('get_stock_control_summary'/);
-  assert.match(component, /client\.rpc\('get_daily_stock_close_state'/);
   assert.match(component, /p_service_date: serviceDate/);
-  assert.doesNotMatch(component, /if \(rounds\.length === 0\)[\s\S]*stock: null/);
+  assert.match(component, /\}, \[isActive, reloadKey\]\);/);
   assert.match(component, /currentRequest !== requestId\.current/);
+  assert.match(router, /<ManagerDashboard[\s\S]*isActive=\{currentView === 'manager_overview'\}/);
   assert.doesNotMatch(component, /เครดิต|รับชำระ|ใบเสร็จ/);
 });
 
@@ -169,7 +168,7 @@ test('stock operations stay separate while the router exposes combined location 
 
   assert.match(layout, /stock_operations: \{ label: 'โอน \/ ตรวจ \/ ปิดสต๊อก'/);
   assert.match(layout, /location_management: \{ label: 'สถานที่และจุดถือครอง'/);
-  assert.match(router, /currentView === 'stock_operations'[\s\S]*<RoundWorkspace mode="stock"/);
+  assert.match(router, /currentView === 'stock_operations'[\s\S]*<RoundWorkspace isActive=\{currentView === 'stock_operations'\} \/>/);
   assert.match(router, /currentView === 'location_management'[\s\S]*<LocationManagementSettings canManageBuildings=\{profile\.role === 'admin'\} \/>/);
   assert.match(workspace, /<ManagerStockControl[\s\S]*serviceDate=\{stockServiceDate\}/);
 });
@@ -246,11 +245,12 @@ test('closed rounds show a read-only stock snapshot while the day view stays liv
   assert.match(snapshotMigration, /'is_snapshot', v_is_snapshot/);
   assert.match(snapshotMigration, /'snapshot_at', v_snapshot_at/);
   assert.match(component, /const isRoundSnapshot = round\?\.status === 'closed'/);
-  assert.match(component, /สต๊อกทั้งวัน ณ เวลาปิดรอบ/);
+  assert.match(component, /สต๊อกทั้งวัน ณ เวลาปิดงาน/);
   assert.match(component, /!isRoundSnapshot \? \(/);
   assert.match(component, /สต๊อกปัจจุบันของวัน/);
   assert.match(workspace, /stockRound\?\.status === 'open' \? stockRound : null/);
-  assert.match(workspace, /selectedRound\?\.service_date === stockServiceDate && !selectedRound\.cancelled_at/);
+  assert.match(workspace, /round\.round_type === 'daily'/);
+  assert.match(workspace, /round\.round_type === 'special' && round\.status === 'open'/);
   assert.match(snapshotMigration, /stock_movements_stamp_effective_time/);
   assert.match(snapshotMigration, /new\.recorded_at := clock_timestamp\(\)/);
 });
@@ -277,7 +277,7 @@ test('stock UI ignores a movement response after the selected round changes', ()
   assert.match(component, /deps: \[.*round\?\.id.*\]/);
 });
 
-test('daily work tracking does not expose legacy round creation', () => {
+test('daily work tracking does not expose legacy record creation but can resolve open migrated records', () => {
   const roundWorkspace = read('src/RoundWorkspace.tsx');
   const roundControl = read('src/ManagerRoundControl.tsx');
   const managerMigration = read('supabase/migrations/0008_complete_manager_operations.sql');
@@ -287,9 +287,9 @@ test('daily work tracking does not expose legacy round creation', () => {
   );
 
   assert.doesNotMatch(roundWorkspace, /create_delivery_round|เปิดรอบส่งใหม่|loadedQuantities|น้ำแข็งยกออกตั้งต้น/);
-  assert.match(roundWorkspace, /ติดตามงานประจำวัน/);
+  assert.match(roundWorkspace, /รายการเดิมที่ต้องจัดการก่อนปิดสต๊อก/);
   assert.doesNotMatch(roundControl, /label="เติมเพิ่ม"|label="เหลือ"|label="เสียหาย"/);
-  assert.match(roundControl, /รอบเป็นกลุ่มรายการขาย ไม่ใช่สต๊อก/);
+  assert.match(roundControl, /ข้อมูลเดิมนี้ต้องจัดการให้เสร็จก่อนปิดสต๊อกของวัน/);
   assert.match(finalRoundClose, /for update;/);
   assert.match(finalRoundClose, /insert into public\.round_close_summaries/);
   assert.doesNotMatch(finalRoundClose, /round_close_ice_summaries|update public\.round_ice_counts/);
@@ -393,5 +393,5 @@ test('daily close counts every point, returns actual stock, and locks the servic
   assert.match(readinessMigration, /create or replace function public\.close_daily_stock_from_latest_counts\(/);
   assert.match(readinessMigration, /perform pg_advisory_xact_lock\(hashtextextended\(v_service_date::text, 0\)\)/);
   assert.match(component, /supabase\.rpc\('close_daily_stock_from_latest_counts'/);
-  assert.match(component, /ปิดสต๊อกวันนี้/);
+  assert.match(component, /ปิดสต๊อกและจบงานวันนี้/);
 });

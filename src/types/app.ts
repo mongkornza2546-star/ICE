@@ -25,6 +25,7 @@ export interface DeliveryRound {
   id: string;
   service_date: string;
   name: string;
+  round_type?: 'daily' | 'special';
   status: DeliveryRoundStatus;
   opened_at: string;
   closed_at?: string | null;
@@ -386,4 +387,87 @@ export interface POSReadinessReport {
   shops_missing_payment_profile: number;
   ice_types_missing_standard_price: number;
   items: ShopReadinessItem[];
+}
+
+export type DailyWorkSessionStatus = 'not_started' | 'in_progress' | 'completed' | 'cancelled';
+
+export interface DailyWorkSessionInfo {
+  id: string | null;
+  service_date: string;
+  status: DailyWorkSessionStatus;
+  opened_at?: string | null;
+  closed_at?: string | null;
+  cancelled_at?: string | null;
+  opened_by_name?: string | null;
+  closed_by_name?: string | null;
+  cancelled_by_name?: string | null;
+  cancel_reason?: string | null;
+}
+
+export interface DailyWorkMemberActivity {
+  type: 'delivery' | 'stock_movement' | 'count';
+  timestamp: string;
+  description: string;
+}
+
+export interface DailyWorkMember {
+  id: string;
+  display_name: string;
+  role: AppRole;
+  role_label: string;
+  last_activity: DailyWorkMemberActivity | null;
+}
+
+export interface DailyWorkDeliverySummary {
+  activeDeliveryCount: number;
+  actualShopCount: number;
+  problemCount: number;
+}
+
+export interface DailyWorkIceTypeSale {
+  ice_type_id: string;
+  ice_type_name: string;
+  unit: string;
+  quantity: number;
+}
+
+export interface DailyWorkSalesSummary {
+  netSalesValue: number;
+  iceTypeSales: DailyWorkIceTypeSale[];
+}
+
+export interface DailyWorkRecentDelivery {
+  charge_id: string;
+  round_stop_id: string;
+  shop_id: string;
+  shop_name: string;
+  net_amount: number;
+  payment_term: PaymentTerm;
+  created_at: string;
+  recorded_by_name: string | null;
+}
+
+export interface DailyWorkProblem {
+  stop_id: string;
+  shop_code: string;
+  shop_name: string;
+  problem_note: string | null;
+  updated_at: string;
+  updated_by_name: string | null;
+}
+
+export interface DailyWorkCancellationState {
+  can_cancel: boolean;
+  blocker_reason: string | null;
+}
+
+export interface DailyWorkDashboard {
+  session: DailyWorkSessionInfo;
+  members: DailyWorkMember[];
+  deliverySummary: DailyWorkDeliverySummary;
+  salesSummary: DailyWorkSalesSummary;
+  recentDeliveries: DailyWorkRecentDelivery[];
+  problems: DailyWorkProblem[];
+  readiness: StockCountReadiness[];
+  cancellationState: DailyWorkCancellationState;
 }
