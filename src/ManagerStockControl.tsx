@@ -645,6 +645,17 @@ export function ManagerStockControl({
                       <p className="holder-pos__empty">ยังไม่มีจุดรับสต๊อกที่พร้อมรับสินค้า</p>
                     ) : null}
                   </div>
+
+                  <div className="holder-pos__return-action">
+                    <button
+                      className="holder-pos__return-btn"
+                      type="button"
+                      onClick={() => selectMovementKind('return_to_factory')}
+                    >
+                      <svg width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14l-5-5 5-5"/><path d="M4 9h10.5a5.5 5.5 0 010 11H11"/></svg>
+                      คืนของ
+                    </button>
+                  </div>
                 </section>
 
                 <section className="holder-pos__section" aria-labelledby="product-step-title">
