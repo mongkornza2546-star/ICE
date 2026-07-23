@@ -150,6 +150,24 @@ describe('ManagerStockControl movement tabs', () => {
     });
   });
 
+  it('returns stock from the responsible person to the truck', async () => {
+    const { user, form } = await renderMovementForm('โอนระหว่างจุด');
+
+    await user.click(within(form).getByRole('button', { name: 'คืนของ' }));
+
+    const source = within(form).getByRole('combobox', { name: 'คืนจาก (ผู้รับผิดชอบ)' }) as HTMLSelectElement;
+    expect(source.value).toBe('team-1');
+
+    await user.type(within(form).getByRole('spinbutton'), '2');
+    await user.click(within(form).getByRole('button', { name: 'ยืนยัน คืนของเข้ารถบรรทุก' }));
+
+    await expectMovementPayload({
+      p_kind: 'transfer',
+      p_from_location_id: 'team-1',
+      p_to_location_id: 'truck-1',
+    });
+  });
+
   it('selects the configured courier-source truck before another truck', async () => {
     const otherTruck = {
       ...summary.locations[0],

@@ -59,6 +59,7 @@ export function ManagerStockControl({
   const [summaryRoundId, setSummaryRoundId] = useState<string | null>(demoSummary ? round?.id ?? null : null);
   const [activeTab, setActiveTab] = useState<TabKind>('transfer');
   const [kind, setKind] = useState<StockOperationKind>('transfer');
+  const [isReturningToTruck, setIsReturningToTruck] = useState(false);
   const [fromLocationId, setFromLocationId] = useState('');
   const [toLocationId, setToLocationId] = useState('');
   const [quantities, setQuantities] = useState<QuantityDraft>({});
@@ -132,6 +133,15 @@ export function ManagerStockControl({
     [stockHolderLocations],
   );
 
+  const returnToTruckSourceLocations = useMemo(
+    () => stockHolderLocations.filter((source) => (
+      source.kind !== 'truck'
+      && !!source.assigned_employee
+      && truckLocations.some((truck) => isAllowedTransferDestination(source, truck))
+    )),
+    [stockHolderLocations, truckLocations],
+  );
+
   const iceTypes = summary?.locations[0]?.balances ?? [];
 
   useEffect(() => {
@@ -142,13 +152,14 @@ export function ManagerStockControl({
     const truckId = truckLocations.find((location) => location.is_courier_source === true)?.id
       || truckLocations[0]?.id
       || '';
-    const transferSourceId = transferSourceLocations.find((location) => (
+    const eligibleTransferSources = isReturningToTruck ? returnToTruckSourceLocations : transferSourceLocations;
+    const transferSourceId = eligibleTransferSources.find((location) => (
       location.kind === 'truck' && location.is_courier_source === true
-    ))?.id || transferSourceLocations[0]?.id || '';
+    ))?.id || eligibleTransferSources[0]?.id || '';
     const firstLocationId = stockHolderLocations[0]?.id || '';
     if (kind === 'transfer') {
       setFromLocationId((current) => (
-        transferSourceLocations.some((location) => location.id === current)
+        eligibleTransferSources.some((location) => location.id === current)
           ? current
           : transferSourceId
       ));
@@ -159,7 +170,7 @@ export function ManagerStockControl({
       setFromLocationId(kind === 'return_to_factory' ? truckId : truckId || firstLocationId);
       setToLocationId('');
     }
-  }, [summary]);
+  }, [summary, kind, isReturningToTruck, returnToTruckSourceLocations, transferSourceLocations]);
 
   useEffect(() => {
     if (!summary) return;
@@ -410,6 +421,7 @@ export function ManagerStockControl({
 
     const nextKind = nextTab as StockOperationKind;
     setKind(nextKind);
+    setIsReturningToTruck(false);
     stockMovementAction.reset();
 
     const truckId = truckLocations.find((location) => location.is_courier_source === true)?.id
@@ -429,6 +441,22 @@ export function ManagerStockControl({
     }
   };
 
+  const startReturnToTruck = () => {
+    const source = returnToTruckSourceLocations[0];
+    const destination = source
+      ? truckLocations.find((truck) => isAllowedTransferDestination(source, truck))
+      : undefined;
+
+    setActiveTab('transfer');
+    setKind('transfer');
+    setIsReturningToTruck(true);
+    setFromLocationId(source?.id ?? '');
+    setToLocationId(destination?.id ?? '');
+    setQuantities({});
+    setNote('');
+    stockMovementAction.reset();
+  };
+
   if (loading && !summary) {
     return <p className="empty-text">กำลังรวมยอดสต๊อกทุกจุด...</p>;
   }
@@ -442,11 +470,13 @@ export function ManagerStockControl({
   const sourceLocations = kind === 'return_to_factory'
     ? truckLocations
     : kind === 'transfer'
-      ? transferSourceLocations
+      ? isReturningToTruck ? returnToTruckSourceLocations : transferSourceLocations
       : stockHolderLocations;
   const selectedSource = sourceLocations.find((location) => location.id === fromLocationId);
   const destinationLocations = kind === 'transfer'
-    ? stockHolderLocations.filter((location) => isAllowedTransferDestination(selectedSource, location))
+    ? isReturningToTruck
+      ? truckLocations.filter((location) => isAllowedTransferDestination(selectedSource, location))
+      : stockHolderLocations.filter((location) => isAllowedTransferDestination(selectedSource, location))
     : [];
   const stockTimestamp = isRoundSnapshot ? summary.snapshot_at : loadedAt;
   const selectedRecipient = destinationLocations.find((location) => location.id === toLocationId) ?? null;
@@ -593,12 +623,12 @@ export function ManagerStockControl({
                 <section className="holder-pos__section" aria-labelledby="holder-step-title">
                   <div className="holder-pos__section-heading">
                     <span>1.</span>
-                    <h3 id="holder-step-title">เลือกต้นทางและจุดรับสต๊อก</h3>
+                    <h3 id="holder-step-title">{isReturningToTruck ? 'เลือกผู้คืนของและรถบรรทุก' : 'เลือกต้นทางและจุดรับสต๊อก'}</h3>
                   </div>
                   <div className="holder-pos__source-control">
                     <Truck aria-hidden="true" size={18} weight="fill" />
                     <LocationSelect
-                      label="ต้นทาง (จาก)"
+                      label={isReturningToTruck ? 'คืนจาก (ผู้รับผิดชอบ)' : 'ต้นทาง (จาก)'}
                       locations={sourceLocations}
                       onChange={(nextSourceId) => {
                         setFromLocationId(nextSourceId);
@@ -635,7 +665,7 @@ export function ManagerStockControl({
                             {(location.assigned_work_sites?.length ?? 0) > 0 ? <small>{location.assigned_work_sites?.map((site) => site.name).join(', ')}</small> : null}
                           </span>
                           <span className={`holder-card__balance ${totalBalance === 0 ? 'holder-card__balance--empty' : ''}`}>
-                            คงเหลือที่จุดรับ <strong>{formatStockQuantity(totalBalance)}</strong> หน่วย
+                            {isReturningToTruck ? 'คงเหลือบนรถ' : 'คงเหลือที่จุดรับ'} <strong>{formatStockQuantity(totalBalance)}</strong> หน่วย
                           </span>
                         </button>
                       );
@@ -647,12 +677,13 @@ export function ManagerStockControl({
 
                   <div className="holder-pos__return-action">
                     <button
+                      aria-label="คืนของ"
                       className="holder-pos__return-btn"
                       type="button"
-                      onClick={() => selectMovementKind('return_to_factory')}
+                      onClick={startReturnToTruck}
                     >
                       <svg width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14l-5-5 5-5"/><path d="M4 9h10.5a5.5 5.5 0 010 11H11"/></svg>
-                      คืนของ
+                      คืนของเข้ารถบรรทุก
                     </button>
                   </div>
                 </section>
@@ -674,7 +705,7 @@ export function ManagerStockControl({
                             <span className="product-quantity-card__icon" aria-hidden="true"><ProductIcon size={37} weight="duotone" /></span>
                             <span>
                               <strong>{ice.ice_type_name}</strong>
-                              <small>บนรถ {formatStockQuantity(ice.quantity)} {ice.unit}</small>
+                              <small>{isReturningToTruck ? 'คงเหลือกับผู้คืน' : 'บนรถ'} {formatStockQuantity(ice.quantity)} {ice.unit}</small>
                             </span>
                           </div>
                           <div className="quantity-stepper">
@@ -738,19 +769,19 @@ export function ManagerStockControl({
               </div>
 
               <aside className="holder-cart" aria-labelledby="cart-title">
-                <h3 id="cart-title">3. สรุปรายการเบิก</h3>
+                <h3 id="cart-title">3. {isReturningToTruck ? 'สรุปรายการคืน' : 'สรุปรายการเบิก'}</h3>
                 {selectedRecipient ? (
                   <div className="holder-cart__recipient">
                     <UserCircle aria-hidden="true" size={50} weight="duotone" />
                     <span>
-                      <small>กำลังโอนไปยัง:</small>
+                      <small>{isReturningToTruck ? 'กำลังคืนเข้ารถ:' : 'กำลังโอนไปยัง:'}</small>
                       <strong>{formatHolderName(selectedRecipient)}</strong>
                       {selectedRecipient.assigned_employee ? <small>ผู้รับผิดชอบ: {formatEmployeeName(selectedRecipient.assigned_employee)}</small> : null}
                       {(selectedRecipient.assigned_work_sites?.length ?? 0) > 0 ? <small>{selectedRecipient.assigned_work_sites?.map((site) => site.name).join(', ')}</small> : null}
                     </span>
                   </div>
                 ) : (
-                  <div className="holder-cart__placeholder">เลือกจุดรับสต๊อกเพื่อเริ่มรายการ</div>
+                  <div className="holder-cart__placeholder">{isReturningToTruck ? 'เลือกรถบรรทุกเพื่อเริ่มรายการคืน' : 'เลือกจุดรับสต๊อกเพื่อเริ่มรายการ'}</div>
                 )}
 
                 <div className="holder-cart__items" aria-live="polite">
@@ -774,14 +805,14 @@ export function ManagerStockControl({
 
                 <div className="holder-cart__notice">
                   <Info aria-hidden="true" size={21} weight="fill" />
-                  <span>หลังยืนยัน ระบบจะตัดจาก {selectedSource?.name ?? 'รถหลัก'} และเพิ่มเข้าสู่สต๊อกของ {selectedRecipient ? formatHolderName(selectedRecipient) : 'ผู้รับ'} ทันที</span>
+                  <span>หลังยืนยัน ระบบจะตัดจาก {selectedSource ? formatHolderName(selectedSource) : isReturningToTruck ? 'ผู้รับผิดชอบ' : 'รถหลัก'} และเพิ่มเข้าสู่สต๊อกของ {selectedRecipient ? formatHolderName(selectedRecipient) : isReturningToTruck ? 'รถบรรทุก' : 'ผู้รับ'} ทันที</span>
                 </div>
 
                 {stockMovementAction.error ? <p className="holder-cart__feedback error-text" role="alert">{stockMovementAction.error}</p> : null}
                 {stockMovementAction.success ? <p className="holder-cart__feedback success-text" role="status">{stockMovementAction.success}</p> : null}
 
                 <button
-                  aria-label="ยืนยัน โอนระหว่างจุด"
+                  aria-label={isReturningToTruck ? 'ยืนยัน คืนของเข้ารถบรรทุก' : 'ยืนยัน โอนระหว่างจุด'}
                   className="primary-button holder-cart__confirm"
                   disabled={!actionRound || !selectedRecipient || cartItems.length === 0 || stockMovementAction.isSubmitting || closeState?.is_closed}
                   type="submit"
@@ -791,7 +822,9 @@ export function ManagerStockControl({
                     ? 'ปิดสต๊อกวันนี้แล้ว'
                     : stockMovementAction.isSubmitting
                       ? 'กำลังบันทึก...'
-                      : `ยืนยันโอนไป${selectedRecipient ? formatHolderName(selectedRecipient) : 'จุดรับ'}`}
+                      : isReturningToTruck
+                        ? `ยืนยันคืนเข้ารถ ${selectedRecipient ? formatHolderName(selectedRecipient) : ''}`
+                        : `ยืนยันโอนไป${selectedRecipient ? formatHolderName(selectedRecipient) : 'จุดรับ'}`}
                 </button>
                 <button
                   className="holder-cart__clear"
