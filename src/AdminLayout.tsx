@@ -30,7 +30,7 @@ const viewMeta: Record<AdminView, { label: string; shortLabel: string; icon: typ
   manager_overview: { label: 'งานวันนี้', shortLabel: 'งานวันนี้', icon: ClipboardText },
   factory_order: { label: 'สั่งน้ำแข็งจากโรงงาน', shortLabel: 'สั่งน้ำแข็ง', icon: ShoppingCart },
   delivery: { label: 'บันทึกส่งน้ำแข็ง', shortLabel: 'บันทึกส่ง', icon: Truck },
-  stock_operations: { label: 'โอน / ตรวจ / ปิดสต๊อก', shortLabel: 'จัดการสต๊อก', icon: MapPin },
+  stock_operations: { label: 'ตรวจนับสต๊อกจริง', shortLabel: 'ตรวจนับสต๊อก', icon: MapPin },
   stock_audit: { label: 'Audit สต็อก', shortLabel: 'Audit สต็อก', icon: ClockCounterClockwise },
   location_management: { label: 'สถานที่และจุดถือครอง', shortLabel: 'สถานที่', icon: Gear },
   shops: { label: 'ร้านค้า', shortLabel: 'ร้านค้า', icon: Storefront },

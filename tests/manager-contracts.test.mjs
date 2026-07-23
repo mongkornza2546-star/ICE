@@ -108,7 +108,7 @@ test('stock balance includes transfers and automatic delivery deductions', () =>
   assert.match(migration, /before insert or update of zone_id, building_id, stock_location_id on public\.shops/);
 });
 
-test('stock UI reuses the retry key for the same movement payload', () => {
+test('stock count UI reuses the retry key for the same count payload', () => {
   const hook = read('src/hooks/useRpcAction.ts');
   const component = read('src/ManagerStockControl.tsx');
 
@@ -116,8 +116,8 @@ test('stock UI reuses the retry key for the same movement payload', () => {
   assert.match(hook, /const submittedRequestKey = idempotencyKey;/);
   assert.match(component, /p_idempotency_key: /);
   assert.match(component, /supabase\.rpc\('get_stock_control_summary'/);
-  assert.match(component, /supabase\.rpc\('record_stock_transfer_v2'/);
-  assert.match(component, /p_purpose: args\.kind === 'transfer' \? 'auto' : args\.kind/);
+  assert.match(component, /supabase\.rpc\('record_location_count_v2'/);
+  assert.doesNotMatch(component, /supabase\.rpc\('record_stock_transfer_v2'/);
 });
 
 test('manager overview remains the default while legacy records are managed from stock operations', () => {
@@ -161,12 +161,12 @@ test('manager dashboard reloads from the daily-work RPC whenever its keep-alive 
   assert.doesNotMatch(component, /เครดิต|รับชำระ|ใบเสร็จ/);
 });
 
-test('stock operations stay separate while the router exposes combined location management', () => {
+test('stock count stays separate while the router exposes combined location management', () => {
   const router = read('src/RoleRouter.tsx');
   const layout = read('src/AdminLayout.tsx');
   const workspace = read('src/RoundWorkspace.tsx');
 
-  assert.match(layout, /stock_operations: \{ label: 'โอน \/ ตรวจ \/ ปิดสต๊อก'/);
+  assert.match(layout, /stock_operations: \{ label: 'ตรวจนับสต๊อกจริง'/);
   assert.match(layout, /location_management: \{ label: 'สถานที่และจุดถือครอง'/);
   assert.match(router, /currentView === 'stock_operations'[\s\S]*<RoundWorkspace isActive=\{currentView === 'stock_operations'\} \/>/);
   assert.match(router, /currentView === 'location_management'[\s\S]*<LocationManagementSettings canManageBuildings=\{profile\.role === 'admin'\} \/>/);
@@ -229,10 +229,11 @@ test('stock ledger starts with new delivery events instead of rewriting history'
   assert.match(migration, /Existing delivery events intentionally remain outside the stock ledger/);
 });
 
-test('closed rounds show a read-only stock snapshot while the day view stays live', () => {
+test('closed rounds keep the actual-count workspace read-only', () => {
   const migration = read('supabase/migrations/0007_daily_mobile_stock.sql');
   const snapshotMigration = read('supabase/migrations/0026_round_stock_snapshots.sql');
   const component = read('src/ManagerStockControl.tsx');
+  const countPanel = read('src/features/stock-control/components/StockCountPanel.tsx');
   const workspace = read('src/RoundWorkspace.tsx');
   const stockMovement = migration.slice(
     migration.indexOf('create or replace function public.record_stock_movement('),
@@ -245,11 +246,10 @@ test('closed rounds show a read-only stock snapshot while the day view stays liv
   assert.match(snapshotMigration, /insert into public\.round_stock_snapshot_items/);
   assert.match(snapshotMigration, /'is_snapshot', v_is_snapshot/);
   assert.match(snapshotMigration, /'snapshot_at', v_snapshot_at/);
-  assert.match(component, /const isRoundSnapshot = round\?\.status === 'closed'/);
-  assert.match(component, /สต๊อกทั้งวัน ณ เวลาปิดงาน/);
-  assert.match(component, /!isRoundSnapshot \? \(/);
-  assert.match(component, /สต๊อกปัจจุบันของวัน/);
-  assert.match(workspace, /stockRound\?\.status === 'open' \? stockRound : null/);
+  assert.match(component, /const isClosed = round\?\.status === 'closed' \|\| closeState\?\.is_closed === true/);
+  assert.match(component, /disabled=\{countDisabled\}/);
+  assert.match(countPanel, /disabled=\{disabled \|\| loading\}/);
+  assert.match(workspace, /<ManagerStockControl isActive=\{isActive\} round=\{stockRound\} serviceDate=\{stockServiceDate\}/);
   assert.match(workspace, /round\.round_type === 'daily'/);
   assert.match(workspace, /round\.round_type === 'special' && round\.status === 'open'/);
   assert.match(snapshotMigration, /stock_movements_stamp_effective_time/);
@@ -270,12 +270,12 @@ test('recoverable auth session errors sign users out with actionable guidance', 
   assert.match(router, /if \(await onRecoverableSessionError\(error\.message\)\)/);
 });
 
-test('stock UI ignores a movement response after the selected round changes', () => {
+test('stock UI ignores a count response after the selected round changes', () => {
   const component = read('src/ManagerStockControl.tsx');
   const hook = read('src/hooks/useRpcAction.ts');
 
   assert.match(hook, /latestDeps\.some\(\(dep, i\) => dep !== startDeps\[i\]\)/);
-  assert.match(component, /deps: \[.*round\?\.id.*\]/);
+  assert.match(component, /deps: \[countLocationId, isDemo, round\?\.id, round\?\.status, serviceDate\]/);
 });
 
 test('daily work tracking does not expose legacy record creation but can resolve open migrated records', () => {
@@ -330,17 +330,18 @@ test('returned-stock counts snapshot system, actual, and unexplained variance', 
 
 test('returned-stock snapshots accept half-bag quantities', () => {
   const migration = read('supabase/migrations/0025_half_bag_location_counts.sql');
-  const component = read('src/ManagerStockControl.tsx');
+  const component = read('src/features/stock-control/components/StockCountPanel.tsx');
 
   assert.match(migration, /actual_quantity type numeric\(12, 1\)/);
   assert.match(migration, /actual_quantity numeric\(12, 1\)/);
   assert.match(migration, /whole or half-bag count/);
-  assert.match(component, /step=\{0\.5\}/);
+  assert.match(component, /handleStep\(b\.ice_type_id, -0\.5\)/);
+  assert.match(component, /handleStep\(b\.ice_type_id, 0\.5\)/);
 });
 
 test('stock transfers preserve half-bag quantities through daily close', () => {
   const migration = read('supabase/migrations/0028_half_bag_stock_movements.sql');
-  const component = read('src/ManagerStockControl.tsx');
+  const component = read('src/features/stock-control/components/StockCountPanel.tsx');
   const movementFunction = migration.slice(
     migration.indexOf('create or replace function public.record_stock_movement('),
     migration.indexOf('create or replace function public.close_daily_stock('),
@@ -356,7 +357,7 @@ test('stock transfers preserve half-bag quantities through daily close', () => {
   assert.doesNotMatch(movementFunction, /jsonb_to_recordset\(p_items\)[^\n]*numeric\(12, 1\)/);
   assert.doesNotMatch(closeFunction, /actual_quantity numeric\(12, 1\), note text\)/);
   assert.match(migration, /positive whole or half-bag quantity/);
-  assert.match(component, /inputMode="decimal"[\s\S]*step=\{0\.5\}/);
+  assert.match(component, /Math\.round\(parsed \* 2\) \/ 2/);
 });
 
 test('manager delivery corrections restore stock and require an audit reason', () => {
@@ -372,7 +373,7 @@ test('manager delivery corrections restore stock and require an audit reason', (
   assert.match(component, /p_reason: args\.reason\.trim\(\)/);
 });
 
-test('daily close counts every point, returns actual stock, and locks the service date', () => {
+test('daily close stays enforced by the backend and is absent from the count-only UI', () => {
   const migration = read('supabase/migrations/0008_complete_manager_operations.sql');
   const readinessMigration = read('supabase/migrations/0031_daily_stock_count_readiness.sql');
   const component = read('src/ManagerStockControl.tsx');
@@ -393,6 +394,6 @@ test('daily close counts every point, returns actual stock, and locks the servic
   );
   assert.match(readinessMigration, /create or replace function public\.close_daily_stock_from_latest_counts\(/);
   assert.match(readinessMigration, /perform pg_advisory_xact_lock\(hashtextextended\(v_service_date::text, 0\)\)/);
-  assert.match(component, /supabase\.rpc\('close_daily_stock_from_latest_counts'/);
-  assert.match(component, /ปิดสต๊อกและจบงานวันนี้/);
+  assert.doesNotMatch(component, /supabase\.rpc\('close_daily_stock_from_latest_counts'/);
+  assert.doesNotMatch(component, /ปิดสต๊อกและจบงานวันนี้/);
 });

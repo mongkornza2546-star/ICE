@@ -241,8 +241,7 @@ async function createDb({ legacyRounds = false } = {}) {
     returns boolean language sql stable as 'select true';
 
     create table public.daily_stock_closures (
-      id uuid primary key default gen_random_uuid(),
-      service_date date not null unique,
+      service_date date primary key,
       status text not null,
       note text,
       idempotency_key uuid not null unique,

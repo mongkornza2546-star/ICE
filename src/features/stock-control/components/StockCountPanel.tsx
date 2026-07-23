@@ -6,6 +6,8 @@ interface StockCountPanelProps {
   location: StockLocationBalance;
   onSaveCount: (counts: { ice_type_id: string; actual_quantity: number }[], note: string) => Promise<void>;
   loading: boolean;
+  disabled?: boolean;
+  disabledMessage?: string | null;
   error: string | null;
   successMessage?: string | null;
 }
@@ -14,43 +16,48 @@ export function StockCountPanel({
   location,
   onSaveCount,
   loading,
+  disabled = false,
+  disabledMessage,
   error,
   successMessage,
 }: StockCountPanelProps) {
-  const [actualCounts, setActualCounts] = useState<Record<string, number>>({});
+  const [actualCounts, setActualCounts] = useState<Record<string, string>>({});
   const [note, setNote] = useState('');
 
   // Sync with location balances
   useEffect(() => {
     setActualCounts(
       Object.fromEntries(
-        location.balances.map((b) => [b.ice_type_id, Math.max(0, b.quantity)])
+        location.balances.map((b) => [b.ice_type_id, formatCount(Math.max(0, b.quantity))])
       )
     );
     setNote('');
   }, [location]);
 
   const handleStep = (iceTypeId: string, step: number) => {
-    const val = actualCounts[iceTypeId] ?? 0;
+    const val = normalizeCount(actualCounts[iceTypeId]);
     const nextVal = Math.max(0, val + step);
-    setActualCounts((prev) => ({ ...prev, [iceTypeId]: nextVal }));
+    setActualCounts((prev) => ({ ...prev, [iceTypeId]: formatCount(nextVal) }));
   };
 
   const handleInputChange = (iceTypeId: string, valStr: string) => {
-    const num = parseFloat(valStr);
-    if (isNaN(num)) {
-      setActualCounts((prev) => ({ ...prev, [iceTypeId]: 0 }));
-    } else {
-      const rounded = Math.round(num * 2) / 2; // Snap to 0.5
-      setActualCounts((prev) => ({ ...prev, [iceTypeId]: Math.max(0, rounded) }));
-    }
+    if (!/^\d*(?:[.,]\d*)?$/.test(valStr)) return;
+    setActualCounts((prev) => ({ ...prev, [iceTypeId]: valStr }));
+  };
+
+  const normalizeInput = (iceTypeId: string) => {
+    setActualCounts((prev) => ({
+      ...prev,
+      [iceTypeId]: formatCount(normalizeCount(prev[iceTypeId])),
+    }));
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (disabled || loading) return;
     const counts = location.balances.map((b) => ({
       ice_type_id: b.ice_type_id,
-      actual_quantity: actualCounts[b.ice_type_id] ?? 0,
+      actual_quantity: normalizeCount(actualCounts[b.ice_type_id]),
     }));
     void onSaveCount(counts, note);
   };
@@ -66,7 +73,8 @@ export function StockCountPanel({
 
       <div className="stock-count-list">
         {location.balances.map((b) => {
-          const actual = actualCounts[b.ice_type_id] ?? 0;
+          const actualDraft = actualCounts[b.ice_type_id] ?? '';
+          const actual = normalizeCount(actualDraft);
           const system = b.quantity;
           const variance = actual - system;
 
@@ -106,36 +114,38 @@ export function StockCountPanel({
                   <button
                     type="button"
                     onClick={() => handleStep(b.ice_type_id, -1)}
-                    disabled={actual <= 0 || loading}
+                    disabled={actual <= 0 || disabled || loading}
                   >
                     -1
                   </button>
                   <button
                     type="button"
                     onClick={() => handleStep(b.ice_type_id, -0.5)}
-                    disabled={actual <= 0 || loading}
+                    disabled={actual <= 0 || disabled || loading}
                   >
                     -0.5
                   </button>
                   <input
+                    aria-label={`ยอดนับจริง ${b.ice_type_name}`}
                     type="text"
                     inputMode="decimal"
-                    value={actual === 0 ? '' : actual}
+                    value={actualDraft}
                     placeholder="0"
                     onChange={(e) => handleInputChange(b.ice_type_id, e.target.value)}
-                    disabled={loading}
+                    onBlur={() => normalizeInput(b.ice_type_id)}
+                    disabled={disabled || loading}
                   />
                   <button
                     type="button"
                     onClick={() => handleStep(b.ice_type_id, 0.5)}
-                    disabled={loading}
+                    disabled={disabled || loading}
                   >
                     +0.5
                   </button>
                   <button
                     type="button"
                     onClick={() => handleStep(b.ice_type_id, 1)}
-                    disabled={loading}
+                    disabled={disabled || loading}
                   >
                     +1
                   </button>
@@ -156,13 +166,19 @@ export function StockCountPanel({
           value={note}
           onChange={(e) => setNote(e.target.value)}
           placeholder="ใส่หมายเหตุสำหรับประวัติการนับ..."
-          disabled={loading}
+          disabled={disabled || loading}
         />
       </div>
 
       {error && (
         <div className="error-text">
           ⚠️ {error}
+        </div>
+      )}
+
+      {disabledMessage && (
+        <div className="error-text" role="status">
+          {disabledMessage}
         </div>
       )}
 
@@ -174,11 +190,21 @@ export function StockCountPanel({
 
       <button
         type="submit"
-        disabled={loading}
+        disabled={disabled || loading}
         className="primary-button"
       >
         {loading ? 'กำลังบันทึกยอดนับ...' : 'บันทึกผลการนับจริง'}
       </button>
     </form>
   );
+}
+
+function normalizeCount(value: string | undefined) {
+  const parsed = Number((value ?? '').replace(',', '.'));
+  if (!Number.isFinite(parsed)) return 0;
+  return Math.max(0, Math.round(parsed * 2) / 2);
+}
+
+function formatCount(value: number) {
+  return value === 0 ? '' : String(value);
 }

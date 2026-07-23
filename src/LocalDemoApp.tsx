@@ -353,7 +353,6 @@ export function LocalDemoApp() {
       >
         <ManagerStockControl
           demoSummary={managerStockDemoSummary}
-          operationRound={managerStockDemoRound}
           round={managerStockDemoRound}
           serviceDate={managerStockDemoRound.service_date}
         />
