@@ -1084,3 +1084,6 @@
   .stock-variance-review__quantities { grid-template-columns: minmax(0, 1fr); }
   .stock-variance-review__header { align-items: stretch; flex-direction: column; }
 }
+.stock-action-panel { order: 1; }
+.stock-current-summary-panel { order: 2; }
+.daily-close-section { order: 3; }

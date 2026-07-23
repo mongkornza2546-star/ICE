@@ -565,7 +565,7 @@ export function ManagerStockControl({
         error={reviewError}
       />
 
-      {activeTab !== 'transfer' ? <div className="stock-layout-panel">
+      {activeTab !== 'transfer' ? <div className="stock-layout-panel stock-current-summary-panel">
         <div className="stock-layout-header">
           <h3 className="stock-layout-title">
             {isRoundSnapshot ? 'สต๊อกทั้งวัน ณ เวลาปิดงาน' : 'สต๊อกปัจจุบันของวัน'}
@@ -621,7 +621,7 @@ export function ManagerStockControl({
       </div> : null}
 
       {!isRoundSnapshot ? (
-        <div className="stock-layout-panel">
+        <div className="stock-layout-panel stock-action-panel">
           <div className="action-tabs">
             <button
               className={`action-tab ${activeTab === 'transfer' ? 'active' : ''}`}
