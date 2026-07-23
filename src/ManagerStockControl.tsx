@@ -37,6 +37,8 @@ const MOVEMENT_LABELS: Record<StockMovementKind, string> = {
 };
 
 const STOCK_OPERATION_KINDS = ['transfer', 'damage', 'return_to_factory'] as const;
+const USER_AVATAR_BUCKET = 'user-avatars';
+const ICE_TYPE_IMAGE_BUCKET = 'ice-type-images';
 type StockOperationKind = typeof STOCK_OPERATION_KINDS[number];
 type TabKind = StockOperationKind | 'count';
 
@@ -73,6 +75,8 @@ export function ManagerStockControl({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loadedAt, setLoadedAt] = useState<string | null>(null);
+  const [imageUrls, setImageUrls] = useState<Record<string, string>>({});
+  const [failedImagePaths, setFailedImagePaths] = useState<Set<string>>(() => new Set());
 
   const [varianceReviews, setVarianceReviews] = useState<StockCountVarianceReview[]>([]);
   const [isVarianceModalOpen, setIsVarianceModalOpen] = useState(false);
@@ -109,6 +113,43 @@ export function ManagerStockControl({
     if (demoSummary) return;
     void loadSummary(serviceDate, round?.id ?? null);
   }, [demoSummary, round?.id, serviceDate]);
+
+  useEffect(() => {
+    if (!summary || !supabase?.storage) {
+      setImageUrls({});
+      return;
+    }
+
+    let cancelled = false;
+    const avatarPaths = summary.locations
+      .map((location) => location.assigned_employee?.avatar_path)
+      .filter((path): path is string => Boolean(path));
+    const iceImagePaths = summary.locations
+      .flatMap((location) => location.balances.map((balance) => balance.image_path))
+      .filter((path): path is string => Boolean(path));
+
+    async function loadImageUrls() {
+      const [avatars, iceTypes] = await Promise.all([
+        avatarPaths.length > 0
+          ? supabase!.storage.from(USER_AVATAR_BUCKET).createSignedUrls(avatarPaths, 3600)
+          : Promise.resolve({ data: [], error: null }),
+        iceImagePaths.length > 0
+          ? supabase!.storage.from(ICE_TYPE_IMAGE_BUCKET).createSignedUrls(iceImagePaths, 3600)
+          : Promise.resolve({ data: [], error: null }),
+      ]);
+      if (cancelled) return;
+
+      const nextUrls: Record<string, string> = {};
+      for (const image of [...(avatars.data ?? []), ...(iceTypes.data ?? [])]) {
+        if (image.path && image.signedUrl) nextUrls[image.path] = image.signedUrl;
+      }
+      setFailedImagePaths(new Set());
+      setImageUrls(nextUrls);
+    }
+
+    void loadImageUrls();
+    return () => { cancelled = true; };
+  }, [summary]);
 
   useEffect(() => {
     setConfirmSkipUncounted(false);
@@ -657,7 +698,15 @@ export function ManagerStockControl({
                         >
                           {isSelected ? <CheckCircle className="holder-card__check" size={21} weight="fill" /> : null}
                           <span className="holder-card__avatar" aria-hidden="true">
-                            <UserCircle size={48} weight="duotone" />
+                            {location.assigned_employee?.avatar_path
+                              && imageUrls[location.assigned_employee.avatar_path]
+                              && !failedImagePaths.has(location.assigned_employee.avatar_path) ? (
+                                <img
+                                  alt=""
+                                  onError={() => setFailedImagePaths((current) => new Set(current).add(location.assigned_employee!.avatar_path!))}
+                                  src={imageUrls[location.assigned_employee.avatar_path]}
+                                />
+                              ) : <UserCircle size={48} weight="duotone" />}
                           </span>
                           <span className="holder-card__identity">
                             <strong>{formatHolderName(location)}</strong>
@@ -702,7 +751,15 @@ export function ManagerStockControl({
                         <article className={`product-quantity-card ${selected ? 'product-quantity-card--selected' : ''}`} key={ice.ice_type_id}>
                           {selected ? <CheckCircle className="product-quantity-card__check" size={21} weight="fill" /> : null}
                           <div className="product-quantity-card__header">
-                            <span className="product-quantity-card__icon" aria-hidden="true"><ProductIcon size={37} weight="duotone" /></span>
+                            <span className="product-quantity-card__icon" aria-hidden="true">
+                              {ice.image_path && imageUrls[ice.image_path] && !failedImagePaths.has(ice.image_path) ? (
+                                <img
+                                  alt=""
+                                  onError={() => setFailedImagePaths((current) => new Set(current).add(ice.image_path!))}
+                                  src={imageUrls[ice.image_path]}
+                                />
+                              ) : <ProductIcon size={37} weight="duotone" />}
+                            </span>
                             <span>
                               <strong>{ice.ice_type_name}</strong>
                               <small>{isReturningToTruck ? 'คงเหลือกับผู้คืน' : 'บนรถ'} {formatStockQuantity(ice.quantity)} {ice.unit}</small>

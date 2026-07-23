@@ -98,6 +98,7 @@ export interface StockBalanceItem {
   ice_type_name: string;
   unit: string;
   quantity: number;
+  image_path?: string | null;
 }
 
 export interface WorkSiteEmployee {
@@ -105,6 +106,7 @@ export interface WorkSiteEmployee {
   code: string;
   display_name: string;
   nickname?: string | null;
+  avatar_path?: string | null;
 }
 
 export interface WorkSiteReference {
