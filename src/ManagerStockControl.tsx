@@ -125,6 +125,13 @@ export function ManagerStockControl({
     [summary],
   );
 
+  const transferSourceLocations = useMemo(
+    () => stockHolderLocations.filter((source) => (
+      stockHolderLocations.some((destination) => isAllowedTransferDestination(source, destination))
+    )),
+    [stockHolderLocations],
+  );
+
   const iceTypes = summary?.locations[0]?.balances ?? [];
 
   useEffect(() => {
@@ -132,13 +139,18 @@ export function ManagerStockControl({
     setQuantities((current) =>
       Object.fromEntries(iceTypes.map((ice) => [ice.ice_type_id, current[ice.ice_type_id] ?? 0])),
     );
-    const truckId = truckLocations[0]?.id || '';
+    const truckId = truckLocations.find((location) => location.is_courier_source === true)?.id
+      || truckLocations[0]?.id
+      || '';
+    const transferSourceId = transferSourceLocations.find((location) => (
+      location.kind === 'truck' && location.is_courier_source === true
+    ))?.id || transferSourceLocations[0]?.id || '';
     const firstLocationId = stockHolderLocations[0]?.id || '';
     if (kind === 'transfer') {
       setFromLocationId((current) => (
-        stockHolderLocations.some((location) => location.id === current)
+        transferSourceLocations.some((location) => location.id === current)
           ? current
-          : truckId || firstLocationId
+          : transferSourceId
       ));
       setToLocationId((current) => (
         stockHolderLocations.some((location) => location.id === current) ? current : ''
@@ -275,6 +287,10 @@ export function ManagerStockControl({
       stockMovementAction.setError('เลือกจุดปลายทางก่อนบันทึกรายการโอน');
       return;
     }
+    if (kind === 'transfer' && !transferSourceLocations.some((location) => location.id === fromLocationId)) {
+      stockMovementAction.setError('จุดต้นทางนี้ไม่รองรับปลายทางที่เลือก กรุณาเลือกต้นทางใหม่');
+      return;
+    }
     if (kind === 'transfer' && fromLocationId === toLocationId) {
       stockMovementAction.setError('ต้นทางและปลายทางต้องเป็นคนละจุด');
       return;
@@ -396,12 +412,16 @@ export function ManagerStockControl({
     setKind(nextKind);
     stockMovementAction.reset();
 
-    const truckId = truckLocations[0]?.id || '';
+    const truckId = truckLocations.find((location) => location.is_courier_source === true)?.id
+      || truckLocations[0]?.id
+      || '';
+    const transferSourceId = transferSourceLocations.find((location) => (
+      location.kind === 'truck' && location.is_courier_source === true
+    ))?.id || transferSourceLocations[0]?.id || '';
     const firstLocationId = stockHolderLocations[0]?.id || '';
 
     if (nextKind === 'transfer') {
-      const sourceId = truckId || firstLocationId;
-      setFromLocationId(sourceId);
+      setFromLocationId(transferSourceId);
       setToLocationId('');
     } else {
       setFromLocationId(nextKind === 'return_to_factory' ? truckId : truckId || firstLocationId);
@@ -419,9 +439,12 @@ export function ManagerStockControl({
     ?? stockHolderLocations[0];
   const requiresSource = true;
   const requiresDestination = kind === 'transfer';
-  const sourceLocations = kind === 'return_to_factory' ? truckLocations : stockHolderLocations;
-  const selectedSource = sourceLocations.find((location) => location.id === fromLocationId)
-    ?? sourceLocations[0];
+  const sourceLocations = kind === 'return_to_factory'
+    ? truckLocations
+    : kind === 'transfer'
+      ? transferSourceLocations
+      : stockHolderLocations;
+  const selectedSource = sourceLocations.find((location) => location.id === fromLocationId);
   const destinationLocations = kind === 'transfer'
     ? stockHolderLocations.filter((location) => isAllowedTransferDestination(selectedSource, location))
     : [];
@@ -1129,14 +1152,23 @@ function isAllowedTransferDestination(
   if (!source || source.id === destination.id || destination.holds_inventory !== true) return false;
 
   if (source.kind === 'truck' && source.is_courier_source) {
-    return destination.kind === 'team' || destination.kind === 'small_vehicle';
+    return isActiveAssignedEmployeeHolder(destination);
   }
 
   if (source.kind === 'team' || source.kind === 'small_vehicle') {
-    return destination.kind === 'team'
-      || destination.kind === 'small_vehicle'
+    return isActiveAssignedEmployeeHolder(destination)
       || (destination.kind === 'truck' && destination.is_courier_source === true);
   }
 
-  return destination.kind === 'truck' && destination.is_courier_source === true;
+  if (source.kind === 'reserve_bin' || source.kind === 'front_vehicle') {
+    return destination.kind === 'truck' && destination.is_courier_source === true;
+  }
+
+  return false;
+}
+
+function isActiveAssignedEmployeeHolder(location: StockLocationBalance) {
+  return (location.kind === 'team' || location.kind === 'small_vehicle')
+    && !!location.assigned_employee
+    && (location.assigned_work_sites?.length ?? 0) > 0;
 }

@@ -150,6 +150,121 @@ describe('ManagerStockControl movement tabs', () => {
     });
   });
 
+  it('selects the configured courier-source truck before another truck', async () => {
+    const otherTruck = {
+      ...summary.locations[0],
+      id: 'truck-2',
+      code: 'TRUCK-2',
+      name: 'รถสำรอง',
+      is_courier_source: false,
+    };
+    const summaryWithAnotherTruck = {
+      ...summary,
+      locations: [otherTruck, ...summary.locations],
+    };
+    mocks.rpc.mockImplementation(async (name: string) => {
+      if (name === 'get_stock_control_summary') return { data: summaryWithAnotherTruck, error: null };
+      if (name === 'get_location_count_history') return { data: [], error: null };
+      if (name === 'get_daily_stock_count_readiness') return { data: [], error: null };
+      if (name === 'get_daily_stock_close_state') return { data: closeState, error: null };
+      if (name === 'get_stock_count_variance_reviews') return { data: [], error: null };
+      return { data: null, error: null };
+    });
+
+    render(<ManagerStockControl operationRound={round} round={round} serviceDate={round.service_date} />);
+
+    const source = await screen.findByRole('combobox', { name: 'ต้นทาง (จาก)' }) as HTMLSelectElement;
+    expect(source.value).toBe('truck-1');
+    expect(Array.from(source.options).map((option) => option.value)).not.toContain('truck-2');
+    expect(screen.getByRole('button', { name: /รถเข็นสมชาย/ })).toBeTruthy();
+  });
+
+  it('selects an eligible employee holder when no courier-source truck is configured', async () => {
+    const secondTeam = {
+      ...summary.locations[2],
+      id: 'team-2',
+      code: 'TEAM-2',
+      name: 'รถเข็นสมหญิง',
+      assigned_employee: { id: 'employee-2', code: 'EMP-2', display_name: 'สมหญิง จันทร์' },
+      balances: [{ ice_type_id: 'ice-1', ice_type_name: 'หลอดเล็ก', unit: 'ถุง', quantity: 3 }],
+    };
+    const secondTruck = {
+      ...summary.locations[0],
+      id: 'truck-2',
+      code: 'TRUCK-2',
+      name: 'รถสำรอง',
+      is_courier_source: false,
+    };
+    const summaryWithoutCourierSource = {
+      ...summary,
+      locations: [
+        secondTruck,
+        { ...summary.locations[0], is_courier_source: false },
+        summary.locations[1],
+        summary.locations[2],
+        secondTeam,
+      ],
+    };
+    mocks.rpc.mockImplementation(async (name: string) => {
+      if (name === 'get_stock_control_summary') return { data: summaryWithoutCourierSource, error: null };
+      if (name === 'get_location_count_history') return { data: [], error: null };
+      if (name === 'get_daily_stock_count_readiness') return { data: [], error: null };
+      if (name === 'get_daily_stock_close_state') return { data: closeState, error: null };
+      if (name === 'get_stock_count_variance_reviews') return { data: [], error: null };
+      return { data: summaryWithoutCourierSource, error: null };
+    });
+
+    const user = userEvent.setup();
+    render(<ManagerStockControl operationRound={round} round={round} serviceDate={round.service_date} />);
+
+    const source = await screen.findByRole('combobox', { name: 'ต้นทาง (จาก)' }) as HTMLSelectElement;
+    expect(Array.from(source.options).map((option) => option.value)).toEqual(['', 'team-1', 'team-2']);
+    expect(source.value).toBe('team-1');
+
+    await user.click(screen.getByRole('button', { name: /รถเข็นสมหญิง/ }));
+    await user.type(screen.getByRole('spinbutton'), '1');
+    await user.click(screen.getByRole('button', { name: 'ยืนยัน โอนระหว่างจุด' }));
+
+    await expectMovementPayload({
+      p_kind: 'transfer',
+      p_from_location_id: 'team-1',
+      p_to_location_id: 'team-2',
+    });
+  });
+
+  it('keeps an unassigned holder return-only', async () => {
+    const retiredHolder = {
+      ...summary.locations[2],
+      id: 'team-retired',
+      code: 'TEAM-RETIRED',
+      name: 'จุดถือครองที่ยกเลิก',
+      assigned_employee: undefined,
+      assigned_work_sites: [],
+    };
+    const summaryWithRetiredHolder = {
+      ...summary,
+      locations: [...summary.locations, retiredHolder],
+    };
+    mocks.rpc.mockImplementation(async (name: string) => {
+      if (name === 'get_stock_control_summary') return { data: summaryWithRetiredHolder, error: null };
+      if (name === 'get_location_count_history') return { data: [], error: null };
+      if (name === 'get_daily_stock_count_readiness') return { data: [], error: null };
+      if (name === 'get_daily_stock_close_state') return { data: closeState, error: null };
+      if (name === 'get_stock_count_variance_reviews') return { data: [], error: null };
+      return { data: summaryWithRetiredHolder, error: null };
+    });
+
+    const user = userEvent.setup();
+    render(<ManagerStockControl operationRound={round} round={round} serviceDate={round.service_date} />);
+
+    expect(await screen.findByRole('button', { name: /รถเข็นสมชาย/ })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /จุดถือครองที่ยกเลิก/ })).toBeNull();
+
+    const source = screen.getByRole('combobox', { name: 'ต้นทาง (จาก)' });
+    await user.selectOptions(source, 'team-retired');
+    expect(screen.getByRole('button', { name: /รถบรรทุก/ })).toBeTruthy();
+  });
+
   it('shows the responsible employee and work sites on the actionable stock holder', async () => {
     const user = userEvent.setup();
     render(<ManagerStockControl operationRound={round} round={round} serviceDate={round.service_date} />);

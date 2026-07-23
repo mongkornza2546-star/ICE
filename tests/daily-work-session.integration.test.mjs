@@ -15,6 +15,10 @@ const migration0044 = readFileSync(
   new URL('../supabase/migrations/0044_backfill_delivery_round_created_at.sql', import.meta.url),
   'utf8',
 );
+const migration0049 = readFileSync(
+  new URL('../supabase/migrations/0049_fix_daily_dashboard_app_role_label.sql', import.meta.url),
+  'utf8',
+);
 
 const USER_ID = '10000000-0000-4000-8000-000000000001';
 const LATE_USER_ID = '10000000-0000-4000-8000-000000000002';
@@ -30,6 +34,7 @@ async function createDb({ legacyRounds = false } = {}) {
     create role anon;
     create role authenticated;
     create schema auth;
+    create type public.app_role as enum ('courier', 'round_lead', 'admin');
     create type public.delivery_round_status as enum ('open', 'closed');
     create type public.shop_round_status as enum ('pending', 'delivered', 'issue');
     create type public.stock_location_kind as enum ('truck', 'team', 'small_vehicle', 'work_site', 'reserve_bin', 'front_vehicle');
@@ -37,7 +42,7 @@ async function createDb({ legacyRounds = false } = {}) {
     create table public.users (
       id uuid primary key,
       display_name text not null default 'Test Lead',
-      role text not null default 'round_lead',
+      role public.app_role not null default 'round_lead',
       is_active boolean not null default true
     );
     insert into public.users (id, display_name, role, is_active) values ('${USER_ID}', 'หัวหน้างานทดสอบ', 'round_lead', true);
@@ -46,8 +51,8 @@ async function createDb({ legacyRounds = false } = {}) {
       'select ''${USER_ID}''::uuid';
     create function public.is_active_user() returns boolean language sql stable as
       'select true';
-    create function public.current_app_role() returns text language sql stable as
-      'select ''round_lead''::text';
+    create function public.current_app_role() returns public.app_role language sql stable as
+      'select ''round_lead''::public.app_role';
 
     create table public.delivery_round_name_options (
       id uuid primary key default gen_random_uuid(),
@@ -325,6 +330,7 @@ async function createDb({ legacyRounds = false } = {}) {
   await db.exec(migration0042);
   await db.exec(migration0043);
   await db.exec(migration0044);
+  await db.exec(migration0049);
   return db;
 }
 
@@ -560,8 +566,8 @@ test('cancel_daily_work_session requires admin and requires its factory order to
 
   // Switch role to admin
   await db.exec(`
-    create or replace function public.current_app_role() returns text language sql stable as
-      'select ''admin''::text';
+    create or replace function public.current_app_role() returns public.app_role language sql stable as
+      'select ''admin''::public.app_role';
   `);
 
   // The first factory order is active stock, so the daily session cannot be cancelled yet.
@@ -612,8 +618,8 @@ test('cancel_daily_work_session blocks cancellation when transactions exist', as
   await insertDeliveryCharge(db, { serviceDate: '2026-07-22', amount: 500, quantity: 25 });
 
   await db.exec(`
-    create or replace function public.current_app_role() returns text language sql stable as
-      'select ''admin''::text';
+    create or replace function public.current_app_role() returns public.app_role language sql stable as
+      'select ''admin''::public.app_role';
   `);
 
   await assert.rejects(
