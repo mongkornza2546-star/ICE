@@ -7,6 +7,10 @@ const migration = readFileSync(
   new URL('../supabase/migrations/0046_stock_control_work_site_roster.sql', import.meta.url),
   'utf8',
 );
+const nicknameMigration = readFileSync(
+  new URL('../supabase/migrations/0052_include_nickname_in_stock_control_summary.sql', import.meta.url),
+  'utf8',
+);
 
 const EMPLOYEE_ID = '10000000-0000-4000-8000-000000000001';
 const SITE_ID = '20000000-0000-4000-8000-000000000001';
@@ -78,4 +82,15 @@ test('stock summary links the holder employee to their work sites and keeps snap
     assert.deepEqual(location.assigned_work_sites, []);
     assert.deepEqual(location.assigned_employees, []);
   }
+
+  await db.exec(`
+    alter table public.users add column nickname text;
+    update public.users set nickname = 'ชาย' where id = '${EMPLOYEE_ID}';
+  `);
+  await db.exec(nicknameMigration);
+
+  const nicknameResult = await db.query(`select public.get_stock_control_summary(null, current_date) as summary`);
+  const nicknameLocations = nicknameResult.rows[0].summary.locations;
+  assert.equal(nicknameLocations.find((location) => location.id === TEAM_ID).assigned_employee.nickname, 'ชาย');
+  assert.equal(nicknameLocations.find((location) => location.id === SITE_ID).assigned_employees[0].nickname, 'ชาย');
 });

@@ -168,6 +168,16 @@ describe('ManagerStockControl movement tabs', () => {
     });
   });
 
+  it('returns to the normal transfer flow from the return-to-truck flow', async () => {
+    const { user, form } = await renderMovementForm('โอนระหว่างจุด');
+
+    await user.click(within(form).getByRole('button', { name: 'คืนของ' }));
+    await user.click(within(form).getByRole('button', { name: 'กลับไปโอนของปกติ' }));
+
+    expect(within(form).getByRole('combobox', { name: 'ต้นทาง (จาก)' })).toBeTruthy();
+    expect(within(form).getByRole('button', { name: 'คืนของ' })).toBeTruthy();
+  });
+
   it('selects the configured courier-source truck before another truck', async () => {
     const otherTruck = {
       ...summary.locations[0],
