@@ -17,6 +17,7 @@ import {
   type ActiveFilter,
 } from '../referenceEditorFilters';
 import { IceTypeImageEditor } from './IceTypeImageEditor';
+import { IceTypePriceEditor } from './IceTypePriceEditor';
 
 interface IceTypeEditorProps {
   iceTypes: IceTypeSetting[];
@@ -237,6 +238,7 @@ export function IceTypeEditor({ iceTypes, onIceTypeSaved }: IceTypeEditorProps) 
             onPendingFileChange={!iceTypeDraft.id ? setPendingImageFile : undefined}
             pendingFile={!iceTypeDraft.id ? pendingImageFile : undefined}
           />
+          <IceTypePriceEditor iceType={iceTypes.find((iceType) => iceType.id === iceTypeDraft.id) ?? null} />
         </div>
       </div>
     </section>

@@ -9,7 +9,6 @@ import type {
 import { loadAdminSettings } from './features/admin-reference-settings/adminReferenceSettingsService';
 import { UserEditor } from './features/admin-reference-settings/components/UserEditor';
 import { IceTypeEditor } from './features/admin-reference-settings/components/IceTypeEditor';
-import { IceTypePriceEditor } from './features/admin-reference-settings/components/IceTypePriceEditor';
 
 export function AdminReferenceSettings() {
   return <AdminReferenceSettingsContent />;
@@ -129,7 +128,6 @@ function AdminReferenceSettingsContent() {
         iceTypes={iceTypes}
         onIceTypeSaved={handleIceTypeSaved}
       />
-      <IceTypePriceEditor iceTypes={iceTypes} />
     </div>
   );
 }

@@ -43,16 +43,16 @@ describe('IceTypePriceEditor Component', () => {
   });
 
   it('renders standard ice type prices and history', async () => {
-    render(<IceTypePriceEditor iceTypes={iceTypes} />);
+    render(<IceTypePriceEditor iceType={iceTypes[0]} />);
 
-    expect(await screen.findByRole('heading', { name: 'ราคากลางรายชนิดน้ำแข็ง' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: 'ราคากลาง' })).toBeTruthy();
     expect(await screen.findByText('฿40.00')).toBeTruthy();
     expect(service.loadIceTypePrices).toHaveBeenCalledWith('ice-block');
   });
 
   it('saves a new standard ice type price', async () => {
     const user = userEvent.setup();
-    render(<IceTypePriceEditor iceTypes={iceTypes} />);
+    render(<IceTypePriceEditor iceType={iceTypes[0]} />);
 
     await screen.findByText('฿40.00');
 

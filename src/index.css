@@ -315,6 +315,13 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .reference-inline-note { display: flex; align-items: center; gap: 8px; color: #7b8aa0; font-size: .84rem; line-height: 1.5; }
 .reference-inline-note svg { flex: 0 0 auto; color: #3d86ff; }
 .reference-form__actions { display: flex; justify-content: flex-end; gap: 12px; padding-top: 6px; }
+.ice-type-price-editor { display: grid; gap: 14px; margin-top: 22px; padding-top: 18px; border-top: 1px solid #e2e8f0; }
+.ice-type-price-editor__heading { display: flex; align-items: center; gap: 9px; margin: 0; }
+.ice-type-price-editor__heading > span { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 10px; color: #176cff; background: #edf4ff; }
+.ice-type-price-editor__heading p { margin-top: 2px; color: #667b95; font-size: .8rem; }
+.ice-type-price-editor__content { display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); gap: 18px; }
+.ice-type-price-editor h4 { display: flex; align-items: center; gap: 8px; margin: 0 0 9px; color: #294b76; font-size: .94rem; }
+.ice-type-price-editor__description { margin: -2px 0 14px; font-size: .82rem; line-height: 1.45; }
 .reference-upload-button { width: fit-content; display: inline-flex; align-items: center; gap: 8px; cursor: pointer; }
 .reference-upload-button input { display: none; }
 .reference-shop-preview, .reference-iceType-preview { display: grid; grid-template-columns: 148px minmax(0, 1fr); gap: 16px; align-items: center; padding: 14px; border: 1px solid #dce5ef; border-radius: 16px; background: linear-gradient(180deg, #fbfdff, #f3f8ff); }
@@ -460,6 +467,7 @@ input:disabled, select:disabled, textarea:disabled { background: #f2f5f8; color:
 @media (max-width: 1180px) {
   .reference-stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .reference-editor-panel__body { grid-template-columns: 1fr; }
+  .ice-type-price-editor__content { grid-template-columns: 1fr; }
   .reference-editor-panel__divider { display: none; }
 }
 
