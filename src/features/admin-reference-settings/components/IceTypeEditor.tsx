@@ -8,7 +8,7 @@ import {
   Plus,
 } from '@phosphor-icons/react';
 import { EMPTY_ICE_TYPE, type IceTypeSetting, type IceTypeDraft } from '../types';
-import { saveIceType, getErrorMessage } from '../adminReferenceSettingsService';
+import { saveIceType, getErrorMessage, uploadIceTypeImage, updateIceTypeImagePath } from '../adminReferenceSettingsService';
 import {
   filterLabel,
   matchesActiveFilter,
@@ -42,6 +42,7 @@ export function IceTypeEditor({ iceTypes, onIceTypeSaved }: IceTypeEditorProps) 
   const [savingIceType, setSavingIceType] = useState(false);
   const [iceTypeError, setIceTypeError] = useState<string | null>(null);
   const [iceTypeSuccess, setIceTypeSuccess] = useState<string | null>(null);
+  const [pendingImageFile, setPendingImageFile] = useState<File | null>(null);
 
   const filteredIceTypes = useMemo(
     () => iceTypes
@@ -60,6 +61,7 @@ export function IceTypeEditor({ iceTypes, onIceTypeSaved }: IceTypeEditorProps) 
     setIceTypeDraft(EMPTY_ICE_TYPE);
     setIceTypeError(null);
     setIceTypeSuccess(null);
+    setPendingImageFile(null);
   }
 
   async function handleSave(event: FormEvent<HTMLFormElement>) {
@@ -85,9 +87,30 @@ export function IceTypeEditor({ iceTypes, onIceTypeSaved }: IceTypeEditorProps) 
         is_active: iceTypeDraft.isActive,
       });
 
-      onIceTypeSaved(savedIceType);
-      setIceTypeDraft(toIceTypeDraft(savedIceType));
-      setIceTypeSuccess(iceTypeDraft.id ? 'บันทึกชนิดน้ำแข็งแล้ว' : 'เพิ่มชนิดน้ำแข็งแล้ว');
+      // หากเป็นการสร้างใหม่และมีไฟล์รูปค้างรอ ให้อัปโหลดอัตโนมัติ
+      const fileToUpload = !iceTypeDraft.id ? pendingImageFile : null;
+      let finalIceType = savedIceType;
+
+      if (fileToUpload) {
+        try {
+          const imagePath = await uploadIceTypeImage(savedIceType.id, fileToUpload);
+          finalIceType = await updateIceTypeImagePath(savedIceType.id, imagePath);
+          setPendingImageFile(null);
+        } catch {
+          // อัปโหลดรูปไม่สำเร็จ แต่บันทึกชนิดน้ำแข็งสำเร็จแล้ว — แจ้งเตือนไม่สำเร็จแต่ยังเดินหน้า
+          setIceTypeError('บันทึกชนิดน้ำแข็งสำเร็จ แต่อัปโหลดรูปไม่สำเร็จ กรุณาเพิ่มรูปใหม่ในหัวข้อรูปสินค้า');
+        }
+      }
+
+      onIceTypeSaved(finalIceType);
+      setIceTypeDraft(toIceTypeDraft(finalIceType));
+      setIceTypeSuccess(
+        iceTypeDraft.id
+          ? 'บันทึกชนิดน้ำแข็งแล้ว'
+          : fileToUpload
+            ? 'เพิ่มชนิดน้ำแข็งและอัปโหลดรูปสินค้าแล้ว'
+            : 'เพิ่มชนิดน้ำแข็งแล้ว',
+      );
     } catch (error) {
       setIceTypeError(getErrorMessage(error));
     } finally {
@@ -211,6 +234,8 @@ export function IceTypeEditor({ iceTypes, onIceTypeSaved }: IceTypeEditorProps) 
           <IceTypeImageEditor
             iceType={iceTypes.find((iceType) => iceType.id === iceTypeDraft.id) ?? null}
             onIceTypeSaved={onIceTypeSaved}
+            onPendingFileChange={!iceTypeDraft.id ? setPendingImageFile : undefined}
+            pendingFile={!iceTypeDraft.id ? pendingImageFile : undefined}
           />
         </div>
       </div>

@@ -12,9 +12,13 @@ import {
 interface IceTypeImageEditorProps {
   iceType: IceTypeSetting | null;
   onIceTypeSaved: (savedIceType: IceTypeSetting) => void;
+  /** เรียกเมื่ออยู่ในโหมดสร้างใหม่ (iceType === null) และผู้ใช้เลือก/ยกเลิกรูปล่วงหน้า */
+  onPendingFileChange?: (file: File | null) => void;
+  /** ไฟล์รูปที่ parent ส่งมาควบคุม (ใช้ในโหมดสร้างใหม่) */
+  pendingFile?: File | null;
 }
 
-export function IceTypeImageEditor({ iceType, onIceTypeSaved }: IceTypeImageEditorProps) {
+export function IceTypeImageEditor({ iceType, onIceTypeSaved, onPendingFileChange, pendingFile }: IceTypeImageEditorProps) {
   const [iceTypePreviewUrl, setIceTypePreviewUrl] = useState<string | null>(null);
   const [iceTypePreviewLoading, setIceTypePreviewLoading] = useState(false);
   const [iceTypeUploadFile, setIceTypeUploadFile] = useState<File | null>(null);
@@ -74,6 +78,7 @@ export function IceTypeImageEditor({ iceType, onIceTypeSaved }: IceTypeImageEdit
     if (!file) return;
 
     if (file.size > MAX_ICE_TYPE_IMAGE_SIZE) {
+      if (onPendingFileChange) onPendingFileChange(null);
       setIceTypeUploadFile(null);
       setIceTypeImageSuccess(null);
       setIceTypeImageError('รูปต้องมีขนาดไม่เกิน 5 MB');
@@ -81,9 +86,18 @@ export function IceTypeImageEditor({ iceType, onIceTypeSaved }: IceTypeImageEdit
     }
 
     if (file.type && !ALLOWED_ICE_TYPE_IMAGE_TYPES.has(file.type)) {
+      if (onPendingFileChange) onPendingFileChange(null);
       setIceTypeUploadFile(null);
       setIceTypeImageSuccess(null);
       setIceTypeImageError('รองรับเฉพาะไฟล์ JPG, PNG หรือ WEBP');
+      return;
+    }
+
+    if (onPendingFileChange) {
+      // โหมดสร้างใหม่: ส่งไฟล์กลับ parent แทน
+      onPendingFileChange(file);
+      setIceTypeImageError(null);
+      setIceTypeImageSuccess(null);
       return;
     }
 
@@ -163,6 +177,18 @@ export function IceTypeImageEditor({ iceType, onIceTypeSaved }: IceTypeImageEdit
     }
   }
 
+  // Preview URL สำหรับโหมดสร้างใหม่ (ควบคุมโดย parent)
+  const [pendingPreviewUrl, setPendingPreviewUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (!pendingFile) {
+      setPendingPreviewUrl(null);
+      return undefined;
+    }
+    const url = URL.createObjectURL(pendingFile);
+    setPendingPreviewUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [pendingFile]);
+
   return (
     <div className="iceType-image-editor">
       <div className="reference-form-heading"><h3>รูปสินค้า</h3></div>
@@ -193,7 +219,50 @@ export function IceTypeImageEditor({ iceType, onIceTypeSaved }: IceTypeImageEdit
             <button className="primary-button" disabled={savingIceTypeImage || !iceTypeUploadFile} type="submit">{savingIceTypeImage ? 'กำลังบันทึก...' : 'บันทึกรูปสินค้า'}</button>
           </div>
         </form>
-      ) : <p className="muted">บันทึกข้อมูลชนิดน้ำแข็งก่อน แล้วจึงเพิ่มหรือเปลี่ยนรูปสินค้าได้</p>}
+      ) : (
+        /* โหมดสร้างใหม่: เลือกรูปล่วงหน้าได้ รูปจะอัปโหลดพร้อมกับบันทึกชนิดน้ำแข็ง */
+        <div className="reference-form">
+          <div className="reference-iceType-preview">
+            {pendingPreviewUrl ? (
+              <img alt="ตัวอย่างรูปสินค้า" className="reference-iceType-preview__image" src={pendingPreviewUrl} />
+            ) : (
+              <div className="reference-iceType-preview__placeholder"><ImageSquare aria-hidden="true" size={42} /></div>
+            )}
+            <div className="reference-iceType-preview__meta">
+              {pendingFile ? (
+                <>
+                  <strong>ไฟล์ที่เลือก</strong>
+                  <small>{pendingFile.name}</small>
+                  <small>รูปจะถูกอัปโหลดพร้อมกับการบันทึกชนิดน้ำแข็ง</small>
+                </>
+              ) : (
+                <>
+                  <strong>ยังไม่มีรูป</strong>
+                  <small>เลือกรูปได้เลย จะอัปโหลดพร้อมกับการบันทึก</small>
+                </>
+              )}
+            </div>
+          </div>
+          <label className="secondary-button reference-upload-button">
+            <UploadSimple size={18} />
+            <span>{pendingFile ? 'เปลี่ยนรูป' : 'เลือกรูป'}</span>
+            <input accept="image/jpeg,image/png,image/webp" onChange={chooseIceTypeImageFile} type="file" />
+          </label>
+          <p className="reference-inline-note"><Info size={16} weight="fill" />รองรับ JPG, PNG, WEBP และขนาดไม่เกิน 5 MB</p>
+          {iceTypeImageError ? <p className="error-text" role="alert">{iceTypeImageError}</p> : null}
+          {pendingFile ? (
+            <div className="reference-form__actions">
+              <button
+                className="secondary-button"
+                onClick={() => { if (onPendingFileChange) onPendingFileChange(null); setIceTypeImageError(null); }}
+                type="button"
+              >
+                ยกเลิกรูป
+              </button>
+            </div>
+          ) : null}
+        </div>
+      )}
     </div>
   );
 }
