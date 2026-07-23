@@ -10,6 +10,7 @@ import { EmployeeDeliveryWorkspace } from './EmployeeDeliveryWorkspace';
 import { LocationManagementSettings } from './LocationManagementSettings';
 import { ShopSettings } from './ShopSettings';
 import { RoundWorkspace } from './RoundWorkspace';
+import { ManagerStockAudit } from './ManagerStockAudit';
 import type { UserProfile } from './types/app';
 
 /**
@@ -172,6 +173,7 @@ export function RoleRouter({
           'factory_order',
           'delivery',
           'stock_operations',
+          'stock_audit',
           'location_management',
           'shops',
           'reference_settings',
@@ -181,6 +183,7 @@ export function RoleRouter({
           'factory_order',
           'delivery',
           'stock_operations',
+          'stock_audit',
           'location_management',
         ]
     : ['delivery'];
@@ -232,6 +235,11 @@ export function RoleRouter({
       {visitedViews.has('stock_operations') && (
         <KeepAlive active={currentView === 'stock_operations'}>
           <RoundWorkspace isActive={currentView === 'stock_operations'} />
+        </KeepAlive>
+      )}
+      {visitedViews.has('stock_audit') && (
+        <KeepAlive active={currentView === 'stock_audit'}>
+          <ManagerStockAudit />
         </KeepAlive>
       )}
       {visitedViews.has('delivery') && (

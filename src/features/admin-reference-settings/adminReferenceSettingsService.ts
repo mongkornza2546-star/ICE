@@ -325,12 +325,13 @@ export async function updateIceTypeImagePath(iceTypeId: string, imagePath: strin
   const client = supabase;
   if (!client) throw new Error('Supabase client not initialized');
 
-  const { data, error } = await client
-    .from('ice_types')
-    .update({ image_path: imagePath })
-    .eq('id', iceTypeId)
-    .select(ICE_TYPE_FIELDS)
-    .single();
+  // ice_types writes are intentionally performed through security-definer RPCs.
+  // A direct update is rejected by RLS and PostgREST then tries to coerce its
+  // empty result into .single(), which produces a misleading error message.
+  const { data, error } = await client.rpc('update_ice_type_image_path', {
+    p_ice_type_id: iceTypeId,
+    p_image_path: imagePath,
+  });
 
   if (error) throw new Error(error.message);
   return data as IceTypeSetting;

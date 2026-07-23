@@ -67,7 +67,6 @@ export function ManagerStockControl({
   const [quantities, setQuantities] = useState<QuantityDraft>({});
   const [note, setNote] = useState('');
   const [countLocationId, setCountLocationId] = useState('');
-  const [countHistory, setCountHistory] = useState<StockCountSnapshot[]>([]);
   const [countReadiness, setCountReadiness] = useState<StockCountReadiness[]>([]);
   const [closeState, setCloseState] = useState<DailyStockCloseState | null>(null);
   const [closeNote, setCloseNote] = useState('');
@@ -226,12 +225,8 @@ export function ManagerStockControl({
     const currentRequest = ++requestId.current;
     setLoading(true);
     setError(null);
-    const [summaryResponse, countResponse, readinessResponse, closeResponse, reviewsResponse] = await Promise.all([
+    const [summaryResponse, readinessResponse, closeResponse, reviewsResponse] = await Promise.all([
       supabase.rpc('get_stock_control_summary', {
-        p_round_id: roundId,
-        p_service_date: requestedServiceDate,
-      }),
-      supabase.rpc('get_location_count_history', {
         p_round_id: roundId,
         p_service_date: requestedServiceDate,
       }),
@@ -250,7 +245,6 @@ export function ManagerStockControl({
     if (currentRequest !== requestId.current) return;
 
     const firstError = summaryResponse.error
-      ?? countResponse.error
       ?? readinessResponse.error
       ?? closeResponse.error
       ?? reviewsResponse.error;
@@ -260,7 +254,6 @@ export function ManagerStockControl({
       setSummaryRoundId(null);
     } else {
       setSummary(summaryResponse.data as StockControlSummary);
-      setCountHistory((countResponse.data ?? []) as StockCountSnapshot[]);
       setCountReadiness((readinessResponse.data ?? []) as StockCountReadiness[]);
       setCloseState(closeResponse.data as DailyStockCloseState);
       setVarianceReviews((reviewsResponse.data ?? []) as StockCountVarianceReview[]);
@@ -1000,17 +993,6 @@ export function ManagerStockControl({
                   successMessage={locationCountAction.success}
                 />
               ) : <p className="empty-text">ยังไม่มีจุดถือครองสต๊อกที่ใช้งานได้</p>}
-              <div className="stock-ledger-list" style={{ marginTop: 24, paddingTop: 24, borderTop: '1px solid #e1e7ef' }}>
-                <p className="eyebrow" style={{ color: '#1a2332', fontWeight: 600, fontSize: '0.95rem', marginBottom: 16 }}>ประวัติการตรวจนับวันนี้</p>
-                {countHistory.slice(0, 6).map((snapshot) => (
-                  <article className="stock-ledger-item" key={snapshot.id}>
-                    <div className="panel-header"><strong>{snapshot.location_name}</strong><time>{formatStockTime(snapshot.counted_at)}</time></div>
-                    <small>{snapshot.items.map((item) => `${item.ice_type_name}: ระบบ ${item.system_quantity} / นับ ${item.actual_quantity} / ต่าง ${item.variance_quantity}`).join(' · ')}</small>
-                    <small>{snapshot.counted_by}{snapshot.note ? ` · ${snapshot.note}` : ''}</small>
-                  </article>
-                ))}
-                {countHistory.length === 0 ? <p className="empty-text">ยังไม่มี snapshot ยอดนับกลับของวันนี้</p> : null}
-              </div>
             </div>
           )}
         </div>
@@ -1111,17 +1093,6 @@ export function ManagerStockControl({
                       ตรวจจุดที่ยังไม่ครบหรือข้อมูลเก่า ({uncountedLocations.length})
                     </button>
                   )}
-                  <button
-                    type="button"
-                    className="secondary-button"
-                    onClick={() => {
-                      const ledger = document.querySelector('.stock-ledger');
-                      if (ledger) ledger.scrollIntoView({ behavior: 'smooth' });
-                    }}
-                  >
-                    <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" style={{ marginRight: 6, verticalAlign: 'text-bottom' }}><path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                    ดูประวัติการทำรายการ
-                  </button>
                 </div>
 
                 {uncountedLocations.length > 0 && (
@@ -1157,30 +1128,6 @@ export function ManagerStockControl({
         </section>
       ) : null}
 
-      <section className="stock-ledger" style={{ marginTop: 24 }}>
-        <div>
-          <p className="eyebrow">{isRoundSnapshot ? 'ประวัติจนถึงเวลาปิดงาน' : 'ประวัติล่าสุดของวัน'}</p>
-          <h3>{isRoundSnapshot ? 'รายการก่อน Snapshot' : 'รายการที่ตรวจนับได้'}</h3>
-        </div>
-        <div className="stock-ledger-list">
-          {summary.recent_movements.map((movement) => (
-            <article className="stock-ledger-item" key={movement.id}>
-              <div className="panel-header">
-                <strong>{MOVEMENT_LABELS[movement.kind]}</strong>
-                <time>{formatStockTime(movement.recorded_at)}</time>
-              </div>
-              <p>
-                {movement.from_location_name ?? 'โรงงาน'}
-                {' → '}
-                {movement.to_location_name ?? (movement.kind === 'damage' ? 'เสียหาย' : 'โรงงาน')}
-              </p>
-              <small>{movement.items.map((item) => `${item.ice_type_name} ${item.quantity} ${item.unit}`).join(' · ')}</small>
-              <small>{movement.recorded_by}{movement.note ? ` · ${movement.note}` : ''}</small>
-            </article>
-          ))}
-          {summary.recent_movements.length === 0 ? <p className="empty-text">ยังไม่มีรายการสต๊อกในวันนี้</p> : null}
-        </div>
-      </section>
     </div>
   );
 }

@@ -13,6 +13,13 @@ test('saving ice type metadata reloads the complete row including image_path', a
   assert.match(service, /\.from\('ice_types'\)[\s\S]*?\.select\(ICE_TYPE_FIELDS\)[\s\S]*?\.eq\('id', savedId\)/);
 });
 
+test('saving an ice type image path uses the authorized RPC instead of a direct table update', async () => {
+  const service = await readFile(servicePath, 'utf8');
+
+  assert.match(service, /\.rpc\('update_ice_type_image_path', \{[\s\S]*?p_ice_type_id: iceTypeId,[\s\S]*?p_image_path: imagePath,/);
+  assert.doesNotMatch(service, /\.from\('ice_types'\)[\s\S]{0,240}\.update\(\{ image_path: imagePath \}\)/);
+});
+
 test('replacing an ice type image reports a failed old-file cleanup', async () => {
   const editor = await readFile(editorPath, 'utf8');
 
