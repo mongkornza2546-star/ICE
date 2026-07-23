@@ -351,11 +351,6 @@ export function ManagerStockControl({
       stockMovementAction.setError('ต้นทางและปลายทางต้องเป็นคนละจุด');
       return;
     }
-    if (kind === 'damage' && !note.trim()) {
-      stockMovementAction.setError('รายการเสียหายต้องมีหมายเหตุ');
-      return;
-    }
-
     const args = { kind, fromLocationId, toLocationId, items, note: note.trim() };
     const signature = JSON.stringify({ roundId: actionRound.id, ...args });
 
@@ -467,6 +462,8 @@ export function ManagerStockControl({
     const nextKind = nextTab as StockOperationKind;
     setKind(nextKind);
     setIsReturningToTruck(false);
+    setQuantities({});
+    setNote('');
     stockMovementAction.reset();
 
     const truckId = truckLocations.find((location) => location.is_courier_source === true)?.id
@@ -526,6 +523,8 @@ export function ManagerStockControl({
   const stockTimestamp = isRoundSnapshot ? summary.snapshot_at : loadedAt;
   const selectedRecipient = destinationLocations.find((location) => location.id === toLocationId) ?? null;
   const recipientLocations = destinationLocations;
+  const isDamageOperation = activeTab === 'damage';
+  const damageSourceLocations = stockHolderLocations;
   const movementIceTypes = selectedSource?.balances ?? iceTypes;
   const cartItems = movementIceTypes.filter((ice) => (quantities[ice.ice_type_id] ?? 0) > 0);
   const cartTotal = cartItems.reduce((total, ice) => total + (quantities[ice.ice_type_id] ?? 0), 0);
@@ -662,83 +661,126 @@ export function ManagerStockControl({
             </button>
           </div>
 
-          {activeTab === 'transfer' ? (
-            <form className="holder-pos" onSubmit={handleSubmit}>
+          {activeTab === 'transfer' || activeTab === 'damage' ? (
+            <form className={`holder-pos ${isDamageOperation ? 'holder-pos--damage' : ''}`} onSubmit={handleSubmit}>
               <div className="holder-pos__main">
                 <section className="holder-pos__section" aria-labelledby="holder-step-title">
                   <div className="holder-pos__section-heading">
                     <span>1.</span>
-                    <h3 id="holder-step-title">{isReturningToTruck ? 'เลือกผู้คืนของและรถบรรทุก' : 'เลือกต้นทางและจุดรับสต๊อก'}</h3>
+                    <h3 id="holder-step-title">
+                      {isDamageOperation
+                        ? 'เลือกจุดที่เกิดความเสียหาย'
+                        : isReturningToTruck ? 'เลือกผู้คืนของและรถบรรทุก' : 'เลือกต้นทางและจุดรับสต๊อก'}
+                    </h3>
                   </div>
-                  <div className="holder-pos__source-control">
-                    <Truck aria-hidden="true" size={18} weight="fill" />
-                    <LocationSelect
-                      label={isReturningToTruck ? 'คืนจาก (ผู้รับผิดชอบ)' : 'ต้นทาง (จาก)'}
-                      locations={sourceLocations}
-                      onChange={(nextSourceId) => {
-                        setFromLocationId(nextSourceId);
-                        setToLocationId((current) => current === nextSourceId ? '' : current);
-                        setQuantities({});
-                        stockMovementAction.reset();
-                      }}
-                      value={fromLocationId}
-                    />
-                  </div>
+                  {!isDamageOperation ? <>
+                    <div className="holder-pos__source-control">
+                      <Truck aria-hidden="true" size={18} weight="fill" />
+                      <LocationSelect
+                        label={isReturningToTruck ? 'คืนจาก (ผู้รับผิดชอบ)' : 'ต้นทาง (จาก)'}
+                        locations={sourceLocations}
+                        onChange={(nextSourceId) => {
+                          setFromLocationId(nextSourceId);
+                          setToLocationId((current) => current === nextSourceId ? '' : current);
+                          setQuantities({});
+                          stockMovementAction.reset();
+                        }}
+                        value={fromLocationId}
+                      />
+                    </div>
 
-                  <div className="holder-card-grid">
-                    {recipientLocations.map((location) => {
-                      const isSelected = location.id === toLocationId;
-                      const totalBalance = location.balances.reduce((total, balance) => total + balance.quantity, 0);
-                      return (
-                        <button
-                          aria-pressed={isSelected}
-                          className={`holder-card ${isSelected ? 'holder-card--selected' : ''}`}
-                          key={location.id}
-                          onClick={() => {
-                            setToLocationId(location.id);
-                            stockMovementAction.reset();
-                          }}
-                          type="button"
-                        >
-                          {isSelected ? <CheckCircle className="holder-card__check" size={21} weight="fill" /> : null}
-                          <span className="holder-card__avatar" aria-hidden="true">
-                            {location.assigned_employee?.avatar_path
-                              && imageUrls[location.assigned_employee.avatar_path]
-                              && !failedImagePaths.has(location.assigned_employee.avatar_path) ? (
-                                <img
-                                  alt=""
-                                  onError={() => setFailedImagePaths((current) => new Set(current).add(location.assigned_employee!.avatar_path!))}
-                                  src={imageUrls[location.assigned_employee.avatar_path]}
-                                />
-                              ) : <UserCircle size={48} weight="duotone" />}
-                          </span>
-                          <span className="holder-card__identity">
-                            <strong>{formatHolderName(location)}</strong>
-                            {location.assigned_employee ? <small>ผู้รับผิดชอบ: {formatEmployeeName(location.assigned_employee)}</small> : null}
-                            {(location.assigned_work_sites?.length ?? 0) > 0 ? <small>{location.assigned_work_sites?.map((site) => site.name).join(', ')}</small> : null}
-                          </span>
-                          <span className={`holder-card__balance ${totalBalance === 0 ? 'holder-card__balance--empty' : ''}`}>
-                            {isReturningToTruck ? 'คงเหลือบนรถ' : 'คงเหลือที่จุดรับ'} <strong>{formatStockQuantity(totalBalance)}</strong> หน่วย
-                          </span>
-                        </button>
-                      );
-                    })}
-                    {recipientLocations.length === 0 ? (
-                      <p className="holder-pos__empty">ยังไม่มีจุดรับสต๊อกที่พร้อมรับสินค้า</p>
-                    ) : null}
-                  </div>
+                    <div className="holder-card-grid">
+                      {recipientLocations.map((location) => {
+                        const isSelected = location.id === toLocationId;
+                        const totalBalance = location.balances.reduce((total, balance) => total + balance.quantity, 0);
+                        return (
+                          <button
+                            aria-pressed={isSelected}
+                            className={`holder-card ${isSelected ? 'holder-card--selected' : ''}`}
+                            key={location.id}
+                            onClick={() => {
+                              setToLocationId(location.id);
+                              stockMovementAction.reset();
+                            }}
+                            type="button"
+                          >
+                            {isSelected ? <CheckCircle className="holder-card__check" size={21} weight="fill" /> : null}
+                            <span className="holder-card__avatar" aria-hidden="true">
+                              {location.assigned_employee?.avatar_path
+                                && imageUrls[location.assigned_employee.avatar_path]
+                                && !failedImagePaths.has(location.assigned_employee.avatar_path) ? (
+                                  <img
+                                    alt=""
+                                    onError={() => setFailedImagePaths((current) => new Set(current).add(location.assigned_employee!.avatar_path!))}
+                                    src={imageUrls[location.assigned_employee.avatar_path]}
+                                  />
+                                ) : <UserCircle size={48} weight="duotone" />}
+                            </span>
+                            <span className="holder-card__identity">
+                              <strong>{formatHolderName(location)}</strong>
+                              {location.assigned_employee ? <small>ผู้รับผิดชอบ: {formatEmployeeName(location.assigned_employee)}</small> : null}
+                              {(location.assigned_work_sites?.length ?? 0) > 0 ? <small>{location.assigned_work_sites?.map((site) => site.name).join(', ')}</small> : null}
+                            </span>
+                            <span className={`holder-card__balance ${totalBalance === 0 ? 'holder-card__balance--empty' : ''}`}>
+                              {isReturningToTruck ? 'คงเหลือบนรถ' : 'คงเหลือที่จุดรับ'} <strong>{formatStockQuantity(totalBalance)}</strong> หน่วย
+                            </span>
+                          </button>
+                        );
+                      })}
+                      {recipientLocations.length === 0 ? (
+                        <p className="holder-pos__empty">ยังไม่มีจุดรับสต๊อกที่พร้อมรับสินค้า</p>
+                      ) : null}
+                    </div>
 
-                  <div className="holder-pos__return-action">
-                    <button
-                      aria-label={isReturningToTruck ? 'กลับไปโอนของปกติ' : 'คืนของ'}
-                      className="holder-pos__return-btn"
-                      type="button"
-                      onClick={isReturningToTruck ? () => selectMovementKind('transfer') : startReturnToTruck}
-                    >
-                      <svg width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14l-5-5 5-5"/><path d="M4 9h10.5a5.5 5.5 0 010 11H11"/></svg>
-                      {isReturningToTruck ? 'กลับไปโอนของปกติ' : 'คืนของเข้ารถบรรทุก'}
-                    </button>
-                  </div>
+                    <div className="holder-pos__return-action">
+                      <button
+                        aria-label={isReturningToTruck ? 'กลับไปโอนของปกติ' : 'คืนของ'}
+                        className="holder-pos__return-btn"
+                        type="button"
+                        onClick={isReturningToTruck ? () => selectMovementKind('transfer') : startReturnToTruck}
+                      >
+                        <svg width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14l-5-5 5-5"/><path d="M4 9h10.5a5.5 5.5 0 010 11H11"/></svg>
+                        {isReturningToTruck ? 'กลับไปโอนของปกติ' : 'คืนของเข้ารถบรรทุก'}
+                      </button>
+                    </div>
+                  </> : (
+                    <div className="holder-card-grid holder-card-grid--sources">
+                      {damageSourceLocations.map((location) => {
+                        const isSelected = location.id === fromLocationId;
+                        const totalBalance = location.balances.reduce((total, balance) => total + balance.quantity, 0);
+                        return (
+                          <button
+                            aria-pressed={isSelected}
+                            className={`holder-card ${isSelected ? 'holder-card--selected' : ''}`}
+                            key={location.id}
+                            onClick={() => {
+                              setFromLocationId(location.id);
+                              setQuantities({});
+                              stockMovementAction.reset();
+                            }}
+                            type="button"
+                          >
+                            {isSelected ? <CheckCircle className="holder-card__check" size={21} weight="fill" /> : null}
+                            <span className="holder-card__avatar" aria-hidden="true">
+                              {location.assigned_employee?.avatar_path
+                                && imageUrls[location.assigned_employee.avatar_path]
+                                && !failedImagePaths.has(location.assigned_employee.avatar_path) ? (
+                                  <img alt="" onError={() => setFailedImagePaths((current) => new Set(current).add(location.assigned_employee!.avatar_path!))} src={imageUrls[location.assigned_employee.avatar_path]} />
+                                ) : location.kind === 'truck' ? <Truck size={35} weight="duotone" /> : <UserCircle size={48} weight="duotone" />}
+                            </span>
+                            <span className="holder-card__identity">
+                              <strong>{formatHolderName(location)}</strong>
+                              {location.assigned_employee ? <small>ผู้รับผิดชอบ: {formatEmployeeName(location.assigned_employee)}</small> : null}
+                              {(location.assigned_work_sites?.length ?? 0) > 0 ? <small>{location.assigned_work_sites?.map((site) => site.name).join(', ')}</small> : null}
+                            </span>
+                            <span className={`holder-card__balance ${totalBalance === 0 ? 'holder-card__balance--empty' : ''}`}>
+                              คงเหลือ <strong>{formatStockQuantity(totalBalance)}</strong> หน่วย
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
                 </section>
 
                 <section className="holder-pos__section" aria-labelledby="product-step-title">
@@ -773,7 +815,7 @@ export function ManagerStockControl({
                             </span>
                             <span>
                               <strong>{ice.ice_type_name}</strong>
-                              <small>{isReturningToTruck ? 'คงเหลือกับผู้คืน' : 'บนรถ'} {formatStockQuantity(ice.quantity)} {ice.unit}</small>
+                              <small>{isDamageOperation ? 'คงเหลือที่จุดนี้' : isReturningToTruck ? 'คงเหลือกับผู้คืน' : 'บนรถ'} {formatStockQuantity(ice.quantity)} {ice.unit}</small>
                             </span>
                           </div>
                           <div className="quantity-stepper">
@@ -829,7 +871,7 @@ export function ManagerStockControl({
                   <textarea
                     disabled={closeState?.is_closed}
                     onChange={(event) => setNote(event.target.value)}
-                    placeholder="ระบุหมายเหตุเพิ่มเติม..."
+                    placeholder={isDamageOperation ? 'เช่น ถุงแตกหรือละลายระหว่างรอส่ง' : 'ระบุหมายเหตุเพิ่มเติม...'}
                     rows={3}
                     value={note}
                   />
@@ -837,8 +879,17 @@ export function ManagerStockControl({
               </div>
 
               <aside className="holder-cart" aria-labelledby="cart-title">
-                <h3 id="cart-title">3. {isReturningToTruck ? 'สรุปรายการคืน' : 'สรุปรายการเบิก'}</h3>
-                {selectedRecipient ? (
+                <h3 id="cart-title">3. {isDamageOperation ? 'สรุปรายการเสียหาย' : isReturningToTruck ? 'สรุปรายการคืน' : 'สรุปรายการเบิก'}</h3>
+                {isDamageOperation && selectedSource ? (
+                  <div className="holder-cart__recipient holder-cart__recipient--damage">
+                    <span className="holder-cart__recipient-avatar" aria-hidden="true"><Warning size={42} weight="duotone" /></span>
+                    <span>
+                      <small>ตัดออกจากสต๊อก:</small>
+                      <strong>{formatHolderName(selectedSource)}</strong>
+                      {selectedSource.assigned_employee ? <small>ผู้รับผิดชอบ: {formatEmployeeName(selectedSource.assigned_employee)}</small> : null}
+                    </span>
+                  </div>
+                ) : selectedRecipient ? (
                   <div className="holder-cart__recipient">
                     <span className="holder-cart__recipient-avatar" aria-hidden="true">
                       {selectedRecipient.assigned_employee?.avatar_path
@@ -859,7 +910,7 @@ export function ManagerStockControl({
                     </span>
                   </div>
                 ) : (
-                  <div className="holder-cart__placeholder">{isReturningToTruck ? 'เลือกรถบรรทุกเพื่อเริ่มรายการคืน' : 'เลือกจุดรับสต๊อกเพื่อเริ่มรายการ'}</div>
+                  <div className="holder-cart__placeholder">{isDamageOperation ? 'เลือกจุดที่เกิดความเสียหายเพื่อเริ่มรายการ' : isReturningToTruck ? 'เลือกรถบรรทุกเพื่อเริ่มรายการคืน' : 'เลือกจุดรับสต๊อกเพื่อเริ่มรายการ'}</div>
                 )}
 
                 <div className="holder-cart__items" aria-live="polite">
@@ -883,16 +934,18 @@ export function ManagerStockControl({
 
                 <div className="holder-cart__notice">
                   <Info aria-hidden="true" size={21} weight="fill" />
-                  <span>หลังยืนยัน ระบบจะตัดจาก {selectedSource ? formatHolderName(selectedSource) : isReturningToTruck ? 'ผู้รับผิดชอบ' : 'รถหลัก'} และเพิ่มเข้าสู่สต๊อกของ {selectedRecipient ? formatHolderName(selectedRecipient) : isReturningToTruck ? 'รถบรรทุก' : 'ผู้รับ'} ทันที</span>
+                  <span>{isDamageOperation
+                    ? `หลังยืนยัน ระบบจะตัดออกจากสต๊อกของ ${selectedSource ? formatHolderName(selectedSource) : 'จุดที่เลือก'} และบันทึกเป็นรายการเสียหาย / ละลายทันที`
+                    : `หลังยืนยัน ระบบจะตัดจาก ${selectedSource ? formatHolderName(selectedSource) : isReturningToTruck ? 'ผู้รับผิดชอบ' : 'รถหลัก'} และเพิ่มเข้าสู่สต๊อกของ ${selectedRecipient ? formatHolderName(selectedRecipient) : isReturningToTruck ? 'รถบรรทุก' : 'ผู้รับ'} ทันที`}</span>
                 </div>
 
                 {stockMovementAction.error ? <p className="holder-cart__feedback error-text" role="alert">{stockMovementAction.error}</p> : null}
                 {stockMovementAction.success ? <p className="holder-cart__feedback success-text" role="status">{stockMovementAction.success}</p> : null}
 
                 <button
-                  aria-label={isReturningToTruck ? 'ยืนยัน คืนของเข้ารถบรรทุก' : 'ยืนยัน โอนระหว่างจุด'}
+                  aria-label={isDamageOperation ? 'ยืนยัน เสียหาย / ละลาย' : isReturningToTruck ? 'ยืนยัน คืนของเข้ารถบรรทุก' : 'ยืนยัน โอนระหว่างจุด'}
                   className="primary-button holder-cart__confirm"
-                  disabled={!actionRound || !selectedRecipient || cartItems.length === 0 || stockMovementAction.isSubmitting || closeState?.is_closed}
+                  disabled={!actionRound || (isDamageOperation ? !selectedSource : !selectedRecipient) || cartItems.length === 0 || stockMovementAction.isSubmitting || closeState?.is_closed}
                   type="submit"
                 >
                   <Check size={19} weight="bold" />
@@ -900,6 +953,8 @@ export function ManagerStockControl({
                     ? 'ปิดสต๊อกวันนี้แล้ว'
                     : stockMovementAction.isSubmitting
                       ? 'กำลังบันทึก...'
+                      : isDamageOperation
+                        ? 'ยืนยัน เสียหาย / ละลาย'
                       : isReturningToTruck
                         ? `ยืนยันคืนเข้ารถ ${selectedRecipient ? formatHolderName(selectedRecipient) : ''}`
                         : `ยืนยันโอนไป${selectedRecipient ? formatHolderName(selectedRecipient) : 'จุดรับ'}`}
@@ -977,7 +1032,6 @@ export function ManagerStockControl({
                   disabled={closeState?.is_closed}
                   onChange={(event) => setNote(event.target.value)}
                   placeholder={kind === 'damage' ? 'เช่น ถุงแตกหรือละลายระหว่างรอส่ง' : 'ระบุรายละเอียดเพิ่มเติม (ถ้ามี)'}
-                  required={kind === 'damage'}
                   rows={2}
                   value={note}
                   style={{ width: '100%' }}

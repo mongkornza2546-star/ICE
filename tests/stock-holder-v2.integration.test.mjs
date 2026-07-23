@@ -4,15 +4,18 @@ import test from 'node:test';
 import { PGlite } from '@electric-sql/pglite';
 import { pgcrypto } from '@electric-sql/pglite/contrib/pgcrypto';
 
-const migrations = [33, 34, 35, 36].map((number) => readFileSync(
-  new URL(`../supabase/migrations/00${number}_${[
-    'stock_holder_foundation',
-    'stock_transfer_and_revision_v2',
-    'stock_count_and_close_v2',
-    'cutover_tool',
-  ][number - 33]}.sql`, import.meta.url),
-  'utf8',
-));
+const migrations = [
+  ...[33, 34, 35, 36].map((number) => readFileSync(
+    new URL(`../supabase/migrations/00${number}_${[
+      'stock_holder_foundation',
+      'stock_transfer_and_revision_v2',
+      'stock_count_and_close_v2',
+      'cutover_tool',
+    ][number - 33]}.sql`, import.meta.url),
+    'utf8',
+  )),
+  readFileSync(new URL('../supabase/migrations/0056_fix_damage_stock_movements.sql', import.meta.url), 'utf8'),
+];
 
 const ADMIN_ID = '10000000-0000-4000-8000-000000000001';
 const TRUCK_ID = '20000000-0000-4000-8000-000000000001';
@@ -165,6 +168,40 @@ test('stock-holder v2 enforces holder boundaries and performs a guarded complete
     db.query(`select public.execute_stock_cutover('2026-07-21')`),
     /closed service date/,
   );
+});
+
+test('damage can omit its note and decrements stock without a round', async (t) => {
+  const db = await createDatabase(t);
+  await seedLocations(db);
+  for (const migration of migrations) await db.exec(migration);
+  await insertOpeningMovement(db, TRUCK_ID, ICE_ACTIVE_ID, 4);
+
+  await db.query(
+    `select public.record_stock_transfer_v2(
+      $1::date, 'damage', $2, null,
+      '[{"ice_type_id":"40000000-0000-4000-8000-000000000001","quantity":1}]'::jsonb,
+      null, gen_random_uuid()
+    )`,
+    [SERVICE_DATE, TRUCK_ID],
+  );
+
+  const movement = await db.query(
+    `select kind, round_id, to_location_id, note
+     from public.stock_movements
+     where kind = 'damage'`,
+  );
+  assert.deepEqual(movement.rows, [{
+    kind: 'damage',
+    round_id: null,
+    to_location_id: null,
+    note: null,
+  }]);
+
+  const balance = await db.query(
+    `select public.stock_balance_at($1::date, $2, $3) as quantity`,
+    [SERVICE_DATE, TRUCK_ID, ICE_ACTIVE_ID],
+  );
+  assert.equal(Number(balance.rows[0].quantity), 3);
 });
 
 test('latest count variance must be approved before close and reviews are final', async (t) => {
@@ -459,7 +496,9 @@ async function createDatabase(t) {
       recorded_at timestamptz not null default now(),
       cancelled_by uuid references public.users(id),
       cancelled_at timestamptz,
-      cancellation_reason text
+      cancellation_reason text,
+      constraint stock_movements_round_or_factory_order_check
+        check (round_id is not null or kind in ('factory_order', 'transfer', 'return_to_factory'))
     );
     create table public.stock_movement_items (
       movement_id uuid not null references public.stock_movements(id),

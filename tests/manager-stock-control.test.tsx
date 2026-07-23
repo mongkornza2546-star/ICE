@@ -349,19 +349,37 @@ describe('ManagerStockControl movement tabs', () => {
     expect((within(form).getByRole('button', { name: 'ยืนยัน โอนระหว่างจุด' }) as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it('submits damage with a source, no destination, and a required note', async () => {
+  it('submits damage with a source and no destination or required note', async () => {
     const { user, form } = await renderMovementForm('เสียหาย / ละลาย');
     expect(within(form).queryByRole('combobox', { name: 'ปลายทาง (ไปยัง)' })).toBeNull();
     await user.type(within(form).getByRole('spinbutton'), '1');
-    await user.type(within(form).getByPlaceholderText('เช่น ถุงแตกหรือละลายระหว่างรอส่ง'), 'ถุงแตก');
     await user.click(within(form).getByRole('button', { name: 'ยืนยัน เสียหาย / ละลาย' }));
 
     await expectMovementPayload({
       p_kind: 'damage',
       p_from_location_id: 'truck-1',
       p_to_location_id: null,
-      p_note: 'ถุงแตก',
+      p_note: null,
     });
+  });
+
+  it('clears a transfer draft when switching to damage', async () => {
+    const { user, form } = await renderMovementForm('โอนระหว่างจุด');
+    await user.type(within(form).getByRole('spinbutton'), '2');
+    await user.type(within(form).getByPlaceholderText('ระบุหมายเหตุเพิ่มเติม...'), 'ส่งให้ทีม');
+
+    await user.click(screen.getByRole('button', { name: 'เสียหาย / ละลาย' }));
+
+    expect((within(form).getByRole('spinbutton') as HTMLInputElement).value).toBe('');
+    expect((within(form).getByPlaceholderText('เช่น ถุงแตกหรือละลายระหว่างรอส่ง') as HTMLTextAreaElement).value).toBe('');
+    expect((within(form).getByRole('button', { name: 'ยืนยัน เสียหาย / ละลาย' }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('labels damage stock as belonging to the selected source', async () => {
+    const { user, form } = await renderMovementForm('เสียหาย / ละลาย');
+    await user.click(within(form).getByRole('button', { name: /สมชาย ใจดี/ }));
+
+    expect(within(form).getByText(/คงเหลือที่จุดนี้ 5 ถุง/)).toBeTruthy();
   });
 
   it('keeps manual factory returns available and limits the source to trucks', async () => {
