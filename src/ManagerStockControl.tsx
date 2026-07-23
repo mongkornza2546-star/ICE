@@ -526,7 +526,7 @@ export function ManagerStockControl({
                   <div className="icon-circle">
                     {location.kind === 'truck' ? <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12v6a2 2 0 002 2h10a2 2 0 002-2v-6M9 16h6"/></svg> : location.name.charAt(0)}
                   </div>
-                  {location.name}
+                  {formatHolderName(location)}
                 </div>
                 {!isRoundSnapshot && location.kind === 'work_site' && (location.assigned_employees?.length ?? 0) > 0 ? (
                   <p className="stock-location-responsibility">ผู้ดูแล: {location.assigned_employees?.map(formatEmployeeName).join(', ')}</p>
@@ -630,8 +630,7 @@ export function ManagerStockControl({
                             <UserCircle size={48} weight="duotone" />
                           </span>
                           <span className="holder-card__identity">
-                            <strong>{location.name}</strong>
-                            <small>{location.code}</small>
+                            <strong>{formatHolderName(location)}</strong>
                             {location.assigned_employee ? <small>ผู้รับผิดชอบ: {formatEmployeeName(location.assigned_employee)}</small> : null}
                             {(location.assigned_work_sites?.length ?? 0) > 0 ? <small>{location.assigned_work_sites?.map((site) => site.name).join(', ')}</small> : null}
                           </span>
@@ -745,8 +744,7 @@ export function ManagerStockControl({
                     <UserCircle aria-hidden="true" size={50} weight="duotone" />
                     <span>
                       <small>กำลังโอนไปยัง:</small>
-                      <strong>{selectedRecipient.name}</strong>
-                      <small>{selectedRecipient.code}</small>
+                      <strong>{formatHolderName(selectedRecipient)}</strong>
                       {selectedRecipient.assigned_employee ? <small>ผู้รับผิดชอบ: {formatEmployeeName(selectedRecipient.assigned_employee)}</small> : null}
                       {(selectedRecipient.assigned_work_sites?.length ?? 0) > 0 ? <small>{selectedRecipient.assigned_work_sites?.map((site) => site.name).join(', ')}</small> : null}
                     </span>
@@ -776,7 +774,7 @@ export function ManagerStockControl({
 
                 <div className="holder-cart__notice">
                   <Info aria-hidden="true" size={21} weight="fill" />
-                  <span>หลังยืนยัน ระบบจะตัดจาก {selectedSource?.name ?? 'รถหลัก'} และเพิ่มเข้าสู่สต๊อกของผู้รับทันที</span>
+                  <span>หลังยืนยัน ระบบจะตัดจาก {selectedSource?.name ?? 'รถหลัก'} และเพิ่มเข้าสู่สต๊อกของ {selectedRecipient ? formatHolderName(selectedRecipient) : 'ผู้รับ'} ทันที</span>
                 </div>
 
                 {stockMovementAction.error ? <p className="holder-cart__feedback error-text" role="alert">{stockMovementAction.error}</p> : null}
@@ -793,7 +791,7 @@ export function ManagerStockControl({
                     ? 'ปิดสต๊อกวันนี้แล้ว'
                     : stockMovementAction.isSubmitting
                       ? 'กำลังบันทึก...'
-                      : `ยืนยันโอนไป${selectedRecipient?.name ?? 'จุดรับ'}`}
+                      : `ยืนยันโอนไป${selectedRecipient ? formatHolderName(selectedRecipient) : 'จุดรับ'}`}
                 </button>
                 <button
                   className="holder-cart__clear"
@@ -996,7 +994,7 @@ export function ManagerStockControl({
                         return (
                           <tr key={location.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
                             <td style={{ padding: '12px 16px', fontWeight: 500 }}>
-                              {location.name}
+                              {formatHolderName(location)}
                               {location.assigned_employee ? <small style={{ display: 'block', marginTop: 3, color: '#64748b' }}>{formatLocationResponsibility(location)}</small> : null}
                             </td>
                             <td style={{ padding: '12px 16px', color: statusColor }}>{statusStr}</td>
@@ -1143,6 +1141,10 @@ function formatEmployeeName(employee: NonNullable<StockLocationBalance['assigned
   return employee.nickname ? `${employee.display_name} (${employee.nickname})` : employee.display_name;
 }
 
+function formatHolderName(location: StockLocationBalance) {
+  return location.assigned_employee?.nickname || location.assigned_employee?.display_name || location.name;
+}
+
 function formatLocationResponsibility(location: StockLocationBalance) {
   if (!location.assigned_employee) return '';
   const workSites = location.assigned_work_sites?.map((site) => site.name).join(', ');
@@ -1153,7 +1155,8 @@ function formatLocationResponsibility(location: StockLocationBalance) {
 
 function formatLocationOption(location: StockLocationBalance) {
   const responsibility = formatLocationResponsibility(location);
-  return responsibility ? `${location.name} — ${responsibility}` : location.name;
+  const name = formatHolderName(location);
+  return responsibility ? `${name} — ${responsibility}` : name;
 }
 
 function isAllowedTransferDestination(

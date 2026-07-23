@@ -626,9 +626,8 @@
 .holder-cart__recipient > span {
   min-width: 0;
   display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 2px 5px;
-  align-items: baseline;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 2px;
 }
 .holder-cart__recipient strong {
   overflow: hidden;
@@ -638,11 +637,14 @@
   white-space: nowrap;
 }
 .holder-cart__recipient small {
+  overflow: hidden;
   color: #657a94;
   font-size: .65rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .holder-cart__recipient small:last-child {
-  grid-column: 1 / -1;
+  grid-column: auto;
 }
 .holder-cart__placeholder {
   min-height: 80px;

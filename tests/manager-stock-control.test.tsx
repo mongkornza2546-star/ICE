@@ -120,7 +120,7 @@ describe('ManagerStockControl movement tabs', () => {
 
   it('submits a transfer with different source and destination locations', async () => {
     const { user, form } = await renderMovementForm('โอนระหว่างจุด');
-    await user.click(within(form).getByRole('button', { name: /รถเข็นสมชาย/ }));
+    await user.click(within(form).getByRole('button', { name: /สมชาย ใจดี/ }));
     await user.type(within(form).getByRole('spinbutton'), '2');
     await user.click(within(form).getByRole('button', { name: 'ยืนยัน โอนระหว่างจุด' }));
 
@@ -176,7 +176,7 @@ describe('ManagerStockControl movement tabs', () => {
     const source = await screen.findByRole('combobox', { name: 'ต้นทาง (จาก)' }) as HTMLSelectElement;
     expect(source.value).toBe('truck-1');
     expect(Array.from(source.options).map((option) => option.value)).not.toContain('truck-2');
-    expect(screen.getByRole('button', { name: /รถเข็นสมชาย/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /สมชาย ใจดี/ })).toBeTruthy();
   });
 
   it('selects an eligible employee holder when no courier-source truck is configured', async () => {
@@ -221,7 +221,7 @@ describe('ManagerStockControl movement tabs', () => {
     expect(Array.from(source.options).map((option) => option.value)).toEqual(['', 'team-1', 'team-2']);
     expect(source.value).toBe('team-1');
 
-    await user.click(screen.getByRole('button', { name: /รถเข็นสมหญิง/ }));
+    await user.click(screen.getByRole('button', { name: /สมหญิง จันทร์/ }));
     await user.type(screen.getByRole('spinbutton'), '1');
     await user.click(screen.getByRole('button', { name: 'ยืนยัน โอนระหว่างจุด' }));
 
@@ -257,7 +257,7 @@ describe('ManagerStockControl movement tabs', () => {
     const user = userEvent.setup();
     render(<ManagerStockControl operationRound={round} round={round} serviceDate={round.service_date} />);
 
-    expect(await screen.findByRole('button', { name: /รถเข็นสมชาย/ })).toBeTruthy();
+    expect(await screen.findByRole('button', { name: /สมชาย ใจดี/ })).toBeTruthy();
     expect(screen.queryByRole('button', { name: /จุดถือครองที่ยกเลิก/ })).toBeNull();
 
     const source = screen.getByRole('combobox', { name: 'ต้นทาง (จาก)' });
@@ -269,8 +269,8 @@ describe('ManagerStockControl movement tabs', () => {
     const user = userEvent.setup();
     render(<ManagerStockControl operationRound={round} round={round} serviceDate={round.service_date} />);
 
-    const recipient = await screen.findByRole('button', { name: /รถเข็นสมชาย/ });
-    expect(within(recipient).getByText(/สมชาย ใจดี/)).toBeTruthy();
+    const recipient = await screen.findByRole('button', { name: /สมชาย ใจดี/ });
+    expect(within(recipient).getAllByText(/สมชาย ใจดี/).length).toBeGreaterThan(0);
     expect(within(recipient).getByText('A · จุดปฏิบัติงาน')).toBeTruthy();
 
     const transferSource = screen.getByRole('combobox', { name: 'ต้นทาง (จาก)' }) as HTMLSelectElement;
@@ -281,9 +281,39 @@ describe('ManagerStockControl movement tabs', () => {
     expect(Array.from(countLocation.options).find((option) => option.value === 'team-1')?.textContent).toContain('สมชาย ใจดี');
   });
 
+  it('shows a holder nickname without exposing its code or email', async () => {
+    const holder = {
+      ...summary.locations[2],
+      code: 'HOLDER-SECRET-123',
+      name: 'holder@example.com',
+      assigned_employee: { id: 'employee-1', code: 'EMP-1', display_name: 'สมชาย ใจดี', nickname: 'ชาย' },
+    };
+    const summaryWithNamedHolder = { ...summary, locations: [summary.locations[0], summary.locations[1], holder] };
+    mocks.rpc.mockImplementation(async (name: string) => {
+      if (name === 'get_stock_control_summary') return { data: summaryWithNamedHolder, error: null };
+      if (name === 'get_location_count_history') return { data: [], error: null };
+      if (name === 'get_daily_stock_count_readiness') return { data: [], error: null };
+      if (name === 'get_daily_stock_close_state') return { data: closeState, error: null };
+      if (name === 'get_stock_count_variance_reviews') return { data: [], error: null };
+      return { data: null, error: null };
+    });
+
+    const user = userEvent.setup();
+    render(<ManagerStockControl operationRound={round} round={round} serviceDate={round.service_date} />);
+
+    const recipient = await screen.findByRole('button', { name: /ชาย/ });
+    expect(within(recipient).queryByText('HOLDER-SECRET-123')).toBeNull();
+    expect(within(recipient).queryByText('holder@example.com')).toBeNull();
+
+    await user.click(recipient);
+    expect(screen.queryByText('HOLDER-SECRET-123')).toBeNull();
+    expect(screen.queryByText('holder@example.com')).toBeNull();
+    expect(screen.getAllByText('ชาย').length).toBeGreaterThan(0);
+  });
+
   it('clears the selected destination after a successful transfer', async () => {
     const { user, form } = await renderMovementForm('โอนระหว่างจุด');
-    await user.click(within(form).getByRole('button', { name: /รถเข็นสมชาย/ }));
+    await user.click(within(form).getByRole('button', { name: /สมชาย ใจดี/ }));
     await user.type(within(form).getByRole('spinbutton'), '2');
     await user.click(within(form).getByRole('button', { name: 'ยืนยัน โอนระหว่างจุด' }));
 
