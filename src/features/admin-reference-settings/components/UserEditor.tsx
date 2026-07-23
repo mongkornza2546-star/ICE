@@ -280,8 +280,7 @@ export function UserEditor({
                     {user.avatar_path ? <UserAvatar path={user.avatar_path} /> : <ImageSquare size={18} />}
                   </span>
                   <span className="reference-list-item__body">
-                    <strong>{user.code}</strong>
-                    <small>{user.display_name}{user.nickname ? ` (${user.nickname})` : ''}</small>
+                    <strong>{user.display_name}{user.nickname ? ` (${user.nickname})` : ''}</strong>
                     <small className="reference-list-item__assignment">
                       {assignedWorkSites.length > 0
                         ? `ประจำ ${assignedWorkSites.map((workSite) => workSite.name).join(', ')}`
@@ -314,7 +313,6 @@ export function UserEditor({
           {userDraft ? (
             <form className="reference-form" onSubmit={saveUser}>
               <div className="field-grid">
-                <label>รหัสผู้ใช้<input readOnly value={userDraft.code} /></label>
                 <label>ชื่อแสดง<input required value={userDraft.displayName} onChange={(event) => setUserDraft({ ...userDraft, displayName: event.target.value })} /></label>
                 <label>ชื่อเล่น<input placeholder="เช่น บอย" value={userDraft.nickname} onChange={(event) => setUserDraft({ ...userDraft, nickname: event.target.value })} /></label>
                 <label>เบอร์โทร<input placeholder="ระบุเบอร์โทร (ถ้ามี)" type="tel" value={userDraft.phone} onChange={(event) => setUserDraft({ ...userDraft, phone: event.target.value })} /></label>
