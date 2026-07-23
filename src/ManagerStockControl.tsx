@@ -11,6 +11,7 @@ import {
   Truck,
   UserCircle,
   Warning,
+  X,
 } from '@phosphor-icons/react';
 import { supabase } from './lib/supabase';
 import { useRpcAction } from './hooks/useRpcAction';
@@ -76,6 +77,7 @@ export function ManagerStockControl({
   const [loadedAt, setLoadedAt] = useState<string | null>(null);
   const [imageUrls, setImageUrls] = useState<Record<string, string>>({});
   const [failedImagePaths, setFailedImagePaths] = useState<Set<string>>(() => new Set());
+  const [previewImage, setPreviewImage] = useState<{ name: string; url: string } | null>(null);
 
   const [varianceReviews, setVarianceReviews] = useState<StockCountVarianceReview[]>([]);
   const [isVarianceModalOpen, setIsVarianceModalOpen] = useState(false);
@@ -153,6 +155,15 @@ export function ManagerStockControl({
   useEffect(() => {
     setConfirmSkipUncounted(false);
   }, [serviceDate]);
+
+  useEffect(() => {
+    if (!previewImage) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setPreviewImage(null);
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [previewImage]);
 
   const truckLocations = useMemo(
     () => summary?.locations.filter((location) => (
@@ -744,13 +755,20 @@ export function ManagerStockControl({
                         <article className={`product-quantity-card ${selected ? 'product-quantity-card--selected' : ''}`} key={ice.ice_type_id}>
                           {selected ? <CheckCircle className="product-quantity-card__check" size={21} weight="fill" /> : null}
                           <div className="product-quantity-card__header">
-                            <span className="product-quantity-card__icon" aria-hidden="true">
+                            <span className="product-quantity-card__icon">
                               {ice.image_path && imageUrls[ice.image_path] && !failedImagePaths.has(ice.image_path) ? (
-                                <img
-                                  alt=""
-                                  onError={() => setFailedImagePaths((current) => new Set(current).add(ice.image_path!))}
-                                  src={imageUrls[ice.image_path]}
-                                />
+                                <button
+                                  aria-label={`ดูรูป ${ice.ice_type_name} ขนาดใหญ่`}
+                                  className="product-quantity-card__image-button"
+                                  onClick={() => setPreviewImage({ name: ice.ice_type_name, url: imageUrls[ice.image_path!] })}
+                                  type="button"
+                                >
+                                  <img
+                                    alt={ice.ice_type_name}
+                                    onError={() => setFailedImagePaths((current) => new Set(current).add(ice.image_path!))}
+                                    src={imageUrls[ice.image_path]}
+                                  />
+                                </button>
                               ) : <ProductIcon size={37} weight="duotone" />}
                             </span>
                             <span>
@@ -822,7 +840,17 @@ export function ManagerStockControl({
                 <h3 id="cart-title">3. {isReturningToTruck ? 'สรุปรายการคืน' : 'สรุปรายการเบิก'}</h3>
                 {selectedRecipient ? (
                   <div className="holder-cart__recipient">
-                    <UserCircle aria-hidden="true" size={50} weight="duotone" />
+                    <span className="holder-cart__recipient-avatar" aria-hidden="true">
+                      {selectedRecipient.assigned_employee?.avatar_path
+                        && imageUrls[selectedRecipient.assigned_employee.avatar_path]
+                        && !failedImagePaths.has(selectedRecipient.assigned_employee.avatar_path) ? (
+                          <img
+                            alt=""
+                            onError={() => setFailedImagePaths((current) => new Set(current).add(selectedRecipient.assigned_employee!.avatar_path!))}
+                            src={imageUrls[selectedRecipient.assigned_employee.avatar_path]}
+                          />
+                        ) : <UserCircle size={50} weight="duotone" />}
+                    </span>
                     <span>
                       <small>{isReturningToTruck ? 'กำลังคืนเข้ารถ:' : 'กำลังโอนไปยัง:'}</small>
                       <strong>{formatHolderName(selectedRecipient)}</strong>
@@ -1128,6 +1156,21 @@ export function ManagerStockControl({
         </section>
       ) : null}
 
+      {previewImage ? (
+        <div className="image-preview-backdrop" onMouseDown={(event) => {
+          if (event.target === event.currentTarget) setPreviewImage(null);
+        }} role="presentation">
+          <section aria-labelledby="image-preview-title" aria-modal="true" className="image-preview-dialog" role="dialog">
+            <div className="image-preview-dialog__header">
+              <h2 id="image-preview-title">รูป {previewImage.name}</h2>
+              <button aria-label="ปิดรูปภาพ" className="image-preview-dialog__close" onClick={() => setPreviewImage(null)} type="button">
+                <X size={22} weight="bold" />
+              </button>
+            </div>
+            <img alt={previewImage.name} className="image-preview-dialog__image" src={previewImage.url} />
+          </section>
+        </div>
+      ) : null}
     </div>
   );
 }
