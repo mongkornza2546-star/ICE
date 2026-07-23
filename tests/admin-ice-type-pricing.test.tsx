@@ -72,4 +72,48 @@ describe('IceTypePriceEditor Component', () => {
       });
     });
   });
+
+  it('distinguishes scheduled, inactive, current, and expired prices', async () => {
+    vi.mocked(service.loadIceTypePrices).mockResolvedValue([
+      {
+        id: 'scheduled',
+        ice_type_id: 'ice-block',
+        unit_price: 50,
+        valid_from: '2999-01-01',
+        valid_to: null,
+        is_active: true,
+      },
+      {
+        id: 'inactive',
+        ice_type_id: 'ice-block',
+        unit_price: 30,
+        valid_from: '2000-01-01',
+        valid_to: null,
+        is_active: false,
+      },
+      {
+        id: 'expired',
+        ice_type_id: 'ice-block',
+        unit_price: 35,
+        valid_from: '2000-01-01',
+        valid_to: '2000-12-31',
+        is_active: true,
+      },
+      {
+        id: 'current',
+        ice_type_id: 'ice-block',
+        unit_price: 40,
+        valid_from: '2000-01-01',
+        valid_to: null,
+        is_active: true,
+      },
+    ]);
+
+    render(<IceTypePriceEditor iceType={iceTypes[0]} />);
+
+    expect(await screen.findByText('กำหนดไว้')).toBeTruthy();
+    expect(screen.getByText('พักใช้งาน')).toBeTruthy();
+    expect(screen.getByText('ปัจจุบัน')).toBeTruthy();
+    expect(screen.getByText('สิ้นสุดแล้ว')).toBeTruthy();
+  });
 });

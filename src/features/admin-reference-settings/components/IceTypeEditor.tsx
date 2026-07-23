@@ -1,14 +1,15 @@
-import { type FormEvent, useMemo, useState } from 'react';
+import { type FormEvent, useEffect, useMemo, useState } from 'react';
 import {
+  CaretRight,
   CheckCircle,
   Circle,
+  Cube,
   FunnelSimple,
-  Info,
   MagnifyingGlass,
-  Plus,
+  PauseCircle,
 } from '@phosphor-icons/react';
 import { EMPTY_ICE_TYPE, type IceTypeSetting, type IceTypeDraft } from '../types';
-import { saveIceType, getErrorMessage, uploadIceTypeImage, updateIceTypeImagePath } from '../adminReferenceSettingsService';
+import { saveIceType, getErrorMessage, uploadIceTypeImage, updateIceTypeImagePath, getIceTypeImageSignedUrl } from '../adminReferenceSettingsService';
 import {
   filterLabel,
   matchesActiveFilter,
@@ -22,6 +23,8 @@ import { IceTypePriceEditor } from './IceTypePriceEditor';
 interface IceTypeEditorProps {
   iceTypes: IceTypeSetting[];
   onIceTypeSaved: (savedIceType: IceTypeSetting) => void;
+  createRequested?: boolean;
+  onCreateHandled?: () => void;
 }
 
 function toIceTypeDraft(iceType: IceTypeSetting): IceTypeDraft {
@@ -35,8 +38,43 @@ function toIceTypeDraft(iceType: IceTypeSetting): IceTypeDraft {
   };
 }
 
-export function IceTypeEditor({ iceTypes, onIceTypeSaved }: IceTypeEditorProps) {
-  const [iceTypeDraft, setIceTypeDraft] = useState<IceTypeDraft>(EMPTY_ICE_TYPE);
+function IceTypeThumbnail({ path }: { path?: string | null }) {
+  const [url, setUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!path) {
+      setUrl(null);
+      return undefined;
+    }
+    let cancelled = false;
+    getIceTypeImageSignedUrl(path).then((nextUrl) => {
+      if (!cancelled) setUrl(nextUrl);
+    }).catch(() => {
+      if (!cancelled) setUrl(null);
+    });
+    return () => { cancelled = true; };
+  }, [path]);
+
+  if (url) {
+    return <img alt="" src={url} className="ref-ice-thumb-img" />;
+  }
+
+  return (
+    <div className="ref-ice-thumb-placeholder">
+      <Cube size={20} />
+    </div>
+  );
+}
+
+export function IceTypeEditor({
+  iceTypes,
+  onIceTypeSaved,
+  createRequested = false,
+  onCreateHandled,
+}: IceTypeEditorProps) {
+  const [iceTypeDraft, setIceTypeDraft] = useState<IceTypeDraft>(() => (
+    iceTypes.length > 0 ? toIceTypeDraft(iceTypes[0]) : EMPTY_ICE_TYPE
+  ));
   const [iceTypeQuery, setIceTypeQuery] = useState('');
   const [iceTypeFilter, setIceTypeFilter] = useState<ActiveFilter>('all');
   
@@ -45,12 +83,23 @@ export function IceTypeEditor({ iceTypes, onIceTypeSaved }: IceTypeEditorProps) 
   const [iceTypeSuccess, setIceTypeSuccess] = useState<string | null>(null);
   const [pendingImageFile, setPendingImageFile] = useState<File | null>(null);
 
+  useEffect(() => {
+    if (!createRequested) return;
+    setIceTypeDraft(EMPTY_ICE_TYPE);
+    setIceTypeError(null);
+    setIceTypeSuccess(null);
+    setPendingImageFile(null);
+    onCreateHandled?.();
+  }, [createRequested, onCreateHandled]);
+
   const filteredIceTypes = useMemo(
     () => iceTypes
       .filter((iceType) => matchesQuery(iceTypeQuery, [iceType.code, iceType.name, iceType.unit]))
       .filter((iceType) => matchesActiveFilter(iceType.is_active, iceTypeFilter)),
     [iceTypeFilter, iceTypeQuery, iceTypes],
   );
+
+  const activeCount = useMemo(() => iceTypes.filter((t) => t.is_active).length, [iceTypes]);
 
   function chooseIceType(iceType: IceTypeSetting) {
     setIceTypeDraft(toIceTypeDraft(iceType));
@@ -88,7 +137,6 @@ export function IceTypeEditor({ iceTypes, onIceTypeSaved }: IceTypeEditorProps) 
         is_active: iceTypeDraft.isActive,
       });
 
-      // หากเป็นการสร้างใหม่และมีไฟล์รูปค้างรอ ให้อัปโหลดอัตโนมัติ
       const fileToUpload = !iceTypeDraft.id ? pendingImageFile : null;
       let finalIceType = savedIceType;
 
@@ -98,7 +146,6 @@ export function IceTypeEditor({ iceTypes, onIceTypeSaved }: IceTypeEditorProps) 
           finalIceType = await updateIceTypeImagePath(savedIceType.id, imagePath);
           setPendingImageFile(null);
         } catch {
-          // อัปโหลดรูปไม่สำเร็จ แต่บันทึกชนิดน้ำแข็งสำเร็จแล้ว — แจ้งเตือนไม่สำเร็จแต่ยังเดินหน้า
           setIceTypeError('บันทึกชนิดน้ำแข็งสำเร็จ แต่อัปโหลดรูปไม่สำเร็จ กรุณาเพิ่มรูปใหม่ในหัวข้อรูปสินค้า');
         }
       }
@@ -122,125 +169,226 @@ export function IceTypeEditor({ iceTypes, onIceTypeSaved }: IceTypeEditorProps) 
   const iceTypeFilterLabel = filterLabel(iceTypeFilter);
 
   return (
-    <section className="reference-editor-panel">
-      <div className="reference-editor-panel__header">
-        <span>2</span>
-        <h2>จัดการชนิดน้ำแข็ง</h2>
-      </div>
+    <div className="ref-ice-types-container">
+      {/* Top Stats Cards Grid */}
+      <section className="ref-stats-grid" aria-label="สรุปชนิดน้ำแข็ง">
+        <article className="ref-stat-card">
+          <div className="ref-stat-card__icon ref-stat-card__icon--blue">
+            <Cube size={26} weight="fill" />
+          </div>
+          <div className="ref-stat-card__content">
+            <p>ชนิดน้ำแข็งทั้งหมด</p>
+            <div className="ref-stat-card__val">
+              <strong>{iceTypes.length}</strong>
+              <span>รายการ</span>
+            </div>
+          </div>
+        </article>
 
-      <div className="reference-editor-panel__body">
-        <div className="reference-editor-panel__column reference-editor-panel__column--list">
-          <div className="reference-toolbar">
-            <label className="reference-search-field">
-              <MagnifyingGlass aria-hidden="true" size={20} />
+        <article className="ref-stat-card">
+          <div className="ref-stat-card__icon ref-stat-card__icon--green">
+            <CheckCircle size={26} weight="fill" />
+          </div>
+          <div className="ref-stat-card__content">
+            <p>กำลังใช้งาน</p>
+            <div className="ref-stat-card__val">
+              <strong>{activeCount}</strong>
+              <span>รายการ</span>
+            </div>
+          </div>
+        </article>
+
+        <article className="ref-stat-card">
+          <div className="ref-stat-card__icon ref-stat-card__icon--purple">
+            <PauseCircle size={26} weight="fill" />
+          </div>
+          <div className="ref-stat-card__content">
+            <p>พักใช้งาน</p>
+            <div className="ref-stat-card__val">
+              <strong>{iceTypes.length - activeCount}</strong>
+              <span>รายการ</span>
+            </div>
+          </div>
+        </article>
+      </section>
+
+      {/* Split Layout */}
+      <div className="ref-split-layout">
+        {/* Left Column: Ice Type List */}
+        <div className="ref-left-panel">
+          <div className="ref-toolbar">
+            <div className="ref-search-input">
+              <MagnifyingGlass aria-hidden="true" size={18} />
               <input
                 onChange={(event) => setIceTypeQuery(event.target.value)}
-                placeholder="ค้นหาชนิดน้ำแข็ง"
+                placeholder="ค้นหาชื่อหรือรหัสชนิดน้ำแข็ง"
                 value={iceTypeQuery}
               />
-            </label>
+            </div>
             <button
               aria-label={`กรองชนิดน้ำแข็ง: ${iceTypeFilterLabel}`}
-              className={`reference-filter-button ${iceTypeFilter !== 'all' ? 'reference-filter-button--active' : ''}`}
+              className={`ref-filter-btn ${iceTypeFilter !== 'all' ? 'ref-filter-btn--active' : ''}`}
               onClick={() => setIceTypeFilter(nextFilter(iceTypeFilter))}
               title={`กรองชนิดน้ำแข็ง: ${iceTypeFilterLabel}`}
               type="button"
             >
-              <FunnelSimple size={20} />
-            </button>
-            <button
-              className="primary-button reference-add-button"
-              onClick={startNewIceType}
-              type="button"
-            >
-              <Plus size={18} weight="bold" />
-              เพิ่มชนิดน้ำแข็ง
+              <FunnelSimple size={18} />
+              <span>ตัวกรอง</span>
             </button>
           </div>
 
-          <div className="reference-list">
+          <div className="ref-item-list">
             {filteredIceTypes.map((iceType) => {
               const selected = iceTypeDraft.id === iceType.id;
               return (
                 <button
                   aria-current={selected ? 'true' : undefined}
-                  className={`reference-list-item ${selected ? 'reference-list-item--selected' : ''}`}
+                  className={`ref-ice-card ${selected ? 'ref-ice-card--selected' : ''}`}
                   key={iceType.id}
                   onClick={() => chooseIceType(iceType)}
                   type="button"
                 >
-                  <span className="reference-list-item__radio" aria-hidden="true">
-                    {selected ? <CheckCircle size={20} weight="fill" /> : <Circle size={20} />}
-                  </span>
-                  <span className="reference-list-item__body">
-                    <strong>{iceType.code} · {iceType.name}</strong>
-                    <small>{iceType.unit}</small>
-                  </span>
-                  <span className="reference-list-item__tags">
-                    <span className={`reference-pill ${iceType.is_active ? 'reference-pill--green' : 'reference-pill--gray'}`}>
-                      {iceType.is_active ? 'ใช้งาน' : 'พักใช้งาน'}
+                  <div className="ref-ice-card__radio">
+                    {selected ? (
+                      <CheckCircle size={20} weight="fill" className="ref-radio--selected" />
+                    ) : (
+                      <Circle size={20} className="ref-radio--unselected" />
+                    )}
+                  </div>
+
+                  <div className="ref-ice-card__thumb">
+                    <IceTypeThumbnail path={iceType.image_path} />
+                  </div>
+
+                  <div className="ref-ice-card__code">
+                    <span>{iceType.code}</span>
+                  </div>
+
+                  <div className="ref-ice-card__body">
+                    <strong>{iceType.name}</strong>
+                    <small>หน่วย: {iceType.unit}</small>
+                  </div>
+
+                  <div className="ref-ice-card__badge-wrap">
+                    <span className={`ref-pill ${iceType.is_active ? 'ref-pill--green' : 'ref-pill--amber'}`}>
+                      {iceType.is_active ? 'ใช้งาน' : 'ไม่ใช้งาน'}
                     </span>
-                  </span>
+                  </div>
+
+                  <div className="ref-ice-card__chevron">
+                    <CaretRight size={18} />
+                  </div>
                 </button>
               );
             })}
             {filteredIceTypes.length === 0 ? <p className="empty-text">ไม่พบชนิดน้ำแข็งตามคำค้นหรือเงื่อนไขที่เลือก</p> : null}
           </div>
 
-          <p className="reference-list__meta">
-            แสดง {filteredIceTypes.length === 0 ? 0 : 1}-{filteredIceTypes.length} จาก {iceTypes.length} รายการ
-          </p>
+          <div className="ref-pagination-footer">
+            <span className="ref-pagination-info">
+              แสดง {filteredIceTypes.length === 0 ? 0 : 1}-{filteredIceTypes.length} จาก {iceTypes.length} รายการ
+            </span>
+            <div className="ref-pagination-controls">
+              <button className="ref-page-btn" disabled type="button">&lt;</button>
+              <span className="ref-page-num ref-page-num--active">1</span>
+              <button className="ref-page-btn" disabled type="button">&gt;</button>
+            </div>
+          </div>
         </div>
 
-        <div className="reference-editor-panel__divider" aria-hidden="true" />
+        {/* Right Column: Ice Type Detail Form */}
+        <div className="ref-right-panel">
+          <form id="ice-type-details-form" onSubmit={handleSave}>
+            {/* Section 1: ข้อมูลพื้นฐาน */}
+            <div className="ref-section">
+              <div className="ref-section-title">
+                <h2>ข้อมูลพื้นฐาน</h2>
+              </div>
 
-        <div className="reference-editor-panel__column reference-editor-panel__column--form">
-          <div className="reference-form-heading">
-            <h3>เพิ่ม/แก้ไขชนิดน้ำแข็ง</h3>
-          </div>
-          <form className="reference-form" onSubmit={handleSave}>
-            <div className="field-grid field-grid--three">
-              <label>รหัส<input placeholder="เช่น 01, ICE-BLOCK" required value={iceTypeDraft.code} onChange={(event) => setIceTypeDraft({ ...iceTypeDraft, code: event.target.value })} /></label>
-              <label>ชื่อ<input placeholder="เช่น ถุงใสหลอดเล็ก" required value={iceTypeDraft.name} onChange={(event) => setIceTypeDraft({ ...iceTypeDraft, name: event.target.value })} /></label>
-              <label>หน่วย<input placeholder="เช่น ถุง" required value={iceTypeDraft.unit} onChange={(event) => setIceTypeDraft({ ...iceTypeDraft, unit: event.target.value })} /></label>
-            </div>
-            <label className="inline-check reference-checkbox">
-              <input checked={iceTypeDraft.isActive} onChange={(event) => setIceTypeDraft({ ...iceTypeDraft, isActive: event.target.checked })} type="checkbox" />
-              เปิดใช้งานชนิดนี้
-            </label>
-            <p className="reference-inline-note"><Info size={16} weight="fill" />รายการที่ไม่ได้ใช้แล้วให้พักใช้งาน ข้อมูลเก่ายังอยู่ในระบบ</p>
-            {iceTypeError ? <p className="error-text" role="alert">{iceTypeError}</p> : null}
-            {iceTypeSuccess ? <p aria-live="polite" className="success-text">{iceTypeSuccess}</p> : null}
-            <div className="reference-form__actions">
-              <button
-                className="secondary-button"
-                onClick={() => {
-                  if (iceTypeDraft.id) {
-                    const original = iceTypes.find((iceType) => iceType.id === iceTypeDraft.id);
-                    if (original) chooseIceType(original);
-                    return;
-                  }
-                  startNewIceType();
-                }}
-                type="button"
-              >
-                ยกเลิก
-              </button>
-              <button className="primary-button" disabled={savingIceType} type="submit">
-                {savingIceType ? 'กำลังบันทึก...' : 'บันทึกชนิดน้ำแข็ง'}
-              </button>
+              <div className="ref-form-grid ref-form-grid--three">
+                <div className="ref-form-group">
+                  <label>รหัส</label>
+                  <input
+                    placeholder="เช่น 04"
+                    required
+                    value={iceTypeDraft.code}
+                    onChange={(event) => setIceTypeDraft({ ...iceTypeDraft, code: event.target.value })}
+                  />
+                </div>
+                <div className="ref-form-group">
+                  <label>ชื่อชนิดน้ำแข็ง</label>
+                  <input
+                    placeholder="เช่น เปลือย (หลอดใหญ่)"
+                    required
+                    value={iceTypeDraft.name}
+                    onChange={(event) => setIceTypeDraft({ ...iceTypeDraft, name: event.target.value })}
+                  />
+                </div>
+                <div className="ref-form-group">
+                  <label>หน่วย</label>
+                  <input
+                    placeholder="เช่น ถุง"
+                    required
+                    value={iceTypeDraft.unit}
+                    onChange={(event) => setIceTypeDraft({ ...iceTypeDraft, unit: event.target.value })}
+                  />
+                </div>
+              </div>
+
+              <div className="ref-form-status-row">
+                <label className="ref-toggle-label">
+                  <input
+                    checked={iceTypeDraft.isActive}
+                    onChange={(event) => setIceTypeDraft({ ...iceTypeDraft, isActive: event.target.checked })}
+                    type="checkbox"
+                  />
+                  <span>เปิดใช้งานชนิดน้ำแข็งนี้</span>
+                </label>
+              </div>
             </div>
           </form>
 
+          {/* Section 2: รูปสินค้า */}
           <IceTypeImageEditor
             iceType={iceTypes.find((iceType) => iceType.id === iceTypeDraft.id) ?? null}
             onIceTypeSaved={onIceTypeSaved}
             onPendingFileChange={!iceTypeDraft.id ? setPendingImageFile : undefined}
             pendingFile={!iceTypeDraft.id ? pendingImageFile : undefined}
           />
+
+          {/* Section 3: ราคากลาง */}
           <IceTypePriceEditor iceType={iceTypes.find((iceType) => iceType.id === iceTypeDraft.id) ?? null} />
+
+          {iceTypeError ? <p className="error-text" role="alert">{iceTypeError}</p> : null}
+          {iceTypeSuccess ? <p aria-live="polite" className="success-text">{iceTypeSuccess}</p> : null}
+
+          {/* Bottom Actions Bar */}
+          <div className="ref-actions-bar">
+            <button
+              className="secondary-button"
+              onClick={() => {
+                if (iceTypeDraft.id) {
+                  const original = iceTypes.find((iceType) => iceType.id === iceTypeDraft.id);
+                  if (original) chooseIceType(original);
+                  return;
+                }
+                startNewIceType();
+              }}
+              type="button"
+            >
+              ยกเลิกการแก้ไข
+            </button>
+            <button
+              className="primary-button"
+              disabled={savingIceType}
+              form="ice-type-details-form"
+              type="submit"
+            >
+              {savingIceType ? 'กำลังบันทึก...' : 'บันทึกการเปลี่ยนแปลง'}
+            </button>
+          </div>
         </div>
       </div>
-    </section>
+    </div>
   );
 }

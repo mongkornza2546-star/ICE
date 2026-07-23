@@ -1,77 +1,77 @@
-# Handoff: Daily Work Session Architecture (1 Work Session per `service_date`) & Unified "งานวันนี้" Dashboard
+# Handoff: ICE Delivery System
 
-## Status
-- รวมการจัดการงานปัจจุบันไว้ที่หน้าหลัก **"งานวันนี้"**; รายการเดิมที่ backfill เป็น `special` จัดการได้เฉพาะจากส่วน **"รายการเดิมที่ต้องจัดการก่อนปิดสต๊อก"**
-- Migration `0042_daily_work_session_architecture.sql` และ `0043_daily_work_dashboard_and_cancellation.sql` พร้อมใช้งาน
-- ผลการทดสอบล่าสุด: Integration Tests **15/15**, Vitest UI/Component Tests **55/55**, และ `npm run build` ผ่าน (มี Vite chunk-size warning เดิม)
+## Status — 23 July 2026
 
----
+- Admin page **“ผู้ใช้และชนิดน้ำแข็ง”** redesigned with tabs, searchable lists, detail forms, image management, and reference-price history.
+- User settings continue to manage existing profiles only. Account creation is intentionally outside this client-side admin page.
+- Ice-type metadata, image, and price forms remain independent submit paths; saving a price or image does not resubmit metadata.
+- Daily work-session architecture from migrations `0042` and `0043` remains active and documented below.
+- Verification: DB tests **137/137**, UI tests **62/62 in 12 files**, production build passed. Build retains existing Vite chunk-size warning.
 
-## สิ่งที่พัฒนาสำเร็จใน Phase นี้ (Implemented Features)
+## Latest rework: admin reference settings
 
-### 1. โครงสร้างฐานข้อมูลและการจัดการ Session (Migrations `0042` & `0043`)
-- **Upgrade-safe classification**: เพิ่ม `round_type` (`'daily'` | `'special'`) โดย backfill รอบเก่าทั้งหมดเป็น `special` รองรับฐานข้อมูลเดิมที่มีหลายรอบต่อวัน
-- **System-name invariant**: `daily` ใช้ชื่อ `"งานประจำวัน"` เท่านั้น
-- **คำสั่งซื้อโรงงานครั้งแรกของวัน**: `record_factory_order` สร้าง Daily Session อัตโนมัติและเปลี่ยนสถานะเป็น "กำลังทำงาน" โดยไม่มีปุ่มเปิดงานด้วยตนเอง
-- **RPC `get_daily_work_dashboard(service_date)`**: คืนค่าข้อมูล Dashboard รวม:
-  - `session`: สถานะงาน (`not_started`, `in_progress`, `completed`, `cancelled`), เวลาเริ่ม/ปิด/ยกเลิกงาน และผู้ทำรายการ
-  - `members`: รายชื่อพนักงานแยกตามบทบาท (`round_lead` แสดงว่า `หัวหน้างาน`) พร้อมเวลากิจกรรมล่าสุดประเภทต่างๆ
-  - `deliverySummary`: จำนวนรายการส่ง active, จำนวนร้านที่ส่งจริง, ปัญหาที่ถูกบันทึก
-  - `salesSummary`: มูลค่ายอดขายสุทธิ (THB) และยอดขายแยกตามชนิดน้ำแข็ง (สุทธิ ไม่นับ void/cancelled)
-  - `cancellationState`: ตรวจสอบสิทธิ์ Admin และสถานะบล็อกเกอร์การยกเลิกงาน
-- **RPC `cancel_daily_work_session(service_date, reason)`**:
-  - อนุญาตเฉพาะสิทธิ์ `admin` เท่านั้น
-  - ตรวจสอบรายการย้อนหลัง รวมถึง **factory order ที่ยัง active**; ต้องยกเลิกคำสั่งโรงงานผ่าน `cancel_factory_order` ก่อนจึงจะยกเลิกงานว่างได้
-  - งานว่างที่ยกเลิกได้จะบันทึกเหตุผล ผู้ยกเลิก เวลา และ audit log พร้อมเปิดให้คำสั่งโรงงานถัดไปสร้าง session ใหม่ในวันเดียวกันได้
-- **RPC `get_daily_stock_close_state`**:
-  - ปรับปรุง query ให้นับเฉพาะรายการ `special` เดิมที่เป็นบล็อกเกอร์; Daily Session ที่เปิดอยู่ไม่บล็อกการปิดวัน และผู้ใช้จัดการรายการเดิมได้จากหน้าสต๊อก
+### User profiles
 
-### 2. การปรับปรุง UI & Navigation
-- **เมนูหลักและคำศัพท์**:
-  - เปลี่ยนชื่อเมนูหลักเป็น **`งานวันนี้`**
-  - ตัดเมนูและหน้า `ติดตามงานวันนี้` (`manager`) ออกจากระบบ
-  - งานปัจจุบันไม่ใช้คำสั่งเปิด/ปิด/เลือกรอบ; กรณีข้อมูลเดิมจะแสดงเป็น **รายการเดิม** เฉพาะเมื่อยังค้างอยู่
-  - แสดงชื่อบทบาท `round_lead` ใน UI ว่า **`หัวหน้างาน`**
-- **Dashboard งานวันนี้ (`ManagerDashboard.tsx`)**:
-  - การ์ดสถานะงาน: แสดง `ยังไม่เริ่มงาน`, `กำลังทำงาน`, `ปิดงานแล้ว`, `ยกเลิกแล้ว`
-  - หากยังไม่เริ่มงาน แสดงข้อความ *"งานจะเริ่มอัตโนมัติเมื่อบันทึกคำสั่งจากโรงงานครั้งแรก"* (ไม่มีปุ่มเปิดงาน)
-  - เมนูเพิ่มเติม (Three-dots) สำหรับ Admin บนการ์ดสถานะ เพื่อเรียก **`ยกเลิกงานวันนี้`**
-  - แสดงสมาชิกทีมปฏิบัติงานพร้อมประเภทและเวลากิจกรรมล่าสุด
-  - แสดง KPI รายการส่งจริง ร้านที่ส่งจริง ปัญหา มูลค่ายอดขายสุทธิ และยอดขายแยกชนิดน้ำแข็ง
-  - โหลดข้อมูลใหม่ทุกครั้งที่กลับเข้าหน้า เพื่อไม่ให้สถานะ/KPI ค้างหลังทำรายการจากหน้าอื่น
-  - ตัด `ร้านทั้งหมด`, `ยังไม่ส่ง`, progress bar จากร้านทั้งหมด และข้อความ `ค้าง ... ร้าน` ออกจาก UI
-- **การปิดสต๊อกและจบงานสิ้นวัน (`ManagerStockControl.tsx`)**:
-  - ปุ่มยืนยันสุดท้ายปรับเป็น **`ปิดสต๊อกและจบงานวันนี้`**
-  - `close_daily_stock_v2` ปิด Daily Session ภายใน transaction เดียวกับการปิดสต๊อก
+- Search and active-state filtering remain available.
+- Admins can update display name, nickname, phone, role, avatar, active state, and courier work-site assignments.
+- Current user cannot change their own role or active state.
+- No “เพิ่มผู้ใช้” or “ลบผู้ใช้” affordance is shown because no secure account-provisioning or hard-delete flow exists here.
 
----
+### Ice types
 
-## ข้อมูลทางเทคนิคและ Testing
+- Header action starts a new ice type only while the ice-type tab is active.
+- Summary cards show total, active, and inactive counts from loaded ice-type data.
+- Unit remains free text, matching the database `text` contract and existing non-Thai values.
+- Metadata form is separate from image and price forms. External metadata submit button targets `ice-type-details-form` explicitly.
+- Price status uses `is_active`, `valid_from`, and `valid_to`: `พักใช้งาน`, `กำหนดไว้`, `ปัจจุบัน`, or `สิ้นสุดแล้ว`.
+- Non-functional price edit/menu buttons were removed.
 
-- **Migrations**:
-  - `supabase/migrations/0042_daily_work_session_architecture.sql`
-  - `supabase/migrations/0043_daily_work_dashboard_and_cancellation.sql`
-- **Integration Test Suite**:
-  - `tests/daily-work-session.integration.test.mjs` (15 tests passed)
-- **Vitest Test Suite**:
-  - 11 test files (55 tests passed)
-- **Verification Commands**:
-  - Integration Tests: `node --test tests/daily-work-session.integration.test.mjs` (PASSED)
-  - Vitest Suite: `npx vitest run` (PASSED)
-  - Production Build: `npm run build` (PASSED; มี Vite chunk-size warning)
+### Key files
 
----
+- [`src/AdminReferenceSettings.tsx`](src/AdminReferenceSettings.tsx)
+- [`src/features/admin-reference-settings/components/UserEditor.tsx`](src/features/admin-reference-settings/components/UserEditor.tsx)
+- [`src/features/admin-reference-settings/components/IceTypeEditor.tsx`](src/features/admin-reference-settings/components/IceTypeEditor.tsx)
+- [`src/features/admin-reference-settings/components/IceTypeImageEditor.tsx`](src/features/admin-reference-settings/components/IceTypeImageEditor.tsx)
+- [`src/features/admin-reference-settings/components/IceTypePriceEditor.tsx`](src/features/admin-reference-settings/components/IceTypePriceEditor.tsx)
+- [`tests/admin-reference-settings-editor.test.tsx`](tests/admin-reference-settings-editor.test.tsx)
 
-## ขั้นตอนการใช้งานและทดสอบใน Production
+## Daily work-session architecture
 
-1. **เริ่มต้นวันใหม่**:
-   - เมื่อเริ่มต้นวันใหม่ ระบบจะขึ้นสถานะ **`ยังไม่เริ่มงาน`**
-2. **เริ่มงานอัตโนมัติ**:
-   - บันทึกคำสั่งโรงงานครั้งแรกในหน้า `สั่งน้ำแข็งจากโรงงาน` ระบบจะสร้าง Daily Work Session ให้อัตโนมัติ และเปลี่ยนสถานะเป็น **`กำลังทำงาน`**
-3. **การปฏิบัติงานประจำวัน**:
-   - พนักงานและหัวหน้างานบันทึกการส่งน้ำแข็ง และโอนสต๊อกตามปกติ
-   - เมื่อกลับหน้าแดชบอร์ด **`งานวันนี้`** ระบบจะโหลดข้อมูลล่าสุดของยอดขายสุทธิ จำนวนร้านที่มีการส่งจริง และกิจกรรมล่าสุดของพนักงาน
-4. **การยกเลิกงาน (กรณีเปิดงานผิดโดยไม่มีธุรกรรม)**:
-   - หากคำสั่งโรงงานแรกบันทึกผิด ให้ยกเลิกคำสั่งนั้นจากหน้า `สั่งน้ำแข็งจากโรงงาน` ก่อน แล้ว Admin จึงกด **`ยกเลิกงานวันนี้`** พร้อมใส่เหตุผลได้
-5. **ปิดสต๊อกและจบงานสิ้นวัน**:
-   - ตรวจนับสต๊อกและกดปุ่ม **`ปิดสต๊อกและจบงานวันนี้`** ในหน้า `โอน / ตรวจ / ปิดสต๊อก` ระบบจะปิดสต๊อก รวบรวมน้ำแข็งส่งคืนโรงงาน และปิดงานประจำวันใน transaction เดียวกัน
+### Database and session lifecycle
+
+- `round_type` classifies rounds as `daily` or `special`; legacy rounds are backfilled as `special`.
+- Daily rounds use system name `งานประจำวัน`.
+- First factory order creates the daily session automatically and moves it to in-progress state.
+- `get_daily_work_dashboard(service_date)` returns session, team members, delivery summary, net sales summary, and cancellation state.
+- `cancel_daily_work_session(service_date, reason)` is admin-only, requires active factory orders to be reversed first, and records audit data.
+- `get_daily_stock_close_state` treats only open legacy `special` rounds as blockers; active daily session does not block day close.
+- `close_daily_stock_v2` closes the daily session in the same transaction as stock close.
+
+### UI behavior
+
+- Main manager view is **“งานวันนี้”**.
+- Work begins automatically after first factory order; no manual open-work button exists.
+- Dashboard refreshes when revisited and shows session status, active members, deliveries, issues, and net sales.
+- Admin can cancel an empty work session after reversing its factory order.
+- Final stock action is **“ปิดสต๊อกและจบงานวันนี้”**.
+
+### Related files
+
+- [`supabase/migrations/0042_daily_work_session_architecture.sql`](supabase/migrations/0042_daily_work_session_architecture.sql)
+- [`supabase/migrations/0043_daily_work_dashboard_and_cancellation.sql`](supabase/migrations/0043_daily_work_dashboard_and_cancellation.sql)
+- [`tests/daily-work-session.integration.test.mjs`](tests/daily-work-session.integration.test.mjs)
+
+## Verification commands
+
+```bash
+npm test
+npm run build
+```
+
+`npx vitest run` executes UI tests only; use `npm test` for DB and UI suites together.
+
+## Remaining work
+
+1. Perform browser QA at desktop, tablet, and mobile widths using production-like data.
+2. Add server-side account provisioning before exposing an add-user action.
+3. Address existing Vite chunk-size warning through route-level code splitting when performance work is scheduled.

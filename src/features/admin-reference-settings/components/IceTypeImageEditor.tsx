@@ -1,5 +1,5 @@
 import { type ChangeEvent, type FormEvent, useEffect, useState } from 'react';
-import { Info, ImageSquare, Trash, UploadSimple } from '@phosphor-icons/react';
+import { ImageSquare, Trash, UploadSimple } from '@phosphor-icons/react';
 import { ALLOWED_ICE_TYPE_IMAGE_TYPES, MAX_ICE_TYPE_IMAGE_SIZE, type IceTypeSetting } from '../types';
 import {
   getErrorMessage,
@@ -190,77 +190,107 @@ export function IceTypeImageEditor({ iceType, onIceTypeSaved, onPendingFileChang
   }, [pendingFile]);
 
   return (
-    <div className="iceType-image-editor">
-      <div className="reference-form-heading"><h3>รูปสินค้า</h3></div>
+    <div className="ref-section">
+      <div className="ref-section-title">
+        <h3>รูปสินค้า</h3>
+      </div>
       {iceType ? (
-        <form className="reference-form" onSubmit={saveIceTypeImage}>
-          <div className="reference-iceType-preview">
-            {iceTypePreviewSrc ? <img alt={iceType.name} className="reference-iceType-preview__image" src={iceTypePreviewSrc} /> : (
-              <div className="reference-iceType-preview__placeholder"><ImageSquare aria-hidden="true" size={42} /></div>
-            )}
-            <div className="reference-iceType-preview__meta">
-              <strong>{iceType.code} · {iceType.name}</strong>
-              <small>{iceType.image_path ? 'ชนิดน้ำแข็งนี้มีรูปในระบบแล้ว' : 'ชนิดน้ำแข็งนี้ยังไม่มีรูปในระบบ'}</small>
-              {iceTypeUploadFile ? <small>ไฟล์ใหม่: {iceTypeUploadFile.name}</small> : null}
-              {iceTypePreviewLoading && !iceTypeUploadFile ? <small>กำลังโหลดรูปตัวอย่าง...</small> : null}
+        <form className="ref-image-editor-body" onSubmit={saveIceTypeImage}>
+          <div className="ref-image-editor-grid">
+            {/* Left side: Image preview + controls */}
+            <div className="ref-image-preview-card">
+              <div className="ref-image-preview-box">
+                {iceTypePreviewSrc ? (
+                  <img alt={iceType.name} src={iceTypePreviewSrc} />
+                ) : (
+                  <div className="ref-image-placeholder">
+                    <ImageSquare size={36} />
+                  </div>
+                )}
+              </div>
+              <div className="ref-image-meta">
+                <span className="ref-image-filename">
+                  {iceTypeUploadFile ? iceTypeUploadFile.name : (iceType.image_path ? `${iceType.code.toLowerCase()}-${iceType.name.toLowerCase().replace(/\s+/g, '-')}.jpg` : 'ไม่มีรูปในระบบ')}
+                </span>
+                {iceTypeUploadFile ? (
+                  <span className="ref-image-filesize">{(iceTypeUploadFile.size / 1024).toFixed(0)} KB</span>
+                ) : iceTypePreviewLoading ? (
+                  <span className="ref-image-filesize">กำลังโหลด...</span>
+                ) : null}
+              </div>
+
+              <div className="ref-image-preview-actions">
+                <label className="secondary-button ref-upload-btn">
+                  <UploadSimple size={16} />
+                  <span>อัปโหลดใหม่</span>
+                  <input accept="image/jpeg,image/png,image/webp" onChange={chooseIceTypeImageFile} type="file" />
+                </label>
+                <button
+                  className="ref-trash-btn"
+                  disabled={savingIceTypeImage || (!iceType.image_path && !iceTypeUploadFile)}
+                  onClick={() => {
+                    if (iceTypeUploadFile) {
+                      setIceTypeUploadFile(null);
+                    } else {
+                      void removeIceTypeImage();
+                    }
+                  }}
+                  title="ลบรูป"
+                  type="button"
+                >
+                  <Trash size={16} />
+                </button>
+              </div>
             </div>
+
+            {/* Right side: Drag & Drop upload box */}
+            <label className="ref-dropzone">
+              <UploadSimple size={28} className="ref-dropzone__icon" />
+              <p>คลิกหรือลากไฟล์มาวางที่นี่</p>
+              <small>รองรับ JPG, PNG, WEBP ขนาดไม่เกิน 5 MB</small>
+              <input accept="image/jpeg,image/png,image/webp" onChange={chooseIceTypeImageFile} type="file" />
+            </label>
           </div>
-          <label className="secondary-button reference-upload-button">
-            <UploadSimple size={18} />
-            <span>{iceType.image_path ? 'เลือกรูปใหม่' : 'เลือกรูป'}</span>
-            <input accept="image/jpeg,image/png,image/webp" onChange={chooseIceTypeImageFile} type="file" />
-          </label>
-          <p className="reference-inline-note"><Info size={16} weight="fill" />รองรับ JPG, PNG, WEBP และขนาดไม่เกิน 5 MB</p>
+
           {iceTypeImageError ? <p className="error-text" role="alert">{iceTypeImageError}</p> : null}
           {iceTypeImageSuccess ? <p aria-live="polite" className="success-text">{iceTypeImageSuccess}</p> : null}
-          <div className="reference-form__actions">
-            {iceTypeUploadFile ? <button className="secondary-button" onClick={() => setIceTypeUploadFile(null)} type="button">ยกเลิกรูปใหม่</button> : null}
-            <button className="ghost-button" disabled={savingIceTypeImage || !iceType.image_path} onClick={() => void removeIceTypeImage()} type="button"><Trash size={18} /><span>ลบรูป</span></button>
-            <button className="primary-button" disabled={savingIceTypeImage || !iceTypeUploadFile} type="submit">{savingIceTypeImage ? 'กำลังบันทึก...' : 'บันทึกรูปสินค้า'}</button>
-          </div>
-        </form>
-      ) : (
-        /* โหมดสร้างใหม่: เลือกรูปล่วงหน้าได้ รูปจะอัปโหลดพร้อมกับบันทึกชนิดน้ำแข็ง */
-        <div className="reference-form">
-          <div className="reference-iceType-preview">
-            {pendingPreviewUrl ? (
-              <img alt="ตัวอย่างรูปสินค้า" className="reference-iceType-preview__image" src={pendingPreviewUrl} />
-            ) : (
-              <div className="reference-iceType-preview__placeholder"><ImageSquare aria-hidden="true" size={42} /></div>
-            )}
-            <div className="reference-iceType-preview__meta">
-              {pendingFile ? (
-                <>
-                  <strong>ไฟล์ที่เลือก</strong>
-                  <small>{pendingFile.name}</small>
-                  <small>รูปจะถูกอัปโหลดพร้อมกับการบันทึกชนิดน้ำแข็ง</small>
-                </>
-              ) : (
-                <>
-                  <strong>ยังไม่มีรูป</strong>
-                  <small>เลือกรูปได้เลย จะอัปโหลดพร้อมกับการบันทึก</small>
-                </>
-              )}
-            </div>
-          </div>
-          <label className="secondary-button reference-upload-button">
-            <UploadSimple size={18} />
-            <span>{pendingFile ? 'เปลี่ยนรูป' : 'เลือกรูป'}</span>
-            <input accept="image/jpeg,image/png,image/webp" onChange={chooseIceTypeImageFile} type="file" />
-          </label>
-          <p className="reference-inline-note"><Info size={16} weight="fill" />รองรับ JPG, PNG, WEBP และขนาดไม่เกิน 5 MB</p>
-          {iceTypeImageError ? <p className="error-text" role="alert">{iceTypeImageError}</p> : null}
-          {pendingFile ? (
-            <div className="reference-form__actions">
-              <button
-                className="secondary-button"
-                onClick={() => { if (onPendingFileChange) onPendingFileChange(null); setIceTypeImageError(null); }}
-                type="button"
-              >
-                ยกเลิกรูป
+          {iceTypeUploadFile ? (
+            <div className="ref-image-submit-row">
+              <button className="primary-button" disabled={savingIceTypeImage} type="submit">
+                {savingIceTypeImage ? 'กำลังบันทึก...' : 'บันทึกรูปสินค้าใหม่'}
               </button>
             </div>
           ) : null}
+        </form>
+      ) : (
+        /* New mode */
+        <div className="ref-image-editor-body">
+          <div className="ref-image-editor-grid">
+            <div className="ref-image-preview-card">
+              <div className="ref-image-preview-box">
+                {pendingPreviewUrl ? (
+                  <img alt="ตัวอย่างรูปสินค้า" src={pendingPreviewUrl} />
+                ) : (
+                  <div className="ref-image-placeholder">
+                    <ImageSquare size={36} />
+                  </div>
+                )}
+              </div>
+              <div className="ref-image-meta">
+                <span className="ref-image-filename">
+                  {pendingFile ? pendingFile.name : 'ยังไม่เลือกรูป'}
+                </span>
+              </div>
+            </div>
+
+            <label className="ref-dropzone">
+              <UploadSimple size={28} className="ref-dropzone__icon" />
+              <p>คลิกหรือลากไฟล์มาวางที่นี่</p>
+              <small>รองรับ JPG, PNG, WEBP ขนาดไม่เกิน 5 MB</small>
+              <input accept="image/jpeg,image/png,image/webp" onChange={chooseIceTypeImageFile} type="file" />
+            </label>
+          </div>
+          {iceTypeImageError ? <p className="error-text" role="alert">{iceTypeImageError}</p> : null}
         </div>
       )}
     </div>

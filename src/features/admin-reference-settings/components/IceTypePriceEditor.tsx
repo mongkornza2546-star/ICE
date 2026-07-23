@@ -1,9 +1,8 @@
 import { type FormEvent, useEffect, useState } from 'react';
-import { CurrencyDollar, Plus, Calendar } from '@phosphor-icons/react';
+import { Plus } from '@phosphor-icons/react';
 import type { IceTypePriceSetting, IceTypeOption } from '../../../types/app';
 import { toBangkokDateString } from '../../../lib/serviceDate';
 import { loadIceTypePrices, saveIceTypePrice, getErrorMessage } from '../adminReferenceSettingsService';
-
 
 interface IceTypePriceEditorProps {
   iceType: IceTypeOption | null;
@@ -80,101 +79,134 @@ export function IceTypePriceEditor({ iceType }: IceTypePriceEditorProps) {
     }
   }
 
+  function formatDateDisplay(dateStr: string | null) {
+    if (!dateStr) return 'ไม่มีกำหนด';
+    const parts = dateStr.split('-');
+    if (parts.length === 3) {
+      return `${parts[2]}/${parts[1]}/${parts[0]}`;
+    }
+    return dateStr;
+  }
+
+  const todayStr = toBangkokDateString();
+
   return (
-    <section className="ice-type-price-editor" aria-label="ราคากลางของชนิดน้ำแข็งที่เลือก">
-      <div className="reference-form-heading ice-type-price-editor__heading">
-        <span><CurrencyDollar size={22} weight="bold" /></span>
-        <div>
-          <h3>ราคากลาง</h3>
-          <p>{iceType ? `${iceType.code} · ${iceType.name}` : 'บันทึกชนิดน้ำแข็งก่อนจึงจะกำหนดราคาได้'}</p>
-        </div>
+    <div className="ref-section">
+      <div className="ref-section-title">
+        <h3>ราคากลาง</h3>
+        <p>กำหนดช่วงราคากลางสำหรับชนิดน้ำแข็งนี้</p>
       </div>
 
       {!iceType ? (
         <p className="empty-text">บันทึกชนิดน้ำแข็งก่อน แล้วจึงเพิ่มราคากลางได้</p>
       ) : (
-        <div className="ice-type-price-editor__content">
-          <div className="price-history-section">
-            <h4><Calendar size={18} /> ประวัติราคากลาง</h4>
-
-            {loading ? (
-              <p className="empty-text">กำลังโหลดราคากลาง...</p>
-            ) : prices.length === 0 ? (
-              <p className="empty-text">ยังไม่มีการตั้งราคากลางสำหรับชนิดน้ำแข็งนี้</p>
-            ) : (
-              <table className="data-table price-history-table">
+        <div className="ref-price-container">
+          {/* Price History Table */}
+          {loading ? (
+            <p className="empty-text">กำลังโหลดราคากลาง...</p>
+          ) : prices.length === 0 ? (
+            <p className="empty-text">ยังไม่มีการตั้งราคากลางสำหรับชนิดน้ำแข็งนี้</p>
+          ) : (
+            <div className="ref-table-wrapper">
+              <table className="ref-price-table">
                 <thead>
                   <tr>
-                    <th>ราคา/หน่วย</th>
-                    <th>เริ่มมีผล</th>
-                    <th>สิ้นสุด</th>
+                    <th>ราคากลางต่อ{iceType.unit} (บาท)</th>
+                    <th>วันที่เริ่มมีผล</th>
+                    <th>วันที่สิ้นสุด</th>
+                    <th>สถานะ</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {prices.map((p) => (
-                    <tr key={p.id}>
-                      <td><strong>฿{p.unit_price.toFixed(2)}</strong> /{iceType.unit}</td>
-                      <td>{p.valid_from}</td>
-                      <td>{p.valid_to ?? 'ปัจจุบัน'}</td>
-                    </tr>
-                  ))}
+                  {prices.map((p) => {
+                    const isCurrent = p.is_active
+                      && p.valid_from <= todayStr
+                      && (!p.valid_to || p.valid_to >= todayStr);
+                    const statusLabel = !p.is_active
+                      ? 'พักใช้งาน'
+                      : p.valid_from > todayStr
+                        ? 'กำหนดไว้'
+                        : isCurrent
+                          ? 'ปัจจุบัน'
+                          : 'สิ้นสุดแล้ว';
+                    return (
+                      <tr key={p.id}>
+                        <td><strong>฿{p.unit_price.toFixed(2)}</strong></td>
+                        <td>{formatDateDisplay(p.valid_from)}</td>
+                        <td>{formatDateDisplay(p.valid_to)}</td>
+                        <td>
+                          <span className={`ref-pill ${isCurrent ? 'ref-pill--green' : 'ref-pill--gray'}`}>
+                            {statusLabel}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
-            )}
-          </div>
+            </div>
+          )}
 
-          <div>
+          {/* Add New Price Period Card */}
+          <div className="ref-add-price-card">
             <h4>เพิ่มช่วงราคากลางใหม่</h4>
-            <p className="muted ice-type-price-editor__description">
-              ราคาใหม่จะถูกนำไปใช้อัตโนมัติเมื่อสร้างรายการส่งในวันธุรกิจที่ตรงกับช่วงเวลาที่กำหนด
-            </p>
 
-            <form className="reference-form" onSubmit={handleSave}>
-              <div className="field-grid">
-                <label>
-                  ราคากลางต่อ{iceType.unit} (บาท)
-                  <input
-                    min="0.01"
-                    onChange={(e) => setUnitPrice(e.target.value)}
-                    placeholder="เช่น 40.00"
-                    required
-                    step="0.01"
-                    type="number"
-                    value={unitPrice}
-                  />
-                </label>
-                <label>
-                  วันที่เริ่มมีผล (Valid From)
+            <form className="ref-add-price-form" onSubmit={handleSave}>
+              <div className="ref-add-price-grid">
+                <div className="ref-form-group">
+                  <label>
+                    ราคากลางต่อ{iceType.unit} (บาท)
+                    <input
+                      min="0.01"
+                      onChange={(e) => setUnitPrice(e.target.value)}
+                      placeholder="เช่น 40.00"
+                      required
+                      step="0.01"
+                      type="number"
+                      value={unitPrice}
+                    />
+                  </label>
+                </div>
+
+                <div className="ref-form-group">
+                  <label>วันที่เริ่มมีผล</label>
                   <input
                     onChange={(e) => setValidFrom(e.target.value)}
                     required
                     type="date"
                     value={validFrom}
                   />
-                </label>
-                <label>
-                  วันที่สิ้นสุด (Valid To - ไม่บังคับ)
+                </div>
+
+                <div className="ref-form-group">
+                  <label>วันที่สิ้นสุด (ไม่บังคับ)</label>
                   <input
                     onChange={(e) => setValidTo(e.target.value)}
+                    placeholder="ไม่มีกำหนด"
                     type="date"
                     value={validTo}
                   />
-                </label>
+                </div>
+
+                <div className="ref-form-group ref-form-group--btn">
+                  <button
+                    className="primary-button ref-add-price-btn"
+                    disabled={saving}
+                    type="submit"
+                    aria-label="บันทึกราคากลางใหม่"
+                  >
+                    <Plus size={16} weight="bold" />
+                    <span>{saving ? 'กำลังบันทึก...' : 'เพิ่มช่วงราคา'}</span>
+                  </button>
+                </div>
               </div>
 
               {error ? <p className="error-text" role="alert">{error}</p> : null}
               {success ? <p className="success-text" role="polite">{success}</p> : null}
-
-              <div className="reference-form__actions">
-                <button className="primary-button" disabled={saving} type="submit">
-                  <Plus size={18} weight="bold" />
-                  {saving ? 'กำลังบันทึก...' : 'บันทึกราคากลางใหม่'}
-                </button>
-              </div>
             </form>
           </div>
         </div>
       )}
-    </section>
+    </div>
   );
 }

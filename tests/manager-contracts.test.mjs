@@ -184,6 +184,7 @@ test('admin reference settings manage existing profiles and ice types without cr
   assert.match(service, /profile\.role !== 'admin'/);
   assert.match(component, /<UserEditor/);
   assert.doesNotMatch(component, /auth\.admin|signUp\(/);
+  assert.doesNotMatch(component, /เพิ่มผู้ใช้/);
   assert.match(service, /client\.rpc\('save_ice_type'/);
   assert.match(reviewFixMigration, /An ice type with stock on an open service day cannot be deactivated/);
   assert.match(reviewFixMigration, /drop policy if exists "admins update ice types"/);
