@@ -1,6 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { AdminReferenceSettings } from '../src/AdminReferenceSettings';
 import { IceTypeEditor } from '../src/features/admin-reference-settings/components/IceTypeEditor';
 import * as service from '../src/features/admin-reference-settings/adminReferenceSettingsService';
 import type { IceTypeSetting } from '../src/features/admin-reference-settings/types';
@@ -10,6 +11,7 @@ vi.mock('../src/features/admin-reference-settings/adminReferenceSettingsService'
   return {
     ...actual,
     getIceTypeImageSignedUrl: vi.fn(),
+    loadAdminSettings: vi.fn(),
     loadIceTypePrices: vi.fn(),
     saveIceType: vi.fn(),
     saveIceTypePrice: vi.fn(),
@@ -53,5 +55,29 @@ describe('admin reference settings editor integration', () => {
 
     await waitFor(() => expect(service.saveIceTypePrice).toHaveBeenCalledOnce());
     expect(service.saveIceType).not.toHaveBeenCalled();
+  });
+
+  it('opens the ice-type preview directly and never loads remote settings', async () => {
+    render(
+      <AdminReferenceSettings
+        initialTab="ice_types"
+        previewData={{
+          iceTypes: [iceType],
+          prices: [{
+            id: 'preview-price',
+            ice_type_id: iceType.id,
+            unit_price: 60,
+            valid_from: '2026-07-24',
+            valid_to: null,
+            is_active: true,
+          }],
+        }}
+      />,
+    );
+
+    expect(await screen.findByRole('heading', { name: 'รายการชนิดน้ำแข็ง' })).toBeTruthy();
+    expect(await screen.findByText('฿60.00')).toBeTruthy();
+    expect(service.loadAdminSettings).not.toHaveBeenCalled();
+    expect(service.loadIceTypePrices).not.toHaveBeenCalled();
   });
 });

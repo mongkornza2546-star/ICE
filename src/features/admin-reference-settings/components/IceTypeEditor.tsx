@@ -19,12 +19,15 @@ import {
 } from '../referenceEditorFilters';
 import { IceTypeImageEditor } from './IceTypeImageEditor';
 import { IceTypePriceEditor } from './IceTypePriceEditor';
+import type { IceTypePriceSetting } from '../../../types/app';
 
 interface IceTypeEditorProps {
   iceTypes: IceTypeSetting[];
   onIceTypeSaved: (savedIceType: IceTypeSetting) => void;
   createRequested?: boolean;
   onCreateHandled?: () => void;
+  previewPrices?: IceTypePriceSetting[];
+  readOnly?: boolean;
 }
 
 function toIceTypeDraft(iceType: IceTypeSetting): IceTypeDraft {
@@ -71,6 +74,8 @@ export function IceTypeEditor({
   onIceTypeSaved,
   createRequested = false,
   onCreateHandled,
+  previewPrices,
+  readOnly = false,
 }: IceTypeEditorProps) {
   const [iceTypeDraft, setIceTypeDraft] = useState<IceTypeDraft>(() => (
     iceTypes.length > 0 ? toIceTypeDraft(iceTypes[0]) : EMPTY_ICE_TYPE
@@ -116,6 +121,10 @@ export function IceTypeEditor({
 
   async function handleSave(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (readOnly) {
+      setIceTypeError('โหมดตัวอย่างไม่บันทึกข้อมูล');
+      return;
+    }
 
     const code = iceTypeDraft.code.trim();
     const name = iceTypeDraft.name.trim();
@@ -216,6 +225,7 @@ export function IceTypeEditor({
       <div className="ref-split-layout">
         {/* Left Column: Ice Type List */}
         <div className="ref-left-panel">
+          <h2 className="ref-list-heading">รายการชนิดน้ำแข็ง</h2>
           <div className="ref-toolbar">
             <div className="ref-search-input">
               <MagnifyingGlass aria-hidden="true" size={18} />
@@ -302,7 +312,7 @@ export function IceTypeEditor({
             {/* Section 1: ข้อมูลพื้นฐาน */}
             <div className="ref-section">
               <div className="ref-section-title">
-                <h2>ข้อมูลพื้นฐาน</h2>
+                <h2><span className="ref-section-title__index">A.</span> ข้อมูลพื้นฐาน</h2>
               </div>
 
               <div className="ref-form-grid ref-form-grid--three">
@@ -354,10 +364,15 @@ export function IceTypeEditor({
             onIceTypeSaved={onIceTypeSaved}
             onPendingFileChange={!iceTypeDraft.id ? setPendingImageFile : undefined}
             pendingFile={!iceTypeDraft.id ? pendingImageFile : undefined}
+            readOnly={readOnly}
           />
 
           {/* Section 3: ราคากลาง */}
-          <IceTypePriceEditor iceType={iceTypes.find((iceType) => iceType.id === iceTypeDraft.id) ?? null} />
+          <IceTypePriceEditor
+            iceType={iceTypes.find((iceType) => iceType.id === iceTypeDraft.id) ?? null}
+            previewPrices={previewPrices}
+            readOnly={readOnly}
+          />
 
           {iceTypeError ? <p className="error-text" role="alert">{iceTypeError}</p> : null}
           {iceTypeSuccess ? <p aria-live="polite" className="success-text">{iceTypeSuccess}</p> : null}

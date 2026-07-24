@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   ClipboardText,
+  Bell,
   CalendarBlank,
   CaretDown,
   ClockCounterClockwise,
@@ -55,7 +56,8 @@ export function AdminLayout({
   signOutDisabled?: boolean;
   children: ReactNode;
 }) {
-  const [menuOpen, setMenuOpen] = useState(false);
+  const [isDesktopLayout, setIsDesktopLayout] = useState(() => window.innerWidth >= 901);
+  const [navigationExpanded, setNavigationExpanded] = useState(() => window.innerWidth >= 901);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const today = new Intl.DateTimeFormat('th-TH', {
     day: 'numeric',
@@ -64,19 +66,29 @@ export function AdminLayout({
   }).format(new Date());
 
   useEffect(() => {
-    if (!menuOpen) return undefined;
+    const handleLayoutChange = () => {
+      const nextIsDesktop = window.innerWidth >= 901;
+      setIsDesktopLayout(nextIsDesktop);
+      setNavigationExpanded(nextIsDesktop);
+    };
+    window.addEventListener('resize', handleLayoutChange);
+    return () => window.removeEventListener('resize', handleLayoutChange);
+  }, []);
+
+  useEffect(() => {
+    if (!navigationExpanded || isDesktopLayout) return undefined;
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return;
-      setMenuOpen(false);
+      setNavigationExpanded(false);
       menuButtonRef.current?.focus();
     };
     window.addEventListener('keydown', closeOnEscape);
     return () => window.removeEventListener('keydown', closeOnEscape);
-  }, [menuOpen]);
+  }, [isDesktopLayout, navigationExpanded]);
 
   return (
-    <div className="admin-shell">
-      <aside className={`admin-sidebar ${menuOpen ? 'admin-sidebar--open' : ''}`} id="admin-navigation">
+    <div className={`admin-shell ${activeView === 'reference_settings' ? 'admin-shell--reference-settings' : ''} ${navigationExpanded ? '' : 'admin-shell--sidebar-collapsed'}`}>
+      <aside className={`admin-sidebar ${navigationExpanded ? 'admin-sidebar--open' : ''}`} id="admin-navigation">
         <div className="brand-lockup">
           <span className="brand-mark" aria-hidden="true">
             <img alt="" src={iceCubeLogo} />
@@ -96,7 +108,7 @@ export function AdminLayout({
                 key={view}
                 onClick={() => {
                   onNavigate(view);
-                  setMenuOpen(false);
+                  if (!isDesktopLayout) setNavigationExpanded(false);
                 }}
                 type="button"
               >
@@ -122,9 +134,9 @@ export function AdminLayout({
           <div className="admin-topbar__context">
             <button
               aria-controls="admin-navigation"
-              aria-expanded={menuOpen}
+              aria-expanded={navigationExpanded}
               className="mobile-menu-button"
-              onClick={() => setMenuOpen((open) => !open)}
+              onClick={() => setNavigationExpanded((expanded) => !expanded)}
               ref={menuButtonRef}
               type="button"
             >
@@ -136,6 +148,14 @@ export function AdminLayout({
           </div>
           <div className="admin-topbar__actions">
             <span className="current-view-label">{viewMeta[activeView].shortLabel}</span>
+            {activeView === 'reference_settings' ? (
+              <>
+                <button aria-label="การแจ้งเตือน" className="topbar-notification" type="button">
+                  <Bell size={21} weight="regular" />
+                </button>
+                <span className="topbar-profile-divider" aria-hidden="true" />
+              </>
+            ) : null}
             <div className="profile-menu">
               <UserCircle size={30} weight="fill" />
               <span>{profileLabel}</span>
@@ -150,7 +170,7 @@ export function AdminLayout({
         </header>
         <main className="admin-content">{children}</main>
       </div>
-      {menuOpen ? <button className="sidebar-scrim" aria-label="ปิดเมนู" onClick={() => setMenuOpen(false)} type="button" /> : null}
+      {navigationExpanded && !isDesktopLayout ? <button className="sidebar-scrim" aria-label="ปิดเมนู" onClick={() => setNavigationExpanded(false)} type="button" /> : null}
     </div>
   );
 }

@@ -7,8 +7,10 @@ import {
 } from './EmployeeDeliveryWorkspace';
 import { EmployeeLayout } from './EmployeeLayout';
 import { AdminLayout } from './AdminLayout';
+import { AdminReferenceSettings } from './AdminReferenceSettings';
 import { ManagerStockControl } from './ManagerStockControl';
 import type { DeliveryRound, EmployeeStockState, IceTypeOption, ShopCard, ShopCardHistoryEntry, StockControlSummary } from './types/app';
+import type { IceTypeSetting } from './features/admin-reference-settings/types';
 
 const demoRounds: DeliveryRound[] = [
   {
@@ -31,6 +33,15 @@ const demoIceTypes: IceTypeOption[] = [
   { id: 'ice-block', code: 'BLOCK', name: 'น้ำแข็งก้อน', unit: 'ถุง' },
   { id: 'ice-small', code: 'SMALL', name: 'น้ำแข็งเล็ก', unit: 'ถุง' },
   { id: 'ice-tube', code: 'TUBE', name: 'น้ำแข็งหลอด', unit: 'ถุง' },
+];
+
+const referencePreviewIceTypes: IceTypeSetting[] = [
+  { id: 'preview-01', code: '01', name: 'หลอดเล็ก', unit: 'ถุง', image_path: null, is_active: true },
+  { id: 'preview-02', code: '02', name: 'โม่', unit: 'ถุง', image_path: null, is_active: true },
+  { id: 'preview-03', code: '03', name: 'หลอดเล็กโม่', unit: 'ถุง', image_path: null, is_active: true },
+  { id: 'preview-04', code: '04', name: 'เปลือย (หลอด)', unit: 'ถุง', image_path: null, is_active: true },
+  { id: 'preview-05', code: '05', name: 'น้ำแข็งก้อน', unit: 'แถว', image_path: null, is_active: true },
+  { id: 'preview-06', code: '06', name: 'หลอดเล็กถุงใส', unit: 'ถุง', image_path: null, is_active: true },
 ];
 
 function createCard(
@@ -356,6 +367,27 @@ export function LocalDemoApp() {
           operationRound={managerStockDemoRound}
           round={managerStockDemoRound}
           serviceDate={managerStockDemoRound.service_date}
+        />
+      </AdminLayout>
+    );
+  }
+
+  if (new URLSearchParams(window.location.search).get('screen') === 'ice-types-layout') {
+    return (
+      <AdminLayout
+        activeView="reference_settings"
+        allowedViews={['manager_overview', 'factory_order', 'delivery', 'stock_operations', 'stock_audit', 'location_management', 'shops', 'reference_settings']}
+        onNavigate={() => undefined}
+        profileLabel="bhusit.tanchavanic..."
+      >
+        <AdminReferenceSettings
+          initialTab="ice_types"
+          previewData={{
+            iceTypes: referencePreviewIceTypes,
+            prices: [{
+              id: 'preview-price', ice_type_id: 'preview-01', unit_price: 60, valid_from: '2026-07-24', valid_to: null, is_active: true,
+            }],
+          }}
         />
       </AdminLayout>
     );

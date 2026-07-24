@@ -116,4 +116,41 @@ describe('IceTypePriceEditor Component', () => {
     expect(screen.getByText('ปัจจุบัน')).toBeTruthy();
     expect(screen.getByText('สิ้นสุดแล้ว')).toBeTruthy();
   });
+
+  it('keeps preview prices scoped to the selected ice type without writing', async () => {
+    const user = userEvent.setup();
+    render(
+      <IceTypePriceEditor
+        iceType={iceTypes[1]}
+        previewPrices={[
+          {
+            id: 'preview-block',
+            ice_type_id: 'ice-block',
+            unit_price: 40,
+            valid_from: '2026-01-01',
+            valid_to: null,
+            is_active: true,
+          },
+          {
+            id: 'preview-small',
+            ice_type_id: 'ice-small',
+            unit_price: 55,
+            valid_from: '2026-01-01',
+            valid_to: null,
+            is_active: true,
+          },
+        ]}
+        readOnly
+      />,
+    );
+
+    expect(await screen.findByText('฿55.00')).toBeTruthy();
+    expect(screen.queryByText('฿40.00')).toBeNull();
+
+    await user.type(screen.getByLabelText(/ราคากลางต่อถุง/i), '60');
+    await user.click(screen.getByRole('button', { name: 'บันทึกราคากลางใหม่' }));
+
+    expect(service.saveIceTypePrice).not.toHaveBeenCalled();
+    expect(service.loadIceTypePrices).not.toHaveBeenCalled();
+  });
 });

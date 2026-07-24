@@ -16,9 +16,10 @@ interface IceTypeImageEditorProps {
   onPendingFileChange?: (file: File | null) => void;
   /** ไฟล์รูปที่ parent ส่งมาควบคุม (ใช้ในโหมดสร้างใหม่) */
   pendingFile?: File | null;
+  readOnly?: boolean;
 }
 
-export function IceTypeImageEditor({ iceType, onIceTypeSaved, onPendingFileChange, pendingFile }: IceTypeImageEditorProps) {
+export function IceTypeImageEditor({ iceType, onIceTypeSaved, onPendingFileChange, pendingFile, readOnly = false }: IceTypeImageEditorProps) {
   const [iceTypePreviewUrl, setIceTypePreviewUrl] = useState<string | null>(null);
   const [iceTypePreviewLoading, setIceTypePreviewLoading] = useState(false);
   const [iceTypeUploadFile, setIceTypeUploadFile] = useState<File | null>(null);
@@ -108,6 +109,10 @@ export function IceTypeImageEditor({ iceType, onIceTypeSaved, onPendingFileChang
 
   async function saveIceTypeImage(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (readOnly) {
+      setIceTypeImageError('โหมดตัวอย่างไม่บันทึกข้อมูล');
+      return;
+    }
     if (!iceType || !iceTypeUploadFile) {
       setIceTypeImageError('กรุณาเลือกรูปสินค้าก่อนบันทึก');
       return;
@@ -149,6 +154,10 @@ export function IceTypeImageEditor({ iceType, onIceTypeSaved, onPendingFileChang
   }
 
   async function removeIceTypeImage() {
+    if (readOnly) {
+      setIceTypeImageError('โหมดตัวอย่างไม่บันทึกข้อมูล');
+      return;
+    }
     if (!iceType?.image_path) {
       setIceTypeImageError('ชนิดน้ำแข็งนี้ยังไม่มีรูปในระบบ');
       return;
@@ -192,11 +201,11 @@ export function IceTypeImageEditor({ iceType, onIceTypeSaved, onPendingFileChang
   return (
     <div className="ref-section">
       <div className="ref-section-title">
-        <h3>รูปสินค้า</h3>
+        <h3><span className="ref-section-title__index">B.</span> รูปสินค้า</h3>
       </div>
       {iceType ? (
         <form className="ref-image-editor-body" onSubmit={saveIceTypeImage}>
-          <div className="ref-image-preview-card" style={{ maxWidth: '300px' }}>
+          <div className="ref-image-preview-card ref-image-preview-card--inline">
             <div className="ref-image-preview-box">
               {iceTypePreviewSrc ? (
                 <img alt={iceType.name} src={iceTypePreviewSrc} />
@@ -254,7 +263,7 @@ export function IceTypeImageEditor({ iceType, onIceTypeSaved, onPendingFileChang
       ) : (
         /* New mode */
         <div className="ref-image-editor-body">
-          <div className="ref-image-preview-card" style={{ maxWidth: '300px' }}>
+          <div className="ref-image-preview-card">
             <div className="ref-image-preview-box">
               {pendingPreviewUrl ? (
                 <img alt="ตัวอย่างรูปสินค้า" src={pendingPreviewUrl} />

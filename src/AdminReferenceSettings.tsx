@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Cube, UsersThree } from '@phosphor-icons/react';
+import { Cube, Plus, UsersThree } from '@phosphor-icons/react';
 import type { UserProfile } from './types/app';
 import type {
   EmployeeWorkSiteAssignment,
@@ -9,15 +9,33 @@ import type {
 import { loadAdminSettings } from './features/admin-reference-settings/adminReferenceSettingsService';
 import { UserEditor } from './features/admin-reference-settings/components/UserEditor';
 import { IceTypeEditor } from './features/admin-reference-settings/components/IceTypeEditor';
+import type { IceTypePriceSetting } from './types/app';
 
-export function AdminReferenceSettings() {
-  return <AdminReferenceSettingsContent />;
+export interface ReferenceSettingsPreviewData {
+  iceTypes: IceTypeSetting[];
+  prices?: IceTypePriceSetting[];
+}
+
+export function AdminReferenceSettings({
+  initialTab = 'users',
+  previewData,
+}: {
+  initialTab?: ReferenceTab;
+  previewData?: ReferenceSettingsPreviewData;
+}) {
+  return <AdminReferenceSettingsContent initialTab={initialTab} previewData={previewData} />;
 }
 
 export type ReferenceTab = 'users' | 'ice_types';
 
-function AdminReferenceSettingsContent() {
-  const [activeTab, setActiveTab] = useState<ReferenceTab>('users');
+function AdminReferenceSettingsContent({
+  initialTab,
+  previewData,
+}: {
+  initialTab: ReferenceTab;
+  previewData?: ReferenceSettingsPreviewData;
+}) {
+  const [activeTab, setActiveTab] = useState<ReferenceTab>(initialTab);
   const [createIceTypeRequested, setCreateIceTypeRequested] = useState(false);
 
   const [users, setUsers] = useState<UserProfile[]>([]);
@@ -31,6 +49,13 @@ function AdminReferenceSettingsContent() {
   const [pageError, setPageError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (previewData) {
+      setIceTypes(previewData.iceTypes);
+      setAuthorized(true);
+      setLoading(false);
+      return undefined;
+    }
+
     let cancelled = false;
 
     async function loadData() {
@@ -62,7 +87,7 @@ function AdminReferenceSettingsContent() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [previewData]);
 
   function handleUserSaved(savedUser: UserProfile, workSiteIds: string[]) {
     setUsers((current) => current.map((user) => user.id === savedUser.id ? savedUser : user));
@@ -119,7 +144,7 @@ function AdminReferenceSettingsContent() {
               onClick={() => setCreateIceTypeRequested(true)}
               type="button"
             >
-              <span>+</span>
+              <Plus size={20} weight="regular" aria-hidden="true" />
               <span>เพิ่มชนิดน้ำแข็ง</span>
             </button>
           </div>
@@ -161,6 +186,8 @@ function AdminReferenceSettingsContent() {
           iceTypes={iceTypes}
           onCreateHandled={() => setCreateIceTypeRequested(false)}
           onIceTypeSaved={handleIceTypeSaved}
+          previewPrices={previewData?.prices}
+          readOnly={Boolean(previewData)}
         />
       )}
     </div>

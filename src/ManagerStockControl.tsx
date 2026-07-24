@@ -22,7 +22,6 @@ import type {
   StockCountSnapshot,
   StockControlSummary,
   StockLocationBalance,
-  StockMovementKind,
   StockCountVarianceReview,
 } from './types/app';
 
@@ -30,18 +29,15 @@ import { StockCountPanel } from './features/stock-control/components/StockCountP
 import { StockVarianceReviewModal } from './features/stock-control/components/StockVarianceReviewModal';
 import { StockCloseSummaryPanel } from './features/stock-control/components/StockCloseSummaryPanel';
 
-const MOVEMENT_LABELS: Record<StockMovementKind, string> = {
-  factory_order: 'รับจากโรงงาน',
-  transfer: 'โอนระหว่างจุด',
-  damage: 'เสียหาย / ละลาย',
-  return_to_factory: 'ส่งคืนโรงงาน',
-};
-
-const STOCK_OPERATION_KINDS = ['transfer', 'damage', 'return_to_factory'] as const;
 const USER_AVATAR_BUCKET = 'user-avatars';
 const ICE_TYPE_IMAGE_BUCKET = 'ice-type-images';
-type StockOperationKind = typeof STOCK_OPERATION_KINDS[number];
+type StockOperationKind = 'transfer' | 'damage';
 type TabKind = StockOperationKind | 'count';
+
+const MOVEMENT_LABELS: Record<StockOperationKind, string> = {
+  transfer: 'โอนระหว่างจุด',
+  damage: 'เสียหาย / ละลาย',
+};
 
 type QuantityDraft = Record<string, number>;
 
@@ -83,6 +79,9 @@ export function ManagerStockControl({
   const [isVarianceModalOpen, setIsVarianceModalOpen] = useState(false);
   const [reviewSubmitting, setReviewSubmitting] = useState(false);
   const [reviewError, setReviewError] = useState<string | null>(null);
+  const [recountRequiredLocationIds, setRecountRequiredLocationIds] = useState<Set<string>>(
+    () => new Set(),
+  );
 
   const latestCounts = useMemo(() => {
     const map = new Map<string, StockCountSnapshot>();
@@ -154,6 +153,7 @@ export function ManagerStockControl({
 
   useEffect(() => {
     setConfirmSkipUncounted(false);
+    setRecountRequiredLocationIds(new Set());
   }, [serviceDate]);
 
   useEffect(() => {
@@ -221,7 +221,7 @@ export function ManagerStockControl({
       const damageSourceId = transferSourceLocations.find((location) => (
         location.kind === 'truck' && location.is_courier_source === true
       ))?.id || transferSourceLocations[0]?.id || truckId || firstLocationId;
-      setFromLocationId(kind === 'return_to_factory' ? truckId : damageSourceId);
+      setFromLocationId(damageSourceId);
       setToLocationId('');
     }
   }, [summary, kind, isReturningToTruck, returnToTruckSourceLocations, transferSourceLocations]);
@@ -232,7 +232,7 @@ export function ManagerStockControl({
       ?? stockHolderLocations.find((location) => location.kind !== 'truck')
       ?? stockHolderLocations[0];
     setCountLocationId(selectedLocation?.id ?? '');
-  }, [summary, countLocationId, closeState?.is_closed]);
+  }, [summary, stockHolderLocations, countLocationId, closeState?.is_closed]);
 
   async function loadSummary(requestedServiceDate: string, roundId: string | null) {
     if (!supabase) return;
@@ -378,7 +378,14 @@ export function ManagerStockControl({
         return `บันทึกยอดนับจริงของ “${selectedLocation?.name ?? ''}” แล้ว`;
       },
       onSuccess: async () => {
+        const recountedLocationId = countLocationId;
         await loadSummary(serviceDate, round?.id ?? null);
+        setRecountRequiredLocationIds((current) => {
+          if (!current.has(recountedLocationId)) return current;
+          const next = new Set(current);
+          next.delete(recountedLocationId);
+          return next;
+        });
       },
     }
   );
@@ -406,7 +413,12 @@ export function ManagerStockControl({
         if (status === 'rejected') {
           const rejectedReview = varianceReviews.find((review) => review.id === reviewId);
           setReviewError('ปฏิเสธยอดแล้ว กรุณาตรวจนับจุดนั้นใหม่ก่อนปิดสต๊อก');
-          if (rejectedReview) setCountLocationId(rejectedReview.location_id);
+          if (rejectedReview) {
+            setRecountRequiredLocationIds((current) => new Set(current).add(rejectedReview.location_id));
+            setCountLocationId(rejectedReview.location_id);
+            setActiveTab('count');
+            setIsVarianceModalOpen(false);
+          }
         }
       }
     }
@@ -437,6 +449,16 @@ export function ManagerStockControl({
   const handleCloseDay = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!supabase || !summary || !closeState || isRoundSnapshot || closeState.is_closed) return;
+    if (pendingReviewsCount > 0) {
+      setReviewError(null);
+      setIsVarianceModalOpen(true);
+      return;
+    }
+    if (recountRequiredLocationIds.size > 0) {
+      setCountLocationId(recountRequiredLocationIds.values().next().value ?? '');
+      closeDayAction.setError('ต้องตรวจนับจุดที่ปฏิเสธยอดใหม่ก่อนปิดสต๊อกสิ้นวัน');
+      return;
+    }
     if (closeState.open_round_count > 0) {
       closeDayAction.setError('ต้องจัดการรายการค้างเดิมทั้งหมดก่อนปิดสต๊อกสิ้นวัน');
       return;
@@ -481,7 +503,7 @@ export function ManagerStockControl({
       setFromLocationId(transferSourceId);
       setToLocationId('');
     } else {
-      setFromLocationId(nextKind === 'return_to_factory' ? truckId : truckId || firstLocationId);
+      setFromLocationId(truckId || firstLocationId);
       setToLocationId('');
     }
   };
@@ -512,11 +534,9 @@ export function ManagerStockControl({
     ?? stockHolderLocations[0];
   const requiresSource = true;
   const requiresDestination = kind === 'transfer';
-  const sourceLocations = kind === 'return_to_factory'
-    ? truckLocations
-    : kind === 'transfer'
-      ? isReturningToTruck ? returnToTruckSourceLocations : transferSourceLocations
-      : stockHolderLocations;
+  const sourceLocations = kind === 'transfer'
+    ? isReturningToTruck ? returnToTruckSourceLocations : transferSourceLocations
+    : stockHolderLocations;
   const selectedSource = sourceLocations.find((location) => location.id === fromLocationId);
   const destinationLocations = kind === 'transfer'
     ? isReturningToTruck
@@ -527,7 +547,7 @@ export function ManagerStockControl({
   const selectedRecipient = destinationLocations.find((location) => location.id === toLocationId) ?? null;
   const recipientLocations = destinationLocations;
   const isDamageOperation = activeTab === 'damage';
-  const damageSourceLocations = transferSourceLocations;
+  const damageSourceLocations = stockHolderLocations;
   const movementIceTypes = selectedSource?.balances ?? iceTypes;
   const cartItems = movementIceTypes.filter((ice) => (quantities[ice.ice_type_id] ?? 0) > 0);
   const cartTotal = cartItems.reduce((total, ice) => total + (quantities[ice.ice_type_id] ?? 0), 0);
@@ -556,7 +576,7 @@ export function ManagerStockControl({
             onClick={() => setIsVarianceModalOpen(true)}
             style={{ padding: '6px 12px', backgroundColor: '#d97706', border: 'none', color: '#fff', borderRadius: 6, fontSize: '0.75rem', fontWeight: 'bold', cursor: 'pointer' }}
           >
-            เปิดตรวจสอบ
+            ตรวจสอบและอนุมัติ
           </button>
         </div>
       )}
@@ -653,14 +673,6 @@ export function ManagerStockControl({
             >
               <svg fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/></svg>
               ตรวจนับจริง
-            </button>
-            <button
-              className={`action-tab ${activeTab === 'return_to_factory' ? 'active' : ''}`}
-              onClick={() => selectMovementKind('return_to_factory')}
-              type="button"
-            >
-              <svg fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M4 12h16m-6-6 6 6-6 6"/></svg>
-              ส่งคืนโรงงาน
             </button>
           </div>
 
@@ -1083,7 +1095,7 @@ export function ManagerStockControl({
         </div>
       ) : null}
 
-      {!isRoundSnapshot ? (
+      {!isRoundSnapshot && activeTab === 'count' ? (
         <section className="daily-close-section" style={{ marginTop: 24 }}>
           {closeState ? (
             closeState.is_closed ? (
@@ -1100,6 +1112,12 @@ export function ManagerStockControl({
                   </span>
                 </div>
                 <p className="muted">ตรวจสอบผลการตรวจนับล่าสุดของแต่ละจุด ระบบจะรวมยอดเพื่อปิดสต๊อกและส่งคืนโรงงานตามยอดนี้</p>
+
+                {recountRequiredLocationIds.size > 0 ? (
+                  <p className="error-text">
+                    ต้องตรวจนับจุดที่ปฏิเสธยอดใหม่ก่อนปิดสต๊อก ({recountRequiredLocationIds.size} จุด)
+                  </p>
+                ) : null}
 
                 <div className="table-responsive" style={{ margin: '16px 0', border: '1px solid #e1e7ef', borderRadius: 8, overflow: 'hidden' }}>
                   <table className="data-table" style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.9rem' }}>
@@ -1201,7 +1219,7 @@ export function ManagerStockControl({
 
                 <button
                   className="primary-button"
-                  disabled={closeDayAction.isSubmitting || closeState.open_round_count > 0 || (uncountedLocations.length > 0 && !confirmSkipUncounted)}
+                  disabled={closeDayAction.isSubmitting || closeState.open_round_count > 0 || recountRequiredLocationIds.size > 0 || (uncountedLocations.length > 0 && !confirmSkipUncounted)}
                   type="submit"
                 >
                   {closeDayAction.isSubmitting ? 'กำลังปิดสต๊อกและจบงานวันนี้...' : 'ปิดสต๊อกและจบงานวันนี้'}

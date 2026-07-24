@@ -6,9 +6,12 @@ import { loadIceTypePrices, saveIceTypePrice, getErrorMessage } from '../adminRe
 
 interface IceTypePriceEditorProps {
   iceType: IceTypeOption | null;
+  /** Static values used by the local visual-preview route; production always loads from Supabase. */
+  previewPrices?: IceTypePriceSetting[];
+  readOnly?: boolean;
 }
 
-export function IceTypePriceEditor({ iceType }: IceTypePriceEditorProps) {
+export function IceTypePriceEditor({ iceType, previewPrices, readOnly = false }: IceTypePriceEditorProps) {
   const [prices, setPrices] = useState<IceTypePriceSetting[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -21,12 +24,18 @@ export function IceTypePriceEditor({ iceType }: IceTypePriceEditorProps) {
   const [validTo, setValidTo] = useState<string>('');
 
   useEffect(() => {
+    if (previewPrices) {
+      setPrices(iceType ? previewPrices.filter((price) => price.ice_type_id === iceType.id) : []);
+      setLoading(false);
+      setError(null);
+      return;
+    }
     if (!iceType) {
       setPrices([]);
       return;
     }
     void refreshPrices(iceType.id);
-  }, [iceType?.id]);
+  }, [iceType?.id, previewPrices]);
 
   async function refreshPrices(iceTypeId: string) {
     setLoading(true);
@@ -43,6 +52,10 @@ export function IceTypePriceEditor({ iceType }: IceTypePriceEditorProps) {
 
   async function handleSave(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (readOnly) {
+      setError('โหมดตัวอย่างไม่บันทึกข้อมูล');
+      return;
+    }
     if (!iceType) return;
 
     const numPrice = Number(unitPrice);
@@ -91,10 +104,9 @@ export function IceTypePriceEditor({ iceType }: IceTypePriceEditorProps) {
   const todayStr = toBangkokDateString();
 
   return (
-    <div className="ref-section">
+    <div className="ref-section ref-price-section">
       <div className="ref-section-title">
-        <h3>ราคากลาง</h3>
-        <p>กำหนดช่วงราคากลางสำหรับชนิดน้ำแข็งนี้</p>
+        <h3 aria-label="ราคากลาง"><span className="ref-section-title__index" aria-hidden="true">C.</span> ราคากลาง</h3>
       </div>
 
       {!iceType ? (

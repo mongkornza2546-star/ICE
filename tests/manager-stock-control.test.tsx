@@ -309,6 +309,38 @@ describe('ManagerStockControl movement tabs', () => {
     expect(Array.from(countLocation.options).find((option) => option.value === 'team-1')?.textContent).toContain('สมชาย ใจดี');
   });
 
+  it('lists every inventory holder for an actual count, even without a daily-count requirement', async () => {
+    const optionalCountHolder = {
+      ...summary.locations[2],
+      id: 'reserve-1',
+      code: 'RESERVE',
+      name: 'จุดสำรอง',
+      kind: 'reserve_bin' as const,
+      requires_daily_count: false,
+    };
+    const summaryWithOptionalCountHolder = {
+      ...summary,
+      locations: [...summary.locations, optionalCountHolder],
+    };
+    mocks.rpc.mockImplementation(async (name: string) => {
+      if (name === 'get_stock_control_summary') return { data: summaryWithOptionalCountHolder, error: null };
+      if (name === 'get_location_count_history') return { data: [], error: null };
+      if (name === 'get_daily_stock_count_readiness') return { data: [], error: null };
+      if (name === 'get_daily_stock_close_state') return { data: closeState, error: null };
+      if (name === 'get_stock_count_variance_reviews') return { data: [], error: null };
+      return { data: null, error: null };
+    });
+
+    const user = userEvent.setup();
+    render(<ManagerStockControl operationRound={round} round={round} serviceDate={round.service_date} />);
+
+    await user.click(await screen.findByRole('button', { name: 'ตรวจนับจริง' }));
+    const countLocation = screen.getByRole('combobox', { name: 'จุดที่ต้องการตรวจนับ' }) as HTMLSelectElement;
+
+    expect(Array.from(countLocation.options).map((option) => option.value)).toContain('reserve-1');
+    expect(Array.from(countLocation.options).map((option) => option.value)).not.toContain('site-1');
+  });
+
   it('shows a holder nickname without exposing its code or email', async () => {
     const holder = {
       ...summary.locations[2],
@@ -363,6 +395,39 @@ describe('ManagerStockControl movement tabs', () => {
     });
   });
 
+  it('allows damage to be recorded from an inventory holder without a transfer destination', async () => {
+    const otherTruck = {
+      ...summary.locations[0],
+      id: 'truck-2',
+      code: 'TRUCK-2',
+      name: 'รถสำรอง',
+      is_courier_source: false,
+    };
+    const summaryWithAnotherTruck = {
+      ...summary,
+      locations: [otherTruck, ...summary.locations],
+    };
+    mocks.rpc.mockImplementation(async (name: string) => {
+      if (name === 'get_stock_control_summary') return { data: summaryWithAnotherTruck, error: null };
+      if (name === 'get_location_count_history') return { data: [], error: null };
+      if (name === 'get_daily_stock_count_readiness') return { data: [], error: null };
+      if (name === 'get_daily_stock_close_state') return { data: closeState, error: null };
+      if (name === 'get_stock_count_variance_reviews') return { data: [], error: null };
+      return { data: summaryWithAnotherTruck, error: null };
+    });
+
+    const { user, form } = await renderMovementForm('เสียหาย / ละลาย');
+    await user.click(within(form).getByRole('button', { name: /รถสำรอง/ }));
+    await user.type(within(form).getByRole('spinbutton'), '1');
+    await user.click(within(form).getByRole('button', { name: 'ยืนยัน เสียหาย / ละลาย' }));
+
+    await expectMovementPayload({
+      p_kind: 'damage',
+      p_from_location_id: 'truck-2',
+      p_to_location_id: null,
+    });
+  });
+
   it('clears a transfer draft when switching to damage', async () => {
     const { user, form } = await renderMovementForm('โอนระหว่างจุด');
     await user.type(within(form).getByRole('spinbutton'), '2');
@@ -382,18 +447,11 @@ describe('ManagerStockControl movement tabs', () => {
     expect(within(form).getByText(/คงเหลือที่จุดนี้ 5 ถุง/)).toBeTruthy();
   });
 
-  it('keeps manual factory returns available and limits the source to trucks', async () => {
-    const { user, form } = await renderMovementForm('ส่งคืนโรงงาน');
-    const source = within(form).getByRole('combobox', { name: 'ต้นทาง (จาก)' }) as HTMLSelectElement;
-    expect(Array.from(source.options).map((option) => option.value)).toEqual(['', 'truck-1']);
-    await user.type(within(form).getByRole('spinbutton'), '4');
-    await user.click(within(form).getByRole('button', { name: 'ยืนยัน ส่งคืนโรงงาน' }));
+  it('does not show a manual factory-return tab', async () => {
+    render(<ManagerStockControl operationRound={round} round={round} serviceDate={round.service_date} />);
 
-    await expectMovementPayload({
-      p_kind: 'return_to_factory',
-      p_from_location_id: 'truck-1',
-      p_to_location_id: null,
-    });
+    await screen.findByRole('heading', { name: 'เลือกต้นทางและจุดรับสต๊อก' });
+    expect(screen.queryByRole('button', { name: 'ส่งคืนโรงงาน' })).toBeNull();
   });
 
   it('labels live stock as day-wide and refreshes it on demand', async () => {
@@ -443,7 +501,7 @@ describe('ManagerStockControl movement tabs', () => {
     const user = userEvent.setup();
     render(<ManagerStockControl operationRound={round} round={round} serviceDate={round.service_date} />);
 
-    await user.click(await screen.findByRole('button', { name: 'เปิดตรวจสอบ' }));
+    await user.click(await screen.findByRole('button', { name: 'ตรวจสอบและอนุมัติ' }));
     expect(screen.getByRole('dialog').textContent).toContain('รถเข็นสมชาย · หลอดเล็ก');
     expect(screen.getByRole('dialog').textContent).toContain('-0.5 ถุง');
     await user.click(screen.getByRole('button', { name: 'อนุมัติยอด (Approve)' }));
@@ -506,6 +564,7 @@ describe('ManagerStockControl daily close', () => {
     const user = userEvent.setup();
     render(<ManagerStockControl operationRound={round} round={round} serviceDate={round.service_date} />);
 
+    await user.click(await screen.findByRole('button', { name: 'ตรวจนับจริง' }));
     const closeButton = await screen.findByRole('button', { name: 'ปิดสต๊อกและจบงานวันนี้' });
 
     expect((closeButton as HTMLButtonElement).disabled).toBe(false);
@@ -522,6 +581,98 @@ describe('ManagerStockControl daily close', () => {
     ));
     const closeCall = mocks.rpc.mock.calls.find(([name]) => name === 'close_daily_stock_from_latest_counts');
     expect(closeCall?.[1]).not.toHaveProperty('p_counts');
+  });
+
+  it('opens the variance approval popup instead of closing while reviews are pending', async () => {
+    mocks.rpc.mockImplementation(async (name: string) => {
+      if (name === 'get_stock_control_summary') return { data: summary, error: null };
+      if (name === 'get_location_count_history') return { data: [], error: null };
+      if (name === 'get_daily_stock_count_readiness') return { data: currentReadiness, error: null };
+      if (name === 'get_daily_stock_close_state') return { data: closeReadyState, error: null };
+      if (name === 'get_stock_count_variance_reviews') {
+        return {
+          data: [{
+            id: 'review-1',
+            service_date: round.service_date,
+            location_id: 'team-1',
+            location_name: 'รถเข็นสมชาย',
+            ice_type_id: 'ice-1',
+            ice_type_name: 'หลอดเล็ก',
+            unit: 'ถุง',
+            system_quantity: 5,
+            actual_quantity: 4.5,
+            variance_quantity: -0.5,
+            status: 'pending',
+            created_at: '2026-07-20T18:00:00+07:00',
+          }],
+          error: null,
+        };
+      }
+      if (name === 'close_daily_stock_from_latest_counts') return { data: closeReadyState, error: null };
+      return { data: null, error: null };
+    });
+    const user = userEvent.setup();
+    render(<ManagerStockControl operationRound={round} round={round} serviceDate={round.service_date} />);
+
+    await user.click(await screen.findByRole('button', { name: 'ตรวจนับจริง' }));
+    await user.click(await screen.findByRole('button', { name: 'ปิดสต๊อกและจบงานวันนี้' }));
+
+    expect(screen.getByRole('dialog').textContent).toContain('รถเข็นสมชาย · หลอดเล็ก');
+    expect(mocks.rpc).not.toHaveBeenCalledWith(
+      'close_daily_stock_from_latest_counts',
+      expect.anything(),
+    );
+  });
+
+  it('requires a replacement count after rejecting a variance', async () => {
+    let reviewStatus: 'pending' | 'rejected' | 'recounted' = 'pending';
+    mocks.rpc.mockImplementation(async (name: string) => {
+      if (name === 'get_stock_control_summary') return { data: summary, error: null };
+      if (name === 'get_location_count_history') return { data: [], error: null };
+      if (name === 'get_daily_stock_count_readiness') return { data: currentReadiness, error: null };
+      if (name === 'get_daily_stock_close_state') return { data: closeReadyState, error: null };
+      if (name === 'get_stock_count_variance_reviews') {
+        return {
+          data: reviewStatus === 'recounted' ? [] : [{
+            id: 'review-1',
+            service_date: round.service_date,
+            location_id: 'team-1',
+            location_name: 'รถเข็นสมชาย',
+            ice_type_id: 'ice-1',
+            ice_type_name: 'หลอดเล็ก',
+            unit: 'ถุง',
+            system_quantity: 5,
+            actual_quantity: 4.5,
+            variance_quantity: -0.5,
+            status: reviewStatus,
+            created_at: '2026-07-20T18:00:00+07:00',
+          }],
+          error: null,
+        };
+      }
+      if (name === 'approve_stock_count_variance') {
+        reviewStatus = 'rejected';
+        return { data: null, error: null };
+      }
+      if (name === 'record_location_count_v2') {
+        reviewStatus = 'recounted';
+        return { data: summary, error: null };
+      }
+      return { data: null, error: null };
+    });
+    const user = userEvent.setup();
+    render(<ManagerStockControl operationRound={round} round={round} serviceDate={round.service_date} />);
+
+    await user.click(await screen.findByRole('button', { name: 'ตรวจสอบและอนุมัติ' }));
+    await user.click(screen.getByRole('button', { name: 'ปฏิเสธยอด (Reject)' }));
+
+    const closeButton = await screen.findByRole('button', { name: 'ปิดสต๊อกและจบงานวันนี้' });
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.getByText(/ต้องตรวจนับจุดที่ปฏิเสธยอดใหม่ก่อนปิดสต๊อก/)).toBeTruthy();
+    expect((closeButton as HTMLButtonElement).disabled).toBe(true);
+
+    await user.click(screen.getByRole('button', { name: 'บันทึกผลการนับจริง' }));
+    await waitFor(() => expect((closeButton as HTMLButtonElement).disabled).toBe(false));
   });
 
   it('requires an explicit override for missing or stale counts', async () => {
@@ -545,6 +696,7 @@ describe('ManagerStockControl daily close', () => {
     const user = userEvent.setup();
     render(<ManagerStockControl operationRound={round} round={round} serviceDate={round.service_date} />);
 
+    await user.click(await screen.findByRole('button', { name: 'ตรวจนับจริง' }));
     expect(await screen.findByText(/ต้องตรวจใหม่/)).toBeTruthy();
     const closeButton = screen.getByRole('button', { name: 'ปิดสต๊อกและจบงานวันนี้' });
     const override = screen.getByRole('checkbox', { name: /หัวหน้างานยืนยัน/ });
@@ -574,6 +726,7 @@ describe('ManagerStockControl daily close', () => {
       <ManagerStockControl operationRound={null} round={null} serviceDate={round.service_date} />,
     );
 
+    await user.click(await screen.findByRole('button', { name: 'ตรวจนับจริง' }));
     const override = await screen.findByRole('checkbox', { name: /หัวหน้างานยืนยัน/ });
     await user.click(override);
     expect((override as HTMLInputElement).checked).toBe(true);
@@ -583,6 +736,19 @@ describe('ManagerStockControl daily close', () => {
       const checkbox = screen.getByRole('checkbox', { name: /หัวหน้างานยืนยัน/ }) as HTMLInputElement;
       expect(checkbox.checked).toBe(false);
     });
+  });
+
+  it('shows the daily close workflow only on the actual-count tab', async () => {
+    const user = userEvent.setup();
+    render(<ManagerStockControl operationRound={round} round={round} serviceDate={round.service_date} />);
+
+    expect(screen.queryByRole('heading', { name: 'ตรวจนับและปิดสต๊อกสิ้นวัน' })).toBeNull();
+
+    await user.click(await screen.findByRole('button', { name: 'ตรวจนับจริง' }));
+    expect(await screen.findByRole('heading', { name: 'ตรวจนับและปิดสต๊อกสิ้นวัน' })).toBeTruthy();
+
+    await user.click(screen.getByRole('button', { name: 'โอนระหว่างจุด' }));
+    expect(screen.queryByRole('heading', { name: 'ตรวจนับและปิดสต๊อกสิ้นวัน' })).toBeNull();
   });
 });
 
