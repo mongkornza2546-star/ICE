@@ -1,5 +1,5 @@
-import { ChangeEvent, FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Buildings, CaretRight, CheckCircle, CreditCard, Eye, FileXls, GearSix, GridFour, ImageSquare, ListBullets, MagnifyingGlass, MapPin, Phone, Plus, Receipt, SlidersHorizontal, Storefront, UploadSimple, Warning, X } from '@phosphor-icons/react';
+import { ChangeEvent, FormEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Buildings, CaretRight, CheckCircle, Clock, CreditCard, Eye, FileText, FileXls, GearSix, GridFour, IdentificationCard, ImageSquare, ListBullets, MagnifyingGlass, MapPin, Phone, Plus, Receipt, SlidersHorizontal, Storefront, Tag, UploadSimple, User, Warning, X } from '@phosphor-icons/react';
 import { supabase } from './lib/supabase';
 import { env } from './lib/env';
 import { parseShopImportFile, type ShopImportRow } from './lib/shopImport';
@@ -77,6 +77,7 @@ export function ShopSettings({ isActive = true, readOnly = false }: { isActive?:
   const [page, setPage] = useState(0);
   const PAGE_SIZE = 12;
   const [editorOpen, setEditorOpen] = useState(false);
+  const [editorTab, setEditorTab] = useState<'basic' | 'assets' | 'payment' | 'prices'>('basic');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -323,6 +324,7 @@ export function ShopSettings({ isActive = true, readOnly = false }: { isActive?:
     setError(null);
     setSuccess(null);
     resetTankDraft();
+    setEditorTab('basic');
     setEditorOpen(true);
   };
 
@@ -336,6 +338,7 @@ export function ShopSettings({ isActive = true, readOnly = false }: { isActive?:
     setError(null);
     setSuccess(null);
     resetTankDraft();
+    setEditorTab('basic');
     setEditorOpen(true);
   };
 
@@ -541,6 +544,8 @@ export function ShopSettings({ isActive = true, readOnly = false }: { isActive?:
   const missingPriceCount = readinessReport?.items.filter((item) => item.missing_special_prices_count > 0).length ?? 0;
   const readinessAvailable = readinessStatus === 'ready' && readinessReport !== null;
   const readinessMetric = (value: number) => readinessStatus === 'loading' ? '…' : readinessStatus === 'error' ? '—' : value;
+  const editorBuilding = buildings.find((building) => building.id === draft.building_id);
+  const editorZone = zones.find((zone) => zone.id === draft.zone_id);
 
   return (
     <div className="shop-settings-page">
@@ -623,8 +628,12 @@ export function ShopSettings({ isActive = true, readOnly = false }: { isActive?:
                 onClick={() => selectShop(shop)}
                 type="button"
               >
+                <span className="shop-directory-card__visual">
+                  {imageUrl && !failedShopImages[shop.id] ? (
+                    <img alt={`รูปภาพร้าน ${shop.name}`} onError={() => setFailedShopImages((current) => ({ ...current, [shop.id]: true }))} src={imageUrl} />
+                  ) : <Storefront aria-hidden="true" size={38} weight="duotone" />}
+                </span>
                 <span className="shop-directory-card__body">
-                  {imageUrl && !failedShopImages[shop.id] ? <img alt="" className="shop-directory-card__source-image" onError={() => setFailedShopImages((current) => ({ ...current, [shop.id]: true }))} src={imageUrl} /> : null}
                   <span className="shop-directory-card__heading"><span className="shop-directory-card__code">{shop.code}</span><span className={`shop-directory-card__status shop-directory-card__status--${shop.status}`}>{shop.status === 'active' ? 'ใช้งาน' : 'พักใช้งาน'}</span></span>
                   <strong>{shop.name}</strong>
                   <span className="shop-directory-card__locations"><span className="shop-directory-card__location"><Buildings aria-hidden="true" size={15} />{building?.name ?? 'ไม่พบตึก'}</span><span className="shop-directory-card__location"><MapPin aria-hidden="true" size={15} />{zone?.name ?? shop.floor_or_zone}</span></span>
@@ -665,70 +674,63 @@ export function ShopSettings({ isActive = true, readOnly = false }: { isActive?:
         <div className="modal-backdrop shop-settings-backdrop" onMouseDown={(event) => {
           if (event.target === event.currentTarget) closeEditor();
         }}>
-          <section aria-labelledby="shop-editor-title" aria-modal="true" className="panel shop-settings-editor shop-settings-dialog" role="dialog">
-        <div className="panel-header">
-          <div>
-            <p className="eyebrow">ตั้งค่าร้านค้า</p>
-            <h2 id="shop-editor-title">{draft.id ? `แก้ไข ${draft.name}` : 'เพิ่มร้านใหม่'}</h2>
-          </div>
-          <div className="shop-settings-dialog__actions">
-            {draft.id && draft.status === 'active' ? (
-              <button className="ghost-button" disabled={saving} onClick={() => void deactivateShop()} type="button">
-                ปิดร้าน / ย้ายออก
-              </button>
-            ) : null}
-            <button aria-label="ปิดหน้าต่างข้อมูลร้าน" autoFocus className="shop-settings-dialog__close" disabled={saving || savingTank} onClick={closeEditor} type="button">
-              <X aria-hidden="true" size={22} />
-            </button>
-          </div>
-        </div>
-        <form className="settings-form" onSubmit={handleSave}>
-          <div className="field-grid">
-            <TextField label="รหัสร้าน" required value={draft.code} onChange={(code) => setDraft({ ...draft, code })} />
-            <TextField label="รหัสศูนย์ราชการ" value={draft.government_shop_code} onChange={(government_shop_code) => setDraft({ ...draft, government_shop_code })} />
-            <TextField label="ชื่อร้าน" required value={draft.name} onChange={(name) => setDraft({ ...draft, name })} />
-            <label>
-              อาคาร
-              <select required value={draft.building_id} onChange={(event) => {
-                const building_id = event.target.value;
-                setDraft({ ...draft, building_id, zone_id: zones.find((zone) => zone.building_id === building_id)?.id ?? '' });
-              }}>
-                <option value="">เลือกตึก</option>
-                {buildings.map((building) => <option key={building.id} value={building.id}>{building.code} · {building.name}</option>)}
-              </select>
-            </label>
-            <label>
-              โซนย่อย
-              <select required value={draft.zone_id} onChange={(event) => setDraft({ ...draft, zone_id: event.target.value })}>
-                <option value="">เลือกโซนย่อย</option>
-                {zones.filter((zone) => zone.building_id === draft.building_id).map((zone) => <option key={zone.id} value={zone.id}>{zone.code} · {zone.name}</option>)}
-              </select>
-            </label>
-            <TextField label="ผู้ติดต่อ" value={draft.contact_name} onChange={(contact_name) => setDraft({ ...draft, contact_name })} />
-            <TextField label="เบอร์โทร" value={draft.contact_phone} onChange={(contact_phone) => setDraft({ ...draft, contact_phone })} />
-            <label>
-              รอบปกติต่อวัน
-              <input min={1} required type="number" value={draft.normal_rounds_per_day} onChange={(event) => setDraft({ ...draft, normal_rounds_per_day: Math.max(1, Number(event.target.value) || 1) })} />
-            </label>
-            <label>
-              สถานะร้าน
-              <select value={draft.status} onChange={(event) => setDraft({ ...draft, status: event.target.value as ShopDraft['status'] })}>
-                <option value="active">ใช้งาน</option>
-                <option value="inactive">พักใช้งาน</option>
-              </select>
-            </label>
-          </div>
-          <label>
-            หมายเหตุการเข้าถึง
-            <textarea rows={3} value={draft.access_note} onChange={(event) => setDraft({ ...draft, access_note: event.target.value })} />
-          </label>
-          {error ? <p className="error-text">{error}</p> : null}
-          {success ? <p className="success-text">{success}</p> : null}
-          <button className="primary-button" disabled={saving} type="submit">{saving ? 'กำลังบันทึก...' : 'บันทึกการตั้งค่าร้าน'}</button>
-          <p className="muted">ร้านที่เปิดใช้งานจะปรากฏในรอบส่งใหม่ทั้งหมด พนักงานเลือกเองว่าจะไปร้านใด การปิดร้านจะเก็บประวัติเดิมไว้ และต้องรับคืนถังเช่าให้ครบก่อน</p>
-        </form>
+          <section aria-label={draft.id ? `แก้ไข ${draft.name}` : 'เพิ่มร้านใหม่'} aria-labelledby="shop-editor-title" aria-modal="true" className="panel shop-settings-editor shop-settings-dialog" role="dialog">
+            <header className="shop-editor-hero">
+              <span className="shop-editor-hero__icon"><Storefront size={32} weight="fill" /></span>
+              <div className="shop-editor-hero__copy">
+                <p className="eyebrow">ตั้งค่าร้านค้า</p>
+                <h2 id="shop-editor-title">{draft.id ? <span className="employee-visually-hidden">แก้ไข </span> : null}{draft.name || 'เพิ่มร้านใหม่'}</h2>
+                <div className="shop-editor-hero__badges">
+                  <span>รหัสร้าน: {draft.code || '—'}</span>
+                  <span className={draft.status === 'active' ? 'is-active' : 'is-inactive'}>{draft.status === 'active' ? 'ใช้งาน' : 'พักใช้งาน'}</span>
+                  {editorBuilding ? <span>{editorBuilding.code} · {editorBuilding.name}</span> : null}
+                  {editorZone ? <span>โซนย่อย: {editorZone.name}</span> : null}
+                </div>
+              </div>
+              <div className="shop-settings-dialog__actions">
+                {draft.id && draft.status === 'active' ? <button className="shop-editor-deactivate" disabled={saving} onClick={() => void deactivateShop()} type="button">ปิดร้าน / ย้ายออก</button> : null}
+                <button aria-label="ปิดหน้าต่างข้อมูลร้าน" autoFocus className="shop-settings-dialog__close" disabled={saving || savingTank} onClick={closeEditor} type="button"><X aria-hidden="true" size={24} /></button>
+              </div>
+            </header>
 
-        <div className="rented-tank-section">
+            <section className="shop-editor-overview" aria-label="สรุปข้อมูลร้าน">
+              <EditorStat icon={<IdentificationCard size={24} />} label="รหัสร้าน" value={draft.code || '—'} />
+              <EditorStat icon={<Storefront size={24} />} label="ชื่อร้าน" value={draft.name || '—'} />
+              <EditorStat icon={<Buildings size={24} />} label="อาคาร / โซนย่อย" value={editorBuilding && editorZone ? `${editorBuilding.code} · ${editorZone.name}` : '—'} />
+              <EditorStat icon={<User size={24} />} label="ผู้ติดต่อ" value={draft.contact_name || '—'} />
+              <EditorStat icon={<Phone size={24} />} label="เบอร์โทร" value={draft.contact_phone || '—'} />
+              <EditorStat icon={<Clock size={24} />} label="รอบปกติต่อวัน" value={`${draft.normal_rounds_per_day} รอบ`} />
+              <EditorStat icon={<Storefront size={24} />} label="สถานะร้าน" value={draft.status === 'active' ? 'ใช้งาน' : 'พักใช้งาน'} tone={draft.status} />
+              <EditorStat icon={<FileText size={24} />} label="หมายเหตุการเข้าถึง" value={draft.access_note || '—'} />
+            </section>
+
+            <nav className="shop-editor-tabs" aria-label="หมวดหมู่การตั้งค่าร้าน">
+              <button className={editorTab === 'basic' ? 'is-active' : ''} onClick={() => setEditorTab('basic')} type="button"><FileText size={21} />ข้อมูลพื้นฐาน</button>
+              <button className={editorTab === 'assets' ? 'is-active' : ''} onClick={() => setEditorTab('assets')} type="button"><ImageSquare size={21} />ถังเช่าและรูปภาพ</button>
+              <button className={editorTab === 'payment' ? 'is-active' : ''} onClick={() => setEditorTab('payment')} type="button"><CreditCard size={21} />การชำระเงิน</button>
+              <button className={editorTab === 'prices' ? 'is-active' : ''} onClick={() => setEditorTab('prices')} type="button"><Tag size={21} />ราคาพิเศษน้ำแข็ง</button>
+            </nav>
+
+            {error ? <p className="error-text shop-editor-feedback" role="alert">{error}</p> : null}
+            {success ? <p aria-live="polite" className="success-text shop-editor-feedback">{success}</p> : null}
+
+            <form className="settings-form shop-editor-form" hidden={editorTab !== 'basic'} onSubmit={handleSave}>
+              <div className="shop-editor-fields">
+                <TextField label="รหัสร้าน" required value={draft.code} onChange={(code) => setDraft({ ...draft, code })} />
+                <TextField label="รหัสศูนย์ราชการ" value={draft.government_shop_code} onChange={(government_shop_code) => setDraft({ ...draft, government_shop_code })} />
+                <TextField label="ชื่อร้าน" required value={draft.name} onChange={(name) => setDraft({ ...draft, name })} />
+                <label>อาคาร<select required value={draft.building_id} onChange={(event) => { const building_id = event.target.value; setDraft({ ...draft, building_id, zone_id: zones.find((zone) => zone.building_id === building_id)?.id ?? '' }); }}><option value="">เลือกตึก</option>{buildings.map((building) => <option key={building.id} value={building.id}>{building.code} · {building.name}</option>)}</select></label>
+                <label>โซนย่อย<select required value={draft.zone_id} onChange={(event) => setDraft({ ...draft, zone_id: event.target.value })}><option value="">เลือกโซนย่อย</option>{zones.filter((zone) => zone.building_id === draft.building_id).map((zone) => <option key={zone.id} value={zone.id}>{zone.code} · {zone.name}</option>)}</select></label>
+                <TextField label="ผู้ติดต่อ" value={draft.contact_name} onChange={(contact_name) => setDraft({ ...draft, contact_name })} />
+                <TextField label="เบอร์โทร" value={draft.contact_phone} onChange={(contact_phone) => setDraft({ ...draft, contact_phone })} />
+                <label>สถานะร้าน<select value={draft.status} onChange={(event) => setDraft({ ...draft, status: event.target.value as ShopDraft['status'] })}><option value="active">ใช้งาน</option><option value="inactive">พักใช้งาน</option></select></label>
+                <label className="shop-editor-field--rounds">รอบปกติต่อวัน<input min={1} required type="number" value={draft.normal_rounds_per_day} onChange={(event) => setDraft({ ...draft, normal_rounds_per_day: Math.max(1, Number(event.target.value) || 1) })} /></label>
+              </div>
+              <label>หมายเหตุการเข้าถึง<textarea rows={3} placeholder="ระบุหมายเหตุการเข้าถึง (ถ้ามี)" value={draft.access_note} onChange={(event) => setDraft({ ...draft, access_note: event.target.value })} /></label>
+              <footer className="shop-editor-savebar"><button className="secondary-button" disabled={saving} onClick={closeEditor} type="button">ยกเลิก</button><button className="primary-button" disabled={saving} type="submit">{saving ? 'กำลังบันทึก...' : 'บันทึกข้อมูลร้าน'}</button></footer>
+            </form>
+
+            <div className="shop-editor-tab-content" hidden={editorTab !== 'assets'}><div className="rented-tank-section">
           <div className="panel-header">
             <div>
               <p className="eyebrow">ทะเบียนถังประจำร้าน</p>
@@ -774,19 +776,12 @@ export function ShopSettings({ isActive = true, readOnly = false }: { isActive?:
           {tankError ? <p className="error-text">{tankError}</p> : null}
           {tankSuccess ? <p className="success-text">{tankSuccess}</p> : null}
           <p className="muted">จำนวนถังเช่าคำนวณจากรายการรหัสถังที่ยังไม่ได้รับคืน จึงไม่ต้องกรอกจำนวนแยก</p>
-        </div>
-
-        <ShopImageEditor
+            </div><ShopImageEditor
           onShopSaved={(savedShop) => setShops((current) => current.map((shop) => shop.id === savedShop.id ? { ...shop, image_path: savedShop.image_path } : shop))}
           shop={selectedShop}
-        />
-
-        {draft.id ? (
-          <>
-            <ShopPaymentProfileEditor onSaved={refreshReadiness} shopId={draft.id} shopName={draft.name} />
-            <ShopSpecialPriceEditor iceTypes={iceTypes} onSaved={refreshReadiness} shopId={draft.id} shopName={draft.name} />
-          </>
-        ) : null}
+            /></div>
+            <div className="shop-editor-tab-content" hidden={editorTab !== 'payment'}>{draft.id ? <ShopPaymentProfileEditor onSaved={refreshReadiness} shopId={draft.id} shopName={draft.name} /> : <p className="muted">บันทึกข้อมูลร้านก่อน แล้วจึงตั้งค่าการชำระเงิน</p>}</div>
+            <div className="shop-editor-tab-content" hidden={editorTab !== 'prices'}>{draft.id ? <ShopSpecialPriceEditor iceTypes={iceTypes} onSaved={refreshReadiness} shopId={draft.id} shopName={draft.name} /> : <p className="muted">บันทึกข้อมูลร้านก่อน แล้วจึงตั้งค่าราคาพิเศษน้ำแข็ง</p>}</div>
           </section>
         </div>
       ) : null}
@@ -822,5 +817,14 @@ function TextField({ label, value, required, onChange }: { label: string; value:
       {label}
       <input required={required} value={value} onChange={(event) => onChange(event.target.value)} />
     </label>
+  );
+}
+
+function EditorStat({ icon, label, value, tone }: { icon: ReactNode; label: string; value: string; tone?: 'active' | 'inactive' }) {
+  return (
+    <div className="shop-editor-stat">
+      <span className="shop-editor-stat__icon">{icon}</span>
+      <span><small>{label}</small><strong className={tone ? `is-${tone}` : ''}>{value}</strong></span>
+    </div>
   );
 }

@@ -7,11 +7,13 @@ const mocks = vi.hoisted(() => ({
   bulkSignedUrls: vi.fn(),
   from: vi.fn(),
   readinessReport: vi.fn(),
+  rpc: vi.fn(),
 }));
 
 vi.mock('../src/lib/supabase', () => ({
   supabase: {
     from: mocks.from,
+    rpc: mocks.rpc,
   },
 }));
 
@@ -119,6 +121,7 @@ describe('ShopSettings card catalog', () => {
       'shops/shop-a/photo.jpg': 'https://example.test/shop-a.jpg',
     });
     mocks.readinessReport.mockResolvedValue(readyReport);
+    mocks.rpc.mockResolvedValue({ data: null, error: null });
   });
 
   it('filters cards, reports the match count, and opens the selected shop in a dialog', async () => {
@@ -232,5 +235,35 @@ describe('ShopSettings card catalog', () => {
     expect(mocks.bulkSignedUrls).toHaveBeenCalledWith(
       manyShops.slice(0, 12).map((shop) => shop.image_path),
     );
+  });
+
+  it('preserves unsaved payment settings while switching editor tabs', async () => {
+    const user = userEvent.setup();
+    render(<ShopSettings />);
+
+    await user.click(await screen.findByRole('button', { name: /AA01 ร้านเจ๊อ้อย/ }));
+    await user.click(screen.getByRole('button', { name: 'การชำระเงิน' }));
+
+    const endOfDay = await screen.findByRole('checkbox', { name: /เก็บท้ายวัน/ });
+    await user.click(endOfDay);
+    expect((endOfDay as HTMLInputElement).checked).toBe(true);
+
+    await user.click(screen.getByRole('button', { name: 'ราคาพิเศษน้ำแข็ง' }));
+    await user.click(screen.getByRole('button', { name: 'การชำระเงิน' }));
+
+    expect((screen.getByRole('checkbox', { name: /เก็บท้ายวัน/ }) as HTMLInputElement).checked).toBe(true);
+  });
+
+  it('shows deactivation errors from every editor tab', async () => {
+    const user = userEvent.setup();
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    mocks.rpc.mockResolvedValueOnce({ data: null, error: { message: 'deactivation failed' } });
+    render(<ShopSettings />);
+
+    await user.click(await screen.findByRole('button', { name: /AA01 ร้านเจ๊อ้อย/ }));
+    await user.click(screen.getByRole('button', { name: 'ถังเช่าและรูปภาพ' }));
+    await user.click(screen.getByRole('button', { name: 'ปิดร้าน / ย้ายออก' }));
+
+    expect((await screen.findByRole('alert')).textContent).toContain('deactivation failed');
   });
 });
