@@ -6,6 +6,7 @@ import { ShopSettings } from '../src/ShopSettings';
 const mocks = vi.hoisted(() => ({
   bulkSignedUrls: vi.fn(),
   from: vi.fn(),
+  readinessReport: vi.fn(),
 }));
 
 vi.mock('../src/lib/supabase', () => ({
@@ -21,15 +22,25 @@ vi.mock('../src/features/admin-reference-settings/adminReferenceSettingsService'
     getShopImageSignedUrls: (...args: unknown[]) => mocks.bulkSignedUrls(...args),
     loadShopPaymentProfile: vi.fn().mockResolvedValue(null),
     loadShopIcePrices: vi.fn().mockResolvedValue([]),
-    loadPOSReadinessReport: vi.fn().mockResolvedValue({
-      total_active_shops: 2,
-      shops_ready_count: 2,
-      shops_missing_payment_profile: 0,
-      ice_types_missing_standard_price: 0,
-      items: [],
-    }),
+    loadPOSReadinessReport: (...args: unknown[]) => mocks.readinessReport(...args),
   };
 });
+
+const readyReport = {
+  total_active_shops: 2,
+  shops_ready_count: 1,
+  shops_missing_payment_profile: 0,
+  ice_types_missing_standard_price: 0,
+  items: [{
+    shop_id: 'shop-a',
+    shop_code: 'AA01',
+    shop_name: 'ร้านเจ๊อ้อย',
+    has_payment_profile: true,
+    missing_special_prices_count: 0,
+    has_issues: false,
+    issue_details: [],
+  }],
+};
 
 
 vi.mock('../src/features/admin-reference-settings/components/ShopImageEditor', () => ({
@@ -86,6 +97,7 @@ function queryResult(data: unknown[]) {
 
 describe('ShopSettings card catalog', () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     mocks.from.mockImplementation((table: string) => {
       if (table === 'shops') return queryResult([...shops]);
       if (table === 'buildings') return queryResult([
@@ -106,6 +118,7 @@ describe('ShopSettings card catalog', () => {
     mocks.bulkSignedUrls.mockResolvedValue({
       'shops/shop-a/photo.jpg': 'https://example.test/shop-a.jpg',
     });
+    mocks.readinessReport.mockResolvedValue(readyReport);
   });
 
   it('filters cards, reports the match count, and opens the selected shop in a dialog', async () => {
@@ -131,6 +144,55 @@ describe('ShopSettings card catalog', () => {
 
     await user.click(screen.getByRole('button', { name: /BB02 ร้านน้ำฝน/ }));
     fireEvent.mouseDown(document.querySelector('.shop-settings-backdrop')!);
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('searches by phone number and routes each bulk action to the matching workflow', async () => {
+    const user = userEvent.setup();
+    render(<ShopSettings />);
+
+    expect(await screen.findByText('พบ 2 ร้าน')).toBeTruthy();
+    await user.type(screen.getByRole('textbox', { name: 'ค้นหาร้าน' }), '0811111111');
+    expect(screen.getByText('พบ 1 ร้าน')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /AA01 ร้านเจ๊อ้อย/ })).toBeTruthy();
+
+    await user.clear(screen.getByRole('textbox', { name: 'ค้นหาร้าน' }));
+    await user.click(screen.getByRole('button', { name: 'ตั้งค่าประเภทการรับเงิน' }));
+    expect(screen.getByRole('heading', { name: /กำหนดโปรไฟล์ชำระเงินแบบกลุ่ม/ })).toBeTruthy();
+    fireEvent.mouseDown(document.querySelector('.modal-backdrop')!);
+
+    await user.click(screen.getByRole('button', { name: 'ตั้งค่าหลายร้าน' }));
+    expect(screen.getByRole('heading', { name: 'กำหนดราคาน้ำแข็งหลายร้าน' })).toBeTruthy();
+  });
+
+  it('renders neutral readiness and disables readiness filters when the report fails', async () => {
+    const user = userEvent.setup();
+    mocks.readinessReport.mockRejectedValueOnce(new Error('readiness unavailable'));
+    render(<ShopSettings />);
+
+    expect((await screen.findByRole('alert')).textContent).toContain('readiness unavailable');
+    const card = screen.getByRole('button', { name: /AA01 ร้านเจ๊อ้อย/ });
+    expect(card.textContent).toContain('ไม่ทราบ');
+    expect(card.textContent).not.toContain('ไม่มี Payment Profile');
+    expect((screen.getByRole('combobox', { name: 'กรองประเภทรายรับ' }) as HTMLSelectElement).disabled).toBe(true);
+    expect((screen.getByRole('combobox', { name: 'กรองความพร้อม POS' }) as HTMLSelectElement).disabled).toBe(true);
+
+    await user.click(screen.getByRole('button', { name: 'ลองใหม่' }));
+    await waitFor(() => expect(mocks.readinessReport).toHaveBeenCalledTimes(2));
+    expect((screen.getByRole('combobox', { name: 'กรองประเภทรายรับ' }) as HTMLSelectElement).disabled).toBe(false);
+    expect(card.textContent).toContain('พร้อม POS');
+  });
+
+  it('keeps demo-preview management controls read-only', async () => {
+    const user = userEvent.setup();
+    render(<ShopSettings readOnly />);
+
+    expect(await screen.findByText('พบ 2 ร้าน')).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: 'ร้านใหม่' }));
+    await user.click(screen.getByRole('button', { name: 'ตั้งค่าหลายร้าน' }));
+    await user.click(screen.getByRole('button', { name: 'ตั้งค่าประเภทการรับเงิน' }));
+    await user.click(screen.getByRole('button', { name: /AA01 ร้านเจ๊อ้อย/ }));
+
     expect(screen.queryByRole('dialog')).toBeNull();
   });
 

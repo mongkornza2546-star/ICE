@@ -7,6 +7,10 @@ const migration = readFileSync(
   new URL('../supabase/migrations/0057_sync_stock_control_summary_holder_flags.sql', import.meta.url),
   'utf8',
 );
+const workSiteBackfillMigration = readFileSync(
+  new URL('../supabase/migrations/0058_backfill_work_sites_as_report_only.sql', import.meta.url),
+  'utf8',
+);
 
 const SITE_ID = '10000000-0000-4000-8000-000000000001';
 const TEAM_ID = '10000000-0000-4000-8000-000000000002';
@@ -65,4 +69,33 @@ test('stock-control summary refreshes holder flags from stock locations', async 
 
   assert.equal(locations.find((location) => location.id === SITE_ID).holds_inventory, false);
   assert.equal(locations.find((location) => location.id === TEAM_ID).holds_inventory, true);
+});
+
+test('legacy work sites are backfilled as report-only without changing inventory holders', async (t) => {
+  const db = new PGlite();
+  t.after(() => db.close());
+
+  await db.exec(`
+    create table public.stock_locations (
+      id uuid primary key,
+      kind text not null,
+      holds_inventory boolean not null,
+      requires_daily_count boolean not null
+    );
+    insert into public.stock_locations values
+      ('${SITE_ID}', 'work_site', true, false),
+      ('${TEAM_ID}', 'team', true, true);
+  `);
+
+  await db.exec(workSiteBackfillMigration);
+
+  const result = await db.query(`
+    select kind, holds_inventory, requires_daily_count
+    from public.stock_locations
+    order by kind
+  `);
+  assert.deepEqual(result.rows, [
+    { kind: 'team', holds_inventory: true, requires_daily_count: true },
+    { kind: 'work_site', holds_inventory: false, requires_daily_count: false },
+  ]);
 });

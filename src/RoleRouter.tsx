@@ -173,9 +173,9 @@ export function RoleRouter({
           'factory_order',
           'delivery',
           'stock_operations',
-          'stock_audit',
           'location_management',
           'shops',
+          'stock_audit',
           'reference_settings',
         ]
       : [
@@ -224,7 +224,7 @@ export function RoleRouter({
       )}
       {visitedViews.has('shops') && (
         <KeepAlive active={currentView === 'shops'}>
-          <ShopSettings />
+          <ShopSettings isActive={currentView === 'shops'} />
         </KeepAlive>
       )}
       {visitedViews.has('reference_settings') && (

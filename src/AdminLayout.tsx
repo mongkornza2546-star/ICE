@@ -86,8 +86,10 @@ export function AdminLayout({
     return () => window.removeEventListener('keydown', closeOnEscape);
   }, [isDesktopLayout, navigationExpanded]);
 
+  const profileInitial = profileLabel.trim().charAt(0).toLocaleUpperCase() || 'U';
+
   return (
-    <div className={`admin-shell ${activeView === 'reference_settings' ? 'admin-shell--reference-settings' : ''} ${navigationExpanded ? '' : 'admin-shell--sidebar-collapsed'}`}>
+    <div className={`admin-shell ${activeView === 'reference_settings' ? 'admin-shell--reference-settings' : ''} ${activeView === 'shops' ? 'admin-shell--shops' : ''} ${navigationExpanded ? '' : 'admin-shell--sidebar-collapsed'}`}>
       <aside className={`admin-sidebar ${navigationExpanded ? 'admin-sidebar--open' : ''}`} id="admin-navigation">
         <div className="brand-lockup">
           <span className="brand-mark" aria-hidden="true">
@@ -143,12 +145,12 @@ export function AdminLayout({
               <List size={22} />
               <span>เมนู</span>
             </button>
-            <span className="context-pill"><CalendarBlank size={18} />{today}</span>
-            <span className="context-pill"><MapPin size={18} />ศูนย์ราชการ</span>
+            <span className="context-pill"><CalendarBlank size={18} />{today}<CaretDown size={14} /></span>
+            <span className="context-pill"><MapPin size={18} />ศูนย์ราชการ<CaretDown size={14} /></span>
           </div>
           <div className="admin-topbar__actions">
             <span className="current-view-label">{viewMeta[activeView].shortLabel}</span>
-            {activeView === 'reference_settings' ? (
+            {activeView === 'reference_settings' || activeView === 'shops' ? (
               <>
                 <button aria-label="การแจ้งเตือน" className="topbar-notification" type="button">
                   <Bell size={21} weight="regular" />
@@ -157,7 +159,7 @@ export function AdminLayout({
               </>
             ) : null}
             <div className="profile-menu">
-              <UserCircle size={30} weight="fill" />
+              {activeView === 'shops' ? <span aria-hidden="true" className="profile-menu__initial">{profileInitial}</span> : <UserCircle size={30} weight="fill" />}
               <span>{profileLabel}</span>
               {!onSignOut ? <CaretDown size={16} /> : null}
             </div>

@@ -8,9 +8,10 @@ interface ShopSpecialPriceEditorProps {
   shopId: string;
   shopName: string;
   iceTypes: IceTypeOption[];
+  onSaved?: () => void | Promise<void>;
 }
 
-export function ShopSpecialPriceEditor({ shopId, shopName, iceTypes }: ShopSpecialPriceEditorProps) {
+export function ShopSpecialPriceEditor({ shopId, shopName, iceTypes, onSaved }: ShopSpecialPriceEditorProps) {
   const [specialPrices, setSpecialPrices] = useState<ShopIcePriceSetting[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -74,6 +75,7 @@ export function ShopSpecialPriceEditor({ shopId, shopName, iceTypes }: ShopSpeci
       setUnitPrice('');
       setValidTo('');
       await refreshPrices();
+      await onSaved?.();
     } catch (err) {
       setError(getErrorMessage(err));
     } finally {

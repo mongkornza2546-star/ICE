@@ -6,6 +6,7 @@ import { loadShopPaymentProfile, saveShopPaymentProfile, getErrorMessage } from 
 interface ShopPaymentProfileEditorProps {
   shopId: string;
   shopName: string;
+  onSaved?: () => void | Promise<void>;
 }
 
 const defaultProfile = (shop_id: string): ShopPaymentProfileSetting => ({
@@ -26,7 +27,7 @@ const defaultProfile = (shop_id: string): ShopPaymentProfileSetting => ({
   credit_limit: null,
 });
 
-export function ShopPaymentProfileEditor({ shopId, shopName }: ShopPaymentProfileEditorProps) {
+export function ShopPaymentProfileEditor({ shopId, shopName, onSaved }: ShopPaymentProfileEditorProps) {
   const [profile, setProfile] = useState<ShopPaymentProfileSetting>(defaultProfile(shopId));
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -111,6 +112,7 @@ export function ShopPaymentProfileEditor({ shopId, shopName }: ShopPaymentProfil
       const saved = await saveShopPaymentProfile(profile);
       setProfile(saved);
       setSuccess('บันทึกเงื่อนไขการชำระเงินของร้านแล้ว');
+      await onSaved?.();
     } catch (err) {
       setError(getErrorMessage(err));
     } finally {

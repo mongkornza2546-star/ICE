@@ -1,6 +1,7 @@
-import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from 'react';
-import { Buildings, CaretRight, ImageSquare, MagnifyingGlass, MapPin, Phone, Plus, Storefront, X, SlidersHorizontal } from '@phosphor-icons/react';
+import { ChangeEvent, FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Buildings, CaretRight, CheckCircle, CreditCard, Eye, FileXls, GearSix, GridFour, ImageSquare, ListBullets, MagnifyingGlass, MapPin, Phone, Plus, Receipt, SlidersHorizontal, Storefront, UploadSimple, Warning, X } from '@phosphor-icons/react';
 import { supabase } from './lib/supabase';
+import { env } from './lib/env';
 import { parseShopImportFile, type ShopImportRow } from './lib/shopImport';
 import type { BuildingOption, BuildingZoneOption, ShopSetting, IceTypeOption } from './types/app';
 import { ShopImageEditor } from './features/admin-reference-settings/components/ShopImageEditor';
@@ -8,9 +9,9 @@ import { ShopPaymentProfileEditor } from './features/shop-settings/components/Sh
 import { ShopSpecialPriceEditor } from './features/shop-settings/components/ShopSpecialPriceEditor';
 import { BulkPaymentSetupModal } from './features/shop-settings/components/BulkPaymentSetupModal';
 import { BulkShopPriceSetupModal } from './features/shop-settings/components/BulkShopPriceSetupModal';
-import { ShopReadinessPanel } from './features/shop-settings/components/ShopReadinessPanel';
-import { getShopImageSignedUrls } from './features/admin-reference-settings/adminReferenceSettingsService';
+import { getShopImageSignedUrls, loadPOSReadinessReport } from './features/admin-reference-settings/adminReferenceSettingsService';
 import { matchesActiveFilter, type ActiveFilter } from './features/admin-reference-settings/referenceEditorFilters';
+import type { POSReadinessReport } from './types/app';
 
 
 const TANK_IMAGE_BUCKET = 'tank-images';
@@ -60,7 +61,8 @@ const emptyDraft: ShopDraft = {
   status: 'active',
 };
 
-export function ShopSettings() {
+export function ShopSettings({ isActive = true, readOnly = false }: { isActive?: boolean; readOnly?: boolean }) {
+  const managementReadOnly = readOnly || env.isDemoMode;
   const [shops, setShops] = useState<ShopSetting[]>([]);
   const [buildings, setBuildings] = useState<BuildingOption[]>([]);
   const [zones, setZones] = useState<BuildingZoneOption[]>([]);
@@ -92,10 +94,57 @@ export function ShopSettings() {
   const [tankSuccess, setTankSuccess] = useState<string | null>(null);
   const [shopImageUrls, setShopImageUrls] = useState<Record<string, string>>({});
   const [failedShopImages, setFailedShopImages] = useState<Record<string, boolean>>({});
+  const [readinessReport, setReadinessReport] = useState<POSReadinessReport | null>(null);
+  const [readinessStatus, setReadinessStatus] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [readinessError, setReadinessError] = useState<string | null>(null);
+  const [paymentFilter, setPaymentFilter] = useState<'all' | 'missing'>('all');
+  const [posFilter, setPosFilter] = useState<'all' | 'ready' | 'issues'>('all');
+  const [catalogView, setCatalogView] = useState<'grid' | 'list'>('grid');
+  const importInputRef = useRef<HTMLInputElement>(null);
+
+  const refreshReadiness = useCallback(async () => {
+    setReadinessStatus('loading');
+    setReadinessError(null);
+    if (env.isDemoMode) {
+      setReadinessReport({
+        total_active_shops: 8,
+        shops_ready_count: 5,
+        shops_missing_payment_profile: 2,
+        ice_types_missing_standard_price: 1,
+        items: [
+          { shop_id: 'demo-shop-1', shop_code: 'AA01', shop_name: 'ร้านครัวน้องทราย (เบอร์ 9)', has_payment_profile: true, missing_special_prices_count: 0, has_issues: false, issue_details: [] },
+          { shop_id: 'demo-shop-2', shop_code: 'AA10', shop_name: 'ร้านกาแฟเขาทะลุ ชุมพร', has_payment_profile: true, missing_special_prices_count: 0, has_issues: false, issue_details: [] },
+          { shop_id: 'demo-shop-3', shop_code: 'AA11', shop_name: 'ร้านกาแฟ ลาเบล่า', has_payment_profile: true, missing_special_prices_count: 0, has_issues: false, issue_details: [] },
+          { shop_id: 'demo-shop-4', shop_code: 'AA12', shop_name: 'ร้านมัน คอฟฟี่คอร์', has_payment_profile: false, missing_special_prices_count: 0, has_issues: true, issue_details: ['ยังไม่มี Payment Profile'] },
+          { shop_id: 'demo-shop-5', shop_code: 'AA13', shop_name: 'ร้านข้าวมันไก่ศรีราชา', has_payment_profile: true, missing_special_prices_count: 0, has_issues: false, issue_details: [] },
+          { shop_id: 'demo-shop-6', shop_code: 'AA14', shop_name: 'ร้านผลไม้สดเพื่อสุขภาพ', has_payment_profile: false, missing_special_prices_count: 0, has_issues: true, issue_details: ['ยังไม่มี Payment Profile'] },
+          { shop_id: 'demo-shop-7', shop_code: 'AA15', shop_name: 'ร้านของฝากเมืองชุมพร', has_payment_profile: true, missing_special_prices_count: 1, has_issues: true, issue_details: ['ไม่มีราคากลางน้ำแข็ง'] },
+          { shop_id: 'demo-shop-8', shop_code: 'AA16', shop_name: 'ร้านอาหารตามสั่งป้าตื๊ด', has_payment_profile: true, missing_special_prices_count: 0, has_issues: false, issue_details: [] },
+        ],
+      });
+      setReadinessStatus('ready');
+      return;
+    }
+    if (!supabase) {
+      setReadinessReport(null);
+      setReadinessError('ยังไม่ได้ตั้งค่า Supabase สำหรับรายงานความพร้อม POS');
+      setReadinessStatus('error');
+      return;
+    }
+    try {
+      setReadinessReport(await loadPOSReadinessReport());
+      setReadinessStatus('ready');
+    } catch (loadError) {
+      setReadinessReport(null);
+      setReadinessError(loadError instanceof Error ? loadError.message : 'โหลดรายงานความพร้อม POS ไม่สำเร็จ');
+      setReadinessStatus('error');
+    }
+  }, []);
 
   useEffect(() => {
-    void loadSettings();
-  }, []);
+    if (!isActive) return;
+    void refreshDirectoryData();
+  }, [isActive, refreshReadiness]);
 
   useEffect(() => {
     if (!editorOpen) return;
@@ -114,7 +163,30 @@ export function ShopSettings() {
   }, [editorOpen, saving, savingTank]);
 
   async function loadSettings() {
-    if (!supabase) return;
+    if (env.isDemoMode) {
+      const demoBuildings = [
+        { id: 'demo-building-a', code: 'A', name: 'อาคาร A' },
+        { id: 'demo-building-b', code: 'B', name: 'อาคาร B' },
+        { id: 'demo-building-c', code: 'C', name: 'อาคาร C' },
+      ];
+      const demoZones = demoBuildings.map((building) => ({ id: `demo-zone-${building.code.toLowerCase()}`, building_id: building.id, code: building.code, name: `โซน ${building.code}`, sort_order: 1, is_active: true }));
+      const demoShopNames = ['ร้านครัวน้องทราย (เบอร์ 9)', 'ร้านกาแฟเขาทะลุ ชุมพร', 'ร้านกาแฟ ลาเบล่า', 'ร้านมัน คอฟฟี่คอร์', 'ร้านข้าวมันไก่ศรีราชา', 'ร้านผลไม้สดเพื่อสุขภาพ', 'ร้านของฝากเมืองชุมพร', 'ร้านอาหารตามสั่งป้าตื๊ด'];
+      const demoCodes = ['AA01', 'AA10', 'AA11', 'AA12', 'AA13', 'AA14', 'AA15', 'AA16'];
+      setBuildings(demoBuildings);
+      setZones(demoZones);
+      setIceTypes([{ id: 'demo-ice', code: 'BLOCK', name: 'น้ำแข็งก้อน', unit: 'ถุง' }]);
+      setShops(demoShopNames.map((name, index) => {
+        const building = demoBuildings[index % demoBuildings.length];
+        return { id: `demo-shop-${index + 1}`, code: demoCodes[index], name, image_path: null, building_id: building.id, zone_id: `demo-zone-${building.code.toLowerCase()}`, floor_or_zone: `โซน ${building.code}`, government_shop_code: null, contact_name: null, contact_phone: index === 3 || index === 6 ? null : `08${index + 1}-234-567${index}`, normal_rounds_per_day: 1, access_note: null, status: 'active' };
+      }));
+      setLoading(false);
+      return;
+    }
+    if (!supabase) {
+      setError('ยังไม่ได้ตั้งค่า Supabase สำหรับหน้านี้');
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setError(null);
     const [shopsResponse, buildingsResponse, zonesResponse, iceTypesResponse] = await Promise.all([
@@ -137,6 +209,10 @@ export function ShopSettings() {
       await refreshRentedTanks();
     }
     setLoading(false);
+  }
+
+  async function refreshDirectoryData() {
+    await Promise.all([loadSettings(), refreshReadiness()]);
   }
 
 
@@ -167,15 +243,19 @@ export function ShopSettings() {
   const filteredShops = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase('th');
     return shops.filter((shop) => {
-      const matchesSearch = !needle || `${shop.code} ${shop.government_shop_code ?? ''} ${shop.name}`.toLocaleLowerCase('th').includes(needle);
+      const matchesSearch = !needle || `${shop.code} ${shop.government_shop_code ?? ''} ${shop.name} ${shop.contact_phone ?? ''}`.toLocaleLowerCase('th').includes(needle);
       const matchesBuilding = !buildingFilter || shop.building_id === buildingFilter;
       const matchesZone = !zoneFilter || shop.zone_id === zoneFilter;
-      return matchesSearch && matchesActiveFilter(shop.status === 'active', shopFilter) && matchesBuilding && matchesZone;
+      const readiness = readinessReport?.items.find((item) => item.shop_id === shop.id);
+      const matchesPayment = readinessStatus !== 'ready' || paymentFilter !== 'missing' || readiness?.has_payment_profile === false;
+      const matchesPos = readinessStatus !== 'ready' || posFilter === 'all'
+        || (posFilter === 'ready' ? readiness?.has_issues === false : readiness?.has_issues === true);
+      return matchesSearch && matchesActiveFilter(shop.status === 'active', shopFilter) && matchesBuilding && matchesZone && matchesPayment && matchesPos;
     });
-  }, [query, shopFilter, buildingFilter, zoneFilter, shops]);
+  }, [query, shopFilter, buildingFilter, zoneFilter, paymentFilter, posFilter, readinessReport, readinessStatus, shops]);
 
   // Reset to page 0 whenever filters change
-  useEffect(() => { setPage(0); }, [query, shopFilter, buildingFilter, zoneFilter]);
+  useEffect(() => { setPage(0); }, [query, shopFilter, buildingFilter, zoneFilter, paymentFilter, posFilter]);
 
   const totalPages = Math.max(1, Math.ceil(filteredShops.length / PAGE_SIZE));
   const pagedShops = useMemo(
@@ -226,6 +306,7 @@ export function ShopSettings() {
   }, [visibleShopsWithImages]);
 
   const selectShop = (shop: ShopSetting) => {
+    if (managementReadOnly) return;
     setDraft({
       id: shop.id,
       code: shop.code,
@@ -246,6 +327,7 @@ export function ShopSettings() {
   };
 
   const startNew = () => {
+    if (managementReadOnly) return;
     setDraft({
       ...emptyDraft,
       building_id: buildings[0]?.id ?? '',
@@ -301,7 +383,7 @@ export function ShopSettings() {
   }
 
   async function registerRentedTank() {
-    if (!supabase || !draft.id) return;
+    if (managementReadOnly || !supabase || !draft.id) return;
     const normalizedCode = tankCode.trim().toLocaleUpperCase('en-US');
     if (!normalizedCode || !tankImageFile) {
       setTankError('กรุณาระบุรหัสถังและเลือกรูปถังให้ครบ');
@@ -350,7 +432,7 @@ export function ShopSettings() {
   }
 
   async function returnRentedTank(tank: ShopRentedTank) {
-    if (!supabase || !window.confirm(`ยืนยันว่าร้านคืนถัง ${tank.tank_code} แล้ว`)) return;
+    if (managementReadOnly || !supabase || !window.confirm(`ยืนยันว่าร้านคืนถัง ${tank.tank_code} แล้ว`)) return;
     setSavingTank(true);
     setTankError(null);
     setTankSuccess(null);
@@ -365,7 +447,7 @@ export function ShopSettings() {
   }
 
   async function deactivateShop() {
-    if (!supabase || !draft.id) return;
+    if (managementReadOnly || !supabase || !draft.id) return;
     if (activeShopTanks.length > 0) {
       setError(`ยังปิดร้านไม่ได้: กรุณารับคืนถังเช่า ${activeShopTanks.length} ใบให้ครบก่อน`);
       return;
@@ -381,7 +463,7 @@ export function ShopSettings() {
     } else {
       setDraft((current) => ({ ...current, status: 'inactive' }));
       setSuccess('ปิดร้านแล้ว ร้านจะไม่ปรากฏในงานส่งใหม่');
-      await loadSettings();
+      await refreshDirectoryData();
     }
     setSaving(false);
   }
@@ -402,7 +484,7 @@ export function ShopSettings() {
   };
 
   const importCatalog = async () => {
-    if (!supabase || importRows.length === 0) return;
+    if (managementReadOnly || !supabase || importRows.length === 0) return;
     setImporting(true);
     setImportError(null);
     setImportSuccess(null);
@@ -414,14 +496,14 @@ export function ShopSettings() {
       setImportSuccess(`นำเข้าสำเร็จ: เพิ่ม ${result.created_shop_count} ร้าน · อัปเดต ${result.updated_shop_count} ร้าน`);
       setImportRows([]);
       setImportFileName('');
-      await loadSettings();
+      await refreshDirectoryData();
     }
     setImporting(false);
   };
 
   const handleSave = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!supabase) return;
+    if (managementReadOnly || !supabase) return;
     setSaving(true);
     setError(null);
     setSuccess(null);
@@ -446,140 +528,111 @@ export function ShopSettings() {
     }
 
     setSuccess(draft.id ? 'บันทึกการแก้ไขร้านแล้ว' : 'เพิ่มร้านใหม่แล้ว');
-    await loadSettings();
+    await refreshDirectoryData();
     setDraft((current) => ({ ...current, id: data as string }));
     setSaving(false);
   };
 
   if (loading) return <p className="empty-text">กำลังโหลดข้อมูลร้าน...</p>;
 
-  return (
-    <div className="settings-grid">
-      <section className="panel shop-import-panel">
-        <div className="panel-header">
-          <div>
-            <p className="eyebrow">นำเข้าหลายร้าน</p>
-            <h2>อัปโหลด Excel</h2>
-          </div>
-          <a className="ghost-button" download href="/templates/shop-import-template.xlsx">ดาวน์โหลดไฟล์แม่แบบ</a>
-        </div>
-        <p className="muted">หนึ่งแถวต่อหนึ่งร้าน ระบบใช้รหัสตัวพิมพ์ใหญ่ และจะไม่เปลี่ยนลำดับหรือเปิดใช้ตึก/โซนเดิมโดยอัตโนมัติ</p>
-        <div className="shop-import-actions">
-          <label className="secondary-button shop-import-file">
-            เลือกไฟล์ .xlsx
-            <input accept=".xlsx" onChange={chooseImportFile} type="file" />
-          </label>
-          {importFileName ? <span>{importFileName} · {importRows.length} ร้าน</span> : null}
-          <button className="primary-button" disabled={importing || importRows.length === 0} onClick={importCatalog} type="button">
-            {importing ? 'กำลังนำเข้า...' : `ยืนยันนำเข้า ${importRows.length || ''} ร้าน`}
-          </button>
-        </div>
-        {importRows.length > 0 ? (
-          <div className="data-table-wrap shop-import-preview">
-            <table className="data-table">
-              <thead><tr><th>รหัสร้าน</th><th>ชื่อร้าน</th><th>ตึก</th><th>โซนย่อย</th><th>สถานะ</th></tr></thead>
-              <tbody>{importRows.slice(0, 8).map((row) => (
-                <tr key={row.shop_code}><td>{row.shop_code}</td><td>{row.shop_name}</td><td>{row.building_code} · {row.building_name}</td><td>{row.zone_code} · {row.zone_name}</td><td>{row.status === 'active' ? 'ใช้งาน' : 'พักใช้งาน'}</td></tr>
-              ))}</tbody>
-            </table>
-            {importRows.length > 8 ? <p className="muted shop-import-more">และอีก {importRows.length - 8} ร้าน</p> : null}
-          </div>
-        ) : null}
-        {importError ? <p className="error-text shop-import-message">{importError}</p> : null}
-        {importSuccess ? <p className="success-text shop-import-message">{importSuccess}</p> : null}
-      </section>
-      <section className="shop-catalog">
-        <div className="shop-catalog__header">
-          <div>
-            <p className="eyebrow">ข้อมูลหลัก</p>
-            <h2>ร้านค้าทั้งหมด</h2>
-            <p className="muted">เลือกการ์ดเพื่อดูรายละเอียดและแก้ไขข้อมูลร้าน</p>
-          </div>
-          <div style={{ display: 'flex', gap: '0.5rem' }}>
-            <button className="secondary-button" onClick={() => setBulkPriceModalOpen(true)} type="button">
-              <SlidersHorizontal size={18} />
-              ตั้งราคาหลายร้าน
-            </button>
-            <button className="secondary-button" onClick={() => setBulkModalOpen(true)} type="button">
-              <SlidersHorizontal size={18} />
-              ตั้งค่าชำระเงินหลายร้าน
-            </button>
-            <button className="primary-button" onClick={startNew} type="button">
-              <Plus size={18} weight="bold" />
-              ร้านใหม่
-            </button>
-          </div>
-        </div>
+  const activeShopCount = readinessReport?.total_active_shops ?? shops.filter((shop) => shop.status === 'active').length;
+  const readyShopCount = readinessReport?.shops_ready_count ?? 0;
+  const missingProfileCount = readinessReport?.shops_missing_payment_profile ?? 0;
+  const missingPriceCount = readinessReport?.items.filter((item) => item.missing_special_prices_count > 0).length ?? 0;
+  const readinessAvailable = readinessStatus === 'ready' && readinessReport !== null;
+  const readinessMetric = (value: number) => readinessStatus === 'loading' ? '…' : readinessStatus === 'error' ? '—' : value;
 
-        <div className="shop-catalog__toolbar">
-          <label className="shop-search-field">
-            <MagnifyingGlass aria-hidden="true" size={20} />
-            <input
-              aria-label="ค้นหาร้าน"
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="ค้นหารหัส ชื่อร้าน หรือรหัสศูนย์ราชการ"
-              value={query}
-            />
-          </label>
-          <div className="shop-catalog__filters">
-            <select 
-              aria-label="กรองตึก"
-              className="shop-filter-button"
-              onChange={(e) => {
-                setBuildingFilter(e.target.value);
-                setZoneFilter('');
-              }}
-              value={buildingFilter}
-            >
-              <option value="">ทุกตึก</option>
-              {buildings.map((b) => (
-                <option key={b.id} value={b.id}>{b.code} · {b.name}</option>
-              ))}
-            </select>
-            <select 
-              aria-label="กรองโซนย่อย"
-              className="shop-filter-button"
-              disabled={!buildingFilter}
-              onChange={(e) => setZoneFilter(e.target.value)}
-              value={zoneFilter}
-            >
-              <option value="">ทุกโซน</option>
-              {zones.filter((z) => z.building_id === buildingFilter).map((z) => (
-                <option key={z.id} value={z.id}>{z.code} · {z.name}</option>
-              ))}
-            </select>
-            <span className="shop-catalog__count">พบ {filteredShops.length} ร้าน</span>
-          </div>
+  return (
+    <div className="shop-settings-page">
+      <input accept=".xlsx" className="shop-import-file-input" onChange={chooseImportFile} ref={importInputRef} type="file" />
+      <header className="shop-page-heading">
+        <div>
+          <h1>ร้านค้า</h1>
+          <p>จัดการร้านค้า สถานะการตั้งค่า POS และข้อมูลสำคัญของร้านค้าในศูนย์ราชการ</p>
         </div>
-        <div className="shop-card-grid">
+        <div className="shop-page-actions">
+          <button className="primary-button shop-page-actions__new" onClick={startNew} type="button"><Plus size={21} weight="regular" />ร้านใหม่</button>
+          <button className="secondary-button" onClick={() => importInputRef.current?.click()} type="button"><UploadSimple size={19} />นำเข้า Excel</button>
+          <button className="secondary-button" onClick={() => { if (!managementReadOnly) setBulkPriceModalOpen(true); }} type="button"><SlidersHorizontal size={19} />ตั้งค่าหลายร้าน</button>
+          <button className="secondary-button" onClick={() => { if (!managementReadOnly) setBulkModalOpen(true); }} type="button"><Receipt size={19} />ตั้งค่าประเภทการรับเงิน</button>
+        </div>
+      </header>
+
+      <section aria-label="สรุปสถานะร้าน" className="shop-summary-grid">
+        <article className="shop-summary-card shop-summary-card--blue"><span className="shop-summary-card__icon"><Storefront size={35} weight="duotone" /></span><div><p>ร้านค้าทั้งหมด</p><strong>{activeShopCount}</strong><small>ร้าน</small><a href="#shop-directory">ดูรายละเอียดทั้งหมด <CaretRight size={14} /></a></div></article>
+        <article className="shop-summary-card shop-summary-card--green"><span className="shop-summary-card__icon"><CheckCircle size={35} weight="duotone" /></span><div><p>พร้อมใช้งาน POS</p><strong>{readinessMetric(readyShopCount)}</strong><small>ร้าน {readinessAvailable && activeShopCount ? `(${Math.round((readyShopCount / activeShopCount) * 100)}%)` : ''}</small><em>พร้อมรับออเดอร์</em></div></article>
+        <article className="shop-summary-card shop-summary-card--orange"><span className="shop-summary-card__icon"><CreditCard size={35} weight="duotone" /></span><div><p>ยังไม่มี Payment Profile</p><strong>{readinessMetric(missingProfileCount)}</strong><small>ร้าน {readinessAvailable && activeShopCount ? `(${Math.round((missingProfileCount / activeShopCount) * 100)}%)` : ''}</small><em>ตั้งค่าให้เสร็จเพื่อขายได้</em></div></article>
+        <article className="shop-summary-card shop-summary-card--red"><span className="shop-summary-card__icon"><Warning size={35} weight="duotone" /></span><div><p>ยังไม่มีราคากลางน้ำแข็ง</p><strong>{readinessMetric(missingPriceCount)}</strong><small>ร้าน</small><em>ตั้งราคากลางก่อนขาย</em></div></article>
+      </section>
+
+      {importFileName || importError || importSuccess ? <section className="shop-import-inline">
+        <div><FileXls size={25} weight="duotone" /><span><strong>{importFileName || 'นำเข้ารายการร้านค้า'}</strong><small>{importRows.length ? `พบ ${importRows.length} ร้านในไฟล์` : 'เลือกไฟล์ Excel เพื่อเริ่มนำเข้า'}</small></span></div>
+        <div className="shop-import-inline__actions"><a download href="/templates/shop-import-template.xlsx">ดาวน์โหลดแม่แบบ</a><button className="primary-button" disabled={managementReadOnly || importing || importRows.length === 0} onClick={importCatalog} type="button">{importing ? 'กำลังนำเข้า...' : `ยืนยันนำเข้า ${importRows.length} ร้าน`}</button></div>
+        {importError ? <p className="error-text">{importError}</p> : null}{importSuccess ? <p className="success-text">{importSuccess}</p> : null}
+      </section> : null}
+
+      {readinessStatus === 'error' ? (
+        <div className="shop-readiness-error" role="alert">
+          <span>ไม่สามารถโหลดสถานะความพร้อม POS ได้{readinessError ? `: ${readinessError}` : ''}</span>
+          <button className="ghost-button" onClick={() => void refreshReadiness()} type="button">ลองใหม่</button>
+        </div>
+      ) : null}
+
+      <section className="shop-catalog" id="shop-directory">
+        <div className="shop-catalog__toolbar">
+          <label className="shop-search-field"><MagnifyingGlass aria-hidden="true" size={20} /><input aria-label="ค้นหาร้าน" onChange={(event) => setQuery(event.target.value)} placeholder="ค้นหาด้วยรหัสร้าน / ชื่อร้าน / ศูนย์ / เบอร์โทร" value={query} /></label>
+          <div className="shop-catalog__filters">
+            <select aria-label="กรองตึก" className="shop-filter-button" onChange={(e) => { setBuildingFilter(e.target.value); setZoneFilter(''); }} value={buildingFilter}><option value="">อาคาร: ทั้งหมด</option>{buildings.map((b) => <option key={b.id} value={b.id}>{b.code} · {b.name}</option>)}</select>
+            <select aria-label="กรองโซนย่อย" className="shop-filter-button" disabled={!buildingFilter} onChange={(e) => setZoneFilter(e.target.value)} value={zoneFilter}><option value="">โซน: ทั้งหมด</option>{zones.filter((z) => z.building_id === buildingFilter).map((z) => <option key={z.id} value={z.id}>{z.code} · {z.name}</option>)}</select>
+            <select aria-label="กรองประเภทรายรับ" className="shop-filter-button" disabled={!readinessAvailable} onChange={(e) => setPaymentFilter(e.target.value as 'all' | 'missing')} value={paymentFilter}><option value="all">ประเภทรายรับ: ทั้งหมด</option><option value="missing">ยังไม่มี Payment Profile</option></select>
+            <select aria-label="กรองความพร้อม POS" className="shop-filter-button" disabled={!readinessAvailable} onChange={(e) => setPosFilter(e.target.value as 'all' | 'ready' | 'issues')} value={posFilter}><option value="all">สถานะความพร้อม POS: ทั้งหมด</option><option value="ready">พร้อม POS</option><option value="issues">ต้องตั้งค่าเพิ่ม</option></select>
+          </div>
+          <div className="shop-view-switcher" aria-label="รูปแบบการแสดงผล"><button aria-label="แสดงแบบการ์ด" className={catalogView === 'grid' ? 'is-active' : ''} onClick={() => setCatalogView('grid')} type="button"><GridFour size={20} weight="bold" />การ์ด</button><button aria-label="แสดงแบบรายการ" className={catalogView === 'list' ? 'is-active' : ''} onClick={() => setCatalogView('list')} type="button"><ListBullets size={20} weight="bold" />ตาราง</button></div>
+        </div>
+        <div className={`shop-card-grid shop-card-grid--${catalogView}`}>
           {pagedShops.map((shop) => {
             const building = buildings.find((item) => item.id === shop.building_id);
             const zone = zones.find((item) => item.id === shop.zone_id);
             const imageUrl = shopImageUrls[shop.id];
+            const readiness = readinessReport?.items.find((item) => item.shop_id === shop.id);
+            const readinessLabel = shop.status !== 'active'
+              ? 'พักใช้งาน'
+              : readinessStatus === 'loading'
+                ? 'กำลังโหลด'
+                : readinessStatus === 'error'
+                  ? 'ไม่ทราบ'
+                  : 'ไม่พบข้อมูล';
+            const paymentClass = readinessAvailable && readiness
+              ? readiness.has_payment_profile ? 'is-blue' : 'is-orange'
+              : 'is-neutral';
+            const paymentLabel = readinessAvailable && readiness
+              ? readiness.has_payment_profile ? 'พร้อมแล้ว' : 'ไม่มี Payment Profile'
+              : readinessLabel;
+            const posClass = readinessAvailable && readiness
+              ? readiness.has_issues ? 'is-red' : 'is-green'
+              : 'is-neutral';
+            const posLabel = readinessAvailable && readiness
+              ? readiness.has_issues ? (readiness.issue_details[0] ?? 'ต้องตั้งค่า') : 'พร้อม POS'
+              : readinessLabel;
             return (
               <button
+                aria-label={`${shop.code} ${shop.name}`}
                 aria-pressed={draft.id === shop.id}
                 className={`shop-directory-card ${draft.id === shop.id ? 'shop-directory-card--selected' : ''}`}
                 key={shop.id}
                 onClick={() => selectShop(shop)}
                 type="button"
               >
-                <span className="shop-directory-card__visual">
-                  {imageUrl && !failedShopImages[shop.id] ? (
-                    <img alt="" onError={() => setFailedShopImages((current) => ({ ...current, [shop.id]: true }))} src={imageUrl} />
-                  ) : <Storefront aria-hidden="true" size={40} weight="duotone" />}
-                  <span className={`shop-directory-card__status shop-directory-card__status--${shop.status}`}>{shop.status === 'active' ? 'ใช้งาน' : 'พักใช้งาน'}</span>
-                </span>
                 <span className="shop-directory-card__body">
-                  <span className="shop-directory-card__code">{shop.code}</span>
+                  {imageUrl && !failedShopImages[shop.id] ? <img alt="" className="shop-directory-card__source-image" onError={() => setFailedShopImages((current) => ({ ...current, [shop.id]: true }))} src={imageUrl} /> : null}
+                  <span className="shop-directory-card__heading"><span className="shop-directory-card__code">{shop.code}</span><span className={`shop-directory-card__status shop-directory-card__status--${shop.status}`}>{shop.status === 'active' ? 'ใช้งาน' : 'พักใช้งาน'}</span></span>
                   <strong>{shop.name}</strong>
-                  <span className="shop-directory-card__location"><Buildings aria-hidden="true" size={16} />{building?.name ?? 'ไม่พบตึก'}</span>
-                  <span className="shop-directory-card__location"><MapPin aria-hidden="true" size={16} />{zone?.name ?? shop.floor_or_zone}</span>
-                  {shop.contact_phone ? <span className="shop-directory-card__phone"><Phone aria-hidden="true" size={15} />{shop.contact_phone}</span> : <span className="shop-directory-card__phone shop-directory-card__phone--empty">ยังไม่มีเบอร์ผู้ติดต่อ</span>}
+                  <span className="shop-directory-card__locations"><span className="shop-directory-card__location"><Buildings aria-hidden="true" size={15} />{building?.name ?? 'ไม่พบตึก'}</span><span className="shop-directory-card__location"><MapPin aria-hidden="true" size={15} />{zone?.name ?? shop.floor_or_zone}</span></span>
+                  <span className="shop-directory-card__readiness"><span><small>ประเภทรายรับ</small><b className={paymentClass}>{paymentLabel}</b></span><span><small>สถานะ POS</small><b className={posClass}>{posLabel}</b></span></span>
+                  {shop.contact_phone ? <span className="shop-directory-card__phone"><Phone aria-hidden="true" size={15} />{shop.contact_phone}</span> : <span className="shop-directory-card__phone shop-directory-card__phone--empty">ไม่มีเบอร์โทรศัพท์</span>}
                 </span>
                 <span className="shop-directory-card__footer">
-                  <span>{shop.normal_rounds_per_day} รอบ/วัน</span>
-                  <CaretRight aria-hidden="true" size={18} weight="bold" />
+                  <span><Eye aria-hidden="true" size={16} />รายละเอียด</span><span><SlidersHorizontal aria-hidden="true" size={16} />แก้ไข</span><span><GearSix aria-hidden="true" size={16} />ตั้งค่า POS</span>
                 </span>
               </button>
             );
@@ -588,6 +641,7 @@ export function ShopSettings() {
             <div className="shop-catalog__empty"><ImageSquare aria-hidden="true" size={32} weight="duotone" /><strong>ไม่พบร้านที่ค้นหา</strong><span>ลองค้นหาด้วยรหัสร้านหรือชื่อร้านอีกครั้ง</span></div>
           ) : null}
         </div>
+        <div className="shop-catalog__footer-row"><span className="shop-catalog__count"><span>พบ {filteredShops.length} ร้าน</span><span> · แสดง {pagedShops.length ? page * PAGE_SIZE + 1 : 0} - {Math.min((page + 1) * PAGE_SIZE, filteredShops.length)}</span></span>
         {totalPages > 1 ? (
           <div className="shop-catalog__pagination">
             <button
@@ -604,7 +658,7 @@ export function ShopSettings() {
               type="button"
             >ถัดไป ›</button>
           </div>
-        ) : null}
+        ) : null}</div>
       </section>
 
       {editorOpen ? (
@@ -729,8 +783,8 @@ export function ShopSettings() {
 
         {draft.id ? (
           <>
-            <ShopPaymentProfileEditor shopId={draft.id} shopName={draft.name} />
-            <ShopSpecialPriceEditor iceTypes={iceTypes} shopId={draft.id} shopName={draft.name} />
+            <ShopPaymentProfileEditor onSaved={refreshReadiness} shopId={draft.id} shopName={draft.name} />
+            <ShopSpecialPriceEditor iceTypes={iceTypes} onSaved={refreshReadiness} shopId={draft.id} shopName={draft.name} />
           </>
         ) : null}
           </section>
@@ -741,7 +795,7 @@ export function ShopSettings() {
         <BulkPaymentSetupModal
           buildings={buildings}
           onClose={() => setBulkModalOpen(false)}
-          onSuccess={() => void loadSettings()}
+          onSuccess={() => void refreshDirectoryData()}
           shops={shops}
           zones={zones}
         />
@@ -752,13 +806,11 @@ export function ShopSettings() {
           buildings={buildings}
           iceTypes={iceTypes}
           onClose={() => setBulkPriceModalOpen(false)}
-          onSuccess={() => void loadSettings()}
+          onSuccess={() => void refreshDirectoryData()}
           shops={shops}
           zones={zones}
         />
       ) : null}
-
-      <ShopReadinessPanel />
     </div>
   );
 }

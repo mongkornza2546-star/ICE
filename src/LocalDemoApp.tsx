@@ -9,6 +9,7 @@ import { EmployeeLayout } from './EmployeeLayout';
 import { AdminLayout } from './AdminLayout';
 import { AdminReferenceSettings } from './AdminReferenceSettings';
 import { ManagerStockControl } from './ManagerStockControl';
+import { ShopSettings } from './ShopSettings';
 import type { DeliveryRound, EmployeeStockState, IceTypeOption, ShopCard, ShopCardHistoryEntry, StockControlSummary } from './types/app';
 import type { IceTypeSetting } from './features/admin-reference-settings/types';
 
@@ -389,6 +390,19 @@ export function LocalDemoApp() {
             }],
           }}
         />
+      </AdminLayout>
+    );
+  }
+
+  if (new URLSearchParams(window.location.search).get('screen') === 'shops-layout') {
+    return (
+      <AdminLayout
+        activeView="shops"
+        allowedViews={['manager_overview', 'factory_order', 'delivery', 'stock_operations', 'stock_audit', 'location_management', 'shops', 'reference_settings']}
+        onNavigate={() => undefined}
+        profileLabel="bhusit.tanchavanich"
+      >
+        <ShopSettings readOnly />
       </AdminLayout>
     );
   }

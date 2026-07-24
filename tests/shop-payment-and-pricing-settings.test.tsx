@@ -85,7 +85,8 @@ describe('Shop Payment and Pricing Settings Components', () => {
 
   it('renders and updates shop payment profile', async () => {
     const user = userEvent.setup();
-    render(<ShopPaymentProfileEditor shopId="shop-1" shopName="ร้านทดสอบ" />);
+    const onSaved = vi.fn();
+    render(<ShopPaymentProfileEditor onSaved={onSaved} shopId="shop-1" shopName="ร้านทดสอบ" />);
 
     expect(await screen.findByText(/เงื่อนไขการชำระเงินของ ร้านทดสอบ/i)).toBeTruthy();
 
@@ -97,12 +98,14 @@ describe('Shop Payment and Pricing Settings Components', () => {
         shop_id: 'shop-1',
         allowed_payment_terms: ['immediate'],
       }));
+      expect(onSaved).toHaveBeenCalledOnce();
     });
   });
 
   it('renders and adds a shop special ice price', async () => {
     const user = userEvent.setup();
-    render(<ShopSpecialPriceEditor iceTypes={iceTypes} shopId="shop-1" shopName="ร้านทดสอบ" />);
+    const onSaved = vi.fn();
+    render(<ShopSpecialPriceEditor iceTypes={iceTypes} onSaved={onSaved} shopId="shop-1" shopName="ร้านทดสอบ" />);
 
     expect(await screen.findByText(/ราคาน้ำแข็งพิเศษประจำร้าน ร้านทดสอบ/i)).toBeTruthy();
 
@@ -120,6 +123,7 @@ describe('Shop Payment and Pricing Settings Components', () => {
         valid_from: expect.any(String),
         valid_to: null,
       });
+      expect(onSaved).toHaveBeenCalledOnce();
     });
   });
 
