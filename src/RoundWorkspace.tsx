@@ -93,7 +93,7 @@ export function RoundWorkspace({ isActive }: { isActive: boolean }) {
                 />
               </section>
             ) : null}
-            <ManagerStockControl isActive={isActive} round={stockRound} serviceDate={stockServiceDate} />
+            <ManagerStockControl operationRound={stockRound?.status === 'open' ? stockRound : null} round={stockRound} serviceDate={stockServiceDate} />
         </div>
       </section>
     </div>

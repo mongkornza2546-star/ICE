@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Icon } from '@phosphor-icons/react';
 import {
+  ArrowsLeftRight,
   Clock,
   CurrencyDollar,
   DotsThreeVertical,
@@ -41,7 +42,7 @@ const QUICK_ACTIONS: Array<{
 }> = [
   { view: 'factory_order', label: 'สั่งจากโรงงาน', icon: Factory },
   { view: 'delivery', label: 'บันทึกส่งน้ำแข็ง', icon: Truck },
-  { view: 'stock_operations', label: 'ตรวจนับสต๊อกจริง', icon: Package },
+  { view: 'stock_operations', label: 'โอน / ตรวจ / ปิดสต๊อก', icon: ArrowsLeftRight },
   { view: 'location_management', label: 'สถานที่และจุดถือครอง', icon: Gear },
 ];
 
@@ -476,7 +477,7 @@ export function ManagerDashboard({
           <div className="panel-header">
             <div>
               <p className="eyebrow">ความพร้อมก่อนปิดวัน</p>
-              <h2>ตรวจนับสต๊อกจริงสิ้นวัน</h2>
+              <h2>ตรวจนับและปิดสต๊อกสิ้นวัน</h2>
             </div>
             <span className={`status-badge status-badge--${session.status === 'completed' ? 'success' : uncountedCount > 0 ? 'warning' : 'info'}`}>
               {session.status === 'completed'
@@ -490,11 +491,11 @@ export function ManagerDashboard({
           <p className="info-note" style={{ marginBottom: '16px' }}>
             {session.status === 'completed'
               ? `ปิดสต๊อกและจบงานวันนี้เรียบร้อยแล้วเมื่อเวลา ${formatTime(session.closed_at)}`
-              : 'ตรวจนับยอดจริงของแต่ละจุดได้ในหน้าตรวจนับสต๊อก'}
+              : 'การตรวจนับและจบงานทำได้ในหน้าโอน / ตรวจ / ปิดสต๊อก'}
           </p>
 
           <button className="primary-button" onClick={() => onNavigate('stock_operations')} type="button">
-            <Package size={18} weight="bold" /> ไปตรวจนับสต๊อกจริง
+            <Package size={18} weight="bold" /> ไป โอน / ตรวจ / ปิดสต๊อก
           </button>
         </section>
 

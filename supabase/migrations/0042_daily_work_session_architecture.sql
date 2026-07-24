@@ -412,9 +412,6 @@ end;
 $$;
 
 -- 7. Atomic EOD Daily Stock & Session Closure (Problem 1 Fix)
-alter table public.daily_stock_closures
-  add column if not exists request_fingerprint text;
-
 create or replace function public.close_daily_stock_v2(
   p_counts jsonb,
   p_note text default null,
@@ -428,6 +425,7 @@ set search_path = public
 as $$
 declare
   v_service_date date;
+  v_existing_id uuid;
   v_existing_date date;
   v_existing_fingerprint text;
   v_request_fingerprint text;
@@ -506,12 +504,12 @@ begin
 
   perform pg_advisory_xact_lock(hashtextextended(p_idempotency_key::text, 0));
 
-  select service_date, request_fingerprint
-  into v_existing_date, v_existing_fingerprint
+  select id, service_date, request_fingerprint
+  into v_existing_id, v_existing_date, v_existing_fingerprint
   from public.daily_stock_closures
   where idempotency_key = p_idempotency_key;
 
-  if found then
+  if v_existing_id is not null then
     if v_existing_date <> v_service_date
       or v_existing_fingerprint is distinct from v_request_fingerprint then
       raise exception 'This idempotency key belongs to another daily stock closure request';
