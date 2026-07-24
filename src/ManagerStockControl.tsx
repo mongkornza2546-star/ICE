@@ -218,7 +218,10 @@ export function ManagerStockControl({
         stockHolderLocations.some((location) => location.id === current) ? current : ''
       ));
     } else {
-      setFromLocationId(kind === 'return_to_factory' ? truckId : truckId || firstLocationId);
+      const damageSourceId = transferSourceLocations.find((location) => (
+        location.kind === 'truck' && location.is_courier_source === true
+      ))?.id || transferSourceLocations[0]?.id || truckId || firstLocationId;
+      setFromLocationId(kind === 'return_to_factory' ? truckId : damageSourceId);
       setToLocationId('');
     }
   }, [summary, kind, isReturningToTruck, returnToTruckSourceLocations, transferSourceLocations]);
@@ -524,7 +527,7 @@ export function ManagerStockControl({
   const selectedRecipient = destinationLocations.find((location) => location.id === toLocationId) ?? null;
   const recipientLocations = destinationLocations;
   const isDamageOperation = activeTab === 'damage';
-  const damageSourceLocations = stockHolderLocations;
+  const damageSourceLocations = transferSourceLocations;
   const movementIceTypes = selectedSource?.balances ?? iceTypes;
   const cartItems = movementIceTypes.filter((ice) => (quantities[ice.ice_type_id] ?? 0) > 0);
   const cartTotal = cartItems.reduce((total, ice) => total + (quantities[ice.ice_type_id] ?? 0), 0);
