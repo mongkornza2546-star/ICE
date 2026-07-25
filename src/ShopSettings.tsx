@@ -631,7 +631,7 @@ export function ShopSettings({ isActive = true, readOnly = false }: { isActive?:
                 <span className="shop-directory-card__visual">
                   {imageUrl && !failedShopImages[shop.id] ? (
                     <img alt={`รูปภาพร้าน ${shop.name}`} onError={() => setFailedShopImages((current) => ({ ...current, [shop.id]: true }))} src={imageUrl} />
-                  ) : <Storefront aria-hidden="true" size={38} weight="duotone" />}
+                  ) : <><Storefront aria-hidden="true" size={38} weight="duotone" /><small className="shop-directory-card__photo-status">{shop.image_path ? 'แสดงรูปไม่ได้' : 'ยังไม่มีรูป'}</small></>}
                 </span>
                 <span className="shop-directory-card__body">
                   <span className="shop-directory-card__heading"><span className="shop-directory-card__code">{shop.code}</span><span className={`shop-directory-card__status shop-directory-card__status--${shop.status}`}>{shop.status === 'active' ? 'ใช้งาน' : 'พักใช้งาน'}</span></span>

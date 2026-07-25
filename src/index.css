@@ -392,6 +392,7 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .shop-directory-card__visual::after { position: absolute; inset: auto -22px -42px auto; width: 142px; height: 142px; border-radius: 50%; background: rgba(255, 255, 255, .32); content: ''; }
 .shop-directory-card__visual img { position: absolute; inset: 0; display: block; width: 100%; height: 100%; min-width: 0; min-height: 0; object-fit: cover; }
 .shop-directory-card__visual > svg { position: relative; z-index: 1; }
+.shop-directory-card__photo-status { position: relative; z-index: 1; margin-top: -5px; color: #497ba9; font-size: .66rem; font-weight: 700; }
 .shop-directory-card__status { position: absolute; top: 10px; right: 10px; z-index: 2; display: inline-flex; align-items: center; min-height: 25px; padding: 0 9px; border-radius: 999px; font-size: .65rem; font-weight: 700; box-shadow: 0 3px 8px rgba(26, 51, 83, .11); }
 .shop-directory-card__status--active { color: #117a45; background: #e7f8ee; }
 .shop-directory-card__status--inactive { color: #6b7789; background: #eef1f4; }

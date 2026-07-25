@@ -251,14 +251,13 @@ export async function uploadShopImage(shopId: string, file: File): Promise<strin
   const client = supabase;
   if (!client) throw new Error('Supabase client not initialized');
 
-  const extension = file.name.includes('.') ? file.name.split('.').pop()?.toLowerCase() ?? 'jpg' : 'jpg';
-  const nextPath = `shops/${shopId}/${Date.now()}-${crypto.randomUUID()}.${extension}`;
+  const nextPath = `shops/${shopId}/${Date.now()}-${crypto.randomUUID()}.webp`;
 
   const { error: uploadError } = await client.storage
     .from(SHOP_IMAGE_BUCKET)
     .upload(nextPath, file, {
-      cacheControl: '3600',
-      contentType: file.type || undefined,
+      cacheControl: '31536000',
+      contentType: 'image/webp',
       upsert: false,
     });
 

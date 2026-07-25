@@ -212,6 +212,13 @@ describe('ShopSettings card catalog', () => {
     expect(card.querySelector('img')).toBeNull();
   });
 
+  it('labels a shop without an uploaded photo instead of implying that one is still loading', async () => {
+    render(<ShopSettings />);
+
+    const card = await screen.findByRole('button', { name: /BB02 ร้านน้ำฝน/ });
+    expect(card.textContent).toContain('ยังไม่มีรูป');
+  });
+
   it('signs photos for only the visible catalog page', async () => {
     const manyShops = Array.from({ length: 13 }, (_, index) => ({
       ...shops[0],
