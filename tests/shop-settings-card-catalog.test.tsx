@@ -273,4 +273,16 @@ describe('ShopSettings card catalog', () => {
 
     expect((await screen.findByRole('alert')).textContent).toContain('deactivation failed');
   });
+
+  it('shows the shop photo before rented tanks in the assets tab', async () => {
+    const user = userEvent.setup();
+    render(<ShopSettings />);
+
+    await user.click(await screen.findByRole('button', { name: /AA01 ร้านเจ๊อ้อย/ }));
+    await user.click(screen.getByRole('button', { name: 'ถังเช่าและรูปภาพ' }));
+
+    const shopImageEditor = screen.getByTestId('shop-image-editor');
+    const rentedTanks = screen.getByRole('heading', { name: /ถังเช่า 0 ใบ/ });
+    expect(shopImageEditor.compareDocumentPosition(rentedTanks) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
 });

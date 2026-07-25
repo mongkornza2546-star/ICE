@@ -730,7 +730,12 @@ export function ShopSettings({ isActive = true, readOnly = false }: { isActive?:
               <footer className="shop-editor-savebar"><button className="secondary-button" disabled={saving} onClick={closeEditor} type="button">ยกเลิก</button><button className="primary-button" disabled={saving} type="submit">{saving ? 'กำลังบันทึก...' : 'บันทึกข้อมูลร้าน'}</button></footer>
             </form>
 
-            <div className="shop-editor-tab-content" hidden={editorTab !== 'assets'}><div className="rented-tank-section">
+            <div className="shop-editor-tab-content" hidden={editorTab !== 'assets'}>
+              <ShopImageEditor
+                onShopSaved={(savedShop) => setShops((current) => current.map((shop) => shop.id === savedShop.id ? { ...shop, image_path: savedShop.image_path } : shop))}
+                shop={selectedShop}
+              />
+              <div className="rented-tank-section">
           <div className="panel-header">
             <div>
               <p className="eyebrow">ทะเบียนถังประจำร้าน</p>
@@ -776,10 +781,8 @@ export function ShopSettings({ isActive = true, readOnly = false }: { isActive?:
           {tankError ? <p className="error-text">{tankError}</p> : null}
           {tankSuccess ? <p className="success-text">{tankSuccess}</p> : null}
           <p className="muted">จำนวนถังเช่าคำนวณจากรายการรหัสถังที่ยังไม่ได้รับคืน จึงไม่ต้องกรอกจำนวนแยก</p>
-            </div><ShopImageEditor
-          onShopSaved={(savedShop) => setShops((current) => current.map((shop) => shop.id === savedShop.id ? { ...shop, image_path: savedShop.image_path } : shop))}
-          shop={selectedShop}
-            /></div>
+              </div>
+            </div>
             <div className="shop-editor-tab-content" hidden={editorTab !== 'payment'}>{draft.id ? <ShopPaymentProfileEditor onSaved={refreshReadiness} shopId={draft.id} shopName={draft.name} /> : <p className="muted">บันทึกข้อมูลร้านก่อน แล้วจึงตั้งค่าการชำระเงิน</p>}</div>
             <div className="shop-editor-tab-content" hidden={editorTab !== 'prices'}>{draft.id ? <ShopSpecialPriceEditor iceTypes={iceTypes} onSaved={refreshReadiness} shopId={draft.id} shopName={draft.name} /> : <p className="muted">บันทึกข้อมูลร้านก่อน แล้วจึงตั้งค่าราคาพิเศษน้ำแข็ง</p>}</div>
           </section>

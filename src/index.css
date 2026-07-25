@@ -542,6 +542,7 @@ select.shop-filter-button { min-width: 126px; max-width: 164px; padding-right: 2
 .shop-editor-tabs button:hover { color: #086de6; background: #f8fbff; }
 .shop-editor-tabs button.is-active { border-bottom-color: #0870ec; color: #0870ec; }
 .shop-editor-form { display: grid; gap: 13px; padding: 20px 23px 0; }
+.shop-editor-form[hidden], .shop-editor-tab-content[hidden] { display: none; }
 .shop-editor-fields { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 13px 28px; }
 .shop-editor-fields > label { grid-column: span 3; color: #657995; font-size: .74rem; font-weight: 700; }
 .shop-editor-fields > label:nth-child(7), .shop-editor-fields > label:nth-child(8), .shop-editor-fields > label:nth-child(9) { grid-column: span 2; }
