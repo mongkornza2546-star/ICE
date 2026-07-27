@@ -3,6 +3,7 @@ import {
   EmployeeDeliveryWorkspace,
   type EmployeeDeliveryGateway,
   type EmployeeDeliveryPayload,
+  type EmployeePaymentPayload,
   type EmployeeStockTransferPayload,
 } from './EmployeeDeliveryWorkspace';
 import { EmployeeLayout } from './EmployeeLayout';
@@ -291,6 +292,62 @@ function buildDemoGateway(): EmployeeDeliveryGateway & { reset(): void } {
       await delay(120);
       return cloneStockState(stockState, roundId);
     },
+    async loadDeliveryPosContext(roundStopId) {
+      await delay(100);
+      const round = demoRounds.find((entry) => (cardsByRound[entry.id] ?? [])
+        .some((card) => card.round_stop_id === roundStopId));
+      const shop = (cardsByRound[round?.id ?? ''] ?? []).find((card) => card.round_stop_id === roundStopId);
+      if (!round || !shop) throw new Error('ไม่พบร้านในรอบเดโม่');
+      return {
+        round_id: round.id,
+        round_stop_id: roundStopId,
+        service_date: round.service_date,
+        shop: {
+          id: shop.shop_id,
+          code: shop.shop_code,
+          name: shop.shop_name,
+          building_name: shop.building_name,
+          floor_or_zone: shop.floor_or_zone,
+          image_path: null,
+        },
+        stock_source: {
+          id: stockState.holding_location.id,
+          code: stockState.holding_location.code,
+          name: stockState.holding_location.name,
+          kind: 'team',
+        },
+        items: demoIceTypes.map((iceType, index) => ({
+          ice_type_id: iceType.id,
+          code: iceType.code,
+          name: iceType.name,
+          unit: iceType.unit,
+          image_path: null,
+          stock_quantity: stockState.holding_location.balances
+            .find((balance) => balance.ice_type_id === iceType.id)?.quantity ?? 0,
+          unit_price: [30, 25, 35][index] ?? 30,
+          price_source: 'standard' as const,
+          price_source_id: `demo-price-${iceType.id}`,
+        })),
+        payment_profile: {
+          allowed_payment_terms: ['immediate', 'end_of_day', 'credit'] as const,
+          default_payment_term: 'immediate' as const,
+          allowed_payment_methods: ['cash', 'bank_transfer', 'qr'] as const,
+          default_payment_method: 'cash' as const,
+          cash_reference_required: false,
+          cash_evidence_required: false,
+          bank_transfer_reference_required: true,
+          bank_transfer_evidence_required: false,
+          qr_reference_required: true,
+          qr_evidence_required: false,
+          allow_outstanding: true,
+          credit_due_rule: 'net_days' as const,
+          credit_days: 7,
+          credit_limit: 1000,
+          credit_exposure: 0,
+          credit_remaining: 1000,
+        },
+      };
+    },
     async recordEmployeeStockTransfer(payload: EmployeeStockTransferPayload) {
       await delay(180);
       if (!transferKeys.has(payload.idempotencyKey)) {
@@ -339,6 +396,48 @@ function buildDemoGateway(): EmployeeDeliveryGateway & { reset(): void } {
           }),
         ]),
       ) as Record<string, ShopCard[]>;
+      if (payload.status !== 'delivered') return undefined;
+      const totalAmount = payload.items.reduce((total, item) => {
+        const index = demoIceTypes.findIndex((iceType) => iceType.id === item.ice_type_id);
+        return total + item.quantity * ([30, 25, 35][index] ?? 30);
+      }, 0);
+      return {
+        delivery_event_id: `demo-delivery-${payload.idempotencyKey}`,
+        round_stop_id: payload.roundStopId,
+        charge_id: `demo-charge-${payload.idempotencyKey}`,
+        service_date: round?.service_date ?? null,
+        total_amount: totalAmount,
+        payment_term: payload.paymentTerm ?? 'immediate',
+        payment_status: 'unpaid' as const,
+        due_date: payload.paymentTerm === 'credit' ? '2026-07-25' : null,
+        approval_id: payload.approvalId ?? null,
+        items: payload.items.map((item) => {
+          const index = demoIceTypes.findIndex((iceType) => iceType.id === item.ice_type_id);
+          const unitPrice = [30, 25, 35][index] ?? 30;
+          return {
+            ice_type_id: item.ice_type_id,
+            quantity: item.quantity,
+            unit_price: unitPrice,
+            line_total: item.quantity * unitPrice,
+            price_source: 'standard' as const,
+            price_source_id: `demo-price-${item.ice_type_id}`,
+          };
+        }),
+      };
+    },
+    async recordPayment(payload: EmployeePaymentPayload) {
+      await delay(160);
+      return {
+        payment_id: `demo-payment-${payload.idempotencyKey}`,
+        shop_id: payload.shopId,
+        payment_method: payload.paymentMethod,
+        received_amount: payload.receivedAmount,
+        allocated_amount: payload.allocatedAmount,
+        change_amount: payload.paymentMethod === 'cash'
+          ? Math.max(payload.receivedAmount - payload.allocatedAmount, 0)
+          : 0,
+        status: 'active' as const,
+      };
     },
     reset() {
       cardsByRound = Object.fromEntries(

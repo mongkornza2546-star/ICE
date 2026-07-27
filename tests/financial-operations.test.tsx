@@ -18,7 +18,7 @@ vi.mock('../src/lib/supabase', () => ({
 function queryResult(data: unknown, error: { message: string } | null = null) {
   const result = { data, error };
   const query: Record<string, unknown> = {};
-  for (const method of ['select', 'eq', 'order']) query[method] = vi.fn(() => query);
+  for (const method of ['select', 'eq', 'order', 'limit']) query[method] = vi.fn(() => query);
   query.maybeSingle = vi.fn().mockResolvedValue(result);
   query.then = (resolve: (value: typeof result) => unknown, reject: (reason: unknown) => unknown) =>
     Promise.resolve(result).then(resolve, reject);
@@ -106,5 +106,37 @@ describe('FinancialOperations', () => {
     await waitFor(() => expect(mocks.rpc).toHaveBeenCalledWith('open_collection_run', expect.objectContaining({
       p_member_ids: [{ user_id: 'courier-1' }],
     })));
+  });
+
+  it('lets a manager void an active payment from recent history', async () => {
+    const user = userEvent.setup();
+    vi.spyOn(window, 'prompt').mockReturnValue('บันทึกยอดผิด');
+    mocks.from.mockImplementation((table: string) => {
+      if (table === 'collection_runs') return queryResult(null);
+      if (table === 'users') return queryResult([]);
+      if (table === 'payments') return queryResult([{
+        id: 'payment-1',
+        received_amount: 100,
+        payment_method: 'cash',
+        status: 'active',
+        recorded_at: '2026-07-27T08:00:00Z',
+        void_reason: null,
+        shops: { code: 'S001', name: 'ร้านเก็บเงิน' },
+      }]);
+      return queryResult([]);
+    });
+    mocks.rpc.mockImplementation(async (name: string) => {
+      if (name === 'get_credit_receivables') return { data: [], error: null };
+      if (name === 'void_payment') return { data: { payment_id: 'payment-1' }, error: null };
+      return { data: [], error: null };
+    });
+
+    render(<FinancialOperations userRole="round_lead" />);
+    await user.click(await screen.findByRole('button', { name: 'ยกเลิกรายการ' }));
+
+    await waitFor(() => expect(mocks.rpc).toHaveBeenCalledWith('void_payment', {
+      p_payment_id: 'payment-1',
+      p_reason: 'บันทึกยอดผิด',
+    }));
   });
 });

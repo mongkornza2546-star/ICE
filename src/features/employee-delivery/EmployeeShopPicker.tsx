@@ -8,7 +8,6 @@ import { STATUS_LABELS } from './constants';
 
 export function EmployeeShopPicker({
   enableAssignedStockFlow,
-  items,
   selectedRoundId,
   query,
   setQuery,
@@ -26,7 +25,6 @@ export function EmployeeShopPicker({
   iceTypes,
 }: {
   enableAssignedStockFlow: boolean;
-  items: Array<{ ice_type_id: string; quantity: number }>;
   selectedRoundId: string;
   query: string;
   setQuery: (query: string) => void;
@@ -46,10 +44,10 @@ export function EmployeeShopPicker({
   return (
     <section className="employee-entry-section employee-task-section" aria-labelledby="employee-shop-step">
       <div className="employee-entry-section__heading">
-        <span>2</span>
+        <span>{enableAssignedStockFlow ? '2' : '1'}</span>
         <div>
           <h2 id="employee-shop-step">เลือกร้านที่จะไปส่ง</h2>
-          <p>{enableAssignedStockFlow ? 'แตะร้าน แล้วใส่จำนวนที่ส่งแต่ละชนิด' : items.length > 0 ? 'แตะร้านปลายทางของน้ำแข็งชุดนี้' : 'ใส่ยอดออกจากรถก่อน แล้วค่อยแตะร้าน'}</p>
+          <p>{enableAssignedStockFlow ? 'แตะร้าน แล้วใส่จำนวนที่ส่งแต่ละชนิด' : 'แตะร้านก่อน ระบบจะโหลดสต๊อก ราคา และเงื่อนไขชำระของร้านนั้น'}</p>
         </div>
       </div>
 

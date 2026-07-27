@@ -17,6 +17,10 @@ const operations = readFileSync(
   new URL('../supabase/migrations/0059_pos_financial_operations.sql', import.meta.url),
   'utf8',
 );
+const recovery = readFileSync(
+  new URL('../supabase/migrations/0060_recoverable_collection_balances.sql', import.meta.url),
+  'utf8',
+);
 
 const COURIER_ID = '10000000-0000-4000-8000-000000000001';
 const ADMIN_ID = '10000000-0000-4000-8000-000000000002';
@@ -31,6 +35,9 @@ const SERVICE_DATE = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Ba
 const NEXT_SERVICE_DATE = new Date(`${SERVICE_DATE}T12:00:00+07:00`);
 NEXT_SERVICE_DATE.setDate(NEXT_SERVICE_DATE.getDate() + 1);
 const NEXT_SERVICE_DATE_TEXT = NEXT_SERVICE_DATE.toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' });
+const PREVIOUS_SERVICE_DATE = new Date(`${SERVICE_DATE}T12:00:00+07:00`);
+PREVIOUS_SERVICE_DATE.setDate(PREVIOUS_SERVICE_DATE.getDate() - 1);
+const PREVIOUS_SERVICE_DATE_TEXT = PREVIOUS_SERVICE_DATE.toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' });
 
 async function createDatabase(t) {
   const db = new PGlite({ extensions: { btree_gist, pgcrypto } });
@@ -283,6 +290,7 @@ async function createDatabase(t) {
   await db.exec(foundation);
   await db.exec(transactions);
   await db.exec(operations);
+  await db.exec(recovery);
   await db.exec(`
     insert into public.ice_type_prices (
       ice_type_id, unit_price, valid_from, created_by
@@ -833,16 +841,10 @@ test('payment recording enforces actor scope, collection scope, and stored evide
     `),
     /assigned scope/i,
   );
-  await assert.rejects(
-    db.query(`
-      select public.record_payment(
-        '${SHOP_ID}', '[{"charge_id":"${chargeId}","amount":18}]'::jsonb,
-        'cash', 18, null, null, '${run.rows[0].result.collection_run_id}', 18, null,
-        '90000000-0000-4000-8000-000000000003'
-      )
-    `),
-    /assigned scope/i,
-  );
+  const queue = await db.query(`
+    select public.get_collection_run_queue('${run.rows[0].result.collection_run_id}') as result
+  `);
+  assert.equal(queue.rows[0].result[0].charges[0].charge_id, chargeId);
 
   await db.exec(`
     update public.auth_context
@@ -895,6 +897,44 @@ test('payment recording enforces actor scope, collection scope, and stored evide
       '${SHOP_ID}', '[{"charge_id":"${chargeId}","amount":18}]'::jsonb,
       'cash', 18, null, '${evidencePath}', null, 18, null,
       '90000000-0000-4000-8000-000000000004'
+    ) as result
+  `);
+  assert.equal(Number(payment.rows[0].result.allocated_amount), 18);
+});
+
+test('an assigned collection run recovers an older immediate balance', async (t) => {
+  const db = await createDatabase(t);
+  const delivered = await db.query(`
+    select public.record_delivery(
+      '${STOP_ID}', '${itemPayload(1)}'::jsonb, 'delivered', null, null,
+      '90000000-0000-4000-8000-000000000010', 'immediate'
+    ) as result
+  `);
+  const chargeId = delivered.rows[0].result.charge_id;
+
+  await db.exec(`
+    update public.delivery_charges set service_date = date '${PREVIOUS_SERVICE_DATE_TEXT}'
+    where id = '${chargeId}';
+    update public.auth_context set user_id = '${ADMIN_ID}', app_role = 'admin';
+  `);
+  const run = await db.query(`
+    select public.open_collection_run(
+      date '${SERVICE_DATE}', '[{"user_id":"${OTHER_COURIER_ID}"}]'::jsonb
+    ) as result
+  `);
+  await db.exec(`
+    update public.auth_context set user_id = '${OTHER_COURIER_ID}', app_role = 'courier';
+  `);
+  const queue = await db.query(`
+    select public.get_collection_run_queue('${run.rows[0].result.collection_run_id}') as result
+  `);
+  assert.equal(queue.rows[0].result[0].charges[0].service_date, PREVIOUS_SERVICE_DATE_TEXT);
+
+  const payment = await db.query(`
+    select public.record_payment(
+      '${SHOP_ID}', '[{"charge_id":"${chargeId}","amount":18}]'::jsonb,
+      'cash', 18, null, null, '${run.rows[0].result.collection_run_id}', 18, null,
+      '90000000-0000-4000-8000-000000000011'
     ) as result
   `);
   assert.equal(Number(payment.rows[0].result.allocated_amount), 18);

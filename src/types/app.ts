@@ -125,6 +125,8 @@ export interface IceTypeOption {
   code: string;
   name: string;
   unit: string;
+  image_path?: string | null;
+  image_url?: string | null;
 }
 
 export interface DeliveryRoundNameOption {

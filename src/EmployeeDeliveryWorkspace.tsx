@@ -89,7 +89,7 @@ function createSupabaseGateway(): EmployeeDeliveryGateway {
         supabase.rpc('get_employee_active_session', { p_service_date: toBangkokDateString() }),
         supabase
           .from('ice_types')
-          .select('id, code, name, unit')
+          .select('id, code, name, unit, image_path')
           .eq('is_active', true)
           .order('code'),
       ]);
@@ -143,7 +143,27 @@ function createSupabaseGateway(): EmployeeDeliveryGateway {
         p_round_stop_id: roundStopId,
       });
       if (error) throw error;
-      return data as DeliveryPosContext;
+      const context = data as DeliveryPosContext;
+      const imagePaths = context.items
+        .map((item) => item.image_path)
+        .filter((path): path is string => Boolean(path));
+      if (imagePaths.length === 0) return context;
+      const { data: signedData, error: imageError } = await supabase.storage
+        .from('ice-type-images')
+        .createSignedUrls(imagePaths, 3600);
+      if (imageError) return context;
+      const imageUrls = new Map(
+        (signedData ?? [])
+          .filter((entry) => entry.path && entry.signedUrl)
+          .map((entry) => [entry.path!, entry.signedUrl!]),
+      );
+      return {
+        ...context,
+        items: context.items.map((item) => ({
+          ...item,
+          image_url: item.image_path ? imageUrls.get(item.image_path) ?? null : null,
+        })),
+      };
     },
     async recordEmployeeStockTransfer(payload) {
       if (!supabase) throw new Error('ยังไม่ได้ตั้งค่า Supabase');
@@ -240,7 +260,8 @@ export function EmployeeDeliveryWorkspace({
 
   if (data.selectedCard && data.selectedRound) {
     return (
-      <EmployeeDeliveryReview
+      <div className="employee-workspace">
+        <EmployeeDeliveryReview
         assignedStockState={enableAssignedStockFlow ? data.stockState : null}
         deliveryQuantities={data.deliveryQuantities}
         posContext={data.posContext}
@@ -263,9 +284,11 @@ export function EmployeeDeliveryWorkspace({
         items={data.items}
         note={data.note}
         onBack={data.attemptBack}
+        onChangeShop={data.changeShop}
         onChooseProblemStatus={data.chooseProblemStatus}
         onDeliveryQuantityChange={data.changeDeliveryQuantity}
         onSetQuantity={data.setDeliveryQuantity}
+        onClearCart={data.clearDeliveryQuantities}
         onPaymentTermChange={data.setPaymentTerm}
         onPaymentMethodChange={data.setPaymentMethod}
         onPaymentAmountChange={data.setPaymentAmount}
@@ -281,10 +304,12 @@ export function EmployeeDeliveryWorkspace({
         problemOpen={data.problemOpen}
         round={data.selectedRound}
         shopCard={data.selectedCard}
+        shopCards={data.filteredCards}
         status={data.status}
         stockSourceLabel={stockSourceLabel}
-        submitting={data.submitting}
-      />
+          submitting={data.submitting}
+        />
+      </div>
     );
   }
 
@@ -295,10 +320,10 @@ export function EmployeeDeliveryWorkspace({
       <section className="employee-intro">
         <div>
           <p className="employee-eyebrow">งานพนักงาน</p>
-          <h1>{enableAssignedStockFlow ? 'รับน้ำแข็ง แล้วไปส่งร้าน' : `หยิบจาก${stockSourceLabel} แล้วเลือกร้าน`}</h1>
+          <h1>{enableAssignedStockFlow ? 'รับน้ำแข็ง แล้วไปส่งร้าน' : 'เลือกร้าน แล้วบันทึกส่ง'}</h1>
           <p>{enableAssignedStockFlow
             ? 'รับน้ำแข็งจากรถเข้าจุดถือครองของคุณ แล้วเลือกร้านที่จะส่ง'
-            : 'ทำ 2 อย่างตามลำดับ ระบบจะบันทึกยอดสต๊อกและร้านปลายทางพร้อมกัน'}</p>
+            : 'เลือกร้านก่อน ระบบจะตรวจสต๊อกต้นทาง ราคา และเงื่อนไขชำระของร้านนั้น'}</p>
         </div>
         {data.selectedRound ? (
           <div className={`employee-round-badge ${data.selectedRound.status === 'closed' ? 'employee-round-badge--closed' : ''}`}>
@@ -332,48 +357,51 @@ export function EmployeeDeliveryWorkspace({
         </div>
       ) : null}
 
-      <EmployeeStockTransferSection
-        enableAssignedStockFlow={enableAssignedStockFlow}
-        stockError={data.stockError}
-        transferSubmitting={data.transferSubmitting}
-        loadStockState={data.loadStockState}
-        selectedRoundId={data.selectedRoundId}
-        stockState={data.stockState}
-        iceTypes={data.iceTypes}
-        transferQuantities={data.transferQuantities}
-        changeTransferQuantity={data.changeTransferQuantity}
-        selectedRound={data.selectedRound}
-        handleStockTransfer={data.handleStockTransfer}
-        transferItems={data.transferItems}
-        stockSourceLabel={stockSourceLabel}
-        selectedIceTypeId={data.selectedIceTypeId}
-        setSelectedIceTypeId={data.setSelectedIceTypeId}
-        submitting={data.submitting}
-        deliveryQuantities={data.deliveryQuantities}
-        setPadValue={data.setPadValue}
-        padValues={data.PAD_VALUES}
-        items={data.items}
-      />
+      {openRounds.length === 0 ? (
+        <section className="employee-state" aria-labelledby="employee-no-open-round">
+          <WarningCircle aria-hidden="true" size={42} />
+          <h2 id="employee-no-open-round">ยังไม่มีรอบส่งที่เปิดอยู่</h2>
+          <p>หัวหน้ารอบต้องเปิดรอบส่งและเพิ่มคุณเข้ารอบก่อน จึงจะเลือกร้านและบันทึกส่งได้</p>
+          <button className="employee-text-button" disabled={data.loadingReference} onClick={data.retryLoad} type="button">โหลดรอบอีกครั้ง</button>
+        </section>
+      ) : (
+        <>
+          {enableAssignedStockFlow ? (
+            <EmployeeStockTransferSection
+              stockError={data.stockError}
+              transferSubmitting={data.transferSubmitting}
+              loadStockState={data.loadStockState}
+              selectedRoundId={data.selectedRoundId}
+              stockState={data.stockState}
+              iceTypes={data.iceTypes}
+              transferQuantities={data.transferQuantities}
+              changeTransferQuantity={data.changeTransferQuantity}
+              selectedRound={data.selectedRound}
+              handleStockTransfer={data.handleStockTransfer}
+              transferItems={data.transferItems}
+            />
+          ) : null}
 
-      <EmployeeShopPicker
-        enableAssignedStockFlow={enableAssignedStockFlow}
-        items={data.items}
-        selectedRoundId={data.selectedRoundId}
-        query={data.query}
-        setQuery={data.setQuery}
-        selectedBuildingId={data.selectedBuildingId}
-        setSelectedBuildingId={data.setSelectedBuildingId}
-        buildingOptions={data.buildingOptions}
-        selectedZone={data.selectedZone}
-        setSelectedZone={data.setSelectedZone}
-        zoneOptions={data.zoneOptions}
-        loadingCards={data.loadingCards}
-        filteredCards={data.filteredCards}
-        openCard={data.openCard}
-        stockState={data.stockState}
-        shopButtonRefs={data.shopButtonRefs}
-        iceTypes={data.iceTypes}
-      />
+          <EmployeeShopPicker
+            enableAssignedStockFlow={enableAssignedStockFlow}
+            selectedRoundId={data.selectedRoundId}
+            query={data.query}
+            setQuery={data.setQuery}
+            selectedBuildingId={data.selectedBuildingId}
+            setSelectedBuildingId={data.setSelectedBuildingId}
+            buildingOptions={data.buildingOptions}
+            selectedZone={data.selectedZone}
+            setSelectedZone={data.setSelectedZone}
+            zoneOptions={data.zoneOptions}
+            loadingCards={data.loadingCards}
+            filteredCards={data.filteredCards}
+            openCard={data.openCard}
+            stockState={data.stockState}
+            shopButtonRefs={data.shopButtonRefs}
+            iceTypes={data.iceTypes}
+          />
+        </>
+      )}
     </div>
   );
 }

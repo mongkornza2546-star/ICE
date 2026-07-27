@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -104,15 +104,12 @@ describe('EmployeeDeliveryWorkspace', () => {
     });
   });
 
-  it('shows the truck-stock step before the shop-selection step', async () => {
+  it('shows shop selection before entering any delivery quantity', async () => {
     render(<EmployeeDeliveryWorkspace gateway={createGateway()} />);
 
-    const stockHeading = await screen.findByRole('heading', { name: 'น้ำแข็งออกจากรถ' });
-    const shopHeading = screen.getByRole('heading', { name: 'เลือกร้านที่จะไปส่ง' });
-
-    expect(
-      stockHeading.compareDocumentPosition(shopHeading) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(await screen.findByRole('heading', { name: 'เลือกร้านที่จะไปส่ง' })).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: 'น้ำแข็งออกจากรถ' })).toBeNull();
+    expect(screen.queryByRole('region', { name: 'แป้นใส่จำนวน' })).toBeNull();
   });
 
   it('transfers stock to the assigned holding point separately from the shop delivery', async () => {
@@ -220,7 +217,7 @@ describe('EmployeeDeliveryWorkspace', () => {
     expect((screen.getByRole('button', { name: 'กลับไปเลือกร้าน' }) as HTMLButtonElement).disabled).toBe(true);
 
     await act(async () => resolveStockRefresh(employeeStockState()));
-    await screen.findByText('บันทึกยอดออกจากรถเข็นคัน 1และร้านปลายทางแล้ว');
+    await screen.findByText('บันทึกยอดออกจากรถเข็นคัน 1 และร้านปลายทางแล้ว');
     expect(loadEmployeeStockState).toHaveBeenCalledTimes(2);
   });
 
@@ -233,10 +230,11 @@ describe('EmployeeDeliveryWorkspace', () => {
     await user.type(search, 'AA01');
     expect(screen.queryByRole('button', { name: /BB01 ร้านน้ำฝน/ })).toBeNull();
 
-    await user.click(await screen.findByRole('button', { name: 'ตั้งจำนวนเป็น 2' }));
-    await user.click(screen.getByRole('button', { name: /เล็ก 0 ถุง/ }));
-    await user.click(screen.getByRole('button', { name: 'ตั้งจำนวนเป็น 3' }));
     await openShop(user);
+    const keypad = screen.getByRole('region', { name: 'แป้นใส่จำนวน' });
+    await user.click(within(keypad).getByRole('button', { name: '2' }));
+    await user.click(screen.getByRole('button', { name: /เล็ก/ }));
+    await user.click(within(keypad).getByRole('button', { name: '3' }));
     await user.click(screen.getByRole('button', { name: 'ยืนยันส่งร้านนี้' }));
 
     await waitFor(() => expect(gateway.recordDelivery).toHaveBeenCalledTimes(1));
@@ -252,7 +250,7 @@ describe('EmployeeDeliveryWorkspace', () => {
       idempotencyKey: expect.any(String),
     }));
 
-    await screen.findByText('บันทึกยอดออกจากรถและร้านปลายทางแล้ว');
+    await screen.findByText('บันทึกยอดออกจากรถ และร้านปลายทางแล้ว');
     expect((screen.getByRole('searchbox', { name: 'ค้นหาร้าน' }) as HTMLInputElement).value).toBe('AA01');
     const returnedShop = screen.getByRole('button', { name: /AA01 ร้านเจ๊อ้อย/ });
     expect(returnedShop).toBeTruthy();
@@ -272,6 +270,24 @@ describe('EmployeeDeliveryWorkspace', () => {
     expect(gateway.recordDelivery).not.toHaveBeenCalled();
   });
 
+  it('confirms a shop change when a delivery draft exists', async () => {
+    const user = userEvent.setup();
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true);
+    render(<EmployeeDeliveryWorkspace gateway={createGateway()} />);
+
+    await openShop(user, shopA);
+    await user.click(within(screen.getByRole('region', { name: 'แป้นใส่จำนวน' })).getByRole('button', { name: '2' }));
+    await user.click(screen.getByRole('button', { name: /BB01 ร้านน้ำฝน/ }));
+
+    expect(confirm).toHaveBeenCalledWith('เปลี่ยนร้านแล้ว รายการในตะกร้าจะถูกล้าง ต้องการเปลี่ยนร้านหรือไม่?');
+    expect(screen.getByRole('heading', { name: shopA.shop_name })).toBeTruthy();
+
+    await user.click(screen.getByRole('button', { name: /BB01 ร้านน้ำฝน/ }));
+    expect(await screen.findByRole('heading', { name: shopB.shop_name })).toBeTruthy();
+    expect(within(screen.getByRole('region', { name: 'แป้นใส่จำนวน' }))
+      .getByText('0', { selector: 'strong' })).toBeTruthy();
+  });
+
   it('blocks delivery entry when no active ice type is configured', async () => {
     const gateway = createGateway({
       loadReferenceData: vi.fn().mockResolvedValue({ rounds: [round], iceTypes: [] }),
@@ -280,6 +296,17 @@ describe('EmployeeDeliveryWorkspace', () => {
 
     expect(await screen.findByRole('heading', { name: 'ยังไม่มีชนิดน้ำแข็งที่ใช้งาน' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: /AA01 ร้านเจ๊อ้อย/ })).toBeNull();
+  });
+
+  it('explains how to recover when there is no open delivery round', async () => {
+    const gateway = createGateway({
+      loadReferenceData: vi.fn().mockResolvedValue({ rounds: [], iceTypes }),
+    });
+    render(<EmployeeDeliveryWorkspace gateway={gateway} />);
+
+    expect(await screen.findByRole('heading', { name: 'ยังไม่มีรอบส่งที่เปิดอยู่' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'โหลดรอบอีกครั้ง' })).toBeTruthy();
+    expect(screen.queryByRole('searchbox', { name: 'ค้นหาร้าน' })).toBeNull();
   });
 
   it('requires a note for a problem and submits the problem without ice items', async () => {
@@ -313,8 +340,8 @@ describe('EmployeeDeliveryWorkspace', () => {
     const gateway = createGateway({ recordDelivery });
     render(<EmployeeDeliveryWorkspace gateway={gateway} />);
 
-    await user.click(await screen.findByRole('button', { name: 'ตั้งจำนวนเป็น 2' }));
     await openShop(user);
+    await user.click(within(screen.getByRole('region', { name: 'แป้นใส่จำนวน' })).getByRole('button', { name: '2' }));
     await user.click(screen.getByRole('button', { name: 'ยืนยันส่งร้านนี้' }));
     expect((await screen.findByRole('alert')).textContent).toContain('เชื่อมต่อไม่สำเร็จ');
 
@@ -335,16 +362,16 @@ describe('EmployeeDeliveryWorkspace', () => {
     const gateway = createGateway({ recordDelivery });
     const firstView = render(<EmployeeDeliveryWorkspace gateway={gateway} />);
 
-    await user.click(await screen.findByRole('button', { name: 'ตั้งจำนวนเป็น 2' }));
     await openShop(user);
+    await user.click(within(screen.getByRole('region', { name: 'แป้นใส่จำนวน' })).getByRole('button', { name: '2' }));
     await user.click(screen.getByRole('button', { name: 'ยืนยันส่งร้านนี้' }));
     expect((await screen.findByRole('alert')).textContent).toContain('เชื่อมต่อไม่สำเร็จ');
     const first = recordDelivery.mock.calls[0][0] as EmployeeDeliveryPayload;
 
     firstView.unmount();
     render(<EmployeeDeliveryWorkspace gateway={gateway} />);
-    await user.click(await screen.findByRole('button', { name: 'ตั้งจำนวนเป็น 2' }));
     await openShop(user);
+    await user.click(within(screen.getByRole('region', { name: 'แป้นใส่จำนวน' })).getByRole('button', { name: '2' }));
     await user.click(screen.getByRole('button', { name: 'ยืนยันส่งร้านนี้' }));
     await waitFor(() => expect(recordDelivery).toHaveBeenCalledTimes(2));
 
@@ -387,8 +414,8 @@ describe('EmployeeDeliveryWorkspace', () => {
     const onDraftStateChange = vi.fn();
     render(<EmployeeDeliveryWorkspace gateway={gateway} onDraftStateChange={onDraftStateChange} />);
 
-    await user.click(await screen.findByRole('button', { name: 'ตั้งจำนวนเป็น 2' }));
     await openShop(user);
+    await user.click(within(screen.getByRole('region', { name: 'แป้นใส่จำนวน' })).getByRole('button', { name: '2' }));
     await user.click(screen.getByRole('button', { name: 'ยืนยันส่งร้านนี้' }));
 
     await waitFor(() => expect(gateway.recordDelivery).toHaveBeenCalledTimes(1));
@@ -401,7 +428,7 @@ describe('EmployeeDeliveryWorkspace', () => {
     expect(gateway.recordDelivery).toHaveBeenCalledTimes(1);
 
     await act(async () => resolveRefresh([shopA, shopB]));
-    await screen.findByText('บันทึกยอดออกจากรถและร้านปลายทางแล้ว');
+    await screen.findByText('บันทึกยอดออกจากรถ และร้านปลายทางแล้ว');
     expect(onDraftStateChange).toHaveBeenLastCalledWith({ dirty: false, submitting: false });
   });
 
@@ -414,8 +441,8 @@ describe('EmployeeDeliveryWorkspace', () => {
     const gateway = createGateway({ loadShopCards });
     render(<EmployeeDeliveryWorkspace gateway={gateway} />);
 
-    await user.click(await screen.findByRole('button', { name: 'ตั้งจำนวนเป็น 2' }));
     await openShop(user);
+    await user.click(within(screen.getByRole('region', { name: 'แป้นใส่จำนวน' })).getByRole('button', { name: '2' }));
     await user.click(screen.getByRole('button', { name: 'ยืนยันส่งร้านนี้' }));
 
     expect((await screen.findByRole('alert')).textContent).toContain('บันทึกสำเร็จแล้ว แต่โหลดรายการร้านล่าสุดไม่สำเร็จ');

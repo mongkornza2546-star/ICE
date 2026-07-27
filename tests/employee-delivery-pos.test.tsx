@@ -236,4 +236,81 @@ describe('employee delivery POS', () => {
     await user.click(screen.getByRole('button', { name: 'กลับไปแก้รายการ' }));
     expect(screen.getByRole('button', { name: /2 รายการ/ }).getAttribute('aria-current')).toBe('step');
   });
+
+  it('clears every cart line in one action', async () => {
+    const user = userEvent.setup();
+    render(<EmployeeDeliveryWorkspace gateway={gateway()} />);
+    await user.click(await screen.findByRole('button', { name: /S001 ร้านทดสอบ/ }));
+    await user.click(within(await screen.findByRole('region', { name: 'แป้นใส่จำนวน' }))
+      .getByRole('button', { name: '2' }));
+
+    await user.click(screen.getByRole('button', { name: 'ล้างตะกร้า' }));
+
+    expect(screen.queryByRole('button', { name: 'ล้างตะกร้า' })).toBeNull();
+    expect(within(screen.getByRole('region', { name: 'สรุปตะกร้า' })).getByText('เลือกสินค้าแล้วใส่จำนวน')).toBeTruthy();
+  });
+
+  it('blocks a transfer amount above the immediate charge before submission', async () => {
+    const user = userEvent.setup();
+    const api = gateway();
+    api.loadDeliveryPosContext = vi.fn().mockResolvedValue({
+      ...context,
+      payment_profile: {
+        ...context.payment_profile!,
+        allowed_payment_methods: ['bank_transfer'],
+        default_payment_method: 'bank_transfer',
+      },
+    });
+    render(<EmployeeDeliveryWorkspace gateway={api} />);
+    await user.click(await screen.findByRole('button', { name: /S001 ร้านทดสอบ/ }));
+    await user.click(within(await screen.findByRole('region', { name: 'แป้นใส่จำนวน' }))
+      .getByRole('button', { name: '1' }));
+    await user.click(screen.getByRole('button', { name: 'ยืนยันส่งร้านนี้' }));
+
+    const amount = await screen.findByRole('spinbutton', { name: 'ยอดรับเงินจริง' });
+    await user.clear(amount);
+    await user.type(amount, '121');
+    await user.type(screen.getByRole('textbox', { name: 'เลขอ้างอิง *' }), 'TX-121');
+
+    expect((await screen.findByRole('alert')).textContent).toContain('ยอดโอนหรือ QR ต้องไม่เกินยอดเรียกเก็บ');
+    expect((screen.getByRole('button', { name: 'ยืนยันรับเงิน' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(api.recordPayment).not.toHaveBeenCalled();
+  });
+
+  it('clamps a quantity entered while POS context loads to the selected shop stock', async () => {
+    const user = userEvent.setup();
+    let resolveContext!: (value: DeliveryPosContext) => void;
+    const pendingContext = new Promise<DeliveryPosContext>((resolve) => { resolveContext = resolve; });
+    const api = gateway();
+    api.loadDeliveryPosContext = vi.fn().mockReturnValue(pendingContext);
+    render(<EmployeeDeliveryWorkspace gateway={api} />);
+    await user.click(await screen.findByRole('button', { name: /S001 ร้านทดสอบ/ }));
+    const keypad = await screen.findByRole('region', { name: 'แป้นใส่จำนวน' });
+    await user.click(within(keypad).getByRole('button', { name: '9' }));
+
+    resolveContext({
+      ...context,
+      items: [{ ...context.items[0], stock_quantity: 1 }],
+    });
+
+    await waitFor(() => {
+      expect(keypad.querySelector('.employee-pos-quantity strong')?.textContent).toBe('1');
+    });
+  });
+
+  it('renders a configured product image and retains an icon fallback', async () => {
+    const user = userEvent.setup();
+    const api = gateway();
+    api.loadDeliveryPosContext = vi.fn().mockResolvedValue({
+      ...context,
+      items: [{ ...context.items[0], image_url: 'https://example.test/ice.png' }],
+    });
+    render(<EmployeeDeliveryWorkspace gateway={api} />);
+    await user.click(await screen.findByRole('button', { name: /S001 ร้านทดสอบ/ }));
+
+    await waitFor(() => {
+      const image = screen.getByRole('button', { name: /หลอด/ }).querySelector('img');
+      expect(image?.getAttribute('src')).toBe('https://example.test/ice.png');
+    });
+  });
 });

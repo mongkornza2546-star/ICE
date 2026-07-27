@@ -1,11 +1,10 @@
-import { IceCream, Truck, WarningCircle, CaretRight } from '@phosphor-icons/react';
+import { Truck, WarningCircle, CaretRight } from '@phosphor-icons/react';
 import type { DeliveryRound, EmployeeStockState, IceTypeOption } from '../../types/app';
 import { EmployeeState } from './EmployeeState';
 import { QuantityStepper } from './QuantityStepper';
-import { renderTotals, stockQuantity, toTotals } from './utils';
+import { stockQuantity } from './utils';
 
 export function EmployeeStockTransferSection({
-  enableAssignedStockFlow,
   stockError,
   transferSubmitting,
   loadStockState,
@@ -17,16 +16,7 @@ export function EmployeeStockTransferSection({
   selectedRound,
   handleStockTransfer,
   transferItems,
-  stockSourceLabel,
-  selectedIceTypeId,
-  setSelectedIceTypeId,
-  submitting,
-  deliveryQuantities,
-  setPadValue,
-  padValues,
-  items,
 }: {
-  enableAssignedStockFlow: boolean;
   stockError: string | null;
   transferSubmitting: boolean;
   loadStockState: (roundId: string) => void;
@@ -38,18 +28,9 @@ export function EmployeeStockTransferSection({
   selectedRound: DeliveryRound | null;
   handleStockTransfer: () => void;
   transferItems: Array<{ ice_type_id: string; quantity: number }>;
-  stockSourceLabel: string;
-  selectedIceTypeId: string;
-  setSelectedIceTypeId: (id: string) => void;
-  submitting: boolean;
-  deliveryQuantities: Record<string, number>;
-  setPadValue: (value: '0' | '1' | '2' | '3' | '4' | '5' | '+') => void;
-  padValues: readonly ('0' | '1' | '2' | '3' | '4' | '5' | '+')[];
-  items: Array<{ ice_type_id: string; quantity: number }>;
 }) {
-  if (enableAssignedStockFlow) {
-    return (
-      <section className="employee-entry-section employee-task-section" aria-labelledby="employee-stock-step">
+  return (
+    <section className="employee-entry-section employee-task-section" aria-labelledby="employee-stock-step">
         <div className="employee-entry-section__heading">
           <span>1</span>
           <div>
@@ -113,57 +94,6 @@ export function EmployeeStockTransferSection({
             </button>
           </>
         ) : null}
-      </section>
-    );
-  }
-
-  return (
-    <section className="employee-entry-section employee-task-section" aria-labelledby="employee-stock-step">
-      <div className="employee-entry-section__heading">
-        <span>1</span>
-        <div>
-          <h2 id="employee-stock-step">น้ำแข็งออกจาก{stockSourceLabel}</h2>
-          <p>เลือกชนิด แล้วใส่จำนวนที่หยิบจากสต๊อก{stockSourceLabel}</p>
-        </div>
-      </div>
-      <div className="employee-ice-grid">
-        {iceTypes.map((iceType) => {
-          const selected = selectedIceTypeId === iceType.id;
-          return (
-            <button
-              aria-pressed={selected}
-              className={`employee-ice-button ${selected ? 'employee-ice-button--selected' : ''}`}
-              disabled={!selectedRoundId || submitting || selectedRound?.status === 'closed'}
-              key={iceType.id}
-              onClick={() => setSelectedIceTypeId(iceType.id)}
-              type="button"
-            >
-              <IceCream aria-hidden="true" size={27} />
-              <span>{iceType.name}</span>
-              <strong>{deliveryQuantities[iceType.id] ?? 0}</strong>
-              <small>{iceType.unit}</small>
-            </button>
-          );
-        })}
-      </div>
-      <div className="employee-number-pad" aria-label="ปุ่มจำนวน">
-        {padValues.map((value) => (
-          <button
-            aria-label={value === '+' ? 'เพิ่มอีกหนึ่ง' : `ตั้งจำนวนเป็น ${value}`}
-            disabled={!selectedRoundId || !selectedIceTypeId || submitting || selectedRound?.status === 'closed'}
-            key={value}
-            onClick={() => setPadValue(value)}
-            type="button"
-          >
-            {value}
-          </button>
-        ))}
-      </div>
-      <div className={`employee-task-summary ${items.length > 0 ? 'employee-task-summary--ready' : ''}`} aria-live="polite">
-        <Truck aria-hidden="true" size={24} />
-        <span>ยอดออกจาก{stockSourceLabel}</span>
-        <strong>{items.length > 0 ? renderTotals(toTotals(items), iceTypes) : 'ยังไม่ได้ใส่จำนวน'}</strong>
-      </div>
     </section>
   );
 }

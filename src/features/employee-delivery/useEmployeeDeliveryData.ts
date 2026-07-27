@@ -267,9 +267,7 @@ export function useEmployeeDeliveryData({
     returnFocusCardId.current = card.round_stop_id;
     setSuccess(null);
     setEntryError(null);
-    if (enableAssignedStockFlow) {
-      setDeliveryQuantities(Object.fromEntries(iceTypes.map((iceType) => [iceType.id, 0])));
-    }
+    setDeliveryQuantities(Object.fromEntries(iceTypes.map((iceType) => [iceType.id, 0])));
     setSelectedCardId(card.round_stop_id);
     setPosContext(null);
     setPosContextError(null);
@@ -281,6 +279,12 @@ export function useEmployeeDeliveryData({
       void gateway.loadDeliveryPosContext(card.round_stop_id).then((context) => {
         if (requestId !== posContextRequestId.current) return;
         setPosContext(context);
+        setDeliveryQuantities((current) => Object.fromEntries(
+          iceTypes.map((iceType) => {
+            const available = context.items.find((item) => item.ice_type_id === iceType.id)?.stock_quantity ?? 0;
+            return [iceType.id, Math.min(current[iceType.id] ?? 0, available)];
+          }),
+        ));
         setPaymentTerm(context.payment_profile?.default_payment_term ?? 'immediate');
         setPaymentMethod(context.payment_profile?.default_payment_method ?? 'cash');
         setPaymentEvidence(null);
@@ -294,7 +298,13 @@ export function useEmployeeDeliveryData({
     window.scrollTo({ top: 0, behavior: 'auto' });
   };
 
-  const handleRecorded = async (wasDelivery: boolean) => {
+  const changeShop = (card: ShopCard) => {
+    if (card.round_stop_id === selectedCardId) return;
+    if (items.length > 0 && !window.confirm('เปลี่ยนร้านแล้ว รายการในตะกร้าจะถูกล้าง ต้องการเปลี่ยนร้านหรือไม่?')) return;
+    openCard(card);
+  };
+
+  const handleRecorded = async (wasDelivery: boolean, result?: DeliveryFinancialResult | void) => {
     const [cardsRefreshed, stockRefreshed] = await Promise.all([
       loadCards(selectedRoundId),
       loadStockState(selectedRoundId),
@@ -305,7 +315,10 @@ export function useEmployeeDeliveryData({
     returnToBrowse();
     if (cardsRefreshed && stockRefreshed) {
       const sourceLabel = enableAssignedStockFlow ? stockState?.holding_location.name ?? 'จุดถือครอง' : stockSourceLabel;
-      setSuccess(wasDelivery ? `บันทึกยอดออกจาก${sourceLabel}และร้านปลายทางแล้ว` : 'บันทึกเหตุส่งไม่ได้แล้ว');
+      const creditDueDate = result?.payment_term === 'credit' && result.due_date
+        ? ` ครบกำหนด ${result.due_date}`
+        : '';
+      setSuccess(wasDelivery ? `บันทึกยอดออกจาก${sourceLabel} และร้านปลายทางแล้ว${creditDueDate}` : 'บันทึกเหตุส่งไม่ได้แล้ว');
       return;
     }
     setSuccess(null);
@@ -370,12 +383,10 @@ export function useEmployeeDeliveryData({
 
   const attemptBack = () => {
     if (submitting) return;
-    if ((status !== 'delivered' || note.trim() || (enableAssignedStockFlow && items.length > 0))
+    if ((status !== 'delivered' || note.trim() || items.length > 0)
       && !window.confirm('ยังไม่ได้บันทึกเหตุของร้านนี้ ต้องการกลับไปเลือกร้านหรือไม่?')) return;
     submissionRequestId.current += 1;
-    if (enableAssignedStockFlow) {
-      setDeliveryQuantities(Object.fromEntries(iceTypes.map((iceType) => [iceType.id, 0])));
-    }
+    setDeliveryQuantities(Object.fromEntries(iceTypes.map((iceType) => [iceType.id, 0])));
     returnToBrowse();
   };
 
@@ -498,7 +509,7 @@ export function useEmployeeDeliveryData({
         setSubmitting(false);
         return;
       }
-      await handleRecorded(isDelivery);
+      await handleRecorded(isDelivery, result);
       if (requestId === submissionRequestId.current) setSubmitting(false);
     } catch (submitError) {
       if (requestId !== submissionRequestId.current) return;
@@ -565,6 +576,10 @@ export function useEmployeeDeliveryData({
       setEntryError('ใส่ยอดรับเงินที่ถูกต้อง');
       return;
     }
+    if (paymentMethod !== 'cash' && receivedAmount > paymentResult.total_amount) {
+      setEntryError('ยอดโอนหรือ QR ต้องไม่เกินยอดเรียกเก็บ');
+      return;
+    }
     const allocatedAmount = Math.min(receivedAmount, paymentResult.total_amount);
     const signature = `${requestScope}:payment:${JSON.stringify({
       chargeId: paymentResult.charge_id,
@@ -617,6 +632,14 @@ export function useEmployeeDeliveryData({
 
   const changePaymentTerm = (term: PaymentTerm) => {
     setPaymentTerm(term);
+    setApprovalId(null);
+    setApprovalReason('');
+    setEntryError(null);
+  };
+
+  const clearDeliveryQuantities = () => {
+    if (submitting || selectedRound?.status === 'closed') return;
+    setDeliveryQuantities(Object.fromEntries(iceTypes.map((iceType) => [iceType.id, 0])));
     setApprovalId(null);
     setApprovalReason('');
     setEntryError(null);
@@ -692,12 +715,14 @@ export function useEmployeeDeliveryData({
     changeTransferQuantity,
     changeDeliveryQuantity,
     setDeliveryQuantity,
+    clearDeliveryQuantities,
     handleStockTransfer,
     handleSubmit,
     handlePaymentSubmit,
     finishPaymentLater,
     handleRequestApproval,
     openCard,
+    changeShop,
     loadStockState,
   };
 }

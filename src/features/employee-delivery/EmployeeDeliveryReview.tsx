@@ -3,6 +3,7 @@ import {
   ArrowLeft,
   Backspace,
   CheckCircle,
+  IceCream,
   MapPin,
   Storefront,
   Trash,
@@ -65,15 +66,18 @@ export function EmployeeDeliveryReview({
   items,
   status,
   stockSourceLabel,
+  shopCards,
   note,
   problemOpen,
   submitting,
   entryError,
   onBack,
+  onChangeShop,
   onSubmit,
   onChooseProblemStatus,
   onDeliveryQuantityChange,
   onSetQuantity,
+  onClearCart,
   onPaymentTermChange,
   onPaymentMethodChange,
   onPaymentAmountChange,
@@ -109,15 +113,18 @@ export function EmployeeDeliveryReview({
   items: Array<{ ice_type_id: string; quantity: number }>;
   status: Exclude<ShopRoundStatus, 'pending'>;
   stockSourceLabel: string;
+  shopCards: ShopCard[];
   note: string;
   problemOpen: boolean;
   submitting: boolean;
   entryError: string | null;
   onBack: () => void;
+  onChangeShop: (card: ShopCard) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   onChooseProblemStatus: (status: Exclude<ShopRoundStatus, 'pending' | 'delivered'>) => void;
   onDeliveryQuantityChange: (iceTypeId: string, delta: number) => void;
   onSetQuantity: (iceTypeId: string, quantity: number) => void;
+  onClearCart: () => void;
   onPaymentTermChange: (term: PaymentTerm) => void;
   onPaymentMethodChange: (method: PaymentMethod) => void;
   onPaymentAmountChange: (amount: string) => void;
@@ -215,9 +222,12 @@ export function EmployeeDeliveryReview({
     const outstandingApprovalRequired = Boolean(
       profile && !profile.allow_outstanding && remainingAmount > 0,
     );
+    const nonCashOverpayment = paymentMethod !== 'cash'
+      && (Number(paymentAmount) || 0) > (paymentResult.total_amount ?? 0);
     const paymentReady = (!referenceRequired || Boolean(paymentReference.trim()))
       && (!evidenceRequired || Boolean(paymentEvidence))
-      && (!outstandingApprovalRequired || Boolean(approvalId));
+      && (!outstandingApprovalRequired || Boolean(approvalId))
+      && !nonCashOverpayment;
     return (
       <div className="employee-payment-sheet">
         <header>
@@ -248,6 +258,7 @@ export function EmployeeDeliveryReview({
               <input
                 inputMode="decimal"
                 min="0.01"
+                max={paymentMethod === 'cash' ? undefined : paymentResult.total_amount ?? undefined}
                 onChange={(event) => onPaymentAmountChange(event.target.value)}
                 step="0.01"
                 type="number"
@@ -278,6 +289,7 @@ export function EmployeeDeliveryReview({
             <span>ตัดยอด <strong>{money.format(allocatedAmount)}</strong></span>
             {changeAmount > 0 ? <span>เงินทอน <strong>{money.format(changeAmount)}</strong></span> : null}
           </div>
+          {nonCashOverpayment ? <p className="employee-error" role="alert">ยอดโอนหรือ QR ต้องไม่เกินยอดเรียกเก็บ</p> : null}
           {outstandingApprovalRequired ? (
             <div className="employee-approval-request">
               <strong>{approvalId
@@ -345,6 +357,21 @@ export function EmployeeDeliveryReview({
       <form className="employee-pos-layout" onSubmit={onSubmit}>
         {!problemOpen ? (
           <>
+            <section aria-label="เลือกร้านอื่น" className="employee-pos-shops">
+              <div className="employee-pos-heading"><div><p>ร้าน</p><h2>ร้านในรอบ</h2></div><span>{shopCards.length} ร้าน</span></div>
+              <div className="employee-pos-shop-list">
+                {shopCards.map((card) => (
+                  <button
+                    aria-current={card.round_stop_id === shopCard.round_stop_id ? 'true' : undefined}
+                    key={card.round_stop_id}
+                    onClick={() => onChangeShop(card)}
+                    type="button"
+                  >
+                    <strong>{card.shop_code}</strong><span>{card.shop_name}</span>
+                  </button>
+                ))}
+              </div>
+            </section>
             <section className={`employee-pos-products ${mobileStep === 'items' ? '' : 'employee-pos-mobile--hidden'}`} aria-labelledby="employee-delivery-items">
               <div className="employee-pos-heading">
                 <div>
@@ -368,7 +395,12 @@ export function EmployeeDeliveryReview({
                       onClick={() => setSelectedIceTypeId(iceType.ice_type_id)}
                       type="button"
                     >
-                      <span>{selected ? <CheckCircle aria-hidden="true" weight="fill" /> : null}</span>
+                      {iceType.image_url ? (
+                        <img alt="" className="employee-pos-product-image" src={iceType.image_url} />
+                      ) : (
+                        <span className="employee-pos-product-image"><IceCream aria-hidden="true" /></span>
+                      )}
+                      <span className="employee-pos-product-selected">{selected ? <CheckCircle aria-hidden="true" weight="fill" /> : null}</span>
                       <strong>{iceType.name}</strong>
                       <small>{iceType.unit_price == null ? 'ยังไม่มีราคา' : `${money.format(iceType.unit_price)} / ${iceType.unit}`}</small>
                       <b>{quantity > 0 ? quantity : '—'}</b>
@@ -460,6 +492,9 @@ export function EmployeeDeliveryReview({
                   );
                 })}
               </div>
+              {items.length > 0 ? (
+                <button className="employee-text-button employee-cart-clear" disabled={submitting} onClick={onClearCart} type="button">ล้างตะกร้า</button>
+              ) : null}
               {posContext?.payment_profile ? (
                 <fieldset className="employee-payment-terms">
                   <legend>เงื่อนไขชำระ</legend>
@@ -477,7 +512,9 @@ export function EmployeeDeliveryReview({
                     <small>
                       วงเงินคงเหลือ {posContext.payment_profile.credit_remaining == null
                         ? 'ไม่จำกัด'
-                        : money.format(posContext.payment_profile.credit_remaining)}
+                        : money.format(posContext.payment_profile.credit_remaining)} · {posContext.payment_profile.credit_due_rule === 'net_days'
+                        ? `ครบกำหนด ${posContext.payment_profile.credit_days ?? 0} วันหลังส่ง`
+                        : 'ครบกำหนดวันสิ้นเดือน'}
                     </small>
                   ) : null}
                 </fieldset>

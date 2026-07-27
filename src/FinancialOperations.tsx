@@ -54,6 +54,16 @@ type Collector = {
   display_name: string;
 };
 
+type PaymentHistoryItem = {
+  id: string;
+  received_amount: number;
+  payment_method: PaymentMethod;
+  status: 'active' | 'voided';
+  recorded_at: string;
+  void_reason: string | null;
+  shops: { code: string; name: string } | null;
+};
+
 const money = new Intl.NumberFormat('th-TH', {
   style: 'currency',
   currency: 'THB',
@@ -88,6 +98,7 @@ export function FinancialOperations({ userRole = 'round_lead' }: { userRole?: Ap
   const [approvals, setApprovals] = useState<Approval[]>([]);
   const [collectors, setCollectors] = useState<Collector[]>([]);
   const [memberIds, setMemberIds] = useState<string[]>([]);
+  const [paymentHistory, setPaymentHistory] = useState<PaymentHistoryItem[]>([]);
   const [method, setMethod] = useState<PaymentMethod>('cash');
   const [amount, setAmount] = useState('');
   const [reference, setReference] = useState('');
@@ -126,7 +137,7 @@ export function FinancialOperations({ userRole = 'round_lead' }: { userRole?: Ap
     }
 
     if (!isManager) return;
-    const [receivablesResponse, approvalsResponse, collectorsResponse, membersResponse] = await Promise.all([
+    const [receivablesResponse, approvalsResponse, collectorsResponse, membersResponse, paymentsResponse] = await Promise.all([
       supabase.rpc('get_credit_receivables', { p_as_of_date: serviceDate }),
       supabase
         .from('financial_approval_requests')
@@ -142,15 +153,22 @@ export function FinancialOperations({ userRole = 'round_lead' }: { userRole?: Ap
       nextRunId
         ? supabase.from('collection_run_members').select('user_id').eq('collection_run_id', nextRunId)
         : Promise.resolve({ data: [], error: null }),
+      supabase
+        .from('payments')
+        .select('id, received_amount, payment_method, status, recorded_at, void_reason, shops(code,name)')
+        .order('recorded_at', { ascending: false })
+        .limit(30),
     ]);
     if (receivablesResponse.error) throw receivablesResponse.error;
     if (approvalsResponse.error) throw approvalsResponse.error;
     if (collectorsResponse.error) throw collectorsResponse.error;
     if (membersResponse.error) throw membersResponse.error;
+    if (paymentsResponse.error) throw paymentsResponse.error;
     setReceivables((receivablesResponse.data ?? []) as Receivable[]);
     setApprovals((approvalsResponse.data ?? []) as unknown as Approval[]);
     setCollectors((collectorsResponse.data ?? []) as Collector[]);
     setMemberIds((membersResponse.data ?? []).map((member) => member.user_id));
+    setPaymentHistory((paymentsResponse.data ?? []) as unknown as PaymentHistoryItem[]);
   }, [isManager, serviceDate]);
 
   useEffect(() => {
@@ -277,6 +295,18 @@ export function FinancialOperations({ userRole = 'round_lead' }: { userRole?: Ap
     setSuccess(decision === 'approved' ? 'อนุมัติคำขอแล้ว' : 'ไม่อนุมัติคำขอแล้ว');
   });
 
+  const voidPayment = (payment: PaymentHistoryItem) => runAction(async () => {
+    if (!supabase) return;
+    const reason = window.prompt(`เหตุผลที่ยกเลิกรับเงินจาก ${payment.shops?.name ?? 'ร้านค้า'}`)?.trim();
+    if (!reason) return;
+    const { error: rpcError } = await supabase.rpc('void_payment', {
+      p_payment_id: payment.id,
+      p_reason: reason,
+    });
+    if (rpcError) throw rpcError;
+    setSuccess('ยกเลิกรายการรับเงินแล้ว ยอดค้างถูกคำนวณใหม่');
+  });
+
   return (
     <div className="financial-ops">
       <header className="financial-ops__header">
@@ -322,7 +352,7 @@ export function FinancialOperations({ userRole = 'round_lead' }: { userRole?: Ap
           <div className="financial-ops__list">
             {queue.map((shop) => (
               <button key={shop.shop_id} onClick={() => chooseShop(shop)} type="button">
-                <span><strong>{shop.shop_code} · {shop.shop_name}</strong><small>{shop.charge_count} รายการ{shop.has_new_charges ? ' · มียอดเพิ่ม' : ''}</small></span>
+                <span><strong>{shop.shop_code} · {shop.shop_name}</strong><small>{shop.charge_count} รายการค้าง{shop.has_new_charges ? ' · มียอดเพิ่ม' : ''}</small></span>
                 <b>{money.format(shop.outstanding_amount)}</b>
               </button>
             ))}
@@ -395,6 +425,26 @@ export function FinancialOperations({ userRole = 'round_lead' }: { userRole?: Ap
                   <div key={item.shop_id}>
                     <span><strong>{item.shop_code} · {item.shop_name}</strong><small>ครบกำหนดเก่าสุด {item.oldest_due_date}{item.overdue_amount > 0 ? ` · เกินกำหนด ${money.format(item.overdue_amount)}` : ''}</small></span>
                     <b>{money.format(item.outstanding_amount)}</b>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+
+          <section className="financial-ops__section">
+            <div className="financial-ops__title"><div><Coins /><span><h2>ประวัติรับเงินล่าสุด</h2><p>ตรวจสอบหรือยกเลิกรายการที่บันทึกผิด</p></span></div></div>
+            {paymentHistory.length === 0 ? <p className="financial-ops__empty">ยังไม่มีรายการรับเงิน</p> : (
+              <div className="financial-ops__list">
+                {paymentHistory.map((payment) => (
+                  <div key={payment.id}>
+                    <span>
+                      <strong>{payment.shops?.code ?? '—'} · {payment.shops?.name ?? 'ไม่พบร้าน'}</strong>
+                      <small>{payment.payment_method === 'cash' ? 'เงินสด' : payment.payment_method === 'bank_transfer' ? 'โอน' : 'QR'} · {new Intl.DateTimeFormat('th-TH', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(payment.recorded_at))}{payment.status === 'voided' ? ` · ยกเลิก: ${payment.void_reason ?? '—'}` : ''}</small>
+                    </span>
+                    <span>
+                      <b>{money.format(payment.received_amount)}</b>
+                      {payment.status === 'active' ? <button disabled={busy} onClick={() => voidPayment(payment)} type="button">ยกเลิกรายการ</button> : null}
+                    </span>
                   </div>
                 ))}
               </div>
