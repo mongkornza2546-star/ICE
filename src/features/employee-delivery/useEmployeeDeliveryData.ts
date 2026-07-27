@@ -12,7 +12,7 @@ import type {
 } from '../../types/app';
 import type { EmployeeDeliveryGateway, EmployeeDeliveryDraftState } from '../../EmployeeDeliveryWorkspace';
 import { usePendingRequests } from './usePendingRequests';
-import { normalizeSearch, stockQuantity, employeeErrorMessage } from './utils';
+import { compareShopCodes, normalizeSearch, stockQuantity, employeeErrorMessage } from './utils';
 
 const PAD_VALUES = ['0', '1', '2', '3', '4', '5', '+'] as const;
 
@@ -240,7 +240,7 @@ export function useEmployeeDeliveryData({
         card.building_name,
         card.floor_or_zone,
       ].join(' ')).includes(normalizedQuery);
-    });
+    }).sort((left, right) => compareShopCodes(left.shop_code, right.shop_code));
   }, [cards, query, selectedBuildingId, selectedZone]);
 
   const returnToBrowse = useCallback(() => {

@@ -1,5 +1,11 @@
 import type { EmployeeStockState, IceTypeOption, ShopRoundStatus } from '../../types/app';
 
+const shopCodeCollator = new Intl.Collator('en', { numeric: true, sensitivity: 'base' });
+
+export function compareShopCodes(left: string, right: string) {
+  return shopCodeCollator.compare(left, right);
+}
+
 export function normalizeSearch(value: string) {
   return value.toLocaleLowerCase('th-TH').replace(/\s+/g, ' ').trim();
 }

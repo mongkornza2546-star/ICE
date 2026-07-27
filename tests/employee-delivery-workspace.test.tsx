@@ -112,6 +112,23 @@ describe('EmployeeDeliveryWorkspace', () => {
     expect(screen.queryByRole('region', { name: 'แป้นใส่จำนวน' })).toBeNull();
   });
 
+  it('sorts shops by their codes using natural numeric order', async () => {
+    const gateway = createGateway({
+      loadShopCards: vi.fn().mockResolvedValue([
+        card('AA10', 'ร้านสิบ'),
+        card('AA2', 'ร้านสอง'),
+        card('AA1', 'ร้านหนึ่ง'),
+      ]),
+    });
+    render(<EmployeeDeliveryWorkspace gateway={gateway} />);
+
+    await screen.findByRole('button', { name: /AA1 ร้านหนึ่ง/ });
+    const shopCodes = Array.from(document.querySelectorAll<HTMLButtonElement>('.employee-shop-tile'))
+      .map((button) => button.textContent?.match(/AA\d+/)?.[0]);
+
+    expect(shopCodes).toEqual(['AA1', 'AA2', 'AA10']);
+  });
+
   it('transfers stock to the assigned holding point separately from the shop delivery', async () => {
     const user = userEvent.setup();
     const initialStock = employeeStockState();

@@ -1123,6 +1123,10 @@
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+  /* Keep the third stock-action tab from leaving half of its row empty on phones. */
+  .action-tab:last-child {
+    grid-column: 1 / -1;
+  }
   .action-tab {
     min-width: 0;
     padding: 12px 8px;
