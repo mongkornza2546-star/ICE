@@ -100,6 +100,14 @@ function queryResult(data: unknown[]) {
 describe('ShopSettings card catalog', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    Object.defineProperty(URL, 'createObjectURL', {
+      configurable: true,
+      value: vi.fn(() => 'blob:tank-preview'),
+    });
+    Object.defineProperty(URL, 'revokeObjectURL', {
+      configurable: true,
+      value: vi.fn(),
+    });
     mocks.from.mockImplementation((table: string) => {
       if (table === 'shops') return queryResult([...shops]);
       if (table === 'buildings') return queryResult([
@@ -308,5 +316,19 @@ describe('ShopSettings card catalog', () => {
     const shopImageEditor = screen.getByTestId('shop-image-editor');
     const rentedTanks = screen.getByRole('heading', { name: /ถังเช่า 0 ใบ/ });
     expect(shopImageEditor.compareDocumentPosition(rentedTanks) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('shows a preview after selecting a rented tank photo', async () => {
+    const user = userEvent.setup();
+    render(<ShopSettings />);
+
+    await user.click(await screen.findByRole('button', { name: /AA01 ร้านเจ๊อ้อย/ }));
+    await user.click(screen.getByRole('button', { name: 'ถังเช่าและรูปภาพ' }));
+    const photo = new File(['tank photo'], 'tank.jpg', { type: 'image/jpeg' });
+    await user.upload(screen.getByLabelText('เลือกรูปถัง'), photo);
+
+    const preview = screen.getByRole('img', { name: 'ตัวอย่างรูปถังที่เลือก' }) as HTMLImageElement;
+    expect(preview.src).toBe('blob:tank-preview');
+    expect(screen.getByText('tank.jpg')).toBeTruthy();
   });
 });

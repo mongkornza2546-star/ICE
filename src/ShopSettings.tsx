@@ -91,6 +91,7 @@ export function ShopSettings({ isActive = true, readOnly = false }: { isActive?:
   const [rentedTanks, setRentedTanks] = useState<ShopRentedTank[]>([]);
   const [tankCode, setTankCode] = useState('');
   const [tankImageFile, setTankImageFile] = useState<File | null>(null);
+  const [tankImagePreviewUrl, setTankImagePreviewUrl] = useState<string | null>(null);
   const [savingTank, setSavingTank] = useState(false);
   const [tankError, setTankError] = useState<string | null>(null);
   const [tankSuccess, setTankSuccess] = useState<string | null>(null);
@@ -356,6 +357,17 @@ export function ShopSettings({ isActive = true, readOnly = false }: { isActive?:
     () => shops.find((shop) => shop.id === draft.id) ?? null,
     [draft.id, shops],
   );
+
+  useEffect(() => {
+    if (!tankImageFile) {
+      setTankImagePreviewUrl(null);
+      return;
+    }
+
+    const previewUrl = URL.createObjectURL(tankImageFile);
+    setTankImagePreviewUrl(previewUrl);
+    return () => URL.revokeObjectURL(previewUrl);
+  }, [tankImageFile]);
 
   function resetTankDraft() {
     setTankCode('');
@@ -773,6 +785,11 @@ export function ShopSettings({ isActive = true, readOnly = false }: { isActive?:
                   <input accept="image/jpeg,image/png,image/webp" onChange={chooseTankImage} type="file" />
                 </label>
                 <span className="muted">{tankImageFile?.name ?? 'ยังไม่ได้เลือกรูป'}</span>
+                {tankImagePreviewUrl ? (
+                  <div className="rented-tank-preview">
+                    <img alt="ตัวอย่างรูปถังที่เลือก" src={tankImagePreviewUrl} />
+                  </div>
+                ) : null}
                 <button className="primary-button" disabled={savingTank} onClick={() => void registerRentedTank()} type="button">
                   {savingTank ? 'กำลังบันทึก...' : 'เพิ่มถังเช่า'}
                 </button>
