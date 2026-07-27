@@ -10,8 +10,9 @@ import { EmployeeLayout } from './EmployeeLayout';
 import { AdminLayout } from './AdminLayout';
 import { AdminReferenceSettings } from './AdminReferenceSettings';
 import { ManagerStockControl } from './ManagerStockControl';
+import { ManagerDashboard } from './ManagerDashboard';
 import { ShopSettings } from './ShopSettings';
-import type { DeliveryRound, EmployeeStockState, IceTypeOption, ShopCard, ShopCardHistoryEntry, StockControlSummary } from './types/app';
+import type { DailyWorkDashboard, DeliveryRound, EmployeeStockState, IceTypeOption, ShopCard, ShopCardHistoryEntry, StockControlSummary } from './types/app';
 import type { IceTypeSetting } from './features/admin-reference-settings/types';
 
 const demoRounds: DeliveryRound[] = [
@@ -230,6 +231,26 @@ const managerStockDemoSummary: StockControlSummary = {
     },
   ],
   recent_movements: [],
+};
+
+const managerDashboardDemo: DailyWorkDashboard = {
+  session: { id: 'demo-session', service_date: managerStockDemoRound.service_date, status: 'in_progress', opened_at: '2026-07-20T01:00:00.000Z', opened_by_name: 'หัวหน้างานเดโม่' },
+  members: [
+    { id: 'employee-01', display_name: 'สมชาย ใจดี', role: 'courier', role_label: 'พนักงานส่ง', last_activity: { type: 'delivery', timestamp: '2026-07-20T04:20:00.000Z', description: 'กำลังส่งน้ำแข็ง' } },
+    { id: 'employee-02', display_name: 'วิชัย มั่นคง', role: 'courier', role_label: 'พนักงานส่ง', last_activity: { type: 'stock_movement', timestamp: '2026-07-20T04:05:00.000Z', description: 'รับสต๊อกเข้ารถเข็น' } },
+    { id: 'employee-03', display_name: 'ประเสริฐ ดีมาก', role: 'courier', role_label: 'พนักงานส่ง', last_activity: null },
+  ],
+  deliverySummary: { activeDeliveryCount: 48, actualShopCount: 31, problemCount: 2 },
+  salesSummary: { netSalesValue: 3860, iceTypeSales: [{ ice_type_id: 'tube', ice_type_name: 'หลอดเล็ก', unit: 'ถุง', quantity: 118 }] },
+  recentDeliveries: [],
+  problems: [{ stop_id: 'demo-problem', shop_code: 'A01', shop_name: 'Skywalk, ฝั่งสระลม', problem_note: 'ลูกค้ายังไม่พร้อมรับสินค้า', updated_at: '2026-07-20T04:10:00.000Z', updated_by_name: 'สมชาย ใจดี' }],
+  readiness: [
+    { location_id: 'truck-main', location_name: 'รถบรรทุกหลัก', status: 'current', snapshot: null },
+    { location_id: 'holder-somchai', location_name: 'รถเข็นสมชาย', status: 'current', snapshot: null },
+    { location_id: 'holder-vichai', location_name: 'รถเข็นวิชัย', status: 'uncounted', snapshot: null },
+    { location_id: 'holder-nid', location_name: 'รถเข็นนิด', status: 'uncounted', snapshot: null },
+  ],
+  cancellationState: { can_cancel: true, blocker_reason: null },
 };
 
 function cloneCards(cards: ShopCard[]) {
@@ -453,6 +474,25 @@ export function LocalDemoApp() {
   const [gatewayVersion, setGatewayVersion] = useState(0);
   const [draftState, setDraftState] = useState({ dirty: false, submitting: false });
   const gateway = useMemo(() => buildDemoGateway(), [gatewayVersion]);
+
+  if (new URLSearchParams(window.location.search).get('screen') === 'today-layout') {
+    return (
+      <AdminLayout
+        activeView="manager_overview"
+        allowedViews={['manager_overview', 'factory_order', 'delivery', 'stock_operations', 'stock_audit']}
+        onNavigate={() => undefined}
+        profileLabel="หัวหน้างาน · Demo"
+      >
+        <ManagerDashboard
+          demoDashboard={managerDashboardDemo}
+          demoStockSummary={managerStockDemoSummary}
+          isActive
+          onNavigate={() => undefined}
+          profileRole="admin"
+        />
+      </AdminLayout>
+    );
+  }
 
   if (new URLSearchParams(window.location.search).get('screen') === 'stock-layout') {
     return (

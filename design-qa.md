@@ -74,6 +74,48 @@ final result: passed
 
 ---
 
+## 2026-07-27 — Today dashboard reference redesign
+
+**Comparison Target**
+
+- Source visual truth: `/Users/bhusitt./Downloads/ChatGPT Image 24 ก.ค. 2569 17_28_58.png` (1491 × 1055 px).
+- Rendered implementation: [outputs/today-dashboard-reference-final.png](/Users/bhusitt./Downloads/ส่งน้ำแข็ง/outputs/today-dashboard-reference-final.png), captured from the local demo route `?screen=today-layout` at 1280 × 1087 CSS px, device scale factor 1.
+- Responsive implementation: [outputs/today-dashboard-mobile.png](/Users/bhusitt./Downloads/ส่งน้ำแข็ง/outputs/today-dashboard-mobile.png), captured at 390 × 844 CSS px, device scale factor 1.
+- State: work session in progress, four populated overview cards, four stock holders, three active staff cards, two action alerts, and four operational shortcuts.
+- Full-view comparison evidence: source and implementation were opened together in the visual comparison pass. The source browser chrome was excluded from fidelity judgments; the implementation uses the existing application sidebar and top bar.
+- Focused regions reviewed: overview cards, distribution flow, staff panel, stock-holder grid, alert list, and shortcut row. These regions carry the reference's hierarchy and density, so focused review was required.
+
+**Findings**
+
+- No actionable P0/P1/P2 differences remain for the requested desktop layout. The implementation matches the reference's page hierarchy: four summary cards, paired route/team panels, stock and alert panels, and four colored quick actions.
+- P3: Production staff cards correctly use the existing user icon because the daily dashboard contract does not currently expose avatar URLs. This avoids introducing fabricated portrait assets; the layout will accommodate avatars if the data contract is extended later.
+
+**Required Fidelity Surfaces**
+
+- Fonts and typography: retained the application's Noto Sans Thai family and compact Thai dashboard scale, with a strong page heading, small supporting labels, and numeric emphasis aligned to the source.
+- Spacing and layout rhythm: desktop grid and cards use the reference's compact gutters, rounded white surfaces, low shadows, paired middle rows, and full-width shortcut strip. At 390 px, cards collapse to two columns and panels stack without page overflow.
+- Colors and visual tokens: existing blue navigation and stock color, pale blue/green/orange icon surfaces, white cards, green work-status pill, amber alerts, and blue/teal/purple quick actions were mapped to the reference.
+- Image quality and asset fidelity: retained the supplied ice logo and sidebar water artwork. Standard UI controls use the existing Phosphor icon set; no handcrafted SVGs, fake portrait images, or CSS artwork were added.
+- Copy and content: visible values are tied to the existing daily-dashboard and stock-summary data. The demo route has realistic local data only for visual verification; production still fetches the live RPC data.
+
+**Interaction And Build Checks**
+
+- Browser: verified the rendered desktop and 390 px mobile layouts, opened the overflow menu, and confirmed the cancellation action appears. Browser console: no errors.
+- `npm run test:ui`: passed.
+- `npm run build`: passed.
+
+**Implementation Checklist**
+
+- Completed: visual hierarchy, responsive layout, data bindings, overflow cancellation menu, alert routing, and operational shortcut routing.
+
+**Follow-up Polish**
+
+- P3: Add employee avatar URLs to `get_daily_work_dashboard` if portrait imagery is required for this screen.
+
+final result: passed
+
+---
+
 ## 2026-07-24 — Shop directory layout redesign
 
 **Comparison Target**
