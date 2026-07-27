@@ -19,6 +19,10 @@ const migration0049 = readFileSync(
   new URL('../supabase/migrations/0049_fix_daily_dashboard_app_role_label.sql', import.meta.url),
   'utf8',
 );
+const migration0105 = readFileSync(
+  new URL('../supabase/migrations/0105_fix_daily_stock_close_audit_entity_uuid.sql', import.meta.url),
+  'utf8',
+);
 
 const USER_ID = '10000000-0000-4000-8000-000000000001';
 const LATE_USER_ID = '10000000-0000-4000-8000-000000000002';
@@ -27,6 +31,7 @@ const ICE_TYPE_ID = '40000000-0000-4000-8000-000000000001';
 const BUILDING_ID = '50000000-0000-4000-8000-000000000001';
 const SHOP_ID = '60000000-0000-4000-8000-000000000001';
 const TRUCK_ID = '70000000-0000-4000-8000-000000000001';
+const DAILY_CLOSE_KEY = '80000000-0000-4000-8000-000000000001';
 
 async function createDb({ legacyRounds = false } = {}) {
   const db = new PGlite();
@@ -266,7 +271,7 @@ async function createDb({ legacyRounds = false } = {}) {
       id uuid primary key default gen_random_uuid(),
       actor_id uuid not null,
       entity_type text not null,
-      entity_id text not null,
+      entity_id uuid not null,
       action text not null,
       after_value jsonb,
       created_at timestamptz not null default now()
@@ -328,6 +333,7 @@ async function createDb({ legacyRounds = false } = {}) {
   }
 
   await db.exec(migration0042);
+  await db.exec(migration0105);
   await db.exec(migration0043);
   await db.exec(migration0044);
   await db.exec(migration0049);
@@ -513,7 +519,12 @@ test('close_daily_stock_v2 atomically closes open daily delivery round', async (
   }]);
 
   await db.query(`
-    select public.close_daily_stock_v2('${countsPayload}'::jsonb, 'Daily close note', gen_random_uuid(), '2026-07-22');
+    select public.close_daily_stock_v2(
+      '${countsPayload}'::jsonb,
+      'Daily close note',
+      '${DAILY_CLOSE_KEY}',
+      '2026-07-22'
+    );
   `);
 
   const roundRes = await db.query(`select status, closed_by from public.delivery_rounds where service_date = '2026-07-22';`);
@@ -522,6 +533,13 @@ test('close_daily_stock_v2 atomically closes open daily delivery round', async (
 
   const closureRes = await db.query(`select status from public.daily_stock_closures where service_date = '2026-07-22';`);
   assert.equal(closureRes.rows[0].status, 'closed');
+
+  const auditRes = await db.query(`
+    select entity_id
+    from public.audit_logs
+    where entity_type = 'daily_stock_closures' and action = 'closed';
+  `);
+  assert.equal(auditRes.rows[0].entity_id, DAILY_CLOSE_KEY);
 });
 
 test('get_daily_work_dashboard returns correct session status lifecycle', async () => {
