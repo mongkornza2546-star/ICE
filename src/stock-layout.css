@@ -969,42 +969,17 @@
 .stock-count-note label { font-size: .8rem; font-weight: 600; }
 .stock-count-note input { width: 100%; }
 .stock-count-panel > .primary-button { width: 100%; }
-.factory-receipt-summary {
-  overflow: hidden;
-  border: 1px solid #bfdbfe;
-  border-radius: 10px;
-  background: #f8fbff;
-}
-.factory-receipt-summary__heading {
-  display: flex;
-  align-items: flex-start;
-  gap: 9px;
+.stock-count-reconciliation-note {
+  display: grid;
+  gap: 4px;
   padding: 12px;
+  border: 1px solid #bfdbfe;
+  border-radius: 9px;
   color: #075ed8;
   background: #eff6ff;
-}
-.factory-receipt-summary__heading p { margin: 3px 0 0; color: #52657c; font-size: .76rem; }
-.factory-receipt-summary__table { display: grid; }
-.factory-receipt-summary__row {
-  display: grid;
-  grid-template-columns: minmax(120px, 1.3fr) repeat(3, minmax(92px, 1fr));
-  gap: 10px;
-  align-items: center;
-  padding: 10px 12px;
-  border-top: 1px solid #dbeafe;
-  color: #344861;
   font-size: .8rem;
 }
-.factory-receipt-summary__row--header {
-  color: #64748b;
-  background: #f8fafc;
-  font-size: .7rem;
-  font-weight: 700;
-}
-.factory-receipt-status { justify-self: start; padding: 3px 8px; border-radius: 999px; font-weight: 700; white-space: nowrap; }
-.factory-receipt-status--match { color: #08783e; background: #eaf8f0; }
-.factory-receipt-status--short { color: #b4232d; background: #fff0f1; }
-.factory-receipt-status--over { color: #075ed8; background: #eff6ff; }
+.stock-count-reconciliation-note span { color: #52657c; }
 .stock-close-summary__success,
 .stock-close-summary__pending {
   display: grid;
@@ -1196,7 +1171,6 @@
     flex-direction: column;
   }
   .stock-count-row__controls { gap: 8px; }
-  .factory-receipt-summary__row { grid-template-columns: minmax(94px, 1.25fr) repeat(3, minmax(72px, 1fr)); gap: 6px; padding: 9px; font-size: .72rem; }
   .stock-count-stepper { justify-content: center; }
   .stock-variance-modal-backdrop { padding: 8px; }
   .stock-variance-review__quantities { grid-template-columns: minmax(0, 1fr); }

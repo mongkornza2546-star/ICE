@@ -255,30 +255,6 @@ export interface StockControlSummary {
   recent_movements: StockMovementEntry[];
 }
 
-export interface FactoryReceiptItem {
-  ice_type_id: string;
-  ice_type_name: string;
-  unit: string;
-  expected_quantity: number;
-  actual_quantity: number | null;
-  variance_quantity: number | null;
-}
-
-export interface FactoryReceipt {
-  factory_order_id: string;
-  recorded_at: string;
-  status: 'pending' | 'recorded';
-  note: string | null;
-  items: FactoryReceiptItem[];
-}
-
-export interface FactoryReceiptSummary {
-  service_date: string;
-  truck_location_id: string | null;
-  truck_location_name: string | null;
-  receipts: FactoryReceipt[];
-}
-
 export interface FactoryOrderSummary extends StockControlSummary {
   order_count: number;
   ordered_totals: StockBalanceItem[];

@@ -19,6 +19,7 @@ export function StockCountPanel({
 }: StockCountPanelProps) {
   const [actualCounts, setActualCounts] = useState<Record<string, number>>({});
   const [note, setNote] = useState('');
+  const isTruckCount = location.kind === 'truck';
 
   // Sync with location balances
   useEffect(() => {
@@ -59,16 +60,28 @@ export function StockCountPanel({
     <form onSubmit={handleSubmit} className="stock-v2-panel stock-count-panel">
       <div className="stock-v2-panel__header">
         <div>
-          <h3>ตรวจนับสต๊อกจริง</h3>
+          <h3>{isTruckCount ? 'นับยอดคงเหลือในรถบรรทุก' : 'ตรวจนับสต๊อกจริง'}</h3>
           <p className="muted">จุดตรวจนับ: <strong>{location.name}</strong></p>
         </div>
       </div>
+
+      {isTruckCount ? (
+        <div className="stock-count-reconciliation-note">
+          <strong>วิธีหายอดขาดหรือเกิน</strong>
+          <span>ยอดจริงรวม = ยอดนับจริงที่เหลือบนรถ + ยอดที่โอนให้ผู้ดูแล แล้วเทียบกับยอดสั่งจากโรงงาน</span>
+        </div>
+      ) : null}
 
       <div className="stock-count-list">
         {location.balances.map((b) => {
           const actual = actualCounts[b.ice_type_id] ?? 0;
           const system = b.quantity;
           const variance = actual - system;
+          const varianceLabel = variance === 0
+            ? 'ตรง'
+            : variance > 0
+              ? `เกิน ${variance}`
+              : `ขาด ${Math.abs(variance)}`;
 
           return (
             <div
@@ -82,7 +95,7 @@ export function StockCountPanel({
                 <div>
                   <strong>{b.ice_type_name}</strong>
                   <p className="muted">
-                    ระบบ: <strong>{system} {b.unit}</strong>
+                    {isTruckCount ? 'ควรเหลือบนรถ' : 'ระบบ'}: <strong>{system} {b.unit}</strong>
                   </p>
                 </div>
               </div>
@@ -98,7 +111,7 @@ export function StockCountPanel({
                         : 'stock-variance-badge--negative'
                     }`}
                   >
-                    ส่วนต่าง: {variance > 0 ? `+${variance}` : variance} {b.unit}
+                    {varianceLabel}{variance === 0 ? '' : ` ${b.unit}`}
                   </span>
                 </div>
 

@@ -23,18 +23,16 @@ import type {
   StockControlSummary,
   StockLocationBalance,
   StockCountVarianceReview,
-  FactoryReceiptSummary,
 } from './types/app';
 
 import { StockCountPanel } from './features/stock-control/components/StockCountPanel';
-import { FactoryReceiptPanel } from './features/stock-control/components/FactoryReceiptPanel';
 import { StockVarianceReviewModal } from './features/stock-control/components/StockVarianceReviewModal';
 import { StockCloseSummaryPanel } from './features/stock-control/components/StockCloseSummaryPanel';
 
 const USER_AVATAR_BUCKET = 'user-avatars';
 const ICE_TYPE_IMAGE_BUCKET = 'ice-type-images';
 type StockOperationKind = 'transfer' | 'damage';
-type TabKind = StockOperationKind | 'count' | 'receipt';
+type TabKind = StockOperationKind | 'count';
 
 const MOVEMENT_LABELS: Record<StockOperationKind, string> = {
   transfer: 'โอนระหว่างจุด',
@@ -57,7 +55,6 @@ export function ManagerStockControl({
   const isRoundSnapshot = round?.status === 'closed';
   const actionRound = operationRound ?? round;
   const [summary, setSummary] = useState<StockControlSummary | null>(demoSummary ?? null);
-  const [factoryReceiptSummary, setFactoryReceiptSummary] = useState<FactoryReceiptSummary | null>(null);
   const [summaryRoundId, setSummaryRoundId] = useState<string | null>(demoSummary ? round?.id ?? null : null);
   const [activeTab, setActiveTab] = useState<TabKind>('transfer');
   const [kind, setKind] = useState<StockOperationKind>('transfer');
@@ -232,23 +229,18 @@ export function ManagerStockControl({
   useEffect(() => {
     if (!summary) return;
     const selectedLocation = stockHolderLocations.find((location) => location.id === countLocationId)
-      ?? stockHolderLocations.find((location) => location.kind !== 'truck')
+      ?? truckLocations.find((location) => location.is_courier_source === true)
+      ?? truckLocations[0]
       ?? stockHolderLocations[0];
     setCountLocationId(selectedLocation?.id ?? '');
-  }, [summary, stockHolderLocations, countLocationId, closeState?.is_closed]);
-
-  useEffect(() => {
-    if (factoryReceiptSummary?.receipts?.some((receipt) => receipt.status === 'pending')) {
-      setActiveTab('receipt');
-    }
-  }, [factoryReceiptSummary]);
+  }, [summary, stockHolderLocations, truckLocations, countLocationId, closeState?.is_closed]);
 
   async function loadSummary(requestedServiceDate: string, roundId: string | null) {
     if (!supabase) return;
     const currentRequest = ++requestId.current;
     setLoading(true);
     setError(null);
-    const [summaryResponse, readinessResponse, closeResponse, reviewsResponse, receiptResponse] = await Promise.all([
+    const [summaryResponse, readinessResponse, closeResponse, reviewsResponse] = await Promise.all([
       supabase.rpc('get_stock_control_summary', {
         p_round_id: roundId,
         p_service_date: requestedServiceDate,
@@ -264,15 +256,13 @@ export function ManagerStockControl({
       supabase.rpc('get_stock_count_variance_reviews', {
         p_service_date: requestedServiceDate,
       }),
-      supabase.rpc('get_factory_receipt_summary', { p_service_date: requestedServiceDate }),
     ]);
     if (currentRequest !== requestId.current) return;
 
     const firstError = summaryResponse.error
       ?? readinessResponse.error
       ?? closeResponse.error
-      ?? reviewsResponse.error
-      ?? receiptResponse.error;
+      ?? reviewsResponse.error;
     if (firstError) {
       setError(firstError.message);
       setSummary(null);
@@ -282,35 +272,11 @@ export function ManagerStockControl({
       setCountReadiness((readinessResponse.data ?? []) as StockCountReadiness[]);
       setCloseState(closeResponse.data as DailyStockCloseState);
       setVarianceReviews((reviewsResponse.data ?? []) as StockCountVarianceReview[]);
-      setFactoryReceiptSummary((receiptResponse.data ?? null) as FactoryReceiptSummary | null);
       setSummaryRoundId(roundId);
       setLoadedAt(new Date().toISOString());
     }
     setLoading(false);
   }
-
-  const factoryReceiptAction = useRpcAction(
-    async (
-      args: { factoryOrderId: string; items: { ice_type_id: string; actual_quantity: number }[]; note: string },
-      idempotencyKey,
-    ) => {
-      if (!supabase) throw new Error('Supabase is not initialized');
-      return supabase.rpc('record_factory_receipt', {
-        p_factory_order_id: args.factoryOrderId,
-        p_items: args.items,
-        p_note: args.note.trim() || null,
-        p_idempotency_key: idempotencyKey,
-      });
-    },
-    {
-      deps: [serviceDate],
-      successMessage: 'บันทึกผลการตรวจรับและปรับยอดสต็อกรถแล้ว',
-      onSuccess: async (data) => {
-        setFactoryReceiptSummary(data as FactoryReceiptSummary);
-        await loadSummary(serviceDate, round?.id ?? null);
-      },
-    },
-  );
 
   const stockMovementAction = useRpcAction(
     async (
@@ -484,11 +450,6 @@ export function ManagerStockControl({
   const handleCloseDay = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!supabase || !summary || !closeState || isRoundSnapshot || closeState.is_closed) return;
-    if (pendingFactoryReceiptCount > 0) {
-      setActiveTab('receipt');
-      closeDayAction.setError('ต้องตรวจรับหรือยกเลิกรายการจากโรงงานทั้งหมดก่อนปิดสต๊อกสิ้นวัน');
-      return;
-    }
     if (pendingReviewsCount > 0) {
       setReviewError(null);
       setIsVarianceModalOpen(true);
@@ -520,7 +481,7 @@ export function ManagerStockControl({
     if (!summary) return;
     setActiveTab(nextTab);
 
-    if (nextTab === 'count' || nextTab === 'receipt') {
+    if (nextTab === 'count') {
       return;
     }
 
@@ -599,9 +560,6 @@ export function ManagerStockControl({
   };
 
   const pendingReviewsCount = varianceReviews.filter((r) => r.status === 'pending').length;
-  const pendingFactoryReceiptCount = (factoryReceiptSummary?.receipts ?? []).filter(
-    (receipt) => receipt.status === 'pending',
-  ).length;
 
   return (
     <div className="stock-control">
@@ -708,14 +666,6 @@ export function ManagerStockControl({
             >
               <svg fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M12 2.69l5.66 5.66a8 8 0 11-11.31 0z"/></svg>
               เสียหาย / ละลาย
-            </button>
-            <button
-              className={`action-tab ${activeTab === 'receipt' ? 'active' : ''}`}
-              onClick={() => selectMovementKind('receipt')}
-              type="button"
-            >
-              <Truck aria-hidden="true" size={20} weight="duotone" />
-              ตรวจรับโรงงาน
             </button>
             <button
               className={`action-tab ${activeTab === 'count' ? 'active' : ''}`}
@@ -1041,18 +991,6 @@ export function ManagerStockControl({
                 </button>
               </aside>
             </form>
-          ) : activeTab === 'receipt' ? (
-            <FactoryReceiptPanel
-              summary={factoryReceiptSummary}
-              onSaveReceipt={async (factoryOrderId, items, receiptNote) => {
-                const args = { factoryOrderId, items, note: receiptNote };
-                const signature = JSON.stringify({ serviceDate, ...args });
-                await factoryReceiptAction.execute(args, { signature });
-              }}
-              loading={factoryReceiptAction.isSubmitting}
-              error={factoryReceiptAction.error}
-              successMessage={factoryReceiptAction.success}
-            />
           ) : activeTab !== 'count' ? (
             <form onSubmit={handleSubmit}>
               <div className={`action-form-grid ${requiresSource && requiresDestination ? '' : 'action-form-grid--single'}`}>
@@ -1171,7 +1109,7 @@ export function ManagerStockControl({
                     <h3>ตรวจนับและปิดสต๊อกสิ้นวัน</h3>
                   </div>
                   <span className={`status-badge status-badge--neutral`}>
-                    {closeState.open_round_count > 0 || pendingFactoryReceiptCount > 0
+                    {closeState.open_round_count > 0
                       ? 'มีรายการค้างที่ต้องปิดก่อน'
                       : 'พร้อมปิดงาน'}
                   </span>
@@ -1278,18 +1216,12 @@ export function ManagerStockControl({
 
                 <label>เหตุผลหรือหมายเหตุปิดวัน (ถ้ามี)<textarea rows={2} value={closeNote} onChange={(event) => setCloseNote(event.target.value)} /></label>
                 {closeState.open_round_count > 0 ? <p className="error-text">ต้องปิดรายการค้างเดิมก่อนปิดสต๊อก</p> : null}
-                {pendingFactoryReceiptCount > 0 ? (
-                  <p className="error-text">
-                    ต้องตรวจรับหรือยกเลิกรายการจากโรงงานก่อนปิดสต๊อก ({pendingFactoryReceiptCount} รายการ)
-                  </p>
-                ) : null}
-
                 {closeDayAction.error ? <p className="error-text">{closeDayAction.error}</p> : null}
                 {closeDayAction.success ? <p className="success-text">{closeDayAction.success}</p> : null}
 
                 <button
                   className="primary-button"
-                  disabled={closeDayAction.isSubmitting || closeState.open_round_count > 0 || pendingFactoryReceiptCount > 0 || recountRequiredLocationIds.size > 0 || (uncountedLocations.length > 0 && !confirmSkipUncounted)}
+                  disabled={closeDayAction.isSubmitting || closeState.open_round_count > 0 || recountRequiredLocationIds.size > 0 || (uncountedLocations.length > 0 && !confirmSkipUncounted)}
                   type="submit"
                 >
                   {closeDayAction.isSubmitting ? 'กำลังปิดสต๊อกและจบงานวันนี้...' : 'ปิดสต๊อกและจบงานวันนี้'}
