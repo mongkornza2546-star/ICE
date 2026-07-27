@@ -18,6 +18,7 @@ const TANK_IMAGE_BUCKET = 'tank-images';
 const MAX_TANK_IMAGE_SIZE = 5 * 1024 * 1024;
 const SHOP_IMAGE_URL_REFRESH_MS = 55 * 60 * 1000;
 const SHOP_IMAGE_URL_RETRY_MS = 60 * 1000;
+const SHOP_CODE_COLLATOR = new Intl.Collator('en', { numeric: true, sensitivity: 'base' });
 const TANK_IMAGE_EXTENSIONS: Record<string, string> = {
   'image/jpeg': 'jpg',
   'image/png': 'png',
@@ -252,7 +253,7 @@ export function ShopSettings({ isActive = true, readOnly = false }: { isActive?:
       const matchesPos = readinessStatus !== 'ready' || posFilter === 'all'
         || (posFilter === 'ready' ? readiness?.has_issues === false : readiness?.has_issues === true);
       return matchesSearch && matchesActiveFilter(shop.status === 'active', shopFilter) && matchesBuilding && matchesZone && matchesPayment && matchesPos;
-    });
+    }).sort((left, right) => SHOP_CODE_COLLATOR.compare(left.code, right.code));
   }, [query, shopFilter, buildingFilter, zoneFilter, paymentFilter, posFilter, readinessReport, readinessStatus, shops]);
 
   // Reset to page 0 whenever filters change

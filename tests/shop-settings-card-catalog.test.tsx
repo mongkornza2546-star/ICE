@@ -150,6 +150,30 @@ describe('ShopSettings card catalog', () => {
     expect(screen.queryByRole('dialog')).toBeNull();
   });
 
+  it('sorts shop cards by code using natural numeric order', async () => {
+    const unsortedShops = [
+      { ...shops[0], id: 'shop-10', code: 'AA10', name: 'ร้านสิบ', image_path: null },
+      { ...shops[0], id: 'shop-2', code: 'AA2', name: 'ร้านสอง', image_path: null },
+      { ...shops[0], id: 'shop-1', code: 'AA1', name: 'ร้านหนึ่ง', image_path: null },
+    ];
+    mocks.from.mockImplementation((table: string) => {
+      if (table === 'shops') return queryResult(unsortedShops);
+      if (table === 'buildings') return queryResult([{ id: 'building-a', code: 'A', name: 'ตึก A' }]);
+      if (table === 'building_zones') return queryResult([{ id: 'zone-a', building_id: 'building-a', code: 'A1', name: 'โซน A1', sort_order: 1, is_active: true }]);
+      if (table === 'ice_types') return queryResult([{ id: 'ice-block', code: 'BLOCK', name: 'ก้อน', unit: 'ถุง' }]);
+      if (table === 'shop_rented_tanks') return queryResult([]);
+      throw new Error(`Unexpected table: ${table}`);
+    });
+
+    render(<ShopSettings />);
+
+    await screen.findByRole('button', { name: /AA1 ร้านหนึ่ง/ });
+    const shopCodes = Array.from(document.querySelectorAll<HTMLButtonElement>('.shop-directory-card'))
+      .map((button) => button.getAttribute('aria-label')?.match(/AA\d+/)?.[0]);
+
+    expect(shopCodes).toEqual(['AA1', 'AA2', 'AA10']);
+  });
+
   it('searches by phone number and routes each bulk action to the matching workflow', async () => {
     const user = userEvent.setup();
     render(<ShopSettings />);
