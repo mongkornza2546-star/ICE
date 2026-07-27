@@ -11,6 +11,7 @@ import { LocationManagementSettings } from './LocationManagementSettings';
 import { ShopSettings } from './ShopSettings';
 import { RoundWorkspace } from './RoundWorkspace';
 import { ManagerStockAudit } from './ManagerStockAudit';
+import { FinancialOperations } from './FinancialOperations';
 import type { UserProfile } from './types/app';
 
 /**
@@ -38,6 +39,7 @@ export function RoleRouter({
   const [profileLoading, setProfileLoading] = useState(true);
   const [profileError, setProfileError] = useState<string | null>(null);
   const [activeView, setActiveView] = useState<AdminView>('manager_overview');
+  const [courierView, setCourierView] = useState<'delivery' | 'collection'>('delivery');
   const [deliveryDraftState, setDeliveryDraftState] = useState({ dirty: false, submitting: false });
   // Track which views have been visited so we only mount them on first visit
   // (lazy mount) but keep them alive afterwards (no unmount on tab switch).
@@ -149,7 +151,32 @@ export function RoleRouter({
   if (profile.role === 'courier') {
     return (
       <EmployeeLayout onSignOut={signOut} profileLabel={profile.display_name} signOutDisabled={deliveryDraftState.submitting}>
-        <EmployeeDeliveryWorkspace enableAssignedStockFlow onDraftStateChange={setDeliveryDraftState} requestScope={profile.id} />
+        <nav aria-label="งานพนักงาน" className="employee-task-tabs">
+          <button
+            aria-current={courierView === 'delivery' ? 'page' : undefined}
+            onClick={() => setCourierView('delivery')}
+            type="button"
+          >
+            ส่งน้ำแข็ง
+          </button>
+          <button
+            aria-current={courierView === 'collection' ? 'page' : undefined}
+            disabled={deliveryDraftState.submitting}
+            onClick={() => {
+              if (courierView === 'delivery' && !confirmLeavingDelivery()) return;
+              setCourierView('collection');
+            }}
+            type="button"
+          >
+            เก็บเงิน
+          </button>
+        </nav>
+        <KeepAlive active={courierView === 'delivery'}>
+          <EmployeeDeliveryWorkspace enableAssignedStockFlow onDraftStateChange={setDeliveryDraftState} requestScope={profile.id} />
+        </KeepAlive>
+        <KeepAlive active={courierView === 'collection'}>
+          <FinancialOperations userRole="courier" />
+        </KeepAlive>
       </EmployeeLayout>
     );
   }
@@ -172,6 +199,7 @@ export function RoleRouter({
           'manager_overview',
           'factory_order',
           'delivery',
+          'financial_operations',
           'stock_operations',
           'location_management',
           'shops',
@@ -182,6 +210,7 @@ export function RoleRouter({
           'manager_overview',
           'factory_order',
           'delivery',
+          'financial_operations',
           'stock_operations',
           'stock_audit',
           'location_management',
@@ -245,6 +274,11 @@ export function RoleRouter({
       {visitedViews.has('delivery') && (
         <KeepAlive active={currentView === 'delivery'}>
           <EmployeeDeliveryWorkspace onDraftStateChange={setDeliveryDraftState} requestScope={profile.id} stockSourceLabel="จุดสต๊อกของร้าน" />
+        </KeepAlive>
+      )}
+      {visitedViews.has('financial_operations') && (
+        <KeepAlive active={currentView === 'financial_operations'}>
+          <FinancialOperations userRole={profile.role} />
         </KeepAlive>
       )}
     </AdminLayout>

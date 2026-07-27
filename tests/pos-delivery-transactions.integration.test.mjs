@@ -13,16 +13,24 @@ const transactions = readFileSync(
   new URL('../supabase/migrations/0030_pos_delivery_transactions.sql', import.meta.url),
   'utf8',
 );
+const operations = readFileSync(
+  new URL('../supabase/migrations/0059_pos_financial_operations.sql', import.meta.url),
+  'utf8',
+);
 
 const COURIER_ID = '10000000-0000-4000-8000-000000000001';
 const ADMIN_ID = '10000000-0000-4000-8000-000000000002';
+const OTHER_COURIER_ID = '10000000-0000-4000-8000-000000000003';
 const ROUND_ID = '20000000-0000-4000-8000-000000000001';
 const SHOP_ID = '30000000-0000-4000-8000-000000000001';
 const STOP_ID = '40000000-0000-4000-8000-000000000001';
 const ICE_ID = '50000000-0000-4000-8000-000000000001';
 const HOLDING_ID = '60000000-0000-4000-8000-000000000001';
 const SHOP_SOURCE_ID = '60000000-0000-4000-8000-000000000002';
-const SERVICE_DATE = '2026-07-20';
+const SERVICE_DATE = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' });
+const NEXT_SERVICE_DATE = new Date(`${SERVICE_DATE}T12:00:00+07:00`);
+NEXT_SERVICE_DATE.setDate(NEXT_SERVICE_DATE.getDate() + 1);
+const NEXT_SERVICE_DATE_TEXT = NEXT_SERVICE_DATE.toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' });
 
 async function createDatabase(t) {
   const db = new PGlite({ extensions: { btree_gist, pgcrypto } });
@@ -32,6 +40,7 @@ async function createDatabase(t) {
     create extension if not exists pgcrypto;
     create role authenticated;
     create schema auth;
+    create schema storage;
 
     create type public.app_role as enum ('courier', 'round_lead', 'admin');
     create type public.delivery_round_status as enum ('open', 'closed');
@@ -179,6 +188,23 @@ async function createDatabase(t) {
       quantity integer not null,
       primary key (service_date, location_id, ice_type_id)
     );
+    create table storage.buckets (
+      id text primary key,
+      name text not null,
+      public boolean not null default false,
+      file_size_limit bigint,
+      allowed_mime_types text[]
+    );
+    create table storage.objects (
+      id uuid primary key default gen_random_uuid(),
+      bucket_id text not null references storage.buckets(id),
+      name text not null,
+      unique (bucket_id, name)
+    );
+    create function storage.foldername(path text) returns text[]
+    language sql immutable as $$
+      select string_to_array(path, '/')
+    $$;
 
     create function public.set_updated_at() returns trigger language plpgsql as $$
     begin
@@ -227,7 +253,8 @@ async function createDatabase(t) {
 
     insert into public.users (id, role, display_name) values
       ('${COURIER_ID}', 'courier', 'Courier'),
-      ('${ADMIN_ID}', 'admin', 'Admin');
+      ('${ADMIN_ID}', 'admin', 'Admin'),
+      ('${OTHER_COURIER_ID}', 'courier', 'Other courier');
     insert into public.delivery_rounds (id, service_date, status)
     values ('${ROUND_ID}', date '${SERVICE_DATE}', 'open');
     insert into public.delivery_round_members (round_id, user_id)
@@ -255,6 +282,7 @@ async function createDatabase(t) {
 
   await db.exec(foundation);
   await db.exec(transactions);
+  await db.exec(operations);
   await db.exec(`
     insert into public.ice_type_prices (
       ice_type_id, unit_price, valid_from, created_by
@@ -402,7 +430,7 @@ test('financial correction reprices at original service date and cancellation vo
     where shop_id = '${SHOP_ID}' and ice_type_id = '${ICE_ID}';
     insert into public.shop_ice_type_prices (
       shop_id, ice_type_id, unit_price, valid_from, created_by
-    ) values ('${SHOP_ID}', '${ICE_ID}', 30, date '2026-07-21', '${ADMIN_ID}');
+    ) values ('${SHOP_ID}', '${ICE_ID}', 30, date '${NEXT_SERVICE_DATE_TEXT}', '${ADMIN_ID}');
   `);
 
   await db.query(`
@@ -768,4 +796,169 @@ test('revision retries created before fingerprinting remain idempotent', async (
     ) as result
   `);
   assert.equal(retry.rows[0].result.round_id, ROUND_ID);
+});
+
+test('payment recording enforces actor scope, collection scope, and stored evidence', async (t) => {
+  const db = await createDatabase(t);
+  const delivered = await db.query(`
+    select public.record_delivery(
+      '${STOP_ID}', '${itemPayload(1)}'::jsonb, 'delivered', null, null,
+      '90000000-0000-4000-8000-000000000001', 'immediate'
+    ) as result
+  `);
+  const chargeId = delivered.rows[0].result.charge_id;
+
+  await db.exec(`
+    update public.auth_context
+    set user_id = '${ADMIN_ID}', app_role = 'admin';
+  `);
+  const run = await db.query(`
+    select public.open_collection_run(
+      date '${SERVICE_DATE}',
+      '[{"user_id":"${OTHER_COURIER_ID}"}]'::jsonb
+    ) as result
+  `);
+  await db.exec(`
+    update public.auth_context
+    set user_id = '${OTHER_COURIER_ID}', app_role = 'courier';
+  `);
+
+  await assert.rejects(
+    db.query(`
+      select public.record_payment(
+        '${SHOP_ID}', '[{"charge_id":"${chargeId}","amount":18}]'::jsonb,
+        'cash', 18, null, null, null, 18, null,
+        '90000000-0000-4000-8000-000000000002'
+      )
+    `),
+    /assigned scope/i,
+  );
+  await assert.rejects(
+    db.query(`
+      select public.record_payment(
+        '${SHOP_ID}', '[{"charge_id":"${chargeId}","amount":18}]'::jsonb,
+        'cash', 18, null, null, '${run.rows[0].result.collection_run_id}', 18, null,
+        '90000000-0000-4000-8000-000000000003'
+      )
+    `),
+    /assigned scope/i,
+  );
+
+  await db.exec(`
+    update public.auth_context
+    set user_id = '${COURIER_ID}', app_role = 'courier';
+    update public.shop_payment_profiles
+    set allowed_payment_terms = array['immediate', 'end_of_day']::public.payment_term[]
+    where shop_id = '${SHOP_ID}';
+  `);
+  const endOfDayDelivery = await db.query(`
+    select public.record_delivery(
+      '${STOP_ID}', '${itemPayload(1)}'::jsonb, 'delivered', null, null,
+      '90000000-0000-4000-8000-000000000007', 'end_of_day'
+    ) as result
+  `);
+  await assert.rejects(
+    db.query(`
+      select public.record_payment(
+        '${SHOP_ID}',
+        '[{"charge_id":"${endOfDayDelivery.rows[0].result.charge_id}","amount":18}]'::jsonb,
+        'cash', 18, null, null, null, 18, null,
+        '90000000-0000-4000-8000-000000000008'
+      )
+    `),
+    /assigned scope/i,
+  );
+
+  await db.exec(`
+    update public.shop_payment_profiles
+    set cash_evidence_required = true
+    where shop_id = '${SHOP_ID}';
+  `);
+  const evidencePath = `${COURIER_ID}/payment.webp`;
+  await assert.rejects(
+    db.query(`
+      select public.record_payment(
+        '${SHOP_ID}', '[{"charge_id":"${chargeId}","amount":18}]'::jsonb,
+        'cash', 18, null, '${evidencePath}', null, 18, null,
+        '90000000-0000-4000-8000-000000000004'
+      )
+    `),
+    /evidence does not exist/i,
+  );
+
+  await db.exec(`
+    insert into storage.objects (bucket_id, name)
+    values ('payment-evidence', '${evidencePath}');
+  `);
+  const payment = await db.query(`
+    select public.record_payment(
+      '${SHOP_ID}', '[{"charge_id":"${chargeId}","amount":18}]'::jsonb,
+      'cash', 18, null, '${evidencePath}', null, 18, null,
+      '90000000-0000-4000-8000-000000000004'
+    ) as result
+  `);
+  assert.equal(Number(payment.rows[0].result.allocated_amount), 18);
+});
+
+test('an approved outstanding exception is consumed by one partial payment', async (t) => {
+  const db = await createDatabase(t);
+  const delivered = await db.query(`
+    select public.record_delivery(
+      '${STOP_ID}', '${itemPayload(2)}'::jsonb, 'delivered', null, null,
+      '90000000-0000-4000-8000-000000000005', 'immediate'
+    ) as result
+  `);
+  const chargeId = delivered.rows[0].result.charge_id;
+  const approval = await db.query(`
+    select public.request_financial_approval(
+      '${STOP_ID}', 'outstanding_balance', '[]'::jsonb, 'immediate',
+      16, 'ลูกค้าจ่ายบางส่วน', '${chargeId}'
+    ) as result
+  `);
+  assert.equal(approval.rows[0].result.status, 'pending');
+
+  await db.exec(`
+    update public.auth_context
+    set user_id = '${ADMIN_ID}', app_role = 'admin';
+  `);
+  await db.query(`
+    select public.decide_financial_approval(
+      '${approval.rows[0].result.id}', 'approved', null
+    )
+  `);
+  await db.exec(`
+    update public.auth_context
+    set user_id = '${COURIER_ID}', app_role = 'courier';
+  `);
+
+  const payment = await db.query(`
+    select public.record_payment(
+      '${SHOP_ID}', '[{"charge_id":"${chargeId}","amount":20}]'::jsonb,
+      'cash', 20, null, null, null, 36, '${approval.rows[0].result.id}',
+      '90000000-0000-4000-8000-000000000006'
+    ) as result
+  `);
+  assert.equal(Number(payment.rows[0].result.allocated_amount), 20);
+
+  const consumed = await db.query(`
+    select approval.status, approval.consumed_by_payment_id,
+      payment.approval_request_id
+    from public.financial_approval_requests approval
+    join public.payments payment on payment.id = approval.consumed_by_payment_id
+    where approval.id = '${approval.rows[0].result.id}'
+  `);
+  assert.deepEqual(consumed.rows[0], {
+    status: 'consumed',
+    consumed_by_payment_id: payment.rows[0].result.payment_id,
+    approval_request_id: approval.rows[0].result.id,
+  });
+
+  const retry = await db.query(`
+    select public.record_payment(
+      '${SHOP_ID}', '[{"charge_id":"${chargeId}","amount":20}]'::jsonb,
+      'cash', 20, null, null, null, 36, '${approval.rows[0].result.id}',
+      '90000000-0000-4000-8000-000000000006'
+    ) as result
+  `);
+  assert.equal(retry.rows[0].result.payment_id, payment.rows[0].result.payment_id);
 });

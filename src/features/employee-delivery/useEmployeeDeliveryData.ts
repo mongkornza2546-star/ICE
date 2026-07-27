@@ -1,8 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import type {
   DeliveryRound,
+  DeliveryFinancialResult,
+  DeliveryPosContext,
   EmployeeStockState,
   IceTypeOption,
+  PaymentMethod,
+  PaymentTerm,
   ShopCard,
   ShopRoundStatus,
 } from '../../types/app';
@@ -39,6 +43,20 @@ export function useEmployeeDeliveryData({
   const [deliveryQuantities, setDeliveryQuantities] = useState<Record<string, number>>({});
   const [transferQuantities, setTransferQuantities] = useState<Record<string, number>>({});
   const [stockState, setStockState] = useState<EmployeeStockState | null>(null);
+  const [posContext, setPosContext] = useState<DeliveryPosContext | null>(null);
+  const [loadingPosContext, setLoadingPosContext] = useState(false);
+  const [posContextError, setPosContextError] = useState<string | null>(null);
+  const [paymentTerm, setPaymentTerm] = useState<PaymentTerm>('immediate');
+  const [paymentResult, setPaymentResult] = useState<DeliveryFinancialResult | null>(null);
+  const [paymentOpen, setPaymentOpen] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
+  const [paymentAmount, setPaymentAmount] = useState('');
+  const [paymentReference, setPaymentReference] = useState('');
+  const [paymentEvidence, setPaymentEvidence] = useState<File | null>(null);
+  const [paymentSubmitting, setPaymentSubmitting] = useState(false);
+  const [approvalId, setApprovalId] = useState<string | null>(null);
+  const [approvalReason, setApprovalReason] = useState('');
+  const [approvalSubmitting, setApprovalSubmitting] = useState(false);
   const [status, setStatus] = useState<Exclude<ShopRoundStatus, 'pending'>>('delivered');
   const [problemOpen, setProblemOpen] = useState(false);
   const [note, setNote] = useState('');
@@ -55,6 +73,7 @@ export function useEmployeeDeliveryData({
   const referenceRequestId = useRef(0);
   const cardsRequestId = useRef(0);
   const stockRequestId = useRef(0);
+  const posContextRequestId = useRef(0);
   const activeRoundId = useRef('');
   const activeStockRoundId = useRef('');
   const browseScrollY = useRef(0);
@@ -157,6 +176,13 @@ export function useEmployeeDeliveryData({
     transferRequestId.current += 1;
     setTransferSubmitting(false);
     setSelectedCardId(null);
+    setPosContext(null);
+    setPosContextError(null);
+    setPaymentResult(null);
+    setPaymentOpen(false);
+    setPaymentSubmitting(false);
+    setApprovalId(null);
+    setApprovalReason('');
     setSelectedBuildingId('');
     setSelectedZone('');
     setDeliveryQuantities(Object.fromEntries(iceTypes.map((iceType) => [iceType.id, 0])));
@@ -223,6 +249,11 @@ export function useEmployeeDeliveryData({
     setProblemOpen(false);
     setNote('');
     setEntryError(null);
+    setPosContext(null);
+    setPosContextError(null);
+    setPaymentResult(null);
+    setPaymentOpen(false);
+    setApprovalId(null);
     window.requestAnimationFrame(() => {
       window.scrollTo({ top: browseScrollY.current, behavior: 'auto' });
       const focusId = returnFocusCardId.current;
@@ -240,6 +271,26 @@ export function useEmployeeDeliveryData({
       setDeliveryQuantities(Object.fromEntries(iceTypes.map((iceType) => [iceType.id, 0])));
     }
     setSelectedCardId(card.round_stop_id);
+    setPosContext(null);
+    setPosContextError(null);
+    setPaymentResult(null);
+    setPaymentOpen(false);
+    if (gateway.loadDeliveryPosContext) {
+      const requestId = ++posContextRequestId.current;
+      setLoadingPosContext(true);
+      void gateway.loadDeliveryPosContext(card.round_stop_id).then((context) => {
+        if (requestId !== posContextRequestId.current) return;
+        setPosContext(context);
+        setPaymentTerm(context.payment_profile?.default_payment_term ?? 'immediate');
+        setPaymentMethod(context.payment_profile?.default_payment_method ?? 'cash');
+        setPaymentEvidence(null);
+        setLoadingPosContext(false);
+      }).catch((loadError: unknown) => {
+        if (requestId !== posContextRequestId.current) return;
+        setPosContextError(employeeErrorMessage(loadError));
+        setLoadingPosContext(false);
+      });
+    }
     window.scrollTo({ top: 0, behavior: 'auto' });
   };
 
@@ -282,6 +333,24 @@ export function useEmployeeDeliveryData({
       ...current,
       [selectedIceTypeId]: value === '+' ? (current[selectedIceTypeId] ?? 0) + 1 : Number(value),
     }));
+    setApprovalId(null);
+    setApprovalReason('');
+    setEntryError(null);
+    setSuccess(null);
+  };
+
+  const setDeliveryQuantity = (iceTypeId: string, quantity: number) => {
+    if (submitting || selectedRound?.status === 'closed') return;
+    const contextItem = posContext?.items.find((item) => item.ice_type_id === iceTypeId);
+    const assignedAvailable = stockQuantity(stockState?.holding_location.balances, iceTypeId);
+    const available = contextItem?.stock_quantity
+      ?? (enableAssignedStockFlow ? assignedAvailable : Number.MAX_SAFE_INTEGER);
+    setDeliveryQuantities((current) => ({
+      ...current,
+      [iceTypeId]: Math.max(0, Math.min(available, Math.trunc(quantity))),
+    }));
+    setApprovalId(null);
+    setApprovalReason('');
     setEntryError(null);
     setSuccess(null);
   };
@@ -323,13 +392,7 @@ export function useEmployeeDeliveryData({
 
   const changeDeliveryQuantity = (iceTypeId: string, delta: number) => {
     if (submitting || selectedRound?.status === 'closed') return;
-    const available = stockQuantity(stockState?.holding_location.balances, iceTypeId);
-    setDeliveryQuantities((current) => ({
-      ...current,
-      [iceTypeId]: Math.max(0, Math.min(available, (current[iceTypeId] ?? 0) + delta)),
-    }));
-    setEntryError(null);
-    setSuccess(null);
+    setDeliveryQuantity(iceTypeId, (deliveryQuantities[iceTypeId] ?? 0) + delta);
   };
 
   const handleStockTransfer = async () => {
@@ -377,27 +440,64 @@ export function useEmployeeDeliveryData({
       setEntryError('ใส่หมายเหตุว่าเกิดอะไรขึ้นกับร้าน');
       return;
     }
+    if (isDelivery && gateway.loadDeliveryPosContext) {
+      if (!posContext?.payment_profile) {
+        setEntryError('ร้านนี้ยังไม่มีเงื่อนไขการชำระเงิน จึงยังบันทึกส่งไม่ได้');
+        return;
+      }
+      const missingPrice = items.find((item) => (
+        posContext.items.find((contextItem) => contextItem.ice_type_id === item.ice_type_id)?.unit_price == null
+      ));
+      if (missingPrice) {
+        const iceType = iceTypes.find((option) => option.id === missingPrice.ice_type_id);
+        setEntryError(`${iceType?.name ?? 'สินค้าที่เลือก'} ยังไม่มีราคาในวันที่ส่ง`);
+        return;
+      }
+      if (paymentTerm === 'credit'
+        && posContext.payment_profile.credit_remaining != null
+        && items.reduce((total, item) => {
+          const contextItem = posContext.items.find((candidate) => candidate.ice_type_id === item.ice_type_id);
+          return total + item.quantity * (contextItem?.unit_price ?? 0);
+        }, 0) > posContext.payment_profile.credit_remaining
+        && !approvalId) {
+        setEntryError('ยอดนี้เกินวงเงินเครดิต ต้องขออนุมัติและได้รับอนุมัติก่อนบันทึกส่ง');
+        return;
+      }
+    }
     const signature = `${requestScope}:${JSON.stringify({
       roundStopId: selectedCard.round_stop_id,
       items: isDelivery ? items : [],
       status,
       note: trimmedNote || null,
+      paymentTerm: isDelivery ? paymentTerm : null,
+      approvalId,
     })}`;
     const request = getOrCreatePendingRequest(signature);
     const requestId = ++submissionRequestId.current;
     setSubmitting(true);
     setEntryError(null);
     try {
-      await gateway.recordDelivery({
+      const result = await gateway.recordDelivery({
         roundStopId: selectedCard.round_stop_id,
         items: isDelivery ? items : [],
         status,
         note: trimmedNote || null,
         clientRecordedAt: request.clientRecordedAt,
         idempotencyKey: request.key,
+        paymentTerm: isDelivery ? paymentTerm : null,
+        approvalId,
       });
       if (requestId !== submissionRequestId.current) return;
       clearPendingRequest(signature, request.key);
+      if (result && isDelivery && result.payment_term === 'immediate' && result.charge_id) {
+        setPaymentResult(result);
+        setPaymentOpen(true);
+        setPaymentAmount(String(result.total_amount ?? ''));
+        setApprovalId(null);
+        setApprovalReason('');
+        setSubmitting(false);
+        return;
+      }
       await handleRecorded(isDelivery);
       if (requestId === submissionRequestId.current) setSubmitting(false);
     } catch (submitError) {
@@ -405,6 +505,121 @@ export function useEmployeeDeliveryData({
       setEntryError(employeeErrorMessage(submitError));
       setSubmitting(false);
     }
+  };
+
+  const handleRequestApproval = async () => {
+    if (!selectedCard || !posContext || !gateway.requestFinancialApproval || approvalSubmitting) return;
+    const reason = approvalReason.trim();
+    if (!reason) {
+      setEntryError('ใส่เหตุผลที่ขออนุมัติ');
+      return;
+    }
+    setApprovalSubmitting(true);
+    setEntryError(null);
+    try {
+      const paymentOutstandingAmount = paymentOpen && paymentResult?.charge_id
+        ? Math.max((paymentResult.total_amount ?? 0) - Math.min(
+          Number(paymentAmount) || 0,
+          paymentResult.total_amount ?? 0,
+        ), 0)
+        : null;
+      const requestedAmount = paymentOutstandingAmount ?? items.reduce((total, item) => {
+        const contextItem = posContext.items.find((candidate) => candidate.ice_type_id === item.ice_type_id);
+        return total + item.quantity * (contextItem?.unit_price ?? 0);
+      }, 0);
+      const approval = await gateway.requestFinancialApproval({
+        roundStopId: selectedCard.round_stop_id,
+        kind: paymentOutstandingAmount == null ? 'credit_limit' : 'outstanding_balance',
+        items,
+        paymentTerm: paymentOutstandingAmount == null ? paymentTerm : 'immediate',
+        requestedAmount,
+        reason,
+        chargeId: paymentOutstandingAmount == null ? null : paymentResult?.charge_id,
+      });
+      if (approval.status === 'approved') {
+        setApprovalId(approval.id);
+        setSuccess('คำขอได้รับอนุมัติแล้ว บันทึกส่งได้');
+      } else {
+        setSuccess('ส่งคำขออนุมัติแล้ว กดตรวจสถานะอีกครั้งหลังหัวหน้าอนุมัติ');
+      }
+    } catch (approvalError) {
+      setEntryError(employeeErrorMessage(approvalError));
+    } finally {
+      setApprovalSubmitting(false);
+    }
+  };
+
+  const finishPaymentLater = async () => {
+    if (!paymentResult || paymentSubmitting) return;
+    setPaymentOpen(false);
+    await handleRecorded(true);
+    setSubmitting(false);
+  };
+
+  const handlePaymentSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!selectedCard || !paymentResult?.charge_id || !paymentResult.total_amount
+      || !gateway.recordPayment || paymentSubmitting) return;
+    const receivedAmount = Number(paymentAmount);
+    if (!Number.isFinite(receivedAmount) || receivedAmount <= 0) {
+      setEntryError('ใส่ยอดรับเงินที่ถูกต้อง');
+      return;
+    }
+    const allocatedAmount = Math.min(receivedAmount, paymentResult.total_amount);
+    const signature = `${requestScope}:payment:${JSON.stringify({
+      chargeId: paymentResult.charge_id,
+      paymentMethod,
+      receivedAmount,
+      allocatedAmount,
+      referenceNumber: paymentReference.trim() || null,
+      evidence: paymentEvidence ? {
+        name: paymentEvidence.name,
+        size: paymentEvidence.size,
+        lastModified: paymentEvidence.lastModified,
+      } : null,
+    })}`;
+    const request = getOrCreatePendingRequest(signature);
+    setPaymentSubmitting(true);
+    setEntryError(null);
+    try {
+      const evidencePath = paymentEvidence && gateway.uploadPaymentEvidence
+        ? await gateway.uploadPaymentEvidence(paymentEvidence, request.key)
+        : null;
+      await gateway.recordPayment({
+        shopId: selectedCard.shop_id,
+        chargeId: paymentResult.charge_id,
+        paymentMethod,
+        receivedAmount,
+        allocatedAmount,
+        referenceNumber: paymentReference.trim() || null,
+        evidencePath,
+        expectedOutstandingAmount: paymentResult.total_amount,
+        approvalId,
+        idempotencyKey: request.key,
+      });
+      clearPendingRequest(signature, request.key);
+      setPaymentOpen(false);
+      await handleRecorded(true);
+    } catch (paymentError) {
+      setEntryError(employeeErrorMessage(paymentError));
+    } finally {
+      setPaymentSubmitting(false);
+      setSubmitting(false);
+    }
+  };
+
+  const changePaymentAmount = (amount: string) => {
+    setPaymentAmount(amount);
+    setApprovalId(null);
+    setApprovalReason('');
+    setEntryError(null);
+  };
+
+  const changePaymentTerm = (term: PaymentTerm) => {
+    setPaymentTerm(term);
+    setApprovalId(null);
+    setApprovalReason('');
+    setEntryError(null);
   };
 
   return {
@@ -420,6 +635,20 @@ export function useEmployeeDeliveryData({
     deliveryQuantities,
     transferQuantities,
     stockState,
+    posContext,
+    loadingPosContext,
+    posContextError,
+    paymentTerm,
+    paymentResult,
+    paymentOpen,
+    paymentMethod,
+    paymentAmount,
+    paymentReference,
+    paymentEvidence,
+    paymentSubmitting,
+    approvalId,
+    approvalReason,
+    approvalSubmitting,
     status,
     problemOpen,
     note,
@@ -448,6 +677,12 @@ export function useEmployeeDeliveryData({
     setQuery,
     setSelectedIceTypeId,
     setNote,
+    setPaymentTerm: changePaymentTerm,
+    setPaymentMethod,
+    setPaymentAmount: changePaymentAmount,
+    setPaymentReference,
+    setPaymentEvidence,
+    setApprovalReason,
     retryLoad,
     chooseRound,
     setPadValue,
@@ -456,8 +691,12 @@ export function useEmployeeDeliveryData({
     attemptBack,
     changeTransferQuantity,
     changeDeliveryQuantity,
+    setDeliveryQuantity,
     handleStockTransfer,
     handleSubmit,
+    handlePaymentSubmit,
+    finishPaymentLater,
+    handleRequestApproval,
     openCard,
     loadStockState,
   };

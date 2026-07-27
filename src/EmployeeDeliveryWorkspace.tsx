@@ -1,12 +1,25 @@
 import { CheckCircle, WarningCircle } from '@phosphor-icons/react';
 import { supabase } from './lib/supabase';
-import type { DeliveryRound, EmployeeStockState, IceTypeOption, ShopCard, ShopCardHistoryEntry, ShopRoundStatus } from './types/app';
+import type {
+  DeliveryFinancialResult,
+  DeliveryPosContext,
+  DeliveryRound,
+  EmployeeStockState,
+  FinancialPaymentResult,
+  IceTypeOption,
+  PaymentMethod,
+  PaymentTerm,
+  ShopCard,
+  ShopCardHistoryEntry,
+  ShopRoundStatus,
+} from './types/app';
 import { EmployeeState } from './features/employee-delivery/EmployeeState';
 import { EmployeeStockTransferSection } from './features/employee-delivery/EmployeeStockTransferSection';
 import { EmployeeShopPicker } from './features/employee-delivery/EmployeeShopPicker';
 import { EmployeeDeliveryReview } from './features/employee-delivery/EmployeeDeliveryReview';
 import { useEmployeeDeliveryData } from './features/employee-delivery/useEmployeeDeliveryData';
 import { toBangkokDateString } from './lib/serviceDate';
+import { uploadPaymentEvidence } from './lib/paymentEvidence';
 
 export interface EmployeeDeliveryPayload {
   roundStopId: string;
@@ -15,6 +28,31 @@ export interface EmployeeDeliveryPayload {
   note: string | null;
   clientRecordedAt: string;
   idempotencyKey: string;
+  paymentTerm: PaymentTerm | null;
+  approvalId?: string | null;
+}
+
+export interface EmployeePaymentPayload {
+  shopId: string;
+  chargeId: string;
+  paymentMethod: PaymentMethod;
+  receivedAmount: number;
+  allocatedAmount: number;
+  referenceNumber: string | null;
+  evidencePath: string | null;
+  expectedOutstandingAmount: number;
+  approvalId: string | null;
+  idempotencyKey: string;
+}
+
+export interface EmployeeApprovalPayload {
+  roundStopId: string;
+  kind: 'credit_limit' | 'outstanding_balance';
+  items: Array<{ ice_type_id: string; quantity: number }>;
+  paymentTerm: PaymentTerm;
+  requestedAmount: number;
+  reason: string;
+  chargeId?: string | null;
 }
 
 export interface EmployeeStockTransferPayload {
@@ -26,9 +64,16 @@ export interface EmployeeStockTransferPayload {
 export interface EmployeeDeliveryGateway {
   loadReferenceData(): Promise<{ rounds: DeliveryRound[]; iceTypes: IceTypeOption[] }>;
   loadShopCards(roundId: string): Promise<ShopCard[]>;
+  loadDeliveryPosContext?(roundStopId: string): Promise<DeliveryPosContext>;
   loadEmployeeStockState(roundId: string): Promise<EmployeeStockState>;
   recordEmployeeStockTransfer(payload: EmployeeStockTransferPayload): Promise<EmployeeStockState>;
-  recordDelivery(payload: EmployeeDeliveryPayload): Promise<void>;
+  recordDelivery(payload: EmployeeDeliveryPayload): Promise<DeliveryFinancialResult | void>;
+  recordPayment?(payload: EmployeePaymentPayload): Promise<FinancialPaymentResult>;
+  uploadPaymentEvidence?(file: File, idempotencyKey: string): Promise<string>;
+  requestFinancialApproval?(payload: EmployeeApprovalPayload): Promise<{
+    id: string;
+    status: 'pending' | 'approved' | 'rejected' | 'consumed';
+  }>;
 }
 
 export interface EmployeeDeliveryDraftState {
@@ -92,6 +137,14 @@ function createSupabaseGateway(): EmployeeDeliveryGateway {
       if (error) throw error;
       return data as EmployeeStockState;
     },
+    async loadDeliveryPosContext(roundStopId) {
+      if (!supabase) throw new Error('ยังไม่ได้ตั้งค่า Supabase');
+      const { data, error } = await supabase.rpc('get_delivery_pos_context', {
+        p_round_stop_id: roundStopId,
+      });
+      if (error) throw error;
+      return data as DeliveryPosContext;
+    },
     async recordEmployeeStockTransfer(payload) {
       if (!supabase) throw new Error('ยังไม่ได้ตั้งค่า Supabase');
       const { data, error } = await supabase.rpc('record_employee_stock_transfer', {
@@ -104,15 +157,52 @@ function createSupabaseGateway(): EmployeeDeliveryGateway {
     },
     async recordDelivery(payload) {
       if (!supabase) throw new Error('ยังไม่ได้ตั้งค่า Supabase');
-      const { error } = await supabase.rpc('record_delivery', {
+      const { data, error } = await supabase.rpc('record_delivery', {
         p_round_stop_id: payload.roundStopId,
         p_items: payload.items,
         p_stop_status: payload.status,
         p_note: payload.note,
         p_client_recorded_at: payload.clientRecordedAt,
         p_idempotency_key: payload.idempotencyKey,
+        p_payment_term: payload.paymentTerm,
+        p_approval_id: payload.approvalId ?? null,
       });
       if (error) throw error;
+      return data as DeliveryFinancialResult;
+    },
+    async recordPayment(payload) {
+      if (!supabase) throw new Error('ยังไม่ได้ตั้งค่า Supabase');
+      const { data, error } = await supabase.rpc('record_payment', {
+        p_shop_id: payload.shopId,
+        p_allocations: [{ charge_id: payload.chargeId, amount: payload.allocatedAmount }],
+        p_payment_method: payload.paymentMethod,
+        p_received_amount: payload.receivedAmount,
+        p_reference_number: payload.referenceNumber,
+        p_evidence_path: payload.evidencePath,
+        p_collection_run_id: null,
+        p_expected_outstanding_amount: payload.expectedOutstandingAmount,
+        p_approval_id: payload.approvalId,
+        p_idempotency_key: payload.idempotencyKey,
+      });
+      if (error) throw error;
+      return data as FinancialPaymentResult;
+    },
+    async uploadPaymentEvidence(file, idempotencyKey) {
+      return uploadPaymentEvidence(file, idempotencyKey);
+    },
+    async requestFinancialApproval(payload) {
+      if (!supabase) throw new Error('ยังไม่ได้ตั้งค่า Supabase');
+      const { data, error } = await supabase.rpc('request_financial_approval', {
+        p_round_stop_id: payload.roundStopId,
+        p_kind: payload.kind,
+        p_items: payload.items,
+        p_payment_term: payload.paymentTerm,
+        p_requested_amount: payload.requestedAmount,
+        p_reason: payload.reason,
+        p_charge_id: payload.chargeId ?? null,
+      });
+      if (error) throw error;
+      return data as { id: string; status: 'pending' | 'approved' | 'rejected' | 'consumed' };
     },
   };
 }
@@ -153,6 +243,20 @@ export function EmployeeDeliveryWorkspace({
       <EmployeeDeliveryReview
         assignedStockState={enableAssignedStockFlow ? data.stockState : null}
         deliveryQuantities={data.deliveryQuantities}
+        posContext={data.posContext}
+        posContextError={data.posContextError}
+        loadingPosContext={data.loadingPosContext}
+        paymentTerm={data.paymentTerm}
+        paymentResult={data.paymentResult}
+        paymentOpen={data.paymentOpen}
+        paymentMethod={data.paymentMethod}
+        paymentAmount={data.paymentAmount}
+        paymentReference={data.paymentReference}
+        paymentEvidence={data.paymentEvidence}
+        paymentSubmitting={data.paymentSubmitting}
+        approvalId={data.approvalId}
+        approvalReason={data.approvalReason}
+        approvalSubmitting={data.approvalSubmitting}
         enableAssignedStockFlow={enableAssignedStockFlow}
         entryError={data.entryError}
         iceTypes={data.iceTypes}
@@ -161,6 +265,16 @@ export function EmployeeDeliveryWorkspace({
         onBack={data.attemptBack}
         onChooseProblemStatus={data.chooseProblemStatus}
         onDeliveryQuantityChange={data.changeDeliveryQuantity}
+        onSetQuantity={data.setDeliveryQuantity}
+        onPaymentTermChange={data.setPaymentTerm}
+        onPaymentMethodChange={data.setPaymentMethod}
+        onPaymentAmountChange={data.setPaymentAmount}
+        onPaymentReferenceChange={data.setPaymentReference}
+        onPaymentEvidenceChange={data.setPaymentEvidence}
+        onPaymentSubmit={data.handlePaymentSubmit}
+        onPaymentLater={data.finishPaymentLater}
+        onApprovalReasonChange={data.setApprovalReason}
+        onRequestApproval={data.handleRequestApproval}
         onNoteChange={data.setNote}
         onReturnToDelivery={data.returnToDelivery}
         onSubmit={data.handleSubmit}

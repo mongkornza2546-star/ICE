@@ -1,4 +1,4 @@
-import type { ShopRoundStatus, ShopCard } from '../../types/app';
+import type { ShopRoundStatus } from '../../types/app';
 
 export const PROBLEM_STATUSES: Array<{ value: Exclude<ShopRoundStatus, 'pending' | 'delivered'>; label: string }> = [
   { value: 'full_bin', label: 'ถังเต็ม' },
@@ -14,10 +14,4 @@ export const STATUS_LABELS: Record<ShopRoundStatus, string> = {
   closed_shop: 'ปิดร้าน',
   no_access: 'เข้าไม่ได้',
   issue: 'มีปัญหา',
-};
-
-export const PAYMENT_LABELS: Record<ShopCard['payment_status'], string> = {
-  unknown: 'ไม่ทราบการชำระ',
-  paid: 'จ่ายแล้ว',
-  unpaid: 'ค้างจ่าย',
 };

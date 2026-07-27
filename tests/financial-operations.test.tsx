@@ -1,0 +1,110 @@
+import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { FinancialOperations } from '../src/FinancialOperations';
+
+const mocks = vi.hoisted(() => ({
+  from: vi.fn(),
+  rpc: vi.fn(),
+}));
+
+vi.mock('../src/lib/supabase', () => ({
+  supabase: {
+    from: mocks.from,
+    rpc: mocks.rpc,
+  },
+}));
+
+function queryResult(data: unknown, error: { message: string } | null = null) {
+  const result = { data, error };
+  const query: Record<string, unknown> = {};
+  for (const method of ['select', 'eq', 'order']) query[method] = vi.fn(() => query);
+  query.maybeSingle = vi.fn().mockResolvedValue(result);
+  query.then = (resolve: (value: typeof result) => unknown, reject: (reason: unknown) => unknown) =>
+    Promise.resolve(result).then(resolve, reject);
+  return query;
+}
+
+const queueShop = {
+  shop_id: 'shop-1',
+  shop_code: 'S001',
+  shop_name: 'ร้านเก็บเงิน',
+  outstanding_amount: 100,
+  charge_count: 2,
+  has_new_charges: false,
+  payment_profile: {
+    allowed_payment_methods: ['cash'],
+    default_payment_method: 'cash',
+    cash_reference_required: false,
+    cash_evidence_required: false,
+    bank_transfer_reference_required: true,
+    bank_transfer_evidence_required: false,
+    qr_reference_required: true,
+    qr_evidence_required: false,
+  },
+  charges: [
+    { charge_id: 'charge-1', outstanding_amount: 60 },
+    { charge_id: 'charge-2', outstanding_amount: 40 },
+  ],
+};
+
+describe('FinancialOperations', () => {
+  beforeEach(() => {
+    mocks.from.mockReset();
+    mocks.rpc.mockReset();
+  });
+
+  it('lets an assigned courier record a partial collection oldest-first', async () => {
+    const user = userEvent.setup();
+    mocks.from.mockImplementation((table: string) => {
+      if (table === 'collection_runs') return queryResult({ id: 'run-1' });
+      return queryResult([]);
+    });
+    mocks.rpc.mockImplementation(async (name: string) => {
+      if (name === 'get_collection_run_queue') return { data: [queueShop], error: null };
+      if (name === 'record_payment') return { data: { payment_id: 'payment-1' }, error: null };
+      return { data: [], error: null };
+    });
+
+    render(<FinancialOperations userRole="courier" />);
+    await user.click(await screen.findByRole('button', { name: /S001 · ร้านเก็บเงิน/ }));
+    const amount = screen.getByRole('spinbutton', { name: 'ยอดรับเงินจริง' });
+    await user.clear(amount);
+    await user.type(amount, '70');
+    await user.click(screen.getByRole('button', { name: 'ยืนยันรับเงิน' }));
+
+    await waitFor(() => expect(mocks.rpc).toHaveBeenCalledWith('record_payment', expect.objectContaining({
+      p_allocations: [
+        { charge_id: 'charge-1', amount: 60 },
+        { charge_id: 'charge-2', amount: 10 },
+      ],
+      p_received_amount: 70,
+      p_collection_run_id: 'run-1',
+      p_approval_id: null,
+    })));
+  });
+
+  it('opens a run with the selected collector assignment', async () => {
+    const user = userEvent.setup();
+    mocks.from.mockImplementation((table: string) => {
+      if (table === 'collection_runs') return queryResult(null);
+      if (table === 'users') return queryResult([
+        { id: 'courier-1', code: 'C001', display_name: 'พนักงานหนึ่ง' },
+      ]);
+      return queryResult([]);
+    });
+    mocks.rpc.mockImplementation(async (name: string) => {
+      if (name === 'get_credit_receivables') return { data: [], error: null };
+      if (name === 'open_collection_run') return { data: { collection_run_id: 'run-1' }, error: null };
+      return { data: [], error: null };
+    });
+
+    render(<FinancialOperations userRole="round_lead" />);
+    await user.click(await screen.findByRole('checkbox', { name: /C001 · พนักงานหนึ่ง/ }));
+    await user.click(screen.getByRole('button', { name: 'เปิดรอบและมอบหมาย' }));
+
+    await waitFor(() => expect(mocks.rpc).toHaveBeenCalledWith('open_collection_run', expect.objectContaining({
+      p_member_ids: [{ user_id: 'courier-1' }],
+    })));
+  });
+});

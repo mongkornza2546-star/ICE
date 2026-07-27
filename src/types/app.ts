@@ -11,6 +11,91 @@ export type ShopPaymentStatus = 'unknown' | 'paid' | 'unpaid';
 export type PaymentTerm = 'immediate' | 'end_of_day' | 'credit';
 export type PaymentMethod = 'cash' | 'bank_transfer' | 'qr';
 export type FinancialPaymentStatus = 'unpaid' | 'partial' | 'paid';
+export type PriceSource = 'standard' | 'shop_override';
+
+export interface DeliveryPosItem {
+  ice_type_id: string;
+  code: string;
+  name: string;
+  unit: string;
+  image_path: string | null;
+  image_url?: string | null;
+  stock_quantity: number;
+  unit_price: number | null;
+  price_source: PriceSource | null;
+  price_source_id: string | null;
+}
+
+export interface ShopPaymentProfile {
+  allowed_payment_terms: PaymentTerm[];
+  default_payment_term: PaymentTerm;
+  allowed_payment_methods: PaymentMethod[];
+  default_payment_method: PaymentMethod;
+  cash_reference_required: boolean;
+  cash_evidence_required: boolean;
+  bank_transfer_reference_required: boolean;
+  bank_transfer_evidence_required: boolean;
+  qr_reference_required: boolean;
+  qr_evidence_required: boolean;
+  allow_outstanding: boolean;
+  credit_due_rule: 'net_days' | 'end_of_month' | null;
+  credit_days: number | null;
+  credit_limit: number | null;
+  credit_exposure: number;
+  credit_remaining: number | null;
+}
+
+export interface DeliveryPosContext {
+  round_id: string;
+  round_stop_id: string;
+  service_date: string;
+  shop: {
+    id: string;
+    code: string;
+    name: string;
+    building_name: string;
+    floor_or_zone: string;
+    image_path: string | null;
+  };
+  stock_source: {
+    id: string;
+    code: string;
+    name: string;
+    kind: string;
+  };
+  items: DeliveryPosItem[];
+  payment_profile: ShopPaymentProfile | null;
+}
+
+export interface DeliveryFinancialResult {
+  delivery_event_id: string;
+  round_stop_id: string;
+  charge_id: string | null;
+  service_date: string | null;
+  total_amount: number | null;
+  payment_term: PaymentTerm | null;
+  payment_status: FinancialPaymentStatus | null;
+  due_date: string | null;
+  approval_id: string | null;
+  items: Array<{
+    ice_type_id: string;
+    quantity: number;
+    unit_price: number | null;
+    line_total: number | null;
+    price_source: PriceSource | null;
+    price_source_id: string | null;
+  }>;
+}
+
+export interface FinancialPaymentResult {
+  payment_id: string;
+  shop_id: string;
+  payment_method: PaymentMethod;
+  received_amount: number;
+  allocated_amount: number;
+  change_amount: number;
+  status: 'active' | 'voided';
+}
 
 export interface UserProfile {
   id: string;

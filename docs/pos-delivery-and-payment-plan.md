@@ -1,6 +1,6 @@
 # แผนปรับหน้าบันทึกส่งน้ำแข็งเป็น POS พร้อมระบบการเงิน
 
-สถานะ: **แผนพร้อมนำไปพัฒนา**
+สถานะ: **พัฒนาโค้ดครบแล้ว — รอ deploy migration, ตั้งค่าข้อมูลจริง และตรวจ cutover**
 
 ขอบเขตเอกสาร: หน้าบันทึกส่งน้ำแข็ง ราคา การรับชำระ รอบเก็บเงิน และเครดิต โดยยังไม่รวมเอกสารบัญชีและงานพิมพ์
 
@@ -317,13 +317,22 @@ Idempotency ของรายการใหม่ต้องเก็บ requ
 
 ## 10. ลำดับการพัฒนาและเปิดใช้งาน
 
-1. เพิ่ม schema ราคา Payment profile charges payments collections approvals และ RLS แบบ additive
-2. เพิ่ม RPC และ integration tests โดยยังไม่เปลี่ยนหน้าหน้างาน
-3. เพิ่มหน้าราคากลาง การชำระรายร้าน ราคาพิเศษ Bulk setup และ readiness report
-4. ตั้งราคากลางและ payment profile ให้ active shops ครบ
-5. ปรับ EmployeeDeliveryWorkspace เป็น POS และเปิดใช้ record-delivery contract ใหม่
-6. เปิด Flow จ่ายทันที รอบเก็บเงิน คิวลูกหนี้ และคำขออนุมัติ
-7. ตรวจข้อมูลจริงและ audit logs ก่อนหยุดใช้ legacy payment flag ในหน้าจอเดิม
+1. ✅ เพิ่ม schema ราคา Payment profile charges payments collections approvals และ RLS แบบ additive
+2. ✅ เพิ่ม RPC และ contract/integration tests
+3. ✅ เพิ่มหน้าราคากลาง การชำระรายร้าน ราคาพิเศษ Bulk setup และ readiness report
+4. ⏳ ตั้งราคากลางและ payment profile ให้ active shops ครบ — ต้องทำกับข้อมูล production ผ่าน readiness report
+5. ✅ ปรับ EmployeeDeliveryWorkspace เป็น POS และเปิดใช้ financial `record_delivery` contract
+6. ✅ เพิ่ม Flow จ่ายทันที หลักฐานชำระ รอบเก็บเงิน คิวลูกหนี้ และคำขอ/การตัดสินอนุมัติ
+7. ⏳ ตรวจข้อมูลจริงและ audit logs ก่อน cutover — หน้า POS ใหม่หยุดอ่าน legacy payment flag แล้ว แต่การตรวจ production ต้องทำหลัง deploy
+
+Migration งานปฏิบัติการอยู่ที่ `0059_pos_financial_operations.sql` และหน้า
+**เก็บเงินและลูกหนี้** ใช้สำหรับรอบเก็บเงิน คำขออนุมัติ และลูกหนี้เครดิต
+โดยข้อมูลส่งเก่ายังคงเป็น legacy unpriced และไม่ถูกนำมารวมยอดอัตโนมัติ
+
+การ rework ก่อน cutover เพิ่มข้อบังคับที่ server สำหรับสิทธิ์ตาม charge/collection run,
+ตรวจว่าหลักฐานอยู่ใน storage ของผู้บันทึก, ใช้ approval ยอดค้างได้ครั้งเดียว,
+มอบหมายคิวให้ courier จากหน้า manager และเพิ่ม integration test ที่รัน RPC การเงินจริง
+แทนการตรวจข้อความ migration เพียงอย่างเดียว
 
 แต่ละขั้นต้อง deploy ได้โดยไม่บังคับเดาราคาย้อนหลังหรือทำให้รายการส่งเดิมเปลี่ยนยอด
 
