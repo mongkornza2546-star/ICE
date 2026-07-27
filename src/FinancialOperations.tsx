@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { CheckCircle, Coins, CreditCard, WarningCircle } from '@phosphor-icons/react';
+import { CheckCircle, Coins, CreditCard, UserCircle, WarningCircle } from '@phosphor-icons/react';
 import { supabase } from './lib/supabase';
 import { toBangkokDateString } from './lib/serviceDate';
 import { uploadPaymentEvidence } from './lib/paymentEvidence';
@@ -52,7 +52,11 @@ type Collector = {
   id: string;
   code: string;
   display_name: string;
+  nickname: string | null;
+  avatar_path: string | null;
 };
+
+const USER_AVATAR_BUCKET = 'user-avatars';
 
 type PaymentHistoryItem = {
   id: string;
@@ -97,6 +101,8 @@ export function FinancialOperations({ userRole = 'round_lead' }: { userRole?: Ap
   const [receivables, setReceivables] = useState<Receivable[]>([]);
   const [approvals, setApprovals] = useState<Approval[]>([]);
   const [collectors, setCollectors] = useState<Collector[]>([]);
+  const [collectorAvatarUrls, setCollectorAvatarUrls] = useState<Record<string, string>>({});
+  const [failedCollectorAvatars, setFailedCollectorAvatars] = useState<Set<string>>(() => new Set());
   const [memberIds, setMemberIds] = useState<string[]>([]);
   const [paymentHistory, setPaymentHistory] = useState<PaymentHistoryItem[]>([]);
   const [method, setMethod] = useState<PaymentMethod>('cash');
@@ -144,12 +150,7 @@ export function FinancialOperations({ userRole = 'round_lead' }: { userRole?: Ap
         .select('id, kind, requested_amount, reason, status, requested_at, shops(code,name), users!financial_approval_requests_requested_by_fkey(display_name)')
         .eq('status', 'pending')
         .order('requested_at'),
-      supabase
-        .from('users')
-        .select('id, code, display_name')
-        .eq('role', 'courier')
-        .eq('is_active', true)
-        .order('code'),
+      supabase.rpc('get_collection_collectors'),
       nextRunId
         ? supabase.from('collection_run_members').select('user_id').eq('collection_run_id', nextRunId)
         : Promise.resolve({ data: [], error: null }),
@@ -176,6 +177,40 @@ export function FinancialOperations({ userRole = 'round_lead' }: { userRole?: Ap
       setError(loadError instanceof Error ? loadError.message : String(loadError));
     });
   }, [load]);
+
+  useEffect(() => {
+    if (!supabase?.storage) return;
+    const avatarPaths = collectors
+      .map((collector) => collector.avatar_path)
+      .filter((path): path is string => Boolean(path));
+    if (avatarPaths.length === 0) {
+      setCollectorAvatarUrls({});
+      return;
+    }
+
+    let cancelled = false;
+    void supabase.storage.from(USER_AVATAR_BUCKET).createSignedUrls(avatarPaths, 3600)
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        if (error) {
+          setCollectorAvatarUrls({});
+          setFailedCollectorAvatars(new Set(avatarPaths));
+          return;
+        }
+        const urls = (data ?? []).reduce<Record<string, string>>((current, image) => {
+          if (image.path && image.signedUrl) current[image.path] = image.signedUrl;
+          return current;
+        }, {});
+        setFailedCollectorAvatars(new Set());
+        setCollectorAvatarUrls(urls);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setCollectorAvatarUrls({});
+        setFailedCollectorAvatars(new Set(avatarPaths));
+      });
+    return () => { cancelled = true; };
+  }, [collectors]);
 
   const runAction = async (action: () => Promise<void>) => {
     setBusy(true);
@@ -329,7 +364,7 @@ export function FinancialOperations({ userRole = 'round_lead' }: { userRole?: Ap
           <fieldset className="financial-ops__collectors">
             <legend>มอบหมายพนักงานผู้เก็บ</legend>
             {collectors.map((collector) => (
-              <label key={collector.id}>
+              <label className="financial-ops__collector" key={collector.id}>
                 <input
                   checked={memberIds.includes(collector.id)}
                   onChange={(event) => setMemberIds((current) => event.target.checked
@@ -337,7 +372,21 @@ export function FinancialOperations({ userRole = 'round_lead' }: { userRole?: Ap
                     : current.filter((id) => id !== collector.id))}
                   type="checkbox"
                 />
-                <span>{collector.code} · {collector.display_name}</span>
+                <span className="financial-ops__collector-avatar" aria-hidden="true">
+                  {collector.avatar_path
+                    && collectorAvatarUrls[collector.avatar_path]
+                    && !failedCollectorAvatars.has(collector.avatar_path) ? (
+                      <img
+                        alt=""
+                        onError={() => setFailedCollectorAvatars((current) => new Set(current).add(collector.avatar_path!))}
+                        src={collectorAvatarUrls[collector.avatar_path]}
+                      />
+                    ) : <UserCircle size={32} weight="duotone" />}
+                </span>
+                <span className="financial-ops__collector-identity">
+                  <strong>{collector.nickname || collector.display_name}</strong>
+                  <small>{collector.code} · {collector.display_name}</small>
+                </span>
               </label>
             ))}
             <button disabled={busy || memberIds.length === 0} onClick={saveRun} type="button">

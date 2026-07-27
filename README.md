@@ -22,8 +22,8 @@ npm run dev
 
 ## การ deploy Supabase Edge Functions
 
-ฟังก์ชันรีเซ็ตรหัสผ่านของแอดมินอยู่ที่
-`supabase/functions/admin-reset-user-password` และต้อง deploy แยกจากหน้าเว็บ
+ฟังก์ชันรีเซ็ตรหัสผ่านของแอดมินและการเข้าสู่ระบบด้วยชื่อเล่นอยู่ที่
+`supabase/functions/` และต้อง deploy แยกจากหน้าเว็บ
 workflow `.github/workflows/deploy-supabase-functions.yml` จะตรวจ type ของฟังก์ชัน
 ใน pull request และ deploy เมื่อ merge เข้า `main`
 
@@ -36,6 +36,7 @@ workflow `.github/workflows/deploy-supabase-functions.yml` จะตรวจ ty
 
 ```bash
 supabase functions deploy admin-reset-user-password --project-ref <project-id>
+supabase functions deploy nickname-password-sign-in --project-ref <project-id>
 ```
 
 - รถบรรทุกเป็นคลังสต๊อกกลางเคลื่อนที่ของศูนย์ราชการ

@@ -26,6 +26,7 @@ const users: UserProfile[] = [
     id: 'employee-1',
     code: 'EMP-01',
     display_name: 'พนักงานหนึ่ง',
+    nickname: 'หนึ่ง',
     phone: null,
     role: 'courier',
     is_active: true,
@@ -34,6 +35,7 @@ const users: UserProfile[] = [
     id: 'admin-1',
     code: 'ADMIN-01',
     display_name: 'ผู้ดูแล',
+    nickname: 'แอดมิน',
     phone: null,
     role: 'admin',
     is_active: true,
@@ -84,7 +86,8 @@ describe('employee permanent work-site settings', () => {
 
     await user.clear(screen.getByRole('textbox', { name: 'ชื่อแสดง' }));
     await user.type(screen.getByRole('textbox', { name: 'ชื่อแสดง' }), 'พนักงานหนึ่ง แก้ไข');
-    await user.type(screen.getByRole('textbox', { name: 'ชื่อเล่น' }), 'หนึ่ง');
+    await user.clear(screen.getByRole('textbox', { name: /ชื่อเล่น/ }));
+    await user.type(screen.getByRole('textbox', { name: /ชื่อเล่น/ }), 'หนึ่ง');
     await user.click(siteB);
     await user.click(screen.getByRole('button', { name: 'บันทึกผู้ใช้' }));
 
@@ -123,7 +126,7 @@ describe('employee permanent work-site settings', () => {
 
     expect(service.saveUser).toHaveBeenCalledWith(
       'employee-1',
-      expect.objectContaining({ role: 'round_lead', nickname: null, avatar_path: null }),
+      expect.objectContaining({ role: 'round_lead', nickname: 'หนึ่ง', avatar_path: null }),
       [],
     );
   });

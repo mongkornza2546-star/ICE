@@ -21,10 +21,16 @@ const recovery = readFileSync(
   new URL('../supabase/migrations/0060_recoverable_collection_balances.sql', import.meta.url),
   'utf8',
 );
+const collectorAccess = readFileSync(
+  new URL('../supabase/migrations/0102_collection_collector_access.sql', import.meta.url),
+  'utf8',
+);
 
 const COURIER_ID = '10000000-0000-4000-8000-000000000001';
 const ADMIN_ID = '10000000-0000-4000-8000-000000000002';
 const OTHER_COURIER_ID = '10000000-0000-4000-8000-000000000003';
+const ROUND_LEAD_ID = '10000000-0000-4000-8000-000000000004';
+const INACTIVE_COURIER_ID = '10000000-0000-4000-8000-000000000005';
 const ROUND_ID = '20000000-0000-4000-8000-000000000001';
 const SHOP_ID = '30000000-0000-4000-8000-000000000001';
 const STOP_ID = '40000000-0000-4000-8000-000000000001';
@@ -80,9 +86,12 @@ async function createDatabase(t) {
 
     create table public.users (
       id uuid primary key,
+      code text not null unique,
       role public.app_role not null,
       is_active boolean not null default true,
-      display_name text not null
+      display_name text not null,
+      nickname text,
+      avatar_path text
     );
     create table public.delivery_rounds (
       id uuid primary key,
@@ -258,10 +267,12 @@ async function createDatabase(t) {
       uuid, text, jsonb, public.shop_round_status, text, text, uuid
     ) returns jsonb language sql as $$ select '{}'::jsonb $$;
 
-    insert into public.users (id, role, display_name) values
-      ('${COURIER_ID}', 'courier', 'Courier'),
-      ('${ADMIN_ID}', 'admin', 'Admin'),
-      ('${OTHER_COURIER_ID}', 'courier', 'Other courier');
+    insert into public.users (id, code, role, is_active, display_name, nickname, avatar_path) values
+      ('${COURIER_ID}', 'C001', 'courier', true, 'Courier', 'First', 'users/${COURIER_ID}/avatar.webp'),
+      ('${ADMIN_ID}', 'A001', 'admin', true, 'Admin', null, null),
+      ('${OTHER_COURIER_ID}', 'C002', 'courier', true, 'Other courier', null, null),
+      ('${ROUND_LEAD_ID}', 'R001', 'round_lead', true, 'Round lead', null, null),
+      ('${INACTIVE_COURIER_ID}', 'C003', 'courier', false, 'Inactive courier', null, null);
     insert into public.delivery_rounds (id, service_date, status)
     values ('${ROUND_ID}', date '${SERVICE_DATE}', 'open');
     insert into public.delivery_round_members (round_id, user_id)
@@ -291,6 +302,7 @@ async function createDatabase(t) {
   await db.exec(transactions);
   await db.exec(operations);
   await db.exec(recovery);
+  await db.exec(collectorAccess);
   await db.exec(`
     insert into public.ice_type_prices (
       ice_type_id, unit_price, valid_from, created_by
@@ -312,6 +324,85 @@ async function createDatabase(t) {
 function itemPayload(quantity) {
   return JSON.stringify([{ ice_type_id: ICE_ID, quantity }]);
 }
+
+test('round leads and admins list only active collection couriers', async (t) => {
+  const db = await createDatabase(t);
+  await db.exec(`
+    update public.auth_context
+    set user_id = '${ROUND_LEAD_ID}', app_role = 'round_lead', is_active = true;
+  `);
+
+  const roundLeadResult = await db.query(`
+    select * from public.get_collection_collectors()
+  `);
+  assert.deepEqual(
+    roundLeadResult.rows.map((collector) => collector.code),
+    ['C001', 'C002'],
+  );
+  assert.deepEqual(Object.keys(roundLeadResult.rows[0]).sort(), [
+    'avatar_path',
+    'code',
+    'display_name',
+    'id',
+    'nickname',
+  ]);
+
+  await db.exec(`
+    update public.auth_context
+    set user_id = '${ADMIN_ID}', app_role = 'admin';
+  `);
+  const adminResult = await db.query(`
+    select * from public.get_collection_collectors()
+  `);
+  assert.deepEqual(
+    adminResult.rows.map((collector) => collector.code),
+    ['C001', 'C002'],
+  );
+
+  await db.exec(`
+    update public.auth_context
+    set user_id = '${COURIER_ID}', app_role = 'courier';
+  `);
+  await assert.rejects(
+    db.query(`select * from public.get_collection_collectors()`),
+    /Only a round lead or admin/i,
+  );
+});
+
+test('collection runs reject members who are not active couriers', async (t) => {
+  const db = await createDatabase(t);
+  await db.exec(`
+    update public.auth_context
+    set user_id = '${ROUND_LEAD_ID}', app_role = 'round_lead', is_active = true;
+  `);
+
+  for (const invalidUserId of [
+    ADMIN_ID,
+    INACTIVE_COURIER_ID,
+    '10000000-0000-4000-8000-000000000099',
+  ]) {
+    await assert.rejects(
+      db.query(`
+        select public.open_collection_run(
+          date '${SERVICE_DATE}',
+          '[{"user_id":"${invalidUserId}"}]'::jsonb
+        )
+      `),
+      /Collection members must be active couriers/i,
+    );
+  }
+
+  const runCount = await db.query(`select count(*)::integer as count from public.collection_runs`);
+  assert.equal(runCount.rows[0].count, 0);
+
+  const validRun = await db.query(`
+    select public.open_collection_run(
+      date '${SERVICE_DATE}',
+      '[{"user_id":"${OTHER_COURIER_ID}"}]'::jsonb
+    ) as result
+  `);
+  assert.ok(validRun.rows[0].result.collection_run_id);
+});
 
 test('POS context and delivery use override price, assigned stock, and idempotent charge', async (t) => {
   const db = await createDatabase(t);

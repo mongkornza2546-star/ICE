@@ -6,12 +6,16 @@ import { FinancialOperations } from '../src/FinancialOperations';
 const mocks = vi.hoisted(() => ({
   from: vi.fn(),
   rpc: vi.fn(),
+  createSignedUrls: vi.fn(),
 }));
 
 vi.mock('../src/lib/supabase', () => ({
   supabase: {
     from: mocks.from,
     rpc: mocks.rpc,
+    storage: {
+      from: () => ({ createSignedUrls: mocks.createSignedUrls }),
+    },
   },
 }));
 
@@ -52,6 +56,8 @@ describe('FinancialOperations', () => {
   beforeEach(() => {
     mocks.from.mockReset();
     mocks.rpc.mockReset();
+    mocks.createSignedUrls.mockReset();
+    mocks.createSignedUrls.mockResolvedValue({ data: [], error: null });
   });
 
   it('lets an assigned courier record a partial collection oldest-first', async () => {
@@ -88,24 +94,74 @@ describe('FinancialOperations', () => {
     const user = userEvent.setup();
     mocks.from.mockImplementation((table: string) => {
       if (table === 'collection_runs') return queryResult(null);
-      if (table === 'users') return queryResult([
-        { id: 'courier-1', code: 'C001', display_name: 'พนักงานหนึ่ง' },
-      ]);
       return queryResult([]);
     });
     mocks.rpc.mockImplementation(async (name: string) => {
       if (name === 'get_credit_receivables') return { data: [], error: null };
+      if (name === 'get_collection_collectors') return {
+        data: [{ id: 'courier-1', code: 'C001', display_name: 'พนักงานหนึ่ง', nickname: 'น้องหนึ่ง', avatar_path: null }],
+        error: null,
+      };
       if (name === 'open_collection_run') return { data: { collection_run_id: 'run-1' }, error: null };
       return { data: [], error: null };
     });
 
     render(<FinancialOperations userRole="round_lead" />);
-    await user.click(await screen.findByRole('checkbox', { name: /C001 · พนักงานหนึ่ง/ }));
+    await user.click(await screen.findByRole('checkbox', { name: /น้องหนึ่ง/ }));
     await user.click(screen.getByRole('button', { name: 'เปิดรอบและมอบหมาย' }));
 
     await waitFor(() => expect(mocks.rpc).toHaveBeenCalledWith('open_collection_run', expect.objectContaining({
       p_member_ids: [{ user_id: 'courier-1' }],
     })));
+    expect(mocks.rpc).toHaveBeenCalledWith('get_collection_collectors');
+    expect(mocks.from).not.toHaveBeenCalledWith('users');
+  });
+
+  it('shows a collector nickname and the configured profile photo', async () => {
+    mocks.from.mockImplementation((table: string) => {
+      if (table === 'collection_runs') return queryResult(null);
+      return queryResult([]);
+    });
+    mocks.rpc.mockImplementation(async (name: string) => {
+      if (name === 'get_credit_receivables') return { data: [], error: null };
+      if (name === 'get_collection_collectors') return {
+        data: [{ id: 'courier-1', code: 'C001', display_name: 'พนักงานหนึ่ง', nickname: 'น้องหนึ่ง', avatar_path: 'courier-1/avatar.webp' }],
+        error: null,
+      };
+      return { data: [], error: null };
+    });
+    mocks.createSignedUrls.mockResolvedValue({
+      data: [{ path: 'courier-1/avatar.webp', signedUrl: 'https://cdn.example.test/courier-1/avatar.webp' }],
+      error: null,
+    });
+
+    const { container } = render(<FinancialOperations userRole="round_lead" />);
+
+    await screen.findByText('น้องหนึ่ง');
+    await waitFor(() => expect(mocks.createSignedUrls).toHaveBeenCalledWith(['courier-1/avatar.webp'], 3600));
+    expect(container.querySelector('img[src="https://cdn.example.test/courier-1/avatar.webp"]')).not.toBeNull();
+  });
+
+  it('keeps the collector fallback visible when avatar signing rejects', async () => {
+    mocks.from.mockImplementation((table: string) => {
+      if (table === 'collection_runs') return queryResult(null);
+      return queryResult([]);
+    });
+    mocks.rpc.mockImplementation(async (name: string) => {
+      if (name === 'get_collection_collectors') return {
+        data: [{ id: 'courier-1', code: 'C001', display_name: 'พนักงานหนึ่ง', nickname: null, avatar_path: 'courier-1/avatar.webp' }],
+        error: null,
+      };
+      return { data: [], error: null };
+    });
+    mocks.createSignedUrls.mockRejectedValue(new Error('storage unavailable'));
+
+    const { container } = render(<FinancialOperations userRole="round_lead" />);
+
+    await screen.findByText('พนักงานหนึ่ง');
+    await waitFor(() => expect(mocks.createSignedUrls).toHaveBeenCalled());
+    expect(container.querySelector('.financial-ops__collector-avatar img')).toBeNull();
+    expect(container.querySelector('.financial-ops__collector-avatar svg')).not.toBeNull();
   });
 
   it('lets a manager void an active payment from recent history', async () => {
@@ -113,7 +169,6 @@ describe('FinancialOperations', () => {
     vi.spyOn(window, 'prompt').mockReturnValue('บันทึกยอดผิด');
     mocks.from.mockImplementation((table: string) => {
       if (table === 'collection_runs') return queryResult(null);
-      if (table === 'users') return queryResult([]);
       if (table === 'payments') return queryResult([{
         id: 'payment-1',
         received_amount: 100,

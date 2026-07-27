@@ -25,6 +25,7 @@ jobs:
         with:
           deno-version: v2.x
       - run: deno check supabase/functions/admin-reset-user-password/index.ts
+      - run: deno check supabase/functions/nickname-password-sign-in/index.ts
 
   deploy:
     if: github.event_name != 'pull_request'
@@ -39,3 +40,4 @@ jobs:
         with:
           version: latest
       - run: supabase functions deploy admin-reset-user-password --project-ref "$SUPABASE_PROJECT_ID"
+      - run: supabase functions deploy nickname-password-sign-in --project-ref "$SUPABASE_PROJECT_ID"

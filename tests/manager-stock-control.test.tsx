@@ -341,6 +341,94 @@ describe('ManagerStockControl movement tabs', () => {
     expect(Array.from(countLocation.options).map((option) => option.value)).not.toContain('site-1');
   });
 
+  it('opens the courier truck receipt workflow and saves the actual received quantity', async () => {
+    const receiptSummary = {
+      service_date: round.service_date,
+      truck_location_id: 'truck-1',
+      truck_location_name: 'รถบรรทุก',
+      receipts: [{
+        factory_order_id: 'factory-order-1',
+        recorded_at: '2026-07-20T03:30:00+07:00',
+        status: 'pending' as const,
+        note: null,
+        items: [{
+          ice_type_id: 'ice-1',
+          ice_type_name: 'หลอดเล็ก',
+          unit: 'ถุง',
+          expected_quantity: 20,
+          actual_quantity: null,
+          variance_quantity: null,
+        }],
+      }],
+    };
+    mocks.rpc.mockImplementation(async (name: string) => {
+      if (name === 'get_stock_control_summary') return { data: summary, error: null };
+      if (name === 'get_daily_stock_count_readiness') return { data: [], error: null };
+      if (name === 'get_daily_stock_close_state') return { data: closeState, error: null };
+      if (name === 'get_stock_count_variance_reviews') return { data: [], error: null };
+      if (name === 'get_factory_receipt_summary' || name === 'record_factory_receipt') return { data: receiptSummary, error: null };
+      return { data: null, error: null };
+    });
+
+    const user = userEvent.setup();
+    render(<ManagerStockControl operationRound={round} round={round} serviceDate={round.service_date} />);
+
+    expect(await screen.findByRole('heading', { name: 'ตรวจรับจากโรงงาน' })).toBeTruthy();
+    expect(screen.getByLabelText('สรุปตรวจรับจากโรงงาน').textContent).toContain('ตรง');
+
+    const actualInput = screen.getByRole('spinbutton', { name: 'รับจริง หลอดเล็ก' });
+    await user.clear(actualInput);
+    await user.type(actualInput, '18');
+    expect(screen.getByLabelText('สรุปตรวจรับจากโรงงาน').textContent).toContain('ขาด 2 ถุง');
+    await user.click(screen.getByRole('button', { name: 'บันทึกผลการตรวจรับ' }));
+
+    await waitFor(() => expect(mocks.rpc).toHaveBeenCalledWith('record_factory_receipt', expect.objectContaining({
+      p_factory_order_id: 'factory-order-1',
+      p_items: [{ ice_type_id: 'ice-1', actual_quantity: 18 }],
+      p_idempotency_key: expect.any(String),
+    })));
+  });
+
+  it('blocks daily close while a factory receipt is pending', async () => {
+    const receiptSummary = {
+      service_date: round.service_date,
+      truck_location_id: 'truck-1',
+      truck_location_name: 'รถบรรทุก',
+      receipts: [{
+        factory_order_id: 'factory-order-1',
+        recorded_at: '2026-07-20T03:30:00+07:00',
+        status: 'pending' as const,
+        note: null,
+        items: [{
+          ice_type_id: 'ice-1',
+          ice_type_name: 'หลอดเล็ก',
+          unit: 'ถุง',
+          expected_quantity: 20,
+          actual_quantity: null,
+          variance_quantity: null,
+        }],
+      }],
+    };
+    mocks.rpc.mockImplementation(async (name: string) => {
+      if (name === 'get_stock_control_summary') return { data: summary, error: null };
+      if (name === 'get_location_count_history') return { data: [], error: null };
+      if (name === 'get_daily_stock_count_readiness') return { data: currentReadiness, error: null };
+      if (name === 'get_daily_stock_close_state') return { data: closeReadyState, error: null };
+      if (name === 'get_stock_count_variance_reviews') return { data: [], error: null };
+      if (name === 'get_factory_receipt_summary') return { data: receiptSummary, error: null };
+      return { data: null, error: null };
+    });
+    const user = userEvent.setup();
+    render(<ManagerStockControl operationRound={round} round={round} serviceDate={round.service_date} />);
+
+    await screen.findByRole('heading', { name: 'ตรวจรับจากโรงงาน' });
+    await user.click(screen.getByRole('button', { name: 'ตรวจนับจริง' }));
+
+    expect(screen.getByText(/ต้องตรวจรับหรือยกเลิกรายการจากโรงงานก่อนปิดสต๊อก/)).toBeTruthy();
+    expect((screen.getByRole('button', { name: 'ปิดสต๊อกและจบงานวันนี้' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(mocks.rpc).not.toHaveBeenCalledWith('close_daily_stock_from_latest_counts', expect.anything());
+  });
+
   it('shows a holder nickname without exposing its code or email', async () => {
     const holder = {
       ...summary.locations[2],

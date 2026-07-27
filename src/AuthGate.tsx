@@ -92,7 +92,7 @@ export function AuthGate() {
 }
 
 function SignInPanel({ notice }: { notice: string | null }) {
-  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -106,10 +106,10 @@ function SignInPanel({ notice }: { notice: string | null }) {
     setSubmitting(true);
     setError(null);
 
-    const { error: signInError } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
+    const isEmail = username.includes('@');
+    const { error: signInError } = isEmail
+      ? await supabase.auth.signInWithPassword({ email: username, password })
+      : await signInWithNickname(username, password);
 
     if (signInError) {
       setError(signInError.message);
@@ -125,13 +125,12 @@ function SignInPanel({ notice }: { notice: string | null }) {
       {notice ? <p className="muted">{notice}</p> : null}
       <form className="auth-form" onSubmit={handleSubmit}>
         <label>
-          อีเมล
+          ชื่อเล่นหรืออีเมล
           <input
-            autoComplete="email"
-            inputMode="email"
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            placeholder="staff@example.com"
+            autoComplete="username"
+            value={username}
+            onChange={(event) => setUsername(event.target.value)}
+            placeholder="เช่น เมย์ หรือ staff@example.com"
             required
           />
         </label>
@@ -153,4 +152,20 @@ function SignInPanel({ notice }: { notice: string | null }) {
       </form>
     </section>
   );
+}
+
+async function signInWithNickname(nickname: string, password: string) {
+  if (!supabase) return { error: new Error('ยังไม่ได้ตั้งค่า Supabase สำหรับหน้านี้') };
+
+  const { data, error: invokeError } = await supabase.functions.invoke('nickname-password-sign-in', {
+    body: { nickname, password },
+  });
+  const session = data?.session;
+  if (invokeError || !session) {
+    return { error: invokeError ?? new Error('ชื่อเล่นหรือรหัสผ่านไม่ถูกต้อง') };
+  }
+  return supabase.auth.setSession({
+    access_token: session.access_token,
+    refresh_token: session.refresh_token,
+  });
 }

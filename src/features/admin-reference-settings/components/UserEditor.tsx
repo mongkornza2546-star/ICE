@@ -196,6 +196,10 @@ export function UserEditor({
       setUserError('กรุณาระบุชื่อผู้ใช้');
       return;
     }
+    if (!userDraft.nickname.trim()) {
+      setUserError('กรุณาระบุชื่อเล่นสำหรับเข้าสู่ระบบ');
+      return;
+    }
 
     const original = users.find((user) => user.id === userDraft.id);
     if (!original) {
@@ -407,9 +411,10 @@ export function UserEditor({
               </div>
               <div className="ref-form-group">
                 <label>
-                  ชื่อเล่น
+                  ชื่อเล่น (ใช้เข้าสู่ระบบ)
                   <input
                     placeholder="เช่น รี"
+                    required
                     value={userDraft.nickname}
                     onChange={(event) => setUserDraft({ ...userDraft, nickname: event.target.value })}
                   />
