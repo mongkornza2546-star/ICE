@@ -286,7 +286,6 @@ export function EmployeeDeliveryWorkspace({
         onBack={data.attemptBack}
         onChangeShop={data.changeShop}
         onChooseProblemStatus={data.chooseProblemStatus}
-        onDeliveryQuantityChange={data.changeDeliveryQuantity}
         onSetQuantity={data.setDeliveryQuantity}
         onClearCart={data.clearDeliveryQuantities}
         onPaymentTermChange={data.setPaymentTerm}

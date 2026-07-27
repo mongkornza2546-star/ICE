@@ -20,7 +20,6 @@ import type {
   ShopCard,
   ShopRoundStatus,
 } from '../../types/app';
-import { QuantityStepper } from './QuantityStepper';
 import { formatShortTime, renderTotals, statusTone, stockQuantity, toTotals } from './utils';
 import { PROBLEM_STATUSES, STATUS_LABELS } from './constants';
 
@@ -75,7 +74,6 @@ export function EmployeeDeliveryReview({
   onChangeShop,
   onSubmit,
   onChooseProblemStatus,
-  onDeliveryQuantityChange,
   onSetQuantity,
   onClearCart,
   onPaymentTermChange,
@@ -122,7 +120,6 @@ export function EmployeeDeliveryReview({
   onChangeShop: (card: ShopCard) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   onChooseProblemStatus: (status: Exclude<ShopRoundStatus, 'pending' | 'delivered'>) => void;
-  onDeliveryQuantityChange: (iceTypeId: string, delta: number) => void;
   onSetQuantity: (iceTypeId: string, quantity: number) => void;
   onClearCart: () => void;
   onPaymentTermChange: (term: PaymentTerm) => void;
@@ -137,7 +134,7 @@ export function EmployeeDeliveryReview({
   onNoteChange: (value: string) => void;
   onReturnToDelivery: () => void;
 }) {
-  const [selectedIceTypeId, setSelectedIceTypeId] = useState(iceTypes[0]?.id ?? '');
+  const [selectedIceTypeId, setSelectedIceTypeId] = useState('');
   const [mobileStep, setMobileStep] = useState<'items' | 'review'>('items');
   const isDelivery = status === 'delivered';
   const contextItems = posContext?.items ?? iceTypes.map((iceType) => ({
@@ -151,8 +148,7 @@ export function EmployeeDeliveryReview({
     price_source: null,
     price_source_id: null,
   }));
-  const selectedItem = contextItems.find((item) => item.ice_type_id === selectedIceTypeId)
-    ?? contextItems[0];
+  const selectedItem = contextItems.find((item) => item.ice_type_id === selectedIceTypeId);
   const totalAmount = useMemo(() => items.reduce((total, item) => {
     const product = contextItems.find((candidate) => candidate.ice_type_id === item.ice_type_id);
     return total + item.quantity * (product?.unit_price ?? 0);
@@ -184,6 +180,11 @@ export function EmployeeDeliveryReview({
     const next = Number(current === '0' ? digit : `${current}${digit}`);
     onSetQuantity(selectedItem.ice_type_id, next);
   };
+
+  useEffect(() => {
+    setSelectedIceTypeId('');
+    setMobileStep('items');
+  }, [shopCard.round_stop_id]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -409,65 +410,76 @@ export function EmployeeDeliveryReview({
                   );
                 })}
               </div>
-              {enableAssignedStockFlow ? (
-                <div className="employee-pos-steppers">
-                  {contextItems.map((iceType) => (
-                    <div key={iceType.ice_type_id}>
-                      <span>{iceType.name}</span>
-                      <QuantityStepper
-                        disabled={submitting || round.status === 'closed'}
-                        iceTypeName={iceType.name}
-                        maxQuantity={iceType.stock_quantity}
-                        onChange={(delta) => onDeliveryQuantityChange(iceType.ice_type_id, delta)}
-                        quantity={deliveryQuantities[iceType.ice_type_id] ?? 0}
-                        purpose="ส่งร้าน"
-                      />
-                    </div>
-                  ))}
-                </div>
-              ) : null}
             </section>
 
-            <section className={`employee-pos-keypad ${mobileStep === 'items' ? '' : 'employee-pos-mobile--hidden'}`} aria-label="แป้นใส่จำนวน">
-              <div className="employee-pos-quantity">
-                <span>{selectedItem?.name ?? 'เลือกสินค้า'}</span>
-                <strong aria-live="polite">
-                  {selectedItem ? deliveryQuantities[selectedItem.ice_type_id] ?? 0 : 0}
-                </strong>
-                <small>{selectedItem?.unit ?? ''}</small>
-              </div>
-              <div className="employee-keypad">
-                {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((digit) => (
-                  <button key={digit} onClick={() => enterDigit(digit)} type="button">{digit}</button>
-                ))}
-                <button
-                  aria-label="ล้างจำนวน"
-                  onClick={() => selectedItem && onSetQuantity(selectedItem.ice_type_id, 0)}
-                  type="button"
-                >
-                  ล้าง
-                </button>
-                <button onClick={() => enterDigit('0')} type="button">0</button>
-                <button
-                  aria-label="ลบหนึ่งหลัก"
-                  onClick={() => {
-                    if (!selectedItem) return;
-                    const current = String(deliveryQuantities[selectedItem.ice_type_id] ?? 0);
-                    onSetQuantity(selectedItem.ice_type_id, Number(current.slice(0, -1) || '0'));
-                  }}
-                  type="button"
-                >
-                  <Backspace aria-hidden="true" size={24} />
-                </button>
-              </div>
-              <button
-                className="employee-pos-mobile-next"
-                disabled={items.length === 0}
-                onClick={() => setMobileStep('review')}
-                type="button"
-              >
-                ตรวจรายการ ({items.length})
-              </button>
+            <section
+              aria-label={selectedItem ? 'แป้นใส่จำนวน' : 'เลือกชนิดน้ำแข็ง'}
+              className={`employee-pos-keypad ${selectedItem ? '' : 'employee-pos-keypad--empty'} ${mobileStep === 'items' ? '' : 'employee-pos-mobile--hidden'}`}
+            >
+              {selectedItem ? (
+                <>
+                  <button
+                    aria-label="ปิดแป้นใส่จำนวน"
+                    className="employee-pos-keypad-backdrop"
+                    onClick={() => setSelectedIceTypeId('')}
+                    type="button"
+                  />
+                  <div className="employee-pos-quantity">
+                    <span>{selectedItem.name}</span>
+                    <strong aria-live="polite">
+                      {deliveryQuantities[selectedItem.ice_type_id] ?? 0}
+                    </strong>
+                    <small>
+                      คงเหลือ {selectedItem.stock_quantity === Number.MAX_SAFE_INTEGER ? '—' : selectedItem.stock_quantity} {selectedItem.unit}
+                    </small>
+                  </div>
+                  <div className="employee-keypad">
+                    {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((digit) => (
+                      <button key={digit} onClick={() => enterDigit(digit)} type="button">{digit}</button>
+                    ))}
+                    <button
+                      aria-label="ล้างจำนวน"
+                      onClick={() => onSetQuantity(selectedItem.ice_type_id, 0)}
+                      type="button"
+                    >
+                      ล้าง
+                    </button>
+                    <button onClick={() => enterDigit('0')} type="button">0</button>
+                    <button
+                      aria-label="ลบหนึ่งหลัก"
+                      onClick={() => {
+                        const current = String(deliveryQuantities[selectedItem.ice_type_id] ?? 0);
+                        onSetQuantity(selectedItem.ice_type_id, Number(current.slice(0, -1) || '0'));
+                      }}
+                      type="button"
+                    >
+                      <Backspace aria-hidden="true" size={24} />
+                    </button>
+                  </div>
+                  <button
+                    className="employee-pos-add-item"
+                    disabled={(deliveryQuantities[selectedItem.ice_type_id] ?? 0) === 0}
+                    onClick={() => setSelectedIceTypeId('')}
+                    type="button"
+                  >
+                    เพิ่มรายการ
+                  </button>
+                  <button
+                    className="employee-pos-mobile-next"
+                    disabled={items.length === 0}
+                    onClick={() => setMobileStep('review')}
+                    type="button"
+                  >
+                    ตรวจรายการ ({items.length})
+                  </button>
+                </>
+              ) : (
+                <div className="employee-pos-keypad-empty">
+                  <IceCream aria-hidden="true" size={34} />
+                  <strong>เลือกชนิดน้ำแข็งเพื่อกรอกจำนวน</strong>
+                  <span>แตะสินค้าด้านซ้าย แล้วแป้นตัวเลขจะแสดงที่นี่</span>
+                </div>
+              )}
             </section>
 
             <section aria-label="สรุปตะกร้า" className={`employee-pos-cart ${mobileStep === 'review' ? '' : 'employee-pos-mobile--hidden'}`}>

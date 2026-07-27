@@ -94,6 +94,14 @@ async function openShop(user: ReturnType<typeof userEvent.setup>, shop = shopA) 
   await screen.findByRole('heading', { name: new RegExp(shop.shop_name) });
 }
 
+async function selectProductAndGetKeypad(
+  user: ReturnType<typeof userEvent.setup>,
+  productName = 'ก้อน',
+) {
+  await user.click(screen.getByRole('button', { name: new RegExp(productName) }));
+  return screen.getByRole('region', { name: 'แป้นใส่จำนวน' });
+}
+
 describe('EmployeeDeliveryWorkspace', () => {
   beforeEach(() => {
     window.sessionStorage.clear();
@@ -171,8 +179,9 @@ describe('EmployeeDeliveryWorkspace', () => {
     await screen.findByText('รับน้ำแข็งเข้า รถเข็นคัน 1 แล้ว');
 
     await openShop(user);
-    expect(screen.getByLabelText('จำนวนก้อน').textContent).toBe('0');
-    await user.click(screen.getByRole('button', { name: 'เพิ่มก้อนอีกหนึ่ง' }));
+    const keypad = await selectProductAndGetKeypad(user);
+    expect(within(keypad).getByText('0', { selector: 'strong' })).toBeTruthy();
+    await user.click(within(keypad).getByRole('button', { name: '1' }));
     await user.click(screen.getByRole('button', { name: 'ยืนยันส่งร้านนี้' }));
 
     await waitFor(() => expect(gateway.recordDelivery).toHaveBeenCalledWith(expect.objectContaining({
@@ -226,7 +235,7 @@ describe('EmployeeDeliveryWorkspace', () => {
     render(<EmployeeDeliveryWorkspace enableAssignedStockFlow gateway={gateway} />);
 
     await openShop(user);
-    await user.click(screen.getByRole('button', { name: 'เพิ่มก้อนอีกหนึ่ง' }));
+    await user.click(within(await selectProductAndGetKeypad(user)).getByRole('button', { name: '1' }));
     await user.click(screen.getByRole('button', { name: 'ยืนยันส่งร้านนี้' }));
 
     await waitFor(() => expect(gateway.recordDelivery).toHaveBeenCalledTimes(1));
@@ -248,7 +257,7 @@ describe('EmployeeDeliveryWorkspace', () => {
     expect(screen.queryByRole('button', { name: /BB01 ร้านน้ำฝน/ })).toBeNull();
 
     await openShop(user);
-    const keypad = screen.getByRole('region', { name: 'แป้นใส่จำนวน' });
+    const keypad = await selectProductAndGetKeypad(user);
     await user.click(within(keypad).getByRole('button', { name: '2' }));
     await user.click(screen.getByRole('button', { name: /เล็ก/ }));
     await user.click(within(keypad).getByRole('button', { name: '3' }));
@@ -293,7 +302,7 @@ describe('EmployeeDeliveryWorkspace', () => {
     render(<EmployeeDeliveryWorkspace gateway={createGateway()} />);
 
     await openShop(user, shopA);
-    await user.click(within(screen.getByRole('region', { name: 'แป้นใส่จำนวน' })).getByRole('button', { name: '2' }));
+    await user.click(within(await selectProductAndGetKeypad(user)).getByRole('button', { name: '2' }));
     await user.click(screen.getByRole('button', { name: /BB01 ร้านน้ำฝน/ }));
 
     expect(confirm).toHaveBeenCalledWith('เปลี่ยนร้านแล้ว รายการในตะกร้าจะถูกล้าง ต้องการเปลี่ยนร้านหรือไม่?');
@@ -301,8 +310,8 @@ describe('EmployeeDeliveryWorkspace', () => {
 
     await user.click(screen.getByRole('button', { name: /BB01 ร้านน้ำฝน/ }));
     expect(await screen.findByRole('heading', { name: shopB.shop_name })).toBeTruthy();
-    expect(within(screen.getByRole('region', { name: 'แป้นใส่จำนวน' }))
-      .getByText('0', { selector: 'strong' })).toBeTruthy();
+    expect(screen.getByText('เลือกชนิดน้ำแข็งเพื่อกรอกจำนวน')).toBeTruthy();
+    expect(screen.queryByRole('region', { name: 'แป้นใส่จำนวน' })).toBeNull();
   });
 
   it('blocks delivery entry when no active ice type is configured', async () => {
@@ -358,7 +367,7 @@ describe('EmployeeDeliveryWorkspace', () => {
     render(<EmployeeDeliveryWorkspace gateway={gateway} />);
 
     await openShop(user);
-    await user.click(within(screen.getByRole('region', { name: 'แป้นใส่จำนวน' })).getByRole('button', { name: '2' }));
+    await user.click(within(await selectProductAndGetKeypad(user)).getByRole('button', { name: '2' }));
     await user.click(screen.getByRole('button', { name: 'ยืนยันส่งร้านนี้' }));
     expect((await screen.findByRole('alert')).textContent).toContain('เชื่อมต่อไม่สำเร็จ');
 
@@ -380,7 +389,7 @@ describe('EmployeeDeliveryWorkspace', () => {
     const firstView = render(<EmployeeDeliveryWorkspace gateway={gateway} />);
 
     await openShop(user);
-    await user.click(within(screen.getByRole('region', { name: 'แป้นใส่จำนวน' })).getByRole('button', { name: '2' }));
+    await user.click(within(await selectProductAndGetKeypad(user)).getByRole('button', { name: '2' }));
     await user.click(screen.getByRole('button', { name: 'ยืนยันส่งร้านนี้' }));
     expect((await screen.findByRole('alert')).textContent).toContain('เชื่อมต่อไม่สำเร็จ');
     const first = recordDelivery.mock.calls[0][0] as EmployeeDeliveryPayload;
@@ -388,7 +397,7 @@ describe('EmployeeDeliveryWorkspace', () => {
     firstView.unmount();
     render(<EmployeeDeliveryWorkspace gateway={gateway} />);
     await openShop(user);
-    await user.click(within(screen.getByRole('region', { name: 'แป้นใส่จำนวน' })).getByRole('button', { name: '2' }));
+    await user.click(within(await selectProductAndGetKeypad(user)).getByRole('button', { name: '2' }));
     await user.click(screen.getByRole('button', { name: 'ยืนยันส่งร้านนี้' }));
     await waitFor(() => expect(recordDelivery).toHaveBeenCalledTimes(2));
 
@@ -432,7 +441,7 @@ describe('EmployeeDeliveryWorkspace', () => {
     render(<EmployeeDeliveryWorkspace gateway={gateway} onDraftStateChange={onDraftStateChange} />);
 
     await openShop(user);
-    await user.click(within(screen.getByRole('region', { name: 'แป้นใส่จำนวน' })).getByRole('button', { name: '2' }));
+    await user.click(within(await selectProductAndGetKeypad(user)).getByRole('button', { name: '2' }));
     await user.click(screen.getByRole('button', { name: 'ยืนยันส่งร้านนี้' }));
 
     await waitFor(() => expect(gateway.recordDelivery).toHaveBeenCalledTimes(1));
@@ -459,7 +468,7 @@ describe('EmployeeDeliveryWorkspace', () => {
     render(<EmployeeDeliveryWorkspace gateway={gateway} />);
 
     await openShop(user);
-    await user.click(within(screen.getByRole('region', { name: 'แป้นใส่จำนวน' })).getByRole('button', { name: '2' }));
+    await user.click(within(await selectProductAndGetKeypad(user)).getByRole('button', { name: '2' }));
     await user.click(screen.getByRole('button', { name: 'ยืนยันส่งร้านนี้' }));
 
     expect((await screen.findByRole('alert')).textContent).toContain('บันทึกสำเร็จแล้ว แต่โหลดรายการร้านล่าสุดไม่สำเร็จ');

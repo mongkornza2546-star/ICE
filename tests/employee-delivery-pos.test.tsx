@@ -104,6 +104,11 @@ function gateway(): EmployeeDeliveryGateway {
   };
 }
 
+async function selectIceAndGetKeypad(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(await screen.findByRole('button', { name: /หลอด/ }));
+  return screen.findByRole('region', { name: 'แป้นใส่จำนวน' });
+}
+
 describe('employee delivery POS', () => {
   it('loads server-owned context and uses digit, backspace, and clear keypad behavior', async () => {
     const user = userEvent.setup();
@@ -112,7 +117,9 @@ describe('employee delivery POS', () => {
     await user.click(await screen.findByRole('button', { name: /S001 ร้านทดสอบ/ }));
     await waitFor(() => expect(api.loadDeliveryPosContext).toHaveBeenCalledWith('stop-1'));
 
-    const keypad = screen.getByRole('region', { name: 'แป้นใส่จำนวน' });
+    expect(screen.getByText('เลือกชนิดน้ำแข็งเพื่อกรอกจำนวน')).toBeTruthy();
+    expect(screen.queryByRole('region', { name: 'แป้นใส่จำนวน' })).toBeNull();
+    const keypad = await selectIceAndGetKeypad(user);
     await user.click(within(keypad).getByRole('button', { name: '1' }));
     await user.click(within(keypad).getByRole('button', { name: '2' }));
     const cart = screen.getByRole('region', { name: 'สรุปตะกร้า' });
@@ -123,12 +130,31 @@ describe('employee delivery POS', () => {
     expect(within(cart).queryByText('฿10.00')).toBeNull();
   });
 
+  it('opens the keypad only after product selection and returns to product choice after adding', async () => {
+    const user = userEvent.setup();
+    render(<EmployeeDeliveryWorkspace gateway={gateway()} />);
+    await user.click(await screen.findByRole('button', { name: /S001 ร้านทดสอบ/ }));
+
+    expect(screen.getByText('เลือกชนิดน้ำแข็งเพื่อกรอกจำนวน')).toBeTruthy();
+    const keypad = await selectIceAndGetKeypad(user);
+    expect(within(keypad).getByText('0', { selector: 'strong' })).toBeTruthy();
+    expect((within(keypad).getByRole('button', { name: 'เพิ่มรายการ' }) as HTMLButtonElement).disabled).toBe(true);
+
+    await user.click(within(keypad).getByRole('button', { name: '2' }));
+    await user.click(within(keypad).getByRole('button', { name: 'เพิ่มรายการ' }));
+
+    expect(screen.queryByRole('region', { name: 'แป้นใส่จำนวน' })).toBeNull();
+    expect(screen.getByText('เลือกชนิดน้ำแข็งเพื่อกรอกจำนวน')).toBeTruthy();
+    expect(within(screen.getByRole('region', { name: 'เลือกน้ำแข็ง' }))
+      .getByRole('button', { name: /หลอด/ }).getAttribute('aria-pressed')).toBe('false');
+  });
+
   it('calls the financial delivery contract then records immediate payment', async () => {
     const user = userEvent.setup();
     const api = gateway();
     render(<EmployeeDeliveryWorkspace gateway={api} />);
     await user.click(await screen.findByRole('button', { name: /S001 ร้านทดสอบ/ }));
-    const keypad = await screen.findByRole('region', { name: 'แป้นใส่จำนวน' });
+    const keypad = await selectIceAndGetKeypad(user);
     await user.click(within(keypad).getByRole('button', { name: '1' }));
     await user.click(screen.getByRole('button', { name: 'ยืนยันส่งร้านนี้' }));
 
@@ -159,7 +185,7 @@ describe('employee delivery POS', () => {
     });
     render(<EmployeeDeliveryWorkspace gateway={api} />);
     await user.click(await screen.findByRole('button', { name: /S001 ร้านทดสอบ/ }));
-    await user.click(within(await screen.findByRole('region', { name: 'แป้นใส่จำนวน' }))
+    await user.click(within(await selectIceAndGetKeypad(user))
       .getByRole('button', { name: '1' }));
     await user.click(screen.getByRole('button', { name: 'ยืนยันส่งร้านนี้' }));
 
@@ -204,7 +230,7 @@ describe('employee delivery POS', () => {
     });
     render(<EmployeeDeliveryWorkspace gateway={api} />);
     await user.click(await screen.findByRole('button', { name: /S001 ร้านทดสอบ/ }));
-    const keypad = await screen.findByRole('region', { name: 'แป้นใส่จำนวน' });
+    const keypad = await selectIceAndGetKeypad(user);
     await user.click(within(keypad).getByRole('button', { name: '1' }));
     await user.type(screen.getByPlaceholderText('เหตุผลที่ขออนุมัติ'), 'เกินวงเงินที่กำหนด');
     await user.click(screen.getByRole('button', { name: 'ขออนุมัติ / ตรวจสถานะ' }));
@@ -228,7 +254,7 @@ describe('employee delivery POS', () => {
     const user = userEvent.setup();
     render(<EmployeeDeliveryWorkspace gateway={gateway()} />);
     await user.click(await screen.findByRole('button', { name: /S001 ร้านทดสอบ/ }));
-    const keypad = await screen.findByRole('region', { name: 'แป้นใส่จำนวน' });
+    const keypad = await selectIceAndGetKeypad(user);
     await user.click(within(keypad).getByRole('button', { name: '2' }));
     await user.click(screen.getByRole('button', { name: 'ตรวจรายการ (1)' }));
     expect(screen.getByRole('button', { name: /3 ตรวจ/ }).getAttribute('aria-current')).toBe('step');
@@ -241,7 +267,7 @@ describe('employee delivery POS', () => {
     const user = userEvent.setup();
     render(<EmployeeDeliveryWorkspace gateway={gateway()} />);
     await user.click(await screen.findByRole('button', { name: /S001 ร้านทดสอบ/ }));
-    await user.click(within(await screen.findByRole('region', { name: 'แป้นใส่จำนวน' }))
+    await user.click(within(await selectIceAndGetKeypad(user))
       .getByRole('button', { name: '2' }));
 
     await user.click(screen.getByRole('button', { name: 'ล้างตะกร้า' }));
@@ -263,7 +289,7 @@ describe('employee delivery POS', () => {
     });
     render(<EmployeeDeliveryWorkspace gateway={api} />);
     await user.click(await screen.findByRole('button', { name: /S001 ร้านทดสอบ/ }));
-    await user.click(within(await screen.findByRole('region', { name: 'แป้นใส่จำนวน' }))
+    await user.click(within(await selectIceAndGetKeypad(user))
       .getByRole('button', { name: '1' }));
     await user.click(screen.getByRole('button', { name: 'ยืนยันส่งร้านนี้' }));
 
@@ -285,7 +311,7 @@ describe('employee delivery POS', () => {
     api.loadDeliveryPosContext = vi.fn().mockReturnValue(pendingContext);
     render(<EmployeeDeliveryWorkspace gateway={api} />);
     await user.click(await screen.findByRole('button', { name: /S001 ร้านทดสอบ/ }));
-    const keypad = await screen.findByRole('region', { name: 'แป้นใส่จำนวน' });
+    const keypad = await selectIceAndGetKeypad(user);
     await user.click(within(keypad).getByRole('button', { name: '9' }));
 
     resolveContext({

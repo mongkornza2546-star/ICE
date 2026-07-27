@@ -401,11 +401,6 @@ export function useEmployeeDeliveryData({
     setSuccess(null);
   };
 
-  const changeDeliveryQuantity = (iceTypeId: string, delta: number) => {
-    if (submitting || selectedRound?.status === 'closed') return;
-    setDeliveryQuantity(iceTypeId, (deliveryQuantities[iceTypeId] ?? 0) + delta);
-  };
-
   const handleStockTransfer = async () => {
     if (!selectedRound || !stockState || transferSubmitting || transferItems.length === 0) return;
     const signature = `${requestScope}:stock-transfer:${JSON.stringify({
@@ -713,7 +708,6 @@ export function useEmployeeDeliveryData({
     returnToDelivery,
     attemptBack,
     changeTransferQuantity,
-    changeDeliveryQuantity,
     setDeliveryQuantity,
     clearDeliveryQuantities,
     handleStockTransfer,
