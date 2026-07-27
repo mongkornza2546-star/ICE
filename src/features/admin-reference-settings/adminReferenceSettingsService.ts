@@ -140,6 +140,24 @@ export async function saveUserWithWorkSiteAssignments(
   return { user: result.user, work_site_ids: result.work_site_ids };
 }
 
+export async function resetUserPassword(userId: string, password: string): Promise<void> {
+  const client = supabase;
+  if (!client) throw new Error('Supabase client not initialized');
+
+  const { error } = await client.functions.invoke('admin-reset-user-password', {
+    body: { userId, password },
+  });
+
+  if (!error) return;
+
+  const response = 'context' in error ? error.context : null;
+  const body = response ? await response.json().catch(() => null) : null;
+  if (body && typeof body === 'object' && 'error' in body && typeof body.error === 'string') {
+    throw new Error(body.error);
+  }
+  throw new Error(error.message);
+}
+
 export async function getUserAvatarSignedUrl(imagePath: string): Promise<string> {
   const client = supabase;
   if (!client) throw new Error('Supabase client not initialized');

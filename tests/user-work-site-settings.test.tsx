@@ -6,6 +6,7 @@ import type { UserProfile } from '../src/types/app';
 
 const service = vi.hoisted(() => ({
   saveUser: vi.fn(),
+  resetPassword: vi.fn(),
   uploadAvatar: vi.fn(),
   removeAvatarFiles: vi.fn(),
   getSignedUrl: vi.fn(),
@@ -16,6 +17,7 @@ vi.mock('../src/features/admin-reference-settings/adminReferenceSettingsService'
   saveUserWithWorkSiteAssignments: service.saveUser,
   getUserAvatarSignedUrl: service.getSignedUrl,
   removeUserAvatarFiles: service.removeAvatarFiles,
+  resetUserPassword: service.resetPassword,
   uploadUserAvatar: service.uploadAvatar,
 }));
 
@@ -48,6 +50,7 @@ describe('employee permanent work-site settings', () => {
     Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: vi.fn(() => 'blob:preview') });
     Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: vi.fn() });
     service.saveUser.mockReset();
+    service.resetPassword.mockReset();
     service.uploadAvatar.mockReset();
     service.removeAvatarFiles.mockReset();
     service.getSignedUrl.mockReset();
@@ -155,5 +158,65 @@ describe('employee permanent work-site settings', () => {
     );
     expect(service.uploadAvatar.mock.invocationCallOrder[0]).toBeLessThan(service.saveUser.mock.invocationCallOrder[0]);
     expect(service.removeAvatarFiles).toHaveBeenCalledWith(['users/employee-1/old.png']);
+  });
+
+  it('allows an admin to reset another user password after confirmation', async () => {
+    const user = userEvent.setup();
+    service.resetPassword.mockResolvedValue(undefined);
+
+    render(
+      <UserEditor
+        currentUserId="admin-1"
+        onUserSaved={vi.fn()}
+        users={users}
+        workSiteAssignments={[]}
+        workSites={workSites}
+      />,
+    );
+
+    await user.type(screen.getByLabelText('รหัสผ่านใหม่'), 'new-password');
+    await user.type(screen.getByLabelText('ยืนยันรหัสผ่านใหม่'), 'new-password');
+    await user.click(screen.getByRole('button', { name: 'รีเซ็ตรหัสผ่าน' }));
+
+    expect(service.resetPassword).toHaveBeenCalledWith('employee-1', 'new-password');
+    expect(screen.getByText('รีเซ็ตรหัสผ่านของ พนักงานหนึ่ง แล้ว')).toBeTruthy();
+  });
+
+  it('submits the password reset instead of the profile form when pressing Enter', async () => {
+    const user = userEvent.setup();
+    service.resetPassword.mockResolvedValue(undefined);
+
+    render(
+      <UserEditor
+        currentUserId="admin-1"
+        onUserSaved={vi.fn()}
+        users={users}
+        workSiteAssignments={[]}
+        workSites={workSites}
+      />,
+    );
+
+    await user.type(screen.getByLabelText('รหัสผ่านใหม่'), 'new-password');
+    await user.type(screen.getByLabelText('ยืนยันรหัสผ่านใหม่'), 'new-password{Enter}');
+
+    expect(service.resetPassword).toHaveBeenCalledWith('employee-1', 'new-password');
+    expect(service.saveUser).not.toHaveBeenCalled();
+  });
+
+  it('does not display password-reset inputs while editing the signed-in admin', async () => {
+    const user = userEvent.setup();
+    render(
+      <UserEditor
+        currentUserId="admin-1"
+        onUserSaved={vi.fn()}
+        users={users}
+        workSiteAssignments={[]}
+        workSites={workSites}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: /ผู้ดูแล/ }));
+    expect(screen.queryByLabelText('รหัสผ่านใหม่')).toBeNull();
+    expect(screen.getByText('บัญชีที่กำลังใช้งานไม่สามารถรีเซ็ตรหัสผ่านจากหน้านี้ได้')).toBeTruthy();
   });
 });

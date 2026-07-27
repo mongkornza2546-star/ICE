@@ -19,6 +19,7 @@ import {
   getErrorMessage,
   getUserAvatarSignedUrl,
   removeUserAvatarFiles,
+  resetUserPassword,
   saveUserWithWorkSiteAssignments,
   uploadUserAvatar,
 } from '../adminReferenceSettingsService';
@@ -118,8 +119,11 @@ export function UserEditor({
   const [userFilter, setUserFilter] = useState<ActiveFilter>('all');
   
   const [savingUser, setSavingUser] = useState(false);
+  const [resettingPassword, setResettingPassword] = useState(false);
   const [userError, setUserError] = useState<string | null>(null);
   const [userSuccess, setUserSuccess] = useState<string | null>(null);
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmedPassword, setConfirmedPassword] = useState('');
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [avatarPreviewUrl, setAvatarPreviewUrl] = useState<string | null>(null);
 
@@ -163,6 +167,8 @@ export function UserEditor({
     setAvatarFile(null);
     setUserError(null);
     setUserSuccess(null);
+    setNewPassword('');
+    setConfirmedPassword('');
   }
 
   function chooseAvatarFile(event: ChangeEvent<HTMLInputElement>) {
@@ -234,6 +240,33 @@ export function UserEditor({
       setUserError(getErrorMessage(error));
     } finally {
       setSavingUser(false);
+    }
+  }
+
+  async function resetPassword(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!userDraft || userDraft.id === currentUserId) return;
+    if (newPassword.length < 8) {
+      setUserError('รหัสผ่านใหม่ต้องมีอย่างน้อย 8 ตัวอักษร');
+      return;
+    }
+    if (newPassword !== confirmedPassword) {
+      setUserError('ยืนยันรหัสผ่านใหม่ไม่ตรงกัน');
+      return;
+    }
+
+    setResettingPassword(true);
+    setUserError(null);
+    setUserSuccess(null);
+    try {
+      await resetUserPassword(userDraft.id, newPassword);
+      setNewPassword('');
+      setConfirmedPassword('');
+      setUserSuccess(`รีเซ็ตรหัสผ่านของ ${userDraft.displayName} แล้ว`);
+    } catch (error) {
+      setUserError(getErrorMessage(error));
+    } finally {
+      setResettingPassword(false);
     }
   }
 
@@ -334,7 +367,8 @@ export function UserEditor({
         </div>
 
         {userDraft ? (
-          <form className="ref-form" onSubmit={saveUser}>
+          <div className="ref-form">
+            <form className="ref-profile-form" id="user-profile-form" onSubmit={saveUser}>
             {/* Avatar Section */}
             <div className="ref-avatar-upload-row">
               <div className="ref-large-avatar-wrap">
@@ -499,6 +533,48 @@ export function UserEditor({
               ) : null}
             </div>
 
+            </form>
+
+            <form className="ref-section" onSubmit={resetPassword} aria-labelledby="reset-password-title">
+              <div className="ref-section-title">
+                <h3 id="reset-password-title">รีเซ็ตรหัสผ่าน</h3>
+                <p>กำหนดรหัสผ่านใหม่ให้ผู้ใช้นี้โดยตรง ผู้ใช้ควรเปลี่ยนรหัสผ่านอีกครั้งหลังเข้าสู่ระบบ</p>
+              </div>
+              {editingCurrentUser ? (
+                <p className="ref-muted-note">บัญชีที่กำลังใช้งานไม่สามารถรีเซ็ตรหัสผ่านจากหน้านี้ได้</p>
+              ) : (
+                <div className="ref-password-reset-grid">
+                  <label>
+                    รหัสผ่านใหม่
+                    <input
+                      autoComplete="new-password"
+                      minLength={8}
+                      onChange={(event) => setNewPassword(event.target.value)}
+                      type="password"
+                      value={newPassword}
+                    />
+                  </label>
+                  <label>
+                    ยืนยันรหัสผ่านใหม่
+                    <input
+                      autoComplete="new-password"
+                      minLength={8}
+                      onChange={(event) => setConfirmedPassword(event.target.value)}
+                      type="password"
+                      value={confirmedPassword}
+                    />
+                  </label>
+                  <button
+                    className="secondary-button"
+                    disabled={resettingPassword || !newPassword || !confirmedPassword}
+                    type="submit"
+                  >
+                    {resettingPassword ? 'กำลังรีเซ็ต...' : 'รีเซ็ตรหัสผ่าน'}
+                  </button>
+                </div>
+              )}
+            </form>
+
             {userError ? <p className="error-text" role="alert">{userError}</p> : null}
             {userSuccess ? <p aria-live="polite" className="success-text">{userSuccess}</p> : null}
 
@@ -514,11 +590,17 @@ export function UserEditor({
               >
                 ยกเลิก
               </button>
-              <button className="primary-button" disabled={savingUser} type="submit" aria-label="บันทึกผู้ใช้">
+              <button
+                aria-label="บันทึกผู้ใช้"
+                className="primary-button"
+                disabled={savingUser}
+                form="user-profile-form"
+                type="submit"
+              >
                 {savingUser ? 'กำลังบันทึก...' : 'บันทึกผู้ใช้'}
               </button>
             </div>
-          </form>
+          </div>
         ) : (
           <p className="empty-text">เลือกผู้ใช้จากรายการเพื่อแก้ไข</p>
         )}

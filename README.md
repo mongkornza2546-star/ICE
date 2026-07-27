@@ -20,6 +20,24 @@ npm run dev:demo
 npm run dev
 ```
 
+## การ deploy Supabase Edge Functions
+
+ฟังก์ชันรีเซ็ตรหัสผ่านของแอดมินอยู่ที่
+`supabase/functions/admin-reset-user-password` และต้อง deploy แยกจากหน้าเว็บ
+workflow `.github/workflows/deploy-supabase-functions.yml` จะตรวจ type ของฟังก์ชัน
+ใน pull request และ deploy เมื่อ merge เข้า `main`
+
+ตั้งค่า GitHub Actions secrets ของ repository ก่อนใช้งานครั้งแรก:
+
+- `SUPABASE_ACCESS_TOKEN`
+- `SUPABASE_PROJECT_ID`
+
+สามารถสั่ง deploy ด้วยตนเองจากเครื่องที่ login Supabase CLI แล้วได้เช่นกัน:
+
+```bash
+supabase functions deploy admin-reset-user-password --project-ref <project-id>
+```
+
 - รถบรรทุกเป็นคลังสต๊อกกลางเคลื่อนที่ของศูนย์ราชการ
 - จุดปฏิบัติงาน Skywalk, ตึก A, ตึก B, ตึก C, รถเล็ก, พนักงานแต่ละคน และถังสำรองเป็นจุดถือครองสต๊อกย่อย
 - งานหลักที่หัวหน้าต้องทำคือบันทึก “สั่งจากโรงงานเท่าไร”, “จ่ายให้พนักงาน/จุดใดเท่าไร” และ “พนักงานกลับมาคืนหรือเหลือเท่าไร” แยกตามชนิดน้ำแข็ง

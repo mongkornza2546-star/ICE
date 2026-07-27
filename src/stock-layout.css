@@ -1136,6 +1136,11 @@
   .stock-location-grid-custom {
     grid-template-columns: minmax(0, 1fr);
   }
+  .holder-pos__source-control label,
+  .holder-pos__source-control select {
+    min-width: 0;
+    max-width: 100%;
+  }
   .swap-icon-container {
     display: none;
   }
