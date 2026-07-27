@@ -352,7 +352,7 @@ describe('ManagerStockControl movement tabs', () => {
     await user.click(screen.getByRole('button', { name: 'ตรวจนับจริง' }));
     expect(await screen.findByRole('heading', { name: 'นับยอดคงเหลือในรถบรรทุก' })).toBeTruthy();
     expect((screen.getByRole('combobox', { name: 'จุดที่ต้องการตรวจนับ' }) as HTMLSelectElement).value).toBe('truck-1');
-    expect(screen.getByText(/ยอดจริงรวม = ยอดนับจริงที่เหลือบนรถ \+ ยอดที่โอนให้ผู้ดูแล/)).toBeTruthy();
+    expect(screen.getByText(/เทียบกับยอดที่ระบบคาดว่าควรเหลือหลังหักรายการโอน ส่ง และเสียหาย/)).toBeTruthy();
     expect(screen.getByText(/ควรเหลือบนรถ/)).toBeTruthy();
   });
 

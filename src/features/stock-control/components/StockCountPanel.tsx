@@ -68,7 +68,7 @@ export function StockCountPanel({
       {isTruckCount ? (
         <div className="stock-count-reconciliation-note">
           <strong>วิธีหายอดขาดหรือเกิน</strong>
-          <span>ยอดจริงรวม = ยอดนับจริงที่เหลือบนรถ + ยอดที่โอนให้ผู้ดูแล แล้วเทียบกับยอดสั่งจากโรงงาน</span>
+          <span>นับจำนวนจริงที่เหลือบนรถ แล้วเทียบกับยอดที่ระบบคาดว่าควรเหลือหลังหักรายการโอน ส่ง และเสียหาย</span>
         </div>
       ) : null}
 

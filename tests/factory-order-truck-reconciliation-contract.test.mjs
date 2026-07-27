@@ -11,6 +11,10 @@ const reconciliationMigration = readFileSync(
   new URL('../supabase/migrations/0103_restore_order_based_truck_stock.sql', import.meta.url),
   'utf8',
 );
+const compatibilityMigration = readFileSync(
+  new URL('../supabase/migrations/0104_preserve_legacy_factory_receipt_balances.sql', import.meta.url),
+  'utf8',
+);
 
 const USER_ID = '10000000-0000-4000-8000-000000000001';
 const TRUCK_ID = '10000000-0000-4000-8000-000000000002';
@@ -18,8 +22,9 @@ const TEAM_ID = '10000000-0000-4000-8000-000000000003';
 const ICE_ID = '10000000-0000-4000-8000-000000000004';
 const ORDER_ID = '10000000-0000-4000-8000-000000000010';
 const TRANSFER_ID = '10000000-0000-4000-8000-000000000011';
+const RETURN_ID = '10000000-0000-4000-8000-000000000012';
 
-async function createDb(t) {
+async function createDb(t, { applyLatestMigrations = true } = {}) {
   const db = new PGlite();
   t.after(() => db.close());
   await db.exec(`
@@ -69,7 +74,10 @@ async function createDb(t) {
     insert into public.ice_types values ('${ICE_ID}', 'ICE-01', 'หลอดเล็ก', 'ถุง');
   `);
   await db.exec(receiptMigration);
-  await db.exec(reconciliationMigration);
+  if (applyLatestMigrations) {
+    await db.exec(reconciliationMigration);
+    await db.exec(compatibilityMigration);
+  }
   return db;
 }
 
@@ -130,7 +138,7 @@ test('truck count plus employee transfers reconciles to the factory order', asyn
   assert.equal(actualRemaining + transferredToEmployees - orderedFromFactory, -1);
 });
 
-test('daily stock can close without factory receipt records or APIs', async (t) => {
+test('daily stock can close while stale receipt clients receive a safe compatibility response', async (t) => {
   const db = await createDb(t);
   await seedOrderAndTransfer(db);
 
@@ -138,14 +146,24 @@ test('daily stock can close without factory receipt records or APIs', async (t) 
     insert into public.daily_stock_closures values (date '2026-07-27', 'closed')
   `);
 
-  const functions = await db.query(`
-    select proname
-    from pg_proc
-    join pg_namespace on pg_namespace.oid = pg_proc.pronamespace
-    where pg_namespace.nspname = 'public'
-      and proname in ('get_factory_receipt_summary', 'record_factory_receipt')
+  const summary = await db.query(`
+    select public.get_factory_receipt_summary(date '2026-07-27') as value
   `);
-  assert.deepEqual(functions.rows, []);
+  assert.deepEqual(summary.rows[0].value, {
+    service_date: '2026-07-27',
+    truck_location_id: TRUCK_ID,
+    truck_location_name: 'รถบรรทุกหลัก',
+    receipts: [],
+  });
+
+  await assert.rejects(
+    db.query(`
+      select public.record_factory_receipt(
+        '${ORDER_ID}', '[]'::jsonb, null, gen_random_uuid()
+      )
+    `),
+    /Factory receipt workflow is retired; refresh the application/,
+  );
 
   const legacyTables = await db.query(`
     select
@@ -154,4 +172,54 @@ test('daily stock can close without factory receipt records or APIs', async (t) 
   `);
   assert.equal(legacyTables.rows[0].receipts_preserved, true);
   assert.equal(legacyTables.rows[0].items_preserved, true);
+});
+
+test('applying the order-based model preserves balances closed under legacy receipt quantities', async (t) => {
+  const db = await createDb(t, { applyLatestMigrations: false });
+
+  await db.exec(`
+    insert into public.stock_movements (
+      id, service_date, kind, to_location_id, recorded_by
+    ) values (
+      '${ORDER_ID}', date '2026-07-26', 'factory_order', '${TRUCK_ID}', '${USER_ID}'
+    );
+    insert into public.stock_movement_items values ('${ORDER_ID}', '${ICE_ID}', 20);
+  `);
+  await db.query(`
+    select public.record_factory_receipt(
+      '${ORDER_ID}',
+      '[{"ice_type_id":"${ICE_ID}","actual_quantity":18}]'::jsonb,
+      null,
+      gen_random_uuid()
+    )
+  `);
+  await db.exec(`
+    insert into public.daily_stock_closures values (date '2026-07-26', 'closed');
+    insert into public.daily_stock_closure_items values (
+      date '2026-07-26', '${TRUCK_ID}', '${ICE_ID}', -1
+    );
+    insert into public.stock_movements (
+      id, service_date, kind, from_location_id, recorded_by
+    ) values (
+      '${RETURN_ID}', date '2026-07-26', 'return_to_factory', '${TRUCK_ID}', '${USER_ID}'
+    );
+    insert into public.stock_movement_items values ('${RETURN_ID}', '${ICE_ID}', 17);
+  `);
+
+  const before = await db.query(`
+    select public.stock_balance_at(
+      date '2026-07-26', '${TRUCK_ID}', '${ICE_ID}'
+    ) as quantity
+  `);
+  assert.equal(Number(before.rows[0].quantity), 0);
+
+  await db.exec(reconciliationMigration);
+  await db.exec(compatibilityMigration);
+
+  const after = await db.query(`
+    select public.stock_balance_at(
+      date '2026-07-26', '${TRUCK_ID}', '${ICE_ID}'
+    ) as quantity
+  `);
+  assert.equal(Number(after.rows[0].quantity), 0);
 });
