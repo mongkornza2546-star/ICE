@@ -1258,7 +1258,7 @@ input:disabled, select:disabled, textarea:disabled { background: #f2f5f8; color:
 .financial-ops__cards article button:last-child { border-color: #16835d; color: #fff; background: #16835d; }
 .financial-ops__empty { margin: 10px 0; color: #71859a; text-align: center; }
 .employee-task-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-bottom: 14px; }
-.employee-task-tabs button { min-height: 48px; border: 1px solid #c4d9e9; border-radius: 10px; color: #43647d; background: #fff; font-weight: 800; }
+.employee-task-tabs button { min-height: 48px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; border: 1px solid #c4d9e9; border-radius: 10px; color: #43647d; background: #fff; font-weight: 800; }
 .employee-task-tabs button[aria-current="page"] { border-color: #0875db; color: #0865b3; background: #eaf5ff; box-shadow: inset 0 0 0 1px #0875db; }
 
 @media (max-width: 1050px) {
@@ -1275,6 +1275,12 @@ input:disabled, select:disabled, textarea:disabled { background: #f2f5f8; color:
 }
 
 @media (max-width: 759px) {
+  .employee-main { padding-bottom: calc(86px + env(safe-area-inset-bottom)); }
+  .employee-task-tabs { position: fixed; right: 0; bottom: 0; left: 0; z-index: 70; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0; margin: 0; padding: 7px max(12px, env(safe-area-inset-right)) calc(7px + env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left)); border-top: 1px solid #dce6f1; background: rgba(255, 255, 255, .96); box-shadow: 0 -7px 22px rgba(18, 55, 94, .10); backdrop-filter: blur(14px); }
+  .employee-task-tabs button { min-height: 58px; flex-direction: column; gap: 3px; padding: 5px 4px; border: 0; border-radius: 11px; background: transparent; color: #71859a; font-size: .68rem; line-height: 1; }
+  .employee-task-tabs button svg { color: currentColor; }
+  .employee-task-tabs button[aria-current="page"] { border-color: transparent; color: #0869c7; background: #eaf5ff; box-shadow: none; }
+  .employee-task-tabs button:disabled { color: #b0bdcb; }
   .employee-pos-layout { grid-template-columns: 1fr; }
   .employee-pos-mobile-steps { display: grid; }
   .employee-pos-mobile--hidden { display: none; }

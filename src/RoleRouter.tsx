@@ -12,6 +12,7 @@ import { ShopSettings } from './ShopSettings';
 import { RoundWorkspace } from './RoundWorkspace';
 import { ManagerStockAudit } from './ManagerStockAudit';
 import { FinancialOperations } from './FinancialOperations';
+import { Coins, Package, Storefront } from '@phosphor-icons/react';
 import type { UserProfile } from './types/app';
 import { toBangkokDateString } from './lib/serviceDate';
 
@@ -162,7 +163,8 @@ export function RoleRouter({
             }}
             type="button"
           >
-            เบิก
+            <Package aria-hidden="true" size={22} weight="duotone" />
+            <span>เบิก</span>
           </button>
           <button
             aria-current={courierView === 'pos' ? 'page' : undefined}
@@ -172,7 +174,8 @@ export function RoleRouter({
             }}
             type="button"
           >
-            POS
+            <Storefront aria-hidden="true" size={22} weight="duotone" />
+            <span>POS</span>
           </button>
           <button
             aria-current={courierView === 'collection' ? 'page' : undefined}
@@ -183,7 +186,8 @@ export function RoleRouter({
             }}
             type="button"
           >
-            เก็บเงิน
+            <Coins aria-hidden="true" size={22} weight="duotone" />
+            <span>เก็บเงิน</span>
           </button>
         </nav>
         <KeepAlive active={courierView !== 'collection'}>
