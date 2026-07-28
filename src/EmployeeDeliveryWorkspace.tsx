@@ -462,7 +462,6 @@ export function EmployeeDeliveryWorkspace({
             openCard={data.openCard}
             stockState={data.stockState}
             shopButtonRefs={data.shopButtonRefs}
-            iceTypes={data.iceTypes}
           /> : null}
         </>
       )}

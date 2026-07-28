@@ -2418,7 +2418,21 @@ input:disabled, select:disabled, textarea:disabled { background: #f2f5f8; color:
   .shop-editor-savebar { margin-inline: -14px; padding: 13px 14px max(13px, env(safe-area-inset-bottom)); }
 }
 
-/* Keep employee shop selection compact at every workspace width. */
+/* Prioritize storefront photos while scanning the POS shop list. */
 .employee-shop-grid { grid-template-columns: 1fr; }
-.employee-shop-tile { min-height: 78px; grid-template-columns: 76px minmax(0, 1fr); grid-template-rows: 1fr; }
-.employee-shop-tile__visual { height: 100%; min-height: 76px; aspect-ratio: auto; }
+.employee-shop-tile { min-height: 140px; grid-template-columns: minmax(140px, 38%) minmax(0, 1fr); grid-template-rows: 1fr; }
+.employee-shop-tile__visual { height: 100%; min-height: 140px; aspect-ratio: auto; }
+.employee-shop-tile__body { align-content: center; padding: 14px 42px 14px 15px; }
+.employee-shop-tile__body > strong { font-size: 1.05rem; }
+.employee-shop-tile__body > b { font-size: .96rem; white-space: normal; }
+.employee-shop-tile__body > small { font-size: .75rem; white-space: normal; }
+.employee-shop-tile__arrow { bottom: 50%; transform: translateY(50%); }
+
+@media (max-width: 390px) {
+  .employee-shop-tile { min-height: 126px; grid-template-columns: 126px minmax(0, 1fr); }
+  .employee-shop-tile__visual { min-height: 126px; }
+  .employee-shop-tile__body { padding: 12px 36px 12px 12px; }
+  .employee-shop-tile__body > strong { font-size: .94rem; }
+  .employee-shop-tile__body > b { font-size: .84rem; }
+  .employee-shop-tile__body > small { font-size: .68rem; }
+}

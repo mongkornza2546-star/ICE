@@ -1,9 +1,9 @@
 import React from 'react';
 import { MagnifyingGlass, Buildings, MapPin, Storefront, CaretRight } from '@phosphor-icons/react';
-import type { ShopCard, EmployeeStockState, IceTypeOption } from '../../types/app';
+import type { ShopCard, EmployeeStockState } from '../../types/app';
 import { FilterChips } from './FilterChips';
 import { EmployeeState } from './EmployeeState';
-import { statusTone, renderTotals } from './utils';
+import { statusTone } from './utils';
 import { STATUS_LABELS } from './constants';
 
 export function EmployeeShopPicker({
@@ -22,7 +22,6 @@ export function EmployeeShopPicker({
   openCard,
   stockState,
   shopButtonRefs,
-  iceTypes,
 }: {
   enableAssignedStockFlow: boolean;
   selectedRoundId: string;
@@ -39,7 +38,6 @@ export function EmployeeShopPicker({
   openCard: (card: ShopCard) => void;
   stockState: EmployeeStockState | null;
   shopButtonRefs: React.MutableRefObject<Map<string, HTMLButtonElement>>;
-  iceTypes: IceTypeOption[];
 }) {
   return (
     <section className="employee-entry-section employee-task-section" aria-labelledby="employee-shop-step">
@@ -124,7 +122,6 @@ export function EmployeeShopPicker({
                   <strong>{card.shop_code}</strong>
                   <b>{card.shop_name}</b>
                   <small>{card.building_name} · {card.floor_or_zone}</small>
-                  <span>{Object.keys(card.today_totals).length > 0 ? `วันนี้ ${renderTotals(card.today_totals, iceTypes)}` : 'วันนี้ยังไม่มียอด'}</span>
                 </span>
                 <CaretRight aria-hidden="true" className="employee-shop-tile__arrow" size={20} />
               </button>
