@@ -363,7 +363,7 @@ export function useEmployeeDeliveryData({
       ?? (enableAssignedStockFlow ? assignedAvailable : Number.MAX_SAFE_INTEGER);
     setDeliveryQuantities((current) => ({
       ...current,
-      [iceTypeId]: Math.max(0, Math.min(available, Math.trunc(quantity))),
+      [iceTypeId]: Math.max(0, Math.min(available, Math.round(quantity * 2) / 2)),
     }));
     setApprovalId(null);
     setApprovalReason('');

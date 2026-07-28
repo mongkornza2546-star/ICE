@@ -444,6 +444,16 @@ export function EmployeeDeliveryReview({
                     >
                       ล้าง
                     </button>
+                    <button
+                      aria-label="เพิ่มครึ่งกระสอบ"
+                      onClick={() => onSetQuantity(
+                        selectedItem.ice_type_id,
+                        (deliveryQuantities[selectedItem.ice_type_id] ?? 0) + 0.5,
+                      )}
+                      type="button"
+                    >
+                      ½ กระสอบ
+                    </button>
                     <button onClick={() => enterDigit('0')} type="button">0</button>
                     <button
                       aria-label="ลบหนึ่งหลัก"

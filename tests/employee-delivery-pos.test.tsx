@@ -177,6 +177,23 @@ describe('employee delivery POS', () => {
       .getByRole('button', { name: /หลอด/ }).getAttribute('aria-pressed')).toBe('false');
   });
 
+  it('adds a half bag from the POS keypad and records the fractional quantity', async () => {
+    const user = userEvent.setup();
+    const api = gateway();
+    render(<EmployeeDeliveryWorkspace gateway={api} />);
+    await user.click(await screen.findByRole('button', { name: /S001 ร้านทดสอบ/ }));
+    const keypad = await selectIceAndGetKeypad(user);
+
+    await user.click(within(keypad).getByRole('button', { name: 'เพิ่มครึ่งกระสอบ' }));
+    expect(within(keypad).getByText('0.5', { selector: 'strong' })).toBeTruthy();
+    expect(within(screen.getByRole('region', { name: 'สรุปตะกร้า' })).getAllByText('฿5.00')).toHaveLength(2);
+
+    await user.click(screen.getByRole('button', { name: 'ยืนยันส่งร้านนี้' }));
+    await waitFor(() => expect(api.recordDelivery).toHaveBeenCalledWith(expect.objectContaining({
+      items: [{ ice_type_id: 'ice-1', quantity: 0.5 }],
+    })));
+  });
+
   it('calls the financial delivery contract then records immediate payment', async () => {
     const user = userEvent.setup();
     const api = gateway();
