@@ -432,10 +432,10 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .shop-directory-card:hover { border-color: #91bee9; box-shadow: 0 12px 26px rgba(21, 99, 194, .12); transform: translateY(-3px); }
 .shop-directory-card--selected { border-color: #176cff; box-shadow: 0 0 0 2px rgba(23, 108, 255, .13), 0 13px 28px rgba(23, 108, 255, .14); }
 .shop-directory-card__visual { position: relative; display: grid; min-height: 0; place-items: center; overflow: hidden; color: #4a94e8; background: linear-gradient(135deg, #e7f4ff, #d6ebff); }
-.shop-directory-card__visual::after { position: absolute; inset: auto -22px -42px auto; width: 142px; height: 142px; border-radius: 50%; background: rgba(255, 255, 255, .32); content: ''; }
-.shop-directory-card__visual img { position: absolute; inset: 0; display: block; width: 100%; height: 100%; min-width: 0; min-height: 0; object-fit: cover; }
-.shop-directory-card__visual > svg { position: relative; z-index: 1; }
-.shop-directory-card__photo-status { position: relative; z-index: 1; margin-top: -5px; color: #497ba9; font-size: .66rem; font-weight: 700; }
+.shop-directory-card__visual::after { position: absolute; z-index: 0; inset: auto -22px -42px auto; width: 142px; height: 142px; border-radius: 50%; background: rgba(255, 255, 255, .32); content: ''; }
+.shop-directory-card__visual img { position: absolute; z-index: 1; inset: 0; display: block; width: 100%; height: 100%; min-width: 0; min-height: 0; object-fit: cover; }
+.shop-directory-card__visual > svg { position: relative; z-index: 2; }
+.shop-directory-card__photo-status { position: relative; z-index: 2; margin-top: -5px; color: #497ba9; font-size: .66rem; font-weight: 700; }
 .shop-directory-card__status { position: absolute; top: 10px; right: 10px; z-index: 2; display: inline-flex; align-items: center; min-height: 25px; padding: 0 9px; border-radius: 999px; font-size: .65rem; font-weight: 700; box-shadow: 0 3px 8px rgba(26, 51, 83, .11); }
 .shop-directory-card__status--active { color: #117a45; background: #e7f8ee; }
 .shop-directory-card__status--inactive { color: #6b7789; background: #eef1f4; }
@@ -1104,7 +1104,7 @@ input:disabled, select:disabled, textarea:disabled { background: #f2f5f8; color:
 .employee-review-stock { border-color: #bfd9f5; background: #f8fbff; }
 .employee-review-shop-heading { margin-bottom: 14px; }
 .employee-entry-section--secondary { padding: 12px 16px; box-shadow: none; }
-.employee-problem-toggle { min-height: 48px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 0 14px; border: 1px solid #edc991; border-radius: 11px; color: #9c611d; background: #fff9ee; font-size: .78rem; font-weight: 700; touch-action: manipulation; }
+.employee-pos-review-toggle { min-height: 48px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 0 14px; border: 1px solid #0875db; border-radius: 11px; color: #0869bd; background: #f2f8fd; font-size: .78rem; font-weight: 700; touch-action: manipulation; }
 .employee-problem-panel { display: grid; gap: 12px; }
 .employee-problem-panel .employee-entry-section__heading > svg { flex: 0 0 auto; color: #d17a18; }
 .employee-problem-options { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
@@ -1113,7 +1113,7 @@ input:disabled, select:disabled, textarea:disabled { background: #f2f5f8; color:
 .employee-problem-panel label { display: grid; gap: 6px; color: #725b42; font-size: .76rem; font-weight: 700; }
 .employee-problem-panel textarea { min-height: 92px; padding: 10px 12px; border: 1px solid #ddc8a8; border-radius: 11px; resize: vertical; }
 .employee-text-button { width: fit-content; min-height: 44px; padding: 0; border: 0; color: #0a65d1; background: transparent; font-size: .76rem; font-weight: 700; }
-.employee-back:disabled, .employee-problem-toggle:disabled, .employee-problem-options button:disabled, .employee-text-button:disabled, .employee-error--retry button:disabled { cursor: not-allowed; opacity: .5; }
+.employee-back:disabled, .employee-pos-review-toggle:disabled, .employee-problem-options button:disabled, .employee-text-button:disabled, .employee-error--retry button:disabled { cursor: not-allowed; opacity: .5; }
 
 .employee-submit-card { position: sticky; bottom: max(12px, env(safe-area-inset-bottom)); z-index: 12; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 10px 16px; padding: 14px 16px; border: 1px solid #cbdced; border-radius: 15px; background: rgba(255,255,255,.98); box-shadow: 0 14px 40px rgba(13,55,104,.17); backdrop-filter: blur(10px); }
 .employee-submit-card > div { min-width: 0; display: grid; gap: 3px; }

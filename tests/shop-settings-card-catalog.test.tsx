@@ -239,6 +239,10 @@ describe('ShopSettings card catalog', () => {
     const card = screen.getByRole('button', { name: /AA01 ร้านเจ๊อ้อย/ });
     const image = card.querySelector('img');
     expect(image?.src).toBe('https://example.test/shop-a.jpg');
+    expect(card.textContent).toContain('กำลังโหลดรูป...');
+
+    fireEvent.load(image!);
+    expect(card.textContent).not.toContain('กำลังโหลดรูป...');
 
     fireEvent.error(image!);
     expect(card.querySelector('img')).toBeNull();

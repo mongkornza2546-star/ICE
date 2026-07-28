@@ -97,6 +97,7 @@ export function ShopSettings({ isActive = true, readOnly = false }: { isActive?:
   const [tankSuccess, setTankSuccess] = useState<string | null>(null);
   const [shopImageUrls, setShopImageUrls] = useState<Record<string, string>>({});
   const [failedShopImages, setFailedShopImages] = useState<Record<string, boolean>>({});
+  const [loadedShopImages, setLoadedShopImages] = useState<Record<string, boolean>>({});
   const [readinessReport, setReadinessReport] = useState<POSReadinessReport | null>(null);
   const [readinessStatus, setReadinessStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [readinessError, setReadinessError] = useState<string | null>(null);
@@ -277,6 +278,7 @@ export function ShopSettings({ isActive = true, readOnly = false }: { isActive?:
     if (visibleShopsWithImages.length === 0) {
       setShopImageUrls({});
       setFailedShopImages({});
+      setLoadedShopImages({});
       return () => { cancelled = true; };
     }
 
@@ -292,6 +294,7 @@ export function ShopSettings({ isActive = true, readOnly = false }: { isActive?:
             }),
           ));
           setFailedShopImages({});
+          setLoadedShopImages({});
         }
       } catch {
         nextRefreshMs = SHOP_IMAGE_URL_RETRY_MS;
@@ -612,6 +615,7 @@ export function ShopSettings({ isActive = true, readOnly = false }: { isActive?:
             const building = buildings.find((item) => item.id === shop.building_id);
             const zone = zones.find((item) => item.id === shop.zone_id);
             const imageUrl = shopImageUrls[shop.id];
+            const imageLoaded = loadedShopImages[shop.id];
             const readiness = readinessReport?.items.find((item) => item.shop_id === shop.id);
             const readinessLabel = shop.status !== 'active'
               ? 'พักใช้งาน'
@@ -643,8 +647,9 @@ export function ShopSettings({ isActive = true, readOnly = false }: { isActive?:
               >
                 <span className="shop-directory-card__visual">
                   {imageUrl && !failedShopImages[shop.id] ? (
-                    <img alt={`รูปภาพร้าน ${shop.name}`} onError={() => setFailedShopImages((current) => ({ ...current, [shop.id]: true }))} src={imageUrl} />
-                  ) : <><Storefront aria-hidden="true" size={38} weight="duotone" /><small className="shop-directory-card__photo-status">{shop.image_path ? 'แสดงรูปไม่ได้' : 'ยังไม่มีรูป'}</small></>}
+                    <img alt={`รูปภาพร้าน ${shop.name}`} onError={() => setFailedShopImages((current) => ({ ...current, [shop.id]: true }))} onLoad={() => setLoadedShopImages((current) => ({ ...current, [shop.id]: true }))} src={imageUrl} />
+                  ) : null}
+                  {!imageLoaded || !imageUrl || failedShopImages[shop.id] ? <><Storefront aria-hidden="true" size={38} weight="duotone" /><small className="shop-directory-card__photo-status">{shop.image_path ? (imageUrl && !failedShopImages[shop.id] ? 'กำลังโหลดรูป...' : 'แสดงรูปไม่ได้') : 'ยังไม่มีรูป'}</small></> : null}
                 </span>
                 <span className="shop-directory-card__body">
                   <span className="shop-directory-card__heading"><span className="shop-directory-card__code">{shop.code}</span><span className={`shop-directory-card__status shop-directory-card__status--${shop.status}`}>{shop.status === 'active' ? 'ใช้งาน' : 'พักใช้งาน'}</span></span>

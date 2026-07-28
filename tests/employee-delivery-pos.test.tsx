@@ -301,6 +301,7 @@ describe('employee delivery POS', () => {
     await user.click(await screen.findByRole('button', { name: /S001 ร้านทดสอบ/ }));
     const keypad = await selectIceAndGetKeypad(user);
     await user.click(within(keypad).getByRole('button', { name: '2' }));
+    expect(within(keypad).queryByRole('button', { name: /ตรวจรายการ/ })).toBeNull();
     await user.click(screen.getByRole('button', { name: 'ตรวจรายการ (1)' }));
     expect(screen.getByRole('button', { name: /3 ตรวจ/ }).getAttribute('aria-current')).toBe('step');
     expect(within(screen.getByRole('region', { name: 'สรุปตะกร้า' })).getByText(/2 ถุง/)).toBeTruthy();

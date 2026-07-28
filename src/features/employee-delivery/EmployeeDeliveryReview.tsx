@@ -474,14 +474,6 @@ export function EmployeeDeliveryReview({
                   >
                     เพิ่มรายการ
                   </button>
-                  <button
-                    className="employee-pos-mobile-next"
-                    disabled={items.length === 0}
-                    onClick={() => setMobileStep('review')}
-                    type="button"
-                  >
-                    ตรวจรายการ ({items.length})
-                  </button>
                 </>
               ) : (
                 <div className="employee-pos-keypad-empty">
@@ -601,8 +593,13 @@ export function EmployeeDeliveryReview({
       </form>
 
       {!problemOpen ? (
-        <button className="employee-problem-toggle" disabled={submitting} onClick={() => onChooseProblemStatus('issue')} type="button">
-          <WarningCircle aria-hidden="true" size={22} /> แจ้งเหตุส่งไม่ได้
+        <button
+          className="employee-pos-review-toggle"
+          disabled={submitting || items.length === 0}
+          onClick={() => setMobileStep('review')}
+          type="button"
+        >
+          ตรวจรายการ ({items.length})
         </button>
       ) : null}
 

@@ -397,27 +397,20 @@ describe('EmployeeDeliveryWorkspace', () => {
     expect(screen.queryByRole('searchbox', { name: 'ค้นหาร้าน' })).toBeNull();
   });
 
-  it('requires a note for a problem and submits the problem without ice items', async () => {
+  it('places cart review in the delivery-problem action position', async () => {
     const user = userEvent.setup();
-    const gateway = createGateway();
-    render(<EmployeeDeliveryWorkspace gateway={gateway} />);
+    render(<EmployeeDeliveryWorkspace gateway={createGateway()} />);
 
     await openShop(user);
-    await user.click(screen.getByRole('button', { name: 'แจ้งเหตุส่งไม่ได้' }));
-    await user.click(screen.getByRole('button', { name: 'ปิดร้าน' }));
-    await user.click(screen.getByRole('button', { name: 'บันทึกเหตุ' }));
-    expect((await screen.findByRole('alert')).textContent).toContain('ใส่หมายเหตุว่าเกิดอะไรขึ้นกับร้าน');
+    expect(screen.queryByRole('button', { name: 'แจ้งเหตุส่งไม่ได้' })).toBeNull();
+    expect((screen.getByRole('button', { name: 'ตรวจรายการ (0)' }) as HTMLButtonElement).disabled).toBe(true);
 
-    await user.type(screen.getByRole('textbox', { name: 'หมายเหตุที่เกิดขึ้น' }), 'ร้านหยุดวันนี้');
-    await user.click(screen.getByRole('button', { name: 'บันทึกเหตุ' }));
+    const keypad = await selectProductAndGetKeypad(user);
+    await user.click(within(keypad).getByRole('button', { name: '2' }));
+    await user.click(screen.getByRole('button', { name: 'ตรวจรายการ (1)' }));
 
-    await waitFor(() => expect(gateway.recordDelivery).toHaveBeenCalledTimes(1));
-    expect(gateway.recordDelivery).toHaveBeenCalledWith(expect.objectContaining({
-      roundStopId: 'stop-AA01',
-      status: 'closed_shop',
-      note: 'ร้านหยุดวันนี้',
-      items: [],
-    }));
+    expect(screen.getByRole('button', { name: /3 ตรวจ/ }).getAttribute('aria-current')).toBe('step');
+    expect(within(screen.getByRole('region', { name: 'สรุปตะกร้า' })).getAllByText(/2 ถุง/)).toHaveLength(2);
   });
 
   it('reuses the idempotency key and timestamp when the same failed payload is retried', async () => {
