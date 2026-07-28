@@ -20,12 +20,14 @@ export function useEmployeeDeliveryData({
   gateway,
   enableAssignedStockFlow = false,
   requestScope = 'default',
-  stockSourceLabel = 'รถ',
+  serviceDate,
+  stockSourceLabel = 'สต๊อกรวมประจำวัน',
   onDraftStateChange,
 }: {
   gateway: EmployeeDeliveryGateway;
   enableAssignedStockFlow?: boolean;
   requestScope?: string;
+  serviceDate: string;
   stockSourceLabel?: string;
   onDraftStateChange?: (state: EmployeeDeliveryDraftState) => void;
 }) {
@@ -86,7 +88,7 @@ export function useEmployeeDeliveryData({
     const requestId = ++referenceRequestId.current;
     setLoadingReference(true);
     setError(null);
-    void gateway.loadReferenceData().then(({ rounds: nextRounds, iceTypes: nextIceTypes }) => {
+    void gateway.loadReferenceData(serviceDate).then(({ rounds: nextRounds, iceTypes: nextIceTypes }) => {
       if (requestId !== referenceRequestId.current) return;
       setRounds(nextRounds);
       setIceTypes(nextIceTypes);
@@ -115,7 +117,7 @@ export function useEmployeeDeliveryData({
     return () => {
       referenceRequestId.current += 1;
     };
-  }, [gateway, referenceReloadId]);
+  }, [gateway, referenceReloadId, serviceDate]);
 
   const loadCards = useCallback(async (roundId: string) => {
     if (!roundId) {
@@ -273,10 +275,11 @@ export function useEmployeeDeliveryData({
     setPosContextError(null);
     setPaymentResult(null);
     setPaymentOpen(false);
-    if (gateway.loadDeliveryPosContext) {
+    const loadPosContext = gateway.loadDeliveryPosContext;
+    if (loadPosContext) {
       const requestId = ++posContextRequestId.current;
       setLoadingPosContext(true);
-      void gateway.loadDeliveryPosContext(card.round_stop_id).then((context) => {
+      void loadPosContext(card.round_stop_id).then((context) => {
         if (requestId !== posContextRequestId.current) return;
         setPosContext(context);
         setDeliveryQuantities((current) => Object.fromEntries(

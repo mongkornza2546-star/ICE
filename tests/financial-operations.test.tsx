@@ -67,13 +67,17 @@ describe('FinancialOperations', () => {
       return queryResult([]);
     });
     mocks.rpc.mockImplementation(async (name: string) => {
-      if (name === 'get_collection_run_queue') return { data: [queueShop], error: null };
+      if (name === 'get_today_collection_run_queue') return { data: [queueShop], error: null };
       if (name === 'record_payment') return { data: { payment_id: 'payment-1' }, error: null };
       return { data: [], error: null };
     });
 
     render(<FinancialOperations userRole="courier" />);
     await user.click(await screen.findByRole('button', { name: /S001 · ร้านเก็บเงิน/ }));
+    expect(mocks.rpc).toHaveBeenCalledWith('get_today_collection_run_queue', {
+      p_collection_run_id: 'run-1',
+    });
+    expect(mocks.rpc).not.toHaveBeenCalledWith('get_collection_run_queue', expect.anything());
     const amount = screen.getByRole('spinbutton', { name: 'ยอดรับเงินจริง' });
     await user.clear(amount);
     await user.type(amount, '70');

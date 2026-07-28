@@ -112,6 +112,68 @@ describe('EmployeeDeliveryWorkspace', () => {
     });
   });
 
+  it('loads the selected historical service date for admin billing', async () => {
+    const gateway = createGateway();
+    render(<EmployeeDeliveryWorkspace gateway={gateway} serviceDate="2026-07-15" />);
+
+    await screen.findByRole('heading', { name: 'เลือกร้านที่จะไปส่ง' });
+    expect(gateway.loadReferenceData).toHaveBeenCalledWith('2026-07-15');
+  });
+
+  it('records a free refill from the withdrawal tab without creating a delivery', async () => {
+    const user = userEvent.setup();
+    const recordDailyStockRefill = vi.fn().mockResolvedValue(undefined);
+    const gateway = createGateway({ recordDailyStockRefill });
+    render(
+      <EmployeeDeliveryWorkspace
+        enableAssignedStockFlow
+        gateway={gateway}
+        serviceDate={round.service_date}
+        viewMode="withdrawal"
+      />,
+    );
+
+    const refill = (await screen.findByRole('heading', { name: 'เติมน้ำแข็ง' }))
+      .closest('section') as HTMLElement;
+    await user.click(within(refill).getByRole('button', { name: 'เพิ่มก้อนอีกหนึ่ง' }));
+    await user.click(within(refill).getByRole('button', { name: 'ยืนยันเติมน้ำแข็ง' }));
+
+    await waitFor(() => expect(recordDailyStockRefill).toHaveBeenCalledWith({
+      serviceDate: round.service_date,
+      items: [{ ice_type_id: 'ice-block', quantity: 1 }],
+      note: null,
+      idempotencyKey: expect.any(String),
+    }));
+    expect(gateway.recordDelivery).not.toHaveBeenCalled();
+  });
+
+  it('reuses the refill idempotency key when the same request is retried', async () => {
+    const user = userEvent.setup();
+    const recordDailyStockRefill = vi.fn()
+      .mockRejectedValueOnce(new Error('network timeout'))
+      .mockResolvedValueOnce(undefined);
+    render(
+      <EmployeeDeliveryWorkspace
+        enableAssignedStockFlow
+        gateway={createGateway({ recordDailyStockRefill })}
+        serviceDate={round.service_date}
+        viewMode="withdrawal"
+      />,
+    );
+
+    const refill = (await screen.findByRole('heading', { name: 'เติมน้ำแข็ง' }))
+      .closest('section') as HTMLElement;
+    await user.click(within(refill).getByRole('button', { name: 'เพิ่มก้อนอีกหนึ่ง' }));
+    const submit = within(refill).getByRole('button', { name: 'ยืนยันเติมน้ำแข็ง' });
+    await user.click(submit);
+    expect((await within(refill).findByRole('alert')).textContent).toContain('เชื่อมต่อไม่สำเร็จ');
+    await user.click(submit);
+
+    await waitFor(() => expect(recordDailyStockRefill).toHaveBeenCalledTimes(2));
+    expect(recordDailyStockRefill.mock.calls[1][0].idempotencyKey)
+      .toBe(recordDailyStockRefill.mock.calls[0][0].idempotencyKey);
+  });
+
   it('shows shop selection before entering any delivery quantity', async () => {
     render(<EmployeeDeliveryWorkspace gateway={createGateway()} />);
 
@@ -276,7 +338,7 @@ describe('EmployeeDeliveryWorkspace', () => {
       idempotencyKey: expect.any(String),
     }));
 
-    await screen.findByText('บันทึกยอดออกจากรถ และร้านปลายทางแล้ว');
+    await screen.findByText('บันทึกยอดออกจากสต๊อกรวมประจำวัน และร้านปลายทางแล้ว');
     expect((screen.getByRole('searchbox', { name: 'ค้นหาร้าน' }) as HTMLInputElement).value).toBe('AA01');
     const returnedShop = screen.getByRole('button', { name: /AA01 ร้านเจ๊อ้อย/ });
     expect(returnedShop).toBeTruthy();
@@ -292,7 +354,7 @@ describe('EmployeeDeliveryWorkspace', () => {
     await openShop(user);
     await user.click(screen.getByRole('button', { name: 'ยืนยันส่งร้านนี้' }));
 
-    expect((await screen.findByRole('alert')).textContent).toContain('ใส่จำนวนน้ำแข็งที่หยิบออกจากรถอย่างน้อย 1 รายการ');
+    expect((await screen.findByRole('alert')).textContent).toContain('ใส่จำนวนน้ำแข็งที่หยิบออกจากสต๊อกรวมประจำวันอย่างน้อย 1 รายการ');
     expect(gateway.recordDelivery).not.toHaveBeenCalled();
   });
 
@@ -454,7 +516,7 @@ describe('EmployeeDeliveryWorkspace', () => {
     expect(gateway.recordDelivery).toHaveBeenCalledTimes(1);
 
     await act(async () => resolveRefresh([shopA, shopB]));
-    await screen.findByText('บันทึกยอดออกจากรถ และร้านปลายทางแล้ว');
+    await screen.findByText('บันทึกยอดออกจากสต๊อกรวมประจำวัน และร้านปลายทางแล้ว');
     expect(onDraftStateChange).toHaveBeenLastCalledWith({ dirty: false, submitting: false });
   });
 

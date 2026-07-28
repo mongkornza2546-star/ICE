@@ -130,6 +130,34 @@ describe('employee delivery POS', () => {
     expect(within(cart).queryByText('฿10.00')).toBeNull();
   });
 
+  it('shows the daily aggregate source returned by the canonical POS context', async () => {
+    const user = userEvent.setup();
+    const api = gateway();
+    const aggregateContext: DeliveryPosContext = {
+      ...context,
+      stock_source: { id: '', code: 'DAILY', name: 'สต๊อกรวมประจำวัน', kind: 'daily' },
+      items: [{ ...context.items[0], stock_quantity: 7 }],
+    };
+    api.loadDeliveryPosContext = vi.fn().mockResolvedValue(aggregateContext);
+
+    render(<EmployeeDeliveryWorkspace gateway={api} />);
+
+    await user.click(await screen.findByRole('button', { name: /S001 ร้านทดสอบ/ }));
+    await waitFor(() => expect(api.loadDeliveryPosContext).toHaveBeenCalledWith('stop-1'));
+    expect(screen.getByText('ตัดจาก สต๊อกรวมประจำวัน')).toBeTruthy();
+
+    const keypad = await selectIceAndGetKeypad(user);
+    await user.click(within(keypad).getByRole('button', { name: '2' }));
+    await user.click(screen.getByRole('button', { name: 'ยืนยันส่งร้านนี้' }));
+
+    await waitFor(() => expect(api.recordDelivery).toHaveBeenCalledWith(
+      expect.objectContaining({
+        roundStopId: 'stop-1',
+        items: [{ ice_type_id: 'ice-1', quantity: 2 }],
+      }),
+    ));
+  });
+
   it('opens the keypad only after product selection and returns to product choice after adding', async () => {
     const user = userEvent.setup();
     render(<EmployeeDeliveryWorkspace gateway={gateway()} />);

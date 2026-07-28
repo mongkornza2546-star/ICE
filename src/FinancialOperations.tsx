@@ -128,9 +128,12 @@ export function FinancialOperations({ userRole = 'round_lead' }: { userRole?: Ap
     const nextRunId = runResponse.data?.id ?? null;
     setRunId(nextRunId);
     if (nextRunId) {
-      const queueResponse = await supabase.rpc('get_collection_run_queue', {
-        p_collection_run_id: nextRunId,
-      });
+      const queueResponse = await supabase.rpc(
+        isManager ? 'get_collection_run_queue' : 'get_today_collection_run_queue',
+        {
+          p_collection_run_id: nextRunId,
+        },
+      );
       if (queueResponse.error) throw queueResponse.error;
       const nextQueue = (queueResponse.data ?? []) as QueueShop[];
       setQueue(nextQueue);

@@ -126,7 +126,7 @@ test('manager overview remains the default while legacy records are managed from
   assert.match(app, /useState<AdminView>\('manager_overview'\)/);
   assert.match(app, /currentView === 'manager_overview'[\s\S]*<ManagerDashboard[\s\S]*onNavigate=\{setActiveView\}/);
   assert.doesNotMatch(app, /currentView === 'manager'\s*\?\s*\(\s*<ManagerDashboard/);
-  assert.match(app, /currentView === 'delivery'[\s\S]*<EmployeeDeliveryWorkspace onDraftStateChange=\{setDeliveryDraftState\} requestScope=\{profile\.id\} stockSourceLabel="จุดสต๊อกของร้าน" \/>/);
+  assert.match(app, /currentView === 'delivery'[\s\S]*<EmployeeDeliveryWorkspace[\s\S]*onDraftStateChange=\{setDeliveryDraftState\}[\s\S]*requestScope=\{profile\.id\}[\s\S]*stockSourceLabel="สต๊อกรวมประจำวัน"/);
   assert.doesNotMatch(app, /<RoundWorkspace mode="manager" \/>/);
   assert.match(app, /<RoundWorkspace isActive=\{currentView === 'stock_operations'\} \/>/);
 });
@@ -136,14 +136,14 @@ test('couriers use the full-screen employee delivery workspace', () => {
   const deliveryWorkspace = read('src/EmployeeDeliveryWorkspace.tsx');
   const employeeLayout = read('src/EmployeeLayout.tsx');
 
-  assert.match(app, /profile\.role === 'courier'[\s\S]*<EmployeeLayout[\s\S]*signOutDisabled=\{deliveryDraftState\.submitting\}[\s\S]*<EmployeeDeliveryWorkspace enableAssignedStockFlow onDraftStateChange=\{setDeliveryDraftState\} requestScope=\{profile\.id\} \/>/);
+  assert.match(app, /profile\.role === 'courier'[\s\S]*<EmployeeLayout[\s\S]*signOutDisabled=\{deliveryDraftState\.submitting\}[\s\S]*เบิก[\s\S]*POS[\s\S]*เก็บเงิน[\s\S]*enableAssignedStockFlow=\{courierView === 'withdrawal'\}/);
   assert.match(app, /deliveryDraftState\.submitting[\s\S]*deliveryDraftState\.dirty[\s\S]*window\.confirm/);
   assert.match(employeeLayout, /disabled=\{signOutDisabled\}/);
   assert.match(app, /addEventListener\('beforeunload', handleBeforeUnload\)/);
   assert.match(app, /event\.preventDefault\(\)[\s\S]*event\.returnValue = ''/);
   assert.match(deliveryWorkspace, /supabase\.rpc\('get_employee_stock_state',[\s\S]*p_round_id: roundId/);
   assert.match(deliveryWorkspace, /supabase\.rpc\('record_employee_stock_transfer',[\s\S]*p_round_id: payload\.roundId[\s\S]*p_items: payload\.items[\s\S]*p_idempotency_key: payload\.idempotencyKey/);
-  assert.match(deliveryWorkspace, /supabase\.rpc\('get_employee_active_session',[\s\S]*p_service_date: toBangkokDateString\(\)/);
+  assert.match(deliveryWorkspace, /supabase\.rpc\('get_employee_active_session',[\s\S]*p_service_date: serviceDate/);
 });
 
 test('manager dashboard reloads from the daily-work RPC whenever its keep-alive view becomes active', () => {
@@ -309,23 +309,21 @@ test('operational stock locations are saved through a role-checked RPC', () => {
   assert.match(component, /p_assigned_user_id: draft\.assignedUserId/);
 });
 
-test('returned-stock counts snapshot system, actual, and unexplained variance', () => {
-  const migration = read('supabase/migrations/0008_complete_manager_operations.sql');
+test('aggregate close snapshots system, actual, and unexplained variance', () => {
+  const migration = read('supabase/migrations/0107_daily_aggregate_stock.sql');
   const component = read('src/ManagerStockControl.tsx');
-  const countFunction = migration.slice(
-    migration.indexOf('create or replace function public.record_location_count('),
-    migration.indexOf('create or replace function public.get_location_count_history('),
+  const closeFunction = migration.slice(
+    migration.indexOf('create or replace function public.close_daily_aggregate_stock('),
+    migration.indexOf('revoke all on function public.daily_aggregate_stock_balance_at'),
   );
 
-  assert.match(migration, /create table public\.stock_count_snapshots/);
-  assert.match(migration, /variance_quantity = actual_quantity - system_quantity/);
-  assert.match(migration, /create or replace function public\.record_location_count\(/);
-  assert.match(
-    countFunction,
-    /pg_advisory_xact_lock[\s\S]*where service_date = v_service_date and status = 'closed'/,
-  );
-  assert.match(component, /supabase\.rpc\('record_location_count_v2'/);
-  assert.match(component, /p_idempotency_key: idempotencyKey/);
+  assert.match(migration, /create table public\.daily_aggregate_stock_closures/);
+  assert.match(migration, /create table public\.daily_aggregate_stock_closure_items/);
+  assert.match(migration, /variance_quantity numeric\(12,\s*1\) not null/);
+  assert.match(closeFunction, /pg_advisory_xact_lock\(hashtextextended\(p_service_date::text, 0\)\)/);
+  assert.match(closeFunction, /actual_quantity\s*-\s*public\.daily_aggregate_stock_balance_at/);
+  assert.match(component, /<DailyAggregateStockClose/);
+  assert.doesNotMatch(component, /record_location_count_v2/);
 });
 
 test('returned-stock snapshots accept half-bag quantities', () => {
@@ -372,27 +370,20 @@ test('manager delivery corrections restore stock and require an audit reason', (
   assert.match(component, /p_reason: args\.reason\.trim\(\)/);
 });
 
-test('daily close counts every point, returns actual stock, and locks the service date', () => {
-  const migration = read('supabase/migrations/0008_complete_manager_operations.sql');
-  const readinessMigration = read('supabase/migrations/0031_daily_stock_count_readiness.sql');
+test('daily aggregate close locks the service date and returns the counted stock', () => {
+  const migration = read('supabase/migrations/0107_daily_aggregate_stock.sql');
   const component = read('src/ManagerStockControl.tsx');
-  const roundGuard = migration.slice(
-    migration.indexOf('create or replace function public.reject_round_on_closed_day()'),
-    migration.indexOf('create trigger delivery_rounds_reject_closed_day'),
+  const aggregateClose = read('src/features/stock-control/components/DailyAggregateStockClose.tsx');
+  const closeFunction = migration.slice(
+    migration.indexOf('create or replace function public.close_daily_aggregate_stock('),
+    migration.indexOf('revoke all on function public.daily_aggregate_stock_balance_at'),
   );
 
-  assert.match(migration, /create table public\.daily_stock_closures/);
-  assert.match(migration, /perform pg_advisory_xact_lock\(hashtextextended\(v_service_date::text, 0\)\)/);
-  assert.match(migration, /Close every delivery round before closing daily stock/);
-  assert.match(migration, /'รวบรวมยอดนับจริงเพื่อส่งคืนโรงงาน'/);
-  assert.match(migration, /'ส่งยอดน้ำแข็งนับจริงคงเหลือทั้งหมดกลับโรงงาน'/);
-  assert.match(migration, /delivery_rounds_reject_closed_day/);
-  assert.match(
-    roundGuard,
-    /pg_advisory_xact_lock[\s\S]*where service_date = new.service_date and status = 'closed'/,
-  );
-  assert.match(readinessMigration, /create or replace function public\.close_daily_stock_from_latest_counts\(/);
-  assert.match(readinessMigration, /perform pg_advisory_xact_lock\(hashtextextended\(v_service_date::text, 0\)\)/);
-  assert.match(component, /supabase\.rpc\('close_daily_stock_from_latest_counts'/);
-  assert.match(component, /ปิดสต๊อกและจบงานวันนี้/);
+  assert.match(migration, /create table public\.daily_aggregate_stock_closures/);
+  assert.match(closeFunction, /pg_advisory_xact_lock\(hashtextextended\(p_service_date::text, 0\)\)/);
+  assert.match(closeFunction, /update public\.delivery_rounds/);
+  assert.match(closeFunction, /set status = 'closed', closed_by = auth\.uid\(\), closed_at = now\(\)/);
+  assert.match(closeFunction, /return public\.get_daily_aggregate_stock_summary\(p_service_date\)/);
+  assert.match(component, /<DailyAggregateStockClose/);
+  assert.match(aggregateClose, /ปิดสต๊อกและจบงานวันนี้/);
 });

@@ -17,6 +17,7 @@ import {
   UserCircle,
 } from '@phosphor-icons/react';
 import iceCubeLogo from './assets/ice-cube-cluster-logo.png';
+import { toBangkokDateString } from './lib/serviceDate';
 
 export type AdminView =
   | 'manager_overview'
@@ -47,6 +48,8 @@ export function AdminLayout({
   allowedViews,
   profileLabel,
   onNavigate,
+  serviceDate,
+  onServiceDateChange,
   onSignOut,
   signOutDisabled = false,
   children,
@@ -55,6 +58,8 @@ export function AdminLayout({
   allowedViews: AdminView[];
   profileLabel: string;
   onNavigate: (view: AdminView) => void;
+  serviceDate?: string;
+  onServiceDateChange?: (serviceDate: string) => void;
   onSignOut?: () => void;
   signOutDisabled?: boolean;
   children: ReactNode;
@@ -62,11 +67,13 @@ export function AdminLayout({
   const [isDesktopLayout, setIsDesktopLayout] = useState(() => window.innerWidth >= 901);
   const [navigationExpanded, setNavigationExpanded] = useState(() => window.innerWidth >= 901);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
-  const today = new Intl.DateTimeFormat('th-TH', {
+  const todayServiceDate = toBangkokDateString();
+  const displayedServiceDate = serviceDate ?? todayServiceDate;
+  const displayedDate = new Intl.DateTimeFormat('th-TH', {
     day: 'numeric',
     month: 'short',
     year: 'numeric',
-  }).format(new Date());
+  }).format(new Date(`${displayedServiceDate}T12:00:00+07:00`));
 
   useEffect(() => {
     const handleLayoutChange = () => {
@@ -148,7 +155,25 @@ export function AdminLayout({
               <List size={22} />
               <span>เมนู</span>
             </button>
-            <span className="context-pill"><CalendarBlank size={18} />{today}<CaretDown size={14} /></span>
+            {onServiceDateChange ? (
+              <label className="context-pill context-pill--date-select">
+                <CalendarBlank aria-hidden="true" size={18} />
+                <span className="sr-only">วันที่ออกบิล</span>
+                <input
+                  aria-label="วันที่ออกบิล"
+                  max={todayServiceDate}
+                  onChange={(event) => {
+                    if (event.target.value && event.target.value <= todayServiceDate) {
+                      onServiceDateChange(event.target.value);
+                    }
+                  }}
+                  type="date"
+                  value={displayedServiceDate}
+                />
+              </label>
+            ) : (
+              <span className="context-pill"><CalendarBlank size={18} />{displayedDate}<CaretDown size={14} /></span>
+            )}
             <span className="context-pill"><MapPin size={18} />ศูนย์ราชการ<CaretDown size={14} /></span>
           </div>
           <div className="admin-topbar__actions">

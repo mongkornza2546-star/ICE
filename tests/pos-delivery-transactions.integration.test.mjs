@@ -25,6 +25,18 @@ const collectorAccess = readFileSync(
   new URL('../supabase/migrations/0102_collection_collector_access.sql', import.meta.url),
   'utf8',
 );
+const adminBackdatedBilling = readFileSync(
+  new URL('../supabase/migrations/0106_admin_backdated_billing.sql', import.meta.url),
+  'utf8',
+);
+const dailyAggregateStock = readFileSync(
+  new URL('../supabase/migrations/0107_daily_aggregate_stock.sql', import.meta.url),
+  'utf8',
+);
+const dailyAggregateCompletion = readFileSync(
+  new URL('../supabase/migrations/0108_finish_daily_aggregate_workflow.sql', import.meta.url),
+  'utf8',
+);
 
 const COURIER_ID = '10000000-0000-4000-8000-000000000001';
 const ADMIN_ID = '10000000-0000-4000-8000-000000000002';
@@ -37,6 +49,7 @@ const STOP_ID = '40000000-0000-4000-8000-000000000001';
 const ICE_ID = '50000000-0000-4000-8000-000000000001';
 const HOLDING_ID = '60000000-0000-4000-8000-000000000001';
 const SHOP_SOURCE_ID = '60000000-0000-4000-8000-000000000002';
+const TRUCK_ID = '60000000-0000-4000-8000-000000000003';
 const SERVICE_DATE = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' });
 const NEXT_SERVICE_DATE = new Date(`${SERVICE_DATE}T12:00:00+07:00`);
 NEXT_SERVICE_DATE.setDate(NEXT_SERVICE_DATE.getDate() + 1);
@@ -64,6 +77,10 @@ async function createDatabase(t) {
     create type public.stock_location_kind as enum (
       'truck', 'team', 'small_vehicle', 'work_site', 'reserve_bin', 'front_vehicle'
     );
+    create type public.stock_movement_kind as enum (
+      'factory_order', 'transfer', 'damage', 'return_to_factory'
+    );
+    create type public.stock_movement_status as enum ('active', 'cancelled');
 
     create table public.auth_context (
       singleton boolean primary key default true,
@@ -96,7 +113,10 @@ async function createDatabase(t) {
     create table public.delivery_rounds (
       id uuid primary key,
       service_date date not null,
-      status public.delivery_round_status not null
+      status public.delivery_round_status not null,
+      cancelled_at timestamptz,
+      closed_by uuid references public.users(id),
+      closed_at timestamptz
     );
     create table public.delivery_round_members (
       round_id uuid not null references public.delivery_rounds(id),
@@ -117,6 +137,8 @@ async function createDatabase(t) {
       name text not null,
       kind public.stock_location_kind not null,
       assigned_user_id uuid references public.users(id),
+      is_courier_source boolean not null default false,
+      holds_inventory boolean not null default true,
       is_active boolean not null default true
     );
     create table public.shops (
@@ -172,6 +194,38 @@ async function createDatabase(t) {
       ice_type_id uuid not null references public.ice_types(id),
       quantity integer not null check (quantity > 0),
       primary key (delivery_event_id, ice_type_id)
+    );
+    create table public.stock_movements (
+      id uuid primary key default gen_random_uuid(),
+      service_date date not null,
+      round_id uuid references public.delivery_rounds(id),
+      kind public.stock_movement_kind not null,
+      from_location_id uuid references public.stock_locations(id),
+      to_location_id uuid references public.stock_locations(id),
+      note text,
+      idempotency_key uuid not null unique,
+      request_fingerprint text,
+      status public.stock_movement_status not null default 'active',
+      recorded_by uuid not null references public.users(id),
+      recorded_at timestamptz not null default now()
+    );
+    create table public.stock_movement_items (
+      movement_id uuid not null references public.stock_movements(id),
+      ice_type_id uuid not null references public.ice_types(id),
+      quantity numeric(12,1) not null check (quantity > 0),
+      primary key (movement_id, ice_type_id)
+    );
+    create table public.factory_receipts (
+      id uuid primary key default gen_random_uuid(),
+      factory_order_id uuid not null unique references public.stock_movements(id),
+      service_date date not null,
+      truck_location_id uuid not null references public.stock_locations(id)
+    );
+    create table public.factory_receipt_items (
+      factory_receipt_id uuid not null references public.factory_receipts(id),
+      ice_type_id uuid not null references public.ice_types(id),
+      actual_quantity numeric(12,1) not null,
+      primary key (factory_receipt_id, ice_type_id)
     );
     create table public.delivery_event_revisions (
       idempotency_key uuid primary key,
@@ -235,6 +289,18 @@ async function createDatabase(t) {
         select quantity from public.test_opening_balances
         where service_date = p_service_date and location_id = p_location_id
           and ice_type_id = p_ice_type_id
+      ), 0) + coalesce((
+        select sum(
+          case when movement.to_location_id = p_location_id then item.quantity else 0 end
+          - case when movement.from_location_id = p_location_id then item.quantity else 0 end
+        )::integer
+        from public.stock_movements movement
+        join public.stock_movement_items item on item.movement_id = movement.id
+        where movement.service_date = p_service_date
+          and movement.status = 'active'
+          and item.ice_type_id = p_ice_type_id
+          and (movement.from_location_id = p_location_id
+            or movement.to_location_id = p_location_id)
       ), 0) - coalesce((
         select sum(item.quantity)::integer
         from public.delivery_events event
@@ -277,9 +343,12 @@ async function createDatabase(t) {
     values ('${ROUND_ID}', date '${SERVICE_DATE}', 'open');
     insert into public.delivery_round_members (round_id, user_id)
     values ('${ROUND_ID}', '${COURIER_ID}');
-    insert into public.stock_locations (id, code, name, kind, assigned_user_id) values
-      ('${HOLDING_ID}', 'TEAM-1', 'Courier stock', 'team', '${COURIER_ID}'),
-      ('${SHOP_SOURCE_ID}', 'SITE-1', 'Shop stock', 'work_site', null);
+    insert into public.stock_locations (
+      id, code, name, kind, assigned_user_id, is_courier_source, holds_inventory
+    ) values
+      ('${HOLDING_ID}', 'TEAM-1', 'Courier stock', 'team', '${COURIER_ID}', false, true),
+      ('${SHOP_SOURCE_ID}', 'SITE-1', 'Shop stock', 'work_site', null, false, false),
+      ('${TRUCK_ID}', 'TRUCK-1', 'Main truck', 'truck', null, true, true);
     insert into public.shops (id, code, name, stock_location_id)
     values ('${SHOP_ID}', 'SHOP-1', 'Shop One', '${SHOP_SOURCE_ID}');
     insert into public.ice_types (id, code, name, unit)
@@ -295,7 +364,17 @@ async function createDatabase(t) {
       service_date, location_id, ice_type_id, quantity
     ) values
       (date '${SERVICE_DATE}', '${HOLDING_ID}', '${ICE_ID}', 10),
-      (date '${SERVICE_DATE}', '${SHOP_SOURCE_ID}', '${ICE_ID}', 50);
+      (date '${SERVICE_DATE}', '${SHOP_SOURCE_ID}', '${ICE_ID}', 50),
+      (date '${SERVICE_DATE}', '${TRUCK_ID}', '${ICE_ID}', 30);
+    insert into public.stock_movements (
+      id, service_date, kind, to_location_id, idempotency_key, recorded_by
+    ) values (
+      '65000000-0000-4000-8000-000000000001', date '${SERVICE_DATE}',
+      'factory_order', '${TRUCK_ID}', '65000000-0000-4000-8000-000000000002',
+      '${ADMIN_ID}'
+    );
+    insert into public.stock_movement_items (movement_id, ice_type_id, quantity)
+    values ('65000000-0000-4000-8000-000000000001', '${ICE_ID}', 30);
   `);
 
   await db.exec(foundation);
@@ -303,6 +382,78 @@ async function createDatabase(t) {
   await db.exec(operations);
   await db.exec(recovery);
   await db.exec(collectorAccess);
+  await db.exec(adminBackdatedBilling);
+  await db.exec(`
+    create function public.record_factory_order(
+      p_service_date date,
+      p_truck_location_id uuid,
+      p_items jsonb,
+      p_note text default null,
+      p_idempotency_key uuid default gen_random_uuid()
+    )
+    returns jsonb
+    language plpgsql
+    security definer
+    set search_path = public
+    as $$
+    begin
+      perform pg_advisory_xact_lock(hashtextextended(p_service_date::text, 0));
+
+      if exists (
+        select 1
+        from public.daily_stock_closures
+        where service_date = p_service_date and status = 'closed'
+      ) then
+        raise exception 'Stock for this service date is already closed';
+      end if;
+
+      insert into public.stock_movements (
+        service_date, kind, to_location_id, idempotency_key, recorded_by
+      ) values (
+        p_service_date, 'factory_order', p_truck_location_id,
+        p_idempotency_key, auth.uid()
+      );
+      return '{}'::jsonb;
+    end;
+    $$;
+
+    create function public.cancel_factory_order(
+      p_movement_id uuid,
+      p_reason text
+    )
+    returns jsonb
+    language plpgsql
+    security definer
+    set search_path = public
+    as $$
+    declare
+      v_movement public.stock_movements%rowtype;
+    begin
+      select * into v_movement
+      from public.stock_movements
+      where id = p_movement_id
+      for update;
+
+      perform pg_advisory_xact_lock(hashtextextended(v_movement.service_date::text, 0));
+
+      if exists (
+        select 1
+        from public.daily_stock_closures closure
+        where closure.service_date = v_movement.service_date
+          and closure.status = 'closed'
+      ) then
+        raise exception 'Stock for this service date is already closed';
+      end if;
+
+      update public.stock_movements
+      set status = 'cancelled'
+      where id = p_movement_id;
+      return '{}'::jsonb;
+    end;
+    $$;
+  `);
+  await db.exec(dailyAggregateStock);
+  await db.exec(dailyAggregateCompletion);
   await db.exec(`
     insert into public.ice_type_prices (
       ice_type_id, unit_price, valid_from, created_by
@@ -404,7 +555,7 @@ test('collection runs reject members who are not active couriers', async (t) => 
   assert.ok(validRun.rows[0].result.collection_run_id);
 });
 
-test('POS context and delivery use override price, assigned stock, and idempotent charge', async (t) => {
+test('POS context and delivery use override price, aggregate stock, and idempotent charge', async (t) => {
   const db = await createDatabase(t);
   await db.exec(`delete from public.delivery_round_members where round_id = '${ROUND_ID}'`);
   await assert.rejects(
@@ -417,10 +568,11 @@ test('POS context and delivery use override price, assigned stock, and idempoten
   `);
   const context = await db.query(`select public.get_delivery_pos_context('${STOP_ID}') as result`);
   assert.equal(context.rows[0].result.service_date, SERVICE_DATE);
-  assert.equal(context.rows[0].result.stock_source.id, HOLDING_ID);
+  assert.equal(context.rows[0].result.stock_source.id, null);
+  assert.equal(context.rows[0].result.stock_source.code, 'DAILY');
   assert.equal(Number(context.rows[0].result.items[0].unit_price), 18);
   assert.equal(context.rows[0].result.items[0].price_source, 'shop_override');
-  assert.equal(context.rows[0].result.items[0].stock_quantity, 10);
+  assert.equal(context.rows[0].result.items[0].stock_quantity, 30);
 
   const key = '70000000-0000-4000-8000-000000000001';
   const first = await db.query(`
@@ -430,7 +582,7 @@ test('POS context and delivery use override price, assigned stock, and idempoten
   `);
   assert.equal(Number(first.rows[0].result.total_amount), 36);
   assert.equal(first.rows[0].result.payment_status, 'unpaid');
-  assert.equal(first.rows[0].result.source_stock_location_id, HOLDING_ID);
+  assert.equal(first.rows[0].result.source_stock_location_id, SHOP_SOURCE_ID);
 
   const retry = await db.query(`
     select public.record_delivery(
@@ -459,11 +611,303 @@ test('POS context and delivery use override price, assigned stock, and idempoten
     update public.auth_context
     set user_id = '${ADMIN_ID}', app_role = 'admin'
   `);
-  const managerContext = await db.query(`
+  const adminContext = await db.query(`
     select public.get_delivery_pos_context('${STOP_ID}') as result
   `);
-  assert.equal(managerContext.rows[0].result.stock_source.id, SHOP_SOURCE_ID);
-  assert.equal(managerContext.rows[0].result.items[0].stock_quantity, 50);
+  assert.equal(adminContext.rows[0].result.stock_source.id, null);
+  assert.equal(adminContext.rows[0].result.items[0].stock_quantity, 28);
+});
+
+test('delivery creation and correction reject quantities outside half-bag increments', async (t) => {
+  const db = await createDatabase(t);
+
+  await assert.rejects(
+    db.query(`
+      select public.record_delivery(
+        '${STOP_ID}', '${itemPayload(0.1)}'::jsonb, 'delivered', null, null,
+        '70000000-0000-4000-8000-000000000096', 'immediate'
+      )
+    `),
+    /positive quantity/i,
+  );
+
+  const valid = await db.query(`
+    select public.record_delivery(
+      '${STOP_ID}', '${itemPayload(0.5)}'::jsonb, 'delivered', null, null,
+      '70000000-0000-4000-8000-000000000095', 'immediate'
+    ) as result
+  `);
+  assert.equal(Number(valid.rows[0].result.total_amount), 9);
+
+  await db.exec(`
+    update public.auth_context
+    set user_id = '${ADMIN_ID}', app_role = 'admin';
+  `);
+  await assert.rejects(
+    db.query(`
+      select public.revise_delivery_event(
+        '${valid.rows[0].result.delivery_event_id}', 'correct',
+        '${itemPayload(0.1)}'::jsonb, 'delivered', null, 'แก้จำนวน',
+        '70000000-0000-4000-8000-000000000094'
+      )
+    `),
+    /positive quantity/i,
+  );
+});
+
+test('internal transfers do not change aggregate stock and corrections preserve aggregate inventory', async (t) => {
+  const db = await createDatabase(t);
+  await db.exec(`
+    update public.auth_context
+    set user_id = '${ADMIN_ID}', app_role = 'admin';
+    insert into public.stock_movements (
+      id, service_date, kind, from_location_id, to_location_id,
+      idempotency_key, recorded_by
+    ) values (
+      '65000000-0000-4000-8000-000000000010', date '${SERVICE_DATE}',
+      'transfer', '${TRUCK_ID}', '${HOLDING_ID}',
+      '65000000-0000-4000-8000-000000000011', '${ADMIN_ID}'
+    );
+    insert into public.stock_movement_items (movement_id, ice_type_id, quantity)
+    values ('65000000-0000-4000-8000-000000000010', '${ICE_ID}', 10);
+  `);
+
+  const contextResult = await db.query(`
+    select public.get_delivery_pos_context('${STOP_ID}') as result
+  `);
+  assert.equal(contextResult.rows[0].result.stock_source.id, null);
+  assert.equal(contextResult.rows[0].result.items[0].stock_quantity, 30);
+
+  const key = '70000000-0000-4000-8000-000000000099';
+  await db.query(`
+    select public.record_delivery(
+      '${STOP_ID}', '${itemPayload(2)}'::jsonb, 'delivered', null, null,
+      '${key}', 'immediate'
+    )
+  `);
+  await db.query(`
+    select public.record_delivery(
+      '${STOP_ID}', '${itemPayload(2)}'::jsonb, 'delivered', null, null,
+      '${key}', 'immediate'
+    )
+  `);
+
+  const balances = await db.query(`
+    select
+      public.daily_aggregate_stock_balance_at(date '${SERVICE_DATE}', '${ICE_ID}') as aggregate,
+      (select count(*)::integer from public.stock_movements
+       where idempotency_key = '${key}') as movements,
+      (select count(*)::integer from public.delivery_events
+       where idempotency_key = '${key}') as deliveries,
+      (select source_stock_location_id from public.delivery_events
+       where idempotency_key = '${key}') as source
+  `);
+  assert.deepEqual({ ...balances.rows[0], aggregate: Number(balances.rows[0].aggregate) }, {
+    aggregate: 28,
+    movements: 0,
+    deliveries: 1,
+    source: SHOP_SOURCE_ID,
+  });
+
+  const original = await db.query(`
+    select id from public.delivery_events where idempotency_key = '${key}'
+  `);
+  await db.query(`
+    select public.revise_delivery_event(
+      '${original.rows[0].id}', 'correct', '${itemPayload(1)}'::jsonb,
+      'delivered', null, 'แก้จำนวน', '70000000-0000-4000-8000-000000000098'
+    )
+  `);
+  const correctedBalances = await db.query(`
+    select
+      public.daily_aggregate_stock_balance_at(date '${SERVICE_DATE}', '${ICE_ID}') as aggregate
+  `);
+  assert.deepEqual(
+    { aggregate: Number(correctedBalances.rows[0].aggregate) },
+    { aggregate: 29 },
+  );
+
+  await db.exec(`
+    update public.auth_context
+    set user_id = '${ROUND_LEAD_ID}', app_role = 'round_lead';
+  `);
+  const roundLeadContext = await db.query(`
+    select public.get_delivery_pos_context('${STOP_ID}') as result
+  `);
+  assert.equal(roundLeadContext.rows[0].result.stock_source.id, null);
+  assert.equal(roundLeadContext.rows[0].result.items[0].stock_quantity, 29);
+});
+
+test('admin delivery rejects a future service date at the database boundary', async (t) => {
+  const db = await createDatabase(t);
+  const futureRoundId = '20000000-0000-4000-8000-000000000099';
+  const futureStopId = '40000000-0000-4000-8000-000000000099';
+  await db.exec(`
+    update public.auth_context
+    set user_id = '${ADMIN_ID}', app_role = 'admin';
+
+    insert into public.delivery_rounds (id, service_date, status)
+    values ('${futureRoundId}', date '${NEXT_SERVICE_DATE_TEXT}', 'open');
+    insert into public.round_stops (
+      id, round_id, shop_id, shop_code_snapshot, shop_name_snapshot,
+      building_name_snapshot, floor_or_zone_snapshot, updated_by
+    ) values (
+      '${futureStopId}', '${futureRoundId}', '${SHOP_ID}', 'SHOP-1', 'Shop One',
+      'Building A', 'Zone 1', '${ADMIN_ID}'
+    );
+    insert into public.test_opening_balances (
+      service_date, location_id, ice_type_id, quantity
+    ) values (
+      date '${NEXT_SERVICE_DATE_TEXT}', '${TRUCK_ID}', '${ICE_ID}', 5
+    );
+  `);
+
+  await assert.rejects(
+    db.query(`
+      select public.record_delivery(
+        '${futureStopId}', '${itemPayload(1)}'::jsonb, 'delivered', null, null,
+        '70000000-0000-4000-8000-000000000097', 'immediate'
+      )
+    `),
+    /future service date/i,
+  );
+});
+
+test('half-bag refill is idempotent, cancellable, and aggregate close zeros the day', async (t) => {
+  const db = await createDatabase(t);
+  const refillKey = '70000000-0000-4000-8000-000000000090';
+  const refillItems = JSON.stringify([{ ice_type_id: ICE_ID, quantity: 0.5 }]);
+
+  await db.query(`
+    select public.record_daily_stock_refill(
+      date '${SERVICE_DATE}', '${refillItems}'::jsonb, 'เติมให้จุดบริการ', '${refillKey}'
+    )
+  `);
+  await db.query(`
+    select public.record_daily_stock_refill(
+      date '${SERVICE_DATE}', '${refillItems}'::jsonb, 'เติมให้จุดบริการ', '${refillKey}'
+    )
+  `);
+  let state = await db.query(`
+    select
+      public.daily_aggregate_stock_balance_at(date '${SERVICE_DATE}', '${ICE_ID}') as balance,
+      (select count(*)::integer from public.daily_stock_uses) as uses
+  `);
+  assert.deepEqual(
+    { balance: Number(state.rows[0].balance), uses: state.rows[0].uses },
+    { balance: 29.5, uses: 1 },
+  );
+
+  const refill = await db.query(`
+    select id from public.daily_stock_uses where idempotency_key = '${refillKey}'
+  `);
+  await db.exec(`
+    update public.auth_context
+    set user_id = '${ROUND_LEAD_ID}', app_role = 'round_lead'
+  `);
+  await db.query(`
+    select public.cancel_daily_stock_refill('${refill.rows[0].id}', 'บันทึกผิด')
+  `);
+  const refillHistory = await db.query(`
+    select public.get_daily_stock_refill_history(date '${SERVICE_DATE}') as result
+  `);
+  assert.equal(refillHistory.rows[0].result[0].status, 'cancelled');
+  assert.equal(refillHistory.rows[0].result[0].cancellation_reason, 'บันทึกผิด');
+  assert.equal(Number(refillHistory.rows[0].result[0].items[0].quantity), 0.5);
+  state = await db.query(`
+    select public.daily_aggregate_stock_balance_at(
+      date '${SERVICE_DATE}', '${ICE_ID}'
+    ) as balance
+  `);
+  assert.equal(Number(state.rows[0].balance), 30);
+
+  await db.query(`
+    select public.close_daily_aggregate_stock(
+      date '${SERVICE_DATE}',
+      '[{"ice_type_id":"${ICE_ID}","actual_quantity":30}]'::jsonb,
+      null,
+      '70000000-0000-4000-8000-000000000091'
+    )
+  `);
+  state = await db.query(`
+    select
+      public.daily_aggregate_stock_balance_at(date '${SERVICE_DATE}', '${ICE_ID}') as balance,
+      (select system_quantity from public.daily_aggregate_stock_closure_items
+       where service_date = date '${SERVICE_DATE}' and ice_type_id = '${ICE_ID}') as system,
+      (select status from public.daily_aggregate_stock_closures
+       where service_date = date '${SERVICE_DATE}') as status,
+      public.get_daily_aggregate_stock_summary(date '${SERVICE_DATE}') as summary
+  `);
+  assert.deepEqual(
+    {
+      balance: Number(state.rows[0].balance),
+      system: Number(state.rows[0].system),
+      status: state.rows[0].status,
+      returned: Number(state.rows[0].summary.items[0].returned_quantity),
+    },
+    { balance: 0, system: 30, status: 'closed', returned: 30 },
+  );
+
+  await assert.rejects(
+    db.query(`
+      select public.record_daily_stock_refill(
+        date '${SERVICE_DATE}', '${refillItems}'::jsonb, null,
+        '70000000-0000-4000-8000-000000000092'
+      )
+    `),
+    /already closed/i,
+  );
+});
+
+test('aggregate close makes all stock movements immutable', async (t) => {
+  const db = await createDatabase(t);
+  await db.exec(`
+    update public.auth_context
+    set user_id = '${ADMIN_ID}', app_role = 'admin';
+  `);
+  await db.query(`
+    select public.close_daily_aggregate_stock(
+      date '${SERVICE_DATE}',
+      '[{"ice_type_id":"${ICE_ID}","actual_quantity":30}]'::jsonb,
+      null,
+      '70000000-0000-4000-8000-000000000093'
+    )
+  `);
+
+  await assert.rejects(
+    db.query(`
+      select public.record_factory_order(
+        date '${SERVICE_DATE}', '${TRUCK_ID}', '${itemPayload(1)}'::jsonb, null,
+        '70000000-0000-4000-8000-000000000092'
+      )
+    `),
+    /already closed/i,
+  );
+  await assert.rejects(
+    db.query(`
+      select public.cancel_factory_order(
+        '65000000-0000-4000-8000-000000000001', 'ยกเลิกหลังปิดวัน'
+      )
+    `),
+    /already closed/i,
+  );
+  await assert.rejects(
+    db.query(`
+      update public.stock_movements
+      set service_date = date '${NEXT_SERVICE_DATE_TEXT}'
+      where id = '65000000-0000-4000-8000-000000000001'
+    `),
+    /already closed/i,
+  );
+
+  const movement = await db.query(`
+    select service_date::text, status from public.stock_movements
+    where id = '65000000-0000-4000-8000-000000000001'
+  `);
+  assert.deepEqual(movement.rows[0], {
+    service_date: SERVICE_DATE,
+    status: 'active',
+  });
 });
 
 test('missing payment profile or effective price fails before stock and ledger writes', async (t) => {
@@ -723,6 +1167,16 @@ test('credit-limit approval expires after its business day', async (t) => {
       '${HOLDING_ID}', '${ICE_ID}', 10
     ) on conflict (service_date, location_id, ice_type_id) do update
       set quantity = excluded.quantity;
+    insert into public.stock_movements (
+      id, service_date, kind, to_location_id, idempotency_key, recorded_by
+    ) values (
+      '65000000-0000-4000-8000-000000000020',
+      (now() at time zone 'Asia/Bangkok')::date - 1,
+      'factory_order', '${TRUCK_ID}',
+      '65000000-0000-4000-8000-000000000021', '${ADMIN_ID}'
+    );
+    insert into public.stock_movement_items (movement_id, ice_type_id, quantity)
+    values ('65000000-0000-4000-8000-000000000020', '${ICE_ID}', 10);
   `);
   const fingerprint = await db.query(`
     select public.delivery_request_fingerprint(
@@ -933,7 +1387,7 @@ test('payment recording enforces actor scope, collection scope, and stored evide
     /assigned scope/i,
   );
   const queue = await db.query(`
-    select public.get_collection_run_queue('${run.rows[0].result.collection_run_id}') as result
+    select public.get_today_collection_run_queue('${run.rows[0].result.collection_run_id}') as result
   `);
   assert.equal(queue.rows[0].result[0].charges[0].charge_id, chargeId);
 
@@ -993,7 +1447,7 @@ test('payment recording enforces actor scope, collection scope, and stored evide
   assert.equal(Number(payment.rows[0].result.allocated_amount), 18);
 });
 
-test('an assigned collection run recovers an older immediate balance', async (t) => {
+test('couriers are current-day only while managers can recover an older balance', async (t) => {
   const db = await createDatabase(t);
   const delivered = await db.query(`
     select public.record_delivery(
@@ -1016,18 +1470,51 @@ test('an assigned collection run recovers an older immediate balance', async (t)
   await db.exec(`
     update public.auth_context set user_id = '${OTHER_COURIER_ID}', app_role = 'courier';
   `);
-  const queue = await db.query(`
-    select public.get_collection_run_queue('${run.rows[0].result.collection_run_id}') as result
-  `);
-  assert.equal(queue.rows[0].result[0].charges[0].service_date, PREVIOUS_SERVICE_DATE_TEXT);
-
-  const payment = await db.query(`
-    select public.record_payment(
-      '${SHOP_ID}', '[{"charge_id":"${chargeId}","amount":18}]'::jsonb,
-      'cash', 18, null, null, '${run.rows[0].result.collection_run_id}', 18, null,
-      '90000000-0000-4000-8000-000000000011'
+  await assert.rejects(
+    db.query(`
+      select public.get_collection_run_queue(
+        '${run.rows[0].result.collection_run_id}'
+      )
+    `),
+    /round lead or admin/i,
+  );
+  const todayQueue = await db.query(`
+    select public.get_today_collection_run_queue(
+      '${run.rows[0].result.collection_run_id}'
     ) as result
   `);
+  assert.deepEqual(todayQueue.rows[0].result, []);
+
+  await assert.rejects(
+    db.query(`
+      select public.record_payment(
+        '${SHOP_ID}', '[{"charge_id":"${chargeId}","amount":18}]'::jsonb,
+        'cash', 18, null, null, '${run.rows[0].result.collection_run_id}', 18, null,
+        '90000000-0000-4000-8000-000000000011'
+      )
+    `),
+    /assigned collection scope/i,
+  );
+
+  await db.exec(`
+    update public.auth_context set user_id = '${ADMIN_ID}', app_role = 'admin';
+  `);
+  const recoveryQueue = await db.query(`
+    select public.get_collection_run_queue(
+      '${run.rows[0].result.collection_run_id}'
+    ) as result
+  `);
+  assert.equal(
+    recoveryQueue.rows[0].result[0].charges[0].service_date,
+    PREVIOUS_SERVICE_DATE_TEXT,
+  );
+  const payment = await db.query(`
+      select public.record_payment(
+        '${SHOP_ID}', '[{"charge_id":"${chargeId}","amount":18}]'::jsonb,
+        'cash', 18, null, null, '${run.rows[0].result.collection_run_id}', 18, null,
+        '90000000-0000-4000-8000-000000000012'
+      ) as result
+    `);
   assert.equal(Number(payment.rows[0].result.allocated_amount), 18);
 });
 

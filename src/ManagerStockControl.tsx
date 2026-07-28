@@ -16,18 +16,12 @@ import {
 import { supabase } from './lib/supabase';
 import { useRpcAction } from './hooks/useRpcAction';
 import type {
-  DailyStockCloseState,
   DeliveryRound,
-  StockCountReadiness,
-  StockCountSnapshot,
   StockControlSummary,
   StockLocationBalance,
-  StockCountVarianceReview,
 } from './types/app';
 
-import { StockCountPanel } from './features/stock-control/components/StockCountPanel';
-import { StockVarianceReviewModal } from './features/stock-control/components/StockVarianceReviewModal';
-import { StockCloseSummaryPanel } from './features/stock-control/components/StockCloseSummaryPanel';
+import { DailyAggregateStockClose } from './features/stock-control/components/DailyAggregateStockClose';
 
 const USER_AVATAR_BUCKET = 'user-avatars';
 const ICE_TYPE_IMAGE_BUCKET = 'ice-type-images';
@@ -63,49 +57,13 @@ export function ManagerStockControl({
   const [toLocationId, setToLocationId] = useState('');
   const [quantities, setQuantities] = useState<QuantityDraft>({});
   const [note, setNote] = useState('');
-  const [countLocationId, setCountLocationId] = useState('');
-  const [countReadiness, setCountReadiness] = useState<StockCountReadiness[]>([]);
-  const [closeState, setCloseState] = useState<DailyStockCloseState | null>(null);
-  const [closeNote, setCloseNote] = useState('');
-  const [confirmSkipUncounted, setConfirmSkipUncounted] = useState(false);
+  const [closeState, setCloseState] = useState<{ is_closed: boolean } | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loadedAt, setLoadedAt] = useState<string | null>(null);
   const [imageUrls, setImageUrls] = useState<Record<string, string>>({});
   const [failedImagePaths, setFailedImagePaths] = useState<Set<string>>(() => new Set());
   const [previewImage, setPreviewImage] = useState<{ name: string; url: string } | null>(null);
-
-  const [varianceReviews, setVarianceReviews] = useState<StockCountVarianceReview[]>([]);
-  const [isVarianceModalOpen, setIsVarianceModalOpen] = useState(false);
-  const [reviewSubmitting, setReviewSubmitting] = useState(false);
-  const [reviewError, setReviewError] = useState<string | null>(null);
-  const [recountRequiredLocationIds, setRecountRequiredLocationIds] = useState<Set<string>>(
-    () => new Set(),
-  );
-
-  const latestCounts = useMemo(() => {
-    const map = new Map<string, StockCountSnapshot>();
-    for (const readiness of countReadiness) {
-      if (readiness.status === 'current' && readiness.snapshot) {
-        map.set(readiness.location_id, readiness.snapshot);
-      }
-    }
-    return map;
-  }, [countReadiness]);
-
-  const readinessByLocation = useMemo(
-    () => new Map(countReadiness.map((readiness) => [readiness.location_id, readiness])),
-    [countReadiness],
-  );
-
-  const uncountedLocations = useMemo(() => {
-    if (!summary) return [];
-    return summary.locations.filter((location) => (
-      location.holds_inventory === true
-      && location.requires_daily_count === true
-      && !latestCounts.has(location.id)
-    ));
-  }, [summary, latestCounts]);
 
   const requestId = useRef(0);
 
@@ -150,11 +108,6 @@ export function ManagerStockControl({
     void loadImageUrls();
     return () => { cancelled = true; };
   }, [summary]);
-
-  useEffect(() => {
-    setConfirmSkipUncounted(false);
-    setRecountRequiredLocationIds(new Set());
-  }, [serviceDate]);
 
   useEffect(() => {
     if (!previewImage) return;
@@ -226,26 +179,13 @@ export function ManagerStockControl({
     }
   }, [summary, kind, isReturningToTruck, returnToTruckSourceLocations, transferSourceLocations]);
 
-  useEffect(() => {
-    if (!summary) return;
-    const selectedLocation = stockHolderLocations.find((location) => location.id === countLocationId)
-      ?? truckLocations.find((location) => location.is_courier_source === true)
-      ?? truckLocations[0]
-      ?? stockHolderLocations[0];
-    setCountLocationId(selectedLocation?.id ?? '');
-  }, [summary, stockHolderLocations, truckLocations, countLocationId, closeState?.is_closed]);
-
   async function loadSummary(requestedServiceDate: string, roundId: string | null) {
     if (!supabase) return;
     const currentRequest = ++requestId.current;
     setLoading(true);
     setError(null);
-    const [summaryResponse, readinessResponse, closeResponse, reviewsResponse] = await Promise.all([
+    const [summaryResponse, closeResponse] = await Promise.all([
       supabase.rpc('get_stock_control_summary', {
-        p_round_id: roundId,
-        p_service_date: requestedServiceDate,
-      }),
-      supabase.rpc('get_daily_stock_count_readiness', {
         p_round_id: roundId,
         p_service_date: requestedServiceDate,
       }),
@@ -253,25 +193,18 @@ export function ManagerStockControl({
         p_round_id: roundId,
         p_service_date: requestedServiceDate,
       }),
-      supabase.rpc('get_stock_count_variance_reviews', {
-        p_service_date: requestedServiceDate,
-      }),
     ]);
     if (currentRequest !== requestId.current) return;
 
     const firstError = summaryResponse.error
-      ?? readinessResponse.error
-      ?? closeResponse.error
-      ?? reviewsResponse.error;
+      ?? closeResponse.error;
     if (firstError) {
       setError(firstError.message);
       setSummary(null);
       setSummaryRoundId(null);
     } else {
       setSummary(summaryResponse.data as StockControlSummary);
-      setCountReadiness((readinessResponse.data ?? []) as StockCountReadiness[]);
-      setCloseState(closeResponse.data as DailyStockCloseState);
-      setVarianceReviews((reviewsResponse.data ?? []) as StockCountVarianceReview[]);
+      setCloseState(closeResponse.data as { is_closed: boolean });
       setSummaryRoundId(roundId);
       setLoadedAt(new Date().toISOString());
     }
@@ -361,122 +294,6 @@ export function ManagerStockControl({
     await stockMovementAction.execute(args, { signature });
   };
 
-  const locationCountAction = useRpcAction(
-    async (args: { counts: any[]; note: string }, idempotencyKey) => {
-      if (!supabase) throw new Error('Supabase is not initialized');
-      return supabase.rpc('record_location_count_v2', {
-        p_service_date: serviceDate,
-        p_location_id: countLocationId,
-        p_counts: args.counts,
-        p_note: args.note.trim() || null,
-        p_idempotency_key: idempotencyKey,
-      });
-    },
-    {
-      deps: [actionRound?.id, round?.id, serviceDate],
-      successMessage: () => {
-        const selectedLocation = summary?.locations.find((location) => location.id === countLocationId);
-        return `บันทึกยอดนับจริงของ “${selectedLocation?.name ?? ''}” แล้ว`;
-      },
-      onSuccess: async () => {
-        const recountedLocationId = countLocationId;
-        await loadSummary(serviceDate, round?.id ?? null);
-        setRecountRequiredLocationIds((current) => {
-          if (!current.has(recountedLocationId)) return current;
-          const next = new Set(current);
-          next.delete(recountedLocationId);
-          return next;
-        });
-      },
-    }
-  );
-
-  const handleReviewSubmit = async (reviewId: string, status: 'approved' | 'rejected', reviewNote: string) => {
-    if (!supabase) return;
-    setReviewSubmitting(true);
-    setReviewError(null);
-    const { error: reviewError } = await supabase.rpc('approve_stock_count_variance', {
-      p_review_id: reviewId,
-      p_status: status,
-      p_note: reviewNote.trim() || null,
-    });
-    if (reviewError) {
-      setReviewError(reviewError.message);
-    } else {
-      const { data: reviewsData, error: reloadError } = await supabase.rpc(
-        'get_stock_count_variance_reviews',
-        { p_service_date: serviceDate },
-      );
-      if (reloadError) {
-        setReviewError(reloadError.message);
-      } else {
-        setVarianceReviews((reviewsData ?? []) as StockCountVarianceReview[]);
-        if (status === 'rejected') {
-          const rejectedReview = varianceReviews.find((review) => review.id === reviewId);
-          setReviewError('ปฏิเสธยอดแล้ว กรุณาตรวจนับจุดนั้นใหม่ก่อนปิดสต๊อก');
-          if (rejectedReview) {
-            setRecountRequiredLocationIds((current) => new Set(current).add(rejectedReview.location_id));
-            setCountLocationId(rejectedReview.location_id);
-            setActiveTab('count');
-            setIsVarianceModalOpen(false);
-          }
-        }
-      }
-    }
-    setReviewSubmitting(false);
-  };
-
-  const closeDayAction = useRpcAction(
-    async (args: { note: string; useSystemForUncounted: boolean }, idempotencyKey) => {
-      if (!supabase) throw new Error('Supabase is not initialized');
-      return supabase.rpc('close_daily_stock_from_latest_counts', {
-        p_round_id: actionRound?.id ?? null,
-        p_service_date: serviceDate,
-        p_note: args.note.trim() || null,
-        p_idempotency_key: idempotencyKey,
-        p_use_system_for_uncounted: args.useSystemForUncounted,
-      });
-    },
-    {
-      deps: [actionRound?.id, round?.id, serviceDate],
-      successMessage: 'ปิดสต๊อกสิ้นวันและบันทึกส่งยอดคงเหลือกลับโรงงานแล้ว',
-      onSuccess: async (data) => {
-        setCloseState(data as DailyStockCloseState);
-        await loadSummary(serviceDate, round?.id ?? null);
-      },
-    }
-  );
-
-  const handleCloseDay = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!supabase || !summary || !closeState || isRoundSnapshot || closeState.is_closed) return;
-    if (pendingReviewsCount > 0) {
-      setReviewError(null);
-      setIsVarianceModalOpen(true);
-      return;
-    }
-    if (recountRequiredLocationIds.size > 0) {
-      setCountLocationId(recountRequiredLocationIds.values().next().value ?? '');
-      closeDayAction.setError('ต้องตรวจนับจุดที่ปฏิเสธยอดใหม่ก่อนปิดสต๊อกสิ้นวัน');
-      return;
-    }
-    if (closeState.open_round_count > 0) {
-      closeDayAction.setError('ต้องจัดการรายการค้างเดิมทั้งหมดก่อนปิดสต๊อกสิ้นวัน');
-      return;
-    }
-
-    if (uncountedLocations.length > 0 && !confirmSkipUncounted) {
-      closeDayAction.setError('กรุณายืนยันการปิดสต๊อกหากยังมีจุดที่ไม่ได้ตรวจนับ หรือทำการตรวจให้ครบก่อน');
-      return;
-    }
-
-    const noteValue = closeNote.trim();
-    const args = { note: noteValue, useSystemForUncounted: confirmSkipUncounted };
-
-    const signature = JSON.stringify({ serviceDate, roundId: actionRound?.id ?? null, ...args });
-    await closeDayAction.execute(args, { signature });
-  };
-
   const selectMovementKind = (nextTab: TabKind) => {
     if (!summary) return;
     setActiveTab(nextTab);
@@ -531,8 +348,6 @@ export function ManagerStockControl({
   if (!summary) {
     return <p className="error-text">{error ?? 'ไม่พบข้อมูลสต๊อก'}</p>;
   }
-  const countedLocation = stockHolderLocations.find((location) => location.id === countLocationId)
-    ?? stockHolderLocations[0];
   const requiresSource = true;
   const requiresDestination = kind === 'transfer';
   const sourceLocations = kind === 'transfer'
@@ -559,39 +374,8 @@ export function ManagerStockControl({
     stockMovementAction.reset();
   };
 
-  const pendingReviewsCount = varianceReviews.filter((r) => r.status === 'pending').length;
-
   return (
     <div className="stock-control">
-      {/* V2 Stock Variance Review Alert */}
-      {pendingReviewsCount > 0 && !isRoundSnapshot && (
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3.5 flex justify-between items-center shadow-sm" style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: 12 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <Warning size={20} color="#d97706" weight="fill" />
-            <span style={{ fontSize: '0.85rem', fontWeight: 600, color: '#92400e' }}>
-              คุณมียอดเบี่ยงเบนรอตรวจสอบ {pendingReviewsCount} รายการ
-            </span>
-          </div>
-          <button
-            type="button"
-            onClick={() => setIsVarianceModalOpen(true)}
-            style={{ padding: '6px 12px', backgroundColor: '#d97706', border: 'none', color: '#fff', borderRadius: 6, fontSize: '0.75rem', fontWeight: 'bold', cursor: 'pointer' }}
-          >
-            ตรวจสอบและอนุมัติ
-          </button>
-        </div>
-      )}
-
-      {/* V2 Stock Variance Review Modal */}
-      <StockVarianceReviewModal
-        isOpen={isVarianceModalOpen}
-        onClose={() => setIsVarianceModalOpen(false)}
-        reviews={varianceReviews}
-        onReviewSubmit={handleReviewSubmit}
-        loading={reviewSubmitting}
-        error={reviewError}
-      />
-
       {activeTab !== 'transfer' ? <div className="stock-layout-panel stock-current-summary-panel">
         <div className="stock-layout-header">
           <h3 className="stock-layout-title">
@@ -1065,172 +849,12 @@ export function ManagerStockControl({
               </div>
             </form>
           ) : (
-            <div>
-              <div style={{ marginBottom: 24 }}>
-                <LocationSelect
-                  label="จุดที่ต้องการตรวจนับ"
-                  locations={stockHolderLocations}
-                  onChange={setCountLocationId}
-                  value={countLocationId}
-                />
-              </div>
-              {countedLocation ? (
-                <StockCountPanel
-                  location={countedLocation}
-                  onSaveCount={async (counts, countNote) => {
-                    const args = { counts, note: countNote };
-                    const signature = JSON.stringify({
-                      serviceDate,
-                      locationId: countLocationId,
-                      ...args,
-                    });
-                    await locationCountAction.execute(args, { signature });
-                  }}
-                  loading={locationCountAction.isSubmitting}
-                  error={locationCountAction.error}
-                  successMessage={locationCountAction.success}
-                />
-              ) : <p className="empty-text">ยังไม่มีจุดถือครองสต๊อกที่ใช้งานได้</p>}
-            </div>
+            <DailyAggregateStockClose
+              onClosed={() => void loadSummary(serviceDate, round?.id ?? null)}
+              serviceDate={serviceDate}
+            />
           )}
         </div>
-      ) : null}
-
-      {!isRoundSnapshot && activeTab === 'count' ? (
-        <section className="daily-close-section" style={{ marginTop: 24 }}>
-          {closeState ? (
-            closeState.is_closed ? (
-              <StockCloseSummaryPanel closeState={closeState} />
-            ) : (
-              <form className="stock-movement-form" onSubmit={handleCloseDay}>
-                <div className="panel-header">
-                  <div>
-                    <p className="eyebrow">เมื่อสิ้นสุดการทำงานของวัน</p>
-                    <h3>ตรวจนับและปิดสต๊อกสิ้นวัน</h3>
-                  </div>
-                  <span className={`status-badge status-badge--neutral`}>
-                    {closeState.open_round_count > 0
-                      ? 'มีรายการค้างที่ต้องปิดก่อน'
-                      : 'พร้อมปิดงาน'}
-                  </span>
-                </div>
-                <p className="muted">ตรวจสอบผลการตรวจนับล่าสุดของแต่ละจุด ระบบจะรวมยอดเพื่อปิดสต๊อกและส่งคืนโรงงานตามยอดนี้</p>
-
-                {recountRequiredLocationIds.size > 0 ? (
-                  <p className="error-text">
-                    ต้องตรวจนับจุดที่ปฏิเสธยอดใหม่ก่อนปิดสต๊อก ({recountRequiredLocationIds.size} จุด)
-                  </p>
-                ) : null}
-
-                <div className="table-responsive" style={{ margin: '16px 0', border: '1px solid #e1e7ef', borderRadius: 8, overflow: 'hidden' }}>
-                  <table className="data-table" style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.9rem' }}>
-                    <thead style={{ backgroundColor: '#f8fafc', borderBottom: '1px solid #e1e7ef' }}>
-                      <tr>
-                        <th style={{ padding: '12px 16px', color: '#64748b', fontWeight: 600 }}>จุด</th>
-                        <th style={{ padding: '12px 16px', color: '#64748b', fontWeight: 600 }}>สถานะ</th>
-                        <th style={{ padding: '12px 16px', color: '#64748b', fontWeight: 600 }}>ผลตรวจ</th>
-                      </tr>
-                    </thead>
-                    <tbody style={{ backgroundColor: '#fff' }}>
-                      {summary.locations.filter((location) => (
-                        location.holds_inventory === true && location.requires_daily_count === true
-                      )).map((location) => {
-                        const readiness = readinessByLocation.get(location.id);
-                        const latest = readiness?.snapshot;
-                        let statusStr = 'ยังไม่ตรวจ';
-                        let statusColor = '#64748b';
-                        let resultStr = '—';
-                        let resultColor = '#64748b';
-
-                        if (readiness?.status === 'stale' && latest) {
-                          statusStr = `ต้องตรวจใหม่ · ตรวจล่าสุด ${formatStockTime(latest.counted_at)} น.`;
-                          statusColor = '#c2410c';
-                          resultStr = 'มีรายการสต๊อกหลังการตรวจ';
-                          resultColor = '#c2410c';
-                        } else if (readiness?.status === 'current' && latest) {
-                          statusStr = `ตรวจแล้ว ${formatStockTime(latest.counted_at)} น.`;
-                          statusColor = '#0f172a';
-
-                          let totalVariance = 0;
-                          const variances: string[] = [];
-                          latest.items.forEach(item => {
-                            totalVariance += item.variance_quantity;
-                            if (item.variance_quantity !== 0) {
-                              variances.push(`${item.ice_type_name} ${item.variance_quantity > 0 ? '+' : ''}${item.variance_quantity}`);
-                            }
-                          });
-
-                          if (totalVariance === 0 && variances.length === 0) {
-                            resultStr = 'ตรง';
-                            resultColor = '#10b981';
-                          } else {
-                            resultStr = variances.join(', ');
-                            resultColor = '#ef4444';
-                          }
-                        }
-
-                        return (
-                          <tr key={location.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                            <td style={{ padding: '12px 16px', fontWeight: 500 }}>
-                              {formatHolderName(location)}
-                              {location.assigned_employee ? <small style={{ display: 'block', marginTop: 3, color: '#64748b' }}>{formatLocationResponsibility(location)}</small> : null}
-                            </td>
-                            <td style={{ padding: '12px 16px', color: statusColor }}>{statusStr}</td>
-                            <td style={{ padding: '12px 16px', color: resultColor, fontWeight: 500 }}>{resultStr}</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-
-                <div style={{ display: 'flex', gap: 16, marginBottom: 24, flexWrap: 'wrap' }}>
-                  {uncountedLocations.length > 0 && (
-                    <button
-                      type="button"
-                      className="secondary-button"
-                      onClick={() => {
-                        setActiveTab('count');
-                        setCountLocationId(uncountedLocations[0].id);
-                        window.scrollTo({ top: 0, behavior: 'smooth' });
-                      }}
-                    >
-                      <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" style={{ marginRight: 6, verticalAlign: 'text-bottom' }}><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/></svg>
-                      ตรวจจุดที่ยังไม่ครบหรือข้อมูลเก่า ({uncountedLocations.length})
-                    </button>
-                  )}
-                </div>
-
-                {uncountedLocations.length > 0 && (
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px', backgroundColor: '#fff7ed', border: '1px solid #fdba74', borderRadius: 8, marginBottom: 16 }}>
-                    <input
-                      type="checkbox"
-                      checked={confirmSkipUncounted}
-                      onChange={(event) => setConfirmSkipUncounted(event.target.checked)}
-                    />
-                    <span style={{ color: '#c2410c', fontSize: '0.9rem', fontWeight: 500 }}>
-                      หัวหน้างานยืนยัน: ปิดวันโดยใช้ยอดตามระบบสำหรับจุดที่ยังไม่มีผลตรวจปัจจุบัน ({uncountedLocations.length} จุด)
-                    </span>
-                  </label>
-                )}
-
-                <label>เหตุผลหรือหมายเหตุปิดวัน (ถ้ามี)<textarea rows={2} value={closeNote} onChange={(event) => setCloseNote(event.target.value)} /></label>
-                {closeState.open_round_count > 0 ? <p className="error-text">ต้องปิดรายการค้างเดิมก่อนปิดสต๊อก</p> : null}
-                {closeDayAction.error ? <p className="error-text">{closeDayAction.error}</p> : null}
-                {closeDayAction.success ? <p className="success-text">{closeDayAction.success}</p> : null}
-
-                <button
-                  className="primary-button"
-                  disabled={closeDayAction.isSubmitting || closeState.open_round_count > 0 || recountRequiredLocationIds.size > 0 || (uncountedLocations.length > 0 && !confirmSkipUncounted)}
-                  type="submit"
-                >
-                  {closeDayAction.isSubmitting ? 'กำลังปิดสต๊อกและจบงานวันนี้...' : 'ปิดสต๊อกและจบงานวันนี้'}
-                </button>
-
-              </form>
-            )
-          ) : null}
-        </section>
       ) : null}
 
       {previewImage ? (

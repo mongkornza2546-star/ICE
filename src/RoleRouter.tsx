@@ -13,6 +13,7 @@ import { RoundWorkspace } from './RoundWorkspace';
 import { ManagerStockAudit } from './ManagerStockAudit';
 import { FinancialOperations } from './FinancialOperations';
 import type { UserProfile } from './types/app';
+import { toBangkokDateString } from './lib/serviceDate';
 
 /**
  * Wrapper that keeps its children mounted once rendered,
@@ -39,7 +40,8 @@ export function RoleRouter({
   const [profileLoading, setProfileLoading] = useState(true);
   const [profileError, setProfileError] = useState<string | null>(null);
   const [activeView, setActiveView] = useState<AdminView>('manager_overview');
-  const [courierView, setCourierView] = useState<'delivery' | 'collection'>('delivery');
+  const [courierView, setCourierView] = useState<'withdrawal' | 'pos' | 'collection'>('pos');
+  const [billingServiceDate, setBillingServiceDate] = useState(() => toBangkokDateString());
   const [deliveryDraftState, setDeliveryDraftState] = useState({ dirty: false, submitting: false });
   // Track which views have been visited so we only mount them on first visit
   // (lazy mount) but keep them alive afterwards (no unmount on tab switch).
@@ -153,17 +155,30 @@ export function RoleRouter({
       <EmployeeLayout onSignOut={signOut} profileLabel={profile.display_name} signOutDisabled={deliveryDraftState.submitting}>
         <nav aria-label="งานพนักงาน" className="employee-task-tabs">
           <button
-            aria-current={courierView === 'delivery' ? 'page' : undefined}
-            onClick={() => setCourierView('delivery')}
+            aria-current={courierView === 'withdrawal' ? 'page' : undefined}
+            onClick={() => {
+              if (courierView !== 'withdrawal' && !confirmLeavingDelivery()) return;
+              setCourierView('withdrawal');
+            }}
             type="button"
           >
-            ส่งน้ำแข็ง
+            เบิก
+          </button>
+          <button
+            aria-current={courierView === 'pos' ? 'page' : undefined}
+            onClick={() => {
+              if (courierView !== 'pos' && !confirmLeavingDelivery()) return;
+              setCourierView('pos');
+            }}
+            type="button"
+          >
+            POS
           </button>
           <button
             aria-current={courierView === 'collection' ? 'page' : undefined}
             disabled={deliveryDraftState.submitting}
             onClick={() => {
-              if (courierView === 'delivery' && !confirmLeavingDelivery()) return;
+              if (courierView !== 'collection' && !confirmLeavingDelivery()) return;
               setCourierView('collection');
             }}
             type="button"
@@ -171,8 +186,13 @@ export function RoleRouter({
             เก็บเงิน
           </button>
         </nav>
-        <KeepAlive active={courierView === 'delivery'}>
-          <EmployeeDeliveryWorkspace enableAssignedStockFlow onDraftStateChange={setDeliveryDraftState} requestScope={profile.id} />
+        <KeepAlive active={courierView !== 'collection'}>
+          <EmployeeDeliveryWorkspace
+            enableAssignedStockFlow={courierView === 'withdrawal'}
+            onDraftStateChange={setDeliveryDraftState}
+            requestScope={profile.id}
+            viewMode={courierView === 'withdrawal' ? 'withdrawal' : 'pos'}
+          />
         </KeepAlive>
         <KeepAlive active={courierView === 'collection'}>
           <FinancialOperations userRole="courier" />
@@ -222,13 +242,26 @@ export function RoleRouter({
     setActiveView(view);
   };
 
+  const changeBillingServiceDate = (serviceDate: string) => {
+    if (serviceDate === billingServiceDate) return;
+    if (serviceDate > toBangkokDateString()) return;
+    if (!confirmLeavingDelivery()) return;
+    setBillingServiceDate(serviceDate);
+  };
+
   return (
     <AdminLayout
       activeView={currentView}
       allowedViews={allowedViews}
       onNavigate={navigate}
+      onServiceDateChange={profile.role === 'admin' && currentView === 'delivery'
+        ? changeBillingServiceDate
+        : undefined}
       onSignOut={signOut}
       profileLabel={profile.display_name}
+      serviceDate={profile.role === 'admin' && currentView === 'delivery'
+        ? billingServiceDate
+        : undefined}
       signOutDisabled={deliveryDraftState.submitting}
     >
       {/* Keep-alive views: mount on first visit, stay mounted (hidden) on tab switch */}
@@ -273,7 +306,12 @@ export function RoleRouter({
       )}
       {visitedViews.has('delivery') && (
         <KeepAlive active={currentView === 'delivery'}>
-          <EmployeeDeliveryWorkspace onDraftStateChange={setDeliveryDraftState} requestScope={profile.id} stockSourceLabel="จุดสต๊อกของร้าน" />
+          <EmployeeDeliveryWorkspace
+            onDraftStateChange={setDeliveryDraftState}
+            requestScope={profile.id}
+            serviceDate={profile.role === 'admin' ? billingServiceDate : undefined}
+            stockSourceLabel="สต๊อกรวมประจำวัน"
+          />
         </KeepAlive>
       )}
       {visitedViews.has('financial_operations') && (

@@ -6,7 +6,6 @@ import type {
   DailyStockCloseState,
   DeliveryRound,
   StockControlSummary,
-  StockCountReadiness,
 } from '../src/types/app';
 
 const mocks = vi.hoisted(() => ({ rpc: vi.fn() }));
@@ -80,29 +79,22 @@ const closeReadyState: DailyStockCloseState = {
   open_round_count: 0,
 };
 
-const currentReadiness: StockCountReadiness[] = summary.locations
-  .filter((location) => location.holds_inventory && location.requires_daily_count)
-  .map((location) => ({
-  location_id: location.id,
-  location_name: location.name,
-  status: 'current',
-  snapshot: {
-    id: `count-${location.id}`,
-    counted_at: '2026-07-20T18:00:00+07:00',
-    note: null,
-    location_id: location.id,
-    location_name: location.name,
-    counted_by: 'หัวหน้าทดสอบ',
-    items: location.balances.map((balance) => ({
-      ice_type_id: balance.ice_type_id,
-      ice_type_name: balance.ice_type_name,
-      unit: balance.unit,
-      system_quantity: balance.quantity,
-      actual_quantity: balance.quantity,
-      variance_quantity: 0,
-    })),
-  },
-  }));
+const aggregateSummary = {
+  service_date: round.service_date,
+  status: 'open',
+  items: [{
+    ice_type_id: 'ice-1',
+    code: 'SMALL',
+    name: 'หลอดเล็ก',
+    unit: 'ถุง',
+    ordered_quantity: 30,
+    sold_quantity: 5,
+    refill_quantity: 0,
+    damaged_quantity: 0,
+    returned_quantity: 0,
+    available_quantity: 25,
+  }],
+};
 
 describe('ManagerStockControl movement tabs', () => {
   beforeEach(() => {
@@ -114,6 +106,9 @@ describe('ManagerStockControl movement tabs', () => {
       if (name === 'get_daily_stock_count_readiness') return { data: [], error: null };
       if (name === 'get_daily_stock_close_state') return { data: closeState, error: null };
       if (name === 'get_stock_count_variance_reviews') return { data: [], error: null };
+      if (name === 'get_daily_aggregate_stock_summary') {
+        return { data: aggregateSummary, error: null };
+      }
       return { data: null, error: null };
     });
   });
@@ -293,69 +288,6 @@ describe('ManagerStockControl movement tabs', () => {
     expect(screen.getByRole('button', { name: /รถบรรทุก/ })).toBeTruthy();
   });
 
-  it('shows the responsible employee and work sites on the actionable stock holder', async () => {
-    const user = userEvent.setup();
-    render(<ManagerStockControl operationRound={round} round={round} serviceDate={round.service_date} />);
-
-    const recipient = await screen.findByRole('button', { name: /สมชาย ใจดี/ });
-    expect(within(recipient).getAllByText(/สมชาย ใจดี/).length).toBeGreaterThan(0);
-    expect(within(recipient).getByText('A · จุดปฏิบัติงาน')).toBeTruthy();
-
-    const transferSource = screen.getByRole('combobox', { name: 'ต้นทาง (จาก)' }) as HTMLSelectElement;
-    expect(Array.from(transferSource.options).map((option) => option.value)).not.toContain('site-1');
-
-    await user.click(screen.getByRole('button', { name: 'ตรวจนับจริง' }));
-    const countLocation = screen.getByRole('combobox', { name: 'จุดที่ต้องการตรวจนับ' }) as HTMLSelectElement;
-    expect(Array.from(countLocation.options).find((option) => option.value === 'team-1')?.textContent).toContain('สมชาย ใจดี');
-  });
-
-  it('lists every inventory holder for an actual count, even without a daily-count requirement', async () => {
-    const optionalCountHolder = {
-      ...summary.locations[2],
-      id: 'reserve-1',
-      code: 'RESERVE',
-      name: 'จุดสำรอง',
-      kind: 'reserve_bin' as const,
-      requires_daily_count: false,
-    };
-    const summaryWithOptionalCountHolder = {
-      ...summary,
-      locations: [...summary.locations, optionalCountHolder],
-    };
-    mocks.rpc.mockImplementation(async (name: string) => {
-      if (name === 'get_stock_control_summary') return { data: summaryWithOptionalCountHolder, error: null };
-      if (name === 'get_location_count_history') return { data: [], error: null };
-      if (name === 'get_daily_stock_count_readiness') return { data: [], error: null };
-      if (name === 'get_daily_stock_close_state') return { data: closeState, error: null };
-      if (name === 'get_stock_count_variance_reviews') return { data: [], error: null };
-      return { data: null, error: null };
-    });
-
-    const user = userEvent.setup();
-    render(<ManagerStockControl operationRound={round} round={round} serviceDate={round.service_date} />);
-
-    await user.click(await screen.findByRole('button', { name: 'ตรวจนับจริง' }));
-    const countLocation = screen.getByRole('combobox', { name: 'จุดที่ต้องการตรวจนับ' }) as HTMLSelectElement;
-
-    expect(Array.from(countLocation.options).map((option) => option.value)).toContain('reserve-1');
-    expect(Array.from(countLocation.options).map((option) => option.value)).not.toContain('site-1');
-  });
-
-  it('removes factory receipt and starts the end-of-day count on the courier truck', async () => {
-    const user = userEvent.setup();
-    render(<ManagerStockControl operationRound={round} round={round} serviceDate={round.service_date} />);
-
-    await screen.findByRole('heading', { name: 'เลือกต้นทางและจุดรับสต๊อก' });
-    expect(screen.queryByRole('button', { name: 'ตรวจรับโรงงาน' })).toBeNull();
-    expect(mocks.rpc).not.toHaveBeenCalledWith('get_factory_receipt_summary', expect.anything());
-
-    await user.click(screen.getByRole('button', { name: 'ตรวจนับจริง' }));
-    expect(await screen.findByRole('heading', { name: 'นับยอดคงเหลือในรถบรรทุก' })).toBeTruthy();
-    expect((screen.getByRole('combobox', { name: 'จุดที่ต้องการตรวจนับ' }) as HTMLSelectElement).value).toBe('truck-1');
-    expect(screen.getByText(/เทียบกับยอดที่ระบบคาดว่าควรเหลือหลังหักรายการโอน ส่ง และเสียหาย/)).toBeTruthy();
-    expect(screen.getByText(/ควรเหลือบนรถ/)).toBeTruthy();
-  });
-
   it('shows a holder nickname without exposing its code or email', async () => {
     const holder = {
       ...summary.locations[2],
@@ -485,81 +417,6 @@ describe('ManagerStockControl movement tabs', () => {
     });
   });
 
-  it('renders joined variance metadata and submits a final review', async () => {
-    mocks.rpc.mockImplementation(async (name: string) => {
-      if (name === 'get_stock_control_summary') return { data: summary, error: null };
-      if (name === 'get_location_count_history') return { data: [], error: null };
-      if (name === 'get_daily_stock_count_readiness') return { data: [], error: null };
-      if (name === 'get_daily_stock_close_state') return { data: closeState, error: null };
-      if (name === 'get_stock_count_variance_reviews') {
-        return {
-          data: [{
-            id: 'review-1',
-            service_date: round.service_date,
-            location_id: 'team-1',
-            location_name: 'รถเข็นสมชาย',
-            ice_type_id: 'ice-1',
-            ice_type_name: 'หลอดเล็ก',
-            unit: 'ถุง',
-            system_quantity: 5,
-            actual_quantity: 4.5,
-            variance_quantity: -0.5,
-            status: 'pending',
-            created_at: '2026-07-20T18:00:00+07:00',
-          }],
-          error: null,
-        };
-      }
-      return { data: null, error: null };
-    });
-
-    const user = userEvent.setup();
-    render(<ManagerStockControl operationRound={round} round={round} serviceDate={round.service_date} />);
-
-    await user.click(await screen.findByRole('button', { name: 'ตรวจสอบและอนุมัติ' }));
-    expect(screen.getByRole('dialog').textContent).toContain('รถเข็นสมชาย · หลอดเล็ก');
-    expect(screen.getByRole('dialog').textContent).toContain('-0.5 ถุง');
-    await user.click(screen.getByRole('button', { name: 'อนุมัติยอด (Approve)' }));
-
-    await waitFor(() => expect(mocks.rpc).toHaveBeenCalledWith(
-      'approve_stock_count_variance',
-      { p_review_id: 'review-1', p_status: 'approved', p_note: null },
-    ));
-  });
-
-  it('reuses the count idempotency key when the same count is retried', async () => {
-    let countAttempts = 0;
-    mocks.rpc.mockImplementation(async (name: string) => {
-      if (name === 'get_stock_control_summary') return { data: summary, error: null };
-      if (name === 'get_location_count_history') return { data: [], error: null };
-      if (name === 'get_daily_stock_count_readiness') return { data: [], error: null };
-      if (name === 'get_daily_stock_close_state') return { data: closeState, error: null };
-      if (name === 'get_stock_count_variance_reviews') return { data: [], error: null };
-      if (name === 'record_location_count_v2') {
-        countAttempts += 1;
-        return countAttempts === 1
-          ? { data: null, error: { message: 'network timeout' } }
-          : { data: summary, error: null };
-      }
-      return { data: null, error: null };
-    });
-
-    const user = userEvent.setup();
-    render(<ManagerStockControl operationRound={round} round={round} serviceDate={round.service_date} />);
-    await user.click(await screen.findByRole('button', { name: 'ตรวจนับจริง' }));
-    const saveButton = screen.getByRole('button', { name: 'บันทึกผลการนับจริง' });
-
-    await user.click(saveButton);
-    expect(await screen.findByText(/network timeout/)).toBeTruthy();
-    await user.click(saveButton);
-
-    await waitFor(() => {
-      const calls = mocks.rpc.mock.calls.filter(([name]) => name === 'record_location_count_v2');
-      expect(calls).toHaveLength(2);
-      expect(calls[0][1].p_idempotency_key).toEqual(expect.any(String));
-      expect(calls[1][1].p_idempotency_key).toBe(calls[0][1].p_idempotency_key);
-    });
-  });
 });
 
 describe('ManagerStockControl daily close', () => {
@@ -567,189 +424,16 @@ describe('ManagerStockControl daily close', () => {
     mocks.rpc.mockImplementation(async (name: string) => {
       if (name === 'get_stock_control_summary') return { data: summary, error: null };
       if (name === 'get_location_count_history') return { data: [], error: null };
-      if (name === 'get_daily_stock_count_readiness') return { data: currentReadiness, error: null };
       if (name === 'get_daily_stock_close_state') return { data: closeReadyState, error: null };
       if (name === 'get_stock_count_variance_reviews') return { data: [], error: null };
-      if (name === 'close_daily_stock_from_latest_counts') return { data: closeReadyState, error: null };
-      return { data: null, error: null };
-    });
-  });
-
-  it('closes from current server-side count snapshots without sending client-computed counts', async () => {
-    const user = userEvent.setup();
-    render(<ManagerStockControl operationRound={round} round={round} serviceDate={round.service_date} />);
-
-    await user.click(await screen.findByRole('button', { name: 'ตรวจนับจริง' }));
-    const closeButton = await screen.findByRole('button', { name: 'ปิดสต๊อกและจบงานวันนี้' });
-
-    expect((closeButton as HTMLButtonElement).disabled).toBe(false);
-    expect(screen.queryByRole('checkbox', { name: /หัวหน้างานยืนยัน/ })).toBeNull();
-    await user.click(closeButton);
-
-    await waitFor(() => expect(mocks.rpc).toHaveBeenCalledWith(
-      'close_daily_stock_from_latest_counts',
-      expect.objectContaining({
-        p_service_date: round.service_date,
-        p_use_system_for_uncounted: false,
-        p_idempotency_key: expect.any(String),
-      }),
-    ));
-    const closeCall = mocks.rpc.mock.calls.find(([name]) => name === 'close_daily_stock_from_latest_counts');
-    expect(closeCall?.[1]).not.toHaveProperty('p_counts');
-  });
-
-  it('opens the variance approval popup instead of closing while reviews are pending', async () => {
-    mocks.rpc.mockImplementation(async (name: string) => {
-      if (name === 'get_stock_control_summary') return { data: summary, error: null };
-      if (name === 'get_location_count_history') return { data: [], error: null };
-      if (name === 'get_daily_stock_count_readiness') return { data: currentReadiness, error: null };
-      if (name === 'get_daily_stock_close_state') return { data: closeReadyState, error: null };
-      if (name === 'get_stock_count_variance_reviews') {
-        return {
-          data: [{
-            id: 'review-1',
-            service_date: round.service_date,
-            location_id: 'team-1',
-            location_name: 'รถเข็นสมชาย',
-            ice_type_id: 'ice-1',
-            ice_type_name: 'หลอดเล็ก',
-            unit: 'ถุง',
-            system_quantity: 5,
-            actual_quantity: 4.5,
-            variance_quantity: -0.5,
-            status: 'pending',
-            created_at: '2026-07-20T18:00:00+07:00',
-          }],
-          error: null,
-        };
+      if (name === 'get_daily_aggregate_stock_summary') {
+        return { data: aggregateSummary, error: null };
       }
-      if (name === 'close_daily_stock_from_latest_counts') return { data: closeReadyState, error: null };
-      return { data: null, error: null };
-    });
-    const user = userEvent.setup();
-    render(<ManagerStockControl operationRound={round} round={round} serviceDate={round.service_date} />);
-
-    await user.click(await screen.findByRole('button', { name: 'ตรวจนับจริง' }));
-    await user.click(await screen.findByRole('button', { name: 'ปิดสต๊อกและจบงานวันนี้' }));
-
-    expect(screen.getByRole('dialog').textContent).toContain('รถเข็นสมชาย · หลอดเล็ก');
-    expect(mocks.rpc).not.toHaveBeenCalledWith(
-      'close_daily_stock_from_latest_counts',
-      expect.anything(),
-    );
-  });
-
-  it('requires a replacement count after rejecting a variance', async () => {
-    let reviewStatus: 'pending' | 'rejected' | 'recounted' = 'pending';
-    mocks.rpc.mockImplementation(async (name: string) => {
-      if (name === 'get_stock_control_summary') return { data: summary, error: null };
-      if (name === 'get_location_count_history') return { data: [], error: null };
-      if (name === 'get_daily_stock_count_readiness') return { data: currentReadiness, error: null };
-      if (name === 'get_daily_stock_close_state') return { data: closeReadyState, error: null };
-      if (name === 'get_stock_count_variance_reviews') {
-        return {
-          data: reviewStatus === 'recounted' ? [] : [{
-            id: 'review-1',
-            service_date: round.service_date,
-            location_id: 'team-1',
-            location_name: 'รถเข็นสมชาย',
-            ice_type_id: 'ice-1',
-            ice_type_name: 'หลอดเล็ก',
-            unit: 'ถุง',
-            system_quantity: 5,
-            actual_quantity: 4.5,
-            variance_quantity: -0.5,
-            status: reviewStatus,
-            created_at: '2026-07-20T18:00:00+07:00',
-          }],
-          error: null,
-        };
-      }
-      if (name === 'approve_stock_count_variance') {
-        reviewStatus = 'rejected';
-        return { data: null, error: null };
-      }
-      if (name === 'record_location_count_v2') {
-        reviewStatus = 'recounted';
-        return { data: summary, error: null };
+      if (name === 'get_daily_stock_refill_history') return { data: [], error: null };
+      if (name === 'close_daily_aggregate_stock') {
+        return { data: { ...aggregateSummary, status: 'closed' }, error: null };
       }
       return { data: null, error: null };
-    });
-    const user = userEvent.setup();
-    render(<ManagerStockControl operationRound={round} round={round} serviceDate={round.service_date} />);
-
-    await user.click(await screen.findByRole('button', { name: 'ตรวจสอบและอนุมัติ' }));
-    await user.click(screen.getByRole('button', { name: 'ปฏิเสธยอด (Reject)' }));
-
-    const closeButton = await screen.findByRole('button', { name: 'ปิดสต๊อกและจบงานวันนี้' });
-    expect(screen.queryByRole('dialog')).toBeNull();
-    expect(screen.getByText(/ต้องตรวจนับจุดที่ปฏิเสธยอดใหม่ก่อนปิดสต๊อก/)).toBeTruthy();
-    expect((closeButton as HTMLButtonElement).disabled).toBe(true);
-
-    await user.click(screen.getByRole('button', { name: 'บันทึกผลการนับจริง' }));
-    await waitFor(() => expect((closeButton as HTMLButtonElement).disabled).toBe(false));
-  });
-
-  it('requires an explicit override for missing or stale counts', async () => {
-    mocks.rpc.mockImplementation(async (name: string) => {
-      if (name === 'get_stock_control_summary') return { data: summary, error: null };
-      if (name === 'get_location_count_history') return { data: [], error: null };
-      if (name === 'get_daily_stock_count_readiness') {
-        return {
-          data: [
-            currentReadiness[0],
-            { ...currentReadiness[1], status: 'stale' },
-          ],
-          error: null,
-        };
-      }
-      if (name === 'get_daily_stock_close_state') return { data: closeReadyState, error: null };
-      if (name === 'get_stock_count_variance_reviews') return { data: [], error: null };
-      if (name === 'close_daily_stock_from_latest_counts') return { data: closeReadyState, error: null };
-      return { data: null, error: null };
-    });
-    const user = userEvent.setup();
-    render(<ManagerStockControl operationRound={round} round={round} serviceDate={round.service_date} />);
-
-    await user.click(await screen.findByRole('button', { name: 'ตรวจนับจริง' }));
-    expect(await screen.findByText(/ต้องตรวจใหม่/)).toBeTruthy();
-    const closeButton = screen.getByRole('button', { name: 'ปิดสต๊อกและจบงานวันนี้' });
-    const override = screen.getByRole('checkbox', { name: /หัวหน้างานยืนยัน/ });
-
-    expect((closeButton as HTMLButtonElement).disabled).toBe(true);
-    await user.click(override);
-    expect((closeButton as HTMLButtonElement).disabled).toBe(false);
-    await user.click(closeButton);
-
-    await waitFor(() => expect(mocks.rpc).toHaveBeenCalledWith(
-      'close_daily_stock_from_latest_counts',
-      expect.objectContaining({ p_use_system_for_uncounted: true }),
-    ));
-  });
-
-  it('resets the uncounted override when the service date changes', async () => {
-    mocks.rpc.mockImplementation(async (name: string) => {
-      if (name === 'get_stock_control_summary') return { data: summary, error: null };
-      if (name === 'get_location_count_history') return { data: [], error: null };
-      if (name === 'get_daily_stock_count_readiness') return { data: [], error: null };
-      if (name === 'get_daily_stock_close_state') return { data: closeReadyState, error: null };
-      if (name === 'get_stock_count_variance_reviews') return { data: [], error: null };
-      return { data: null, error: null };
-    });
-    const user = userEvent.setup();
-    const { rerender } = render(
-      <ManagerStockControl operationRound={null} round={null} serviceDate={round.service_date} />,
-    );
-
-    await user.click(await screen.findByRole('button', { name: 'ตรวจนับจริง' }));
-    const override = await screen.findByRole('checkbox', { name: /หัวหน้างานยืนยัน/ });
-    await user.click(override);
-    expect((override as HTMLInputElement).checked).toBe(true);
-
-    rerender(<ManagerStockControl operationRound={null} round={null} serviceDate="2026-07-21" />);
-    await waitFor(() => {
-      const checkbox = screen.getByRole('checkbox', { name: /หัวหน้างานยืนยัน/ }) as HTMLInputElement;
-      expect(checkbox.checked).toBe(false);
     });
   });
 
@@ -761,9 +445,102 @@ describe('ManagerStockControl daily close', () => {
 
     await user.click(await screen.findByRole('button', { name: 'ตรวจนับจริง' }));
     expect(await screen.findByRole('heading', { name: 'ตรวจนับและปิดสต๊อกสิ้นวัน' })).toBeTruthy();
+    expect(screen.queryByRole('combobox', { name: 'จุดที่ต้องการตรวจนับ' })).toBeNull();
+    expect(screen.getByText(/นับน้ำแข็งที่เหลือรวมจากรถและทุกจุด/)).toBeTruthy();
 
     await user.click(screen.getByRole('button', { name: 'โอนระหว่างจุด' }));
     expect(screen.queryByRole('heading', { name: 'ตรวจนับและปิดสต๊อกสิ้นวัน' })).toBeNull();
+  });
+
+  it('closes aggregate stock from one count per ice type', async () => {
+    const user = userEvent.setup();
+    render(<ManagerStockControl operationRound={round} round={round} serviceDate={round.service_date} />);
+
+    await user.click(await screen.findByRole('button', { name: 'ตรวจนับจริง' }));
+    expect(await screen.findByText(/สั่ง 30 · ขาย 5 · เติม 0 · เสีย 0 · คืน 0/)).toBeTruthy();
+
+    const count = screen.getByRole('spinbutton');
+    await user.clear(count);
+    await user.type(count, '24.5');
+    const closeButton = screen.getByRole('button', { name: 'ปิดสต๊อกและจบงานวันนี้' });
+    expect((closeButton as HTMLButtonElement).disabled).toBe(true);
+
+    await user.type(screen.getByRole('textbox'), 'ส่วนต่างยังไม่ทราบสาเหตุ');
+    await user.click(closeButton);
+
+    await waitFor(() => expect(mocks.rpc).toHaveBeenCalledWith(
+      'close_daily_aggregate_stock',
+      expect.objectContaining({
+        p_service_date: round.service_date,
+        p_counts: [{
+          ice_type_id: 'ice-1',
+          actual_quantity: 24.5,
+          note: 'ส่วนต่างยังไม่ทราบสาเหตุ',
+        }],
+        p_note: 'ส่วนต่างยังไม่ทราบสาเหตุ',
+        p_idempotency_key: expect.any(String),
+      }),
+    ));
+  });
+
+  it('lets a manager cancel a refill with an audited reason', async () => {
+    let cancelled = false;
+    vi.spyOn(window, 'prompt').mockReturnValue('บันทึกผิด');
+    mocks.rpc.mockImplementation(async (name: string) => {
+      if (name === 'get_stock_control_summary') return { data: summary, error: null };
+      if (name === 'get_daily_stock_close_state') return { data: closeReadyState, error: null };
+      if (name === 'get_daily_aggregate_stock_summary') {
+        return {
+          data: {
+            ...aggregateSummary,
+            items: [{
+              ...aggregateSummary.items[0],
+              refill_quantity: cancelled ? 0 : 0.5,
+              available_quantity: cancelled ? 25 : 24.5,
+            }],
+          },
+          error: null,
+        };
+      }
+      if (name === 'get_daily_stock_refill_history') {
+        return {
+          data: [{
+            id: 'refill-1',
+            status: cancelled ? 'cancelled' : 'active',
+            note: 'เติมให้จุดบริการ',
+            recorded_at: '2026-07-20T08:00:00+07:00',
+            recorded_by: 'พนักงานทดสอบ',
+            cancelled_at: cancelled ? '2026-07-20T09:00:00+07:00' : null,
+            cancelled_by: cancelled ? 'หัวหน้าทดสอบ' : null,
+            cancellation_reason: cancelled ? 'บันทึกผิด' : null,
+            items: [{
+              ice_type_id: 'ice-1',
+              ice_type_name: 'หลอดเล็ก',
+              unit: 'ถุง',
+              quantity: 0.5,
+            }],
+          }],
+          error: null,
+        };
+      }
+      if (name === 'cancel_daily_stock_refill') {
+        cancelled = true;
+        return { data: null, error: null };
+      }
+      return { data: null, error: null };
+    });
+
+    const user = userEvent.setup();
+    render(<ManagerStockControl operationRound={round} round={round} serviceDate={round.service_date} />);
+    await user.click(await screen.findByRole('button', { name: 'ตรวจนับจริง' }));
+    expect(await screen.findByRole('heading', { name: 'ประวัติเติมน้ำแข็ง' })).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: 'ยกเลิกรายการ' }));
+
+    await waitFor(() => expect(mocks.rpc).toHaveBeenCalledWith('cancel_daily_stock_refill', {
+      p_use_id: 'refill-1',
+      p_reason: 'บันทึกผิด',
+    }));
+    expect(await screen.findByText(/ยกเลิกโดย หัวหน้าทดสอบ · บันทึกผิด/)).toBeTruthy();
   });
 });
 
