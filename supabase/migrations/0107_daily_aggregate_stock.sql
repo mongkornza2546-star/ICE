@@ -3,7 +3,9 @@
 -- not gate POS sales or change the aggregate quantity.
 
 alter table public.delivery_items
-  drop column line_total;
+  drop column if exists line_total;
+
+drop view public.round_ice_reconciliation;
 
 alter table public.delivery_items
   alter column quantity type numeric(12, 1) using quantity::numeric(12, 1);
@@ -11,6 +13,23 @@ alter table public.delivery_items
 alter table public.delivery_items
   add column line_total numeric(12,2)
     generated always as ((quantity * unit_price)::numeric(12,2)) stored;
+
+create view public.round_ice_reconciliation
+with (security_invoker = true)
+as
+select
+  c.round_id,
+  c.ice_type_id,
+  c.loaded_quantity + c.replenished_quantity - c.remaining_quantity - c.damaged_quantity as expected_quantity,
+  coalesce(sum(i.quantity) filter (where e.status = 'active'), 0) as delivered_quantity,
+  (c.loaded_quantity + c.replenished_quantity - c.remaining_quantity - c.damaged_quantity)
+    - coalesce(sum(i.quantity) filter (where e.status = 'active'), 0) as variance_quantity
+from public.round_ice_counts c
+left join public.round_stops s on s.round_id = c.round_id
+left join public.delivery_events e on e.round_stop_id = s.id
+left join public.delivery_items i on i.delivery_event_id = e.id and i.ice_type_id = c.ice_type_id
+group by c.round_id, c.ice_type_id, c.loaded_quantity, c.replenished_quantity,
+  c.remaining_quantity, c.damaged_quantity;
 
 create table public.daily_stock_uses (
   id uuid primary key default gen_random_uuid(),

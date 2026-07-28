@@ -409,6 +409,19 @@ test('daily helper is not executable by anonymous or authenticated clients', asy
   assert.equal(privileges.rows[0].authenticated_execute, false);
 });
 
+test('audit UUID migration is safe when the daily close function is already fixed', async () => {
+  const db = await createDb();
+  await db.exec(migration0105);
+
+  const definition = await db.query(`
+    select pg_get_functiondef(
+      'public.close_daily_stock_v2(jsonb,text,uuid,date)'::regprocedure
+    ) as value;
+  `);
+  assert.match(definition.rows[0].value, /p_idempotency_key, 'closed'/);
+  assert.doesNotMatch(definition.rows[0].value, /p_idempotency_key::text, 'closed'/);
+});
+
 test('daily type accepts only the system daily name', async () => {
   const db = await createDb();
   await assert.rejects(

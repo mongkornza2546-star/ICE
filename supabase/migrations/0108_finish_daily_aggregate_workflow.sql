@@ -154,9 +154,13 @@ do $courier_collection_scope_patch$
 declare
   v_function regprocedure;
   v_definition text;
-  v_old_scope constant text :=
+  v_recovery_scope constant text :=
     $fragment$        or charge.status is distinct from 'active'
         or charge.payment_term not in ('immediate', 'end_of_day')$fragment$;
+  v_legacy_scope constant text :=
+    $fragment$        or charge.status is distinct from 'active'
+        or charge.service_date is distinct from v_collection_service_date
+        or charge.payment_term is distinct from 'end_of_day'$fragment$;
   v_new_scope constant text :=
     $fragment$        or charge.status is distinct from 'active'
         or (
@@ -177,19 +181,24 @@ begin
   v_function :=
     'public.record_payment(uuid,jsonb,public.payment_method,numeric,text,text,uuid,numeric,uuid,uuid)'::regprocedure;
   select pg_get_functiondef(v_function) into v_definition;
-  if strpos(v_definition, v_old_scope) = 0 then
-    raise exception 'record_payment does not contain the expected courier collection scope';
+  if strpos(v_definition, v_recovery_scope) > 0 then
+    v_definition := replace(v_definition, v_recovery_scope, v_new_scope);
+    execute v_definition;
+  elsif strpos(v_definition, v_legacy_scope) > 0 then
+    v_definition := replace(v_definition, v_legacy_scope, v_new_scope);
+    execute v_definition;
+  elsif strpos(v_definition, v_new_scope) = 0 then
+    raise exception 'record_payment does not contain a recognized collection scope';
   end if;
-  v_definition := replace(v_definition, v_old_scope, v_new_scope);
-  execute v_definition;
 
   v_function := 'public.get_collection_run_queue(uuid)'::regprocedure;
   select pg_get_functiondef(v_function) into v_definition;
-  if strpos(v_definition, v_old_queue_access) = 0 then
-    raise exception 'get_collection_run_queue does not contain the expected recovery access check';
+  if strpos(v_definition, v_old_queue_access) > 0 then
+    v_definition := replace(v_definition, v_old_queue_access, v_new_queue_access);
+    execute v_definition;
+  elsif strpos(v_definition, v_new_queue_access) = 0 then
+    raise exception 'get_collection_run_queue does not contain a recognized recovery access check';
   end if;
-  v_definition := replace(v_definition, v_old_queue_access, v_new_queue_access);
-  execute v_definition;
 end;
 $courier_collection_scope_patch$;
 

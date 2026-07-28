@@ -17,6 +17,10 @@ const operations = readFileSync(
   new URL('../supabase/migrations/0059_pos_financial_operations.sql', import.meta.url),
   'utf8',
 );
+const legacyRecordPayment = operations.slice(
+  operations.indexOf('create or replace function public.record_payment('),
+  operations.indexOf('revoke all on function public.record_payment('),
+);
 const recovery = readFileSync(
   new URL('../supabase/migrations/0060_recoverable_collection_balances.sql', import.meta.url),
   'utf8',
@@ -195,6 +199,31 @@ async function createDatabase(t) {
       quantity integer not null check (quantity > 0),
       primary key (delivery_event_id, ice_type_id)
     );
+    create table public.round_ice_counts (
+      round_id uuid not null references public.delivery_rounds(id),
+      ice_type_id uuid not null references public.ice_types(id),
+      loaded_quantity integer not null default 0,
+      replenished_quantity integer not null default 0,
+      remaining_quantity integer not null default 0,
+      damaged_quantity integer not null default 0,
+      primary key (round_id, ice_type_id)
+    );
+    create view public.round_ice_reconciliation
+    with (security_invoker = true)
+    as
+    select
+      c.round_id,
+      c.ice_type_id,
+      c.loaded_quantity + c.replenished_quantity - c.remaining_quantity - c.damaged_quantity as expected_quantity,
+      coalesce(sum(i.quantity) filter (where e.status = 'active'), 0) as delivered_quantity,
+      (c.loaded_quantity + c.replenished_quantity - c.remaining_quantity - c.damaged_quantity)
+        - coalesce(sum(i.quantity) filter (where e.status = 'active'), 0) as variance_quantity
+    from public.round_ice_counts c
+    left join public.round_stops s on s.round_id = c.round_id
+    left join public.delivery_events e on e.round_stop_id = s.id
+    left join public.delivery_items i on i.delivery_event_id = e.id and i.ice_type_id = c.ice_type_id
+    group by c.round_id, c.ice_type_id, c.loaded_quantity, c.replenished_quantity,
+      c.remaining_quantity, c.damaged_quantity;
     create table public.stock_movements (
       id uuid primary key default gen_random_uuid(),
       service_date date not null,
@@ -1516,6 +1545,20 @@ test('couriers are current-day only while managers can recover an older balance'
       ) as result
     `);
   assert.equal(Number(payment.rows[0].result.allocated_amount), 18);
+});
+
+test('daily aggregate completion patches the pre-recovery payment contract', async (t) => {
+  const db = await createDatabase(t);
+  await db.exec(legacyRecordPayment);
+  await db.exec(dailyAggregateCompletion);
+
+  const definition = await db.query(`
+    select pg_get_functiondef(
+      'public.record_payment(uuid,jsonb,public.payment_method,numeric,text,text,uuid,numeric,uuid,uuid)'::regprocedure
+    ) as value
+  `);
+  assert.match(definition.rows[0].value, /charge\.payment_term not in \('immediate', 'end_of_day'\)/i);
+  assert.match(definition.rows[0].value, /charge\.service_date is distinct from v_collection_service_date/i);
 });
 
 test('an approved outstanding exception is consumed by one partial payment', async (t) => {

@@ -13,11 +13,14 @@ begin
   select pg_get_functiondef(v_function)
   into v_definition;
 
-  if strpos(v_definition, v_old_fragment) = 0 then
+  if strpos(v_definition, v_old_fragment) > 0 then
+    execute replace(v_definition, v_old_fragment, v_new_fragment);
+  elsif strpos(v_definition, v_new_fragment) > 0 then
+    -- The destination schema already has the UUID-safe audit expression.
+    null;
+  else
     raise exception
-      'close_daily_stock_v2 does not contain the expected text audit entity expression';
+      'close_daily_stock_v2 does not contain a recognized audit entity expression';
   end if;
-
-  execute replace(v_definition, v_old_fragment, v_new_fragment);
 end;
 $$;
