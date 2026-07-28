@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Session } from '@supabase/supabase-js';
 import { supabase } from './lib/supabase';
 import { AdminLayout, type AdminView } from './AdminLayout';
@@ -15,6 +15,7 @@ import { FinancialOperations } from './FinancialOperations';
 import { Coins, Package, Storefront } from '@phosphor-icons/react';
 import type { UserProfile } from './types/app';
 import { toBangkokDateString } from './lib/serviceDate';
+import { clearNavigation, clearRecoveryForOwner, readNavigation, writeNavigation } from './lib/recoveryStorage';
 
 /**
  * Wrapper that keeps its children mounted once rendered,
@@ -44,6 +45,7 @@ export function RoleRouter({
   const [courierView, setCourierView] = useState<'withdrawal' | 'pos' | 'collection'>('pos');
   const [billingServiceDate, setBillingServiceDate] = useState(() => toBangkokDateString());
   const [deliveryDraftState, setDeliveryDraftState] = useState({ dirty: false, submitting: false });
+  const navigationOwner = useRef<string | null>(null);
   // Track which views have been visited so we only mount them on first visit
   // (lazy mount) but keep them alive afterwards (no unmount on tab switch).
   const [visitedViews, setVisitedViews] = useState<Set<AdminView>>(() => new Set(['manager_overview']));
@@ -90,6 +92,21 @@ export function RoleRouter({
   }, [onRecoverableSessionError, session.user.id]);
 
   useEffect(() => {
+    if (!profile) return;
+    if (navigationOwner.current !== profile.id) {
+      const saved = readNavigation(profile.id);
+      navigationOwner.current = profile.id;
+      setActiveView(saved?.activeView ? saved.activeView as AdminView : 'manager_overview');
+      setCourierView(saved?.courierView ?? 'pos');
+      setBillingServiceDate(saved?.billingServiceDate && saved.billingServiceDate <= toBangkokDateString()
+        ? saved.billingServiceDate
+        : toBangkokDateString());
+      return;
+    }
+    writeNavigation(profile.id, { activeView, courierView, billingServiceDate });
+  }, [activeView, billingServiceDate, courierView, profile]);
+
+  useEffect(() => {
     if (!deliveryDraftState.dirty && !deliveryDraftState.submitting) return undefined;
     const handleBeforeUnload = (event: BeforeUnloadEvent) => {
       event.preventDefault();
@@ -99,6 +116,12 @@ export function RoleRouter({
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [deliveryDraftState.dirty, deliveryDraftState.submitting]);
 
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent('ice-delivery-draft-state', {
+      detail: { dirty: deliveryDraftState.dirty || deliveryDraftState.submitting },
+    }));
+  }, [deliveryDraftState.dirty, deliveryDraftState.submitting]);
+
   const confirmLeavingDelivery = () => {
     if (deliveryDraftState.submitting) return false;
     return !deliveryDraftState.dirty || window.confirm('ยังไม่ได้บันทึกรายการนี้ ต้องการออกจากหน้านี้หรือไม่?');
@@ -106,6 +129,10 @@ export function RoleRouter({
 
   const signOut = async () => {
     if (!confirmLeavingDelivery()) return;
+    if (profile) {
+      clearNavigation(profile.id);
+      clearRecoveryForOwner(profile.id);
+    }
     await supabase?.auth.signOut();
   };
 

@@ -13,8 +13,31 @@ import type {
 import type { EmployeeDeliveryGateway, EmployeeDeliveryDraftState } from '../../EmployeeDeliveryWorkspace';
 import { usePendingRequests } from './usePendingRequests';
 import { compareShopCodes, normalizeSearch, stockQuantity, employeeErrorMessage } from './utils';
+import { clearRecovery, readRecovery, writeRecovery } from '../../lib/recoveryStorage';
 
 const PAD_VALUES = ['0', '1', '2', '3', '4', '5', '+'] as const;
+
+interface EmployeeWorkspaceRecovery {
+  selectedRoundId: string;
+  selectedBuildingId: string;
+  selectedZone: string;
+  query: string;
+  selectedCardId: string | null;
+  selectedIceTypeId: string;
+  deliveryQuantities: Record<string, number>;
+  transferQuantities: Record<string, number>;
+  paymentTerm: PaymentTerm;
+  paymentResult: DeliveryFinancialResult | null;
+  paymentOpen: boolean;
+  paymentMethod: PaymentMethod;
+  paymentAmount: string;
+  paymentReference: string;
+  approvalId: string | null;
+  approvalReason: string;
+  status: Exclude<ShopRoundStatus, 'pending'>;
+  problemOpen: boolean;
+  note: string;
+}
 
 export function useEmployeeDeliveryData({
   gateway,
@@ -32,6 +55,8 @@ export function useEmployeeDeliveryData({
   onDraftStateChange?: (state: EmployeeDeliveryDraftState) => void;
 }) {
   const { getOrCreatePendingRequest, clearPendingRequest } = usePendingRequests();
+  const recoveryMode = enableAssignedStockFlow ? 'withdrawal' : 'pos';
+  const recoveryScope = `${requestScope}:${serviceDate}:${recoveryMode}`;
 
   const [rounds, setRounds] = useState<DeliveryRound[]>([]);
   const [iceTypes, setIceTypes] = useState<IceTypeOption[]>([]);
@@ -67,6 +92,7 @@ export function useEmployeeDeliveryData({
   const [entryError, setEntryError] = useState<string | null>(null);
   const [stockError, setStockError] = useState<string | null>(null);
   const [loadingReference, setLoadingReference] = useState(true);
+  const [loadedReferenceServiceDate, setLoadedReferenceServiceDate] = useState<string | null>(null);
   const [loadingCards, setLoadingCards] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -74,6 +100,7 @@ export function useEmployeeDeliveryData({
 
   const referenceRequestId = useRef(0);
   const cardsRequestId = useRef(0);
+  const loadedCardsRoundId = useRef('');
   const stockRequestId = useRef(0);
   const posContextRequestId = useRef(0);
   const activeRoundId = useRef('');
@@ -83,10 +110,64 @@ export function useEmployeeDeliveryData({
   const shopButtonRefs = useRef(new Map<string, HTMLButtonElement>());
   const submissionRequestId = useRef(0);
   const transferRequestId = useRef(0);
+  const recoveryHydratedScope = useRef<string | null>(null);
+  const pendingCardRecovery = useRef<EmployeeWorkspaceRecovery | null>(null);
+  const [recoveryHydrated, setRecoveryHydrated] = useState(false);
+  const [recoveryReadyToPersist, setRecoveryReadyToPersist] = useState(false);
+  const recoverySnapshotRef = useRef<EmployeeWorkspaceRecovery>({
+    selectedRoundId,
+    selectedBuildingId,
+    selectedZone,
+    query,
+    selectedCardId,
+    selectedIceTypeId,
+    deliveryQuantities,
+    transferQuantities,
+    paymentTerm,
+    paymentResult,
+    paymentOpen,
+    paymentMethod,
+    paymentAmount,
+    paymentReference,
+    approvalId,
+    approvalReason,
+    status,
+    problemOpen,
+    note,
+  });
+  recoverySnapshotRef.current = {
+    selectedRoundId,
+    selectedBuildingId,
+    selectedZone,
+    query,
+    selectedCardId,
+    selectedIceTypeId,
+    deliveryQuantities,
+    transferQuantities,
+    paymentTerm,
+    paymentResult,
+    paymentOpen,
+    paymentMethod,
+    paymentAmount,
+    paymentReference,
+    approvalId,
+    approvalReason,
+    status,
+    problemOpen,
+    note,
+  };
+
+  const persistRecoveryNow = (overrides: Partial<EmployeeWorkspaceRecovery>) => {
+    writeRecovery(requestScope, serviceDate, recoveryMode, {
+      ...recoverySnapshotRef.current,
+      ...overrides,
+    });
+  };
 
   useEffect(() => {
     const requestId = ++referenceRequestId.current;
     setLoadingReference(true);
+    setLoadedReferenceServiceDate(null);
     setError(null);
     void gateway.loadReferenceData(serviceDate).then(({ rounds: nextRounds, iceTypes: nextIceTypes }) => {
       if (requestId !== referenceRequestId.current) return;
@@ -108,6 +189,7 @@ export function useEmployeeDeliveryData({
           ? nextRounds[0]
           : null;
       setSelectedRoundId((current) => nextRounds.some((round) => round.id === current) ? current : automaticRound?.id ?? '');
+      setLoadedReferenceServiceDate(serviceDate);
       setLoadingReference(false);
     }).catch((loadError: unknown) => {
       if (requestId !== referenceRequestId.current) return;
@@ -119,10 +201,48 @@ export function useEmployeeDeliveryData({
     };
   }, [gateway, referenceReloadId, serviceDate]);
 
+  useEffect(() => {
+    recoveryHydratedScope.current = null;
+    pendingCardRecovery.current = null;
+    setRecoveryHydrated(false);
+    setRecoveryReadyToPersist(false);
+  }, [recoveryScope]);
+
+  useEffect(() => {
+    if (loadingReference
+      || loadedReferenceServiceDate !== serviceDate
+      || recoveryHydratedScope.current === recoveryScope) return;
+    recoveryHydratedScope.current = recoveryScope;
+    const saved = readRecovery<EmployeeWorkspaceRecovery>(requestScope, serviceDate, recoveryMode)?.payload;
+    setRecoveryHydrated(true);
+    if (!saved) {
+      setRecoveryReadyToPersist(true);
+      return;
+    }
+
+    const selectedRoundStillExists = rounds.some((round) => round.id === saved.selectedRoundId);
+    const selectedIceTypeStillExists = iceTypes.some((iceType) => iceType.id === saved.selectedIceTypeId);
+    if (!selectedRoundStillExists) {
+      setRecoveryReadyToPersist(true);
+      return;
+    }
+    pendingCardRecovery.current = {
+      ...saved,
+      selectedRoundId: selectedRoundStillExists ? saved.selectedRoundId : '',
+      selectedIceTypeId: selectedIceTypeStillExists ? saved.selectedIceTypeId : iceTypes[0]?.id ?? '',
+    };
+    setSelectedBuildingId(saved.selectedBuildingId);
+    setSelectedZone(saved.selectedZone);
+    setQuery(saved.query);
+    setSelectedIceTypeId(selectedIceTypeStillExists ? saved.selectedIceTypeId : iceTypes[0]?.id ?? '');
+    if (selectedRoundStillExists) setSelectedRoundId(saved.selectedRoundId);
+  }, [iceTypes, loadedReferenceServiceDate, loadingReference, recoveryMode, recoveryScope, requestScope, rounds, serviceDate]);
+
   const loadCards = useCallback(async (roundId: string) => {
     if (!roundId) {
       cardsRequestId.current += 1;
       activeRoundId.current = '';
+      loadedCardsRoundId.current = '';
       setCards([]);
       setLoadingCards(false);
       return false;
@@ -130,17 +250,22 @@ export function useEmployeeDeliveryData({
     const requestId = ++cardsRequestId.current;
     const roundChanged = activeRoundId.current !== roundId;
     activeRoundId.current = roundId;
-    if (roundChanged) setCards([]);
+    if (roundChanged) {
+      loadedCardsRoundId.current = '';
+      setCards([]);
+    }
     setLoadingCards(true);
     setError(null);
     try {
       const nextCards = await gateway.loadShopCards(roundId);
       if (requestId !== cardsRequestId.current || activeRoundId.current !== roundId) return false;
+      loadedCardsRoundId.current = roundId;
       setCards(nextCards);
       setLoadingCards(false);
       return true;
     } catch (loadError) {
       if (requestId !== cardsRequestId.current || activeRoundId.current !== roundId) return false;
+      loadedCardsRoundId.current = '';
       setError(employeeErrorMessage(loadError));
       setLoadingCards(false);
       return false;
@@ -208,7 +333,11 @@ export function useEmployeeDeliveryData({
     .filter((item) => item.quantity > 0), [iceTypes, transferQuantities]);
   
   const anySubmitting = submitting || transferSubmitting;
-  const dirty = items.length > 0 || transferItems.length > 0 || status !== 'delivered' || note.trim().length > 0;
+  const dirty = items.length > 0
+    || transferItems.length > 0
+    || status !== 'delivered'
+    || note.trim().length > 0
+    || paymentOpen;
 
   useEffect(() => {
     onDraftStateChange?.({ dirty, submitting: anySubmitting });
@@ -263,7 +392,7 @@ export function useEmployeeDeliveryData({
     });
   }, []);
 
-  const openCard = (card: ShopCard) => {
+  const openCard = (card: ShopCard, recovery?: EmployeeWorkspaceRecovery) => {
     if (enableAssignedStockFlow && !stockState) return;
     browseScrollY.current = window.scrollY;
     returnFocusCardId.current = card.round_stop_id;
@@ -275,6 +404,20 @@ export function useEmployeeDeliveryData({
     setPosContextError(null);
     setPaymentResult(null);
     setPaymentOpen(false);
+    if (recovery) {
+      setDeliveryQuantities(recovery.deliveryQuantities);
+      setStatus(recovery.status);
+      setProblemOpen(recovery.problemOpen);
+      setNote(recovery.note);
+      setPaymentTerm(recovery.paymentTerm);
+      setPaymentResult(recovery.paymentResult);
+      setPaymentOpen(recovery.paymentOpen && Boolean(recovery.paymentResult?.charge_id));
+      setPaymentMethod(recovery.paymentMethod);
+      setPaymentAmount(recovery.paymentAmount);
+      setPaymentReference(recovery.paymentReference);
+      setApprovalId(recovery.approvalId);
+      setApprovalReason(recovery.approvalReason);
+    }
     const loadPosContext = gateway.loadDeliveryPosContext;
     if (loadPosContext) {
       const requestId = ++posContextRequestId.current;
@@ -285,11 +428,14 @@ export function useEmployeeDeliveryData({
         setDeliveryQuantities((current) => Object.fromEntries(
           iceTypes.map((iceType) => {
             const available = context.items.find((item) => item.ice_type_id === iceType.id)?.stock_quantity ?? 0;
-            return [iceType.id, Math.min(current[iceType.id] ?? 0, available)];
+            const intended = recovery?.deliveryQuantities[iceType.id] ?? current[iceType.id] ?? 0;
+            return [iceType.id, Math.min(intended, available)];
           }),
         ));
-        setPaymentTerm(context.payment_profile?.default_payment_term ?? 'immediate');
-        setPaymentMethod(context.payment_profile?.default_payment_method ?? 'cash');
+        if (!recovery) {
+          setPaymentTerm(context.payment_profile?.default_payment_term ?? 'immediate');
+          setPaymentMethod(context.payment_profile?.default_payment_method ?? 'cash');
+        }
         setPaymentEvidence(null);
         setLoadingPosContext(false);
       }).catch((loadError: unknown) => {
@@ -300,6 +446,38 @@ export function useEmployeeDeliveryData({
     }
     window.scrollTo({ top: 0, behavior: 'auto' });
   };
+
+  useEffect(() => {
+    const saved = pendingCardRecovery.current;
+    if (!saved || loadingCards || loadedCardsRoundId.current !== selectedRoundId || saved.selectedRoundId !== selectedRoundId) return;
+    if (enableAssignedStockFlow && !stockState) return;
+    pendingCardRecovery.current = null;
+    setTransferQuantities(saved.transferQuantities);
+    const card = cards.find((candidate) => candidate.round_stop_id === saved.selectedCardId);
+    if (card) openCard(card, saved);
+    setRecoveryReadyToPersist(true);
+  }, [cards, enableAssignedStockFlow, loadingCards, selectedRoundId, stockState]);
+
+  useEffect(() => {
+    if (!recoveryHydrated
+      || !recoveryReadyToPersist
+      || recoveryHydratedScope.current !== recoveryScope
+      || pendingCardRecovery.current) return;
+    const shouldPersist = Boolean(selectedCardId)
+      || transferItems.length > 0
+      || items.length > 0
+      || status !== 'delivered'
+      || note.trim().length > 0
+      || paymentOpen;
+    if (!shouldPersist) {
+      clearRecovery(requestScope, serviceDate, recoveryMode);
+      return;
+    }
+    const timeout = window.setTimeout(() => {
+      writeRecovery(requestScope, serviceDate, recoveryMode, recoverySnapshotRef.current);
+    }, 250);
+    return () => window.clearTimeout(timeout);
+  }, [approvalId, approvalReason, deliveryQuantities, items.length, note, paymentAmount, paymentMethod, paymentOpen, paymentReference, paymentResult, paymentTerm, problemOpen, query, recoveryHydrated, recoveryMode, recoveryReadyToPersist, requestScope, selectedBuildingId, selectedCardId, selectedIceTypeId, selectedRoundId, selectedZone, serviceDate, status, transferItems.length, transferQuantities]);
 
   const changeShop = (card: ShopCard) => {
     if (card.round_stop_id === selectedCardId) return;
@@ -422,9 +600,11 @@ export function useEmployeeDeliveryData({
         idempotencyKey: request.key,
       });
       if (requestId !== transferRequestId.current || activeStockRoundId.current !== selectedRound.id) return;
+      const clearedTransferQuantities = Object.fromEntries(iceTypes.map((iceType) => [iceType.id, 0]));
+      persistRecoveryNow({ transferQuantities: clearedTransferQuantities });
       clearPendingRequest(signature, request.key);
       setStockState(nextState);
-      setTransferQuantities(Object.fromEntries(iceTypes.map((iceType) => [iceType.id, 0])));
+      setTransferQuantities(clearedTransferQuantities);
       setSuccess(`รับน้ำแข็งเข้า ${nextState.holding_location.name} แล้ว`);
     } catch (transferError) {
       if (requestId !== transferRequestId.current || activeStockRoundId.current !== selectedRound.id) return;
@@ -497,16 +677,26 @@ export function useEmployeeDeliveryData({
         approvalId,
       });
       if (requestId !== submissionRequestId.current) return;
-      clearPendingRequest(signature, request.key);
       if (result && isDelivery && result.payment_term === 'immediate' && result.charge_id) {
+        const nextPaymentAmount = String(result.total_amount ?? '');
+        persistRecoveryNow({
+          paymentResult: result,
+          paymentOpen: true,
+          paymentAmount: nextPaymentAmount,
+          approvalId: null,
+          approvalReason: '',
+        });
+        clearPendingRequest(signature, request.key);
         setPaymentResult(result);
         setPaymentOpen(true);
-        setPaymentAmount(String(result.total_amount ?? ''));
+        setPaymentAmount(nextPaymentAmount);
         setApprovalId(null);
         setApprovalReason('');
         setSubmitting(false);
         return;
       }
+      clearRecovery(requestScope, serviceDate, recoveryMode);
+      clearPendingRequest(signature, request.key);
       await handleRecorded(isDelivery, result);
       if (requestId === submissionRequestId.current) setSubmitting(false);
     } catch (submitError) {
@@ -560,6 +750,7 @@ export function useEmployeeDeliveryData({
 
   const finishPaymentLater = async () => {
     if (!paymentResult || paymentSubmitting) return;
+    clearRecovery(requestScope, serviceDate, recoveryMode);
     setPaymentOpen(false);
     await handleRecorded(true);
     setSubmitting(false);
@@ -585,11 +776,6 @@ export function useEmployeeDeliveryData({
       receivedAmount,
       allocatedAmount,
       referenceNumber: paymentReference.trim() || null,
-      evidence: paymentEvidence ? {
-        name: paymentEvidence.name,
-        size: paymentEvidence.size,
-        lastModified: paymentEvidence.lastModified,
-      } : null,
     })}`;
     const request = getOrCreatePendingRequest(signature);
     setPaymentSubmitting(true);
@@ -610,6 +796,7 @@ export function useEmployeeDeliveryData({
         approvalId,
         idempotencyKey: request.key,
       });
+      clearRecovery(requestScope, serviceDate, recoveryMode);
       clearPendingRequest(signature, request.key);
       setPaymentOpen(false);
       await handleRecorded(true);

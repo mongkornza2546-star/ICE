@@ -1,8 +1,15 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { EmployeeDeliveryWorkspace, type EmployeeDeliveryGateway } from '../src/EmployeeDeliveryWorkspace';
-import type { DeliveryPosContext, DeliveryRound, IceTypeOption, ShopCard } from '../src/types/app';
+import type {
+  DeliveryFinancialResult,
+  DeliveryPosContext,
+  DeliveryRound,
+  IceTypeOption,
+  ShopCard,
+} from '../src/types/app';
+import { readRecovery } from '../src/lib/recoveryStorage';
 
 const round: DeliveryRound = {
   id: 'round-1',
@@ -215,6 +222,103 @@ describe('employee delivery POS', () => {
       chargeId: 'charge-1',
       expectedOutstandingAmount: 120,
     })));
+  });
+
+  it('durably transitions a successful delivery to payment recovery before returning', async () => {
+    const user = userEvent.setup();
+    let resolveDelivery!: (result: DeliveryFinancialResult) => void;
+    const api = gateway();
+    api.recordDelivery = vi.fn(() => new Promise((resolve) => {
+      resolveDelivery = resolve;
+    }));
+    render(
+      <EmployeeDeliveryWorkspace
+        gateway={api}
+        requestScope="payment-transition"
+        serviceDate={round.service_date}
+      />,
+    );
+    await user.click(await screen.findByRole('button', { name: /S001 ร้านทดสอบ/ }));
+    await user.click(within(await selectIceAndGetKeypad(user)).getByRole('button', { name: '1' }));
+    await waitFor(() => expect(
+      readRecovery('payment-transition', round.service_date, 'pos'),
+    ).not.toBeNull());
+    await user.click(screen.getByRole('button', { name: 'ยืนยันส่งร้านนี้' }));
+
+    await act(async () => resolveDelivery({
+      delivery_event_id: 'event-1',
+      round_stop_id: shop.round_stop_id,
+      charge_id: 'charge-1',
+      service_date: round.service_date,
+      total_amount: 120,
+      payment_term: 'immediate',
+      payment_status: 'unpaid',
+      due_date: null,
+      approval_id: null,
+      items: [],
+    }));
+
+    expect(readRecovery<{ paymentOpen: boolean; paymentResult: { charge_id: string } | null }>(
+      'payment-transition',
+      round.service_date,
+      'pos',
+    )?.payload).toEqual(expect.objectContaining({
+      paymentOpen: true,
+      paymentResult: expect.objectContaining({ charge_id: 'charge-1' }),
+    }));
+  });
+
+  it('reuses the payment idempotency key after optional evidence is lost on reload', async () => {
+    const user = userEvent.setup();
+    const api = gateway();
+    api.uploadPaymentEvidence = vi.fn().mockResolvedValue('evidence/payment.jpg');
+    api.recordPayment = vi.fn()
+      .mockRejectedValueOnce(new Error('network timeout'))
+      .mockResolvedValueOnce({
+        payment_id: 'payment-1',
+        shop_id: shop.shop_id,
+        payment_method: 'cash',
+        received_amount: 120,
+        allocated_amount: 120,
+        change_amount: 0,
+        status: 'active',
+      });
+    const firstView = render(
+      <EmployeeDeliveryWorkspace
+        gateway={api}
+        requestScope="payment-evidence-reload"
+        serviceDate={round.service_date}
+      />,
+    );
+    await user.click(await screen.findByRole('button', { name: /S001 ร้านทดสอบ/ }));
+    await user.click(within(await selectIceAndGetKeypad(user)).getByRole('button', { name: '1' }));
+    await user.click(screen.getByRole('button', { name: 'ยืนยันส่งร้านนี้' }));
+    await screen.findByRole('heading', { name: 'รับชำระจาก ร้านทดสอบ' });
+    await user.upload(
+      screen.getByLabelText(/หลักฐานการชำระ/),
+      new File(['evidence'], 'payment.jpg', { type: 'image/jpeg' }),
+    );
+    await user.click(screen.getByRole('button', { name: 'ยืนยันรับเงิน' }));
+    expect((await screen.findByRole('alert')).textContent).toContain('เชื่อมต่อไม่สำเร็จ');
+    const firstKey = vi.mocked(api.recordPayment!).mock.calls[0][0].idempotencyKey;
+    await waitFor(() => expect(
+      readRecovery<{ paymentOpen: boolean }>('payment-evidence-reload', round.service_date, 'pos')
+        ?.payload.paymentOpen,
+    ).toBe(true));
+
+    firstView.unmount();
+    render(
+      <EmployeeDeliveryWorkspace
+        gateway={api}
+        requestScope="payment-evidence-reload"
+        serviceDate={round.service_date}
+      />,
+    );
+    await screen.findByRole('heading', { name: 'รับชำระจาก ร้านทดสอบ' });
+    await user.click(screen.getByRole('button', { name: 'ยืนยันรับเงิน' }));
+    await waitFor(() => expect(api.recordPayment).toHaveBeenCalledTimes(2));
+
+    expect(vi.mocked(api.recordPayment!).mock.calls[1][0].idempotencyKey).toBe(firstKey);
   });
 
   it('uses a matching approval before leaving an immediate balance', async () => {

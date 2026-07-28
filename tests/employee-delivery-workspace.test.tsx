@@ -8,6 +8,7 @@ import {
   type EmployeeStockTransferPayload,
 } from '../src/EmployeeDeliveryWorkspace';
 import type { DeliveryRound, EmployeeStockState, IceTypeOption, ShopCard } from '../src/types/app';
+import { readRecovery, writeRecovery } from '../src/lib/recoveryStorage';
 
 const round: DeliveryRound = {
   id: 'round-1',
@@ -118,6 +119,184 @@ describe('EmployeeDeliveryWorkspace', () => {
 
     await screen.findByRole('heading', { name: 'เลือกร้านที่จะไปส่ง' });
     expect(gateway.loadReferenceData).toHaveBeenCalledWith('2026-07-15');
+  });
+
+  it('restores an open POS draft after the workspace is mounted again', async () => {
+    const user = userEvent.setup();
+    const gateway = createGateway();
+    const firstMount = render(
+      <EmployeeDeliveryWorkspace
+        gateway={gateway}
+        requestScope="recovery-courier"
+        serviceDate={round.service_date}
+      />,
+    );
+
+    await openShop(user);
+    const keypad = await selectProductAndGetKeypad(user);
+    await user.click(within(keypad).getByRole('button', { name: '1' }));
+    await waitFor(() => expect(
+      readRecovery<{ selectedCardId: string | null }>('recovery-courier', round.service_date, 'pos')?.payload.selectedCardId,
+    ).toBe(shopA.round_stop_id));
+    firstMount.unmount();
+
+    render(
+      <EmployeeDeliveryWorkspace
+        gateway={gateway}
+        requestScope="recovery-courier"
+        serviceDate={round.service_date}
+      />,
+    );
+
+    await screen.findByRole('heading', { name: new RegExp(shopA.shop_name) });
+  });
+
+  it('waits for reference data from the selected service date before restoring its draft', async () => {
+    const historicalRound: DeliveryRound = {
+      ...round,
+      id: 'round-history',
+      service_date: '2026-07-15',
+    };
+    let resolveHistoricalReference!: (value: { rounds: DeliveryRound[]; iceTypes: IceTypeOption[] }) => void;
+    const historicalReference = new Promise<{ rounds: DeliveryRound[]; iceTypes: IceTypeOption[] }>((resolve) => {
+      resolveHistoricalReference = resolve;
+    });
+    const gateway = createGateway({
+      loadReferenceData: vi.fn((serviceDate: string) => (
+        serviceDate === historicalRound.service_date
+          ? historicalReference
+          : Promise.resolve({ rounds: [round], iceTypes })
+      )),
+      loadShopCards: vi.fn((roundId: string) => Promise.resolve(roundId === historicalRound.id ? [shopB] : [shopA])),
+    });
+    writeRecovery('recovery-admin', historicalRound.service_date, 'pos', {
+      selectedRoundId: historicalRound.id,
+      selectedBuildingId: '',
+      selectedZone: '',
+      query: '',
+      selectedCardId: shopB.round_stop_id,
+      selectedIceTypeId: iceTypes[0].id,
+      deliveryQuantities: { [iceTypes[0].id]: 2, [iceTypes[1].id]: 0 },
+      transferQuantities: { [iceTypes[0].id]: 0, [iceTypes[1].id]: 0 },
+      paymentTerm: 'immediate',
+      paymentResult: null,
+      paymentOpen: false,
+      paymentMethod: 'cash',
+      paymentAmount: '',
+      paymentReference: '',
+      approvalId: null,
+      approvalReason: '',
+      status: 'delivered',
+      problemOpen: false,
+      note: '',
+    });
+
+    const view = render(
+      <EmployeeDeliveryWorkspace
+        gateway={gateway}
+        requestScope="recovery-admin"
+        serviceDate={round.service_date}
+      />,
+    );
+    await screen.findByRole('button', { name: new RegExp(shopA.shop_name) });
+
+    view.rerender(
+      <EmployeeDeliveryWorkspace
+        gateway={gateway}
+        requestScope="recovery-admin"
+        serviceDate={historicalRound.service_date}
+      />,
+    );
+    await act(async () => {
+      resolveHistoricalReference({ rounds: [historicalRound], iceTypes });
+    });
+
+    await screen.findByRole('heading', { name: new RegExp(shopB.shop_name) });
+  });
+
+  it('clears a completed delivery draft before refreshing server state', async () => {
+    const user = userEvent.setup();
+    let resolveDelivery!: () => void;
+    let resolveCardsRefresh!: (cards: ShopCard[]) => void;
+    const cardsRefresh = new Promise<ShopCard[]>((resolve) => {
+      resolveCardsRefresh = resolve;
+    });
+    const loadShopCards = vi.fn()
+      .mockResolvedValueOnce([shopA, shopB])
+      .mockImplementationOnce(() => cardsRefresh);
+    const recordDelivery = vi.fn(() => new Promise<void>((resolve) => {
+      resolveDelivery = resolve;
+    }));
+    const gateway = createGateway({ loadShopCards, recordDelivery });
+    const view = render(
+      <EmployeeDeliveryWorkspace
+        gateway={gateway}
+        requestScope="completed-delivery"
+        serviceDate={round.service_date}
+      />,
+    );
+
+    await openShop(user);
+    await user.click(within(await selectProductAndGetKeypad(user)).getByRole('button', { name: '1' }));
+    await waitFor(() => expect(
+      readRecovery('completed-delivery', round.service_date, 'pos'),
+    ).not.toBeNull());
+    await user.click(screen.getByRole('button', { name: 'ยืนยันส่งร้านนี้' }));
+    await act(async () => resolveDelivery());
+    await waitFor(() => expect(loadShopCards).toHaveBeenCalledTimes(2));
+
+    expect(readRecovery('completed-delivery', round.service_date, 'pos')).toBeNull();
+    view.unmount();
+    resolveCardsRefresh([shopA, shopB]);
+  });
+
+  it('persists a completed stock transfer before clearing its request identity', async () => {
+    const user = userEvent.setup();
+    let resolveTransfer!: (state: EmployeeStockState) => void;
+    const recordEmployeeStockTransfer = vi.fn(() => new Promise<EmployeeStockState>((resolve) => {
+      resolveTransfer = resolve;
+    }));
+    const gateway = createGateway({ recordEmployeeStockTransfer });
+    render(
+      <EmployeeDeliveryWorkspace
+        enableAssignedStockFlow
+        gateway={gateway}
+        requestScope="completed-transfer"
+        serviceDate={round.service_date}
+      />,
+    );
+
+    await screen.findByText('รถเข็นคัน 1');
+    await user.click(screen.getByRole('button', { name: 'เพิ่มก้อนอีกหนึ่ง' }));
+    await waitFor(() => expect(
+      readRecovery<{ transferQuantities: Record<string, number> }>(
+        'completed-transfer',
+        round.service_date,
+        'withdrawal',
+      )?.payload.transferQuantities['ice-block'],
+    ).toBe(1));
+    const storageEvents: string[] = [];
+    const originalSetItem = Storage.prototype.setItem;
+    const originalRemoveItem = Storage.prototype.removeItem;
+    const setItem = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(function (key, value) {
+      storageEvents.push(key);
+      originalSetItem.call(this, key, value);
+    });
+    const removeItem = vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(function (key) {
+      storageEvents.push(key);
+      originalRemoveItem.call(this, key);
+    });
+    await user.click(screen.getByRole('button', { name: 'ยืนยันรับน้ำแข็ง' }));
+    await waitFor(() => expect(recordEmployeeStockTransfer).toHaveBeenCalledTimes(1));
+    storageEvents.length = 0;
+    await act(async () => resolveTransfer(employeeStockState()));
+
+    const recoveryTransition = storageEvents.findIndex((key) => key.startsWith('ice-delivery.recovery.v1:'));
+    const pendingRequestClear = storageEvents.indexOf('ice-delivery.pending-requests.v1');
+    setItem.mockRestore();
+    removeItem.mockRestore();
+    expect(recoveryTransition).toBeGreaterThanOrEqual(0);
+    expect(pendingRequestClear).toBeGreaterThan(recoveryTransition);
   });
 
   it('records a free refill from the withdrawal tab without creating a delivery', async () => {

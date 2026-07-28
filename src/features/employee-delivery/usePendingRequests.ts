@@ -2,6 +2,7 @@ import { useCallback } from 'react';
 
 const PENDING_REQUESTS_STORAGE_KEY = 'ice-delivery.pending-requests.v1';
 const pendingRequestFallback = new Map<string, PendingRequestIdentity>();
+const PENDING_REQUEST_MAX_AGE_MS = 48 * 60 * 60 * 1000;
 
 export interface PendingRequestIdentity {
   key: string;
@@ -10,8 +11,11 @@ export interface PendingRequestIdentity {
 
 function readPendingRequests(): Record<string, PendingRequestIdentity> {
   try {
-    const value = window.sessionStorage.getItem(PENDING_REQUESTS_STORAGE_KEY);
-    return value ? JSON.parse(value) as Record<string, PendingRequestIdentity> : {};
+    const value = window.localStorage.getItem(PENDING_REQUESTS_STORAGE_KEY);
+    const requests = value ? JSON.parse(value) as Record<string, PendingRequestIdentity> : {};
+    return Object.fromEntries(Object.entries(requests).filter(([, request]) => (
+      Date.now() - Date.parse(request.clientRecordedAt) <= PENDING_REQUEST_MAX_AGE_MS
+    )));
   } catch {
     return {};
   }
@@ -19,7 +23,7 @@ function readPendingRequests(): Record<string, PendingRequestIdentity> {
 
 function writePendingRequests(requests: Record<string, PendingRequestIdentity>) {
   try {
-    window.sessionStorage.setItem(PENDING_REQUESTS_STORAGE_KEY, JSON.stringify(requests));
+    window.localStorage.setItem(PENDING_REQUESTS_STORAGE_KEY, JSON.stringify(requests));
   } catch {
     // The in-memory fallback still protects retries while this page remains open.
   }
