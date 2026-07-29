@@ -22,6 +22,10 @@ set receipt_number = 'R'
 from numbered_payments numbered
 where numbered.id = payment.id;
 
+-- The backfill can queue deferred payment integrity triggers. Run them now
+-- before changing the table definition again.
+set constraints all immediate;
+
 do $receipt_sequence$
 declare
   v_existing_count bigint;

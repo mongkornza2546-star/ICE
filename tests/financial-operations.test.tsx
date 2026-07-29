@@ -104,6 +104,14 @@ describe('FinancialOperations', () => {
         },
         error: null,
       };
+      if (name === 'get_payment_receipt_items') return { data: [{
+        charge_number: 'C260728-000001',
+        received_amount: 100,
+        ice_type_name: 'น้ำแข็งหลอด',
+        ice_type_unit: 'ถุง',
+        quantity: 2,
+        line_total: 100,
+      }], error: null };
       return { data: [], error: null };
     });
     mocks.createSignedUrls.mockResolvedValue({
@@ -138,7 +146,7 @@ describe('FinancialOperations', () => {
     })));
   });
 
-  it('offers a 57 × 30 mm receipt printout only after payment is recorded', async () => {
+  it('prints the ordered items on a receipt only after payment is recorded', async () => {
     const user = userEvent.setup();
     const { printDocument, print } = mockReceiptPrintWindow();
     mocks.from.mockImplementation((table: string) => {
@@ -155,6 +163,14 @@ describe('FinancialOperations', () => {
         },
         error: null,
       };
+      if (name === 'get_payment_receipt_items') return { data: [{
+        charge_number: 'C260728-000001',
+        received_amount: 100,
+        ice_type_name: 'น้ำแข็งหลอด',
+        ice_type_unit: 'ถุง',
+        quantity: 2,
+        line_total: 100,
+      }], error: null };
       return { data: [], error: null };
     });
 
@@ -167,9 +183,11 @@ describe('FinancialOperations', () => {
     await user.click(printButton);
 
     expect(printDocument.body.textContent).toContain('S001 · ร้านเก็บเงิน');
+    expect(printDocument.body.textContent).toContain('น้ำแข็งหลอด × 2 ถุง');
+    expect(printDocument.body.textContent).toContain('รายการสั่งซื้อ C260728-000001');
     expect(printDocument.body.textContent).toContain('฿100.00');
     expect(printDocument.body.textContent).toContain('R260729-000001');
-    expect(printDocument.head.textContent).toContain('@page { size: 57mm 30mm; margin: 0; }');
+    expect(printDocument.head.textContent).toContain('@page { size: 57mm 42mm; margin: 0; }');
     expect(print).toHaveBeenCalledOnce();
   });
 
@@ -192,6 +210,14 @@ describe('FinancialOperations', () => {
     });
     mocks.rpc.mockImplementation(async (name: string) => {
       if (name === 'get_today_collection_run_queue') return { data: [queueShop], error: null };
+      if (name === 'get_payment_receipt_items') return { data: [{
+        charge_number: 'C260728-000001',
+        received_amount: 100,
+        ice_type_name: 'น้ำแข็งหลอด',
+        ice_type_unit: 'ถุง',
+        quantity: 2,
+        line_total: 100,
+      }], error: null };
       return { data: [], error: null };
     });
 

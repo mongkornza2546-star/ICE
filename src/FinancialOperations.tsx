@@ -91,12 +91,36 @@ type PaymentHistoryItem = {
 };
 
 type PaymentReceipt = {
+  paymentId: string;
   receiptNumber: string;
   shopCode: string;
   shopName: string;
   method: PaymentMethod;
   receivedAmount: number;
   recordedAt: string;
+  charges: ReceiptCharge[];
+};
+
+type ReceiptItem = {
+  name: string;
+  unit: string;
+  quantity: number;
+  lineTotal: number;
+};
+
+type ReceiptCharge = {
+  chargeNumber: string;
+  receivedAmount: number;
+  items: ReceiptItem[];
+};
+
+type ReceiptItemRow = {
+  charge_number: string | null;
+  received_amount: number | string;
+  ice_type_name: string;
+  ice_type_unit: string;
+  quantity: number | string;
+  line_total: number | string;
 };
 
 const money = new Intl.NumberFormat('th-TH', {
@@ -112,6 +136,26 @@ const receiptDateTime = new Intl.DateTimeFormat('th-TH', {
 
 function paymentMethodLabel(method: PaymentMethod) {
   return method === 'cash' ? 'เงินสด' : method === 'bank_transfer' ? 'โอนเงิน' : 'QR';
+}
+
+function receiptChargesFromRows(rows: ReceiptItemRow[]) {
+  const charges = new Map<string, ReceiptCharge>();
+  for (const row of rows) {
+    const chargeNumber = row.charge_number ?? 'ไม่พบเลขที่บิล';
+    const charge = charges.get(chargeNumber) ?? {
+      chargeNumber,
+      receivedAmount: Number(row.received_amount),
+      items: [],
+    };
+    charge.items.push({
+      name: row.ice_type_name,
+      unit: row.ice_type_unit,
+      quantity: Number(row.quantity),
+      lineTotal: Number(row.line_total),
+    });
+    charges.set(chargeNumber, charge);
+  }
+  return [...charges.values()];
 }
 
 function methodRequires(profile: PaymentProfile, method: PaymentMethod, field: 'reference' | 'evidence') {
@@ -407,6 +451,15 @@ export function FinancialOperations({ userRole = 'round_lead' }: { userRole?: Ap
     [allocatedAmount, selectedShop],
   );
 
+  const getReceiptCharges = async (paymentId: string) => {
+    if (!supabase) return [];
+    const { data, error: rpcError } = await supabase.rpc('get_payment_receipt_items', {
+      p_payment_id: paymentId,
+    });
+    if (rpcError) throw rpcError;
+    return receiptChargesFromRows((data ?? []) as ReceiptItemRow[]);
+  };
+
   const recordPayment = () => runAction(async () => {
     if (!supabase || !runId || !selectedShop || !paymentReady) return;
     const signature = `collection-payment:${JSON.stringify({
@@ -437,17 +490,20 @@ export function FinancialOperations({ userRole = 'round_lead' }: { userRole?: Ap
       p_idempotency_key: request.key,
     });
     if (rpcError) throw rpcError;
-    if (!data?.receipt_number || !data.recorded_at) {
+    if (!data?.payment_id || !data.receipt_number || !data.recorded_at) {
       throw new Error('ระบบไม่ได้ส่งเลขที่หรือเวลาของใบเสร็จกลับมา');
     }
+    const charges = await getReceiptCharges(data.payment_id);
     clearPendingRequest(signature, request.key);
     setReceipt({
+      paymentId: data.payment_id,
       receiptNumber: data.receipt_number,
       shopCode: selectedShop.shop_code,
       shopName: selectedShop.shop_name,
       method,
       receivedAmount,
       recordedAt: data.recorded_at,
+      charges,
     });
     setSuccess('บันทึกรับเงินแล้ว');
   }, false);
@@ -463,7 +519,14 @@ export function FinancialOperations({ userRole = 'round_lead' }: { userRole?: Ap
   };
 
   const printReceipt = (targetReceipt: PaymentReceipt) => {
-    const printWindow = window.open('', '_blank', 'popup,width=360,height=280');
+    const receiptHeightMm = Math.min(
+      180,
+      Math.max(42, 31 + targetReceipt.charges.length * 4.5 + targetReceipt.charges.reduce(
+        (total, charge) => total + charge.items.length * 5,
+        0,
+      )),
+    );
+    const printWindow = window.open('', '_blank', `popup,width=360,height=${Math.ceil(receiptHeightMm * 3.78)}`);
     if (!printWindow) {
       setError('เบราว์เซอร์บล็อกหน้าต่างพิมพ์ กรุณาอนุญาตป๊อปอัปแล้วลองใหม่');
       return;
@@ -472,11 +535,10 @@ export function FinancialOperations({ userRole = 'round_lead' }: { userRole?: Ap
     const printDocument = printWindow.document;
     const style = printDocument.createElement('style');
     style.textContent = `
-      @page { size: 57mm 30mm; margin: 0; }
+      @page { size: 57mm ${receiptHeightMm}mm; margin: 0; }
       * { box-sizing: border-box; }
-      html, body { width: 57mm; height: 30mm; margin: 0; }
+      html, body { width: 57mm; min-height: ${receiptHeightMm}mm; margin: 0; }
       body {
-        overflow: hidden;
         padding: 2mm 2.5mm;
         color: #000;
         background: #fff;
@@ -487,6 +549,12 @@ export function FinancialOperations({ userRole = 'round_lead' }: { userRole?: Ap
       main { display: grid; align-content: start; gap: .7mm; }
       strong { font-size: 9pt; text-align: center; }
       span, small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .items { display: grid; gap: .7mm; margin-top: .5mm; padding-top: .8mm; border-top: .25mm dashed #000; }
+      .charge { display: grid; gap: .35mm; }
+      .charge-number { font-size: 6.5pt; font-weight: 700; }
+      .item { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 1mm; font-size: 7pt; }
+      .item-name { overflow: visible; text-overflow: clip; white-space: normal; }
+      .charge-payment { font-size: 6.5pt; text-align: right; }
       .total {
         display: flex;
         justify-content: space-between;
@@ -511,6 +579,39 @@ export function FinancialOperations({ userRole = 'round_lead' }: { userRole?: Ap
     addLine('span', `${targetReceipt.shopCode} · ${targetReceipt.shopName}`);
     addLine('span', `${receiptDateTime.format(new Date(targetReceipt.recordedAt))} · ${paymentMethodLabel(targetReceipt.method)}`);
 
+    const items = printDocument.createElement('section');
+    items.className = 'items';
+    if (targetReceipt.charges.length === 0) {
+      const empty = printDocument.createElement('small');
+      empty.textContent = 'ไม่มีรายละเอียดรายการสั่งซื้อ';
+      items.append(empty);
+    }
+    for (const charge of targetReceipt.charges) {
+      const chargeElement = printDocument.createElement('div');
+      chargeElement.className = 'charge';
+      const chargeNumber = printDocument.createElement('span');
+      chargeNumber.className = 'charge-number';
+      chargeNumber.textContent = `รายการสั่งซื้อ ${charge.chargeNumber}`;
+      chargeElement.append(chargeNumber);
+      for (const item of charge.items) {
+        const itemElement = printDocument.createElement('div');
+        itemElement.className = 'item';
+        const itemName = printDocument.createElement('span');
+        itemName.className = 'item-name';
+        itemName.textContent = `${item.name} × ${item.quantity} ${item.unit}`;
+        const itemAmount = printDocument.createElement('span');
+        itemAmount.textContent = money.format(item.lineTotal);
+        itemElement.append(itemName, itemAmount);
+        chargeElement.append(itemElement);
+      }
+      const chargePayment = printDocument.createElement('small');
+      chargePayment.className = 'charge-payment';
+      chargePayment.textContent = `รับชำระบิลนี้ ${money.format(charge.receivedAmount)}`;
+      chargeElement.append(chargePayment);
+      items.append(chargeElement);
+    }
+    receiptElement.append(items);
+
     const total = printDocument.createElement('span');
     total.className = 'total';
     const totalLabel = printDocument.createElement('b');
@@ -527,14 +628,19 @@ export function FinancialOperations({ userRole = 'round_lead' }: { userRole?: Ap
     printWindow.print();
   };
 
-  const receiptFromHistory = (payment: PaymentHistoryItem): PaymentReceipt => ({
-    receiptNumber: payment.receipt_number,
-    shopCode: payment.shops?.code ?? '—',
-    shopName: payment.shops?.name ?? 'ไม่พบร้าน',
-    method: payment.payment_method,
-    receivedAmount: payment.received_amount,
-    recordedAt: payment.recorded_at,
-  });
+  const printHistoryReceipt = (payment: PaymentHistoryItem) => runAction(async () => {
+    const charges = await getReceiptCharges(payment.id);
+    printReceipt({
+      paymentId: payment.id,
+      receiptNumber: payment.receipt_number,
+      shopCode: payment.shops?.code ?? '—',
+      shopName: payment.shops?.name ?? 'ไม่พบร้าน',
+      method: payment.payment_method,
+      receivedAmount: payment.received_amount,
+      recordedAt: payment.recorded_at,
+      charges,
+    });
+  }, false);
 
   const decide = (approvalId: string, decision: 'approved' | 'rejected') => runAction(async () => {
     if (!supabase) return;
@@ -813,7 +919,7 @@ export function FinancialOperations({ userRole = 'round_lead' }: { userRole?: Ap
                   <b>{money.format(payment.received_amount)}</b>
                   {payment.status === 'active' ? (
                     <span className="financial-ops__history-actions">
-                      <button disabled={busy} onClick={() => printReceipt(receiptFromHistory(payment))} type="button"><Printer aria-hidden="true" size={16} />พิมพ์ซ้ำ</button>
+                      <button disabled={busy} onClick={() => printHistoryReceipt(payment)} type="button"><Printer aria-hidden="true" size={16} />พิมพ์ซ้ำ</button>
                       {isManager ? <button disabled={busy} onClick={() => voidPayment(payment)} type="button">ยกเลิกรายการ</button> : null}
                     </span>
                   ) : null}
