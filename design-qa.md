@@ -1,3 +1,55 @@
+## 2026-07-28 — Collection shop cards, popup, and bill numbers
+
+**Comparison Target**
+
+- Source visual truth: `/Users/bhusitt./Downloads/IMG_2972.PNG` (944 × 2048 px), plus the existing POS shop-card pattern in `src/features/employee-delivery/EmployeeShopPicker.tsx`.
+- Rendered implementation: [outputs/collection-popup-mobile.png](/Users/bhusitt./Downloads/ส่งน้ำแข็ง/outputs/collection-popup-mobile.png).
+- Side-by-side evidence: [outputs/collection-reference-comparison.png](/Users/bhusitt./Downloads/ส่งน้ำแข็ง/outputs/collection-reference-comparison.png).
+- Viewport: 393 × 852 CSS px at device scale factor 1. The 944 × 2048 source was normalized to 393 × 852 only for the comparison board; the implementation screenshot is natively 393 × 852.
+- State: courier collection queue with one shop selected and the receive-payment popup open, showing two outstanding bills.
+- Full-view comparison evidence: the existing inline payment form and the revised popup were reviewed together at the same normalized mobile size. The revised screen preserves the original blue/white visual system while separating shop selection from payment entry.
+- Focused-region evidence: the popup header, bill list, payment fields, file control, close target, and confirm action are all readable at 393 px, so no additional crop was required.
+
+**Findings**
+
+- No actionable P0/P1/P2 differences remain. The popup fits within the mobile viewport, has no horizontal overflow, and does not require internal scrolling for the representative two-bill state.
+- The shop image in the visual fixture is intentionally a local test asset. Production uses the existing signed `shop-images` URL and `object-fit: cover`; a storefront icon appears only when a shop has no saved image.
+
+**Required Fidelity Surfaces**
+
+- Fonts and typography: retained the app's Thai font stack and hierarchy. Shop code, name, outstanding total, bill number, and form labels remain distinct and readable without wrapping collisions.
+- Spacing and layout rhythm: the popup uses a 393 px bottom-sheet layout, 14–16 px gutters, 48 px form controls, and a 42 px close target. Browser measurement confirmed `bodyScrollWidth = bodyClientWidth = 393`.
+- Colors and visual tokens: retained the existing navy text, primary blue action, pale-blue form surface, white cards, and low-contrast borders from the POS and collection screens.
+- Image quality and asset fidelity: production shop photos use the existing storage images; standard UI marks use the existing Phosphor icon package. No handcrafted SVG, emoji, or CSS-drawn icon substitutes were added.
+- Copy and content: each pending charge now shows a stable bill number, service date, original bill amount, and remaining balance. The queue card shows the number of outstanding bills and total due.
+
+**Interaction And Build Checks**
+
+- Browser: verified the open popup at 393 × 852; no horizontal overflow and no console errors or warnings.
+- UI test: opens the popup from a shop card, renders the signed shop photo and both bill numbers, and records a partial payment oldest-first.
+- Database integration: the new migration applies to the full financial schema, generated bill numbers match `BYYMMDD-000001`, and both collection queues expose shop image paths and bill numbers.
+
+## 2026-07-29 — Review corrections
+
+- Supersedes the “bill number” terminology above: the pre-payment identifier is a delivery-charge reference, stored as `charge_number` and displayed as “เลขรายการส่ง” in `CYYMMDD-000001` form. It is not an invoice or receipt number.
+- The payment popup now moves focus to its close control, traps Tab navigation, makes the underlying page inert, locks body scrolling, supports Escape, and restores focus to the selected shop card.
+- The migration backfill is now exercised against an existing historical charge before a replacement charge is inserted. This test exposed and fixed deferred trigger events that had to be flushed before `ALTER TABLE ... SET NOT NULL`.
+- Final verification: 175 database/contract tests passed, 133 UI tests passed, and the production build passed.
+- Full suite: 174 database/contract tests and 132 UI tests passed.
+- `npm run build`: passed.
+
+**Comparison History**
+
+- Initial comparison: no P0/P1/P2 findings; no visual correction loop was required.
+
+**Follow-up Polish**
+
+- P3: Native file-input wording follows the device/browser locale, so its exact label may differ between iOS Safari and desktop preview.
+
+final result: passed
+
+---
+
 **Comparison Target**
 
 - Source visual truth: `/Users/bhusitt./Desktop/ภาพถ่ายหน้าจอ2569-07-23เวลา 12.35.00.png` (legacy damage form) and `/Users/bhusitt./Desktop/ภาพถ่ายหน้าจอ2569-07-23เวลา 12.35.53.png` (the requested transfer-card pattern).

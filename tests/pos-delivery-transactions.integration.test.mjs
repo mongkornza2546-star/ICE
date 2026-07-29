@@ -41,6 +41,10 @@ const dailyAggregateCompletion = readFileSync(
   new URL('../supabase/migrations/0108_finish_daily_aggregate_workflow.sql', import.meta.url),
   'utf8',
 );
+const collectionShopCardsAndChargeNumbers = readFileSync(
+  new URL('../supabase/migrations/0109_collection_shop_cards_and_charge_numbers.sql', import.meta.url),
+  'utf8',
+);
 
 const COURIER_ID = '10000000-0000-4000-8000-000000000001';
 const ADMIN_ID = '10000000-0000-4000-8000-000000000002';
@@ -62,7 +66,7 @@ const PREVIOUS_SERVICE_DATE = new Date(`${SERVICE_DATE}T12:00:00+07:00`);
 PREVIOUS_SERVICE_DATE.setDate(PREVIOUS_SERVICE_DATE.getDate() - 1);
 const PREVIOUS_SERVICE_DATE_TEXT = PREVIOUS_SERVICE_DATE.toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' });
 
-async function createDatabase(t) {
+async function createDatabase(t, { applyCollectionShopCards = true } = {}) {
   const db = new PGlite({ extensions: { btree_gist, pgcrypto } });
   t.after(() => db.close());
 
@@ -483,6 +487,9 @@ async function createDatabase(t) {
   `);
   await db.exec(dailyAggregateStock);
   await db.exec(dailyAggregateCompletion);
+  if (applyCollectionShopCards) {
+    await db.exec(collectionShopCardsAndChargeNumbers);
+  }
   await db.exec(`
     insert into public.ice_type_prices (
       ice_type_id, unit_price, valid_from, created_by
@@ -1089,6 +1096,47 @@ test('legacy unpriced correction stays outside the financial ledger', async (t) 
   assert.deepEqual(replacement.rows[0], { unit_price: null, charges: 0 });
 });
 
+test('charge reference migration backfills history and advances the sequence for new charges', async (t) => {
+  const db = await createDatabase(t, { applyCollectionShopCards: false });
+  const original = await db.query(`
+    select public.record_delivery(
+      '${STOP_ID}', '${itemPayload(1)}'::jsonb, 'delivered', null, null,
+      '70000000-0000-4000-8000-000000000099', 'immediate'
+    ) as result
+  `);
+  const originalEventId = original.rows[0].result.delivery_event_id;
+
+  await db.exec(collectionShopCardsAndChargeNumbers);
+  const historical = await db.query(`
+    select charge_number
+    from public.delivery_charges
+    where delivery_event_id = '${originalEventId}'
+  `);
+  assert.match(historical.rows[0].charge_number, /^C\d{6}-000001$/);
+
+  await db.exec(`
+    update public.auth_context
+    set user_id = '${ADMIN_ID}', app_role = 'admin'
+  `);
+  await db.query(`
+    select public.revise_delivery_event(
+      '${originalEventId}', 'correct', '${itemPayload(2)}'::jsonb,
+      'delivered', null, 'verify charge sequence',
+      '80000000-0000-4000-8000-000000000099'
+    )
+  `);
+  const references = await db.query(`
+    select charge_number
+    from public.delivery_charges
+    order by charge_number
+  `);
+  assert.deepEqual(
+    references.rows.map((row) => row.charge_number.slice(-6)),
+    ['000001', '000002'],
+  );
+  assert.equal(new Set(references.rows.map((row) => row.charge_number)).size, 2);
+});
+
 test('credit-limit approval must match and is consumed by exactly one delivery', async (t) => {
   const db = await createDatabase(t);
   const todayStr = new Date(Date.now() + 7 * 3600000).toISOString().split('T')[0];
@@ -1419,6 +1467,8 @@ test('payment recording enforces actor scope, collection scope, and stored evide
     select public.get_today_collection_run_queue('${run.rows[0].result.collection_run_id}') as result
   `);
   assert.equal(queue.rows[0].result[0].charges[0].charge_id, chargeId);
+  assert.match(queue.rows[0].result[0].charges[0].charge_number, /^C\d{6}-\d{6}$/);
+  assert.equal(Object.hasOwn(queue.rows[0].result[0], 'image_path'), true);
 
   await db.exec(`
     update public.auth_context

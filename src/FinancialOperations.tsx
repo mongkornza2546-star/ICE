@@ -1,5 +1,17 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { CheckCircle, Coins, CreditCard, UserCircle, WarningCircle } from '@phosphor-icons/react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import {
+  CaretRight,
+  CheckCircle,
+  Coins,
+  CreditCard,
+  ListNumbers,
+  Printer,
+  Storefront,
+  UserCircle,
+  WarningCircle,
+  X,
+} from '@phosphor-icons/react';
 import { supabase } from './lib/supabase';
 import { toBangkokDateString } from './lib/serviceDate';
 import { uploadPaymentEvidence } from './lib/paymentEvidence';
@@ -21,11 +33,19 @@ type QueueShop = {
   shop_id: string;
   shop_code: string;
   shop_name: string;
+  image_path: string | null;
+  image_url?: string | null;
   outstanding_amount: number;
   charge_count: number;
   has_new_charges: boolean;
   payment_profile: PaymentProfile;
-  charges: Array<{ charge_id: string; outstanding_amount: number }>;
+  charges: Array<{
+    charge_id: string;
+    charge_number: string;
+    service_date: string;
+    original_amount: number;
+    outstanding_amount: number;
+  }>;
 };
 
 type Receivable = {
@@ -57,9 +77,11 @@ type Collector = {
 };
 
 const USER_AVATAR_BUCKET = 'user-avatars';
+const SHOP_IMAGE_BUCKET = 'shop-images';
 
 type PaymentHistoryItem = {
   id: string;
+  receipt_number: string;
   received_amount: number;
   payment_method: PaymentMethod;
   status: 'active' | 'voided';
@@ -68,11 +90,29 @@ type PaymentHistoryItem = {
   shops: { code: string; name: string } | null;
 };
 
+type PaymentReceipt = {
+  receiptNumber: string;
+  shopCode: string;
+  shopName: string;
+  method: PaymentMethod;
+  receivedAmount: number;
+  recordedAt: string;
+};
+
 const money = new Intl.NumberFormat('th-TH', {
   style: 'currency',
   currency: 'THB',
   minimumFractionDigits: 2,
 });
+
+const receiptDateTime = new Intl.DateTimeFormat('th-TH', {
+  dateStyle: 'short',
+  timeStyle: 'short',
+});
+
+function paymentMethodLabel(method: PaymentMethod) {
+  return method === 'cash' ? 'เงินสด' : method === 'bank_transfer' ? 'โอนเงิน' : 'QR';
+}
 
 function methodRequires(profile: PaymentProfile, method: PaymentMethod, field: 'reference' | 'evidence') {
   if (method === 'cash') return profile[`cash_${field}_required`];
@@ -90,6 +130,32 @@ function allocateOldestFirst(charges: QueueShop['charges'], amount: number) {
     remaining -= allocated;
   }
   return allocations;
+}
+
+async function withSignedShopImages(shops: QueueShop[]) {
+  if (!supabase?.storage) return shops;
+  const imagePaths = shops
+    .map((shop) => shop.image_path)
+    .filter((path): path is string => Boolean(path));
+  if (imagePaths.length === 0) return shops;
+
+  try {
+    const { data, error } = await supabase.storage
+      .from(SHOP_IMAGE_BUCKET)
+      .createSignedUrls(imagePaths, 3600);
+    if (error) return shops;
+    const imageUrls = new Map(
+      (data ?? [])
+        .filter((image) => image.path && image.signedUrl)
+        .map((image) => [image.path!, image.signedUrl!]),
+    );
+    return shops.map((shop) => ({
+      ...shop,
+      image_url: shop.image_path ? imageUrls.get(shop.image_path) ?? null : null,
+    }));
+  } catch {
+    return shops;
+  }
 }
 
 export function FinancialOperations({ userRole = 'round_lead' }: { userRole?: AppRole }) {
@@ -110,9 +176,18 @@ export function FinancialOperations({ userRole = 'round_lead' }: { userRole?: Ap
   const [reference, setReference] = useState('');
   const [evidence, setEvidence] = useState<File | null>(null);
   const [selectedShop, setSelectedShop] = useState<QueueShop | null>(null);
+  const [receipt, setReceipt] = useState<PaymentReceipt | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const pageRef = useRef<HTMLDivElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const returnFocusRef = useRef<HTMLButtonElement | null>(null);
+  const busyRef = useRef(busy);
+  const receiptRef = useRef<PaymentReceipt | null>(receipt);
+  busyRef.current = busy;
+  receiptRef.current = receipt;
 
   const load = useCallback(async () => {
     if (!supabase) return;
@@ -135,7 +210,7 @@ export function FinancialOperations({ userRole = 'round_lead' }: { userRole?: Ap
         },
       );
       if (queueResponse.error) throw queueResponse.error;
-      const nextQueue = (queueResponse.data ?? []) as QueueShop[];
+      const nextQueue = await withSignedShopImages((queueResponse.data ?? []) as QueueShop[]);
       setQueue(nextQueue);
       setSelectedShop((current) => (
         current ? nextQueue.find((shop) => shop.shop_id === current.shop_id) ?? null : null
@@ -145,7 +220,17 @@ export function FinancialOperations({ userRole = 'round_lead' }: { userRole?: Ap
       setSelectedShop(null);
     }
 
-    if (!isManager) return;
+    const paymentsPromise = supabase
+      .from('payments')
+      .select('id, receipt_number, received_amount, payment_method, status, recorded_at, void_reason, shops(code,name)')
+      .order('recorded_at', { ascending: false })
+      .limit(30);
+    if (!isManager) {
+      const paymentsResponse = await paymentsPromise;
+      if (paymentsResponse.error) throw paymentsResponse.error;
+      setPaymentHistory((paymentsResponse.data ?? []) as unknown as PaymentHistoryItem[]);
+      return;
+    }
     const [receivablesResponse, approvalsResponse, collectorsResponse, membersResponse, paymentsResponse] = await Promise.all([
       supabase.rpc('get_credit_receivables', { p_as_of_date: serviceDate }),
       supabase
@@ -157,11 +242,7 @@ export function FinancialOperations({ userRole = 'round_lead' }: { userRole?: Ap
       nextRunId
         ? supabase.from('collection_run_members').select('user_id').eq('collection_run_id', nextRunId)
         : Promise.resolve({ data: [], error: null }),
-      supabase
-        .from('payments')
-        .select('id, received_amount, payment_method, status, recorded_at, void_reason, shops(code,name)')
-        .order('recorded_at', { ascending: false })
-        .limit(30),
+      paymentsPromise,
     ]);
     if (receivablesResponse.error) throw receivablesResponse.error;
     if (approvalsResponse.error) throw approvalsResponse.error;
@@ -180,6 +261,49 @@ export function FinancialOperations({ userRole = 'round_lead' }: { userRole?: Ap
       setError(loadError instanceof Error ? loadError.message : String(loadError));
     });
   }, [load]);
+
+  useEffect(() => {
+    if (!selectedShop) return;
+    const page = pageRef.current;
+    const previousOverflow = document.body.style.overflow;
+    const closeOnKeydown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !busyRef.current) {
+        if (receiptRef.current) {
+          void load().catch((loadError: unknown) => {
+            setError(loadError instanceof Error ? loadError.message : String(loadError));
+          });
+        }
+        setReceipt(null);
+        setSelectedShop(null);
+        return;
+      }
+      if (event.key !== 'Tab') return;
+      const focusable = Array.from(dialogRef.current?.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ) ?? []);
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    if (page) page.inert = true;
+    document.body.style.overflow = 'hidden';
+    closeButtonRef.current?.focus();
+    window.addEventListener('keydown', closeOnKeydown);
+    return () => {
+      if (page) page.inert = false;
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', closeOnKeydown);
+      returnFocusRef.current?.focus();
+    };
+  }, [selectedShop?.shop_id]);
 
   useEffect(() => {
     if (!supabase?.storage) return;
@@ -215,13 +339,13 @@ export function FinancialOperations({ userRole = 'round_lead' }: { userRole?: Ap
     return () => { cancelled = true; };
   }, [collectors]);
 
-  const runAction = async (action: () => Promise<void>) => {
+  const runAction = async (action: () => Promise<void>, reload = true) => {
     setBusy(true);
     setError(null);
     setSuccess(null);
     try {
       await action();
-      await load();
+      if (reload) await load();
     } catch (actionError) {
       setError(actionError instanceof Error ? actionError.message : String(actionError));
     } finally {
@@ -249,7 +373,9 @@ export function FinancialOperations({ userRole = 'round_lead' }: { userRole?: Ap
     setSuccess('ปิดรอบเก็บเงินแล้ว ยอดค้างยังคงอยู่');
   });
 
-  const chooseShop = (shop: QueueShop) => {
+  const chooseShop = (shop: QueueShop, trigger: HTMLButtonElement) => {
+    returnFocusRef.current = trigger;
+    setReceipt(null);
     setSelectedShop(shop);
     setMethod(shop.payment_profile.default_payment_method);
     setAmount(String(shop.outstanding_amount));
@@ -298,7 +424,7 @@ export function FinancialOperations({ userRole = 'round_lead' }: { userRole?: Ap
     })}`;
     const request = getOrCreatePendingRequest(signature);
     const evidencePath = evidence ? await uploadPaymentEvidence(evidence, request.key) : null;
-    const { error: rpcError } = await supabase.rpc('record_payment', {
+    const { data, error: rpcError } = await supabase.rpc('record_payment', {
       p_shop_id: selectedShop.shop_id,
       p_allocations: allocations,
       p_payment_method: method,
@@ -311,11 +437,103 @@ export function FinancialOperations({ userRole = 'round_lead' }: { userRole?: Ap
       p_idempotency_key: request.key,
     });
     if (rpcError) throw rpcError;
+    if (!data?.receipt_number || !data.recorded_at) {
+      throw new Error('ระบบไม่ได้ส่งเลขที่หรือเวลาของใบเสร็จกลับมา');
+    }
     clearPendingRequest(signature, request.key);
-    setSelectedShop(null);
-    setReference('');
-    setEvidence(null);
+    setReceipt({
+      receiptNumber: data.receipt_number,
+      shopCode: selectedShop.shop_code,
+      shopName: selectedShop.shop_name,
+      method,
+      receivedAmount,
+      recordedAt: data.recorded_at,
+    });
     setSuccess('บันทึกรับเงินแล้ว');
+  }, false);
+
+  const closePayment = () => {
+    if (receiptRef.current) {
+      void load().catch((loadError: unknown) => {
+        setError(loadError instanceof Error ? loadError.message : String(loadError));
+      });
+    }
+    setReceipt(null);
+    setSelectedShop(null);
+  };
+
+  const printReceipt = (targetReceipt: PaymentReceipt) => {
+    const printWindow = window.open('', '_blank', 'popup,width=360,height=280');
+    if (!printWindow) {
+      setError('เบราว์เซอร์บล็อกหน้าต่างพิมพ์ กรุณาอนุญาตป๊อปอัปแล้วลองใหม่');
+      return;
+    }
+
+    const printDocument = printWindow.document;
+    const style = printDocument.createElement('style');
+    style.textContent = `
+      @page { size: 57mm 30mm; margin: 0; }
+      * { box-sizing: border-box; }
+      html, body { width: 57mm; height: 30mm; margin: 0; }
+      body {
+        overflow: hidden;
+        padding: 2mm 2.5mm;
+        color: #000;
+        background: #fff;
+        font-family: "Noto Sans Thai", Tahoma, sans-serif;
+        font-size: 7.5pt;
+        line-height: 1.12;
+      }
+      main { display: grid; align-content: start; gap: .7mm; }
+      strong { font-size: 9pt; text-align: center; }
+      span, small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .total {
+        display: flex;
+        justify-content: space-between;
+        margin-top: .5mm;
+        padding-top: .8mm;
+        border-top: .25mm dashed #000;
+        font-size: 9pt;
+        font-weight: 700;
+      }
+      small { font-size: 6.5pt; }
+    `;
+    printDocument.head.replaceChildren(style);
+
+    const receiptElement = printDocument.createElement('main');
+    const addLine = (tag: 'strong' | 'span' | 'small', text: string, className?: string) => {
+      const element = printDocument.createElement(tag);
+      element.textContent = text;
+      if (className) element.className = className;
+      receiptElement.append(element);
+    };
+    addLine('strong', 'ใบเสร็จรับเงิน');
+    addLine('span', `${targetReceipt.shopCode} · ${targetReceipt.shopName}`);
+    addLine('span', `${receiptDateTime.format(new Date(targetReceipt.recordedAt))} · ${paymentMethodLabel(targetReceipt.method)}`);
+
+    const total = printDocument.createElement('span');
+    total.className = 'total';
+    const totalLabel = printDocument.createElement('b');
+    totalLabel.textContent = 'ยอดรับเงิน';
+    const totalAmount = printDocument.createElement('b');
+    totalAmount.textContent = money.format(targetReceipt.receivedAmount);
+    total.append(totalLabel, totalAmount);
+    receiptElement.append(total);
+    addLine('small', `เลขที่ ${targetReceipt.receiptNumber}`);
+    printDocument.body.replaceChildren(receiptElement);
+
+    printWindow.addEventListener('afterprint', () => printWindow.close(), { once: true });
+    printWindow.focus();
+    printWindow.print();
+  };
+
+  const receiptFromHistory = (payment: PaymentHistoryItem): PaymentReceipt => ({
+    receiptNumber: payment.receipt_number,
+    shopCode: payment.shops?.code ?? '—',
+    shopName: payment.shops?.name ?? 'ไม่พบร้าน',
+    method: payment.payment_method,
+    receivedAmount: payment.received_amount,
+    recordedAt: payment.recorded_at,
   });
 
   const decide = (approvalId: string, decision: 'approved' | 'rejected') => runAction(async () => {
@@ -346,7 +564,7 @@ export function FinancialOperations({ userRole = 'round_lead' }: { userRole?: Ap
   });
 
   return (
-    <div className="financial-ops">
+    <div className="financial-ops" ref={pageRef}>
       <header className="financial-ops__header">
         <div>
           <p className="eyebrow">การเงินหน้าร้าน</p>
@@ -401,54 +619,149 @@ export function FinancialOperations({ userRole = 'round_lead' }: { userRole?: Ap
           ? 'เลือกรายชื่อผู้เก็บเงินเพื่อเปิดรอบ'
           : 'วันนี้ยังไม่มีรอบเก็บเงินที่มอบหมายให้คุณ'}</p> : null}
         {runId && queue.length === 0 ? <p className="financial-ops__empty">ไม่มียอดท้ายวันที่ต้องเก็บ</p> : (
-          <div className="financial-ops__list">
+          <div className="financial-ops__shop-grid">
             {queue.map((shop) => (
-              <button key={shop.shop_id} onClick={() => chooseShop(shop)} type="button">
-                <span><strong>{shop.shop_code} · {shop.shop_name}</strong><small>{shop.charge_count} รายการค้าง{shop.has_new_charges ? ' · มียอดเพิ่ม' : ''}</small></span>
-                <b>{money.format(shop.outstanding_amount)}</b>
+              <button
+                aria-label={`${shop.shop_code} · ${shop.shop_name} ค้าง ${money.format(shop.outstanding_amount)}`}
+                className="financial-ops__shop-card"
+                key={shop.shop_id}
+                onClick={(event) => chooseShop(shop, event.currentTarget)}
+                type="button"
+              >
+                <span className="financial-ops__shop-visual">
+                  {shop.image_url ? (
+                    <img alt="" aria-hidden="true" loading="lazy" src={shop.image_url} />
+                  ) : (
+                    <span><Storefront aria-hidden="true" size={36} weight="duotone" /></span>
+                  )}
+                  {shop.has_new_charges ? <small>มียอดเพิ่ม</small> : null}
+                </span>
+                <span className="financial-ops__shop-body">
+                  <strong>{shop.shop_code}</strong>
+                  <b>{shop.shop_name}</b>
+                  <small><ListNumbers aria-hidden="true" size={15} /> {shop.charge_count} รายการค้าง</small>
+                  <em>{money.format(shop.outstanding_amount)}</em>
+                </span>
+                <CaretRight aria-hidden="true" className="financial-ops__shop-arrow" size={20} />
               </button>
             ))}
           </div>
         )}
-        {selectedShop ? (
-          <div className="financial-ops__payment">
-            <strong>รับเงิน {selectedShop.shop_name} · ค้าง {money.format(selectedShop.outstanding_amount)}</strong>
-            <select onChange={(event) => setMethod(event.target.value as PaymentMethod)} value={method}>
-              {selectedShop.payment_profile.allowed_payment_methods.map((allowedMethod) => (
-                <option key={allowedMethod} value={allowedMethod}>
-                  {allowedMethod === 'cash' ? 'เงินสด' : allowedMethod === 'bank_transfer' ? 'โอน' : 'QR'}
-                </option>
-              ))}
-            </select>
-            <input
-              aria-label="ยอดรับเงินจริง"
-              inputMode="decimal"
-              min="0.01"
-              onChange={(event) => setAmount(event.target.value)}
-              step="0.01"
-              type="number"
-              value={amount}
-            />
-            <input
-              aria-label="เลขอ้างอิง"
-              onChange={(event) => setReference(event.target.value)}
-              placeholder={referenceRequired ? 'เลขอ้างอิง *' : 'เลขอ้างอิง (ถ้ามี)'}
-              required={referenceRequired}
-              value={reference}
-            />
-            <label>
-              <span>หลักฐาน{evidenceRequired ? ' *' : ''}</span>
-              <input
-                accept="image/jpeg,image/png,image/webp,application/pdf"
-                onChange={(event) => setEvidence(event.target.files?.[0] ?? null)}
-                required={evidenceRequired}
-                type="file"
-              />
-            </label>
-            <button disabled={busy || !paymentReady} onClick={recordPayment} type="button">ยืนยันรับเงิน</button>
-          </div>
-        ) : null}
       </section>
+
+      {selectedShop ? createPortal((
+        <div
+          aria-label={`รับเงิน ${selectedShop.shop_name}`}
+          aria-modal="true"
+          className="financial-ops__modal"
+          ref={dialogRef}
+          role="dialog"
+        >
+          <div
+            className="financial-ops__modal-backdrop"
+            onClick={() => {
+              if (!busy) closePayment();
+            }}
+          />
+          <article className="financial-ops__payment-card">
+            <header>
+              <span className="financial-ops__payment-image">
+                {selectedShop.image_url ? (
+                  <img alt={`ร้าน ${selectedShop.shop_name}`} src={selectedShop.image_url} />
+                ) : (
+                  <Storefront aria-hidden="true" size={40} weight="duotone" />
+                )}
+              </span>
+              <span>
+                <small>{selectedShop.shop_code}</small>
+                <h2>{selectedShop.shop_name}</h2>
+                <b>ยอดค้าง {money.format(selectedShop.outstanding_amount)}</b>
+              </span>
+              <button
+                aria-label="ปิดหน้ารับเงิน"
+                disabled={busy}
+                onClick={closePayment}
+                ref={closeButtonRef}
+                type="button"
+              >
+                <X aria-hidden="true" size={22} />
+              </button>
+            </header>
+
+            <section className="financial-ops__charge-list" aria-label="รายการส่งที่ค้าง">
+              <strong><ListNumbers aria-hidden="true" size={18} /> รายการส่งที่นำมาเก็บ</strong>
+              {selectedShop.charges.map((charge) => (
+                <div key={charge.charge_id}>
+                  <span>
+                    <b>{charge.charge_number}</b>
+                    <small>วันที่ {charge.service_date}</small>
+                  </span>
+                  <span>
+                    <small>ยอดรายการ {money.format(charge.original_amount)}</small>
+                    <b>ค้าง {money.format(charge.outstanding_amount)}</b>
+                  </span>
+                </div>
+              ))}
+            </section>
+
+            {receipt ? (
+              <div className="financial-ops__payment-complete">
+                <CheckCircle aria-hidden="true" size={24} weight="fill" />
+                <span><strong>บันทึกรับเงินเรียบร้อย</strong><small>เลือกพิมพ์ใบเสร็จสำหรับร้านที่ต้องการ</small></span>
+                <button onClick={() => printReceipt(receipt)} type="button"><Printer aria-hidden="true" size={19} />พิมพ์ใบเสร็จ</button>
+                <button onClick={closePayment} type="button">เสร็จสิ้น</button>
+              </div>
+            ) : (
+              <div className="financial-ops__payment">
+                <label>
+                  <span>วิธีรับเงิน</span>
+                  <select onChange={(event) => setMethod(event.target.value as PaymentMethod)} value={method}>
+                    {selectedShop.payment_profile.allowed_payment_methods.map((allowedMethod) => (
+                      <option key={allowedMethod} value={allowedMethod}>
+                        {paymentMethodLabel(allowedMethod)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span>ยอดรับเงินจริง</span>
+                  <input
+                    aria-label="ยอดรับเงินจริง"
+                    inputMode="decimal"
+                    min="0.01"
+                    onChange={(event) => setAmount(event.target.value)}
+                    step="0.01"
+                    type="number"
+                    value={amount}
+                  />
+                </label>
+                <label>
+                  <span>เลขอ้างอิง{referenceRequired ? ' *' : ''}</span>
+                  <input
+                    aria-label="เลขอ้างอิง"
+                    onChange={(event) => setReference(event.target.value)}
+                    placeholder={referenceRequired ? 'กรอกเลขอ้างอิง' : 'ถ้ามี'}
+                    required={referenceRequired}
+                    value={reference}
+                  />
+                </label>
+                <label>
+                  <span>หลักฐาน{evidenceRequired ? ' *' : ''}</span>
+                  <input
+                    accept="image/jpeg,image/png,image/webp,application/pdf"
+                    onChange={(event) => setEvidence(event.target.files?.[0] ?? null)}
+                    required={evidenceRequired}
+                    type="file"
+                  />
+                </label>
+                <button disabled={busy || !paymentReady} onClick={recordPayment} type="button">
+                  {busy ? 'กำลังบันทึก...' : 'ยืนยันรับเงิน'}
+                </button>
+              </div>
+            )}
+          </article>
+        </div>
+      ), document.body) : null}
 
       {isManager ? (
         <>
@@ -483,27 +796,33 @@ export function FinancialOperations({ userRole = 'round_lead' }: { userRole?: Ap
             )}
           </section>
 
-          <section className="financial-ops__section">
-            <div className="financial-ops__title"><div><Coins /><span><h2>ประวัติรับเงินล่าสุด</h2><p>ตรวจสอบหรือยกเลิกรายการที่บันทึกผิด</p></span></div></div>
-            {paymentHistory.length === 0 ? <p className="financial-ops__empty">ยังไม่มีรายการรับเงิน</p> : (
-              <div className="financial-ops__list">
-                {paymentHistory.map((payment) => (
-                  <div key={payment.id}>
-                    <span>
-                      <strong>{payment.shops?.code ?? '—'} · {payment.shops?.name ?? 'ไม่พบร้าน'}</strong>
-                      <small>{payment.payment_method === 'cash' ? 'เงินสด' : payment.payment_method === 'bank_transfer' ? 'โอน' : 'QR'} · {new Intl.DateTimeFormat('th-TH', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(payment.recorded_at))}{payment.status === 'voided' ? ` · ยกเลิก: ${payment.void_reason ?? '—'}` : ''}</small>
-                    </span>
-                    <span>
-                      <b>{money.format(payment.received_amount)}</b>
-                      {payment.status === 'active' ? <button disabled={busy} onClick={() => voidPayment(payment)} type="button">ยกเลิกรายการ</button> : null}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </section>
         </>
       ) : null}
+
+      <section className="financial-ops__section">
+        <div className="financial-ops__title"><div><Coins /><span><h2>ประวัติรับเงินล่าสุด</h2><p>พิมพ์ใบเสร็จซ้ำจากข้อมูลเดิม{isManager ? ' หรือตรวจสอบรายการที่บันทึกผิด' : ''}</p></span></div></div>
+        {paymentHistory.length === 0 ? <p className="financial-ops__empty">ยังไม่มีรายการรับเงิน</p> : (
+          <div className="financial-ops__list">
+            {paymentHistory.map((payment) => (
+              <div key={payment.id}>
+                <span>
+                  <strong>{payment.shops?.code ?? '—'} · {payment.shops?.name ?? 'ไม่พบร้าน'}</strong>
+                  <small>{payment.receipt_number} · {paymentMethodLabel(payment.payment_method)} · {receiptDateTime.format(new Date(payment.recorded_at))}{payment.status === 'voided' ? ` · ยกเลิก: ${payment.void_reason ?? '—'}` : ''}</small>
+                </span>
+                <span>
+                  <b>{money.format(payment.received_amount)}</b>
+                  {payment.status === 'active' ? (
+                    <span className="financial-ops__history-actions">
+                      <button disabled={busy} onClick={() => printReceipt(receiptFromHistory(payment))} type="button"><Printer aria-hidden="true" size={16} />พิมพ์ซ้ำ</button>
+                      {isManager ? <button disabled={busy} onClick={() => voidPayment(payment)} type="button">ยกเลิกรายการ</button> : null}
+                    </span>
+                  ) : null}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
     </div>
   );
 }

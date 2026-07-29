@@ -29,10 +29,25 @@ function queryResult(data: unknown, error: { message: string } | null = null) {
   return query;
 }
 
+function mockReceiptPrintWindow() {
+  const printDocument = document.implementation.createHTMLDocument('ใบเสร็จ');
+  const print = vi.fn();
+  const close = vi.fn();
+  vi.spyOn(window, 'open').mockReturnValue({
+    document: printDocument,
+    addEventListener: vi.fn(),
+    focus: vi.fn(),
+    print,
+    close,
+  } as unknown as Window);
+  return { printDocument, print };
+}
+
 const queueShop = {
   shop_id: 'shop-1',
   shop_code: 'S001',
   shop_name: 'ร้านเก็บเงิน',
+  image_path: 'shops/shop-1.webp',
   outstanding_amount: 100,
   charge_count: 2,
   has_new_charges: false,
@@ -47,13 +62,26 @@ const queueShop = {
     qr_evidence_required: false,
   },
   charges: [
-    { charge_id: 'charge-1', outstanding_amount: 60 },
-    { charge_id: 'charge-2', outstanding_amount: 40 },
+    {
+      charge_id: 'charge-1',
+      charge_number: 'C260728-000001',
+      service_date: '2026-07-28',
+      original_amount: 60,
+      outstanding_amount: 60,
+    },
+    {
+      charge_id: 'charge-2',
+      charge_number: 'C260728-000002',
+      service_date: '2026-07-28',
+      original_amount: 40,
+      outstanding_amount: 40,
+    },
   ],
 };
 
 describe('FinancialOperations', () => {
   beforeEach(() => {
+    vi.restoreAllMocks();
     mocks.from.mockReset();
     mocks.rpc.mockReset();
     mocks.createSignedUrls.mockReset();
@@ -68,12 +96,28 @@ describe('FinancialOperations', () => {
     });
     mocks.rpc.mockImplementation(async (name: string) => {
       if (name === 'get_today_collection_run_queue') return { data: [queueShop], error: null };
-      if (name === 'record_payment') return { data: { payment_id: 'payment-1' }, error: null };
+      if (name === 'record_payment') return {
+        data: {
+          payment_id: 'payment-1',
+          receipt_number: 'R260729-000001',
+          recorded_at: '2026-07-29T07:00:00Z',
+        },
+        error: null,
+      };
       return { data: [], error: null };
+    });
+    mocks.createSignedUrls.mockResolvedValue({
+      data: [{ path: 'shops/shop-1.webp', signedUrl: 'https://cdn.example.test/shops/shop-1.webp' }],
+      error: null,
     });
 
     render(<FinancialOperations userRole="courier" />);
     await user.click(await screen.findByRole('button', { name: /S001 · ร้านเก็บเงิน/ }));
+    expect(await screen.findByRole('dialog', { name: 'รับเงิน ร้านเก็บเงิน' })).not.toBeNull();
+    expect(screen.getByText('C260728-000001')).not.toBeNull();
+    expect(screen.getByText('C260728-000002')).not.toBeNull();
+    expect(screen.getByAltText('ร้าน ร้านเก็บเงิน').getAttribute('src'))
+      .toBe('https://cdn.example.test/shops/shop-1.webp');
     expect(mocks.rpc).toHaveBeenCalledWith('get_today_collection_run_queue', {
       p_collection_run_id: 'run-1',
     });
@@ -92,6 +136,102 @@ describe('FinancialOperations', () => {
       p_collection_run_id: 'run-1',
       p_approval_id: null,
     })));
+  });
+
+  it('offers a 57 × 30 mm receipt printout only after payment is recorded', async () => {
+    const user = userEvent.setup();
+    const { printDocument, print } = mockReceiptPrintWindow();
+    mocks.from.mockImplementation((table: string) => {
+      if (table === 'collection_runs') return queryResult({ id: 'run-1' });
+      return queryResult([]);
+    });
+    mocks.rpc.mockImplementation(async (name: string) => {
+      if (name === 'get_today_collection_run_queue') return { data: [queueShop], error: null };
+      if (name === 'record_payment') return {
+        data: {
+          payment_id: 'payment-1',
+          receipt_number: 'R260729-000001',
+          recorded_at: '2026-07-29T07:00:00Z',
+        },
+        error: null,
+      };
+      return { data: [], error: null };
+    });
+
+    render(<FinancialOperations userRole="courier" />);
+    await user.click(await screen.findByRole('button', { name: /S001 · ร้านเก็บเงิน/ }));
+    expect(screen.queryByRole('button', { name: 'พิมพ์ใบเสร็จ' })).toBeNull();
+
+    await user.click(screen.getByRole('button', { name: 'ยืนยันรับเงิน' }));
+    const printButton = await screen.findByRole('button', { name: 'พิมพ์ใบเสร็จ' });
+    await user.click(printButton);
+
+    expect(printDocument.body.textContent).toContain('S001 · ร้านเก็บเงิน');
+    expect(printDocument.body.textContent).toContain('฿100.00');
+    expect(printDocument.body.textContent).toContain('R260729-000001');
+    expect(printDocument.head.textContent).toContain('@page { size: 57mm 30mm; margin: 0; }');
+    expect(print).toHaveBeenCalledOnce();
+  });
+
+  it('lets a courier reprint a persisted receipt from payment history', async () => {
+    const user = userEvent.setup();
+    const { printDocument, print } = mockReceiptPrintWindow();
+    mocks.from.mockImplementation((table: string) => {
+      if (table === 'collection_runs') return queryResult({ id: 'run-1' });
+      if (table === 'payments') return queryResult([{
+        id: 'payment-1',
+        receipt_number: 'R260729-000001',
+        received_amount: 100,
+        payment_method: 'cash',
+        status: 'active',
+        recorded_at: '2026-07-29T07:00:00Z',
+        void_reason: null,
+        shops: { code: 'S001', name: 'ร้านเก็บเงิน' },
+      }]);
+      return queryResult([]);
+    });
+    mocks.rpc.mockImplementation(async (name: string) => {
+      if (name === 'get_today_collection_run_queue') return { data: [queueShop], error: null };
+      return { data: [], error: null };
+    });
+
+    render(<FinancialOperations userRole="courier" />);
+    await user.click(await screen.findByRole('button', { name: 'พิมพ์ซ้ำ' }));
+
+    expect(printDocument.body.textContent).toContain('R260729-000001');
+    expect(print).toHaveBeenCalledOnce();
+  });
+
+  it('keeps keyboard focus inside the payment dialog and restores it when closed', async () => {
+    const user = userEvent.setup();
+    mocks.from.mockImplementation((table: string) => {
+      if (table === 'collection_runs') return queryResult({ id: 'run-1' });
+      return queryResult([]);
+    });
+    mocks.rpc.mockImplementation(async (name: string) => {
+      if (name === 'get_today_collection_run_queue') return { data: [queueShop], error: null };
+      return { data: [], error: null };
+    });
+
+    render(<FinancialOperations userRole="courier" />);
+    const shopButton = await screen.findByRole('button', { name: /S001 · ร้านเก็บเงิน/ });
+    await user.click(shopButton);
+
+    const closeButton = await screen.findByRole('button', { name: 'ปิดหน้ารับเงิน' });
+    const confirmButton = screen.getByRole('button', { name: 'ยืนยันรับเงิน' });
+    expect(document.activeElement).toBe(closeButton);
+    expect(document.body.style.overflow).toBe('hidden');
+    expect((document.querySelector('.financial-ops') as HTMLElement).inert).toBe(true);
+
+    await user.tab({ shift: true });
+    expect(document.activeElement).toBe(confirmButton);
+    await user.tab();
+    expect(document.activeElement).toBe(closeButton);
+
+    await user.click(closeButton);
+    await waitFor(() => expect(document.activeElement).toBe(shopButton));
+    expect(document.body.style.overflow).toBe('');
+    expect((document.querySelector('.financial-ops') as HTMLElement).inert).toBe(false);
   });
 
   it('opens a run with the selected collector assignment', async () => {
@@ -175,6 +315,7 @@ describe('FinancialOperations', () => {
       if (table === 'collection_runs') return queryResult(null);
       if (table === 'payments') return queryResult([{
         id: 'payment-1',
+        receipt_number: 'R260727-000001',
         received_amount: 100,
         payment_method: 'cash',
         status: 'active',
