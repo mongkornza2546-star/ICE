@@ -191,6 +191,37 @@ describe('FinancialOperations', () => {
     expect(print).toHaveBeenCalledOnce();
   });
 
+  it('keeps a recorded payment printable when receipt item details cannot be loaded', async () => {
+    const user = userEvent.setup();
+    mocks.from.mockImplementation((table: string) => {
+      if (table === 'collection_runs') return queryResult({ id: 'run-1' });
+      return queryResult([]);
+    });
+    mocks.rpc.mockImplementation(async (name: string) => {
+      if (name === 'get_today_collection_run_queue') return { data: [queueShop], error: null };
+      if (name === 'record_payment') return {
+        data: {
+          payment_id: 'payment-1',
+          receipt_number: 'R260729-000001',
+          recorded_at: '2026-07-29T07:00:00Z',
+        },
+        error: null,
+      };
+      if (name === 'get_payment_receipt_items') return {
+        data: null,
+        error: { code: 'PGRST202', message: 'Could not find the function public.get_payment_receipt_items' },
+      };
+      return { data: [], error: null };
+    });
+
+    render(<FinancialOperations userRole="courier" />);
+    await user.click(await screen.findByRole('button', { name: /S001 · ร้านเก็บเงิน/ }));
+    await user.click(screen.getByRole('button', { name: 'ยืนยันรับเงิน' }));
+
+    expect(await screen.findByRole('button', { name: 'พิมพ์ใบเสร็จ' })).not.toBeNull();
+    expect(screen.getByText('บันทึกรับเงินเรียบร้อย')).not.toBeNull();
+  });
+
   it('lets a courier reprint a persisted receipt from payment history', async () => {
     const user = userEvent.setup();
     const { printDocument, print } = mockReceiptPrintWindow();
@@ -226,6 +257,56 @@ describe('FinancialOperations', () => {
 
     expect(printDocument.body.textContent).toContain('R260729-000001');
     expect(print).toHaveBeenCalledOnce();
+  });
+
+  it('opens the reprint window during the click before loading receipt details', async () => {
+    const user = userEvent.setup();
+    mockReceiptPrintWindow();
+    let resolveReceiptItems!: (result: { data: unknown[]; error: null }) => void;
+    const receiptItems = new Promise<{ data: unknown[]; error: null }>((resolve) => {
+      resolveReceiptItems = resolve;
+    });
+    mocks.from.mockImplementation((table: string) => {
+      if (table === 'collection_runs') return queryResult({ id: 'run-1' });
+      if (table === 'payments') return queryResult([{
+        id: 'payment-1',
+        receipt_number: 'R260729-000001',
+        received_amount: 100,
+        payment_method: 'cash',
+        status: 'active',
+        recorded_at: '2026-07-29T07:00:00Z',
+        void_reason: null,
+        shops: { code: 'S001', name: 'ร้านเก็บเงิน' },
+      }]);
+      return queryResult([]);
+    });
+    mocks.rpc.mockImplementation((name: string) => {
+      if (name === 'get_today_collection_run_queue') {
+        return Promise.resolve({ data: [queueShop], error: null });
+      }
+      if (name === 'get_payment_receipt_items') return receiptItems;
+      return Promise.resolve({ data: [], error: null });
+    });
+
+    render(<FinancialOperations userRole="courier" />);
+    await user.click(await screen.findByRole('button', { name: 'พิมพ์ซ้ำ' }));
+
+    expect(window.open).toHaveBeenCalledOnce();
+    resolveReceiptItems({ data: [], error: null });
+  });
+
+  it('shows the message from a Supabase error object instead of object Object', async () => {
+    mocks.from.mockImplementation((table: string) => {
+      if (table === 'collection_runs') {
+        return queryResult(null, { message: 'ไม่พบคอลัมน์ receipt_number' });
+      }
+      return queryResult([]);
+    });
+
+    render(<FinancialOperations userRole="courier" />);
+
+    expect((await screen.findByRole('alert')).textContent).toContain('ไม่พบคอลัมน์ receipt_number');
+    expect(screen.getByRole('alert').textContent).not.toContain('[object Object]');
   });
 
   it('keeps keyboard focus inside the payment dialog and restores it when closed', async () => {

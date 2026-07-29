@@ -10,6 +10,10 @@ const receiptItemsMigration = readFileSync(
   new URL('../supabase/migrations/0111_payment_receipt_items.sql', import.meta.url),
   'utf8',
 );
+const receiptSchemaReloadMigration = readFileSync(
+  new URL('../supabase/migrations/0112_reload_payment_receipt_rpc_schema.sql', import.meta.url),
+  'utf8',
+);
 const financialOperations = readFileSync(
   new URL('../src/FinancialOperations.tsx', import.meta.url),
   'utf8',
@@ -46,4 +50,6 @@ test('receipt item details are scoped to a payment the caller can view', () => {
   assert.match(receiptItemsMigration, /create function public\.get_payment_receipt_items/);
   assert.match(receiptItemsMigration, /public\.is_payment_visible\(p_payment_id\)/);
   assert.match(receiptItemsMigration, /join public\.delivery_items item/);
+  assert.match(receiptSchemaReloadMigration, /grant execute on function public\.get_payment_receipt_items\(uuid\) to authenticated/);
+  assert.match(receiptSchemaReloadMigration, /notify pgrst, 'reload schema'/);
 });

@@ -1290,6 +1290,7 @@ input:disabled, select:disabled, textarea:disabled { background: #f2f5f8; color:
 .financial-ops__payment-complete { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 9px; padding: 14px; border-radius: 12px; color: #176c4e; background: #ecfaf3; }
 .financial-ops__payment-complete > span { display: grid; gap: 2px; }
 .financial-ops__payment-complete small { color: #5b7b6e; font-size: .68rem; }
+.financial-ops__receipt-warning { grid-column: 1 / -1; }
 .financial-ops__payment-complete button { min-height: 42px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; grid-column: 1 / -1; border: 1px solid #16835d; border-radius: 9px; color: #fff; background: #16835d; font: inherit; font-weight: 800; }
 .financial-ops__payment-complete button:last-child { border-color: #c7d9e7; color: #45627a; background: #fff; }
 .financial-ops__cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; }

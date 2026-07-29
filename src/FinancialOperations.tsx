@@ -15,6 +15,7 @@ import {
 import { supabase } from './lib/supabase';
 import { toBangkokDateString } from './lib/serviceDate';
 import { uploadPaymentEvidence } from './lib/paymentEvidence';
+import { getErrorMessage } from './lib/errorMessage';
 import { usePendingRequests } from './features/employee-delivery/usePendingRequests';
 import type { AppRole, PaymentMethod } from './types/app';
 
@@ -221,6 +222,7 @@ export function FinancialOperations({ userRole = 'round_lead' }: { userRole?: Ap
   const [evidence, setEvidence] = useState<File | null>(null);
   const [selectedShop, setSelectedShop] = useState<QueueShop | null>(null);
   const [receipt, setReceipt] = useState<PaymentReceipt | null>(null);
+  const [receiptWarning, setReceiptWarning] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -302,7 +304,7 @@ export function FinancialOperations({ userRole = 'round_lead' }: { userRole?: Ap
 
   useEffect(() => {
     void load().catch((loadError: unknown) => {
-      setError(loadError instanceof Error ? loadError.message : String(loadError));
+      setError(getErrorMessage(loadError));
     });
   }, [load]);
 
@@ -314,7 +316,7 @@ export function FinancialOperations({ userRole = 'round_lead' }: { userRole?: Ap
       if (event.key === 'Escape' && !busyRef.current) {
         if (receiptRef.current) {
           void load().catch((loadError: unknown) => {
-            setError(loadError instanceof Error ? loadError.message : String(loadError));
+            setError(getErrorMessage(loadError));
           });
         }
         setReceipt(null);
@@ -391,7 +393,7 @@ export function FinancialOperations({ userRole = 'round_lead' }: { userRole?: Ap
       await action();
       if (reload) await load();
     } catch (actionError) {
-      setError(actionError instanceof Error ? actionError.message : String(actionError));
+      setError(getErrorMessage(actionError));
     } finally {
       setBusy(false);
     }
@@ -420,6 +422,7 @@ export function FinancialOperations({ userRole = 'round_lead' }: { userRole?: Ap
   const chooseShop = (shop: QueueShop, trigger: HTMLButtonElement) => {
     returnFocusRef.current = trigger;
     setReceipt(null);
+    setReceiptWarning(null);
     setSelectedShop(shop);
     setMethod(shop.payment_profile.default_payment_method);
     setAmount(String(shop.outstanding_amount));
@@ -493,9 +496,8 @@ export function FinancialOperations({ userRole = 'round_lead' }: { userRole?: Ap
     if (!data?.payment_id || !data.receipt_number || !data.recorded_at) {
       throw new Error('ระบบไม่ได้ส่งเลขที่หรือเวลาของใบเสร็จกลับมา');
     }
-    const charges = await getReceiptCharges(data.payment_id);
     clearPendingRequest(signature, request.key);
-    setReceipt({
+    const nextReceipt: PaymentReceipt = {
       paymentId: data.payment_id,
       receiptNumber: data.receipt_number,
       shopCode: selectedShop.shop_code,
@@ -503,22 +505,37 @@ export function FinancialOperations({ userRole = 'round_lead' }: { userRole?: Ap
       method,
       receivedAmount,
       recordedAt: data.recorded_at,
-      charges,
-    });
+      charges: [],
+    };
+    setReceipt(nextReceipt);
+    setReceiptWarning(null);
     setSuccess('บันทึกรับเงินแล้ว');
+    void getReceiptCharges(data.payment_id)
+      .then((charges) => {
+        setReceipt((current) => {
+          if (!current || current.paymentId !== data.payment_id) return current;
+          return { ...current, charges };
+        });
+      })
+      .catch((receiptError: unknown) => {
+        setReceiptWarning(
+          `บันทึกรับเงินแล้ว แต่โหลดรายละเอียดรายการสำหรับใบเสร็จไม่สำเร็จ: ${getErrorMessage(receiptError)}`,
+        );
+      });
   }, false);
 
   const closePayment = () => {
     if (receiptRef.current) {
       void load().catch((loadError: unknown) => {
-        setError(loadError instanceof Error ? loadError.message : String(loadError));
+        setError(getErrorMessage(loadError));
       });
     }
     setReceipt(null);
+    setReceiptWarning(null);
     setSelectedShop(null);
   };
 
-  const printReceipt = (targetReceipt: PaymentReceipt) => {
+  const printReceipt = (targetReceipt: PaymentReceipt, existingPrintWindow?: Window) => {
     const receiptHeightMm = Math.min(
       180,
       Math.max(42, 31 + targetReceipt.charges.length * 4.5 + targetReceipt.charges.reduce(
@@ -526,7 +543,8 @@ export function FinancialOperations({ userRole = 'round_lead' }: { userRole?: Ap
         0,
       )),
     );
-    const printWindow = window.open('', '_blank', `popup,width=360,height=${Math.ceil(receiptHeightMm * 3.78)}`);
+    const printWindow = existingPrintWindow
+      ?? window.open('', '_blank', `popup,width=360,height=${Math.ceil(receiptHeightMm * 3.78)}`);
     if (!printWindow) {
       setError('เบราว์เซอร์บล็อกหน้าต่างพิมพ์ กรุณาอนุญาตป๊อปอัปแล้วลองใหม่');
       return;
@@ -628,19 +646,31 @@ export function FinancialOperations({ userRole = 'round_lead' }: { userRole?: Ap
     printWindow.print();
   };
 
-  const printHistoryReceipt = (payment: PaymentHistoryItem) => runAction(async () => {
-    const charges = await getReceiptCharges(payment.id);
-    printReceipt({
-      paymentId: payment.id,
-      receiptNumber: payment.receipt_number,
-      shopCode: payment.shops?.code ?? '—',
-      shopName: payment.shops?.name ?? 'ไม่พบร้าน',
-      method: payment.payment_method,
-      receivedAmount: payment.received_amount,
-      recordedAt: payment.recorded_at,
-      charges,
-    });
-  }, false);
+  const printHistoryReceipt = (payment: PaymentHistoryItem) => {
+    const printWindow = window.open('', '_blank', 'popup,width=360,height=680');
+    if (!printWindow) {
+      setError('เบราว์เซอร์บล็อกหน้าต่างพิมพ์ กรุณาอนุญาตป๊อปอัปแล้วลองใหม่');
+      return;
+    }
+    void runAction(async () => {
+      try {
+        const charges = await getReceiptCharges(payment.id);
+        printReceipt({
+          paymentId: payment.id,
+          receiptNumber: payment.receipt_number,
+          shopCode: payment.shops?.code ?? '—',
+          shopName: payment.shops?.name ?? 'ไม่พบร้าน',
+          method: payment.payment_method,
+          receivedAmount: payment.received_amount,
+          recordedAt: payment.recorded_at,
+          charges,
+        }, printWindow);
+      } catch (printError) {
+        printWindow.close();
+        throw printError;
+      }
+    }, false);
+  };
 
   const decide = (approvalId: string, decision: 'approved' | 'rejected') => runAction(async () => {
     if (!supabase) return;
@@ -814,6 +844,7 @@ export function FinancialOperations({ userRole = 'round_lead' }: { userRole?: Ap
               <div className="financial-ops__payment-complete">
                 <CheckCircle aria-hidden="true" size={24} weight="fill" />
                 <span><strong>บันทึกรับเงินเรียบร้อย</strong><small>เลือกพิมพ์ใบเสร็จสำหรับร้านที่ต้องการ</small></span>
+                {receiptWarning ? <small className="financial-ops__receipt-warning" role="status">{receiptWarning}</small> : null}
                 <button onClick={() => printReceipt(receipt)} type="button"><Printer aria-hidden="true" size={19} />พิมพ์ใบเสร็จ</button>
                 <button onClick={closePayment} type="button">เสร็จสิ้น</button>
               </div>
