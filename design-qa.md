@@ -50,6 +50,42 @@ final result: passed
 
 ---
 
+## 2026-07-29 — Receive-payment layout refresh
+
+**Comparison Target**
+
+- Source visual truth: `/Users/bhusitt./Desktop/ภาพถ่ายหน้าจอ2569-07-29เวลา 18.12.38.png` (provided receive-payment layout reference).
+- Intended implementation: `src/FinancialOperations.tsx`, opened from the collection queue with a shop selected.
+- Implementation screenshot path: unavailable — the local production route requires an authenticated Supabase session; the available demo route does not expose the financial-operations screen.
+- Intended viewport and state: 630 × 742 reference, payment dialog open, cash selected, a received amount entered, and evidence not yet attached.
+
+**Findings**
+
+- [P1] Browser-rendered visual comparison is blocked by the unavailable authenticated collection state. The form was therefore not marked as visually passed from source code or tests alone.
+
+**Required Fidelity Surfaces**
+
+- Fonts and typography: implemented with the existing Noto Sans Thai stack; browser visual verification is pending.
+- Spacing and layout rhythm: implemented as a compact single-column payment card with grouped method buttons, amount field, quick values, summary row, and fixed action row; browser visual verification is pending.
+- Colors and visual tokens: uses the established blue primary action, pale blue summary surface, green monetary figures, white fields, and existing border tokens; browser visual verification is pending.
+- Image quality and asset fidelity: no new raster assets were needed; standard controls use the installed Phosphor icon set.
+- Copy and content: payment method, live allocation/change/remaining amounts, reference, evidence, receipt choice, cancel, and confirmation are connected to the existing payment flow.
+
+**Interaction And Build Checks**
+
+- `npm run test:ui -- --run tests/financial-operations.test.tsx`: passed, 13/13.
+- `npm run build`: passed.
+- Existing record-payment validation, oldest-first allocation, evidence requirements, focus management, automatic receipt printing, dynamic method tabs, and receipt flow remain covered by the focused UI suite.
+- Payment evidence is rejected above 5 MB in the dialog, and migration `0114_limit_payment_evidence_to_5mb.sql` applies the same storage limit.
+
+**Implementation Checklist**
+
+- Sign into a collection-enabled account, open one shop's receive-payment dialog, capture it at the reference state, and run the side-by-side visual comparison.
+
+final result: blocked
+
+---
+
 **Comparison Target**
 
 - Source visual truth: `/Users/bhusitt./Desktop/ภาพถ่ายหน้าจอ2569-07-23เวลา 12.35.00.png` (legacy damage form) and `/Users/bhusitt./Desktop/ภาพถ่ายหน้าจอ2569-07-23เวลา 12.35.53.png` (the requested transfer-card pattern).

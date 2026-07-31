@@ -40,7 +40,7 @@ function mockReceiptPrintWindow() {
     print,
     close,
   } as unknown as Window);
-  return { printDocument, print };
+  return { close, printDocument, print };
 }
 
 const queueShop = {
@@ -131,8 +131,11 @@ describe('FinancialOperations', () => {
     });
     expect(mocks.rpc).not.toHaveBeenCalledWith('get_collection_run_queue', expect.anything());
     const amount = screen.getByRole('spinbutton', { name: 'ยอดรับเงินจริง' });
+    const cashMethod = screen.getByRole('button', { name: 'เงินสด' });
+    expect(cashMethod.parentElement?.style.gridTemplateColumns).toBe('repeat(1, minmax(0, 1fr))');
     await user.clear(amount);
     await user.type(amount, '70');
+    await user.click(screen.getByRole('checkbox', { name: 'ต้องการพิมพ์ใบรับเงิน' }));
     await user.click(screen.getByRole('button', { name: 'ยืนยันรับเงิน' }));
 
     await waitFor(() => expect(mocks.rpc).toHaveBeenCalledWith('record_payment', expect.objectContaining({
@@ -146,7 +149,7 @@ describe('FinancialOperations', () => {
     })));
   });
 
-  it('prints the ordered items on a receipt only after payment is recorded', async () => {
+  it('automatically prints the ordered items after payment is recorded when requested', async () => {
     const user = userEvent.setup();
     const { printDocument, print } = mockReceiptPrintWindow();
     mocks.from.mockImplementation((table: string) => {
@@ -179,8 +182,7 @@ describe('FinancialOperations', () => {
     expect(screen.queryByRole('button', { name: 'พิมพ์ใบเสร็จ' })).toBeNull();
 
     await user.click(screen.getByRole('button', { name: 'ยืนยันรับเงิน' }));
-    const printButton = await screen.findByRole('button', { name: 'พิมพ์ใบเสร็จ' });
-    await user.click(printButton);
+    await waitFor(() => expect(print).toHaveBeenCalledOnce());
 
     expect(printDocument.body.textContent).toContain('S001 · ร้านเก็บเงิน');
     expect(printDocument.body.textContent).toContain('น้ำแข็งหลอด × 2 ถุง');
@@ -193,6 +195,7 @@ describe('FinancialOperations', () => {
 
   it('keeps a recorded payment printable when receipt item details cannot be loaded', async () => {
     const user = userEvent.setup();
+    const { close } = mockReceiptPrintWindow();
     mocks.from.mockImplementation((table: string) => {
       if (table === 'collection_runs') return queryResult({ id: 'run-1' });
       return queryResult([]);
@@ -220,6 +223,39 @@ describe('FinancialOperations', () => {
 
     expect(await screen.findByRole('button', { name: 'พิมพ์ใบเสร็จ' })).not.toBeNull();
     expect(screen.getByText('บันทึกรับเงินเรียบร้อย')).not.toBeNull();
+    await waitFor(() => expect(close).toHaveBeenCalledOnce());
+  });
+
+  it('rejects payment evidence larger than 5 MB before recording', async () => {
+    const user = userEvent.setup();
+    const evidenceRequiredShop = {
+      ...queueShop,
+      payment_profile: {
+        ...queueShop.payment_profile,
+        cash_evidence_required: true,
+      },
+    };
+    mocks.from.mockImplementation((table: string) => {
+      if (table === 'collection_runs') return queryResult({ id: 'run-1' });
+      return queryResult([]);
+    });
+    mocks.rpc.mockImplementation(async (name: string) => {
+      if (name === 'get_today_collection_run_queue') return { data: [evidenceRequiredShop], error: null };
+      return { data: [], error: null };
+    });
+
+    render(<FinancialOperations userRole="courier" />);
+    await user.click(await screen.findByRole('button', { name: /S001 · ร้านเก็บเงิน/ }));
+    const oversizedEvidence = new File(
+      [new Uint8Array(5 * 1024 * 1024 + 1)],
+      'evidence.jpg',
+      { type: 'image/jpeg' },
+    );
+    await user.upload(screen.getByLabelText('หลักฐานการชำระ'), oversizedEvidence);
+
+    expect((await screen.findByRole('alert')).textContent).toContain('หลักฐานต้องมีขนาดไม่เกิน 5 MB');
+    expect((screen.getByRole('button', { name: 'ยืนยันรับเงิน' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(mocks.rpc).not.toHaveBeenCalledWith('record_payment', expect.anything());
   });
 
   it('lets a courier reprint a persisted receipt from payment history', async () => {
@@ -413,6 +449,44 @@ describe('FinancialOperations', () => {
     await waitFor(() => expect(mocks.createSignedUrls).toHaveBeenCalled());
     expect(container.querySelector('.financial-ops__collector-avatar img')).toBeNull();
     expect(container.querySelector('.financial-ops__collector-avatar svg')).not.toBeNull();
+  });
+
+  it('opens the paid bills from a recent payment entry', async () => {
+    const user = userEvent.setup();
+    mocks.from.mockImplementation((table: string) => {
+      if (table === 'collection_runs') return queryResult({ id: 'run-1' });
+      if (table === 'payments') return queryResult([{
+        id: 'payment-1',
+        receipt_number: 'R260729-000001',
+        received_amount: 100,
+        payment_method: 'cash',
+        status: 'active',
+        recorded_at: '2026-07-29T07:00:00Z',
+        void_reason: null,
+        shops: { code: 'S001', name: 'ร้านเก็บเงิน' },
+      }]);
+      return queryResult([]);
+    });
+    mocks.rpc.mockImplementation(async (name: string) => {
+      if (name === 'get_today_collection_run_queue') return { data: [], error: null };
+      if (name === 'get_payment_receipt_items') return { data: [{
+        charge_number: 'C260728-000001',
+        received_amount: 100,
+        ice_type_name: 'น้ำแข็งหลอด',
+        ice_type_unit: 'ถุง',
+        quantity: 2,
+        line_total: 100,
+      }], error: null };
+      return { data: [], error: null };
+    });
+
+    render(<FinancialOperations userRole="courier" />);
+    await user.click(await screen.findByRole('button', { name: /ดูบิล R260729-000001/ }));
+
+    expect(await screen.findByRole('dialog', { name: 'รายละเอียดใบเสร็จ R260729-000001' })).not.toBeNull();
+    expect(screen.getByText('C260728-000001')).not.toBeNull();
+    expect(screen.getByText('น้ำแข็งหลอด × 2 ถุง')).not.toBeNull();
+    expect(mocks.rpc).toHaveBeenCalledWith('get_payment_receipt_items', { p_payment_id: 'payment-1' });
   });
 
   it('lets a manager void an active payment from recent history', async () => {

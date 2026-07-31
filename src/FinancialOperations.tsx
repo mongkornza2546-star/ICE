@@ -1,13 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
+  ArrowsLeftRight,
+  Bank,
   CaretRight,
   CheckCircle,
   Coins,
   CreditCard,
   ListNumbers,
+  Money,
   Printer,
   Storefront,
+  UploadSimple,
   UserCircle,
   WarningCircle,
   X,
@@ -102,6 +106,12 @@ type PaymentReceipt = {
   charges: ReceiptCharge[];
 };
 
+type HistoryReceiptDetail = {
+  payment: PaymentHistoryItem;
+  charges: ReceiptCharge[] | null;
+  error: string | null;
+};
+
 type ReceiptItem = {
   name: string;
   unit: string;
@@ -129,6 +139,7 @@ const money = new Intl.NumberFormat('th-TH', {
   currency: 'THB',
   minimumFractionDigits: 2,
 });
+const MAX_PAYMENT_EVIDENCE_SIZE = 5 * 1024 * 1024;
 
 const receiptDateTime = new Intl.DateTimeFormat('th-TH', {
   dateStyle: 'short',
@@ -220,9 +231,12 @@ export function FinancialOperations({ userRole = 'round_lead' }: { userRole?: Ap
   const [amount, setAmount] = useState('');
   const [reference, setReference] = useState('');
   const [evidence, setEvidence] = useState<File | null>(null);
+  const [evidenceError, setEvidenceError] = useState<string | null>(null);
+  const [printReceiptWanted, setPrintReceiptWanted] = useState(true);
   const [selectedShop, setSelectedShop] = useState<QueueShop | null>(null);
   const [receipt, setReceipt] = useState<PaymentReceipt | null>(null);
   const [receiptWarning, setReceiptWarning] = useState<string | null>(null);
+  const [historyReceipt, setHistoryReceipt] = useState<HistoryReceiptDetail | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -230,6 +244,9 @@ export function FinancialOperations({ userRole = 'round_lead' }: { userRole?: Ap
   const dialogRef = useRef<HTMLDivElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const returnFocusRef = useRef<HTMLButtonElement | null>(null);
+  const historyDialogRef = useRef<HTMLDivElement>(null);
+  const historyCloseButtonRef = useRef<HTMLButtonElement>(null);
+  const historyReturnFocusRef = useRef<HTMLButtonElement | null>(null);
   const busyRef = useRef(busy);
   const receiptRef = useRef<PaymentReceipt | null>(receipt);
   busyRef.current = busy;
@@ -352,6 +369,43 @@ export function FinancialOperations({ userRole = 'round_lead' }: { userRole?: Ap
   }, [selectedShop?.shop_id]);
 
   useEffect(() => {
+    if (!historyReceipt) return;
+    const page = pageRef.current;
+    const previousOverflow = document.body.style.overflow;
+    const closeOnKeydown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setHistoryReceipt(null);
+        return;
+      }
+      if (event.key !== 'Tab') return;
+      const focusable = Array.from(historyDialogRef.current?.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ) ?? []);
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    if (page) page.inert = true;
+    document.body.style.overflow = 'hidden';
+    historyCloseButtonRef.current?.focus();
+    window.addEventListener('keydown', closeOnKeydown);
+    return () => {
+      if (page) page.inert = false;
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', closeOnKeydown);
+      historyReturnFocusRef.current?.focus();
+    };
+  }, [historyReceipt?.payment.id]);
+
+  useEffect(() => {
     if (!supabase?.storage) return;
     const avatarPaths = collectors
       .map((collector) => collector.avatar_path)
@@ -425,9 +479,11 @@ export function FinancialOperations({ userRole = 'round_lead' }: { userRole?: Ap
     setReceiptWarning(null);
     setSelectedShop(shop);
     setMethod(shop.payment_profile.default_payment_method);
-    setAmount(String(shop.outstanding_amount));
+    setAmount(Number(shop.outstanding_amount).toFixed(2));
     setReference('');
     setEvidence(null);
+    setEvidenceError(null);
+    setPrintReceiptWanted(true);
     setError(null);
   };
 
@@ -453,6 +509,12 @@ export function FinancialOperations({ userRole = 'round_lead' }: { userRole?: Ap
     () => selectedShop ? allocateOldestFirst(selectedShop.charges, allocatedAmount) : [],
     [allocatedAmount, selectedShop],
   );
+  const changeAmount = selectedShop && method === 'cash'
+    ? Math.max(0, (Number.isFinite(receivedAmount) ? receivedAmount : 0) - Number(selectedShop.outstanding_amount))
+    : 0;
+  const remainingAmount = selectedShop
+    ? Math.max(0, Number(selectedShop.outstanding_amount) - allocatedAmount)
+    : 0;
 
   const getReceiptCharges = async (paymentId: string) => {
     if (!supabase) return [];
@@ -463,66 +525,90 @@ export function FinancialOperations({ userRole = 'round_lead' }: { userRole?: Ap
     return receiptChargesFromRows((data ?? []) as ReceiptItemRow[]);
   };
 
-  const recordPayment = () => runAction(async () => {
-    if (!supabase || !runId || !selectedShop || !paymentReady) return;
-    const signature = `collection-payment:${JSON.stringify({
-      runId,
-      shopId: selectedShop.shop_id,
-      allocations,
-      method,
-      receivedAmount,
-      reference: reference.trim() || null,
-      evidence: evidence ? {
-        name: evidence.name,
-        size: evidence.size,
-        lastModified: evidence.lastModified,
-      } : null,
-    })}`;
-    const request = getOrCreatePendingRequest(signature);
-    const evidencePath = evidence ? await uploadPaymentEvidence(evidence, request.key) : null;
-    const { data, error: rpcError } = await supabase.rpc('record_payment', {
-      p_shop_id: selectedShop.shop_id,
-      p_allocations: allocations,
-      p_payment_method: method,
-      p_received_amount: receivedAmount,
-      p_reference_number: reference.trim() || null,
-      p_evidence_path: evidencePath,
-      p_collection_run_id: runId,
-      p_expected_outstanding_amount: selectedShop.outstanding_amount,
-      p_approval_id: null,
-      p_idempotency_key: request.key,
-    });
-    if (rpcError) throw rpcError;
-    if (!data?.payment_id || !data.receipt_number || !data.recorded_at) {
-      throw new Error('ระบบไม่ได้ส่งเลขที่หรือเวลาของใบเสร็จกลับมา');
-    }
-    clearPendingRequest(signature, request.key);
-    const nextReceipt: PaymentReceipt = {
-      paymentId: data.payment_id,
-      receiptNumber: data.receipt_number,
-      shopCode: selectedShop.shop_code,
-      shopName: selectedShop.shop_name,
-      method,
-      receivedAmount,
-      recordedAt: data.recorded_at,
-      charges: [],
-    };
-    setReceipt(nextReceipt);
-    setReceiptWarning(null);
-    setSuccess('บันทึกรับเงินแล้ว');
-    void getReceiptCharges(data.payment_id)
-      .then((charges) => {
-        setReceipt((current) => {
-          if (!current || current.paymentId !== data.payment_id) return current;
-          return { ...current, charges };
+  const recordPayment = () => {
+    const printWindow = printReceiptWanted
+      ? window.open('', '_blank', 'popup,width=360,height=680')
+      : null;
+    return runAction(async () => {
+      try {
+        if (!supabase || !runId || !selectedShop || !paymentReady) return;
+        const signature = `collection-payment:${JSON.stringify({
+          runId,
+          shopId: selectedShop.shop_id,
+          allocations,
+          method,
+          receivedAmount,
+          reference: reference.trim() || null,
+          evidence: evidence ? {
+            name: evidence.name,
+            size: evidence.size,
+            lastModified: evidence.lastModified,
+          } : null,
+        })}`;
+        const request = getOrCreatePendingRequest(signature);
+        const evidencePath = evidence ? await uploadPaymentEvidence(evidence, request.key) : null;
+        const { data, error: rpcError } = await supabase.rpc('record_payment', {
+          p_shop_id: selectedShop.shop_id,
+          p_allocations: allocations,
+          p_payment_method: method,
+          p_received_amount: receivedAmount,
+          p_reference_number: reference.trim() || null,
+          p_evidence_path: evidencePath,
+          p_collection_run_id: runId,
+          p_expected_outstanding_amount: selectedShop.outstanding_amount,
+          p_approval_id: null,
+          p_idempotency_key: request.key,
         });
-      })
-      .catch((receiptError: unknown) => {
-        setReceiptWarning(
-          `บันทึกรับเงินแล้ว แต่โหลดรายละเอียดรายการสำหรับใบเสร็จไม่สำเร็จ: ${getErrorMessage(receiptError)}`,
-        );
-      });
-  }, false);
+        if (rpcError) throw rpcError;
+        if (!data?.payment_id || !data.receipt_number || !data.recorded_at) {
+          throw new Error('ระบบไม่ได้ส่งเลขที่หรือเวลาของใบเสร็จกลับมา');
+        }
+        clearPendingRequest(signature, request.key);
+        const nextReceipt: PaymentReceipt = {
+          paymentId: data.payment_id,
+          receiptNumber: data.receipt_number,
+          shopCode: selectedShop.shop_code,
+          shopName: selectedShop.shop_name,
+          method,
+          receivedAmount,
+          recordedAt: data.recorded_at,
+          charges: [],
+        };
+        setReceipt(nextReceipt);
+        setReceiptWarning(printReceiptWanted && !printWindow
+          ? 'บันทึกรับเงินแล้ว แต่เบราว์เซอร์บล็อกหน้าต่างพิมพ์ กรุณากดพิมพ์ใบเสร็จอีกครั้ง'
+          : null);
+        setSuccess('บันทึกรับเงินแล้ว');
+        void getReceiptCharges(data.payment_id)
+          .then((charges) => {
+            const printableReceipt = { ...nextReceipt, charges };
+            setReceipt((current) => (
+              current?.paymentId === data.payment_id ? printableReceipt : current
+            ));
+            if (printWindow) printReceipt(printableReceipt, printWindow);
+          })
+          .catch((receiptError: unknown) => {
+            printWindow?.close();
+            setReceiptWarning(
+              `บันทึกรับเงินแล้ว แต่โหลดรายละเอียดรายการสำหรับใบเสร็จไม่สำเร็จ: ${getErrorMessage(receiptError)}`,
+            );
+          });
+      } catch (paymentError) {
+        printWindow?.close();
+        throw paymentError;
+      }
+    }, false);
+  };
+
+  const selectEvidence = (file: File | null) => {
+    if (file && file.size > MAX_PAYMENT_EVIDENCE_SIZE) {
+      setEvidence(null);
+      setEvidenceError('หลักฐานต้องมีขนาดไม่เกิน 5 MB');
+      return;
+    }
+    setEvidence(file);
+    setEvidenceError(null);
+  };
 
   const closePayment = () => {
     if (receiptRef.current) {
@@ -672,6 +758,22 @@ export function FinancialOperations({ userRole = 'round_lead' }: { userRole?: Ap
     }, false);
   };
 
+  const openHistoryReceipt = (payment: PaymentHistoryItem, trigger: HTMLButtonElement) => {
+    historyReturnFocusRef.current = trigger;
+    setHistoryReceipt({ payment, charges: null, error: null });
+    void getReceiptCharges(payment.id)
+      .then((charges) => {
+        setHistoryReceipt((current) => current?.payment.id === payment.id
+          ? { ...current, charges }
+          : current);
+      })
+      .catch((receiptError: unknown) => {
+        setHistoryReceipt((current) => current?.payment.id === payment.id
+          ? { ...current, error: getErrorMessage(receiptError) }
+          : current);
+      });
+  };
+
   const decide = (approvalId: string, decision: 'approved' | 'rejected') => runAction(async () => {
     if (!supabase) return;
     const reason = decision === 'rejected'
@@ -809,8 +911,8 @@ export function FinancialOperations({ userRole = 'round_lead' }: { userRole?: Ap
                 )}
               </span>
               <span>
-                <small>{selectedShop.shop_code}</small>
-                <h2>{selectedShop.shop_name}</h2>
+                <small>{selectedShop.shop_code} · {selectedShop.shop_name}</small>
+                <h2>บันทึกรับเงิน</h2>
                 <b>ยอดค้าง {money.format(selectedShop.outstanding_amount)}</b>
               </span>
               <button
@@ -824,18 +926,11 @@ export function FinancialOperations({ userRole = 'round_lead' }: { userRole?: Ap
               </button>
             </header>
 
-            <section className="financial-ops__charge-list" aria-label="รายการส่งที่ค้าง">
-              <strong><ListNumbers aria-hidden="true" size={18} /> รายการส่งที่นำมาเก็บ</strong>
+            <section className="financial-ops__charge-list sr-only" aria-label="รายการส่งที่นำมาเก็บ">
               {selectedShop.charges.map((charge) => (
                 <div key={charge.charge_id}>
-                  <span>
-                    <b>{charge.charge_number}</b>
-                    <small>วันที่ {charge.service_date}</small>
-                  </span>
-                  <span>
-                    <small>ยอดรายการ {money.format(charge.original_amount)}</small>
-                    <b>ค้าง {money.format(charge.outstanding_amount)}</b>
-                  </span>
+                  <span>{charge.charge_number}</span>
+                  <span>ค้าง {money.format(charge.outstanding_amount)}</span>
                 </div>
               ))}
             </section>
@@ -845,23 +940,37 @@ export function FinancialOperations({ userRole = 'round_lead' }: { userRole?: Ap
                 <CheckCircle aria-hidden="true" size={24} weight="fill" />
                 <span><strong>บันทึกรับเงินเรียบร้อย</strong><small>เลือกพิมพ์ใบเสร็จสำหรับร้านที่ต้องการ</small></span>
                 {receiptWarning ? <small className="financial-ops__receipt-warning" role="status">{receiptWarning}</small> : null}
-                <button onClick={() => printReceipt(receipt)} type="button"><Printer aria-hidden="true" size={19} />พิมพ์ใบเสร็จ</button>
+                {printReceiptWanted ? <button onClick={() => printReceipt(receipt)} type="button"><Printer aria-hidden="true" size={19} />พิมพ์ใบเสร็จ</button> : null}
                 <button onClick={closePayment} type="button">เสร็จสิ้น</button>
               </div>
             ) : (
               <div className="financial-ops__payment">
-                <label>
-                  <span>วิธีรับเงิน</span>
-                  <select onChange={(event) => setMethod(event.target.value as PaymentMethod)} value={method}>
-                    {selectedShop.payment_profile.allowed_payment_methods.map((allowedMethod) => (
-                      <option key={allowedMethod} value={allowedMethod}>
-                        {paymentMethodLabel(allowedMethod)}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  <span>ยอดรับเงินจริง</span>
+                <section className="financial-ops__payment-methods" aria-labelledby="payment-method-label">
+                  <h3 id="payment-method-label">1. วิธีการรับเงิน</h3>
+                  <div style={{
+                    gridTemplateColumns: `repeat(${selectedShop.payment_profile.allowed_payment_methods.length}, minmax(0, 1fr))`,
+                  }}>
+                    {selectedShop.payment_profile.allowed_payment_methods.map((allowedMethod) => {
+                      const Icon = allowedMethod === 'cash' ? Money : allowedMethod === 'bank_transfer' ? Bank : ArrowsLeftRight;
+                      return (
+                        <button
+                          aria-pressed={method === allowedMethod}
+                          className={method === allowedMethod ? 'is-selected' : ''}
+                          key={allowedMethod}
+                          onClick={() => setMethod(allowedMethod)}
+                          type="button"
+                        >
+                          <Icon aria-hidden="true" size={21} weight="duotone" />
+                          {paymentMethodLabel(allowedMethod)}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </section>
+
+                <label className="financial-ops__payment-amount">
+                  <span>2. ยอดรับเงินจริง</span>
+                  <span className="financial-ops__currency" aria-hidden="true">฿</span>
                   <input
                     aria-label="ยอดรับเงินจริง"
                     inputMode="decimal"
@@ -872,30 +981,124 @@ export function FinancialOperations({ userRole = 'round_lead' }: { userRole?: Ap
                     value={amount}
                   />
                 </label>
-                <label>
-                  <span>เลขอ้างอิง{referenceRequired ? ' *' : ''}</span>
+
+                <div className="financial-ops__quick-amounts" aria-label="เลือกยอดรับเงินด่วน">
+                  {[100, 200, 500, 1000].map((value) => (
+                    <button key={value} onClick={() => setAmount(value.toFixed(2))} type="button">
+                      {value.toLocaleString('th-TH')}
+                    </button>
+                  ))}
+                </div>
+
+                <section className="financial-ops__payment-summary" aria-label="สรุปยอดรับเงิน">
+                  <span><small>ตัดยอด</small><strong>{money.format(allocatedAmount)}</strong></span>
+                  <span><small>เงินทอน</small><strong>{money.format(changeAmount)}</strong></span>
+                  <span><small>คงเหลือหลังรายการ</small><b>{money.format(remainingAmount)}</b></span>
+                </section>
+
+                <label className="financial-ops__payment-reference">
+                  <span>3. เลขอ้างอิง / หมายเหตุ <small>({referenceRequired ? 'บังคับกรอก' : 'ไม่บังคับ'})</small></span>
                   <input
                     aria-label="เลขอ้างอิง"
                     onChange={(event) => setReference(event.target.value)}
-                    placeholder={referenceRequired ? 'กรอกเลขอ้างอิง' : 'ถ้ามี'}
+                    placeholder={referenceRequired ? 'กรอกเลขอ้างอิง' : `รับชำระค่าน้ำแข็ง วันที่ ${serviceDate}`}
                     required={referenceRequired}
                     value={reference}
                   />
                 </label>
-                <label>
-                  <span>หลักฐาน{evidenceRequired ? ' *' : ''}</span>
+
+                <label className="financial-ops__payment-evidence">
+                  <span>4. หลักฐานการชำระ <small>({evidenceRequired ? 'บังคับ' : 'ไม่บังคับ'})</small></span>
                   <input
                     accept="image/jpeg,image/png,image/webp,application/pdf"
-                    onChange={(event) => setEvidence(event.target.files?.[0] ?? null)}
+                    aria-label="หลักฐานการชำระ"
+                    onChange={(event) => selectEvidence(event.target.files?.[0] ?? null)}
                     required={evidenceRequired}
                     type="file"
                   />
+                  <span className="financial-ops__dropzone">
+                    <UploadSimple aria-hidden="true" size={31} weight="duotone" />
+                    <b>{evidence ? evidence.name : 'คลิกหรือลากไฟล์มาวางที่นี่'}</b>
+                    <small>รองรับไฟล์ JPG, PNG, PDF (ไม่เกิน 5MB)</small>
+                  </span>
+                  {evidenceError ? <small className="financial-ops__evidence-error" role="alert">{evidenceError}</small> : null}
                 </label>
-                <button disabled={busy || !paymentReady} onClick={recordPayment} type="button">
-                  {busy ? 'กำลังบันทึก...' : 'ยืนยันรับเงิน'}
-                </button>
+                <label className="financial-ops__print-choice">
+                  <input checked={printReceiptWanted} disabled={busy} onChange={(event) => setPrintReceiptWanted(event.target.checked)} type="checkbox" />
+                  <span>ต้องการพิมพ์ใบรับเงิน</span>
+                </label>
+                <footer className="financial-ops__payment-actions">
+                  <button disabled={busy} onClick={closePayment} type="button">ยกเลิก</button>
+                  <button disabled={busy || !paymentReady} onClick={recordPayment} type="button">
+                    <CheckCircle aria-hidden="true" size={21} weight="regular" />
+                    {busy ? 'กำลังบันทึก...' : 'ยืนยันรับเงิน'}
+                  </button>
+                </footer>
               </div>
             )}
+          </article>
+        </div>
+      ), document.body) : null}
+
+      {historyReceipt ? createPortal((
+        <div
+          aria-label={`รายละเอียดใบเสร็จ ${historyReceipt.payment.receipt_number}`}
+          aria-modal="true"
+          className="financial-ops__modal"
+          ref={historyDialogRef}
+          role="dialog"
+        >
+          <div className="financial-ops__modal-backdrop" onClick={() => setHistoryReceipt(null)} />
+          <article className="financial-ops__payment-card financial-ops__receipt-detail-card">
+            <header>
+              <span className="financial-ops__receipt-detail-icon" aria-hidden="true"><Coins size={34} weight="duotone" /></span>
+              <span>
+                <small>ใบเสร็จรับเงิน</small>
+                <h2>{historyReceipt.payment.receipt_number}</h2>
+                <b>{historyReceipt.payment.shops?.code ?? '—'} · {historyReceipt.payment.shops?.name ?? 'ไม่พบร้าน'}</b>
+              </span>
+              <button
+                aria-label="ปิดรายละเอียดใบเสร็จ"
+                onClick={() => setHistoryReceipt(null)}
+                ref={historyCloseButtonRef}
+                type="button"
+              >
+                <X aria-hidden="true" size={22} />
+              </button>
+            </header>
+
+            <section className="financial-ops__receipt-summary" aria-label="ข้อมูลการรับเงิน">
+              <span><small>วันที่รับเงิน</small><strong>{receiptDateTime.format(new Date(historyReceipt.payment.recorded_at))}</strong></span>
+              <span><small>วิธีรับเงิน</small><strong>{paymentMethodLabel(historyReceipt.payment.payment_method)}</strong></span>
+              <span><small>ยอดรับเงิน</small><b>{money.format(historyReceipt.payment.received_amount)}</b></span>
+            </section>
+
+            {historyReceipt.payment.status === 'voided' ? (
+              <p className="financial-ops__voided-receipt" role="status">รายการนี้ถูกยกเลิก: {historyReceipt.payment.void_reason ?? '—'}</p>
+            ) : null}
+
+            <section className="financial-ops__receipt-charges" aria-label="บิลที่ชำระ">
+              <strong><ListNumbers aria-hidden="true" size={18} /> บิลที่ชำระ</strong>
+              {historyReceipt.charges === null && !historyReceipt.error ? <p>กำลังโหลดรายละเอียดบิล...</p> : null}
+              {historyReceipt.error ? <p className="employee-error" role="alert">โหลดรายละเอียดบิลไม่สำเร็จ: {historyReceipt.error}</p> : null}
+              {historyReceipt.charges?.length === 0 ? <p>ไม่พบรายการบิลในใบเสร็จนี้</p> : null}
+              {historyReceipt.charges?.map((charge) => (
+                <article key={charge.chargeNumber}>
+                  <header><strong>{charge.chargeNumber}</strong><b>{money.format(charge.receivedAmount)}</b></header>
+                  {charge.items.map((item, index) => (
+                    <div key={`${item.name}-${index}`}>
+                      <span>{item.name} × {item.quantity} {item.unit}</span>
+                      <b>{money.format(item.lineTotal)}</b>
+                    </div>
+                  ))}
+                </article>
+              ))}
+            </section>
+
+            <div className="financial-ops__receipt-actions">
+              <button disabled={busy} onClick={() => printHistoryReceipt(historyReceipt.payment)} type="button"><Printer aria-hidden="true" size={19} />พิมพ์ซ้ำ</button>
+              <button onClick={() => setHistoryReceipt(null)} type="button">ปิด</button>
+            </div>
           </article>
         </div>
       ), document.body) : null}
@@ -941,12 +1144,20 @@ export function FinancialOperations({ userRole = 'round_lead' }: { userRole?: Ap
         {paymentHistory.length === 0 ? <p className="financial-ops__empty">ยังไม่มีรายการรับเงิน</p> : (
           <div className="financial-ops__list">
             {paymentHistory.map((payment) => (
-              <div key={payment.id}>
-                <span>
-                  <strong>{payment.shops?.code ?? '—'} · {payment.shops?.name ?? 'ไม่พบร้าน'}</strong>
-                  <small>{payment.receipt_number} · {paymentMethodLabel(payment.payment_method)} · {receiptDateTime.format(new Date(payment.recorded_at))}{payment.status === 'voided' ? ` · ยกเลิก: ${payment.void_reason ?? '—'}` : ''}</small>
-                </span>
-                <span>
+              <article className="financial-ops__history-item" key={payment.id}>
+                <button
+                  aria-label={`ดูบิล ${payment.receipt_number} ของ ${payment.shops?.name ?? 'ร้านค้า'}`}
+                  className="financial-ops__history-summary"
+                  onClick={(event) => openHistoryReceipt(payment, event.currentTarget)}
+                  type="button"
+                >
+                  <span>
+                    <strong>{payment.shops?.code ?? '—'} · {payment.shops?.name ?? 'ไม่พบร้าน'}</strong>
+                    <small>{payment.receipt_number} · {paymentMethodLabel(payment.payment_method)} · {receiptDateTime.format(new Date(payment.recorded_at))}{payment.status === 'voided' ? ` · ยกเลิก: ${payment.void_reason ?? '—'}` : ''}</small>
+                  </span>
+                  <span className="financial-ops__history-open-label">ดูบิล <CaretRight aria-hidden="true" size={19} /></span>
+                </button>
+                <span className="financial-ops__history-side">
                   <b>{money.format(payment.received_amount)}</b>
                   {payment.status === 'active' ? (
                     <span className="financial-ops__history-actions">
@@ -955,7 +1166,7 @@ export function FinancialOperations({ userRole = 'round_lead' }: { userRole?: Ap
                     </span>
                   ) : null}
                 </span>
-              </div>
+              </article>
             ))}
           </div>
         )}
