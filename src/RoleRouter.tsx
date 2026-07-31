@@ -98,9 +98,7 @@ export function RoleRouter({
       navigationOwner.current = profile.id;
       setActiveView(saved?.activeView ? saved.activeView as AdminView : 'manager_overview');
       setCourierView(saved?.courierView ?? 'pos');
-      setBillingServiceDate(saved?.billingServiceDate && saved.billingServiceDate <= toBangkokDateString()
-        ? saved.billingServiceDate
-        : toBangkokDateString());
+      setBillingServiceDate(toBangkokDateString());
       return;
     }
     writeNavigation(profile.id, { activeView, courierView, billingServiceDate });
@@ -270,6 +268,9 @@ export function RoleRouter({
 
   const navigate = (view: AdminView) => {
     if (view !== currentView && currentView === 'delivery' && !confirmLeavingDelivery()) return;
+    if (view === 'delivery' && currentView !== 'delivery') {
+      setBillingServiceDate(toBangkokDateString());
+    }
     setActiveView(view);
   };
 

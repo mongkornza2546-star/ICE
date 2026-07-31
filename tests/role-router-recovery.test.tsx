@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { Session } from '@supabase/supabase-js';
 import { RoleRouter } from '../src/RoleRouter';
 import { readNavigation, writeNavigation } from '../src/lib/recoveryStorage';
+import { toBangkokDateString } from '../src/lib/serviceDate';
 
 const profile = {
   id: 'courier-1',
@@ -38,7 +39,7 @@ vi.mock('../src/FinancialOperations', () => ({
 }));
 
 describe('RoleRouter recovery', () => {
-  it('does not overwrite restored navigation with initial defaults', async () => {
+  it('restores the selected view but always resets billing to the current Bangkok date', async () => {
     mockedSupabase.maybeSingle.mockResolvedValue({ data: profile, error: null });
     mockedSupabase.signOut.mockResolvedValue(undefined);
     writeNavigation(profile.id, {
@@ -57,10 +58,10 @@ describe('RoleRouter recovery', () => {
     await waitFor(() => expect(
       screen.getByRole('button', { name: /เบิก/ }).getAttribute('aria-current'),
     ).toBe('page'));
-    expect(readNavigation(profile.id)).toEqual({
+    await waitFor(() => expect(readNavigation(profile.id)).toEqual({
       activeView: 'manager_overview',
       courierView: 'withdrawal',
-      billingServiceDate: '2026-07-15',
-    });
+      billingServiceDate: toBangkokDateString(),
+    }));
   });
 });
