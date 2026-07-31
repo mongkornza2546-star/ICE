@@ -44,8 +44,10 @@ export function RoleRouter({
   const [activeView, setActiveView] = useState<AdminView>('manager_overview');
   const [courierView, setCourierView] = useState<'withdrawal' | 'pos' | 'collection'>('pos');
   const [billingServiceDate, setBillingServiceDate] = useState(() => toBangkokDateString());
+  const [currentBangkokDate, setCurrentBangkokDate] = useState(() => toBangkokDateString());
   const [deliveryDraftState, setDeliveryDraftState] = useState({ dirty: false, submitting: false });
   const navigationOwner = useRef<string | null>(null);
+  const previousBangkokDate = useRef(currentBangkokDate);
   // Track which views have been visited so we only mount them on first visit
   // (lazy mount) but keep them alive afterwards (no unmount on tab switch).
   const [visitedViews, setVisitedViews] = useState<Set<AdminView>>(() => new Set(['manager_overview']));
@@ -98,11 +100,27 @@ export function RoleRouter({
       navigationOwner.current = profile.id;
       setActiveView(saved?.activeView ? saved.activeView as AdminView : 'manager_overview');
       setCourierView(saved?.courierView ?? 'pos');
-      setBillingServiceDate(toBangkokDateString());
+      setBillingServiceDate(currentBangkokDate);
       return;
     }
     writeNavigation(profile.id, { activeView, courierView, billingServiceDate });
-  }, [activeView, billingServiceDate, courierView, profile]);
+  }, [activeView, billingServiceDate, courierView, currentBangkokDate, profile]);
+
+  useEffect(() => {
+    const refreshCurrentDate = () => setCurrentBangkokDate(toBangkokDateString());
+    const intervalId = window.setInterval(refreshCurrentDate, 60_000);
+    window.addEventListener('focus', refreshCurrentDate);
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener('focus', refreshCurrentDate);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (previousBangkokDate.current === currentBangkokDate) return;
+    previousBangkokDate.current = currentBangkokDate;
+    setBillingServiceDate(currentBangkokDate);
+  }, [currentBangkokDate]);
 
   useEffect(() => {
     if (!deliveryDraftState.dirty && !deliveryDraftState.submitting) return undefined;
@@ -269,14 +287,14 @@ export function RoleRouter({
   const navigate = (view: AdminView) => {
     if (view !== currentView && currentView === 'delivery' && !confirmLeavingDelivery()) return;
     if (view === 'delivery' && currentView !== 'delivery') {
-      setBillingServiceDate(toBangkokDateString());
+      setBillingServiceDate(currentBangkokDate);
     }
     setActiveView(view);
   };
 
   const changeBillingServiceDate = (serviceDate: string) => {
     if (serviceDate === billingServiceDate) return;
-    if (serviceDate > toBangkokDateString()) return;
+    if (serviceDate > currentBangkokDate) return;
     if (!confirmLeavingDelivery()) return;
     setBillingServiceDate(serviceDate);
   };
