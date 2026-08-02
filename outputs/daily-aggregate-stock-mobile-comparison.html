@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="th">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Mobile stock count comparison</title>
+    <style>
+      * { box-sizing: border-box; }
+      body { margin: 0; padding: 12px; color: #10233f; background: #edf2f7; font-family: sans-serif; }
+      main { display: grid; grid-template-columns: repeat(2, 393px); gap: 8px; }
+      figure { margin: 0; overflow: hidden; border-radius: 8px; background: #fff; box-shadow: 0 2px 8px #10233f1f; }
+      figcaption { height: 36px; display: grid; place-items: center; font-size: 13px; font-weight: 700; }
+      img { width: 393px; height: 852px; display: block; object-fit: cover; object-position: top; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <figure>
+        <figcaption>ก่อนแก้ — รายละเอียดถูกบีบเหลือ 20px</figcaption>
+        <img src="./daily-aggregate-stock-mobile-broken.png" alt="หน้าจอก่อนแก้" />
+      </figure>
+      <figure>
+        <figcaption>หลังแก้ — รายละเอียดและช่องกรอกอ่านได้</figcaption>
+        <img src="./daily-aggregate-stock-mobile-fixed.png" alt="หน้าจอหลังแก้" />
+      </figure>
+    </main>
+  </body>
+</html>

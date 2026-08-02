@@ -45,6 +45,10 @@ const collectionShopCardsAndChargeNumbers = readFileSync(
   new URL('../supabase/migrations/0109_collection_shop_cards_and_charge_numbers.sql', import.meta.url),
   'utf8',
 );
+const collectionCarryForwardBalances = readFileSync(
+  new URL('../supabase/migrations/0115_collection_carry_forward_balances.sql', import.meta.url),
+  'utf8',
+);
 
 const COURIER_ID = '10000000-0000-4000-8000-000000000001';
 const ADMIN_ID = '10000000-0000-4000-8000-000000000002';
@@ -489,6 +493,7 @@ async function createDatabase(t, { applyCollectionShopCards = true } = {}) {
   await db.exec(dailyAggregateCompletion);
   if (applyCollectionShopCards) {
     await db.exec(collectionShopCardsAndChargeNumbers);
+    await db.exec(collectionCarryForwardBalances);
   }
   await db.exec(`
     insert into public.ice_type_prices (
@@ -1526,19 +1531,19 @@ test('payment recording enforces actor scope, collection scope, and stored evide
   assert.equal(Number(payment.rows[0].result.allocated_amount), 18);
 });
 
-test('couriers are current-day only while managers can recover an older balance', async (t) => {
+test('couriers collect prior balances together with new charges from today', async (t) => {
   const db = await createDatabase(t);
-  const delivered = await db.query(`
+  const priorDelivery = await db.query(`
     select public.record_delivery(
       '${STOP_ID}', '${itemPayload(1)}'::jsonb, 'delivered', null, null,
       '90000000-0000-4000-8000-000000000010', 'immediate'
     ) as result
   `);
-  const chargeId = delivered.rows[0].result.charge_id;
+  const priorChargeId = priorDelivery.rows[0].result.charge_id;
 
   await db.exec(`
     update public.delivery_charges set service_date = date '${PREVIOUS_SERVICE_DATE_TEXT}'
-    where id = '${chargeId}';
+    where id = '${priorChargeId}';
     update public.auth_context set user_id = '${ADMIN_ID}', app_role = 'admin';
   `);
   const run = await db.query(`
@@ -1546,55 +1551,87 @@ test('couriers are current-day only while managers can recover an older balance'
       date '${SERVICE_DATE}', '[{"user_id":"${OTHER_COURIER_ID}"}]'::jsonb
     ) as result
   `);
-  await db.exec(`
-    update public.auth_context set user_id = '${OTHER_COURIER_ID}', app_role = 'courier';
+  const todayDelivery = await db.query(`
+    select public.record_delivery(
+      '${STOP_ID}', '${itemPayload(1)}'::jsonb, 'delivered', null, null,
+      '90000000-0000-4000-8000-000000000013', 'immediate'
+    ) as result
   `);
+  const todayChargeId = todayDelivery.rows[0].result.charge_id;
+  await db.exec(`
+    update public.shop_payment_profiles
+    set allow_outstanding = true
+    where shop_id = '${SHOP_ID}';
+    update public.auth_context set user_id = '${COURIER_ID}', app_role = 'courier';
+  `);
+
   await assert.rejects(
     db.query(`
       select public.get_collection_run_queue(
         '${run.rows[0].result.collection_run_id}'
       )
     `),
-    /round lead or admin/i,
+    /not assigned to this user/i,
   );
-  const todayQueue = await db.query(`
-    select public.get_today_collection_run_queue(
-      '${run.rows[0].result.collection_run_id}'
-    ) as result
-  `);
-  assert.deepEqual(todayQueue.rows[0].result, []);
-
-  await assert.rejects(
-    db.query(`
-      select public.record_payment(
-        '${SHOP_ID}', '[{"charge_id":"${chargeId}","amount":18}]'::jsonb,
-        'cash', 18, null, null, '${run.rows[0].result.collection_run_id}', 18, null,
-        '90000000-0000-4000-8000-000000000011'
-      )
-    `),
-    /assigned collection scope/i,
-  );
-
   await db.exec(`
-    update public.auth_context set user_id = '${ADMIN_ID}', app_role = 'admin';
+    update public.auth_context set user_id = '${OTHER_COURIER_ID}', app_role = 'courier';
   `);
-  const recoveryQueue = await db.query(`
+
+  const canonicalQueue = await db.query(`
     select public.get_collection_run_queue(
       '${run.rows[0].result.collection_run_id}'
     ) as result
   `);
-  assert.equal(
-    recoveryQueue.rows[0].result[0].charges[0].service_date,
-    PREVIOUS_SERVICE_DATE_TEXT,
+  const compatibilityQueue = await db.query(`
+    select public.get_today_collection_run_queue(
+      '${run.rows[0].result.collection_run_id}'
+    ) as result
+  `);
+  assert.deepEqual(compatibilityQueue.rows[0].result, canonicalQueue.rows[0].result);
+
+  const queueShop = canonicalQueue.rows[0].result[0];
+  assert.equal(Number(queueShop.outstanding_amount), 36);
+  assert.equal(queueShop.charge_count, 2);
+  assert.deepEqual(
+    queueShop.charges.map((charge) => charge.service_date),
+    [PREVIOUS_SERVICE_DATE_TEXT, SERVICE_DATE],
   );
-  const payment = await db.query(`
-      select public.record_payment(
-        '${SHOP_ID}', '[{"charge_id":"${chargeId}","amount":18}]'::jsonb,
-        'cash', 18, null, null, '${run.rows[0].result.collection_run_id}', 18, null,
-        '90000000-0000-4000-8000-000000000012'
-      ) as result
-    `);
-  assert.equal(Number(payment.rows[0].result.allocated_amount), 18);
+  assert.deepEqual(
+    queueShop.charges.map((charge) => charge.charge_id),
+    [priorChargeId, todayChargeId],
+  );
+
+  const partialPayment = await db.query(`
+    select public.record_payment(
+      '${SHOP_ID}', '[{"charge_id":"${priorChargeId}","amount":10}]'::jsonb,
+      'cash', 10, null, null, '${run.rows[0].result.collection_run_id}', 36, null,
+      '90000000-0000-4000-8000-000000000011'
+    ) as result
+  `);
+  assert.equal(Number(partialPayment.rows[0].result.allocated_amount), 10);
+
+  const remainingQueue = await db.query(`
+    select public.get_collection_run_queue(
+      '${run.rows[0].result.collection_run_id}'
+    ) as result
+  `);
+  assert.equal(Number(remainingQueue.rows[0].result[0].outstanding_amount), 26);
+  assert.deepEqual(
+    remainingQueue.rows[0].result[0].charges.map((charge) => Number(charge.outstanding_amount)),
+    [8, 18],
+  );
+
+  const finalPayment = await db.query(`
+    select public.record_payment(
+      '${SHOP_ID}', '[
+        {"charge_id":"${priorChargeId}","amount":8},
+        {"charge_id":"${todayChargeId}","amount":18}
+      ]'::jsonb,
+      'cash', 26, null, null, '${run.rows[0].result.collection_run_id}', 26, null,
+      '90000000-0000-4000-8000-000000000012'
+    ) as result
+  `);
+  assert.equal(Number(finalPayment.rows[0].result.allocated_amount), 26);
 });
 
 test('daily aggregate completion patches the pre-recovery payment contract', async (t) => {

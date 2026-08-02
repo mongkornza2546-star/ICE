@@ -1,3 +1,54 @@
+## 2026-07-31 — Employee collection payment popup
+
+**Comparison Target**
+
+- Source visual truth: `/Users/bhusitt./Downloads/IMG_2991.PNG` (944 × 2048 px) for the employee collection screen, plus the payment-popup wireframe in the 2026-07-31 request.
+- Intended implementation: `src/FinancialOperations.tsx`, opened by selecting a shop from the courier collection queue.
+- Implementation screenshot path: unavailable. The Codex in-app browser could not reach the local preview process, and its loopback URL resolved to a different app. Chrome control was unavailable.
+- Intended viewport: 393 × 852 CSS px at device scale factor 1.
+- Source dimensions and normalization: the supplied screenshot is 944 × 2048 px; it provides page context rather than a pixel-exact popup image. The prompt wireframe defines the popup content hierarchy. No implementation density normalization was possible without a rendered capture.
+- State: courier popup open for `ร้านครัวน้องปาย (เบอร์ 9)`, ฿100 due, cash selected, and ฿500 received.
+
+**Findings**
+
+- [P1] Browser-rendered mobile comparison is unavailable.
+  Location: employee collection payment popup.
+  Evidence: the source screenshot and prompt wireframe are available, but the local implementation could not be captured in the connected browser.
+  Impact: responsive fit, typography, spacing, sticky actions, and visual parity cannot be marked as visually passed from source code or component tests alone.
+  Fix: open the authenticated employee collection screen or a reachable local preview at 393 × 852, capture cash and transfer states, then run the side-by-side comparison.
+
+**Required Fidelity Surfaces**
+
+- Fonts and typography: implementation retains the existing Thai application font stack and compact mobile hierarchy; browser verification is pending.
+- Spacing and layout rhythm: the popup is a mobile bottom sheet with equal-width configured payment choices, a compact received/change row, and sticky actions; browser verification is pending.
+- Colors and visual tokens: existing navy, blue, pale-blue, green, and white payment tokens are reused; browser verification is pending.
+- Image quality and asset fidelity: existing signed shop images and Phosphor UI icons are retained. No emoji, handcrafted SVG, or placeholder image was added.
+- Copy and content: the popup includes shop identity, amount due, every payment method configured for the shop, live change, slip evidence, note, cancel, and immediate-save actions. The wireframe's defer/credit choice was removed because the current API has no durable collection-disposition action and credit is a shop-level term rather than a collector choice.
+
+**Interaction And Build Checks**
+
+- Focused UI suite: `tests/financial-operations.test.tsx` passed, 15/15.
+- Full UI suite: `npm run test:ui -- --maxWorkers=1 --minWorkers=1` passed, 142/142.
+- Covered interactions: opening from a shop card, cash partial payment and oldest-first allocation, distinct bank-transfer and QR selection, clearing hidden transfer evidence when returning to cash, evidence size validation, receipt printing, Escape/focus trapping, and focus restoration.
+- Production build: passed. The existing Vite large-chunk warning remains unchanged.
+- Aggregate `npm test` remains blocked before UI tests by the unrelated `admin-backdated-billing-contract.test.mjs` assertion against the current `RoleRouter.tsx` date comparison.
+- Browser console: unavailable because a browser-rendered implementation could not be reached.
+
+**Comparison History**
+
+- First pass: blocked by missing browser-rendered implementation evidence; no visual correction loop was possible.
+- Contract rework: removed the non-persistent defer/credit action, restored distinct configured transfer methods, and reset method-specific reference/evidence state when switching methods.
+
+**Implementation Checklist**
+
+- Capture the cash state at 393 × 852 with ฿500 received and verify ฿400 change.
+- Capture bank-transfer and QR states at the same viewport when those methods are configured.
+- Fix any P0/P1/P2 visual differences and repeat the comparison.
+
+final result: blocked
+
+---
+
 ## 2026-07-28 — Collection shop cards, popup, and bill numbers
 
 **Comparison Target**
@@ -45,6 +96,53 @@
 **Follow-up Polish**
 
 - P3: Native file-input wording follows the device/browser locale, so its exact label may differ between iOS Safari and desktop preview.
+
+final result: passed
+
+---
+
+## 2026-08-02 — Actual-count mobile layout repair
+
+**Comparison Target**
+
+- Source visual truth: `/Users/bhusitt./Downloads/ระบบจัดส่งน้ำแข็งศูนย์ราชการ 2.png` (1320 × 2868 px), showing the broken production mobile layout.
+- Rendered implementation: [outputs/daily-aggregate-stock-mobile-fixed.png](/Users/bhusitt./Downloads/ส่งน้ำแข็ง/outputs/daily-aggregate-stock-mobile-fixed.png), captured from the actual `DailyAggregateStockClose` component with representative local data.
+- Side-by-side evidence: [outputs/daily-aggregate-stock-mobile-comparison.png](/Users/bhusitt./Downloads/ส่งน้ำแข็ง/outputs/daily-aggregate-stock-mobile-comparison.png).
+- Viewport: 393 × 852 CSS px at device scale factor 1. The source was displayed at 393 × 852 for comparison; its original 1320 × 2868 density was normalized by display size and top-aligned crop. The implementation is a native 393 × 852 browser capture.
+- State: “ตรวจนับจริง” active, daily aggregate open, first item at 32 bags with matching system quantity, and no note entered.
+- Full-view evidence: the comparison board shows the broken 20px-wide detail column beside the repaired layout. Browser and PWA chrome differ and were excluded from the layout judgment.
+- Focused-region evidence: the first item row measures 327px wide; its detail text receives 185.8px, the input wrapper stays 140px, and only the unit label remains 20px. The body measured `clientWidth = scrollWidth = 393`, confirming no horizontal overflow.
+
+**Findings**
+
+- No actionable P0/P1/P2 issues remain. Product names, system quantities, movement summaries, inputs, and units read in normal horizontal lines instead of a one-word-per-line column.
+- The root cause was the broad `.input-row small` selector assigning every nested summary line a 20px width. The repaired selector applies that fixed width only to `.input-wrapper > small` and allows the item description to flex within the row.
+
+**Required Fidelity Surfaces**
+
+- Fonts and typography: the existing Thai font stack, weights, sizes, and hierarchy are unchanged; wrapping is now natural and readable.
+- Spacing and layout rhythm: the existing one-column mobile grid and 140px count input are preserved. Detail copy expands into the remaining row space without page overflow.
+- Colors and visual tokens: existing navy, muted blue-gray, primary blue, white surfaces, borders, and status badge are unchanged.
+- Image quality and asset fidelity: no image or icon assets were added or replaced; the comparison uses the supplied screenshot and the app's existing UI assets.
+- Copy and content: production copy is unchanged. Representative preview values mirror the supplied first-row state (`32`, ordered `50`, sold `18`).
+
+**Interaction And Build Checks**
+
+- Browser: changed the first count from `32` to `31`; the close action correctly stayed disabled until a required note was entered, then became enabled.
+- Browser console: no errors.
+- Regression contract: `node --test tests/daily-aggregate-stock-mobile-layout.test.mjs` passed, 1/1.
+- Focused UI suite: `npm run test:ui -- --run tests/manager-stock-control.test.tsx` passed, 18/18.
+- Production build: `npm run build` passed. The existing large-chunk warning remains unchanged.
+
+**Comparison History**
+
+- Initial supplied state: P1 responsive failure; all nested `<small>` elements inherited `width: 20px`, producing extreme vertical wrapping.
+- Fix: scoped the 20px width to the unit label and made the description span a shrink-safe flex item.
+- Post-fix evidence: the 393 × 852 capture has readable summaries, usable inputs, and no horizontal overflow; no further P0/P1/P2 corrections were required.
+
+**Follow-up Polish**
+
+- None required for this repair.
 
 final result: passed
 

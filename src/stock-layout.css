@@ -114,10 +114,16 @@
   justify-content: space-between;
   gap: 12px;
 }
-.input-row span {
+.input-row > span {
+  flex: 1;
+  min-width: 0;
   font-size: 0.9rem;
   color: #344861;
   font-weight: 500;
+}
+.input-row > span small {
+  color: #62738c;
+  line-height: 1.5;
 }
 .input-row .input-wrapper {
   display: flex;
@@ -129,7 +135,8 @@
   width: 100%;
   text-align: right;
 }
-.input-row small {
+.input-row .input-wrapper > small {
+  flex: 0 0 20px;
   color: #62738c;
   width: 20px;
 }
