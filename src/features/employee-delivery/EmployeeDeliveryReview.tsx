@@ -236,7 +236,7 @@ export function EmployeeDeliveryReview({
     const evidenceRequired = paymentMethod === 'cash'
       ? profile?.cash_evidence_required
       : paymentMethod === 'bank_transfer'
-        ? profile?.bank_transfer_evidence_required
+        ? true
         : profile?.qr_evidence_required;
     const outstandingApprovalRequired = Boolean(
       profile && !profile.allow_outstanding && remainingAmount > 0,

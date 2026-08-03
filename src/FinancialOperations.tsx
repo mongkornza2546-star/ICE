@@ -502,7 +502,7 @@ export function FinancialOperations({ userRole = 'round_lead' }: { userRole?: Ap
     ? Math.min(Number.isFinite(receivedAmount) ? receivedAmount : 0, Number(selectedShop.outstanding_amount))
     : 0;
   const evidenceRequired = selectedShop
-    ? methodRequires(selectedShop.payment_profile, method, 'evidence')
+    ? method === 'bank_transfer' || methodRequires(selectedShop.payment_profile, method, 'evidence')
     : false;
   const paymentReady = Boolean(
     selectedShop

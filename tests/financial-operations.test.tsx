@@ -313,6 +313,8 @@ describe('FinancialOperations', () => {
     await user.click(screen.getByRole('button', { name: 'โอนเงิน' }));
     const note = screen.getByRole('textbox', { name: 'หมายเหตุ' });
     expect(note.hasAttribute('required')).toBe(false);
+    expect((screen.getByLabelText('หลักฐานการชำระ') as HTMLInputElement).required).toBe(true);
+    await user.upload(screen.getByLabelText('หลักฐานการชำระ'), new File(['slip'], 'slip.jpg', { type: 'image/jpeg' }));
     await user.click(screen.getByRole('checkbox', { name: 'พิมพ์ใบรับเงินหลังบันทึก' }));
     await user.click(screen.getByRole('button', { name: 'บันทึกรับเงินทันที' }));
 
