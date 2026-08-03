@@ -338,3 +338,50 @@ final result: passed
 - P3: The demo view intentionally uses eight mock stores; production continues to use the connected store and POS-readiness data.
 
 final result: passed
+## 2026-08-03 — Immediate payment screen aligned with end-of-day collection
+
+**Comparison Target**
+
+- Source visual truth: `/Users/bhusitt./Desktop/ภาพถ่ายหน้าจอ2569-08-03เวลา 08.26.44.png` (1296 × 1214 px), the supplied end-of-day collection payment screen.
+- Intended implementation: the immediate-payment branch in `src/features/employee-delivery/EmployeeDeliveryReview.tsx`, using the existing `financial-ops__*` payment surface tokens in `src/index.css`.
+- Implementation screenshot: `/Users/bhusitt./Downloads/ส่งน้ำแข็ง/outputs/immediate-payment-redesign-cash.png` (648 × 600 px).
+- Viewport and density: implementation captured at 648 × 600 CSS px, device scale factor 1. The source was downsampled from 1296 × 1214 to 648 × 607 for review. The source is a payment-sheet crop; the implementation capture includes the employee-app shell, so the shell was excluded from content-level fidelity judgment.
+- State: immediate payment for demo shop `AA01 กาแฟลุงนิด`, cash selected, `฿100.00` received for a `฿30.00` due amount, with `฿70.00` change. The target uses different fixture values (`฿150.00`), so numeric values were compared for hierarchy and formatting rather than literal equality.
+
+**Findings**
+
+- No actionable P0/P1/P2 visual findings remain. The implementation now follows the supplied collection pattern: shop identity header with close affordance, due amount card, icon-led payment methods, received/change panel, quick amounts, two-column settlement summary, evidence/reference fields, and clear primary action.
+- [P3] The target calls its free-text field a note, while the existing immediate-payment contract exposes `เลขอ้างอิง` and payment evidence. The existing labels and payload fields were preserved so current validation and record-payment behavior remain intact; this is an intentional product-contract deviation.
+- [P3] The demo profile exposes QR as a third method, while the supplied target shows cash and transfer. The method grid is driven by the shop payment profile, so production-configured methods remain accurate.
+
+**Full-view Comparison Evidence**
+
+- The source and implementation were opened together in the visual comparison pass after normalizing density. Overall hierarchy, section order, card treatment, method selection state, cash/change relationship, summary layout, and action hierarchy are aligned with the target.
+- The implementation has no horizontal overflow at the reviewed 648 px viewport (`clientWidth === 648`, `scrollWidth === 648`). The shell/crop difference is contextual and not counted as a design mismatch.
+
+**Focused Region Comparison Evidence**
+
+- The payment-sheet header, due card, payment-method row, received/change panel, quick amount row, and settlement summary were readable in the normalized full-view comparison; no additional crop was needed for a decision. Form labels, icons, and selected/disabled states were also checked through the live DOM and interaction states.
+
+**Required Fidelity Surfaces**
+
+- Fonts and typography: retained the existing Thai application font stack and financial-operations hierarchy; emphasized amount values use tabular numerals and the target's strong navy/blue hierarchy.
+- Spacing and layout rhythm: reused the shared payment card, section gaps, rounded borders, action grid, and responsive minmax tracks; added form/fieldset min-width guards for the narrower immediate-payment sheet.
+- Colors and visual tokens: reused the existing navy, blue, pale-blue, green change, white surface, border, and selected-state tokens from `financial-ops__*`.
+- Image quality and asset fidelity: retained the real shop image when available and uses Phosphor icons (`Storefront`, `Money`, `Bank`, `QrCode`, `UploadSimple`, `X`); no emoji, handcrafted SVG, CSS art, or placeholder image was added.
+- Copy and content: changed the immediate-payment title to `บันทึกรับชำระเงิน`, made the amount labels match the target flow, and preserved the existing reference/evidence semantics required by the live payment API.
+
+**Interaction And Build Checks**
+
+- In-app browser flow verified: cash quick amount `100` produces change `฿70.00`; switching to transfer changes the amount label and hides cash change; transfer overpayment shows the validation alert and disables confirmation; exact cash `30` enables confirmation.
+- Browser console check: no errors or warnings (`[]`).
+- `npm run test:ui -- --maxWorkers=1 --minWorkers=1`: 22 files passed, 142 tests passed.
+- `npm run build`: passed. Vite emitted the existing large-chunk warning only.
+- `git diff --check`: passed.
+
+**Comparison History**
+
+- First implementation pass replaced the old success-style immediate-payment popup with the shared collection/payment surface and updated the focused POS heading assertions.
+- Final pass re-captured the cash state at the normalized viewport, compared it with the supplied target, and found no actionable P0/P1/P2 mismatch.
+
+final result: passed

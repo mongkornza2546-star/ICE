@@ -1,5 +1,7 @@
 import { supabase } from './supabase';
 
+export const MAX_PAYMENT_EVIDENCE_SIZE = 5 * 1024 * 1024;
+
 export async function uploadPaymentEvidence(file: File, idempotencyKey: string) {
   if (!supabase) throw new Error('ยังไม่ได้ตั้งค่า Supabase');
   const { data: userData, error: userError } = await supabase.auth.getUser();

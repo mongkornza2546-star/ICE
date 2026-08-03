@@ -20,7 +20,8 @@ vi.mock('../src/lib/supabase', () => ({
   },
 }));
 
-vi.mock('../src/lib/paymentEvidence', () => ({
+vi.mock('../src/lib/paymentEvidence', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../src/lib/paymentEvidence')>()),
   uploadPaymentEvidence: mocks.uploadPaymentEvidence,
 }));
 

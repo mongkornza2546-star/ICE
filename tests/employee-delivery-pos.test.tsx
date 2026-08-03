@@ -215,13 +215,60 @@ describe('employee delivery POS', () => {
       paymentTerm: 'immediate',
       items: [{ ice_type_id: 'ice-1', quantity: 1 }],
     })));
-    expect(await screen.findByRole('heading', { name: 'รับชำระจาก ร้านทดสอบ' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: 'บันทึกรับชำระเงิน' })).toBeTruthy();
     await user.click(screen.getByRole('button', { name: 'ยืนยันรับเงิน' }));
     await waitFor(() => expect(api.recordPayment).toHaveBeenCalledWith(expect.objectContaining({
       shopId: 'shop-1',
       chargeId: 'charge-1',
       expectedOutstandingAmount: 120,
     })));
+  });
+
+  it('locks payment details while immediate payment is being recorded', async () => {
+    const user = userEvent.setup();
+    let resolveUpload!: (path: string) => void;
+    const api = gateway();
+    api.uploadPaymentEvidence = vi.fn(() => new Promise((resolve) => {
+      resolveUpload = resolve;
+    }));
+    render(<EmployeeDeliveryWorkspace gateway={api} />);
+    await user.click(await screen.findByRole('button', { name: /S001 ร้านทดสอบ/ }));
+    await user.click(within(await selectIceAndGetKeypad(user)).getByRole('button', { name: '1' }));
+    await user.click(screen.getByRole('button', { name: 'ยืนยันส่งร้านนี้' }));
+    await user.upload(
+      await screen.findByLabelText('หลักฐานการชำระ'),
+      new File(['evidence'], 'payment.jpg', { type: 'image/jpeg' }),
+    );
+    await user.click(screen.getByRole('button', { name: 'ยืนยันรับเงิน' }));
+    await waitFor(() => expect(api.uploadPaymentEvidence).toHaveBeenCalled());
+
+    expect((screen.getByRole('textbox', { name: 'เลขอ้างอิง' }) as HTMLInputElement).disabled).toBe(true);
+    expect((screen.getByLabelText('หลักฐานการชำระ') as HTMLInputElement).disabled).toBe(true);
+
+    await act(async () => resolveUpload('evidence/payment.jpg'));
+    await waitFor(() => expect(api.recordPayment).toHaveBeenCalled());
+  });
+
+  it('rejects immediate payment evidence larger than 5 MB before upload', async () => {
+    const user = userEvent.setup();
+    const api = gateway();
+    api.loadDeliveryPosContext = vi.fn().mockResolvedValue({
+      ...context,
+      payment_profile: { ...context.payment_profile!, cash_evidence_required: true },
+    });
+    api.uploadPaymentEvidence = vi.fn().mockResolvedValue('evidence/payment.jpg');
+    render(<EmployeeDeliveryWorkspace gateway={api} />);
+    await user.click(await screen.findByRole('button', { name: /S001 ร้านทดสอบ/ }));
+    await user.click(within(await selectIceAndGetKeypad(user)).getByRole('button', { name: '1' }));
+    await user.click(screen.getByRole('button', { name: 'ยืนยันส่งร้านนี้' }));
+    await user.upload(
+      await screen.findByLabelText('หลักฐานการชำระ'),
+      new File([new Uint8Array(5 * 1024 * 1024 + 1)], 'too-large.jpg', { type: 'image/jpeg' }),
+    );
+
+    expect((await screen.findByRole('alert')).textContent).toContain('หลักฐานต้องมีขนาดไม่เกิน 5 MB');
+    expect((screen.getByRole('button', { name: 'ยืนยันรับเงิน' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(api.uploadPaymentEvidence).not.toHaveBeenCalled();
   });
 
   it('durably transitions a successful delivery to payment recovery before returning', async () => {
@@ -293,7 +340,7 @@ describe('employee delivery POS', () => {
     await user.click(await screen.findByRole('button', { name: /S001 ร้านทดสอบ/ }));
     await user.click(within(await selectIceAndGetKeypad(user)).getByRole('button', { name: '1' }));
     await user.click(screen.getByRole('button', { name: 'ยืนยันส่งร้านนี้' }));
-    await screen.findByRole('heading', { name: 'รับชำระจาก ร้านทดสอบ' });
+    await screen.findByRole('heading', { name: 'บันทึกรับชำระเงิน' });
     await user.upload(
       screen.getByLabelText(/หลักฐานการชำระ/),
       new File(['evidence'], 'payment.jpg', { type: 'image/jpeg' }),
@@ -314,7 +361,7 @@ describe('employee delivery POS', () => {
         serviceDate={round.service_date}
       />,
     );
-    await screen.findByRole('heading', { name: 'รับชำระจาก ร้านทดสอบ' });
+    await screen.findByRole('heading', { name: 'บันทึกรับชำระเงิน' });
     await user.click(screen.getByRole('button', { name: 'ยืนยันรับเงิน' }));
     await waitFor(() => expect(api.recordPayment).toHaveBeenCalledTimes(2));
 

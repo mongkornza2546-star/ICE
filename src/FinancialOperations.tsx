@@ -19,7 +19,7 @@ import {
 } from '@phosphor-icons/react';
 import { supabase } from './lib/supabase';
 import { toBangkokDateString } from './lib/serviceDate';
-import { uploadPaymentEvidence } from './lib/paymentEvidence';
+import { MAX_PAYMENT_EVIDENCE_SIZE, uploadPaymentEvidence } from './lib/paymentEvidence';
 import { getErrorMessage } from './lib/errorMessage';
 import { usePendingRequests } from './features/employee-delivery/usePendingRequests';
 import type { AppRole, PaymentMethod } from './types/app';
@@ -144,8 +144,6 @@ const money = new Intl.NumberFormat('th-TH', {
   currency: 'THB',
   minimumFractionDigits: 2,
 });
-const MAX_PAYMENT_EVIDENCE_SIZE = 5 * 1024 * 1024;
-
 const receiptDateTime = new Intl.DateTimeFormat('th-TH', {
   dateStyle: 'short',
   timeStyle: 'short',

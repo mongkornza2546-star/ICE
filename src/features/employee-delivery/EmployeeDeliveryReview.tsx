@@ -1,13 +1,18 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from 'react';
 import {
   ArrowLeft,
+  Bank,
   Backspace,
   CheckCircle,
   IceCream,
   MapPin,
+  Money,
+  QrCode,
   Storefront,
   Trash,
+  UploadSimple,
   WarningCircle,
+  X,
 } from '@phosphor-icons/react';
 import type {
   DeliveryFinancialResult,
@@ -20,6 +25,7 @@ import type {
   ShopCard,
   ShopRoundStatus,
 } from '../../types/app';
+import { MAX_PAYMENT_EVIDENCE_SIZE } from '../../lib/paymentEvidence';
 import { formatShortTime, renderTotals, statusTone, stockQuantity, toTotals } from './utils';
 import { PROBLEM_STATUSES, STATUS_LABELS } from './constants';
 
@@ -31,7 +37,7 @@ const TERM_LABELS: Record<PaymentTerm, string> = {
 
 const METHOD_LABELS: Record<PaymentMethod, string> = {
   cash: 'เงินสด',
-  bank_transfer: 'โอน',
+  bank_transfer: 'โอนเงิน',
   qr: 'QR',
 };
 
@@ -136,6 +142,7 @@ export function EmployeeDeliveryReview({
 }) {
   const [selectedIceTypeId, setSelectedIceTypeId] = useState('');
   const [mobileStep, setMobileStep] = useState<'items' | 'review'>('items');
+  const [paymentEvidenceError, setPaymentEvidenceError] = useState<string | null>(null);
   const isDelivery = status === 'delivered';
   const contextItems = posContext?.items ?? iceTypes.map((iceType) => ({
     ...iceType,
@@ -184,6 +191,7 @@ export function EmployeeDeliveryReview({
   useEffect(() => {
     setSelectedIceTypeId('');
     setMobileStep('items');
+    setPaymentEvidenceError(null);
   }, [shopCard.round_stop_id]);
 
   useEffect(() => {
@@ -203,12 +211,27 @@ export function EmployeeDeliveryReview({
     return () => window.removeEventListener('keydown', handleKeyDown);
   });
 
+  const handlePaymentEvidenceChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.currentTarget.files?.[0] ?? null;
+    if (file && file.size > MAX_PAYMENT_EVIDENCE_SIZE) {
+      event.currentTarget.value = '';
+      onPaymentEvidenceChange(null);
+      setPaymentEvidenceError('หลักฐานต้องมีขนาดไม่เกิน 5 MB');
+      return;
+    }
+    onPaymentEvidenceChange(file);
+    setPaymentEvidenceError(null);
+  };
+
   if (paymentOpen && paymentResult?.charge_id) {
     const profile = posContext?.payment_profile;
-    const allocatedAmount = Math.min(Number(paymentAmount) || 0, paymentResult.total_amount ?? 0);
-    const remainingAmount = Math.max((paymentResult.total_amount ?? 0) - allocatedAmount, 0);
+    const availablePaymentMethods = profile?.allowed_payment_methods ?? ['cash', 'bank_transfer', 'qr'];
+    const totalDue = paymentResult.total_amount ?? 0;
+    const receivedAmount = Number(paymentAmount) || 0;
+    const allocatedAmount = Math.min(receivedAmount, totalDue);
+    const remainingAmount = Math.max(totalDue - allocatedAmount, 0);
     const changeAmount = paymentMethod === 'cash'
-      ? Math.max((Number(paymentAmount) || 0) - allocatedAmount, 0)
+      ? Math.max(receivedAmount - allocatedAmount, 0)
       : 0;
     const referenceRequired = paymentMethod === 'cash'
       ? profile?.cash_reference_required
@@ -224,72 +247,137 @@ export function EmployeeDeliveryReview({
       profile && !profile.allow_outstanding && remainingAmount > 0,
     );
     const nonCashOverpayment = paymentMethod !== 'cash'
-      && (Number(paymentAmount) || 0) > (paymentResult.total_amount ?? 0);
+      && receivedAmount > totalDue;
     const paymentReady = (!referenceRequired || Boolean(paymentReference.trim()))
       && (!evidenceRequired || Boolean(paymentEvidence))
       && (!outstandingApprovalRequired || Boolean(approvalId))
       && !nonCashOverpayment;
     return (
-      <div className="employee-payment-sheet">
+      <div className="employee-payment-sheet financial-ops__payment-card">
         <header>
-          <CheckCircle aria-hidden="true" size={38} weight="fill" />
-          <div>
-            <p>บันทึกส่งสำเร็จแล้ว</p>
-            <h1>รับชำระจาก {shopCard.shop_name}</h1>
-            <span>ยอดเรียกเก็บ {money.format(paymentResult.total_amount ?? 0)}</span>
-          </div>
+          <span className="financial-ops__payment-image">
+            {shopCard.image_url ? (
+              <img alt={`ร้าน ${shopCard.shop_name}`} src={shopCard.image_url} />
+            ) : (
+              <Storefront aria-hidden="true" size={40} weight="duotone" />
+            )}
+          </span>
+          <span>
+            <small>{shopCard.shop_code}</small>
+            <h2>บันทึกรับชำระเงิน</h2>
+            <b>{shopCard.shop_name}</b>
+          </span>
+          {profile?.allow_outstanding !== false ? (
+            <button
+              aria-label="ยังไม่รับเงินตอนนี้"
+              disabled={paymentSubmitting}
+              onClick={onPaymentLater}
+              type="button"
+            >
+              <X aria-hidden="true" size={23} />
+            </button>
+          ) : <span aria-hidden="true" />}
         </header>
         <form onSubmit={onPaymentSubmit}>
           <fieldset disabled={paymentSubmitting}>
-            <legend>วิธีชำระ</legend>
-            <div className="employee-payment-methods">
-              {(profile?.allowed_payment_methods ?? ['cash', 'bank_transfer', 'qr']).map((method) => (
-                <button
-                  aria-pressed={paymentMethod === method}
-                  key={method}
-                  onClick={() => onPaymentMethodChange(method)}
-                  type="button"
-                >
-                  {METHOD_LABELS[method]}
-                </button>
-              ))}
-            </div>
-            <label>
-              <span>ยอดรับเงินจริง</span>
-              <input
-                inputMode="decimal"
-                min="0.01"
-                max={paymentMethod === 'cash' ? undefined : paymentResult.total_amount ?? undefined}
-                onChange={(event) => onPaymentAmountChange(event.target.value)}
-                step="0.01"
-                type="number"
-                value={paymentAmount}
-              />
-            </label>
-            <label>
-              <span>เลขอ้างอิง{referenceRequired ? ' *' : ''}</span>
-              <input
-                onChange={(event) => onPaymentReferenceChange(event.target.value)}
-                placeholder={paymentMethod === 'cash' ? 'ถ้ามี' : 'เลขรายการโอน/QR'}
-                required={referenceRequired}
-                value={paymentReference}
-              />
-            </label>
-            <label>
-              <span>หลักฐานการชำระ{evidenceRequired ? ' *' : ''}</span>
-              <input
-                accept="image/jpeg,image/png,image/webp,application/pdf"
-                onChange={(event) => onPaymentEvidenceChange(event.target.files?.[0] ?? null)}
-                required={evidenceRequired}
-                type="file"
-              />
-              {paymentEvidence ? <small>{paymentEvidence.name}</small> : null}
-            </label>
+            <section className="financial-ops__amount-due" aria-label="ยอดที่ต้องชำระ">
+              <span>ยอดที่ต้องชำระ</span>
+              <strong>{money.format(totalDue)}</strong>
+            </section>
+
+            <section className="financial-ops__payment-methods" aria-labelledby="employee-payment-method-label">
+              <h3 id="employee-payment-method-label">รูปแบบการชำระ</h3>
+              <div style={{
+                gridTemplateColumns: `repeat(${availablePaymentMethods.length}, minmax(0, 1fr))`,
+              }}>
+                {availablePaymentMethods.map((method) => {
+                  const Icon = method === 'cash' ? Money : method === 'bank_transfer' ? Bank : QrCode;
+                  return (
+                    <button
+                      aria-pressed={paymentMethod === method}
+                      className={paymentMethod === method ? 'is-selected' : ''}
+                      key={method}
+                      onClick={() => onPaymentMethodChange(method)}
+                      type="button"
+                    >
+                      <Icon aria-hidden="true" size={25} weight="duotone" />
+                      <span>{METHOD_LABELS[method]}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+
+            <section className="financial-ops__received-box">
+              <label className="financial-ops__payment-amount">
+                <span>{paymentMethod === 'cash' ? 'รับเงินมา' : 'ยอดเงินที่โอน'}</span>
+                <span className="financial-ops__currency" aria-hidden="true">฿</span>
+                <input
+                  aria-label="ยอดรับเงินจริง"
+                  inputMode="decimal"
+                  min="0.01"
+                  max={paymentMethod === 'cash' ? undefined : totalDue}
+                  onChange={(event) => onPaymentAmountChange(event.target.value)}
+                  step="0.01"
+                  type="number"
+                  value={paymentAmount}
+                />
+                <small>บาท</small>
+              </label>
+              {paymentMethod === 'cash' ? (
+                <div className="financial-ops__change-amount">
+                  <span>เงินทอน</span>
+                  <strong>{money.format(changeAmount)}</strong>
+                </div>
+              ) : null}
+            </section>
+
+            {paymentMethod === 'cash' ? (
+              <div className="financial-ops__quick-amounts" aria-label="เลือกยอดรับเงินด่วน">
+                {[100, 200, 500, 1000].map((value) => (
+                  <button key={value} onClick={() => onPaymentAmountChange(value.toFixed(2))} type="button">
+                    {value.toLocaleString('th-TH')}
+                  </button>
+                ))}
+              </div>
+            ) : null}
           </fieldset>
-          <div className="employee-payment-summary">
-            <span>ตัดยอด <strong>{money.format(allocatedAmount)}</strong></span>
-            {changeAmount > 0 ? <span>เงินทอน <strong>{money.format(changeAmount)}</strong></span> : null}
-          </div>
+
+          <section className="financial-ops__payment-summary" aria-label="สรุปยอดรับเงิน">
+            <span><small>ตัดยอด</small><strong>{money.format(allocatedAmount)}</strong></span>
+            <span><small>คงเหลือหลังรายการ</small><b>{money.format(remainingAmount)}</b></span>
+          </section>
+
+          <label className="financial-ops__payment-reference">
+            <span>เลขอ้างอิง{referenceRequired ? ' *' : ''}</span>
+            <input
+              aria-label={`เลขอ้างอิง${referenceRequired ? ' *' : ''}`}
+              disabled={paymentSubmitting}
+              onChange={(event) => onPaymentReferenceChange(event.target.value)}
+              placeholder={paymentMethod === 'cash' ? 'ถ้ามี' : 'เลขรายการโอน/QR'}
+              required={referenceRequired}
+              value={paymentReference}
+            />
+          </label>
+
+          <label className="financial-ops__payment-evidence">
+            <span>หลักฐานการชำระ <small>({evidenceRequired ? 'บังคับ' : 'ไม่บังคับ'})</small></span>
+            <input
+              accept="image/jpeg,image/png,image/webp,application/pdf"
+              aria-label="หลักฐานการชำระ"
+              disabled={paymentSubmitting}
+              onChange={handlePaymentEvidenceChange}
+              required={evidenceRequired}
+              type="file"
+            />
+            <span className="financial-ops__dropzone">
+              <UploadSimple aria-hidden="true" size={25} weight="duotone" />
+              <b>{paymentEvidence ? paymentEvidence.name : 'อัปโหลดรูปสลิป'}</b>
+              <small>JPG, PNG, WebP หรือ PDF ไม่เกิน 5 MB</small>
+            </span>
+            {paymentEvidenceError ? <small className="financial-ops__evidence-error" role="alert">{paymentEvidenceError}</small> : null}
+          </label>
+
           {nonCashOverpayment ? <p className="employee-error" role="alert">ยอดโอนหรือ QR ต้องไม่เกินยอดเรียกเก็บ</p> : null}
           {outstandingApprovalRequired ? (
             <div className="employee-approval-request">
@@ -312,14 +400,16 @@ export function EmployeeDeliveryReview({
             </div>
           ) : null}
           {entryError ? <p className="employee-error" role="alert">{entryError}</p> : null}
-          <button className="employee-submit" disabled={paymentSubmitting || !paymentReady} type="submit">
-            {paymentSubmitting ? 'กำลังบันทึกรับเงิน...' : 'ยืนยันรับเงิน'}
-          </button>
-          {profile?.allow_outstanding !== false ? (
-            <button className="employee-text-button" disabled={paymentSubmitting} onClick={onPaymentLater} type="button">
-              ยังไม่รับเงินตอนนี้
+          <div className="financial-ops__payment-actions">
+            {profile?.allow_outstanding !== false ? (
+              <button disabled={paymentSubmitting} onClick={onPaymentLater} type="button">
+                ยังไม่รับเงินตอนนี้
+              </button>
+            ) : null}
+            <button disabled={paymentSubmitting || !paymentReady} type="submit">
+              {paymentSubmitting ? 'กำลังบันทึกรับเงิน...' : 'ยืนยันรับเงิน'}
             </button>
-          ) : null}
+          </div>
         </form>
       </div>
     );
