@@ -233,11 +233,6 @@ export function EmployeeDeliveryReview({
     const changeAmount = paymentMethod === 'cash'
       ? Math.max(receivedAmount - allocatedAmount, 0)
       : 0;
-    const referenceRequired = paymentMethod === 'cash'
-      ? profile?.cash_reference_required
-      : paymentMethod === 'bank_transfer'
-        ? profile?.bank_transfer_reference_required
-        : profile?.qr_reference_required;
     const evidenceRequired = paymentMethod === 'cash'
       ? profile?.cash_evidence_required
       : paymentMethod === 'bank_transfer'
@@ -248,8 +243,7 @@ export function EmployeeDeliveryReview({
     );
     const nonCashOverpayment = paymentMethod !== 'cash'
       && receivedAmount > totalDue;
-    const paymentReady = (!referenceRequired || Boolean(paymentReference.trim()))
-      && (!evidenceRequired || Boolean(paymentEvidence))
+    const paymentReady = (!evidenceRequired || Boolean(paymentEvidence))
       && (!outstandingApprovalRequired || Boolean(approvalId))
       && !nonCashOverpayment;
     return (
@@ -349,13 +343,12 @@ export function EmployeeDeliveryReview({
           </section>
 
           <label className="financial-ops__payment-reference">
-            <span>เลขอ้างอิง{referenceRequired ? ' *' : ''}</span>
+            <span>หมายเหตุ <small>(ไม่บังคับ)</small></span>
             <input
-              aria-label={`เลขอ้างอิง${referenceRequired ? ' *' : ''}`}
+              aria-label="หมายเหตุ"
               disabled={paymentSubmitting}
               onChange={(event) => onPaymentReferenceChange(event.target.value)}
-              placeholder={paymentMethod === 'cash' ? 'ถ้ามี' : 'เลขรายการโอน/QR'}
-              required={referenceRequired}
+              placeholder="เช่น ลูกค้าจ่ายแบงก์ใหญ่"
               value={paymentReference}
             />
           </label>

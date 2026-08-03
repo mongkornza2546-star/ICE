@@ -242,7 +242,7 @@ describe('employee delivery POS', () => {
     await user.click(screen.getByRole('button', { name: 'ยืนยันรับเงิน' }));
     await waitFor(() => expect(api.uploadPaymentEvidence).toHaveBeenCalled());
 
-    expect((screen.getByRole('textbox', { name: 'เลขอ้างอิง' }) as HTMLInputElement).disabled).toBe(true);
+    expect((screen.getByRole('textbox', { name: 'หมายเหตุ' }) as HTMLInputElement).disabled).toBe(true);
     expect((screen.getByLabelText('หลักฐานการชำระ') as HTMLInputElement).disabled).toBe(true);
 
     await act(async () => resolveUpload('evidence/payment.jpg'));
@@ -493,7 +493,7 @@ describe('employee delivery POS', () => {
     const amount = await screen.findByRole('spinbutton', { name: 'ยอดรับเงินจริง' });
     await user.clear(amount);
     await user.type(amount, '121');
-    await user.type(screen.getByRole('textbox', { name: 'เลขอ้างอิง *' }), 'TX-121');
+    expect(screen.getByRole('textbox', { name: 'หมายเหตุ' }).hasAttribute('required')).toBe(false);
 
     expect((await screen.findByRole('alert')).textContent).toContain('ยอดโอนหรือ QR ต้องไม่เกินยอดเรียกเก็บ');
     expect((screen.getByRole('button', { name: 'ยืนยันรับเงิน' }) as HTMLButtonElement).disabled).toBe(true);

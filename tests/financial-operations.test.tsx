@@ -284,7 +284,6 @@ describe('FinancialOperations', () => {
       payment_profile: {
         ...queueShop.payment_profile,
         allowed_payment_methods: ['cash', 'bank_transfer', 'qr'],
-        bank_transfer_reference_required: false,
       },
     };
     mocks.from.mockImplementation((table: string) => {
@@ -312,6 +311,8 @@ describe('FinancialOperations', () => {
     expect(screen.getByRole('button', { name: 'โอนเงิน' })).not.toBeNull();
     expect(screen.getByRole('button', { name: 'QR' })).not.toBeNull();
     await user.click(screen.getByRole('button', { name: 'โอนเงิน' }));
+    const note = screen.getByRole('textbox', { name: 'หมายเหตุ' });
+    expect(note.hasAttribute('required')).toBe(false);
     await user.click(screen.getByRole('checkbox', { name: 'พิมพ์ใบรับเงินหลังบันทึก' }));
     await user.click(screen.getByRole('button', { name: 'บันทึกรับเงินทันที' }));
 

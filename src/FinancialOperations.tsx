@@ -173,7 +173,7 @@ function receiptChargesFromRows(rows: ReceiptItemRow[]) {
   return [...charges.values()];
 }
 
-function methodRequires(profile: PaymentProfile, method: PaymentMethod, field: 'reference' | 'evidence') {
+function methodRequires(profile: PaymentProfile, method: PaymentMethod, field: 'evidence') {
   if (method === 'cash') return profile[`cash_${field}_required`];
   if (method === 'bank_transfer') return profile[`bank_transfer_${field}_required`];
   return profile[`qr_${field}_required`];
@@ -501,9 +501,6 @@ export function FinancialOperations({ userRole = 'round_lead' }: { userRole?: Ap
   const allocatedAmount = selectedShop
     ? Math.min(Number.isFinite(receivedAmount) ? receivedAmount : 0, Number(selectedShop.outstanding_amount))
     : 0;
-  const referenceRequired = selectedShop
-    ? methodRequires(selectedShop.payment_profile, method, 'reference')
-    : false;
   const evidenceRequired = selectedShop
     ? methodRequires(selectedShop.payment_profile, method, 'evidence')
     : false;
@@ -512,7 +509,6 @@ export function FinancialOperations({ userRole = 'round_lead' }: { userRole?: Ap
     && Number.isFinite(receivedAmount)
     && receivedAmount > 0
     && (method === 'cash' || receivedAmount <= selectedShop.outstanding_amount)
-    && (!referenceRequired || reference.trim())
     && (!evidenceRequired || evidence),
   );
   const allocations = useMemo(
@@ -1054,12 +1050,11 @@ export function FinancialOperations({ userRole = 'round_lead' }: { userRole?: Ap
                 ) : null}
 
                 <label className="financial-ops__payment-reference">
-                  <span>หมายเหตุ <small>({referenceRequired ? 'บังคับกรอก' : 'ไม่บังคับ'})</small></span>
+                  <span>หมายเหตุ <small>(ไม่บังคับ)</small></span>
                   <input
-                    aria-label="เลขอ้างอิง"
+                    aria-label="หมายเหตุ"
                     onChange={(event) => setReference(event.target.value)}
-                    placeholder={referenceRequired ? 'กรอกเลขอ้างอิงหรือหมายเหตุ' : 'เช่น ลูกค้าจ่ายแบงก์ใหญ่'}
-                    required={referenceRequired}
+                    placeholder="เช่น ลูกค้าจ่ายแบงก์ใหญ่"
                     value={reference}
                   />
                 </label>
