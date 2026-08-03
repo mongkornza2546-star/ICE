@@ -299,58 +299,18 @@ describe('EmployeeDeliveryWorkspace', () => {
     expect(pendingRequestClear).toBeGreaterThan(recoveryTransition);
   });
 
-  it('records a free refill from the withdrawal tab without creating a delivery', async () => {
-    const user = userEvent.setup();
-    const recordDailyStockRefill = vi.fn().mockResolvedValue(undefined);
-    const gateway = createGateway({ recordDailyStockRefill });
+  it('does not expose the retired free-refill workflow from the withdrawal tab', async () => {
     render(
       <EmployeeDeliveryWorkspace
         enableAssignedStockFlow
-        gateway={gateway}
+        gateway={createGateway()}
         serviceDate={round.service_date}
         viewMode="withdrawal"
       />,
     );
 
-    const refill = (await screen.findByRole('heading', { name: 'เติมน้ำแข็ง' }))
-      .closest('section') as HTMLElement;
-    await user.click(within(refill).getByRole('button', { name: 'เพิ่มก้อนอีกหนึ่ง' }));
-    await user.click(within(refill).getByRole('button', { name: 'ยืนยันเติมน้ำแข็ง' }));
-
-    await waitFor(() => expect(recordDailyStockRefill).toHaveBeenCalledWith({
-      serviceDate: round.service_date,
-      items: [{ ice_type_id: 'ice-block', quantity: 1 }],
-      note: null,
-      idempotencyKey: expect.any(String),
-    }));
-    expect(gateway.recordDelivery).not.toHaveBeenCalled();
-  });
-
-  it('reuses the refill idempotency key when the same request is retried', async () => {
-    const user = userEvent.setup();
-    const recordDailyStockRefill = vi.fn()
-      .mockRejectedValueOnce(new Error('network timeout'))
-      .mockResolvedValueOnce(undefined);
-    render(
-      <EmployeeDeliveryWorkspace
-        enableAssignedStockFlow
-        gateway={createGateway({ recordDailyStockRefill })}
-        serviceDate={round.service_date}
-        viewMode="withdrawal"
-      />,
-    );
-
-    const refill = (await screen.findByRole('heading', { name: 'เติมน้ำแข็ง' }))
-      .closest('section') as HTMLElement;
-    await user.click(within(refill).getByRole('button', { name: 'เพิ่มก้อนอีกหนึ่ง' }));
-    const submit = within(refill).getByRole('button', { name: 'ยืนยันเติมน้ำแข็ง' });
-    await user.click(submit);
-    expect((await within(refill).findByRole('alert')).textContent).toContain('เชื่อมต่อไม่สำเร็จ');
-    await user.click(submit);
-
-    await waitFor(() => expect(recordDailyStockRefill).toHaveBeenCalledTimes(2));
-    expect(recordDailyStockRefill.mock.calls[1][0].idempotencyKey)
-      .toBe(recordDailyStockRefill.mock.calls[0][0].idempotencyKey);
+    expect(await screen.findByRole('heading', { name: 'เบิกน้ำแข็ง' })).toBeTruthy();
+    expect(screen.queryByText(/เติมน้ำแข็ง|เบิกเพิ่มระหว่างวัน/)).toBeNull();
   });
 
   it('shows shop selection before entering any delivery quantity', async () => {

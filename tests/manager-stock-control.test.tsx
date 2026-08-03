@@ -457,7 +457,7 @@ describe('ManagerStockControl daily close', () => {
     render(<ManagerStockControl operationRound={round} round={round} serviceDate={round.service_date} />);
 
     await user.click(await screen.findByRole('button', { name: 'ตรวจนับจริง' }));
-    expect(await screen.findByText(/สั่ง 30 · ขาย 5 · เติม 0 · เสีย 0 · คืน 0/)).toBeTruthy();
+    expect(await screen.findByText(/สั่ง 30 · ขาย 5 · เสีย 0 · คืน 0/)).toBeTruthy();
 
     const count = screen.getByRole('spinbutton');
     await user.clear(count);
@@ -483,31 +483,19 @@ describe('ManagerStockControl daily close', () => {
     ));
   });
 
-  it('lets a manager cancel a refill with an audited reason', async () => {
+  it('lets a manager cancel an active legacy refill with an audited reason', async () => {
     let cancelled = false;
     vi.spyOn(window, 'prompt').mockReturnValue('บันทึกผิด');
     mocks.rpc.mockImplementation(async (name: string) => {
       if (name === 'get_stock_control_summary') return { data: summary, error: null };
       if (name === 'get_daily_stock_close_state') return { data: closeReadyState, error: null };
-      if (name === 'get_daily_aggregate_stock_summary') {
-        return {
-          data: {
-            ...aggregateSummary,
-            items: [{
-              ...aggregateSummary.items[0],
-              refill_quantity: cancelled ? 0 : 0.5,
-              available_quantity: cancelled ? 25 : 24.5,
-            }],
-          },
-          error: null,
-        };
-      }
+      if (name === 'get_daily_aggregate_stock_summary') return { data: aggregateSummary, error: null };
       if (name === 'get_daily_stock_refill_history') {
         return {
           data: [{
             id: 'refill-1',
             status: cancelled ? 'cancelled' : 'active',
-            note: 'เติมให้จุดบริการ',
+            note: 'รายการก่อนยกเลิกฟีเจอร์',
             recorded_at: '2026-07-20T08:00:00+07:00',
             recorded_by: 'พนักงานทดสอบ',
             cancelled_at: cancelled ? '2026-07-20T09:00:00+07:00' : null,
@@ -530,11 +518,11 @@ describe('ManagerStockControl daily close', () => {
       return { data: null, error: null };
     });
 
-    const user = userEvent.setup();
     render(<ManagerStockControl operationRound={round} round={round} serviceDate={round.service_date} />);
+    const user = userEvent.setup();
     await user.click(await screen.findByRole('button', { name: 'ตรวจนับจริง' }));
-    expect(await screen.findByRole('heading', { name: 'ประวัติเติมน้ำแข็ง' })).toBeTruthy();
-    await user.click(screen.getByRole('button', { name: 'ยกเลิกรายการ' }));
+    expect(await screen.findByRole('heading', { name: 'รายการเติมน้ำแข็งเดิม' })).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: 'ยกเลิกรายการเดิม' }));
 
     await waitFor(() => expect(mocks.rpc).toHaveBeenCalledWith('cancel_daily_stock_refill', {
       p_use_id: 'refill-1',

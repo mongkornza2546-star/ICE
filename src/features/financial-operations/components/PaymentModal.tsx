@@ -42,6 +42,7 @@ export function PaymentModal({
   onPrintReceiptWantedChange,
   onRecordPayment,
   onPrintReceipt,
+  onRequestDueDate,
 }: {
   selectedShop: QueueShop;
   serviceDate: string;
@@ -69,6 +70,7 @@ export function PaymentModal({
   onPrintReceiptWantedChange: (wanted: boolean) => void;
   onRecordPayment: () => void;
   onPrintReceipt: (receipt: PaymentReceipt) => void;
+  onRequestDueDate: (charge: QueueShop['charges'][number]) => void;
 }) {
   return (
     <div
@@ -144,6 +146,14 @@ export function PaymentModal({
                       ))}
                       {(charge.items ?? []).length === 0 ? <small>ไม่พบรายละเอียดสินค้าของบิลนี้</small> : null}
                     </div>
+                    {charge.payment_term === 'credit' ? (
+                      <button
+                        className="financial-ops__due-date-request"
+                        disabled={busy}
+                        onClick={() => onRequestDueDate(charge)}
+                        type="button"
+                      >ขอเลื่อนกำหนด{charge.due_date ? ` · ${formatServiceDate(charge.due_date)}` : ''}</button>
+                    ) : null}
                   </article>
                 );
               })}

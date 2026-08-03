@@ -1344,6 +1344,7 @@ input:disabled, select:disabled, textarea:disabled { background: #f2f5f8; color:
 .financial-ops__charge-list .is-prior-balance em { color: #925b00; background: #ffedc2; }
 .financial-ops__charge-list b { color: #244865; font-size: .72rem; }
 .financial-ops__charge-list small { color: #71859a; font-size: .63rem; }
+.financial-ops__due-date-request { min-height: 34px; border: 1px solid #90bde4; border-radius: 7px; color: #0869c7; background: #fff; font: inherit; font-size: .68rem; font-weight: 800; }
 .financial-ops__charge-items { display: grid; gap: 5px; padding-top: 7px; border-top: 1px dashed #dce7ef; }
 .financial-ops__charge-items > div, .financial-ops__current-order > div { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: #536f87; font-size: .7rem; }
 .financial-ops__charge-items > div > span, .financial-ops__current-order > div > span { min-width: 0; }
@@ -1433,6 +1434,15 @@ input:disabled, select:disabled, textarea:disabled { background: #f2f5f8; color:
 .financial-ops__cards article div { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
 .financial-ops__cards article button { min-height: 42px; border: 1px solid #bdd2e3; border-radius: 8px; background: #fff; }
 .financial-ops__cards article button:last-child { border-color: #16835d; color: #fff; background: #16835d; }
+.financial-ops__receivable-controls { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 10px; }
+.financial-ops__receivable-controls label { display: inline-flex; align-items: center; gap: 7px; color: #526e85; font-size: .72rem; font-weight: 700; }
+.financial-ops__receivable-controls select { min-height: 34px; padding: 0 8px; border: 1px solid #cdddeb; border-radius: 7px; color: #294867; background: #fff; font: inherit; }
+.financial-ops__receivable-charges { display: grid; gap: 7px; margin-top: 10px; }
+.financial-ops__receivable-charges article { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid #e0e9f1; border-radius: 9px; background: #fbfdff; }
+.financial-ops__receivable-charges article > span { min-width: 0; display: grid; gap: 2px; }
+.financial-ops__receivable-charges small { color: #71859a; font-size: .68rem; }
+.financial-ops__receivable-charges b { color: #163d63; font-size: .8rem; white-space: nowrap; }
+.financial-ops__receivable-charges button { min-height: 34px; padding: 0 9px; border: 1px solid #90bde4; border-radius: 7px; color: #0869c7; background: #fff; font: inherit; font-size: .68rem; font-weight: 800; }
 .financial-ops__empty { margin: 10px 0; color: #71859a; text-align: center; }
 .employee-task-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-bottom: 14px; }
 .employee-task-tabs button { min-height: 48px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; border: 1px solid #c4d9e9; border-radius: 10px; color: #43647d; background: #fff; font-weight: 800; }
@@ -1492,6 +1502,8 @@ input:disabled, select:disabled, textarea:disabled { background: #f2f5f8; color:
   .financial-ops__collectors { align-items: stretch; flex-direction: column; }
   .financial-ops__collectors button { width: 100%; margin-left: 0; }
   .financial-ops__cards { grid-template-columns: 1fr; }
+  .financial-ops__receivable-charges article { grid-template-columns: minmax(0, 1fr) auto; }
+  .financial-ops__receivable-charges article button { grid-column: 1 / -1; width: 100%; }
 }
 
 @media (max-width: 390px) {

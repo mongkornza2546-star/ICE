@@ -18,7 +18,6 @@ import { EmployeeState } from './features/employee-delivery/EmployeeState';
 import { EmployeeStockTransferSection } from './features/employee-delivery/EmployeeStockTransferSection';
 import { EmployeeShopPicker } from './features/employee-delivery/EmployeeShopPicker';
 import { EmployeeDeliveryReview } from './features/employee-delivery/EmployeeDeliveryReview';
-import { EmployeeRefillSection } from './features/employee-delivery/EmployeeRefillSection';
 import { useEmployeeDeliveryData } from './features/employee-delivery/useEmployeeDeliveryData';
 import { toBangkokDateString } from './lib/serviceDate';
 import { uploadPaymentEvidence } from './lib/paymentEvidence';
@@ -63,20 +62,12 @@ export interface EmployeeStockTransferPayload {
   idempotencyKey: string;
 }
 
-export interface EmployeeRefillPayload {
-  serviceDate: string;
-  items: Array<{ ice_type_id: string; quantity: number }>;
-  note: string | null;
-  idempotencyKey: string;
-}
-
 export interface EmployeeDeliveryGateway {
   loadReferenceData(serviceDate: string): Promise<{ rounds: DeliveryRound[]; iceTypes: IceTypeOption[] }>;
   loadShopCards(roundId: string): Promise<ShopCard[]>;
   loadDeliveryPosContext?(roundStopId: string): Promise<DeliveryPosContext>;
   loadEmployeeStockState(roundId: string): Promise<EmployeeStockState>;
   recordEmployeeStockTransfer(payload: EmployeeStockTransferPayload): Promise<EmployeeStockState>;
-  recordDailyStockRefill?(payload: EmployeeRefillPayload): Promise<void>;
   recordDelivery(payload: EmployeeDeliveryPayload): Promise<DeliveryFinancialResult | void>;
   recordPayment?(payload: EmployeePaymentPayload): Promise<FinancialPaymentResult>;
   uploadPaymentEvidence?(file: File, idempotencyKey: string): Promise<string>;
@@ -189,16 +180,6 @@ function createSupabaseGateway(): EmployeeDeliveryGateway {
       if (error) throw error;
       return data as EmployeeStockState;
     },
-    async recordDailyStockRefill(payload) {
-      if (!supabase) throw new Error('ยังไม่ได้ตั้งค่า Supabase');
-      const { error } = await supabase.rpc('record_daily_stock_refill', {
-        p_service_date: payload.serviceDate,
-        p_items: payload.items,
-        p_note: payload.note,
-        p_idempotency_key: payload.idempotencyKey,
-      });
-      if (error) throw error;
-    },
     async recordDelivery(payload) {
       if (!supabase) throw new Error('ยังไม่ได้ตั้งค่า Supabase');
       const { data, error } = await supabase.rpc('record_delivery', {
@@ -276,10 +257,6 @@ export function EmployeeDeliveryWorkspace({
     dirty: false,
     submitting: false,
   });
-  const [refillDraftState, setRefillDraftState] = useState<EmployeeDeliveryDraftState>({
-    dirty: false,
-    submitting: false,
-  });
   const data = useEmployeeDeliveryData({
     gateway,
     enableAssignedStockFlow,
@@ -290,11 +267,8 @@ export function EmployeeDeliveryWorkspace({
   });
 
   useEffect(() => {
-    onDraftStateChange?.({
-      dirty: deliveryDraftState.dirty || refillDraftState.dirty,
-      submitting: deliveryDraftState.submitting || refillDraftState.submitting,
-    });
-  }, [deliveryDraftState, refillDraftState, onDraftStateChange]);
+    onDraftStateChange?.(deliveryDraftState);
+  }, [deliveryDraftState, onDraftStateChange]);
 
   if (data.loadingReference) {
     return <EmployeeState
@@ -369,12 +343,12 @@ export function EmployeeDeliveryWorkspace({
         <div>
           <p className="employee-eyebrow">{isBackdatedBilling ? 'ออกบิลย้อนหลัง · เฉพาะแอดมิน' : 'งานพนักงาน'}</p>
           <h1>{resolvedViewMode === 'withdrawal'
-            ? 'เบิกน้ำแข็งและบันทึกเติมน้ำแข็ง'
+            ? 'เบิกน้ำแข็ง'
             : isBackdatedBilling
               ? `เลือกร้านเพื่อออกบิลวันที่ ${serviceDate}`
               : 'เลือกร้าน แล้วบันทึกส่ง'}</h1>
           <p>{resolvedViewMode === 'withdrawal'
-            ? 'รายการเบิกใช้ติดตามการกระจายภายใน ส่วนเติมน้ำแข็งจะตัดจากสต๊อกรวมโดยไม่คิดเงิน'
+            ? 'เบิกน้ำแข็งจากคลังเข้าจุดถือครองเพื่อเริ่มงาน'
             : 'เลือกร้านก่อน ระบบจะตรวจสต๊อกต้นทาง ราคา และเงื่อนไขชำระของร้านนั้น'}</p>
         </div>
         {data.selectedRound ? (
@@ -423,7 +397,6 @@ export function EmployeeDeliveryWorkspace({
       ) : (
         <>
           {resolvedViewMode === 'withdrawal' || resolvedViewMode === 'combined' ? (
-            <>
             <EmployeeStockTransferSection
               stockError={data.stockError}
               transferSubmitting={data.transferSubmitting}
@@ -437,13 +410,6 @@ export function EmployeeDeliveryWorkspace({
               handleStockTransfer={data.handleStockTransfer}
               transferItems={data.transferItems}
             />
-            {resolvedViewMode === 'withdrawal' ? <EmployeeRefillSection
-              gateway={gateway}
-              iceTypes={data.iceTypes}
-              onDraftStateChange={setRefillDraftState}
-              serviceDate={serviceDate}
-            /> : null}
-            </>
           ) : null}
 
           {resolvedViewMode === 'pos' || resolvedViewMode === 'combined' ? <EmployeeShopPicker

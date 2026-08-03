@@ -15,6 +15,8 @@ export type QueueCharge = {
   charge_id: string;
   charge_number: string;
   service_date: string;
+  payment_term?: 'immediate' | 'end_of_day' | 'credit';
+  due_date?: string | null;
   original_amount: number;
   outstanding_amount: number;
   items: Array<{
@@ -43,9 +45,40 @@ export type Receivable = {
   shop_id: string;
   shop_code: string;
   shop_name: string;
+  credit_limit: number | null;
+  available_credit_amount: number | null;
   outstanding_amount: number;
   overdue_amount: number;
-  oldest_due_date: string;
+  oldest_due_date: string | null;
+  charges: ReceivableCharge[];
+};
+
+export type ReceivableCharge = {
+  charge_id: string;
+  charge_number: string;
+  service_date: string;
+  due_date: string;
+  original_amount: number;
+  allocated_amount: number;
+  outstanding_amount: number;
+  days_overdue: number;
+  payment_status: 'unpaid' | 'partial' | 'paid';
+  due_status: 'not_due' | 'due_today' | 'overdue' | 'paid';
+  assigned_collection_run_id: string | null;
+};
+
+export type DueDateRequest = {
+  id: string;
+  charge_id: string;
+  charge_number: string;
+  shop_code: string;
+  shop_name: string;
+  original_due_date: string;
+  requested_due_date: string;
+  reason: string;
+  status: 'pending' | 'approved' | 'rejected';
+  requested_at: string;
+  requested_by: string;
 };
 
 export type Approval = {

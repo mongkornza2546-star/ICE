@@ -30,7 +30,7 @@ test('POS and daily operations share one aggregate stock source', () => {
   assert.doesNotMatch(migration, /get_admin_delivery_truck_location_id/);
 });
 
-test('employee collection and refill cancellation complete the daily workflow', () => {
+test('employee collection and legacy refill cancellation complete the daily workflow', () => {
   assert.match(completionMigration, /function public\.get_today_collection_run_queue/);
   assert.match(completionMigration, /charge\.service_date = v_service_date/);
   assert.match(

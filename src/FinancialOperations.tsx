@@ -13,6 +13,7 @@ import { PaymentModal } from './features/financial-operations/components/Payment
 import type {
   Approval,
   Collector,
+  DueDateRequest,
   HistoryReceiptDetail,
   PaymentHistoryItem,
   PaymentReceipt,
@@ -40,6 +41,7 @@ export function FinancialOperations({ userRole = 'round_lead' }: { userRole?: Ap
   const [queue, setQueue] = useState<QueueShop[]>([]);
   const [receivables, setReceivables] = useState<Receivable[]>([]);
   const [approvals, setApprovals] = useState<Approval[]>([]);
+  const [dueDateRequests, setDueDateRequests] = useState<DueDateRequest[]>([]);
   const [collectors, setCollectors] = useState<Collector[]>([]);
   const [collectorAvatarUrls, setCollectorAvatarUrls] = useState<Record<string, string>>({});
   const [failedCollectorAvatars, setFailedCollectorAvatars] = useState<Set<string>>(() => new Set());
@@ -109,13 +111,14 @@ export function FinancialOperations({ userRole = 'round_lead' }: { userRole?: Ap
       setPaymentHistory((paymentsResponse.data ?? []) as unknown as PaymentHistoryItem[]);
       return;
     }
-    const [receivablesResponse, approvalsResponse, collectorsResponse, membersResponse, paymentsResponse] = await Promise.all([
+    const [receivablesResponse, approvalsResponse, dueDateRequestsResponse, collectorsResponse, membersResponse, paymentsResponse] = await Promise.all([
       supabase.rpc('get_credit_receivables', { p_as_of_date: serviceDate }),
       supabase
         .from('financial_approval_requests')
         .select('id, kind, requested_amount, reason, status, requested_at, shops(code,name), users!financial_approval_requests_requested_by_fkey(display_name)')
         .eq('status', 'pending')
         .order('requested_at'),
+      supabase.rpc('get_credit_due_date_requests', { p_pending_only: true }),
       supabase.rpc('get_collection_collectors'),
       nextRunId
         ? supabase.from('collection_run_members').select('user_id').eq('collection_run_id', nextRunId)
@@ -124,11 +127,13 @@ export function FinancialOperations({ userRole = 'round_lead' }: { userRole?: Ap
     ]);
     if (receivablesResponse.error) throw receivablesResponse.error;
     if (approvalsResponse.error) throw approvalsResponse.error;
+    if (dueDateRequestsResponse.error) throw dueDateRequestsResponse.error;
     if (collectorsResponse.error) throw collectorsResponse.error;
     if (membersResponse.error) throw membersResponse.error;
     if (paymentsResponse.error) throw paymentsResponse.error;
     setReceivables((receivablesResponse.data ?? []) as Receivable[]);
     setApprovals((approvalsResponse.data ?? []) as unknown as Approval[]);
+    setDueDateRequests((dueDateRequestsResponse.data ?? []) as DueDateRequest[]);
     setCollectors((collectorsResponse.data ?? []) as Collector[]);
     setMemberIds((membersResponse.data ?? []).map((member) => member.user_id));
     setPaymentHistory((paymentsResponse.data ?? []) as unknown as PaymentHistoryItem[]);
@@ -635,6 +640,48 @@ export function FinancialOperations({ userRole = 'round_lead' }: { userRole?: Ap
     setSuccess('ยกเลิกรายการรับเงินแล้ว ยอดค้างถูกคำนวณใหม่');
   });
 
+  const requestDueDate = (charge: QueueShop['charges'][number]) => runAction(async () => {
+    if (!supabase) return;
+    const requestedDueDate = window.prompt(`วันครบกำหนดใหม่สำหรับ ${charge.charge_number} (YYYY-MM-DD)`)?.trim();
+    if (!requestedDueDate) return;
+    const reason = window.prompt('เหตุผลที่ขอเลื่อนกำหนดชำระ')?.trim();
+    if (!reason) return;
+    const { error: rpcError } = await supabase.rpc('request_credit_due_date_change', {
+      p_charge_id: charge.charge_id,
+      p_requested_due_date: requestedDueDate,
+      p_reason: reason,
+    });
+    if (rpcError) throw rpcError;
+    setSuccess('ส่งคำขอเลื่อนกำหนดชำระแล้ว');
+  });
+
+  const decideDueDateRequest = (requestId: string, decision: 'approved' | 'rejected') => runAction(async () => {
+    if (!supabase) return;
+    const reason = decision === 'rejected' ? window.prompt('เหตุผลที่ไม่อนุมัติ')?.trim() : null;
+    if (decision === 'rejected' && !reason) return;
+    const { error: rpcError } = await supabase.rpc('decide_credit_due_date_request', {
+      p_request_id: requestId,
+      p_decision: decision,
+      p_reason: reason,
+    });
+    if (rpcError) throw rpcError;
+    setSuccess(decision === 'approved' ? 'อนุมัติการเลื่อนกำหนดชำระแล้ว' : 'ไม่อนุมัติการเลื่อนกำหนดชำระแล้ว');
+  });
+
+  const toggleCreditCollectionAssignment = (
+    charge: Receivable['charges'][number],
+    assigned: boolean,
+  ) => runAction(async () => {
+    if (!supabase || !runId) return;
+    const { error: rpcError } = await supabase.rpc('set_credit_charge_collection_assignment', {
+      p_collection_run_id: runId,
+      p_charge_id: charge.charge_id,
+      p_assigned: assigned,
+    });
+    if (rpcError) throw rpcError;
+    setSuccess(assigned ? 'มอบหมายบิลเครดิตเข้ารอบเก็บเงินแล้ว' : 'ถอนบิลเครดิตออกจากรอบเก็บเงินแล้ว');
+  });
+
   return (
     <div className="financial-ops" ref={pageRef}>
       <header className="financial-ops__header">
@@ -666,6 +713,17 @@ export function FinancialOperations({ userRole = 'round_lead' }: { userRole?: Ap
         busy={busy}
       />
 
+      {isManager ? <ManagerFinancialSections
+        approvals={approvals}
+        busy={busy}
+        dueDateRequests={dueDateRequests}
+        onDecide={decide}
+        onDecideDueDateRequest={decideDueDateRequest}
+        onToggleCreditCollectionAssignment={toggleCreditCollectionAssignment}
+        receivables={receivables}
+        runId={runId}
+      /> : null}
+
       {selectedShop ? createPortal(
         <PaymentModal
           allocatedAmount={allocatedAmount}
@@ -685,6 +743,7 @@ export function FinancialOperations({ userRole = 'round_lead' }: { userRole?: Ap
           onPrintReceipt={(targetReceipt) => printReceipt(targetReceipt)}
           onPrintReceiptWantedChange={setPrintReceiptWanted}
           onRecordPayment={recordPayment}
+          onRequestDueDate={requestDueDate}
           onReferenceChange={setReference}
           paymentReady={paymentReady}
           printReceiptWanted={printReceiptWanted}
@@ -708,15 +767,6 @@ export function FinancialOperations({ userRole = 'round_lead' }: { userRole?: Ap
           onPrint={() => printHistoryReceipt(historyReceipt.payment)}
         />,
         document.body,
-      ) : null}
-
-      {isManager ? (
-        <ManagerFinancialSections
-          approvals={approvals}
-          busy={busy}
-          onDecide={decide}
-          receivables={receivables}
-        />
       ) : null}
 
       <PaymentHistorySection

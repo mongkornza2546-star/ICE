@@ -263,6 +263,45 @@ describe('FinancialOperations', () => {
     await waitFor(() => expect(close).toHaveBeenCalledOnce());
   });
 
+  it('keeps the receipt open when full payment removes the shop from the queue', async () => {
+    const user = userEvent.setup();
+    let queueLoadCount = 0;
+    mocks.from.mockImplementation((table: string) => {
+      if (table === 'collection_runs') return queryResult({ id: 'run-1' });
+      return queryResult([]);
+    });
+    mocks.rpc.mockImplementation(async (name: string) => {
+      if (name === 'get_collection_run_queue') {
+        queueLoadCount += 1;
+        return { data: queueLoadCount === 1 ? [queueShop] : [], error: null };
+      }
+      if (name === 'record_payment') return {
+        data: {
+          payment_id: 'payment-1',
+          receipt_number: 'R260729-000001',
+          allocated_amount: 100,
+          change_amount: 0,
+          recorded_at: '2026-07-29T07:00:00Z',
+        },
+        error: null,
+      };
+      if (name === 'get_payment_receipt_items') return { data: [], error: null };
+      return { data: [], error: null };
+    });
+
+    render(<FinancialOperations userRole="courier" />);
+    await user.click(await screen.findByRole('button', { name: /S001 · ร้านเก็บเงิน/ }));
+    await user.click(screen.getByRole('checkbox', { name: 'พิมพ์ใบรับเงินหลังบันทึก' }));
+    await user.click(screen.getByRole('button', { name: 'บันทึกรับเงินทันที' }));
+
+    expect(await screen.findByText('บันทึกรับเงินเรียบร้อย')).not.toBeNull();
+    await waitFor(() => expect(mocks.rpc).toHaveBeenCalledWith('get_payment_receipt_items', {
+      p_payment_id: 'payment-1',
+    }));
+    expect(screen.getByRole('dialog', { name: 'รับเงิน ร้านเก็บเงิน' })).not.toBeNull();
+    expect(queueLoadCount).toBe(1);
+  });
+
   it('rejects payment evidence larger than 5 MB before recording', async () => {
     const user = userEvent.setup();
     const evidenceRequiredShop = {
@@ -653,6 +692,74 @@ describe('FinancialOperations', () => {
     await waitFor(() => expect(mocks.rpc).toHaveBeenCalledWith('void_payment', {
       p_payment_id: 'payment-1',
       p_reason: 'บันทึกยอดผิด',
+    }));
+  });
+
+  it('shows credit bill status and assigns a due bill to the open collection run', async () => {
+    const user = userEvent.setup();
+    mocks.from.mockImplementation((table: string) => {
+      if (table === 'collection_runs') return queryResult({ id: 'run-1' });
+      return queryResult([]);
+    });
+    mocks.rpc.mockImplementation(async (name: string) => {
+      if (name === 'get_collection_run_queue') return { data: [], error: null };
+      if (name === 'get_credit_receivables') return { data: [{
+        shop_id: 'shop-1', shop_code: 'S001', shop_name: 'ร้านเครดิต', credit_limit: null,
+        available_credit_amount: null, outstanding_amount: 300, overdue_amount: 300,
+        oldest_due_date: '2026-07-28', charges: [{
+          charge_id: 'credit-1', charge_number: 'C260728-000003', service_date: '2026-07-20',
+          due_date: '2026-07-28', original_amount: 500, allocated_amount: 200,
+          outstanding_amount: 300, days_overdue: 2, payment_status: 'partial', due_status: 'overdue',
+          assigned_collection_run_id: null,
+        }],
+      }], error: null };
+      if (name === 'set_credit_charge_collection_assignment') return { data: { assigned: true }, error: null };
+      return { data: [], error: null };
+    });
+
+    render(<FinancialOperations userRole="round_lead" />);
+    expect(await screen.findByText(/เกินกำหนด 2 วัน/)).not.toBeNull();
+    expect(screen.getByText(/วงเงินคงเหลือ ไม่จำกัด/)).not.toBeNull();
+    await user.click(screen.getByRole('button', { name: 'มอบหมายให้เก็บ' }));
+    await waitFor(() => expect(mocks.rpc).toHaveBeenCalledWith('set_credit_charge_collection_assignment', {
+      p_collection_run_id: 'run-1',
+      p_charge_id: 'credit-1',
+      p_assigned: true,
+    }));
+  });
+
+  it('lets an assigned collector request a due-date extension from a credit bill', async () => {
+    const user = userEvent.setup();
+    vi.spyOn(window, 'prompt').mockReturnValueOnce('2026-08-15').mockReturnValueOnce('ร้านขอเลื่อนรอบรับเงิน');
+    const creditQueueShop = {
+      ...queueShop,
+      charges: [{
+        ...queueShop.charges[0],
+        charge_id: 'credit-1',
+        charge_number: 'C260728-000003',
+        payment_term: 'credit',
+        due_date: '2026-07-28',
+      }],
+      charge_count: 1,
+      outstanding_amount: 60,
+    };
+    mocks.from.mockImplementation((table: string) => {
+      if (table === 'collection_runs') return queryResult({ id: 'run-1' });
+      return queryResult([]);
+    });
+    mocks.rpc.mockImplementation(async (name: string) => {
+      if (name === 'get_collection_run_queue') return { data: [creditQueueShop], error: null };
+      if (name === 'request_credit_due_date_change') return { data: { id: 'due-request-1' }, error: null };
+      return { data: [], error: null };
+    });
+
+    render(<FinancialOperations userRole="courier" />);
+    await user.click(await screen.findByRole('button', { name: /S001 · ร้านเก็บเงิน/ }));
+    await user.click(screen.getByRole('button', { name: /ขอเลื่อนกำหนด/ }));
+    await waitFor(() => expect(mocks.rpc).toHaveBeenCalledWith('request_credit_due_date_change', {
+      p_charge_id: 'credit-1',
+      p_requested_due_date: '2026-08-15',
+      p_reason: 'ร้านขอเลื่อนรอบรับเงิน',
     }));
   });
 });

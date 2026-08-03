@@ -9,7 +9,6 @@ interface AggregateItem {
   unit: string;
   ordered_quantity?: number;
   sold_quantity?: number;
-  refill_quantity?: number;
   damaged_quantity?: number;
   returned_quantity?: number;
   available_quantity: number;
@@ -23,7 +22,7 @@ interface AggregateSummary {
   items: AggregateItem[];
 }
 
-interface RefillHistoryItem {
+interface LegacyRefillHistoryItem {
   id: string;
   status: 'active' | 'cancelled';
   note: string | null;
@@ -58,7 +57,7 @@ export function DailyAggregateStockClose({
   onPreviewImage?: (image: { name: string; url: string }) => void;
 }) {
   const [summary, setSummary] = useState<AggregateSummary | null>(null);
-  const [refills, setRefills] = useState<RefillHistoryItem[]>([]);
+  const [legacyRefills, setLegacyRefills] = useState<LegacyRefillHistoryItem[]>([]);
   const [counts, setCounts] = useState<Record<string, number>>({});
   const [note, setNote] = useState('');
   const [loading, setLoading] = useState(true);
@@ -70,11 +69,11 @@ export function DailyAggregateStockClose({
     if (!supabase) return;
     setLoading(true);
     setError(null);
-    const [summaryResponse, refillsResponse] = await Promise.all([
+    const [summaryResponse, legacyRefillsResponse] = await Promise.all([
       supabase.rpc('get_daily_aggregate_stock_summary', { p_service_date: serviceDate }),
       supabase.rpc('get_daily_stock_refill_history', { p_service_date: serviceDate }),
     ]);
-    const loadError = summaryResponse.error ?? refillsResponse.error;
+    const loadError = summaryResponse.error ?? legacyRefillsResponse.error;
     if (loadError) setError(loadError.message);
     if (summaryResponse.data) {
       const next = summaryResponse.data as AggregateSummary;
@@ -83,7 +82,7 @@ export function DailyAggregateStockClose({
         next.items.map((item) => [item.ice_type_id, Number(item.available_quantity)]),
       ));
     } else if (!loadError) setError('ไม่พบยอดสต๊อกรวมสำหรับวันที่เลือก');
-    setRefills((refillsResponse.data ?? []) as RefillHistoryItem[]);
+    setLegacyRefills((legacyRefillsResponse.data ?? []) as LegacyRefillHistoryItem[]);
     setLoading(false);
   }, [serviceDate]);
 
@@ -137,9 +136,9 @@ export function DailyAggregateStockClose({
     }
   };
 
-  const cancelRefill = async (refill: RefillHistoryItem) => {
+  const cancelLegacyRefill = async (refill: LegacyRefillHistoryItem) => {
     if (!supabase || submitting || refill.status !== 'active') return;
-    const reason = window.prompt('เหตุผลที่ยกเลิกรายการเติมน้ำแข็ง')?.trim();
+    const reason = window.prompt('เหตุผลที่ยกเลิกรายการเติมน้ำแข็งเดิม')?.trim();
     if (!reason) return;
     setSubmitting(true);
     setError(null);
@@ -151,22 +150,22 @@ export function DailyAggregateStockClose({
       if (cancelError) setError(cancelError.message);
       else await load();
     } catch (cancelError) {
-      setError(cancelError instanceof Error ? cancelError.message : 'ยกเลิกรายการเติมน้ำแข็งไม่สำเร็จ');
+      setError(cancelError instanceof Error ? cancelError.message : 'ยกเลิกรายการเดิมไม่สำเร็จ');
     } finally {
       setSubmitting(false);
     }
   };
 
-  const refillHistory = refills.length > 0 ? (
-    <section aria-labelledby="refill-history-title" style={{ marginTop: 20 }}>
+  const legacyRefillHistory = legacyRefills.length > 0 ? (
+    <section aria-labelledby="legacy-refill-history-title" style={{ marginTop: 20 }}>
       <div className="panel-header">
         <div>
-          <p className="eyebrow">รายการตัดจากสต๊อกรวม</p>
-          <h3 id="refill-history-title">ประวัติเติมน้ำแข็ง</h3>
+          <p className="eyebrow">สำหรับตรวจสอบข้อมูลก่อนยกเลิกฟีเจอร์เท่านั้น</p>
+          <h3 id="legacy-refill-history-title">รายการเติมน้ำแข็งเดิม</h3>
         </div>
       </div>
       <div className="financial-ops__list">
-        {refills.map((refill) => (
+        {legacyRefills.map((refill) => (
           <div key={refill.id}>
             <span>
               <strong>
@@ -191,10 +190,10 @@ export function DailyAggregateStockClose({
             {summary?.status === 'open' && refill.status === 'active' ? (
               <button
                 disabled={submitting}
-                onClick={() => void cancelRefill(refill)}
+                onClick={() => void cancelLegacyRefill(refill)}
                 type="button"
               >
-                ยกเลิกรายการ
+                ยกเลิกรายการเดิม
               </button>
             ) : null}
           </div>
@@ -233,7 +232,7 @@ export function DailyAggregateStockClose({
             </div>
           ))}
         </div>
-        {refillHistory}
+        {legacyRefillHistory}
       </section>
     );
   }
@@ -274,7 +273,6 @@ export function DailyAggregateStockClose({
                   <small>
                     สั่ง {item.ordered_quantity ?? 0}
                     {' · '}ขาย {item.sold_quantity ?? 0}
-                    {' · '}เติม {item.refill_quantity ?? 0}
                     {' · '}เสีย {item.damaged_quantity ?? 0}
                     {' · '}คืน {item.returned_quantity ?? 0}
                   </small>
@@ -320,7 +318,7 @@ export function DailyAggregateStockClose({
       >
         {submitting ? 'กำลังปิดสต๊อก...' : 'ปิดสต๊อกและจบงานวันนี้'}
       </button>
-      {refillHistory}
+      {legacyRefillHistory}
     </section>
   );
 }
