@@ -77,8 +77,10 @@ export interface DeliveryFinancialResult {
   payment_status: FinancialPaymentStatus | null;
   due_date: string | null;
   approval_id: string | null;
-  items: Array<{
+  items?: Array<{
     ice_type_id: string;
+    name?: string;
+    unit?: string;
     quantity: number;
     unit_price: number | null;
     line_total: number | null;

@@ -1286,11 +1286,21 @@ input:disabled, select:disabled, textarea:disabled { background: #f2f5f8; color:
 .financial-ops__payment-image img { width: 100%; height: 100%; object-fit: cover; }
 .financial-ops__charge-list { display: grid; gap: 7px; padding: 12px; border: 1px solid #dce8f1; border-radius: 12px; background: #f8fbfe; }
 .financial-ops__charge-list > strong { display: flex; align-items: center; gap: 6px; color: #365873; font-size: .75rem; }
-.financial-ops__charge-list > div { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 0; border-top: 1px solid #e4edf4; }
-.financial-ops__charge-list > div > span { display: grid; gap: 2px; }
-.financial-ops__charge-list > div > span:last-child { text-align: right; }
+.financial-ops__charge-list > article { display: grid; gap: 8px; padding: 11px; border: 1px solid #e1ebf3; border-radius: 9px; background: #fff; }
+.financial-ops__charge-list > article.is-prior-balance { border-color: #f0d9aa; background: #fffaf0; }
+.financial-ops__charge-list article > header { display: flex; align-items: start; justify-content: space-between; gap: 12px; }
+.financial-ops__charge-list article > header > span { display: grid; gap: 2px; }
+.financial-ops__charge-list article > header > span:last-child { flex: 0 0 auto; text-align: right; }
+.financial-ops__charge-list em { width: fit-content; padding: 2px 6px; border-radius: 999px; color: #0870d8; background: #eaf4ff; font-size: .59rem; font-style: normal; font-weight: 800; }
+.financial-ops__charge-list .is-prior-balance em { color: #925b00; background: #ffedc2; }
 .financial-ops__charge-list b { color: #244865; font-size: .72rem; }
 .financial-ops__charge-list small { color: #71859a; font-size: .63rem; }
+.financial-ops__charge-items { display: grid; gap: 5px; padding-top: 7px; border-top: 1px dashed #dce7ef; }
+.financial-ops__charge-items > div, .financial-ops__current-order > div { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: #536f87; font-size: .7rem; }
+.financial-ops__charge-items > div > span, .financial-ops__current-order > div > span { min-width: 0; }
+.financial-ops__charge-items > div > b, .financial-ops__current-order > div > b { flex: 0 0 auto; color: #294867; font-size: .7rem; }
+.financial-ops__current-order { display: grid; gap: 6px; padding: 11px 13px; border: 1px solid #dce8f1; border-radius: 10px; background: #f8fbfe; }
+.financial-ops__current-order > strong { color: #365873; font-size: .75rem; }
 .financial-ops__payment { display: grid; gap: 14px; }
 .financial-ops__amount-due { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 16px; border: 1px solid #cfe1f1; border-radius: 12px; color: #3c5974; background: #f4f9fe; }
 .financial-ops__amount-due span { font-size: .82rem; font-weight: 800; }

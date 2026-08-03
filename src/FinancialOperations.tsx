@@ -51,6 +51,13 @@ type QueueShop = {
     service_date: string;
     original_amount: number;
     outstanding_amount: number;
+    items: Array<{
+      ice_type_id: string;
+      name: string;
+      unit: string;
+      quantity: number;
+      line_total: number;
+    }>;
   }>;
 };
 
@@ -148,6 +155,12 @@ const receiptDateTime = new Intl.DateTimeFormat('th-TH', {
   dateStyle: 'short',
   timeStyle: 'short',
 });
+const serviceDateFormat = new Intl.DateTimeFormat('th-TH', { dateStyle: 'medium' });
+
+function formatServiceDate(value: string) {
+  const [year, month, day] = value.split('-').map(Number);
+  return serviceDateFormat.format(new Date(year, month - 1, day));
+}
 
 function paymentMethodLabel(method: PaymentMethod) {
   return method === 'cash' ? 'เงินสด' : method === 'bank_transfer' ? 'โอนเงิน' : 'QR';
@@ -945,15 +958,6 @@ export function FinancialOperations({ userRole = 'round_lead' }: { userRole?: Ap
               </button>
             </header>
 
-            <section className="financial-ops__charge-list sr-only" aria-label="รายการส่งที่นำมาเก็บ">
-              {selectedShop.charges.map((charge) => (
-                <div key={charge.charge_id}>
-                  <span>{charge.charge_number}</span>
-                  <span>ค้าง {money.format(charge.outstanding_amount)}</span>
-                </div>
-              ))}
-            </section>
-
             {receipt ? (
               <div className="financial-ops__payment-complete">
                 <CheckCircle aria-hidden="true" size={24} weight="fill" />
@@ -967,6 +971,34 @@ export function FinancialOperations({ userRole = 'round_lead' }: { userRole?: Ap
                 <section className="financial-ops__amount-due" aria-label="ยอดที่ต้องชำระ">
                   <span>ยอดที่ต้องชำระ</span>
                   <strong>{money.format(selectedShop.outstanding_amount)}</strong>
+                </section>
+
+                <section className="financial-ops__charge-list" aria-label="รายละเอียดบิลและรายการที่สั่ง">
+                  <strong><ListNumbers aria-hidden="true" size={18} /> รายละเอียดบิลและรายการที่สั่ง</strong>
+                  {selectedShop.charges.map((charge) => {
+                    const isPriorBalance = charge.service_date !== serviceDate;
+                    return (
+                      <article className={isPriorBalance ? 'is-prior-balance' : ''} key={charge.charge_id}>
+                        <header>
+                          <span>
+                            <em>{isPriorBalance ? 'ยอดค้างจากวันอื่น' : 'บิลวันนี้'}</em>
+                            <b>เลขที่บิล {charge.charge_number}</b>
+                            <small>ส่งวันที่ {formatServiceDate(charge.service_date)}</small>
+                          </span>
+                          <span><small>ยอดค้างบิลนี้</small><b>{money.format(charge.outstanding_amount)}</b></span>
+                        </header>
+                        <div className="financial-ops__charge-items">
+                          {(charge.items ?? []).map((item) => (
+                            <div key={item.ice_type_id}>
+                              <span>{item.name} × {item.quantity.toLocaleString('th-TH')} {item.unit}</span>
+                              <b>{money.format(item.line_total)}</b>
+                            </div>
+                          ))}
+                          {(charge.items ?? []).length === 0 ? <small>ไม่พบรายละเอียดสินค้าของบิลนี้</small> : null}
+                        </div>
+                      </article>
+                    );
+                  })}
                 </section>
 
                 <section className="financial-ops__payment-methods" aria-labelledby="payment-method-label">

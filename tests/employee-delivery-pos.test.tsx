@@ -216,12 +216,47 @@ describe('employee delivery POS', () => {
       items: [{ ice_type_id: 'ice-1', quantity: 1 }],
     })));
     expect(await screen.findByRole('heading', { name: 'บันทึกรับชำระเงิน' })).toBeTruthy();
+    expect(screen.getByRole('region', { name: 'รายการที่สั่งในบิลนี้' }).textContent)
+      .toContain('หลอด × 1 ถุง');
     await user.click(screen.getByRole('button', { name: 'ยืนยันรับเงิน' }));
     await waitFor(() => expect(api.recordPayment).toHaveBeenCalledWith(expect.objectContaining({
       shopId: 'shop-1',
       chargeId: 'charge-1',
       expectedOutstandingAmount: 120,
     })));
+  });
+
+  it('uses the product label preserved in the delivery result', async () => {
+    const user = userEvent.setup();
+    const api = gateway();
+    api.recordDelivery = vi.fn().mockResolvedValue({
+      delivery_event_id: 'event-1',
+      round_stop_id: shop.round_stop_id,
+      charge_id: 'charge-1',
+      service_date: round.service_date,
+      total_amount: 10,
+      payment_term: 'immediate',
+      payment_status: 'unpaid',
+      due_date: null,
+      approval_id: null,
+      items: [{
+        ice_type_id: 'ice-1',
+        name: 'ชื่อสินค้าในบิล',
+        unit: 'แพ็ก',
+        quantity: 1,
+        unit_price: 10,
+        line_total: 10,
+        price_source: 'standard',
+        price_source_id: 'price-1',
+      }],
+    });
+    render(<EmployeeDeliveryWorkspace gateway={api} />);
+    await user.click(await screen.findByRole('button', { name: /S001 ร้านทดสอบ/ }));
+    await user.click(within(await selectIceAndGetKeypad(user)).getByRole('button', { name: '1' }));
+    await user.click(screen.getByRole('button', { name: 'ยืนยันส่งร้านนี้' }));
+
+    expect((await screen.findByRole('region', { name: 'รายการที่สั่งในบิลนี้' })).textContent)
+      .toContain('ชื่อสินค้าในบิล × 1 แพ็ก');
   });
 
   it('locks payment details while immediate payment is being recorded', async () => {

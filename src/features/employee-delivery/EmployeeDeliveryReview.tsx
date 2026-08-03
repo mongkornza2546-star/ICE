@@ -246,6 +246,18 @@ export function EmployeeDeliveryReview({
     const paymentReady = (!evidenceRequired || Boolean(paymentEvidence))
       && (!outstandingApprovalRequired || Boolean(approvalId))
       && !nonCashOverpayment;
+    const resultItems = paymentResult.items ?? [];
+    const billedItems = resultItems.length > 0
+      ? resultItems
+      : items.map((item) => {
+          const product = contextItems.find((candidate) => candidate.ice_type_id === item.ice_type_id);
+          return {
+            ...item,
+            name: product?.name,
+            unit: product?.unit,
+            line_total: item.quantity * (product?.unit_price ?? 0),
+          };
+        });
     return (
       <div className="employee-payment-sheet financial-ops__payment-card">
         <header>
@@ -277,6 +289,19 @@ export function EmployeeDeliveryReview({
             <section className="financial-ops__amount-due" aria-label="ยอดที่ต้องชำระ">
               <span>ยอดที่ต้องชำระ</span>
               <strong>{money.format(totalDue)}</strong>
+            </section>
+
+            <section className="financial-ops__current-order" aria-label="รายการที่สั่งในบิลนี้">
+              <strong>รายการที่สั่งในบิลนี้</strong>
+              {billedItems.map((item) => {
+                const iceType = contextItems.find((candidate) => candidate.ice_type_id === item.ice_type_id);
+                return (
+                  <div key={item.ice_type_id}>
+                    <span>{item.name ?? iceType?.name ?? 'ไม่พบชื่อสินค้า'} × {item.quantity.toLocaleString('th-TH')} {item.unit ?? iceType?.unit ?? ''}</span>
+                    <b>{money.format(item.line_total ?? 0)}</b>
+                  </div>
+                );
+              })}
             </section>
 
             <section className="financial-ops__payment-methods" aria-labelledby="employee-payment-method-label">

@@ -49,6 +49,14 @@ const collectionCarryForwardBalances = readFileSync(
   new URL('../supabase/migrations/0115_collection_carry_forward_balances.sql', import.meta.url),
   'utf8',
 );
+const collectionQueueChargeItems = readFileSync(
+  new URL('../supabase/migrations/0117_collection_queue_charge_items.sql', import.meta.url),
+  'utf8',
+);
+const deliveryFinancialResponseItemLabels = readFileSync(
+  new URL('../supabase/migrations/0118_delivery_financial_response_item_labels.sql', import.meta.url),
+  'utf8',
+);
 
 const COURIER_ID = '10000000-0000-4000-8000-000000000001';
 const ADMIN_ID = '10000000-0000-4000-8000-000000000002';
@@ -491,9 +499,11 @@ async function createDatabase(t, { applyCollectionShopCards = true } = {}) {
   `);
   await db.exec(dailyAggregateStock);
   await db.exec(dailyAggregateCompletion);
+  await db.exec(deliveryFinancialResponseItemLabels);
   if (applyCollectionShopCards) {
     await db.exec(collectionShopCardsAndChargeNumbers);
     await db.exec(collectionCarryForwardBalances);
+    await db.exec(collectionQueueChargeItems);
   }
   await db.exec(`
     insert into public.ice_type_prices (
@@ -624,6 +634,15 @@ test('POS context and delivery use override price, aggregate stock, and idempote
   assert.equal(Number(first.rows[0].result.total_amount), 36);
   assert.equal(first.rows[0].result.payment_status, 'unpaid');
   assert.equal(first.rows[0].result.source_stock_location_id, SHOP_SOURCE_ID);
+  assert.deepEqual(
+    first.rows[0].result.items.map((item) => ({
+      name: item.name,
+      unit: item.unit,
+      quantity: Number(item.quantity),
+      line_total: Number(item.line_total),
+    })),
+    [{ name: 'Ice', unit: 'bag', quantity: 2, line_total: 36 }],
+  );
 
   const retry = await db.query(`
     select public.record_delivery(
@@ -1599,6 +1618,19 @@ test('couriers collect prior balances together with new charges from today', asy
   assert.deepEqual(
     queueShop.charges.map((charge) => charge.charge_id),
     [priorChargeId, todayChargeId],
+  );
+  assert.deepEqual(
+    queueShop.charges.map((charge) => charge.items.map((item) => ({
+      ice_type_id: item.ice_type_id,
+      name: item.name,
+      unit: item.unit,
+      quantity: Number(item.quantity),
+      line_total: Number(item.line_total),
+    }))),
+    [
+      [{ ice_type_id: ICE_ID, name: 'Ice', unit: 'bag', quantity: 1, line_total: 18 }],
+      [{ ice_type_id: ICE_ID, name: 'Ice', unit: 'bag', quantity: 1, line_total: 18 }],
+    ],
   );
 
   const partialPayment = await db.query(`

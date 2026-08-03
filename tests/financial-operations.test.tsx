@@ -74,6 +74,13 @@ const queueShop = {
       service_date: '2026-07-28',
       original_amount: 60,
       outstanding_amount: 60,
+      items: [{
+        ice_type_id: 'ice-1',
+        name: 'น้ำแข็งหลอด',
+        unit: 'ถุง',
+        quantity: 2,
+        line_total: 60,
+      }],
     },
     {
       charge_id: 'charge-2',
@@ -81,6 +88,13 @@ const queueShop = {
       service_date: '2026-07-28',
       original_amount: 40,
       outstanding_amount: 40,
+      items: [{
+        ice_type_id: 'ice-2',
+        name: 'น้ำแข็งป่น',
+        unit: 'ถุง',
+        quantity: 1,
+        line_total: 40,
+      }],
     },
   ],
 };
@@ -132,8 +146,12 @@ describe('FinancialOperations', () => {
     render(<FinancialOperations userRole="courier" />);
     await user.click(await screen.findByRole('button', { name: /S001 · ร้านเก็บเงิน/ }));
     expect(await screen.findByRole('dialog', { name: 'รับเงิน ร้านเก็บเงิน' })).not.toBeNull();
-    expect(screen.getByText('C260728-000001')).not.toBeNull();
-    expect(screen.getByText('C260728-000002')).not.toBeNull();
+    expect(screen.getByText('เลขที่บิล C260728-000001')).not.toBeNull();
+    expect(screen.getByText('เลขที่บิล C260728-000002')).not.toBeNull();
+    expect(screen.getAllByText('ยอดค้างจากวันอื่น')).toHaveLength(2);
+    expect(screen.getByText('น้ำแข็งหลอด × 2 ถุง')).not.toBeNull();
+    expect(screen.getByText('น้ำแข็งป่น × 1 ถุง')).not.toBeNull();
+    expect(screen.getAllByText(/28 ก\.?ค\.? 2569/)).toHaveLength(2);
     expect(screen.getByAltText('ร้าน ร้านเก็บเงิน').getAttribute('src'))
       .toBe('https://cdn.example.test/shops/shop-1.webp');
     expect(mocks.rpc).toHaveBeenCalledWith('get_collection_run_queue', {
