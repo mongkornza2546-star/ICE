@@ -13,7 +13,7 @@ import { shiftServiceDate } from '../../../lib/serviceDate';
 import type { PaymentHistoryItem, QueueShop } from '../types';
 import { money, paymentMethodLabel, receiptDateTime } from '../utils';
 
-type QueueFilter = 'outstanding' | 'collected' | 'all';
+type QueueFilter = 'outstanding' | 'collected' | 'all' | 'credit';
 
 function initials(code: string) {
   return code.replace(/[^A-Za-zก-๙]/g, '').slice(0, 2).toUpperCase() || 'ร';
@@ -42,6 +42,8 @@ export function CollectionDesk({
   onPrintReceipt,
   onSelectShop,
   onVoidPayment,
+  creditManagement,
+  creditCount,
 }: {
   queue: QueueShop[];
   todayPayments: PaymentHistoryItem[];
@@ -58,6 +60,8 @@ export function CollectionDesk({
   onPrintReceipt: (payment: PaymentHistoryItem) => void;
   onSelectShop: (shop: QueueShop, trigger: HTMLButtonElement) => void;
   onVoidPayment: (payment: PaymentHistoryItem) => void;
+  creditManagement: ReactNode;
+  creditCount: number;
 }) {
   const [filter, setFilter] = useState<QueueFilter>('outstanding');
   const [query, setQuery] = useState('');
@@ -112,13 +116,15 @@ export function CollectionDesk({
         ))}
       </section>
 
-      <div className="collection-desk__workspace">
+      <div className={`collection-desk__workspace ${filter === 'credit' ? 'collection-desk__workspace--credit' : ''}`}>
         <section className="collection-desk__queue">
           <div className="collection-desk__tabs" role="tablist" aria-label="กรองรายการร้านค้า">
             <button aria-selected={filter === 'outstanding'} onClick={() => setFilter('outstanding')} role="tab" type="button">ค้างชำระทั้งหมด <b>{queue.length}</b></button>
             <button aria-selected={filter === 'collected'} onClick={() => setFilter('collected')} role="tab" type="button">ประวัติรับเงิน <b>{paymentHistory.length}</b></button>
             <button aria-selected={filter === 'all'} onClick={() => setFilter('all')} role="tab" type="button">ทั้งหมด</button>
+            <button aria-selected={filter === 'credit'} onClick={() => setFilter('credit')} role="tab" type="button">จัดการลูกหนี้ &amp; เครดิต <b>{creditCount}</b></button>
           </div>
+          {filter === 'credit' ? <div className="collection-desk__credit-tab">{creditManagement}</div> : <>
           <div className="collection-desk__filters">
             <label><MagnifyingGlass size={18} /><input onChange={(event) => setQuery(event.target.value)} placeholder="ค้นหาร้านค้า / เลขที่เอกสาร" value={query} /></label>
             <select aria-label="สถานะ" onChange={(event) => setFilter(event.target.value as QueueFilter)} value={filter}>
@@ -177,12 +183,13 @@ export function CollectionDesk({
             {visibleCount === 0 ? <p>ไม่พบรายการที่ค้นหา</p> : null}
           </div>
           <footer><span>แสดง {visibleCount ? `1 - ${visibleCount}` : '0'} จาก {totalCount} รายการ</span><span><button disabled type="button">‹</button><b>1</b><button disabled type="button">›</button></span><select aria-label="จำนวนรายการต่อหน้า"><option>20 รายการ/หน้า</option></select></footer>
+          </>}
         </section>
 
-        <aside className="collection-desk__detail">
+        {filter !== 'credit' ? <aside className="collection-desk__detail">
           <div className="collection-desk__detail-title">รายละเอียดการรับเงิน</div>
           {paymentPanel ?? <div className="collection-desk__empty-panel"><Coins size={38} weight="duotone" /><strong>เลือกร้านค้าเพื่อรับชำระเงิน</strong><span>รายละเอียดบิลและแบบฟอร์มรับเงินจะแสดงที่นี่</span></div>}
-        </aside>
+        </aside> : null}
       </div>
     </div>
   );

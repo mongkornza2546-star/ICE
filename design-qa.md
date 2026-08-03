@@ -93,6 +93,44 @@ final result: passed
 
 ---
 
+## 2026-08-04 — Credit & AR management navigation tab
+
+**Comparison Target**
+
+- Source visual truth: `/Users/bhusitt./Desktop/ภาพถ่ายหน้าจอ2569-08-04เวลา 06.13.00.png` (2880 × 1800 px), used for the established sidebar, topbar, operational tabs, pale-blue page background, dense table/card treatment, and action hierarchy.
+- Rendered implementation: [outputs/credit-ar-management-navbar.png](/Users/bhusitt./Downloads/ส่งน้ำแข็ง/outputs/credit-ar-management-navbar.png) (1280 × 720 px), captured from `?screen=collection-layout` in the in-app browser.
+- Viewport and state: desktop 1280 × 720 CSS px, manager collection workspace with `จัดการลูกหนี้ & เครดิต` selected beside `ค้างชำระทั้งหมด`, `ประวัติรับเงิน`, and `ทั้งหมด`.
+- Visual comparison evidence: source and implementation were opened and compared in this run. This is an intentional extension of the source: the new tab replaces the collection table/detail pane while retaining the source's surrounding information architecture.
+
+**Findings**
+
+- No actionable P0/P1/P2 differences remain for the shared collection workspace surfaces. The new credit tab uses the same navigation scale, blue active-tab indicator, border/radius language, Thai typography, sidebar/topbar framing, and dense operational card layout.
+- The source has no direct Credit & AR equivalent, so the management header, four summary cards, and internal credit views are intentional new content rather than fidelity differences.
+
+**Required Fidelity Surfaces**
+
+- Fonts and typography: existing Thai system stack, navy title hierarchy, compact labels, and bold currency treatment retained.
+- Spacing and layout rhythm: credit content is contained within the existing workspace panel; selecting it removes the payment-detail column and uses the full panel width.
+- Colors and visual tokens: existing blue/white/navy palette, pale-blue active state, low-elevation panels, muted borders, and semantic overdue red retained.
+- Image quality and asset fidelity: existing ice logo and sidebar artwork retained; UI icons use the project’s Phosphor icon library.
+- Copy and content: tab exposes approval requests, credit debtor status and available credit, aging buckets, and overdue follow-up actions.
+
+**Interaction And Build Checks**
+
+- In-app browser: selected `จัดการลูกหนี้ & เครดิต` from the same tablist as outstanding and payment history; the workspace switched to the Credit & AR overview and hid the payment detail pane.
+- Browser console: no errors or warnings.
+- Focused financial UI suite: `npm run test:ui -- tests/financial-operations.test.tsx` passed, 27/27.
+- Typecheck and production build: `npx tsc -b` and `npx vite build` passed. The existing large-chunk warning remains unchanged.
+- `git diff --check`: passed.
+
+**Comparison History**
+
+- Initial implementation placed Credit & AR below the collection workspace. Follow-up direction moved it into the workspace navigation, beside outstanding and payment-history tabs; post-fix browser evidence confirms the requested placement.
+
+final result: passed
+
+---
+
 ## 2026-08-03 — Shop purchase history
 
 **Comparison Target**

@@ -1273,6 +1273,12 @@ input:disabled, select:disabled, textarea:disabled { background: #f2f5f8; color:
 .employee-payment-sheet input { min-height: 48px; padding: 9px 11px; border: 1px solid #cbdbea; border-radius: 9px; font: inherit; }
 .employee-payment-summary { display: flex; justify-content: space-between; gap: 12px; padding: 12px; border-radius: 10px; color: #3c5c75; background: #eff7fd; font-size: .74rem; }
 .financial-ops { display: grid; gap: 16px; }
+.financial-ops__employee-workspace { min-width: 0; display: grid; grid-template-columns: 190px minmax(0, 1fr); align-items: start; gap: 16px; }
+.financial-ops__employee-nav { position: sticky; top: 92px; display: grid; gap: 6px; padding: 8px; border: 1px solid #d8e5ef; border-radius: 14px; background: #fff; box-shadow: 0 7px 22px rgba(19,57,103,.045); }
+.financial-ops__employee-nav button { min-height: 48px; display: flex; align-items: center; gap: 9px; padding: 9px 11px; border: 0; border-radius: 9px; color: #526c84; background: transparent; font: inherit; font-size: .76rem; font-weight: 800; text-align: left; }
+.financial-ops__employee-nav button:hover { color: #0865b3; background: #f2f8fe; }
+.financial-ops__employee-nav button[aria-current="page"] { color: #0865b3; background: #eaf5ff; box-shadow: inset 3px 0 #0875db; }
+.financial-ops__employee-page { min-width: 0; display: grid; gap: 16px; }
 .collection-desk { display: grid; gap: 18px; }
 .collection-desk__header { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
 .collection-desk__header h1, .collection-desk__header p { margin: 0; }
@@ -1295,9 +1301,11 @@ input:disabled, select:disabled, textarea:disabled { background: #f2f5f8; color:
 .collection-desk__stat-icon--orange { color: #f28a19; background: #fff2e3; }
 .collection-desk__stat-icon--purple { color: #825ee8; background: #f0ebff; }
 .collection-desk__workspace { min-height: 580px; display: grid; grid-template-columns: minmax(620px, 1fr) minmax(330px, 416px); align-items: start; gap: 12px; }
+.collection-desk__workspace--credit { min-height: 0; grid-template-columns: minmax(0, 1fr); }
 .collection-desk__queue, .collection-desk__detail { min-width: 0; overflow: hidden; border: 1px solid #d9e3ed; border-radius: 12px; background: #fff; }
-.collection-desk__tabs { display: flex; gap: 5px; height: 46px; padding: 0 14px; border-bottom: 1px solid #e0e7ef; }
+.collection-desk__tabs { display: flex; gap: 5px; height: 46px; padding: 0 14px; overflow-x: auto; border-bottom: 1px solid #e0e7ef; }
 .collection-desk__tabs button { position: relative; min-width: 0; padding: 0 8px; border: 0; color: #607288; background: transparent; font: inherit; font-size: .72rem; font-weight: 600; }
+.collection-desk__tabs button:last-child { white-space: nowrap; }
 .collection-desk__tabs button[aria-selected="true"] { color: #096be2; }
 .collection-desk__tabs button[aria-selected="true"]::after { content: ''; position: absolute; right: 0; bottom: -1px; left: 0; height: 2px; background: #1479ec; }
 .collection-desk__tabs b { padding: 1px 5px; border-radius: 999px; color: #527299; background: #edf3fa; font-size: .62rem; }
@@ -1341,6 +1349,7 @@ input:disabled, select:disabled, textarea:disabled { background: #f2f5f8; color:
 .collection-desk__queue > footer > span:nth-child(2) { display: flex; align-items: center; gap: 8px; }.collection-desk__queue > footer button, .collection-desk__queue > footer b { width: 34px; height: 34px; display: grid; border: 1px solid #dce5ee; border-radius: 7px; place-items: center; background: #fff; }.collection-desk__queue > footer b { border-color: #0870e8; color: #fff; background: #0870e8; }.collection-desk__queue > footer select { justify-self: end; height: 36px; padding: 0 10px; border: 1px solid #d7e1ec; border-radius: 8px; color: #4c647e; background: #fff; font: inherit; }
 .collection-desk__detail { position: sticky; top: 84px; min-height: 655px; max-height: calc(100vh - 100px); overflow-y: auto; }
 .collection-desk__detail-title { padding: 10px 16px; border-bottom: 1px solid #e4eaf1; color: #1b3453; font-size: .78rem; font-weight: 700; }
+.collection-desk__credit-tab { padding: 16px; background: #f8fbfe; }
 .collection-desk__empty-panel { min-height: 560px; display: grid; align-content: center; justify-items: center; gap: 8px; padding: 30px; color: #7690aa; text-align: center; }.collection-desk__empty-panel strong { color: #2e4b69; }.collection-desk__empty-panel span { max-width: 260px; font-size: .72rem; }
 .financial-ops__inline-panel { min-width: 0; }
 .financial-ops__inline-panel .financial-ops__payment-card { width: 100%; min-height: 610px; max-height: none; gap: 11px; overflow: visible; padding: 14px; border: 0; border-radius: 0; box-shadow: none; }
@@ -1365,6 +1374,10 @@ input:disabled, select:disabled, textarea:disabled { background: #f2f5f8; color:
 }
 
 @media (max-width: 759px) {
+  .financial-ops__employee-workspace { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .financial-ops__employee-nav { position: static; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; padding: 5px; }
+  .financial-ops__employee-nav button { justify-content: center; min-height: 46px; padding: 7px; text-align: center; }
+  .financial-ops__employee-nav button[aria-current="page"] { box-shadow: inset 0 -3px #0875db; }
   .collection-desk__header { align-items: stretch; flex-direction: column; }
   .collection-desk__header > div:last-child { display: grid; grid-template-columns: 1fr 1fr; }
   .collection-desk__stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -1557,6 +1570,62 @@ input:disabled, select:disabled, textarea:disabled { background: #f2f5f8; color:
 .financial-ops__receivable-charges b { color: #163d63; font-size: .8rem; white-space: nowrap; }
 .financial-ops__receivable-charges button { min-height: 34px; padding: 0 9px; border: 1px solid #90bde4; border-radius: 7px; color: #0869c7; background: #fff; font: inherit; font-size: .68rem; font-weight: 800; }
 .financial-ops__empty { margin: 10px 0; color: #71859a; text-align: center; }
+.credit-ar { display: grid; gap: 16px; }
+.credit-ar__header { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 18px 20px; border: 1px solid #cfe1f2; border-radius: 16px; background: #fff; box-shadow: 0 7px 22px rgba(19,57,103,.045); }
+.credit-ar__header > div, .credit-ar__header > div > span:last-child { display: flex; align-items: center; gap: 12px; }
+.credit-ar__header-icon { width: 46px; height: 46px; display: grid; place-items: center; border-radius: 13px; color: #0869c7; background: #eaf5ff; }
+.credit-ar__header .eyebrow { margin: 0 0 2px; color: #1671bf; font-size: .68rem; font-weight: 800; letter-spacing: .04em; }
+.credit-ar__header h1 { margin: 0; color: #183655; font-size: clamp(1.16rem, 2vw, 1.45rem); }
+.credit-ar__header small { color: #71859a; font-size: .71rem; }
+.credit-ar__as-of { padding: 7px 10px; border: 1px solid #d5e5f3; border-radius: 999px; color: #4e718f; background: #f6fbff; font-size: .68rem; font-weight: 700; white-space: nowrap; }
+.credit-ar__tabs { display: flex; gap: 5px; padding: 5px; overflow-x: auto; border: 1px solid #d8e5ef; border-radius: 12px; background: #fff; }
+.credit-ar__tabs button { min-height: 42px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 0 13px; border: 0; border-radius: 8px; color: #647b91; background: transparent; font: inherit; font-size: .74rem; font-weight: 800; white-space: nowrap; }
+.credit-ar__tabs button:hover { color: #0869c7; background: #f0f7fe; }
+.credit-ar__tabs button[aria-current="page"] { color: #0869c7; background: #eaf5ff; box-shadow: inset 0 -2px #0875db; }
+.credit-ar__tabs b { min-width: 18px; padding: 2px 5px; border-radius: 999px; color: #fff; background: #e15151; font-size: .62rem; line-height: 1.1; }
+.credit-ar__metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.credit-ar__metrics > button { min-height: 112px; display: grid; align-content: start; gap: 5px; padding: 14px; border: 1px solid #d8e5ef; border-radius: 13px; color: #183655; background: #fff; text-align: left; box-shadow: 0 5px 16px rgba(19,57,103,.035); }
+.credit-ar__metrics > button:hover { border-color: #9ec5ea; background: #f9fcff; }
+.credit-ar__metrics span { color: #607991; font-size: .7rem; font-weight: 700; }
+.credit-ar__metrics strong { color: #113e72; font-size: 1.05rem; }
+.credit-ar__metrics small { color: #8091a4; font-size: .65rem; }
+.credit-ar__metrics .credit-ar__metric--danger { border-color: #f1d4d1; background: #fffafa; }
+.credit-ar__metrics .credit-ar__metric--danger strong { color: #bd4848; }
+.credit-ar__overview-grid { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(300px, .85fr); gap: 14px; }
+.credit-ar__panel { padding: 15px; border: 1px solid #d8e5ef; border-radius: 14px; background: #fff; }
+.credit-ar__panel-heading, .credit-ar__panel-heading > span, .credit-ar__report-heading, .credit-ar__report-heading > span { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.credit-ar__panel-heading > span, .credit-ar__report-heading > span { justify-content: flex-start; color: #1269b8; }
+.credit-ar__panel-heading h2, .credit-ar__report-heading h2 { margin: 0; color: #244563; font-size: .84rem; }
+.credit-ar__panel-heading button { border: 0; color: #0869c7; background: transparent; font: inherit; font-size: .68rem; font-weight: 800; }
+.credit-ar__aging-bars { display: grid; gap: 11px; margin-top: 15px; }
+.credit-ar__aging-bars > div { display: grid; grid-template-columns: 88px minmax(30px, 1fr) auto; align-items: center; gap: 8px; }
+.credit-ar__aging-bars span { color: #607991; font-size: .68rem; }
+.credit-ar__aging-bars b { color: #244563; font-size: .7rem; white-space: nowrap; }
+.credit-ar__bar { height: 8px; position: relative; overflow: hidden; border-radius: 999px; background: #eaf0f5; }
+.credit-ar__bar::before { width: var(--aging-width); height: 100%; position: absolute; inset: 0 auto 0 0; border-radius: inherit; content: ''; background: #4e9bea; }
+.credit-ar__bar--watch::before { background: #e5a93c; }
+.credit-ar__bar--late::before { background: #e67945; }
+.credit-ar__bar--critical::before { background: #d75555; }
+.credit-ar__follow-ups { display: grid; gap: 8px; margin-top: 13px; }
+.credit-ar__follow-ups > div { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding-bottom: 8px; border-bottom: 1px solid #edf2f7; }
+.credit-ar__follow-ups > div:last-child { padding-bottom: 0; border: 0; }
+.credit-ar__follow-ups span { min-width: 0; display: grid; gap: 2px; }
+.credit-ar__follow-ups strong { overflow: hidden; color: #2b4b69; font-size: .72rem; text-overflow: ellipsis; white-space: nowrap; }
+.credit-ar__follow-ups small { color: #9a625a; font-size: .64rem; }
+.credit-ar__follow-ups b { color: #bd4848; font-size: .74rem; white-space: nowrap; }
+.credit-ar__request-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.credit-ar__request-grid .financial-ops__cards { grid-template-columns: 1fr; }
+.credit-ar__customers .financial-ops__list { margin-top: 2px; }
+.credit-ar__search { flex: 1 1 210px; }
+.credit-ar__search input { width: 100%; min-height: 34px; padding: 0 10px; border: 1px solid #cdddeb; border-radius: 7px; color: #294867; background: #fff; font: inherit; font-size: .72rem; }
+.credit-ar__aging-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.credit-ar__aging-summary-card { display: grid; gap: 4px; min-height: 94px; padding: 13px; border: 1px solid #d8e5ef; border-radius: 11px; background: #fbfdff; }
+.credit-ar__aging-summary-card span, .credit-ar__aging-summary-card small { color: #667f97; font-size: .67rem; }
+.credit-ar__aging-summary-card strong { color: #274a68; font-size: .96rem; }
+.credit-ar__aging-summary-card--watch { border-color: #f1dfb8; background: #fffdf7; }.credit-ar__aging-summary-card--watch strong { color: #a26e08; }
+.credit-ar__aging-summary-card--late { border-color: #f1d4bc; background: #fffaf7; }.credit-ar__aging-summary-card--late strong { color: #bc6531; }
+.credit-ar__aging-summary-card--critical { border-color: #f0cfce; background: #fff9f9; }.credit-ar__aging-summary-card--critical strong { color: #bd4848; }
+.credit-ar__report-heading { margin-top: 4px; padding: 11px 0; border-bottom: 1px solid #dfe9f2; }.credit-ar__report-heading b { color: #bd4848; font-size: .88rem; }
 .employee-task-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-bottom: 14px; }
 .employee-task-tabs button { min-height: 48px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; border: 1px solid #c4d9e9; border-radius: 10px; color: #43647d; background: #fff; font-weight: 800; }
 .employee-task-tabs button[aria-current="page"] { border-color: #0875db; color: #0865b3; background: #eaf5ff; box-shadow: inset 0 0 0 1px #0875db; }
@@ -1616,6 +1685,16 @@ input:disabled, select:disabled, textarea:disabled { background: #f2f5f8; color:
   .financial-ops__receipt-summary { grid-template-columns: 1fr; }
   .financial-ops__collectors { align-items: stretch; flex-direction: column; }
   .financial-ops__collectors button { width: 100%; margin-left: 0; }
+  .credit-ar__header { align-items: flex-start; flex-direction: column; padding: 15px; }
+  .credit-ar__header > div { align-items: flex-start; }
+  .credit-ar__header-icon { width: 42px; height: 42px; flex: 0 0 auto; }
+  .credit-ar__as-of { margin-left: 54px; }
+  .credit-ar__tabs { margin: 0 -1px; }
+  .credit-ar__tabs button { flex: 1 0 auto; padding: 0 10px; }
+  .credit-ar__metrics, .credit-ar__aging-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .credit-ar__metrics > button { min-height: 100px; padding: 12px; }
+  .credit-ar__overview-grid, .credit-ar__request-grid { grid-template-columns: 1fr; }
+  .credit-ar__aging-bars > div { grid-template-columns: 82px minmax(26px, 1fr) auto; }
   .financial-ops__cards { grid-template-columns: 1fr; }
   .financial-ops__receivable-charges article { grid-template-columns: minmax(0, 1fr) auto; }
   .financial-ops__receivable-charges article button { grid-column: 1 / -1; width: 100%; }

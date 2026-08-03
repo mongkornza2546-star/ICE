@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { FinancialOperations } from '../src/FinancialOperations';
 import { CollectionDesk } from '../src/features/financial-operations/components/CollectionDesk';
+import { ManagerFinancialSections } from '../src/features/financial-operations/components/FinancialOperationsPanels';
 
 const mocks = vi.hoisted(() => ({
   from: vi.fn(),
@@ -166,6 +167,8 @@ describe('FinancialOperations', () => {
     };
     render(<CollectionDesk
       busy={false}
+      creditCount={0}
+      creditManagement={null}
       historyDate="2026-08-03"
       onHistoryDateChange={() => undefined}
       onOpenReceipt={() => undefined}
@@ -234,6 +237,26 @@ describe('FinancialOperations', () => {
     expect(await screen.findByText(/R260803-000001/)).not.toBeNull();
   });
 
+  it('opens courier payment history as a separate subpage from the collection navigation', async () => {
+    const user = userEvent.setup();
+
+    render(<FinancialOperations
+      demoData={{ serviceDate: '2026-08-03', queue: [], paymentHistory: [] }}
+      userRole="courier"
+    />);
+
+    expect(screen.getByRole('heading', { name: 'คิวเก็บเงินของฉัน' })).not.toBeNull();
+    expect(screen.queryByRole('heading', { name: 'ประวัติรับเงิน' })).toBeNull();
+
+    const historyNavigation = screen.getByRole('button', { name: 'ประวัติรับเงิน' });
+    await user.click(historyNavigation);
+
+    expect(historyNavigation.getAttribute('aria-current')).toBe('page');
+    expect(screen.getByRole('heading', { name: 'ประวัติรับเงินของฉัน' })).not.toBeNull();
+    expect(screen.getByRole('heading', { name: 'ประวัติรับเงิน' })).not.toBeNull();
+    expect(screen.queryByText('รอบเก็บเงินท้ายวัน')).toBeNull();
+  });
+
   it('keeps persisted receipt details and reprinting available to couriers', async () => {
     const user = userEvent.setup();
     const { printDocument, print } = mockReceiptPrintWindow();
@@ -255,6 +278,7 @@ describe('FinancialOperations', () => {
     });
 
     render(<FinancialOperations userRole="courier" />);
+    await user.click(await screen.findByRole('button', { name: 'ประวัติรับเงิน' }));
     await user.click(await screen.findByRole('button', { name: /ดูบิล R260803-000002/ }));
     expect(await screen.findByRole('dialog', { name: 'รายละเอียดใบเสร็จ R260803-000002' })).not.toBeNull();
     await user.click(screen.getByRole('button', { name: 'ปิดรายละเอียดใบเสร็จ' }));
@@ -788,6 +812,7 @@ describe('FinancialOperations', () => {
     });
 
     render(<FinancialOperations userRole="courier" />);
+    await user.click(await screen.findByRole('button', { name: 'ประวัติรับเงิน' }));
     await user.click(await screen.findByRole('button', { name: '‹ วันก่อนหน้า' }));
     await waitFor(() => expect(paymentQueryCount).toBe(3));
 
@@ -881,6 +906,8 @@ describe('FinancialOperations', () => {
     });
 
     render(<FinancialOperations userRole="round_lead" />);
+    await user.click(await screen.findByRole('tab', { name: /จัดการลูกหนี้ & เครดิต/ }));
+    await user.click(await screen.findByRole('button', { name: 'ลูกหนี้เครดิต' }));
     expect(await screen.findByText(/เกินกำหนด 2 วัน/)).not.toBeNull();
     expect(screen.getByText(/วงเงินคงเหลือ ไม่จำกัด/)).not.toBeNull();
     await user.click(screen.getByRole('button', { name: 'มอบหมายให้เก็บ' }));
@@ -889,6 +916,137 @@ describe('FinancialOperations', () => {
       p_charge_id: 'credit-1',
       p_assigned: true,
     }));
+  });
+
+  it('shows aging buckets and overdue balances in the credit and receivables subpage', async () => {
+    const user = userEvent.setup();
+    mocks.from.mockImplementation((table: string) => {
+      if (table === 'collection_runs') return queryResult({ id: 'run-1' });
+      return queryResult([]);
+    });
+    mocks.rpc.mockImplementation(async (name: string) => {
+      if (name === 'get_collection_run_queue') return { data: [], error: null };
+      if (name === 'get_credit_receivables') return { data: [{
+        shop_id: 'shop-1', shop_code: 'S001', shop_name: 'ร้านเครดิต', credit_limit: 1_000,
+        available_credit_amount: 700, outstanding_amount: 300, overdue_amount: 300,
+        oldest_due_date: '2026-07-28', charges: [{
+          charge_id: 'credit-1', charge_number: 'C260728-000003', service_date: '2026-07-20',
+          due_date: '2026-07-28', original_amount: 300, allocated_amount: 0,
+          outstanding_amount: 300, days_overdue: 31, payment_status: 'unpaid', due_status: 'overdue',
+          assigned_collection_run_id: null,
+        }],
+      }], error: null };
+      return { data: [], error: null };
+    });
+
+    render(<FinancialOperations userRole="round_lead" />);
+
+    await user.click(await screen.findByRole('tab', { name: /จัดการลูกหนี้ & เครดิต/ }));
+    expect(await screen.findByRole('heading', { name: 'จัดการลูกหนี้ & เครดิต' })).not.toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Aging Report' }));
+
+    expect(screen.getByRole('heading', { name: 'รายงานอายุลูกหนี้' })).not.toBeNull();
+    expect(screen.getByText('เกิน 30 วัน')).not.toBeNull();
+    expect(screen.getAllByText(/฿300\.00/).length).toBeGreaterThan(1);
+    expect(screen.getByText(/ยอดค้างชำระเกินกำหนด/)).not.toBeNull();
+  });
+
+  it('includes due-today balances in aging and totals only defined available credit', async () => {
+    const user = userEvent.setup();
+
+    render(<ManagerFinancialSections
+      approvals={[]}
+      busy={false}
+      dueDateRequests={[]}
+      onDecide={() => undefined}
+      onDecideDueDateRequest={() => undefined}
+      onToggleCreditCollectionAssignment={() => undefined}
+      receivables={[
+        {
+          shop_id: 'limited-shop', shop_code: 'L001', shop_name: 'ร้านมีวงเงิน', credit_limit: 1_000,
+          available_credit_amount: 700, outstanding_amount: 300, overdue_amount: 0,
+          oldest_due_date: '2026-08-04', charges: [{
+            charge_id: 'due-today', charge_number: 'C260804-000001', service_date: '2026-08-01',
+            due_date: '2026-08-04', original_amount: 300, allocated_amount: 0,
+            outstanding_amount: 300, days_overdue: 0, payment_status: 'unpaid', due_status: 'due_today',
+            assigned_collection_run_id: null,
+          }],
+        },
+        {
+          shop_id: 'unlimited-shop', shop_code: 'U001', shop_name: 'ร้านไม่จำกัดวงเงิน', credit_limit: null,
+          available_credit_amount: null, outstanding_amount: 0, overdue_amount: 0,
+          oldest_due_date: null, charges: [{
+            charge_id: 'paid', charge_number: 'C260801-000002', service_date: '2026-08-01',
+            due_date: '2026-08-03', original_amount: 200, allocated_amount: 200,
+            outstanding_amount: 0, days_overdue: 1, payment_status: 'paid', due_status: 'paid',
+            assigned_collection_run_id: null,
+          }],
+        },
+      ]}
+      runId="run-1"
+    />);
+
+    const availableCreditMetric = screen.getByRole('button', { name: /วงเงินเครดิตคงเหลือ/ });
+    expect(availableCreditMetric.textContent).toContain('฿700.00');
+    expect(availableCreditMetric.textContent).not.toContain('ไม่จำกัด');
+
+    await user.click(screen.getByRole('button', { name: 'Aging Report' }));
+    const currentBucket = screen.getByText('ยังไม่เกินกำหนด').closest('article');
+    expect(currentBucket?.textContent).toContain('฿300.00');
+    expect(currentBucket?.textContent).toContain('100%');
+  });
+
+  it('filters and sorts debtor summaries with their charge rows', async () => {
+    const user = userEvent.setup();
+    const { container } = render(<ManagerFinancialSections
+      approvals={[]}
+      busy={false}
+      dueDateRequests={[]}
+      onDecide={() => undefined}
+      onDecideDueDateRequest={() => undefined}
+      onToggleCreditCollectionAssignment={() => undefined}
+      receivables={[
+        {
+          shop_id: 'current-shop', shop_code: 'C001', shop_name: 'ร้านยังไม่ถึงกำหนด', credit_limit: 1_000,
+          available_credit_amount: 900, outstanding_amount: 100, overdue_amount: 0,
+          oldest_due_date: '2026-08-10', charges: [{
+            charge_id: 'current-charge', charge_number: 'C260810-000001', service_date: '2026-08-01',
+            due_date: '2026-08-10', original_amount: 100, allocated_amount: 0,
+            outstanding_amount: 100, days_overdue: 0, payment_status: 'unpaid', due_status: 'not_due',
+            assigned_collection_run_id: null,
+          }],
+        },
+        {
+          shop_id: 'low-overdue-shop', shop_code: 'O001', shop_name: 'ร้านค้างน้อย', credit_limit: 1_000,
+          available_credit_amount: 800, outstanding_amount: 200, overdue_amount: 200,
+          oldest_due_date: '2026-08-01', charges: [{
+            charge_id: 'low-overdue-charge', charge_number: 'C260801-000002', service_date: '2026-07-28',
+            due_date: '2026-08-01', original_amount: 200, allocated_amount: 0,
+            outstanding_amount: 200, days_overdue: 3, payment_status: 'unpaid', due_status: 'overdue',
+            assigned_collection_run_id: null,
+          }],
+        },
+        {
+          shop_id: 'high-overdue-shop', shop_code: 'O002', shop_name: 'ร้านค้างมาก', credit_limit: 1_000,
+          available_credit_amount: 400, outstanding_amount: 600, overdue_amount: 600,
+          oldest_due_date: '2026-08-02', charges: [{
+            charge_id: 'high-overdue-charge', charge_number: 'C260802-000003', service_date: '2026-07-29',
+            due_date: '2026-08-02', original_amount: 600, allocated_amount: 0,
+            outstanding_amount: 600, days_overdue: 2, payment_status: 'unpaid', due_status: 'overdue',
+            assigned_collection_run_id: null,
+          }],
+        },
+      ]}
+      runId="run-1"
+    />);
+
+    await user.click(screen.getByRole('button', { name: 'ลูกหนี้เครดิต' }));
+    await user.selectOptions(screen.getByLabelText('กรองสถานะลูกหนี้'), 'overdue');
+    expect(screen.queryByText('C001 · ร้านยังไม่ถึงกำหนด')).toBeNull();
+
+    await user.selectOptions(screen.getByLabelText('เรียงลูกหนี้'), 'outstanding');
+    const debtorSummaries = Array.from(container.querySelectorAll('.financial-ops__list strong')).map((item) => item.textContent);
+    expect(debtorSummaries).toEqual(['O002 · ร้านค้างมาก', 'O001 · ร้านค้างน้อย']);
   });
 
   it('lets an assigned collector request a due-date extension from a credit bill', async () => {

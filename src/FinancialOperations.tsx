@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { CheckCircle, WarningCircle } from '@phosphor-icons/react';
+import { CheckCircle, ClockCounterClockwise, ListBullets, WarningCircle } from '@phosphor-icons/react';
 import { supabase } from './lib/supabase';
 import { bangkokDayUtcRange, toBangkokDateString } from './lib/serviceDate';
 import { MAX_PAYMENT_EVIDENCE_SIZE, uploadPaymentEvidence } from './lib/paymentEvidence';
@@ -36,21 +36,22 @@ import type { AppRole, PaymentMethod } from './types/app';
 
 const PAYMENT_FIELDS = 'id, receipt_number, received_amount, allocated_amount, change_amount, payment_method, status, recorded_at, void_reason, shops(code,name)';
 
-export function FinancialOperations({ userRole = 'round_lead', demoData }: { userRole?: AppRole; demoData?: { serviceDate: string; queue: QueueShop[]; paymentHistory: PaymentHistoryItem[] } }) {
+export function FinancialOperations({ userRole = 'round_lead', demoData }: { userRole?: AppRole; demoData?: { serviceDate: string; queue: QueueShop[]; paymentHistory: PaymentHistoryItem[]; receivables?: Receivable[]; approvals?: Approval[]; dueDateRequests?: DueDateRequest[] } }) {
   const serviceDate = demoData?.serviceDate ?? toBangkokDateString();
   const initialDemoShop = window.innerWidth >= 1100 ? demoData?.queue[0] ?? null : null;
   const isManager = userRole === 'admin' || userRole === 'round_lead';
   const { getOrCreatePendingRequest, clearPendingRequest } = usePendingRequests();
   const [runId, setRunId] = useState<string | null>(demoData ? 'demo-collection-run' : null);
   const [queue, setQueue] = useState<QueueShop[]>(demoData?.queue ?? []);
-  const [receivables, setReceivables] = useState<Receivable[]>([]);
-  const [approvals, setApprovals] = useState<Approval[]>([]);
-  const [dueDateRequests, setDueDateRequests] = useState<DueDateRequest[]>([]);
+  const [receivables, setReceivables] = useState<Receivable[]>(demoData?.receivables ?? []);
+  const [approvals, setApprovals] = useState<Approval[]>(demoData?.approvals ?? []);
+  const [dueDateRequests, setDueDateRequests] = useState<DueDateRequest[]>(demoData?.dueDateRequests ?? []);
   const [collectors, setCollectors] = useState<Collector[]>([]);
   const [collectorAvatarUrls, setCollectorAvatarUrls] = useState<Record<string, string>>({});
   const [failedCollectorAvatars, setFailedCollectorAvatars] = useState<Set<string>>(() => new Set());
   const [memberIds, setMemberIds] = useState<string[]>([]);
   const [historyDate, setHistoryDate] = useState(serviceDate);
+  const [employeeView, setEmployeeView] = useState<'queue' | 'history'>('queue');
   const [paymentHistory, setPaymentHistory] = useState<PaymentHistoryItem[]>(() => demoData?.paymentHistory.filter((payment) => (
     toBangkokDateString(new Date(payment.recorded_at)) === serviceDate
   )) ?? []);
@@ -751,14 +752,63 @@ export function FinancialOperations({ userRole = 'round_lead', demoData }: { use
       {error ? <p className="employee-error" role="alert"><WarningCircle />{error}</p> : null}
       {success ? <p className="employee-success"><CheckCircle weight="fill" />{success}</p> : null}
 
-      {!isManager ? <header className="financial-ops__header">
-        <div>
-          <p className="eyebrow">การเงินหน้าร้าน</p>
-          <h1>คิวเก็บเงินของฉัน</h1>
-          <span>วันที่ธุรกิจ {serviceDate}</span>
+      {!isManager ? <div className="financial-ops__employee-workspace">
+        <nav aria-label="เมนูเก็บเงิน" className="financial-ops__employee-nav">
+          <button
+            aria-current={employeeView === 'queue' ? 'page' : undefined}
+            onClick={() => setEmployeeView('queue')}
+            type="button"
+          >
+            <ListBullets aria-hidden="true" size={21} weight="duotone" />
+            <span>คิวเก็บเงิน</span>
+          </button>
+          <button
+            aria-current={employeeView === 'history' ? 'page' : undefined}
+            onClick={() => setEmployeeView('history')}
+            type="button"
+          >
+            <ClockCounterClockwise aria-hidden="true" size={21} weight="duotone" />
+            <span>ประวัติรับเงิน</span>
+          </button>
+        </nav>
+
+        <div className="financial-ops__employee-page">
+          <header className="financial-ops__header">
+            <div>
+              <p className="eyebrow">การเงินหน้าร้าน</p>
+              <h1>{employeeView === 'queue' ? 'คิวเก็บเงินของฉัน' : 'ประวัติรับเงินของฉัน'}</h1>
+              <span>วันที่ธุรกิจ {serviceDate}</span>
+            </div>
+            <button disabled={busy} onClick={() => void refreshFinancialData().catch((loadError: unknown) => setError(getErrorMessage(loadError)))} type="button">รีเฟรชยอดล่าสุด</button>
+          </header>
+
+          {employeeView === 'queue' ? <CollectionRunSection
+            collectors={collectors}
+            collectorAvatarUrls={collectorAvatarUrls}
+            failedCollectorAvatars={failedCollectorAvatars}
+            isManager={false}
+            memberIds={memberIds}
+            onCloseRun={closeRun}
+            onCollectorAvatarError={(path) => setFailedCollectorAvatars((current) => new Set(current).add(path))}
+            onSaveRun={saveRun}
+            onSelectShop={chooseShop}
+            onToggleCollector={() => undefined}
+            queue={queue}
+            runId={runId}
+            busy={busy}
+          /> : <PaymentHistorySection
+            busy={busy}
+            historyDate={historyDate}
+            isManager={false}
+            onHistoryDateChange={changeHistoryDate}
+            onOpenReceipt={openHistoryReceipt}
+            onPrintReceipt={printHistoryReceipt}
+            onVoidPayment={voidPayment}
+            paymentHistory={paymentHistory}
+            serviceDate={serviceDate}
+          />}
         </div>
-        <button disabled={busy} onClick={() => void refreshFinancialData().catch((loadError: unknown) => setError(getErrorMessage(loadError)))} type="button">รีเฟรชยอดล่าสุด</button>
-      </header> : null}
+      </div> : null}
 
       {isManager ? <CollectionDesk
         busy={busy}
@@ -805,22 +855,17 @@ export function FinancialOperations({ userRole = 'round_lead', demoData }: { use
         selectedShop={selectedShop}
         serviceDate={serviceDate}
         todayPayments={todayPayments}
-      /> : null}
-
-      {!isManager ? <CollectionRunSection
-        collectors={collectors}
-        collectorAvatarUrls={collectorAvatarUrls}
-        failedCollectorAvatars={failedCollectorAvatars}
-        isManager={false}
-        memberIds={memberIds}
-        onCloseRun={closeRun}
-        onCollectorAvatarError={(path) => setFailedCollectorAvatars((current) => new Set(current).add(path))}
-        onSaveRun={saveRun}
-        onSelectShop={chooseShop}
-        onToggleCollector={() => undefined}
-        queue={queue}
-        runId={runId}
-        busy={busy}
+        creditCount={receivables.length}
+        creditManagement={<ManagerFinancialSections
+          approvals={approvals}
+          busy={busy}
+          dueDateRequests={dueDateRequests}
+          onDecide={decide}
+          onDecideDueDateRequest={decideDueDateRequest}
+          onToggleCreditCollectionAssignment={toggleCreditCollectionAssignment}
+          receivables={receivables}
+          runId={runId}
+        />}
       /> : null}
 
       {isManager ? <div className="financial-ops__secondary">
@@ -843,16 +888,6 @@ export function FinancialOperations({ userRole = 'round_lead', demoData }: { use
         busy={busy}
       />
 
-      <ManagerFinancialSections
-        approvals={approvals}
-        busy={busy}
-        dueDateRequests={dueDateRequests}
-        onDecide={decide}
-        onDecideDueDateRequest={decideDueDateRequest}
-        onToggleCreditCollectionAssignment={toggleCreditCollectionAssignment}
-        receivables={receivables}
-        runId={runId}
-      />
       </div> : null}
 
       {selectedShop && (!isManager || window.innerWidth < 1100) ? createPortal(
@@ -899,18 +934,6 @@ export function FinancialOperations({ userRole = 'round_lead', demoData }: { use
         />,
         document.body,
       ) : null}
-
-      {!isManager ? <PaymentHistorySection
-        busy={busy}
-        historyDate={historyDate}
-        isManager={false}
-        onHistoryDateChange={changeHistoryDate}
-        onOpenReceipt={openHistoryReceipt}
-        onPrintReceipt={printHistoryReceipt}
-        onVoidPayment={voidPayment}
-        paymentHistory={paymentHistory}
-        serviceDate={serviceDate}
-      /> : null}
 
     </div>
   );

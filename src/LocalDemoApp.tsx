@@ -15,7 +15,7 @@ import { ShopSettings } from './ShopSettings';
 import { FinancialOperations } from './FinancialOperations';
 import type { DailyWorkDashboard, DeliveryRound, EmployeeStockState, IceTypeOption, ShopCard, ShopCardHistoryEntry, StockControlSummary } from './types/app';
 import type { IceTypeSetting } from './features/admin-reference-settings/types';
-import type { PaymentHistoryItem, QueueShop } from './features/financial-operations/types';
+import type { Approval, DueDateRequest, PaymentHistoryItem, QueueShop, Receivable } from './features/financial-operations/types';
 
 const collectionServiceDate = '2026-07-31';
 const collectionPaymentProfile = {
@@ -61,6 +61,37 @@ const collectionQueue: QueueShop[] = collectionShops.map(([code, name, amount, d
 const collectionPayments: PaymentHistoryItem[] = [
   { id: 'pay-1', receipt_number: 'RC-260731-001', received_amount: 8500, allocated_amount: 8500, change_amount: 0, payment_method: 'cash', status: 'active', recorded_at: '2026-07-31T09:40:00.000Z', void_reason: null, shops: { code: 'DD1', name: 'ร้านอาหารบ้านสวน' } },
   { id: 'pay-2', receipt_number: 'RC-260731-002', received_amount: 3850, allocated_amount: 3850, change_amount: 0, payment_method: 'bank_transfer', status: 'active', recorded_at: '2026-07-31T10:10:00.000Z', void_reason: null, shops: { code: 'EE2', name: 'ร้านเครื่องดื่มเย็นใจ' } },
+];
+
+const creditReceivables: Receivable[] = [
+  {
+    shop_id: 'credit-aa4', shop_code: 'AA4', shop_name: 'ร้านครัวคุณเงินลุงทอง', credit_limit: 20_000, available_credit_amount: 4_750,
+    outstanding_amount: 15_250, overdue_amount: 8_500, oldest_due_date: '2026-07-24', charges: [
+      { charge_id: 'credit-aa4-1', charge_number: 'C260724-000021', service_date: '2026-07-20', due_date: '2026-07-24', original_amount: 8_500, allocated_amount: 0, outstanding_amount: 8_500, days_overdue: 7, payment_status: 'unpaid', due_status: 'overdue', assigned_collection_run_id: null },
+      { charge_id: 'credit-aa4-2', charge_number: 'C260730-000024', service_date: '2026-07-26', due_date: '2026-08-05', original_amount: 6_750, allocated_amount: 0, outstanding_amount: 6_750, days_overdue: 0, payment_status: 'unpaid', due_status: 'not_due', assigned_collection_run_id: null },
+    ],
+  },
+  {
+    shop_id: 'credit-bb2', shop_code: 'BB2', shop_name: 'ร้านกาแฟ ลานเล่า', credit_limit: 15_000, available_credit_amount: 7_650,
+    outstanding_amount: 7_350, overdue_amount: 2_350, oldest_due_date: '2026-07-29', charges: [
+      { charge_id: 'credit-bb2-1', charge_number: 'C260729-000022', service_date: '2026-07-22', due_date: '2026-07-29', original_amount: 3_500, allocated_amount: 1_150, outstanding_amount: 2_350, days_overdue: 2, payment_status: 'partial', due_status: 'overdue', assigned_collection_run_id: null },
+      { charge_id: 'credit-bb2-2', charge_number: 'C260731-000025', service_date: '2026-07-28', due_date: '2026-08-07', original_amount: 5_000, allocated_amount: 0, outstanding_amount: 5_000, days_overdue: 0, payment_status: 'unpaid', due_status: 'not_due', assigned_collection_run_id: null },
+    ],
+  },
+  {
+    shop_id: 'credit-cc1', shop_code: 'CC1', shop_name: 'ร้านอาหารเจริญรส', credit_limit: null, available_credit_amount: null,
+    outstanding_amount: 4_200, overdue_amount: 0, oldest_due_date: '2026-08-08', charges: [
+      { charge_id: 'credit-cc1-1', charge_number: 'C260731-000026', service_date: '2026-07-29', due_date: '2026-08-08', original_amount: 4_200, allocated_amount: 0, outstanding_amount: 4_200, days_overdue: 0, payment_status: 'unpaid', due_status: 'not_due', assigned_collection_run_id: null },
+    ],
+  },
+];
+
+const creditApprovals: Approval[] = [
+  { id: 'approval-aa4', kind: 'credit_limit', requested_amount: 3_500, reason: 'ยอดสั่งซื้อเพิ่มในช่วงจัดงาน', status: 'pending', requested_at: '2026-07-31T03:00:00.000Z', shops: { code: 'AA4', name: 'ร้านครัวคุณเงินลุงทอง' }, users: { display_name: 'สมชาย ใจดี' } },
+];
+
+const creditDueDateRequests: DueDateRequest[] = [
+  { id: 'due-bb2', charge_id: 'credit-bb2-1', charge_number: 'C260729-000022', shop_code: 'BB2', shop_name: 'ร้านกาแฟ ลานเล่า', original_due_date: '2026-07-29', requested_due_date: '2026-08-05', reason: 'ร้านขอรวบยอดชำระต้นสัปดาห์', status: 'pending', requested_at: '2026-07-31T04:00:00.000Z', requested_by: 'วิชัย มั่นคง' },
 ];
 
 const demoRounds: DeliveryRound[] = [
@@ -531,7 +562,14 @@ export function LocalDemoApp() {
         onNavigate={() => undefined}
         profileLabel="bhusit.tanchavanic..."
       >
-        <FinancialOperations demoData={{ serviceDate: collectionServiceDate, queue: collectionQueue, paymentHistory: collectionPayments }} userRole="admin" />
+        <FinancialOperations demoData={{
+          serviceDate: collectionServiceDate,
+          queue: collectionQueue,
+          paymentHistory: collectionPayments,
+          receivables: creditReceivables,
+          approvals: creditApprovals,
+          dueDateRequests: creditDueDateRequests,
+        }} userRole="admin" />
       </AdminLayout>
     );
   }
