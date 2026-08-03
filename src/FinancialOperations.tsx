@@ -2,11 +2,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { CheckCircle, WarningCircle } from '@phosphor-icons/react';
 import { supabase } from './lib/supabase';
-import { toBangkokDateString } from './lib/serviceDate';
+import { bangkokDayUtcRange, toBangkokDateString } from './lib/serviceDate';
 import { MAX_PAYMENT_EVIDENCE_SIZE, uploadPaymentEvidence } from './lib/paymentEvidence';
 import { getErrorMessage } from './lib/errorMessage';
 import { usePendingRequests } from './features/employee-delivery/usePendingRequests';
 import { CollectionRunSection } from './features/financial-operations/components/CollectionRunSection';
+import { CollectionDesk } from './features/financial-operations/components/CollectionDesk';
 import { ManagerFinancialSections, PaymentHistorySection } from './features/financial-operations/components/FinancialOperationsPanels';
 import { HistoryReceiptModal } from './features/financial-operations/components/HistoryReceiptModal';
 import { PaymentModal } from './features/financial-operations/components/PaymentModal';
@@ -33,12 +34,13 @@ import {
 } from './features/financial-operations/utils';
 import type { AppRole, PaymentMethod } from './types/app';
 
-export function FinancialOperations({ userRole = 'round_lead' }: { userRole?: AppRole }) {
-  const serviceDate = toBangkokDateString();
+export function FinancialOperations({ userRole = 'round_lead', demoData }: { userRole?: AppRole; demoData?: { serviceDate: string; queue: QueueShop[]; paymentHistory: PaymentHistoryItem[] } }) {
+  const serviceDate = demoData?.serviceDate ?? toBangkokDateString();
+  const initialDemoShop = window.innerWidth >= 1100 ? demoData?.queue[0] ?? null : null;
   const isManager = userRole === 'admin' || userRole === 'round_lead';
   const { getOrCreatePendingRequest, clearPendingRequest } = usePendingRequests();
-  const [runId, setRunId] = useState<string | null>(null);
-  const [queue, setQueue] = useState<QueueShop[]>([]);
+  const [runId, setRunId] = useState<string | null>(demoData ? 'demo-collection-run' : null);
+  const [queue, setQueue] = useState<QueueShop[]>(demoData?.queue ?? []);
   const [receivables, setReceivables] = useState<Receivable[]>([]);
   const [approvals, setApprovals] = useState<Approval[]>([]);
   const [dueDateRequests, setDueDateRequests] = useState<DueDateRequest[]>([]);
@@ -46,14 +48,17 @@ export function FinancialOperations({ userRole = 'round_lead' }: { userRole?: Ap
   const [collectorAvatarUrls, setCollectorAvatarUrls] = useState<Record<string, string>>({});
   const [failedCollectorAvatars, setFailedCollectorAvatars] = useState<Set<string>>(() => new Set());
   const [memberIds, setMemberIds] = useState<string[]>([]);
-  const [paymentHistory, setPaymentHistory] = useState<PaymentHistoryItem[]>([]);
-  const [method, setMethod] = useState<PaymentMethod>('cash');
-  const [amount, setAmount] = useState('');
+  const [paymentHistory, setPaymentHistory] = useState<PaymentHistoryItem[]>(demoData?.paymentHistory ?? []);
+  const [todayPayments, setTodayPayments] = useState<PaymentHistoryItem[]>(() => demoData?.paymentHistory.filter((payment) => (
+    payment.status === 'active' && toBangkokDateString(new Date(payment.recorded_at)) === serviceDate
+  )) ?? []);
+  const [method, setMethod] = useState<PaymentMethod>(initialDemoShop?.payment_profile.default_payment_method ?? 'cash');
+  const [amount, setAmount] = useState(initialDemoShop ? Number(initialDemoShop.outstanding_amount).toFixed(2) : '');
   const [reference, setReference] = useState('');
   const [evidence, setEvidence] = useState<File | null>(null);
   const [evidenceError, setEvidenceError] = useState<string | null>(null);
   const [printReceiptWanted, setPrintReceiptWanted] = useState(true);
-  const [selectedShop, setSelectedShop] = useState<QueueShop | null>(null);
+  const [selectedShop, setSelectedShop] = useState<QueueShop | null>(initialDemoShop);
   const [receipt, setReceipt] = useState<PaymentReceipt | null>(null);
   const [receiptWarning, setReceiptWarning] = useState<string | null>(null);
   const [historyReceipt, setHistoryReceipt] = useState<HistoryReceiptDetail | null>(null);
@@ -67,12 +72,27 @@ export function FinancialOperations({ userRole = 'round_lead' }: { userRole?: Ap
   const historyDialogRef = useRef<HTMLDivElement>(null);
   const historyCloseButtonRef = useRef<HTMLButtonElement>(null);
   const historyReturnFocusRef = useRef<HTMLButtonElement | null>(null);
+  const selectedShopRef = useRef<QueueShop | null>(selectedShop);
   const busyRef = useRef(busy);
   const receiptRef = useRef<PaymentReceipt | null>(receipt);
   busyRef.current = busy;
   receiptRef.current = receipt;
+  selectedShopRef.current = selectedShop;
+
+  const resetPaymentForm = useCallback((shop: QueueShop) => {
+    setReceipt(null);
+    setReceiptWarning(null);
+    setMethod(shop.payment_profile.default_payment_method);
+    setAmount(Number(shop.outstanding_amount).toFixed(2));
+    setReference('');
+    setEvidence(null);
+    setEvidenceError(null);
+    setPrintReceiptWanted(true);
+    setError(null);
+  }, []);
 
   const load = useCallback(async () => {
+    if (demoData) return;
     if (!supabase) return;
     setError(null);
     const runResponse = await supabase
@@ -91,27 +111,41 @@ export function FinancialOperations({ userRole = 'round_lead' }: { userRole?: Ap
       });
       if (queueResponse.error) throw queueResponse.error;
       const nextQueue = await withSignedShopImages((queueResponse.data ?? []) as QueueShop[]);
+      const currentShop = selectedShopRef.current;
+      const nextSelectedShop = currentShop
+        ? nextQueue.find((shop) => shop.shop_id === currentShop.shop_id) ?? null
+        : (window.innerWidth >= 1100 ? nextQueue[0] ?? null : null);
       setQueue(nextQueue);
-      setSelectedShop((current) => (
-        current ? nextQueue.find((shop) => shop.shop_id === current.shop_id) ?? null : null
-      ));
+      setSelectedShop(nextSelectedShop);
+      if (!currentShop && nextSelectedShop) resetPaymentForm(nextSelectedShop);
     } else {
       setQueue([]);
       setSelectedShop(null);
     }
 
+    const paymentFields = 'id, receipt_number, received_amount, allocated_amount, change_amount, payment_method, status, recorded_at, void_reason, shops(code,name)';
     const paymentsPromise = supabase
       .from('payments')
-      .select('id, receipt_number, received_amount, allocated_amount, change_amount, payment_method, status, recorded_at, void_reason, shops(code,name)')
+      .select(paymentFields)
       .order('recorded_at', { ascending: false })
       .limit(30);
+    const paymentDay = bangkokDayUtcRange(serviceDate);
+    const todayPaymentsPromise = supabase
+      .from('payments')
+      .select(paymentFields)
+      .eq('status', 'active')
+      .gte('recorded_at', paymentDay.start)
+      .lt('recorded_at', paymentDay.end)
+      .order('recorded_at', { ascending: false });
     if (!isManager) {
-      const paymentsResponse = await paymentsPromise;
+      const [paymentsResponse, todayPaymentsResponse] = await Promise.all([paymentsPromise, todayPaymentsPromise]);
       if (paymentsResponse.error) throw paymentsResponse.error;
+      if (todayPaymentsResponse.error) throw todayPaymentsResponse.error;
       setPaymentHistory((paymentsResponse.data ?? []) as unknown as PaymentHistoryItem[]);
+      setTodayPayments((todayPaymentsResponse.data ?? []) as unknown as PaymentHistoryItem[]);
       return;
     }
-    const [receivablesResponse, approvalsResponse, dueDateRequestsResponse, collectorsResponse, membersResponse, paymentsResponse] = await Promise.all([
+    const [receivablesResponse, approvalsResponse, dueDateRequestsResponse, collectorsResponse, membersResponse, paymentsResponse, todayPaymentsResponse] = await Promise.all([
       supabase.rpc('get_credit_receivables', { p_as_of_date: serviceDate }),
       supabase
         .from('financial_approval_requests')
@@ -124,6 +158,7 @@ export function FinancialOperations({ userRole = 'round_lead' }: { userRole?: Ap
         ? supabase.from('collection_run_members').select('user_id').eq('collection_run_id', nextRunId)
         : Promise.resolve({ data: [], error: null }),
       paymentsPromise,
+      todayPaymentsPromise,
     ]);
     if (receivablesResponse.error) throw receivablesResponse.error;
     if (approvalsResponse.error) throw approvalsResponse.error;
@@ -131,13 +166,15 @@ export function FinancialOperations({ userRole = 'round_lead' }: { userRole?: Ap
     if (collectorsResponse.error) throw collectorsResponse.error;
     if (membersResponse.error) throw membersResponse.error;
     if (paymentsResponse.error) throw paymentsResponse.error;
+    if (todayPaymentsResponse.error) throw todayPaymentsResponse.error;
     setReceivables((receivablesResponse.data ?? []) as Receivable[]);
     setApprovals((approvalsResponse.data ?? []) as unknown as Approval[]);
     setDueDateRequests((dueDateRequestsResponse.data ?? []) as DueDateRequest[]);
     setCollectors((collectorsResponse.data ?? []) as Collector[]);
     setMemberIds((membersResponse.data ?? []).map((member) => member.user_id));
     setPaymentHistory((paymentsResponse.data ?? []) as unknown as PaymentHistoryItem[]);
-  }, [isManager, serviceDate]);
+    setTodayPayments((todayPaymentsResponse.data ?? []) as unknown as PaymentHistoryItem[]);
+  }, [demoData, isManager, resetPaymentForm, serviceDate]);
 
   useEffect(() => {
     void load().catch((loadError: unknown) => {
@@ -146,7 +183,7 @@ export function FinancialOperations({ userRole = 'round_lead' }: { userRole?: Ap
   }, [load]);
 
   useEffect(() => {
-    if (!selectedShop) return;
+    if (!selectedShop || window.innerWidth >= 1100) return;
     const page = pageRef.current;
     const previousOverflow = document.body.style.overflow;
     const closeOnKeydown = (event: KeyboardEvent) => {
@@ -295,16 +332,8 @@ export function FinancialOperations({ userRole = 'round_lead' }: { userRole?: Ap
 
   const chooseShop = (shop: QueueShop, trigger: HTMLButtonElement) => {
     returnFocusRef.current = trigger;
-    setReceipt(null);
-    setReceiptWarning(null);
     setSelectedShop(shop);
-    setMethod(shop.payment_profile.default_payment_method);
-    setAmount(Number(shop.outstanding_amount).toFixed(2));
-    setReference('');
-    setEvidence(null);
-    setEvidenceError(null);
-    setPrintReceiptWanted(true);
-    setError(null);
+    resetPaymentForm(shop);
   };
 
   const choosePaymentMethod = (nextMethod: PaymentMethod) => {
@@ -684,18 +713,52 @@ export function FinancialOperations({ userRole = 'round_lead' }: { userRole?: Ap
 
   return (
     <div className="financial-ops" ref={pageRef}>
-      <header className="financial-ops__header">
-        <div>
-          <p className="eyebrow">การเงินหน้าร้าน</p>
-          <h1>{isManager ? 'เก็บเงิน อนุมัติ และลูกหนี้' : 'คิวเก็บเงินของฉัน'}</h1>
-          <span>วันที่ธุรกิจ {serviceDate}</span>
-        </div>
-        <button disabled={busy} onClick={() => void load()} type="button">รีเฟรชยอดล่าสุด</button>
-      </header>
       {error ? <p className="employee-error" role="alert"><WarningCircle />{error}</p> : null}
       {success ? <p className="employee-success"><CheckCircle weight="fill" />{success}</p> : null}
 
-      <CollectionRunSection
+      <CollectionDesk
+        busy={busy}
+        onRefresh={() => void load()}
+        onSelectShop={chooseShop}
+        paymentPanel={selectedShop && window.innerWidth >= 1100 ? <PaymentModal
+          allocatedAmount={allocatedAmount}
+          amount={amount}
+          busy={busy}
+          changeAmount={changeAmount}
+          closeButtonRef={closeButtonRef}
+          dialogRef={dialogRef}
+          evidence={evidence}
+          evidenceError={evidenceError}
+          evidenceRequired={evidenceRequired}
+          method={method}
+          onAmountChange={setAmount}
+          onClose={closePayment}
+          onEvidenceChange={selectEvidence}
+          onPaymentMethodChange={choosePaymentMethod}
+          onPrintReceipt={(targetReceipt) => printReceipt(targetReceipt)}
+          onPrintReceiptWantedChange={setPrintReceiptWanted}
+          onRecordPayment={recordPayment}
+          onRequestDueDate={requestDueDate}
+          onReferenceChange={setReference}
+          paymentReady={paymentReady}
+          presentation="panel"
+          printReceiptWanted={printReceiptWanted}
+          receipt={receipt}
+          receiptWarning={receiptWarning}
+          reference={reference}
+          remainingAmount={remainingAmount}
+          selectedShop={selectedShop}
+          serviceDate={serviceDate}
+        /> : null}
+        queue={queue}
+        runId={runId}
+        selectedShop={selectedShop}
+        serviceDate={serviceDate}
+        todayPayments={todayPayments}
+      />
+
+      <div className="financial-ops__secondary">
+      {isManager || !runId ? <CollectionRunSection
         collectors={collectors}
         collectorAvatarUrls={collectorAvatarUrls}
         failedCollectorAvatars={failedCollectorAvatars}
@@ -710,8 +773,9 @@ export function FinancialOperations({ userRole = 'round_lead' }: { userRole?: Ap
           : current.filter((id) => id !== collectorId))}
         queue={queue}
         runId={runId}
+        showQueue={!runId}
         busy={busy}
-      />
+      /> : null}
 
       {isManager ? <ManagerFinancialSections
         approvals={approvals}
@@ -723,8 +787,9 @@ export function FinancialOperations({ userRole = 'round_lead' }: { userRole?: Ap
         receivables={receivables}
         runId={runId}
       /> : null}
+      </div>
 
-      {selectedShop ? createPortal(
+      {selectedShop && window.innerWidth < 1100 ? createPortal(
         <PaymentModal
           allocatedAmount={allocatedAmount}
           amount={amount}

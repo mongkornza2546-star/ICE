@@ -1,3 +1,57 @@
+## 2026-08-03 — Store collection desktop workspace
+
+**Comparison Target**
+
+- Source visual truth: `/Users/bhusitt./Downloads/ChatGPT Image 3 ส.ค. 2569 17_25_06.png` (1536 × 1024 px).
+- Rendered implementation: [outputs/collection-layout-desktop-final.png](/Users/bhusitt./Downloads/ส่งน้ำแข็ง/outputs/collection-layout-desktop-final.png) (1536 × 1024 px).
+- Responsive implementation: [outputs/collection-layout-mobile-final.png](/Users/bhusitt./Downloads/ส่งน้ำแข็ง/outputs/collection-layout-mobile-final.png) (390 × 844 px), with the receive-payment dialog open.
+- Combined comparison evidence: [outputs/collection-layout-comparison-final.jpg](/Users/bhusitt./Downloads/ส่งน้ำแข็ง/outputs/collection-layout-comparison-final.jpg) (1536 × 2092 px), with the reference above the implementation.
+- Viewport and normalization: reference and desktop implementation are both 1536 × 1024 px at the same page crop. The in-app browser used a 1536 × 1024 CSS viewport. No density resize or crop was needed. Mobile used a 390 × 844 CSS viewport.
+- State: collection run open, seven outstanding shops, first shop selected, cash selected, received amount prefilled, and two payments included in today's summary.
+- Full-view evidence: the comparison board shows the same sidebar/topbar frame, four summary cards, tabbed/searchable shop table, selected row, fixed right payment panel, and bottom pagination in one viewport.
+- Focused-region evidence: the table and right payment panel are legible in the full-resolution comparison board. The separate mobile capture verifies the responsive payment dialog, bill details, quick amounts, allocation summary, and persistent actions.
+
+**Findings**
+
+- No actionable P0/P1/P2 differences remain. The implementation preserves the source's desktop information architecture and dense two-column composition while continuing to expose the existing payment behavior.
+- P3: the production data model does not currently expose the shop building/floor label shown under each shop in the reference, so the implementation honestly displays the number of outstanding items instead.
+- P3: the right panel reuses the existing detailed charge card rather than reproducing the reference's checkbox allocation table. Oldest-first allocation remains automatic and covered by the financial test suite.
+
+**Required Fidelity Surfaces**
+
+- Fonts and typography: retained Noto Sans Thai, compact table metadata, navy headings, numeric emphasis, controlled truncation, and readable 11–13 px operational labels.
+- Spacing and layout rhythm: matched the fixed sidebar, 70 px topbar, four-card summary row, compact filters, seven-row table, selected-row accent, 416 px detail panel, low-radius borders, and low-elevation shadows. Mobile collapses the workspace to one column and keeps the payment form in the existing full-height dialog.
+- Colors and visual tokens: retained the blue/white/navy system, pale blue selection, blue primary action, muted borders, and semantic green/orange/purple summary accents.
+- Image quality and asset fidelity: retained the supplied ice logo and sidebar water artwork. All UI icons come from the existing Phosphor library; no emoji, handcrafted SVG, or placeholder illustration was added.
+- Copy and content: heading, summary labels, search/filter/sort controls, outstanding amounts, document references, dates, status pills, payment methods, received amount, date/time, note, and save action align with the reference workflow.
+
+**Interaction And Build Checks**
+
+- Search reduced the seven-row queue to the single matching coffee shop and restored cleanly.
+- Switching to bank transfer selected the method and revealed the required evidence input; switching back to cash restored the cash state.
+- The `เก็บเงินแล้ววันนี้` tab rendered the two expected paid rows and returned to the outstanding queue.
+- At 390 × 844, selecting the first shop opened one accessible payment dialog with no console warnings or errors.
+- Browser console: no errors or warnings on desktop or mobile.
+- Focused financial UI suite: `npx vitest run tests/financial-operations.test.tsx --reporter=dot` passed, 23/23.
+- Bangkok date-range and financial regression suites passed together, 26/26. The complete UI suite passed, 159/159.
+- Production build: `npm run build` passed. The existing Vite large-chunk warning remains unchanged.
+
+**Comparison History**
+
+- Initial pass found a P1 demo-only authorization error banner because the preview fixture still attempted a Supabase load. Demo data now bypasses the remote load; post-fix browser evidence has no banner or console errors.
+- Initial pass found a P2 desktop composition mismatch: the payment flow opened only as a modal and duplicated the old shop-card grid below the new table. Desktop now renders the existing payment component inline, while mobile retains the modal; the old assignment/grid section appears only before a collection run is opened.
+- The first inline-panel pass left a large empty lower region and let the next financial section enter the source viewport. The panel now includes received date/time, keeps its primary action near the bottom, and moves secondary financial sections below the primary workspace.
+- The duplicate queue temporarily made nine focused tests ambiguous. The legacy shop grid now appears only before a run opens, while manager close/reassignment controls remain available without duplicating shop actions.
+- Post-review fixes separated complete Bangkok-day totals from the 30-row receipt history, initialized production desktop auto-selection through the normal payment defaults, made status/document/all filters functional, and removed the manager-only open-run action from courier views. The post-fix focused suite passes 23/23.
+
+**Follow-up Polish**
+
+- P3: add building/floor metadata to the collection queue RPC if exact secondary shop copy is required later.
+
+final result: passed
+
+---
+
 ## 2026-08-03 — Shop purchase history
 
 **Comparison Target**

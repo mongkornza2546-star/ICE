@@ -16,6 +16,7 @@ import type { PaymentReceipt, QueueShop } from '../types';
 import { formatServiceDate, money, paymentMethodLabel } from '../utils';
 
 export function PaymentModal({
+  presentation = 'modal',
   selectedShop,
   serviceDate,
   busy,
@@ -44,6 +45,7 @@ export function PaymentModal({
   onPrintReceipt,
   onRequestDueDate,
 }: {
+  presentation?: 'modal' | 'panel';
   selectedShop: QueueShop;
   serviceDate: string;
   busy: boolean;
@@ -72,17 +74,18 @@ export function PaymentModal({
   onPrintReceipt: (receipt: PaymentReceipt) => void;
   onRequestDueDate: (charge: QueueShop['charges'][number]) => void;
 }) {
+  const isPanel = presentation === 'panel';
   return (
     <div
       aria-label={`รับเงิน ${selectedShop.shop_name}`}
-      aria-modal="true"
-      className="financial-ops__modal"
+      aria-modal={isPanel ? undefined : 'true'}
+      className={isPanel ? 'financial-ops__inline-panel' : 'financial-ops__modal'}
       ref={dialogRef}
-      role="dialog"
+      role={isPanel ? 'region' : 'dialog'}
     >
-      <div className="financial-ops__modal-backdrop" onClick={() => {
+      {!isPanel ? <div className="financial-ops__modal-backdrop" onClick={() => {
         if (!busy) onClose();
-      }} />
+      }} /> : null}
       <article className="financial-ops__payment-card">
         <header>
           <span className="financial-ops__payment-image">
@@ -94,7 +97,7 @@ export function PaymentModal({
           </span>
           <span>
             <small>{selectedShop.shop_code}</small>
-            <h2>บันทึกรับชำระเงิน</h2>
+            <h2>{isPanel ? `${selectedShop.shop_code} · ${selectedShop.shop_name}` : 'บันทึกรับชำระเงิน'}</h2>
             <b>{selectedShop.shop_name}</b>
           </span>
           <button
@@ -204,6 +207,13 @@ export function PaymentModal({
                 </div>
               ) : null}
             </section>
+
+            {isPanel ? (
+              <section className="financial-ops__inline-datetime" aria-label="วันและเวลาที่รับเงิน">
+                <label><span>วันที่รับเงิน</span><input readOnly value={formatServiceDate(serviceDate)} /></label>
+                <label><span>เวลา</span><input readOnly value={new Intl.DateTimeFormat('th-TH', { hour: '2-digit', minute: '2-digit' }).format(new Date())} /></label>
+              </section>
+            ) : null}
 
             {method === 'cash' ? (
               <div className="financial-ops__quick-amounts" aria-label="เลือกยอดรับเงินด่วน">

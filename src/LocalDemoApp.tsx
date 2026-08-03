@@ -12,8 +12,56 @@ import { AdminReferenceSettings } from './AdminReferenceSettings';
 import { ManagerStockControl } from './ManagerStockControl';
 import { ManagerDashboard } from './ManagerDashboard';
 import { ShopSettings } from './ShopSettings';
+import { FinancialOperations } from './FinancialOperations';
 import type { DailyWorkDashboard, DeliveryRound, EmployeeStockState, IceTypeOption, ShopCard, ShopCardHistoryEntry, StockControlSummary } from './types/app';
 import type { IceTypeSetting } from './features/admin-reference-settings/types';
+import type { PaymentHistoryItem, QueueShop } from './features/financial-operations/types';
+
+const collectionServiceDate = '2026-07-31';
+const collectionPaymentProfile = {
+  allowed_payment_methods: ['cash', 'bank_transfer', 'qr'] as const,
+  default_payment_method: 'cash' as const,
+  cash_reference_required: false,
+  cash_evidence_required: false,
+  bank_transfer_reference_required: false,
+  bank_transfer_evidence_required: true,
+  qr_reference_required: false,
+  qr_evidence_required: true,
+};
+const collectionShops = [
+  ['AA4', 'ร้านครัวคุณเงินลุงทอง', 15250, '2026-07-29', 5],
+  ['BB2', 'ร้านกาแฟ ลานเล่า', 9850, '2026-07-29', 5],
+  ['CC1', 'ร้านอาหารเจริญรส', 7400, '2026-07-30', 1],
+  ['AA2', 'ร้านเจ๊อ้อย (ก้อน)', 5800, '2026-07-31', 0],
+  ['BB5', 'ร้านก๋วยเตี๋ยวเรือ', 4280, '2026-07-31', 0],
+  ['CC3', 'ร้านผลไม้สด', 2800, '2026-07-30', 1],
+  ['AA11', 'ร้านน้ำฟ้า', 280, '2026-07-30', 1],
+] as const;
+const collectionQueue: QueueShop[] = collectionShops.map(([code, name, amount, date, index]) => ({
+  shop_id: `collection-${code}`,
+  shop_code: code,
+  shop_name: name,
+  image_path: null,
+  image_url: null,
+  outstanding_amount: amount,
+  charge_count: index > 1 ? 1 : index + 1,
+  has_new_charges: date === collectionServiceDate,
+  payment_profile: { ...collectionPaymentProfile, allowed_payment_methods: [...collectionPaymentProfile.allowed_payment_methods] },
+  charges: Array.from({ length: index > 1 ? 1 : index + 1 }, (_, chargeIndex) => ({
+    charge_id: `${code}-${chargeIndex}`,
+    charge_number: `INV-2607${date.slice(-2)}-0000${index + chargeIndex + 1}`,
+    service_date: date,
+    payment_term: 'end_of_day' as const,
+    due_date: date,
+    original_amount: amount / (index > 1 ? 1 : index + 1),
+    outstanding_amount: amount / (index > 1 ? 1 : index + 1),
+    items: [{ ice_type_id: 'ice-small', name: 'น้ำแข็งหลอดเล็ก', unit: 'ถุง', quantity: 5, line_total: amount }],
+  })),
+}));
+const collectionPayments: PaymentHistoryItem[] = [
+  { id: 'pay-1', receipt_number: 'RC-260731-001', received_amount: 8500, allocated_amount: 8500, change_amount: 0, payment_method: 'cash', status: 'active', recorded_at: '2026-07-31T09:40:00.000Z', void_reason: null, shops: { code: 'DD1', name: 'ร้านอาหารบ้านสวน' } },
+  { id: 'pay-2', receipt_number: 'RC-260731-002', received_amount: 3850, allocated_amount: 3850, change_amount: 0, payment_method: 'bank_transfer', status: 'active', recorded_at: '2026-07-31T10:10:00.000Z', void_reason: null, shops: { code: 'EE2', name: 'ร้านเครื่องดื่มเย็นใจ' } },
+];
 
 const demoRounds: DeliveryRound[] = [
   {
@@ -474,6 +522,19 @@ export function LocalDemoApp() {
   const [gatewayVersion, setGatewayVersion] = useState(0);
   const [draftState, setDraftState] = useState({ dirty: false, submitting: false });
   const gateway = useMemo(() => buildDemoGateway(), [gatewayVersion]);
+
+  if (new URLSearchParams(window.location.search).get('screen') === 'collection-layout') {
+    return (
+      <AdminLayout
+        activeView="financial_operations"
+        allowedViews={['manager_overview', 'factory_order', 'delivery', 'financial_operations', 'stock_operations', 'location_management', 'shops', 'stock_audit', 'reference_settings']}
+        onNavigate={() => undefined}
+        profileLabel="bhusit.tanchavanic..."
+      >
+        <FinancialOperations demoData={{ serviceDate: collectionServiceDate, queue: collectionQueue, paymentHistory: collectionPayments }} userRole="admin" />
+      </AdminLayout>
+    );
+  }
 
   if (new URLSearchParams(window.location.search).get('screen') === 'today-layout') {
     return (

@@ -2,6 +2,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { FinancialOperations } from '../src/FinancialOperations';
+import { CollectionDesk } from '../src/features/financial-operations/components/CollectionDesk';
 
 const mocks = vi.hoisted(() => ({
   from: vi.fn(),
@@ -28,7 +29,7 @@ vi.mock('../src/lib/paymentEvidence', async (importOriginal) => ({
 function queryResult(data: unknown, error: { message: string } | null = null) {
   const result = { data, error };
   const query: Record<string, unknown> = {};
-  for (const method of ['select', 'eq', 'order', 'limit']) query[method] = vi.fn(() => query);
+  for (const method of ['select', 'eq', 'gte', 'lt', 'order', 'limit']) query[method] = vi.fn(() => query);
   query.maybeSingle = vi.fn().mockResolvedValue(result);
   query.then = (resolve: (value: typeof result) => unknown, reject: (reason: unknown) => unknown) =>
     Promise.resolve(result).then(resolve, reject);
@@ -108,6 +109,74 @@ describe('FinancialOperations', () => {
     mocks.uploadPaymentEvidence.mockReset();
     mocks.createSignedUrls.mockResolvedValue({ data: [], error: null });
     mocks.uploadPaymentEvidence.mockResolvedValue('courier-1/payment-slip.jpg');
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1024 });
+  });
+
+  it('initializes the automatically selected desktop shop with its payment defaults', async () => {
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1200 });
+    const transferShop = {
+      ...queueShop,
+      payment_profile: {
+        ...queueShop.payment_profile,
+        allowed_payment_methods: ['bank_transfer'],
+        default_payment_method: 'bank_transfer',
+        bank_transfer_evidence_required: false,
+      },
+    };
+    mocks.from.mockImplementation((table: string) => {
+      if (table === 'collection_runs') return queryResult({ id: 'run-1' });
+      return queryResult([]);
+    });
+    mocks.rpc.mockImplementation(async (name: string) => {
+      if (name === 'get_collection_run_queue') return { data: [transferShop], error: null };
+      return { data: [], error: null };
+    });
+
+    render(<FinancialOperations userRole="courier" />);
+
+    expect(await screen.findByRole('region', { name: 'รับเงิน ร้านเก็บเงิน' })).not.toBeNull();
+    expect(screen.getByRole('button', { name: 'โอนเงิน' }).getAttribute('aria-pressed')).toBe('true');
+    expect((screen.getByRole('spinbutton', { name: 'ยอดรับเงินจริง' }) as HTMLInputElement).value).toBe('100.00');
+  });
+
+  it('applies document search, status filtering, and the all tab to the displayed rows', async () => {
+    const user = userEvent.setup();
+    const todayPayment = {
+      id: 'payment-today',
+      receipt_number: 'R260803-000001',
+      received_amount: 100,
+      allocated_amount: 100,
+      change_amount: 0,
+      payment_method: 'cash' as const,
+      status: 'active' as const,
+      recorded_at: '2026-08-03T02:00:00Z',
+      void_reason: null,
+      shops: { code: 'P001', name: 'ร้านจ่ายแล้ว' },
+    };
+    render(<CollectionDesk
+      busy={false}
+      onRefresh={() => undefined}
+      onSelectShop={() => undefined}
+      paymentPanel={null}
+      queue={[queueShop]}
+      runId="run-1"
+      selectedShop={null}
+      serviceDate="2026-08-03"
+      todayPayments={[todayPayment]}
+    />);
+
+    const search = screen.getByPlaceholderText('ค้นหาร้านค้า / เลขที่เอกสาร');
+    await user.type(search, 'C260728-000002');
+    expect(screen.getByRole('button', { name: /S001 · ร้านเก็บเงิน/ })).not.toBeNull();
+
+    await user.clear(search);
+    await user.selectOptions(screen.getByRole('combobox', { name: 'สถานะ' }), 'collected');
+    expect(screen.getByText('R260803-000001')).not.toBeNull();
+    expect(screen.queryByRole('button', { name: /S001 · ร้านเก็บเงิน/ })).toBeNull();
+
+    await user.click(screen.getByRole('tab', { name: 'ทั้งหมด' }));
+    expect(screen.getByText('R260803-000001')).not.toBeNull();
+    expect(screen.getByRole('button', { name: /S001 · ร้านเก็บเงิน/ })).not.toBeNull();
   });
 
   it('lets an assigned courier record a partial collection oldest-first', async () => {
@@ -572,6 +641,72 @@ describe('FinancialOperations', () => {
     })));
     expect(mocks.rpc).toHaveBeenCalledWith('get_collection_collectors');
     expect(mocks.from).not.toHaveBeenCalledWith('users');
+  });
+
+  it('keeps active-run management available to managers without duplicating the shop queue', async () => {
+    const user = userEvent.setup();
+    mocks.from.mockImplementation((table: string) => {
+      if (table === 'collection_runs') return queryResult({ id: 'run-1' });
+      return queryResult([]);
+    });
+    mocks.rpc.mockImplementation(async (name: string) => {
+      if (name === 'get_collection_run_queue') return { data: [queueShop], error: null };
+      if (name === 'get_collection_collectors') return {
+        data: [{ id: 'courier-1', code: 'C001', display_name: 'พนักงานหนึ่ง', nickname: null, avatar_path: null }],
+        error: null,
+      };
+      if (name === 'close_collection_run') return { data: { status: 'closed' }, error: null };
+      return { data: [], error: null };
+    });
+
+    render(<FinancialOperations userRole="round_lead" />);
+
+    await screen.findByRole('checkbox', { name: /พนักงานหนึ่ง/ });
+    expect(screen.getAllByRole('button', { name: /S001 · ร้านเก็บเงิน/ })).toHaveLength(1);
+    await user.click(screen.getByRole('button', { name: 'ปิดรอบ' }));
+    await waitFor(() => expect(mocks.rpc).toHaveBeenCalledWith('close_collection_run', {
+      p_collection_run_id: 'run-1',
+    }));
+  });
+
+  it('does not offer a manager-only open-run action to couriers', async () => {
+    mocks.from.mockImplementation((table: string) => {
+      if (table === 'collection_runs') return queryResult(null);
+      return queryResult([]);
+    });
+    mocks.rpc.mockResolvedValue({ data: [], error: null });
+
+    render(<FinancialOperations userRole="courier" />);
+
+    await screen.findByText('วันนี้ยังไม่มีรอบเก็บเงินที่มอบหมายให้คุณ');
+    expect(screen.queryByRole('button', { name: 'เปิดรอบเก็บเงิน' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'เปิดรอบและมอบหมาย' })).toBeNull();
+  });
+
+  it('loads the complete Bangkok business day separately from limited receipt history', async () => {
+    const historyQuery = queryResult([]);
+    const dailyQuery = queryResult([]);
+    let paymentQueryCount = 0;
+    mocks.from.mockImplementation((table: string) => {
+      if (table === 'collection_runs') return queryResult({ id: 'run-1' });
+      if (table === 'payments') {
+        paymentQueryCount += 1;
+        return paymentQueryCount === 1 ? historyQuery : dailyQuery;
+      }
+      return queryResult([]);
+    });
+    mocks.rpc.mockImplementation(async (name: string) => {
+      if (name === 'get_collection_run_queue') return { data: [], error: null };
+      return { data: [], error: null };
+    });
+
+    render(<FinancialOperations userRole="courier" />);
+
+    await waitFor(() => expect(paymentQueryCount).toBe(2));
+    expect(historyQuery.limit).toHaveBeenCalledWith(30);
+    expect(dailyQuery.gte).toHaveBeenCalledWith('recorded_at', expect.stringMatching(/T17:00:00\.000Z$/));
+    expect(dailyQuery.lt).toHaveBeenCalledWith('recorded_at', expect.stringMatching(/T17:00:00\.000Z$/));
+    expect(dailyQuery.limit).not.toHaveBeenCalled();
   });
 
   it('shows a collector nickname and the configured profile photo', async () => {

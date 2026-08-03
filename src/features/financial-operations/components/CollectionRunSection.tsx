@@ -17,6 +17,7 @@ export function CollectionRunSection({
   failedCollectorAvatars,
   memberIds,
   queue,
+  showQueue = true,
   onCloseRun,
   onToggleCollector,
   onCollectorAvatarError,
@@ -31,6 +32,7 @@ export function CollectionRunSection({
   failedCollectorAvatars: Set<string>;
   memberIds: string[];
   queue: QueueShop[];
+  showQueue?: boolean;
   onCloseRun: () => void;
   onToggleCollector: (collectorId: string, checked: boolean) => void;
   onCollectorAvatarError: (path: string) => void;
@@ -75,10 +77,10 @@ export function CollectionRunSection({
           </button>
         </fieldset>
       ) : null}
-      {!runId ? <p className="financial-ops__empty">{isManager
+      {showQueue && !runId ? <p className="financial-ops__empty">{isManager
         ? 'เลือกรายชื่อผู้เก็บเงินเพื่อเปิดรอบ'
         : 'วันนี้ยังไม่มีรอบเก็บเงินที่มอบหมายให้คุณ'}</p> : null}
-      {runId && queue.length === 0 ? <p className="financial-ops__empty">ไม่มียอดค้างที่ต้องเก็บ</p> : (
+      {showQueue && (runId && queue.length === 0 ? <p className="financial-ops__empty">ไม่มียอดค้างที่ต้องเก็บ</p> : (
         <div className="financial-ops__shop-grid">
           {queue.map((shop) => (
             <button
@@ -106,7 +108,7 @@ export function CollectionRunSection({
             </button>
           ))}
         </div>
-      )}
+      ))}
     </section>
   );
 }
