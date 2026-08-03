@@ -1,3 +1,102 @@
+## 2026-08-03 — Shop purchase history
+
+**Comparison Target**
+
+- Source visual truth: `/Users/bhusitt./Desktop/ภาพถ่ายหน้าจอ2569-08-03เวลา 15.58.49.png` (2880 × 1800 px), showing the existing production shop-detail modal and its visual system.
+- Rendered implementation: [outputs/shop-purchase-history-desktop.png](/Users/bhusitt./Downloads/ส่งน้ำแข็ง/outputs/shop-purchase-history-desktop.png) (1280 × 720 px), captured from the actual local demo shop modal with the purchase-history tab active.
+- Responsive implementation: [outputs/shop-purchase-history-mobile.png](/Users/bhusitt./Downloads/ส่งน้ำแข็ง/outputs/shop-purchase-history-mobile.png) (390 × 844 px).
+- Combined comparison evidence: [outputs/shop-purchase-history-comparison.png](/Users/bhusitt./Downloads/ส่งน้ำแข็ง/outputs/shop-purchase-history-comparison.png) (1280 × 1467 px).
+- Viewport and normalization: desktop rendered at 1280 × 720 CSS px; the in-app browser reported device pixel ratio 2 and returned a CSS-normalized 1280 × 720 capture. The reference modal was cropped from the 2880 × 1800 source to 2665 × 1405 and normalized to 1280 × 675 before stacking with the implementation. Mobile rendered at 390 × 844 CSS px. Browser and operating-system chrome were excluded from layout judgments.
+- State: an active shop detail modal with its overview visible, `ประวัติการซื้อ` active, three realistic history entries, all payment states represented, and the 90-day/all-status filters selected.
+- Full-view evidence: the comparison board shows the shared modal header, overview grid, thin dividers, tab treatment, blue accent, white surface, and low-elevation border language together. The new history content intentionally replaces the source basic-information form, so content-level fidelity was judged against the existing modal system rather than as identical copy.
+- Focused-region evidence: the common header/overview/tab surfaces and the new summary/history cards are readable in the full-resolution combined board. No extra crop was required. Mobile overflow and active-tab visibility were checked through browser measurements.
+
+**Findings**
+
+- No actionable P0/P1/P2 differences remain. The fifth tab, summary strip, filters, dated purchase cards, payment-status pills, and empty/loading/error states use the existing shop-modal typography, spacing, border, radius, icon, and color language.
+- The history content has no horizontal overflow at desktop or 390 px mobile. The mobile tab strip intentionally scrolls horizontally, and the selected tab is automatically brought fully into view.
+- Older deliveries without financial snapshots remain visible as `ข้อมูลเดิม` instead of disappearing or inventing totals.
+
+**Required Fidelity Surfaces**
+
+- Fonts and typography: retained Noto Sans Thai with the source modal's compact weights, line heights, muted metadata, numeric emphasis, and truncation behavior. History amounts use the existing Thai-baht formatter.
+- Spacing and layout rhythm: retained the source modal frame, hero spacing, eight-cell overview, tab underline, thin dividers, and compact control sizing. New cards use 10–11 px radii and the same low-shadow/border rhythm. Mobile collapses summaries and card metadata to two columns without overflow.
+- Colors and visual tokens: retained navy text, muted blue-gray labels, primary blue icons/active state, white surfaces, and pale blue containers. Green, amber, and red are used only for paid, partial, and outstanding semantic states.
+- Image quality and asset fidelity: the supplied ice logo and sidebar water artwork remain unchanged. Standard UI icons use the existing Phosphor library; no emoji, handcrafted SVG, CSS artwork, or placeholder illustration was introduced.
+- Copy and content: labels cover date, item quantities, payment term, payment method, total, and outstanding amount. The page explicitly states the 100-entry cap, and legacy unpriced rows use honest fallback copy.
+
+**Interaction And Build Checks**
+
+- In-app browser: opened a shop, selected `ประวัติการซื้อ`, verified three entries and four summary metrics, then filtered to `ยังมียอดค้าง`; the paid charge disappeared and the partial/unpaid charges remained (2 cards).
+- Responsive browser check: 390 × 844 CSS px; page, modal, and history content all reported no horizontal overflow. The active history tab was fully visible after selection.
+- Browser console: no errors or warnings.
+- Database contract: `node --test tests/shop-purchase-history-contract.test.mjs` passed, 2/2. It verifies active allocations, partial/outstanding totals, legacy deliveries, and exclusion of cancelled/voided records.
+- Focused shop UI suite: `npx vitest run tests/shop-settings-card-catalog.test.tsx tests/shop-purchase-history.test.tsx` passed, 14/14, including the existing read-only shop behavior.
+- Production build: `npm run build` passed. The existing Vite large-chunk warning remains unchanged.
+- `git diff --check`: passed.
+
+**Comparison History**
+
+- Initial mobile pass found a P2 header-action wrap: `ปิดร้าน / ย้ายออก` was compressed into a narrow vertical label. The mobile hero now moves its action group to a full-width row, and the button measures about 98 × 40 CSS px with normal copy flow.
+- Initial breakpoint transition could leave the active fifth tab outside the visible portion of the horizontal tab strip. The modal now scrolls the selected tab into view; post-fix browser evidence reported `fullyVisible: true` with no content overflow.
+
+**Follow-up Polish**
+
+- P3: Add server-side date/status parameters if a later requirement expands this view beyond the current latest-100 operational history.
+
+final result: passed
+
+---
+
+## 2026-08-03 — Daily aggregate count desktop density
+
+**Comparison Target**
+
+- Source visual truth: `/Users/bhusitt./Desktop/ภาพถ่ายหน้าจอ2569-08-03เวลา 15.55.35.png` (2880 × 1800 px), showing the production count cards before this density repair.
+- Rendered implementation: [outputs/daily-aggregate-count-layout-desktop.png](/Users/bhusitt./Downloads/ส่งน้ำแข็ง/outputs/daily-aggregate-count-layout-desktop.png), captured from the actual `DailyAggregateStockClose` component with representative data.
+- Responsive implementation: [outputs/daily-aggregate-count-layout-mobile.png](/Users/bhusitt./Downloads/ส่งน้ำแข็ง/outputs/daily-aggregate-count-layout-mobile.png).
+- Side-by-side evidence: [outputs/daily-aggregate-count-layout-comparison.png](/Users/bhusitt./Downloads/ส่งน้ำแข็ง/outputs/daily-aggregate-count-layout-comparison.png).
+- Viewports: desktop 1600 × 900 CSS px and mobile 390 × 844 CSS px, both at device scale factor 1. The source was normalized from 2880 × 1800 to 1600 × 1000 for the comparison board; Safari and macOS chrome were excluded from app-layout judgments.
+- State: aggregate stock open with six ice types, all counts matching zero, optional note empty, and close action enabled.
+- Full-view evidence: the comparison board shows the six desktop cards reduced from two stacked content rows to one compact row per item, bringing the full grid, note, and close action into one viewport.
+- Focused-region evidence: the desktop card identity and count control are visibly aligned on one baseline. At 390 px the card returns to a stacked layout; browser measurement confirmed `clientWidth = scrollWidth = 390`, so no focused overflow crop was needed.
+
+**Findings**
+
+- No actionable P0/P1/P2 issues remain. Desktop cards use their available horizontal space instead of reserving a second row for the count field, while the mobile layout retains readable 140px controls and natural vertical flow.
+- The responsive grid now chooses one or two columns from a 460px minimum card width, preventing cramped two-column cards at intermediate widths.
+
+**Required Fidelity Surfaces**
+
+- Fonts and typography: the existing Noto Sans Thai stack, hierarchy, weights, sizes, truncation, and line heights are unchanged and remain readable at both checked viewports.
+- Spacing and layout rhythm: desktop identity and input controls share one row with a 16px gap; the 64px image slot, 14px padding, 10px radius, 12px grid gap, and mobile stacked spacing remain aligned with the existing design system.
+- Colors and visual tokens: existing navy text, muted blue-gray metadata, pale card background, border, primary blue, and neutral status styling are unchanged.
+- Image quality and asset fidelity: production continues to use its signed ice-type images and existing Phosphor placeholder icon. The local visual fixture intentionally shows the component's real no-image state; no asset implementation was replaced.
+- Copy and content: all production labels, item summaries, units, note copy, and close action are unchanged.
+
+**Interaction And Build Checks**
+
+- Browser: all six cards rendered; the first count accepted `2.5`, switched the note to required, and preserved the existing interaction flow.
+- Browser console: no errors or warnings.
+- Mobile overflow: `clientWidth = scrollWidth = 390`.
+- Regression contract: `node --test tests/daily-aggregate-stock-mobile-layout.test.mjs` passed, 2/2.
+- Focused stock-control UI suites passed, 20/20.
+- Production build: `npm run build` passed. The existing Vite large-chunk warning remains unchanged.
+
+**Comparison History**
+
+- Initial supplied state: P2 density issue; each wide card stacked the count control below a 64px identity row, making six zero-state items require excessive vertical scrolling.
+- Fix: changed each desktop card to an identity/input grid row and changed the outer grid to responsive auto-fit columns with a 460px minimum.
+- Post-fix evidence: all six desktop items, the note, and the close action fit in the 1600 × 900 viewport; mobile remains overflow-free and readable.
+
+**Follow-up Polish**
+
+- None required for this layout repair.
+
+final result: passed
+
+---
+
 ## 2026-07-31 — Employee collection payment popup
 
 **Comparison Target**

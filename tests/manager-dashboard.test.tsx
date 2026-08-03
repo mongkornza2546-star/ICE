@@ -123,6 +123,27 @@ describe('ManagerDashboard', () => {
     expect(onNavigate).toHaveBeenLastCalledWith('stock_operations');
   });
 
+  it('does not request stock counts before the daily work has started', async () => {
+    render(
+      <ManagerDashboard
+        demoDashboard={{
+          ...dashboard,
+          session: { id: null, service_date: '2026-07-27', status: 'not_started' },
+        }}
+        demoStockSummary={stockSummary}
+        isActive
+        onNavigate={vi.fn()}
+        profileRole="round_lead"
+      />,
+    );
+
+    const countCard = (await screen.findByText('เหลือตรวจนับ')).closest('article');
+    expect(countCard).not.toBeNull();
+    expect(within(countCard!).getByText('0')).toBeTruthy();
+    expect(within(countCard!).getByText('ยังไม่เริ่มงานวันนี้')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /มีจุดถือครองที่ต้องตรวจนับ/ })).toBeNull();
+  });
+
   it('routes each operational action to its actionable workspace', async () => {
     const user = userEvent.setup();
     const onNavigate = renderDashboard();

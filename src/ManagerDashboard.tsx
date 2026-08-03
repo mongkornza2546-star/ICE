@@ -261,7 +261,10 @@ export function ManagerDashboard({
   const locations = (stockSummary?.locations ?? []).filter((location) => location.holds_inventory === true);
   const stockTotals = summarizeStock(stockSummary ? { ...stockSummary, locations } : null);
   const totalStock = summarizeQuantity(stockTotals);
-  const pendingCount = readiness.filter((item) => item.status !== 'current').length;
+  const hasStartedWork = session.status !== 'not_started';
+  const pendingCount = hasStartedWork
+    ? readiness.filter((item) => item.status !== 'current').length
+    : 0;
   const completedCount = readiness.filter((item) => item.status === 'current').length;
   const statusLabel: Record<string, string> = {
     not_started: 'ยังไม่เริ่มงาน',
@@ -310,7 +313,14 @@ export function ManagerDashboard({
         <OverviewCard icon={Truck} label="สต๊อกคงเหลือ" value={totalStock.value} unit={totalStock.unit} detail={`จาก ${locations.length} จุดถือครอง`} tone="blue" />
         <OverviewCard icon={CurrencyDollar} label="ยอดขายสุทธิ" value={formatCurrency(salesSummary.netSalesValue)} detail="ยอดขายที่บันทึกแล้ววันนี้" tone="green" />
         <OverviewCard icon={Storefront} label="ส่งร้านแล้ว" value={formatQuantity(deliverySummary.actualShopCount)} unit="ร้าน" detail={`${formatQuantity(deliverySummary.activeDeliveryCount)} รายการส่ง`} tone="sky" />
-        <OverviewCard icon={ClipboardText} label="เหลือตรวจนับ" value={formatQuantity(pendingCount)} unit="จุด" detail={pendingCount ? 'รอตรวจนับใหม่ก่อนปิดวัน' : 'ตรวจนับครบแล้ว'} tone="orange" />
+        <OverviewCard
+          detail={!hasStartedWork ? 'ยังไม่เริ่มงานวันนี้' : pendingCount ? 'รอตรวจนับใหม่ก่อนปิดวัน' : 'ตรวจนับครบแล้ว'}
+          icon={ClipboardText}
+          label="เหลือตรวจนับ"
+          tone="orange"
+          unit="จุด"
+          value={formatQuantity(pendingCount)}
+        />
       </section>
 
       <div className="dashboard-mid-grid">

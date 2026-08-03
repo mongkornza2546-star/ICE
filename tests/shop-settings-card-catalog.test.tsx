@@ -231,6 +231,27 @@ describe('ShopSettings card catalog', () => {
     expect(screen.queryByRole('dialog')).toBeNull();
   });
 
+  it('opens the read-only preview on history without mounting mutation editors', async () => {
+    const user = userEvent.setup();
+    render(<ShopSettings allowReadOnlyPreview readOnly />);
+
+    await user.click(await screen.findByRole('button', { name: /AA01 ร้านเจ๊อ้อย/ }));
+
+    expect(screen.getByRole('heading', { name: 'ประวัติการซื้อ' })).toBeTruthy();
+    expect((screen.getByRole('button', { name: 'ข้อมูลพื้นฐาน' }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole('button', { name: 'ถังเช่าและรูปภาพ' }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole('button', { name: 'การชำระเงิน' }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole('button', { name: 'ราคาพิเศษน้ำแข็ง' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.queryByRole('textbox', { name: 'รหัสร้าน' })).toBeNull();
+    expect(screen.queryByTestId('shop-image-editor')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'ปิดร้าน / ย้ายออก' })).toBeNull();
+    expect(mocks.rpc).toHaveBeenCalledWith('get_shop_purchase_history', {
+      p_limit: 100,
+      p_offset: 0,
+      p_shop_id: 'shop-a',
+    });
+  });
+
 
   it('bulk-signs stored photos and falls back when a signed image fails to load', async () => {
     render(<ShopSettings />);

@@ -1,5 +1,5 @@
 import { ChangeEvent, FormEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Buildings, CaretRight, CheckCircle, Clock, CreditCard, Eye, FileText, FileXls, GearSix, GridFour, IdentificationCard, ImageSquare, ListBullets, MagnifyingGlass, MapPin, Phone, Plus, Receipt, SlidersHorizontal, Storefront, Tag, UploadSimple, User, Warning, X } from '@phosphor-icons/react';
+import { Buildings, CaretRight, CheckCircle, Clock, ClockCounterClockwise, CreditCard, Eye, FileText, FileXls, GearSix, GridFour, IdentificationCard, ImageSquare, ListBullets, MagnifyingGlass, MapPin, Phone, Plus, Receipt, SlidersHorizontal, Storefront, Tag, UploadSimple, User, Warning, X } from '@phosphor-icons/react';
 import { supabase } from './lib/supabase';
 import { env } from './lib/env';
 import { parseShopImportFile, type ShopImportRow } from './lib/shopImport';
@@ -9,6 +9,7 @@ import { ShopPaymentProfileEditor } from './features/shop-settings/components/Sh
 import { ShopSpecialPriceEditor } from './features/shop-settings/components/ShopSpecialPriceEditor';
 import { BulkPaymentSetupModal } from './features/shop-settings/components/BulkPaymentSetupModal';
 import { BulkShopPriceSetupModal } from './features/shop-settings/components/BulkShopPriceSetupModal';
+import { ShopPurchaseHistory } from './features/shop-settings/components/ShopPurchaseHistory';
 import { getShopImageSignedUrls, loadPOSReadinessReport } from './features/admin-reference-settings/adminReferenceSettingsService';
 import { matchesActiveFilter, type ActiveFilter } from './features/admin-reference-settings/referenceEditorFilters';
 import type { POSReadinessReport } from './types/app';
@@ -62,8 +63,17 @@ const emptyDraft: ShopDraft = {
   status: 'active',
 };
 
-export function ShopSettings({ isActive = true, readOnly = false }: { isActive?: boolean; readOnly?: boolean }) {
+export function ShopSettings({
+  allowReadOnlyPreview = false,
+  isActive = true,
+  readOnly = false,
+}: {
+  allowReadOnlyPreview?: boolean;
+  isActive?: boolean;
+  readOnly?: boolean;
+}) {
   const managementReadOnly = readOnly || env.isDemoMode;
+  const historyOnlyPreview = managementReadOnly && allowReadOnlyPreview;
   const [shops, setShops] = useState<ShopSetting[]>([]);
   const [buildings, setBuildings] = useState<BuildingOption[]>([]);
   const [zones, setZones] = useState<BuildingZoneOption[]>([]);
@@ -78,7 +88,7 @@ export function ShopSettings({ isActive = true, readOnly = false }: { isActive?:
   const [page, setPage] = useState(0);
   const PAGE_SIZE = 12;
   const [editorOpen, setEditorOpen] = useState(false);
-  const [editorTab, setEditorTab] = useState<'basic' | 'assets' | 'payment' | 'prices'>('basic');
+  const [editorTab, setEditorTab] = useState<'basic' | 'assets' | 'payment' | 'prices' | 'history'>('basic');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -105,6 +115,7 @@ export function ShopSettings({ isActive = true, readOnly = false }: { isActive?:
   const [posFilter, setPosFilter] = useState<'all' | 'ready' | 'issues'>('all');
   const [catalogView, setCatalogView] = useState<'grid' | 'list'>('grid');
   const importInputRef = useRef<HTMLInputElement>(null);
+  const activeEditorTabRef = useRef<HTMLButtonElement>(null);
 
   const refreshReadiness = useCallback(async () => {
     setReadinessStatus('loading');
@@ -165,6 +176,17 @@ export function ShopSettings({ isActive = true, readOnly = false }: { isActive?:
       window.removeEventListener('keydown', closeOnEscape);
     };
   }, [editorOpen, saving, savingTank]);
+
+  useEffect(() => {
+    if (!editorOpen) return;
+    const animationFrame = window.requestAnimationFrame(() => {
+      const activeTab = activeEditorTabRef.current;
+      if (activeTab && typeof activeTab.scrollIntoView === 'function') {
+        activeTab.scrollIntoView({ block: 'nearest', inline: 'center' });
+      }
+    });
+    return () => window.cancelAnimationFrame(animationFrame);
+  }, [editorOpen, editorTab]);
 
   async function loadSettings() {
     if (env.isDemoMode) {
@@ -312,7 +334,7 @@ export function ShopSettings({ isActive = true, readOnly = false }: { isActive?:
   }, [visibleShopsWithImages]);
 
   const selectShop = (shop: ShopSetting) => {
-    if (managementReadOnly) return;
+    if (managementReadOnly && !allowReadOnlyPreview) return;
     setDraft({
       id: shop.id,
       code: shop.code,
@@ -329,7 +351,7 @@ export function ShopSettings({ isActive = true, readOnly = false }: { isActive?:
     setError(null);
     setSuccess(null);
     resetTankDraft();
-    setEditorTab('basic');
+    setEditorTab(allowReadOnlyPreview ? 'history' : 'basic');
     setEditorOpen(true);
   };
 
@@ -706,7 +728,7 @@ export function ShopSettings({ isActive = true, readOnly = false }: { isActive?:
                 </div>
               </div>
               <div className="shop-settings-dialog__actions">
-                {draft.id && draft.status === 'active' ? <button className="shop-editor-deactivate" disabled={saving} onClick={() => void deactivateShop()} type="button">ปิดร้าน / ย้ายออก</button> : null}
+                {draft.id && draft.status === 'active' && !historyOnlyPreview ? <button className="shop-editor-deactivate" disabled={saving} onClick={() => void deactivateShop()} type="button">ปิดร้าน / ย้ายออก</button> : null}
                 <button aria-label="ปิดหน้าต่างข้อมูลร้าน" autoFocus className="shop-settings-dialog__close" disabled={saving || savingTank} onClick={closeEditor} type="button"><X aria-hidden="true" size={24} /></button>
               </div>
             </header>
@@ -723,16 +745,17 @@ export function ShopSettings({ isActive = true, readOnly = false }: { isActive?:
             </section>
 
             <nav className="shop-editor-tabs" aria-label="หมวดหมู่การตั้งค่าร้าน">
-              <button className={editorTab === 'basic' ? 'is-active' : ''} onClick={() => setEditorTab('basic')} type="button"><FileText size={21} />ข้อมูลพื้นฐาน</button>
-              <button className={editorTab === 'assets' ? 'is-active' : ''} onClick={() => setEditorTab('assets')} type="button"><ImageSquare size={21} />ถังเช่าและรูปภาพ</button>
-              <button className={editorTab === 'payment' ? 'is-active' : ''} onClick={() => setEditorTab('payment')} type="button"><CreditCard size={21} />การชำระเงิน</button>
-              <button className={editorTab === 'prices' ? 'is-active' : ''} onClick={() => setEditorTab('prices')} type="button"><Tag size={21} />ราคาพิเศษน้ำแข็ง</button>
+              <button className={editorTab === 'basic' ? 'is-active' : ''} disabled={historyOnlyPreview} onClick={() => setEditorTab('basic')} ref={editorTab === 'basic' ? activeEditorTabRef : undefined} type="button"><FileText size={21} />ข้อมูลพื้นฐาน</button>
+              <button className={editorTab === 'assets' ? 'is-active' : ''} disabled={historyOnlyPreview} onClick={() => setEditorTab('assets')} ref={editorTab === 'assets' ? activeEditorTabRef : undefined} type="button"><ImageSquare size={21} />ถังเช่าและรูปภาพ</button>
+              <button className={editorTab === 'payment' ? 'is-active' : ''} disabled={historyOnlyPreview} onClick={() => setEditorTab('payment')} ref={editorTab === 'payment' ? activeEditorTabRef : undefined} type="button"><CreditCard size={21} />การชำระเงิน</button>
+              <button className={editorTab === 'prices' ? 'is-active' : ''} disabled={historyOnlyPreview} onClick={() => setEditorTab('prices')} ref={editorTab === 'prices' ? activeEditorTabRef : undefined} type="button"><Tag size={21} />ราคาพิเศษน้ำแข็ง</button>
+              <button className={editorTab === 'history' ? 'is-active' : ''} onClick={() => setEditorTab('history')} ref={editorTab === 'history' ? activeEditorTabRef : undefined} type="button"><ClockCounterClockwise size={21} />ประวัติการซื้อ</button>
             </nav>
 
             {error ? <p className="error-text shop-editor-feedback" role="alert">{error}</p> : null}
             {success ? <p aria-live="polite" className="success-text shop-editor-feedback">{success}</p> : null}
 
-            <form className="settings-form shop-editor-form" hidden={editorTab !== 'basic'} onSubmit={handleSave}>
+            {!historyOnlyPreview ? <form className="settings-form shop-editor-form" hidden={editorTab !== 'basic'} onSubmit={handleSave}>
               <div className="shop-editor-fields">
                 <TextField label="รหัสร้าน" required value={draft.code} onChange={(code) => setDraft({ ...draft, code })} />
                 <TextField label="รหัสศูนย์ราชการ" value={draft.government_shop_code} onChange={(government_shop_code) => setDraft({ ...draft, government_shop_code })} />
@@ -746,9 +769,9 @@ export function ShopSettings({ isActive = true, readOnly = false }: { isActive?:
               </div>
               <label>หมายเหตุการเข้าถึง<textarea rows={3} placeholder="ระบุหมายเหตุการเข้าถึง (ถ้ามี)" value={draft.access_note} onChange={(event) => setDraft({ ...draft, access_note: event.target.value })} /></label>
               <footer className="shop-editor-savebar"><button className="secondary-button" disabled={saving} onClick={closeEditor} type="button">ยกเลิก</button><button className="primary-button" disabled={saving} type="submit">{saving ? 'กำลังบันทึก...' : 'บันทึกข้อมูลร้าน'}</button></footer>
-            </form>
+            </form> : null}
 
-            <div className="shop-editor-tab-content" hidden={editorTab !== 'assets'}>
+            {!historyOnlyPreview ? <div className="shop-editor-tab-content" hidden={editorTab !== 'assets'}>
               <ShopImageEditor
                 onShopSaved={(savedShop) => setShops((current) => current.map((shop) => shop.id === savedShop.id ? { ...shop, image_path: savedShop.image_path } : shop))}
                 shop={selectedShop}
@@ -805,9 +828,10 @@ export function ShopSettings({ isActive = true, readOnly = false }: { isActive?:
           {tankSuccess ? <p className="success-text">{tankSuccess}</p> : null}
           <p className="muted">จำนวนถังเช่าคำนวณจากรายการรหัสถังที่ยังไม่ได้รับคืน จึงไม่ต้องกรอกจำนวนแยก</p>
               </div>
-            </div>
-            <div className="shop-editor-tab-content" hidden={editorTab !== 'payment'}>{draft.id ? <ShopPaymentProfileEditor onSaved={refreshReadiness} shopId={draft.id} shopName={draft.name} /> : <p className="muted">บันทึกข้อมูลร้านก่อน แล้วจึงตั้งค่าการชำระเงิน</p>}</div>
-            <div className="shop-editor-tab-content" hidden={editorTab !== 'prices'}>{draft.id ? <ShopSpecialPriceEditor iceTypes={iceTypes} onSaved={refreshReadiness} shopId={draft.id} shopName={draft.name} /> : <p className="muted">บันทึกข้อมูลร้านก่อน แล้วจึงตั้งค่าราคาพิเศษน้ำแข็ง</p>}</div>
+            </div> : null}
+            {!historyOnlyPreview ? <div className="shop-editor-tab-content" hidden={editorTab !== 'payment'}>{draft.id ? <ShopPaymentProfileEditor onSaved={refreshReadiness} shopId={draft.id} shopName={draft.name} /> : <p className="muted">บันทึกข้อมูลร้านก่อน แล้วจึงตั้งค่าการชำระเงิน</p>}</div> : null}
+            {!historyOnlyPreview ? <div className="shop-editor-tab-content" hidden={editorTab !== 'prices'}>{draft.id ? <ShopSpecialPriceEditor iceTypes={iceTypes} onSaved={refreshReadiness} shopId={draft.id} shopName={draft.name} /> : <p className="muted">บันทึกข้อมูลร้านก่อน แล้วจึงตั้งค่าราคาพิเศษน้ำแข็ง</p>}</div> : null}
+            <div className="shop-editor-tab-content" hidden={editorTab !== 'history'}><ShopPurchaseHistory isActive={editorTab === 'history'} shopId={draft.id} /></div>
           </section>
         </div>
       ) : null}

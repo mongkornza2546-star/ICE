@@ -541,7 +541,7 @@ export function LocalDemoApp() {
         onNavigate={() => undefined}
         profileLabel="bhusit.tanchavanich"
       >
-        <ShopSettings readOnly />
+        <ShopSettings allowReadOnlyPreview readOnly />
       </AdminLayout>
     );
   }
