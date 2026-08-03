@@ -11,3 +11,9 @@ export function bangkokDayUtcRange(serviceDate: string): { start: string; end: s
     end: new Date(start.getTime() + 24 * 60 * 60 * 1000).toISOString(),
   };
 }
+
+export function shiftServiceDate(serviceDate: string, days: number): string {
+  const date = new Date(`${serviceDate}T12:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}

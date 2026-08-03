@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bangkokDayUtcRange, toBangkokDateString } from '../src/lib/serviceDate';
+import { bangkokDayUtcRange, shiftServiceDate, toBangkokDateString } from '../src/lib/serviceDate';
 
 describe('toBangkokDateString', () => {
   it('uses the Bangkok calendar date before 07:00 local time', () => {
@@ -17,5 +17,12 @@ describe('bangkokDayUtcRange', () => {
       start: '2026-08-02T17:00:00.000Z',
       end: '2026-08-03T17:00:00.000Z',
     });
+  });
+});
+
+describe('shiftServiceDate', () => {
+  it('moves across month boundaries without changing the date format', () => {
+    expect(shiftServiceDate('2026-08-01', -1)).toBe('2026-07-31');
+    expect(shiftServiceDate('2026-07-31', 1)).toBe('2026-08-01');
   });
 });

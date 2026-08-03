@@ -1,3 +1,44 @@
+## 2026-08-03 — Employee collection queue restoration
+
+**Comparison Target**
+
+- Source visual truth: `/Users/bhusitt./Downloads/IMG_3086.PNG` (1320 × 2868 px).
+- Rendered implementation: `/private/tmp/employee-collection-implementation.png` (440 × 810 px), captured from the local demo route `?screen=employee-collection-layout` in the Codex in-app browser.
+- Viewport and normalization: the source's app-content region was cropped to 1320 × 2430 px (excluding 133 px of top browser chrome and the 305 px Safari toolbar), then normalized from @3x to 440 × 810 CSS px. The implementation was captured at 440 × 810 CSS px.
+- State: courier collection page with an open collection run, unselected shop, and the current-day history below the queue.
+- Browser-rendered behavior: selecting the first assigned shop opened one accessible payment dialog; the browser console contained no errors.
+
+**Findings**
+
+- [P1] Blocking comparison evidence is unavailable.
+  Location: full mobile employee collection page.
+  Evidence: both normalized images were captured, but the in-app browser's security policy blocked the required same-input side-by-side comparison board.
+  Impact: the required Product Design visual QA loop cannot truthfully classify the restored layout as passed.
+  Fix: compare the captured source and implementation in an approved visual-comparison surface, then resolve any P0/P1/P2 differences.
+
+**Required Fidelity Surfaces**
+
+- Fonts and typography: implementation uses the existing Noto Sans Thai stack and preserves the old page hierarchy; same-input visual comparison remains blocked.
+- Spacing and layout rhythm: implementation restores the single-column employee queue, full-width refresh action, shop cards, and bottom navigation spacing; same-input visual comparison remains blocked.
+- Colors and visual tokens: implementation reuses the existing navy, blue, pale-blue, white, and muted-border palette; same-input visual comparison remains blocked.
+- Image quality and asset fidelity: the existing logo and live shop-image behavior are retained; the demo correctly uses the existing no-image storefront state.
+- Copy and content: the employee page shows only the old queue workflow and recent receipt history; manager summaries, filtering, and collector-management data are absent.
+
+**Interaction And Build Checks**
+
+- In-app browser: opened the 440 × 810 employee demo, verified the old queue content, selected a shop, and verified the payment dialog.
+- Browser console: no errors.
+- Focused financial UI suite: `npx vitest run tests/financial-operations.test.tsx` passed, 23/23.
+- Production build: `npm run build` passed.
+
+**Comparison History**
+
+- First pass: browser-rendered implementation capture succeeded, but the required combined source/implementation comparison was blocked by the browser URL security policy.
+
+final result: blocked
+
+---
+
 ## 2026-08-03 — Store collection desktop workspace
 
 **Comparison Target**

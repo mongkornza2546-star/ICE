@@ -1306,6 +1306,10 @@ input:disabled, select:disabled, textarea:disabled { background: #f2f5f8; color:
 .collection-desk__filters label { height: 38px; }
 .collection-desk__filters input, .collection-desk__filters select { min-width: 0; width: 100%; height: 37px; border: 0; outline: 0; color: #425a72; background: #fff; font: inherit; font-size: .7rem; }
 .collection-desk__filters select { padding: 0 10px; border: 1px solid #d5e0eb; border-radius: 8px; }
+.collection-desk__history-date { display: flex; align-items: center; justify-content: flex-end; gap: 8px; padding: 10px 13px; border-bottom: 1px solid #e5ebf2; background: #f8fbff; }
+.collection-desk__history-date button, .collection-desk__history-date label { min-height: 36px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 6px 10px; border: 1px solid #cddcea; border-radius: 8px; color: #365873; background: #fff; font: inherit; font-size: .68rem; font-weight: 700; }
+.collection-desk__history-date button:disabled { cursor: not-allowed; opacity: .45; }
+.collection-desk__history-date input { border: 0; color: #274864; background: transparent; font: inherit; }
 .collection-desk__table-head { display: grid; grid-template-columns: minmax(220px, 1.65fr) .8fr 1fr .72fr .9fr 20px; gap: 8px; padding: 10px 14px; color: #687b91; font-size: .64rem; }
 .collection-desk__rows { display: grid; }
 .collection-desk__rows > button { min-width: 0; min-height: 62px; display: grid; grid-template-columns: 36px minmax(150px, 1.45fr) .8fr 1fr .72fr .9fr 20px; align-items: center; gap: 8px; padding: 8px 13px; border: 0; border-top: 1px solid #e5ebf2; color: #243b58; background: #fff; font: inherit; text-align: left; cursor: pointer; }
@@ -1322,8 +1326,17 @@ input:disabled, select:disabled, textarea:disabled { background: #f2f5f8; color:
 .collection-desk__status { width: fit-content; padding: 4px 8px; border-radius: 999px; font-size: .58rem; font-style: normal; font-weight: 600; white-space: nowrap; }
 .collection-desk__status--danger { color: #e64545; background: #ffeded; }.collection-desk__status--warning { color: #dd8700; background: #fff3d8; }.collection-desk__status--today { color: #1472dc; background: #e8f2ff; }
 .collection-desk__rows > p { margin: 30px; color: #71849a; text-align: center; }
-.collection-desk__paid-row { min-height: 62px; display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 15px; padding: 10px 15px; border-top: 1px solid #e5ebf2; }
-.collection-desk__paid-row span { display: grid; }.collection-desk__paid-row small { color: #71849a; }.collection-desk__paid-row em { color: #159453; font-size: .68rem; font-style: normal; }
+.collection-desk__paid-row { min-height: 70px; display: flex; align-items: center; justify-content: space-between; gap: 15px; padding: 9px 13px; border-top: 1px solid #e5ebf2; }
+.collection-desk__paid-row > button { min-width: 0; flex: 1; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 0; border: 0; color: #27445f; background: transparent; font: inherit; text-align: left; }
+.collection-desk__paid-row > button > span:first-child { min-width: 0; display: grid; gap: 2px; }
+.collection-desk__paid-row > button > span:last-child { display: inline-flex; align-items: center; color: #086bd6; font-size: .64rem; font-weight: 800; white-space: nowrap; }
+.collection-desk__paid-row strong, .collection-desk__paid-row small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.collection-desk__paid-row small { color: #71849a; font-size: .63rem; }
+.collection-desk__paid-actions { flex: 0 0 auto; display: grid; justify-items: end; gap: 5px; }
+.collection-desk__paid-actions > b { color: #086bd6; white-space: nowrap; }
+.collection-desk__paid-actions > span { display: flex; gap: 5px; }
+.collection-desk__paid-actions button { min-height: 30px; display: inline-flex; align-items: center; gap: 4px; padding: 4px 7px; border: 1px solid #c6d9ea; border-radius: 7px; color: #45627a; background: #fff; font: inherit; font-size: .6rem; font-weight: 800; }
+.collection-desk__paid-actions em { color: #a54b4b; font-size: .62rem; font-style: normal; }
 .collection-desk__queue > footer { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 12px; padding: 16px 14px; border-top: 1px solid #e5ebf2; color: #64768b; font-size: .65rem; }
 .collection-desk__queue > footer > span:nth-child(2) { display: flex; align-items: center; gap: 8px; }.collection-desk__queue > footer button, .collection-desk__queue > footer b { width: 34px; height: 34px; display: grid; border: 1px solid #dce5ee; border-radius: 7px; place-items: center; background: #fff; }.collection-desk__queue > footer b { border-color: #0870e8; color: #fff; background: #0870e8; }.collection-desk__queue > footer select { justify-self: end; height: 36px; padding: 0 10px; border: 1px solid #d7e1ec; border-radius: 8px; color: #4c647e; background: #fff; font: inherit; }
 .collection-desk__detail { position: sticky; top: 84px; min-height: 655px; max-height: calc(100vh - 100px); overflow-y: auto; }
@@ -1359,9 +1372,13 @@ input:disabled, select:disabled, textarea:disabled { background: #f2f5f8; color:
   .collection-desk__stat-icon { width: 42px; height: 42px; flex-basis: 42px; }
   .collection-desk__filters { grid-template-columns: 1fr 1fr; }
   .collection-desk__filters label { grid-column: 1 / -1; }
+  .collection-desk__history-date { display: grid; grid-template-columns: 1fr 1.3fr 1fr; }
+  .collection-desk__history-date button, .collection-desk__history-date label { min-width: 0; padding: 5px; }
   .collection-desk__table-head { display: none; }
   .collection-desk__rows > button { grid-template-columns: 34px minmax(0, 1fr) auto 18px; }
   .collection-desk__document, .collection-desk__rows time, .collection-desk__status { display: none; }
+  .collection-desk__paid-row { align-items: stretch; flex-direction: column; gap: 4px; }
+  .collection-desk__paid-actions { width: 100%; display: flex; align-items: center; justify-content: space-between; }
   .collection-desk__queue > footer { grid-template-columns: 1fr auto; }
   .collection-desk__queue > footer select { display: none; }
 }
@@ -1402,6 +1419,10 @@ input:disabled, select:disabled, textarea:disabled { background: #f2f5f8; color:
 .financial-ops__history-side { flex: 0 0 auto; justify-items: end; }
 .financial-ops__history-actions { display: flex !important; flex-wrap: wrap; justify-content: flex-end; gap: 6px !important; }
 .financial-ops__history-actions button { min-height: 34px; display: inline-flex; align-items: center; justify-content: center; gap: 5px; padding: 6px 9px; border: 1px solid #bfd4e7; border-radius: 7px; color: #45627a; background: #fff; font: inherit; font-weight: 800; }
+.financial-ops__history-date { display: flex; justify-content: flex-end; gap: 8px; }
+.financial-ops__history-date button, .financial-ops__history-date label { min-height: 38px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 7px 10px; border: 1px solid #c9dbe9; border-radius: 8px; color: #365873; background: #fff; font: inherit; font-size: .68rem; font-weight: 800; }
+.financial-ops__history-date button:disabled { cursor: not-allowed; opacity: .45; }
+.financial-ops__history-date input { border: 0; color: #274864; background: transparent; font: inherit; }
 .financial-ops__collectors { display: flex; flex-wrap: wrap; align-items: stretch; gap: 8px 14px; padding: 12px; border: 1px solid #d9e7f2; border-radius: 10px; }
 .financial-ops__collectors legend { padding: 0 6px; color: #385b77; font-size: .74rem; font-weight: 800; }
 .financial-ops__collectors label { color: #365873; }
@@ -1590,6 +1611,8 @@ input:disabled, select:disabled, textarea:disabled { background: #f2f5f8; color:
   .financial-ops__payment-actions { position: sticky; bottom: calc(-1 * max(16px, env(safe-area-inset-bottom))); z-index: 2; margin-right: -14px; margin-bottom: calc(-1 * max(16px, env(safe-area-inset-bottom))); margin-left: -14px; padding: 14px 14px max(14px, env(safe-area-inset-bottom)); background: #fff; }
   .financial-ops__history-item { align-items: stretch; flex-direction: column; gap: 4px; padding: 8px 10px; }
   .financial-ops__history-side { display: flex !important; align-items: center; justify-content: space-between; gap: 10px !important; }
+  .financial-ops__history-date { display: grid; grid-template-columns: 1fr 1.3fr 1fr; }
+  .financial-ops__history-date button, .financial-ops__history-date label { min-width: 0; padding: 5px; }
   .financial-ops__receipt-summary { grid-template-columns: 1fr; }
   .financial-ops__collectors { align-items: stretch; flex-direction: column; }
   .financial-ops__collectors button { width: 100%; margin-left: 0; }

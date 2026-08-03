@@ -34,6 +34,8 @@ import {
 } from './features/financial-operations/utils';
 import type { AppRole, PaymentMethod } from './types/app';
 
+const PAYMENT_FIELDS = 'id, receipt_number, received_amount, allocated_amount, change_amount, payment_method, status, recorded_at, void_reason, shops(code,name)';
+
 export function FinancialOperations({ userRole = 'round_lead', demoData }: { userRole?: AppRole; demoData?: { serviceDate: string; queue: QueueShop[]; paymentHistory: PaymentHistoryItem[] } }) {
   const serviceDate = demoData?.serviceDate ?? toBangkokDateString();
   const initialDemoShop = window.innerWidth >= 1100 ? demoData?.queue[0] ?? null : null;
@@ -48,7 +50,10 @@ export function FinancialOperations({ userRole = 'round_lead', demoData }: { use
   const [collectorAvatarUrls, setCollectorAvatarUrls] = useState<Record<string, string>>({});
   const [failedCollectorAvatars, setFailedCollectorAvatars] = useState<Set<string>>(() => new Set());
   const [memberIds, setMemberIds] = useState<string[]>([]);
-  const [paymentHistory, setPaymentHistory] = useState<PaymentHistoryItem[]>(demoData?.paymentHistory ?? []);
+  const [historyDate, setHistoryDate] = useState(serviceDate);
+  const [paymentHistory, setPaymentHistory] = useState<PaymentHistoryItem[]>(() => demoData?.paymentHistory.filter((payment) => (
+    toBangkokDateString(new Date(payment.recorded_at)) === serviceDate
+  )) ?? []);
   const [todayPayments, setTodayPayments] = useState<PaymentHistoryItem[]>(() => demoData?.paymentHistory.filter((payment) => (
     payment.status === 'active' && toBangkokDateString(new Date(payment.recorded_at)) === serviceDate
   )) ?? []);
@@ -72,6 +77,7 @@ export function FinancialOperations({ userRole = 'round_lead', demoData }: { use
   const historyDialogRef = useRef<HTMLDivElement>(null);
   const historyCloseButtonRef = useRef<HTMLButtonElement>(null);
   const historyReturnFocusRef = useRef<HTMLButtonElement | null>(null);
+  const historyRequestRef = useRef(0);
   const selectedShopRef = useRef<QueueShop | null>(selectedShop);
   const busyRef = useRef(busy);
   const receiptRef = useRef<PaymentReceipt | null>(receipt);
@@ -90,6 +96,27 @@ export function FinancialOperations({ userRole = 'round_lead', demoData }: { use
     setPrintReceiptWanted(true);
     setError(null);
   }, []);
+
+  const loadPaymentHistory = useCallback(async () => {
+    const requestId = ++historyRequestRef.current;
+    if (demoData) {
+      setPaymentHistory(demoData.paymentHistory.filter((payment) => (
+        toBangkokDateString(new Date(payment.recorded_at)) === historyDate
+      )));
+      return;
+    }
+    if (!supabase) return;
+    const historyDay = bangkokDayUtcRange(historyDate);
+    const historyResponse = await supabase
+      .from('payments')
+      .select(PAYMENT_FIELDS)
+      .gte('recorded_at', historyDay.start)
+      .lt('recorded_at', historyDay.end)
+      .order('recorded_at', { ascending: false });
+    if (requestId !== historyRequestRef.current) return;
+    if (historyResponse.error) throw historyResponse.error;
+    setPaymentHistory((historyResponse.data ?? []) as unknown as PaymentHistoryItem[]);
+  }, [demoData, historyDate]);
 
   const load = useCallback(async () => {
     if (demoData) return;
@@ -123,29 +150,21 @@ export function FinancialOperations({ userRole = 'round_lead', demoData }: { use
       setSelectedShop(null);
     }
 
-    const paymentFields = 'id, receipt_number, received_amount, allocated_amount, change_amount, payment_method, status, recorded_at, void_reason, shops(code,name)';
-    const paymentsPromise = supabase
-      .from('payments')
-      .select(paymentFields)
-      .order('recorded_at', { ascending: false })
-      .limit(30);
     const paymentDay = bangkokDayUtcRange(serviceDate);
     const todayPaymentsPromise = supabase
       .from('payments')
-      .select(paymentFields)
+      .select(PAYMENT_FIELDS)
       .eq('status', 'active')
       .gte('recorded_at', paymentDay.start)
       .lt('recorded_at', paymentDay.end)
       .order('recorded_at', { ascending: false });
     if (!isManager) {
-      const [paymentsResponse, todayPaymentsResponse] = await Promise.all([paymentsPromise, todayPaymentsPromise]);
-      if (paymentsResponse.error) throw paymentsResponse.error;
+      const todayPaymentsResponse = await todayPaymentsPromise;
       if (todayPaymentsResponse.error) throw todayPaymentsResponse.error;
-      setPaymentHistory((paymentsResponse.data ?? []) as unknown as PaymentHistoryItem[]);
       setTodayPayments((todayPaymentsResponse.data ?? []) as unknown as PaymentHistoryItem[]);
       return;
     }
-    const [receivablesResponse, approvalsResponse, dueDateRequestsResponse, collectorsResponse, membersResponse, paymentsResponse, todayPaymentsResponse] = await Promise.all([
+    const [receivablesResponse, approvalsResponse, dueDateRequestsResponse, collectorsResponse, membersResponse, todayPaymentsResponse] = await Promise.all([
       supabase.rpc('get_credit_receivables', { p_as_of_date: serviceDate }),
       supabase
         .from('financial_approval_requests')
@@ -157,7 +176,6 @@ export function FinancialOperations({ userRole = 'round_lead', demoData }: { use
       nextRunId
         ? supabase.from('collection_run_members').select('user_id').eq('collection_run_id', nextRunId)
         : Promise.resolve({ data: [], error: null }),
-      paymentsPromise,
       todayPaymentsPromise,
     ]);
     if (receivablesResponse.error) throw receivablesResponse.error;
@@ -165,16 +183,18 @@ export function FinancialOperations({ userRole = 'round_lead', demoData }: { use
     if (dueDateRequestsResponse.error) throw dueDateRequestsResponse.error;
     if (collectorsResponse.error) throw collectorsResponse.error;
     if (membersResponse.error) throw membersResponse.error;
-    if (paymentsResponse.error) throw paymentsResponse.error;
     if (todayPaymentsResponse.error) throw todayPaymentsResponse.error;
     setReceivables((receivablesResponse.data ?? []) as Receivable[]);
     setApprovals((approvalsResponse.data ?? []) as unknown as Approval[]);
     setDueDateRequests((dueDateRequestsResponse.data ?? []) as DueDateRequest[]);
     setCollectors((collectorsResponse.data ?? []) as Collector[]);
     setMemberIds((membersResponse.data ?? []).map((member) => member.user_id));
-    setPaymentHistory((paymentsResponse.data ?? []) as unknown as PaymentHistoryItem[]);
     setTodayPayments((todayPaymentsResponse.data ?? []) as unknown as PaymentHistoryItem[]);
   }, [demoData, isManager, resetPaymentForm, serviceDate]);
+
+  const refreshFinancialData = useCallback(async () => {
+    await Promise.all([load(), loadPaymentHistory()]);
+  }, [load, loadPaymentHistory]);
 
   useEffect(() => {
     void load().catch((loadError: unknown) => {
@@ -183,13 +203,19 @@ export function FinancialOperations({ userRole = 'round_lead', demoData }: { use
   }, [load]);
 
   useEffect(() => {
+    void loadPaymentHistory().catch((loadError: unknown) => {
+      setError(getErrorMessage(loadError));
+    });
+  }, [loadPaymentHistory]);
+
+  useEffect(() => {
     if (!selectedShop || window.innerWidth >= 1100) return;
     const page = pageRef.current;
     const previousOverflow = document.body.style.overflow;
     const closeOnKeydown = (event: KeyboardEvent) => {
       if (event.key === 'Escape' && !busyRef.current) {
         if (receiptRef.current) {
-          void load().catch((loadError: unknown) => {
+          void refreshFinancialData().catch((loadError: unknown) => {
             setError(getErrorMessage(loadError));
           });
         }
@@ -223,7 +249,7 @@ export function FinancialOperations({ userRole = 'round_lead', demoData }: { use
       window.removeEventListener('keydown', closeOnKeydown);
       returnFocusRef.current?.focus();
     };
-  }, [selectedShop?.shop_id]);
+  }, [selectedShop?.shop_id, refreshFinancialData]);
 
   useEffect(() => {
     if (!historyReceipt) return;
@@ -469,7 +495,7 @@ export function FinancialOperations({ userRole = 'round_lead', demoData }: { use
 
   const closePayment = () => {
     if (receiptRef.current) {
-      void load().catch((loadError: unknown) => {
+      void refreshFinancialData().catch((loadError: unknown) => {
         setError(getErrorMessage(loadError));
       });
     }
@@ -666,6 +692,7 @@ export function FinancialOperations({ userRole = 'round_lead', demoData }: { use
       p_reason: reason,
     });
     if (rpcError) throw rpcError;
+    await loadPaymentHistory();
     setSuccess('ยกเลิกรายการรับเงินแล้ว ยอดค้างถูกคำนวณใหม่');
   });
 
@@ -711,15 +738,37 @@ export function FinancialOperations({ userRole = 'round_lead', demoData }: { use
     setSuccess(assigned ? 'มอบหมายบิลเครดิตเข้ารอบเก็บเงินแล้ว' : 'ถอนบิลเครดิตออกจากรอบเก็บเงินแล้ว');
   });
 
+  const changeHistoryDate = (nextHistoryDate: string) => {
+    if (nextHistoryDate === historyDate) return;
+    historyRequestRef.current += 1;
+    setError(null);
+    setPaymentHistory([]);
+    setHistoryDate(nextHistoryDate);
+  };
+
   return (
     <div className="financial-ops" ref={pageRef}>
       {error ? <p className="employee-error" role="alert"><WarningCircle />{error}</p> : null}
       {success ? <p className="employee-success"><CheckCircle weight="fill" />{success}</p> : null}
 
-      <CollectionDesk
+      {!isManager ? <header className="financial-ops__header">
+        <div>
+          <p className="eyebrow">การเงินหน้าร้าน</p>
+          <h1>คิวเก็บเงินของฉัน</h1>
+          <span>วันที่ธุรกิจ {serviceDate}</span>
+        </div>
+        <button disabled={busy} onClick={() => void refreshFinancialData().catch((loadError: unknown) => setError(getErrorMessage(loadError)))} type="button">รีเฟรชยอดล่าสุด</button>
+      </header> : null}
+
+      {isManager ? <CollectionDesk
         busy={busy}
-        onRefresh={() => void load()}
+        historyDate={historyDate}
+        onHistoryDateChange={changeHistoryDate}
+        onOpenReceipt={openHistoryReceipt}
+        onPrintReceipt={printHistoryReceipt}
+        onRefresh={() => void refreshFinancialData().catch((loadError: unknown) => setError(getErrorMessage(loadError)))}
         onSelectShop={chooseShop}
+        onVoidPayment={voidPayment}
         paymentPanel={selectedShop && window.innerWidth >= 1100 ? <PaymentModal
           allocatedAmount={allocatedAmount}
           amount={amount}
@@ -750,15 +799,32 @@ export function FinancialOperations({ userRole = 'round_lead', demoData }: { use
           selectedShop={selectedShop}
           serviceDate={serviceDate}
         /> : null}
+        paymentHistory={paymentHistory}
         queue={queue}
         runId={runId}
         selectedShop={selectedShop}
         serviceDate={serviceDate}
         todayPayments={todayPayments}
-      />
+      /> : null}
 
-      <div className="financial-ops__secondary">
-      {isManager || !runId ? <CollectionRunSection
+      {!isManager ? <CollectionRunSection
+        collectors={collectors}
+        collectorAvatarUrls={collectorAvatarUrls}
+        failedCollectorAvatars={failedCollectorAvatars}
+        isManager={false}
+        memberIds={memberIds}
+        onCloseRun={closeRun}
+        onCollectorAvatarError={(path) => setFailedCollectorAvatars((current) => new Set(current).add(path))}
+        onSaveRun={saveRun}
+        onSelectShop={chooseShop}
+        onToggleCollector={() => undefined}
+        queue={queue}
+        runId={runId}
+        busy={busy}
+      /> : null}
+
+      {isManager ? <div className="financial-ops__secondary">
+      <CollectionRunSection
         collectors={collectors}
         collectorAvatarUrls={collectorAvatarUrls}
         failedCollectorAvatars={failedCollectorAvatars}
@@ -775,9 +841,9 @@ export function FinancialOperations({ userRole = 'round_lead', demoData }: { use
         runId={runId}
         showQueue={!runId}
         busy={busy}
-      /> : null}
+      />
 
-      {isManager ? <ManagerFinancialSections
+      <ManagerFinancialSections
         approvals={approvals}
         busy={busy}
         dueDateRequests={dueDateRequests}
@@ -786,10 +852,10 @@ export function FinancialOperations({ userRole = 'round_lead', demoData }: { use
         onToggleCreditCollectionAssignment={toggleCreditCollectionAssignment}
         receivables={receivables}
         runId={runId}
-      /> : null}
-      </div>
+      />
+      </div> : null}
 
-      {selectedShop && window.innerWidth < 1100 ? createPortal(
+      {selectedShop && (!isManager || window.innerWidth < 1100) ? createPortal(
         <PaymentModal
           allocatedAmount={allocatedAmount}
           amount={amount}
@@ -834,14 +900,18 @@ export function FinancialOperations({ userRole = 'round_lead', demoData }: { use
         document.body,
       ) : null}
 
-      <PaymentHistorySection
+      {!isManager ? <PaymentHistorySection
         busy={busy}
-        isManager={isManager}
+        historyDate={historyDate}
+        isManager={false}
+        onHistoryDateChange={changeHistoryDate}
         onOpenReceipt={openHistoryReceipt}
         onPrintReceipt={printHistoryReceipt}
         onVoidPayment={voidPayment}
         paymentHistory={paymentHistory}
-      />
+        serviceDate={serviceDate}
+      /> : null}
+
     </div>
   );
 }

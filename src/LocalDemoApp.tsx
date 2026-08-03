@@ -536,6 +536,17 @@ export function LocalDemoApp() {
     );
   }
 
+  if (new URLSearchParams(window.location.search).get('screen') === 'employee-collection-layout') {
+    return (
+      <EmployeeLayout profileLabel="พนักงานเดโม่">
+        <FinancialOperations
+          demoData={{ serviceDate: collectionServiceDate, queue: collectionQueue, paymentHistory: collectionPayments }}
+          userRole="courier"
+        />
+      </EmployeeLayout>
+    );
+  }
+
   if (new URLSearchParams(window.location.search).get('screen') === 'today-layout') {
     return (
       <AdminLayout

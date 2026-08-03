@@ -1,5 +1,6 @@
-import { CaretRight, Coins, CreditCard, Printer, type Icon } from '@phosphor-icons/react';
+import { CalendarBlank, CaretRight, Coins, CreditCard, Printer, type Icon } from '@phosphor-icons/react';
 import { useMemo, useState } from 'react';
+import { shiftServiceDate } from '../../../lib/serviceDate';
 import type { Approval, DueDateRequest, PaymentHistoryItem, Receivable, ReceivableCharge } from '../types';
 import { money, paymentMethodLabel, receiptDateTime } from '../utils';
 
@@ -128,15 +129,21 @@ export function ManagerFinancialSections({
 
 export function PaymentHistorySection({
   paymentHistory,
+  historyDate,
+  serviceDate,
   isManager,
   busy,
+  onHistoryDateChange,
   onOpenReceipt,
   onPrintReceipt,
   onVoidPayment,
 }: {
   paymentHistory: PaymentHistoryItem[];
+  historyDate: string;
+  serviceDate: string;
   isManager: boolean;
   busy: boolean;
+  onHistoryDateChange: (serviceDate: string) => void;
   onOpenReceipt: (payment: PaymentHistoryItem, trigger: HTMLButtonElement) => void;
   onPrintReceipt: (payment: PaymentHistoryItem) => void;
   onVoidPayment: (payment: PaymentHistoryItem) => void;
@@ -145,10 +152,23 @@ export function PaymentHistorySection({
     <section className="financial-ops__section">
       <SectionTitle
         icon={Coins}
-        title="ประวัติรับเงินล่าสุด"
-        description={`พิมพ์ใบเสร็จซ้ำจากข้อมูลเดิม${isManager ? ' หรือตรวจสอบรายการที่บันทึกผิด' : ''}`}
+        title="ประวัติรับเงิน"
+        description="เลือกวันที่เพื่อดูรายการย้อนหลังและพิมพ์ใบเสร็จซ้ำ"
       />
-      {paymentHistory.length === 0 ? <p className="financial-ops__empty">ยังไม่มีรายการรับเงิน</p> : (
+      <div className="financial-ops__history-date">
+        <button onClick={() => onHistoryDateChange(shiftServiceDate(historyDate, -1))} type="button">‹ วันก่อนหน้า</button>
+        <label><CalendarBlank aria-hidden="true" size={17} /><input
+          aria-label="วันที่ประวัติรับเงิน"
+          max={serviceDate}
+          onChange={(event) => {
+            if (event.target.value && event.target.value <= serviceDate) onHistoryDateChange(event.target.value);
+          }}
+          type="date"
+          value={historyDate}
+        /></label>
+        <button disabled={historyDate >= serviceDate} onClick={() => onHistoryDateChange(shiftServiceDate(historyDate, 1))} type="button">วันถัดไป ›</button>
+      </div>
+      {paymentHistory.length === 0 ? <p className="financial-ops__empty">ไม่มีรายการรับเงินในวันที่เลือก</p> : (
         <div className="financial-ops__list">
           {paymentHistory.map((payment) => (
             <article className="financial-ops__history-item" key={payment.id}>
