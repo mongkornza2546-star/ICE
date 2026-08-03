@@ -101,7 +101,8 @@ export function ManagerStockControl({
       for (const image of [...(avatars.data ?? []), ...(iceTypes.data ?? [])]) {
         if (image.path && image.signedUrl) nextUrls[image.path] = image.signedUrl;
       }
-      setFailedImagePaths(new Set());
+      const requestedPaths = [...avatarPaths, ...iceImagePaths];
+      setFailedImagePaths(new Set(requestedPaths.filter((path) => !nextUrls[path])));
       setImageUrls(nextUrls);
     }
 
@@ -147,6 +148,18 @@ export function ManagerStockControl({
   );
 
   const iceTypes = summary?.locations[0]?.balances ?? [];
+
+  const imagePathByIceTypeId = useMemo(() => {
+    const paths: Record<string, string | null> = {};
+    for (const location of summary?.locations ?? []) {
+      for (const balance of location.balances) {
+        if (!(balance.ice_type_id in paths) || !paths[balance.ice_type_id]) {
+          paths[balance.ice_type_id] = balance.image_path ?? null;
+        }
+      }
+    }
+    return paths;
+  }, [summary]);
 
   useEffect(() => {
     if (!summary) return;
@@ -850,7 +863,12 @@ export function ManagerStockControl({
             </form>
           ) : (
             <DailyAggregateStockClose
+              failedImagePaths={failedImagePaths}
+              imagePathByIceTypeId={imagePathByIceTypeId}
+              imageUrls={imageUrls}
               onClosed={() => void loadSummary(serviceDate, round?.id ?? null)}
+              onImageError={(path) => setFailedImagePaths((current) => new Set(current).add(path))}
+              onPreviewImage={(image) => setPreviewImage(image)}
               serviceDate={serviceDate}
             />
           )}

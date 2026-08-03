@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { CheckCircle, Warning } from '@phosphor-icons/react';
+import { CheckCircle, Cube, Warning } from '@phosphor-icons/react';
 import { supabase } from '../../../lib/supabase';
 
 interface AggregateItem {
@@ -43,9 +43,19 @@ interface RefillHistoryItem {
 export function DailyAggregateStockClose({
   serviceDate,
   onClosed,
+  imagePathByIceTypeId = {},
+  imageUrls = {},
+  failedImagePaths = new Set<string>(),
+  onImageError,
+  onPreviewImage,
 }: {
   serviceDate: string;
   onClosed?: () => void;
+  imagePathByIceTypeId?: Record<string, string | null | undefined>;
+  imageUrls?: Record<string, string>;
+  failedImagePaths?: Set<string>;
+  onImageError?: (path: string) => void;
+  onPreviewImage?: (image: { name: string; url: string }) => void;
 }) {
   const [summary, setSummary] = useState<AggregateSummary | null>(null);
   const [refills, setRefills] = useState<RefillHistoryItem[]>([]);
@@ -204,13 +214,25 @@ export function DailyAggregateStockClose({
             ปิดสต๊อกรวมวันที่ {serviceDate} แล้ว ยอดพร้อมใช้เป็นศูนย์
           </span>
         </div>
-        {summary.items.map((item) => (
-          <p className="muted" key={item.ice_type_id}>
-            {item.name}: นับจริง {item.actual_quantity ?? 0} {item.unit}
-            {' · '}ส่วนต่าง {Number(item.variance_quantity ?? 0) > 0 ? '+' : ''}
-            {item.variance_quantity ?? 0}
-          </p>
-        ))}
+        <div className="daily-stock-closed-list">
+          {summary.items.map((item) => (
+            <div className="daily-stock-closed-item" key={item.ice_type_id}>
+              <IceTypeImage
+                itemName={item.name}
+                imagePath={imagePathByIceTypeId[item.ice_type_id]}
+                imageUrls={imageUrls}
+                failedImagePaths={failedImagePaths}
+                onImageError={onImageError}
+                onPreviewImage={onPreviewImage}
+              />
+              <p className="muted">
+                {item.name}: นับจริง {item.actual_quantity ?? 0} {item.unit}
+                {' · '}ส่วนต่าง {Number(item.variance_quantity ?? 0) > 0 ? '+' : ''}
+                {item.variance_quantity ?? 0}
+              </p>
+            </div>
+          ))}
+        </div>
         {refillHistory}
       </section>
     );
@@ -228,41 +250,54 @@ export function DailyAggregateStockClose({
       <p className="muted">
         นับน้ำแข็งที่เหลือรวมจากรถและทุกจุด แล้วกรอกยอดจริงแยกตามชนิด
       </p>
-      <div className="inputs-2col" style={{ marginTop: 16 }}>
+      <div className="daily-stock-count-grid" style={{ marginTop: 16 }}>
         {summary.items.map((item) => {
           const actual = counts[item.ice_type_id] ?? 0;
           const variance = actual - Number(item.available_quantity);
           return (
-            <label className="input-row" key={item.ice_type_id}>
-              <span>
-                {item.name}
-                <small style={{ display: 'block' }}>
-                  ตามระบบ {item.available_quantity} {item.unit}
-                  {variance ? ` · ต่าง ${variance > 0 ? '+' : ''}${variance}` : ' · ตรง'}
-                </small>
-                <small style={{ display: 'block' }}>
-                  สั่ง {item.ordered_quantity ?? 0}
-                  {' · '}ขาย {item.sold_quantity ?? 0}
-                  {' · '}เติม {item.refill_quantity ?? 0}
-                  {' · '}เสีย {item.damaged_quantity ?? 0}
-                  {' · '}คืน {item.returned_quantity ?? 0}
-                </small>
-              </span>
-              <div className="input-wrapper">
-                <input
-                  inputMode="decimal"
-                  min={0}
-                  onChange={(event) => setCounts((current) => ({
-                    ...current,
-                    [item.ice_type_id]: Math.max(0, Number(event.target.value) || 0),
-                  }))}
-                  step={0.5}
-                  type="number"
-                  value={actual}
+            <article className="daily-stock-count-card" key={item.ice_type_id}>
+              <div className="daily-stock-count-card__identity">
+                <IceTypeImage
+                  itemName={item.name}
+                  imagePath={imagePathByIceTypeId[item.ice_type_id]}
+                  imageUrls={imageUrls}
+                  failedImagePaths={failedImagePaths}
+                  onImageError={onImageError}
+                  onPreviewImage={onPreviewImage}
                 />
-                <small>{item.unit}</small>
+                <div>
+                  <strong>{item.name}</strong>
+                  <small>
+                    ตามระบบ {item.available_quantity} {item.unit}
+                    {variance ? ` · ต่าง ${variance > 0 ? '+' : ''}${variance}` : ' · ตรง'}
+                  </small>
+                  <small>
+                    สั่ง {item.ordered_quantity ?? 0}
+                    {' · '}ขาย {item.sold_quantity ?? 0}
+                    {' · '}เติม {item.refill_quantity ?? 0}
+                    {' · '}เสีย {item.damaged_quantity ?? 0}
+                    {' · '}คืน {item.returned_quantity ?? 0}
+                  </small>
+                </div>
               </div>
-            </label>
+              <label className="daily-stock-count-card__input">
+                <span>นับจริง</span>
+                <div className="input-wrapper">
+                  <input
+                    inputMode="decimal"
+                    min={0}
+                    onChange={(event) => setCounts((current) => ({
+                      ...current,
+                      [item.ice_type_id]: Math.max(0, Number(event.target.value) || 0),
+                    }))}
+                    step={0.5}
+                    type="number"
+                    value={actual}
+                  />
+                  <small>{item.unit}</small>
+                </div>
+              </label>
+            </article>
           );
         })}
       </div>
@@ -287,5 +322,60 @@ export function DailyAggregateStockClose({
       </button>
       {refillHistory}
     </section>
+  );
+}
+
+function IceTypeImage({
+  itemName,
+  imagePath,
+  imageUrls,
+  failedImagePaths,
+  onImageError,
+  onPreviewImage,
+}: {
+  itemName: string;
+  imagePath?: string | null;
+  imageUrls: Record<string, string>;
+  failedImagePaths: Set<string>;
+  onImageError?: (path: string) => void;
+  onPreviewImage?: (image: { name: string; url: string }) => void;
+}) {
+  const imageUrl = imagePath && imageUrls[imagePath] && !failedImagePaths.has(imagePath)
+    ? imageUrls[imagePath]
+    : null;
+
+  if (!imageUrl) {
+    const placeholderLabel = !imagePath
+      ? 'ไม่มีรูป'
+      : failedImagePaths.has(imagePath)
+        ? 'โหลดไม่ได้'
+        : 'กำลังโหลด';
+    return (
+      <span className="daily-stock-count-card__image daily-stock-count-card__image--placeholder">
+        <Cube aria-hidden="true" size={25} weight="duotone" />
+        <small>{placeholderLabel}</small>
+      </span>
+    );
+  }
+
+  const image = (
+    <img
+      alt={itemName}
+      onError={() => onImageError?.(imagePath!)}
+      src={imageUrl}
+    />
+  );
+
+  return onPreviewImage ? (
+    <button
+      aria-label={`ดูรูป ${itemName} ขนาดใหญ่`}
+      className="daily-stock-count-card__image daily-stock-count-card__image-button"
+      onClick={() => onPreviewImage({ name: itemName, url: imageUrl })}
+      type="button"
+    >
+      {image}
+    </button>
+  ) : (
+    <span className="daily-stock-count-card__image">{image}</span>
   );
 }

@@ -987,6 +987,126 @@
   font-size: .8rem;
 }
 .stock-count-reconciliation-note span { color: #52657c; }
+.daily-stock-count-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.daily-stock-count-card {
+  min-width: 0;
+  display: grid;
+  gap: 14px;
+  padding: 14px;
+  border: 1px solid #e4eaf1;
+  border-radius: 10px;
+  background: #f8fafc;
+}
+.daily-stock-count-card__identity {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr);
+  align-items: center;
+  gap: 11px;
+}
+.daily-stock-count-card__identity > div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+.daily-stock-count-card__identity strong {
+  overflow: hidden;
+  color: #1e3552;
+  font-size: .86rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.daily-stock-count-card__identity small {
+  overflow: hidden;
+  color: #667991;
+  font-size: .68rem;
+  line-height: 1.45;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.daily-stock-count-card__image {
+  width: 64px;
+  height: 64px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid #d8e5f1;
+  border-radius: 10px;
+  color: #4796de;
+  background: #edf6ff;
+}
+.daily-stock-count-card__image img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.daily-stock-count-card__image-button {
+  padding: 0;
+  cursor: zoom-in;
+}
+.daily-stock-count-card__image-button:hover {
+  border-color: #80b8f0;
+  box-shadow: 0 3px 10px rgba(20, 116, 236, .12);
+}
+.daily-stock-count-card__image-button:focus-visible {
+  outline: 2px solid #1474ec;
+  outline-offset: 2px;
+}
+.daily-stock-count-card__image--placeholder {
+  align-content: center;
+  gap: 2px;
+  text-align: center;
+}
+.daily-stock-count-card__image--placeholder small {
+  color: #687a91;
+  font-size: .52rem;
+  line-height: 1;
+}
+.daily-stock-count-card__input {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: #344861;
+  font-size: .75rem;
+  font-weight: 600;
+}
+.daily-stock-count-card__input .input-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 145px;
+}
+.daily-stock-count-card__input input {
+  width: 100%;
+  min-width: 0;
+  text-align: right;
+}
+.daily-stock-count-card__input .input-wrapper > small {
+  flex: 0 0 auto;
+  color: #62738c;
+}
+.daily-stock-closed-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+}
+.daily-stock-closed-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.daily-stock-closed-item .daily-stock-count-card__image {
+  width: 40px;
+  height: 40px;
+  flex: 0 0 auto;
+  border-radius: 7px;
+}
+.daily-stock-closed-item p { margin: 0; }
 .stock-close-summary__success,
 .stock-close-summary__pending {
   display: grid;
@@ -1151,6 +1271,7 @@
   }
   .action-form-grid,
   .inputs-2col,
+  .daily-stock-count-grid,
   .stock-location-grid-custom {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -1179,6 +1300,7 @@
   }
   .stock-count-row__controls { gap: 8px; }
   .stock-count-stepper { justify-content: center; }
+  .daily-stock-count-card__input .input-wrapper { width: 140px; }
   .stock-variance-modal-backdrop { padding: 8px; }
   .stock-variance-review__quantities { grid-template-columns: minmax(0, 1fr); }
   .stock-variance-review__header { align-items: stretch; flex-direction: column; }

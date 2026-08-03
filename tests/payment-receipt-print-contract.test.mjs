@@ -22,6 +22,10 @@ const financialOperations = readFileSync(
   new URL('../src/FinancialOperations.tsx', import.meta.url),
   'utf8',
 );
+const financialOperationsPanels = readFileSync(
+  new URL('../src/features/financial-operations/components/FinancialOperationsPanels.tsx', import.meta.url),
+  'utf8',
+);
 const globalStyles = readFileSync(
   new URL('../src/index.css', import.meta.url),
   'utf8',
@@ -46,8 +50,9 @@ test('receipt printing is isolated from the global application print stylesheet'
 
 test('payment history exposes persisted receipt numbers for reprinting', () => {
   assert.match(financialOperations, /select\('id, receipt_number,/);
-  assert.match(financialOperations, /printHistoryReceipt\(payment\)/);
-  assert.match(financialOperations, />พิมพ์ซ้ำ</);
+  assert.match(financialOperations, /onPrintReceipt=\{printHistoryReceipt\}/);
+  assert.match(financialOperationsPanels, /onClick=\{\(\) => onPrintReceipt\(payment\)\}/);
+  assert.match(financialOperationsPanels, />พิมพ์ซ้ำ</);
 });
 
 test('receipt item details are scoped to a payment the caller can view', () => {
