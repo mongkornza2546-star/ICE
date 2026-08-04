@@ -723,18 +723,20 @@ export function FinancialOperations({ userRole = 'round_lead', demoData }: { use
     setSuccess(decision === 'approved' ? 'อนุมัติคำขอแล้ว' : 'ไม่อนุมัติคำขอแล้ว');
   });
 
-  const voidPayment = (payment: PaymentHistoryItem) => runAction(async () => {
-    if (!supabase) return;
+  const voidPayment = (payment: PaymentHistoryItem) => {
     const reason = window.prompt(`เหตุผลที่ยกเลิกรับเงินจาก ${payment.shops?.name ?? 'ร้านค้า'}`)?.trim();
-    if (!reason) return;
-    const { error: rpcError } = await supabase.rpc('void_payment', {
-      p_payment_id: payment.id,
-      p_reason: reason,
-    });
-    if (rpcError) throw rpcError;
-    await loadPaymentHistory();
-    setSuccess('ยกเลิกรายการรับเงินแล้ว ยอดค้างถูกคำนวณใหม่');
-  });
+    if (!reason) return Promise.resolve(false);
+    return runAction(async () => {
+      if (!supabase) return;
+      const { error: rpcError } = await supabase.rpc('void_payment', {
+        p_payment_id: payment.id,
+        p_reason: reason,
+      });
+      if (rpcError) throw rpcError;
+      await refreshFinancialData();
+      setSuccess('ยกเลิกรายการรับเงินแล้ว ยอดค้างถูกคำนวณใหม่');
+    }, false);
+  };
 
   const requestDueDate = (charge: QueueShop['charges'][number]) => runAction(async () => {
     if (!supabase) return;
@@ -856,6 +858,7 @@ export function FinancialOperations({ userRole = 'round_lead', demoData }: { use
         onOpenReceipt={openHistoryReceipt}
         onPrintReceipt={printHistoryReceipt}
         onRefresh={() => void refreshFinancialData().catch((loadError: unknown) => setError(getErrorMessage(loadError)))}
+        onClearShop={closePayment}
         onSelectShop={chooseShop}
         onVoidPayment={voidPayment}
         paymentPanel={selectedShop && window.innerWidth >= 1100 ? <PaymentModal
@@ -960,6 +963,11 @@ export function FinancialOperations({ userRole = 'round_lead', demoData }: { use
           historyReceipt={historyReceipt}
           onClose={() => setHistoryReceipt(null)}
           onPrint={() => printHistoryReceipt(historyReceipt.payment)}
+          onVoid={isManager && historyReceipt.payment.status === 'active' ? () => {
+            void voidPayment(historyReceipt.payment).then((voided) => {
+              if (voided) setHistoryReceipt(null);
+            });
+          } : undefined}
         />,
         document.body,
       ) : null}

@@ -10,6 +10,7 @@ export function HistoryReceiptModal({
   closeButtonRef,
   onClose,
   onPrint,
+  onVoid,
 }: {
   historyReceipt: HistoryReceiptDetail;
   busy: boolean;
@@ -17,6 +18,7 @@ export function HistoryReceiptModal({
   closeButtonRef: RefObject<HTMLButtonElement>;
   onClose: () => void;
   onPrint: () => void;
+  onVoid?: () => void;
 }) {
   return (
     <div
@@ -78,6 +80,7 @@ export function HistoryReceiptModal({
 
         <div className="financial-ops__receipt-actions">
           <button disabled={busy} onClick={onPrint} type="button"><Printer aria-hidden="true" size={19} />พิมพ์ซ้ำ</button>
+          {onVoid ? <button disabled={busy} onClick={onVoid} type="button">ยกเลิกรายการ</button> : null}
           <button onClick={onClose} type="button">ปิด</button>
         </div>
       </article>

@@ -152,7 +152,10 @@ describe('FinancialOperations', () => {
   });
 
   it('applies document search, status filtering, and the all tab to the displayed rows', async () => {
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1200 });
     const user = userEvent.setup();
+    const onOpenReceipt = vi.fn();
+    const onClearShop = vi.fn();
     const todayPayment = {
       id: 'payment-today',
       receipt_number: 'R260803-000001',
@@ -171,9 +174,10 @@ describe('FinancialOperations', () => {
       creditManagement={null}
       historyDate="2026-08-03"
       onHistoryDateChange={() => undefined}
-      onOpenReceipt={() => undefined}
+      onOpenReceipt={onOpenReceipt}
       onPrintReceipt={() => undefined}
       onRefresh={() => undefined}
+      onClearShop={onClearShop}
       onSelectShop={() => undefined}
       onVoidPayment={() => undefined}
       paymentHistory={[todayPayment]}
@@ -195,13 +199,84 @@ describe('FinancialOperations', () => {
     expect(screen.queryByRole('tab', { name: /เก็บเงินแล้ววันนี้/ })).toBeNull();
     expect(screen.getByText(/R260803-000001/)).not.toBeNull();
     expect(screen.queryByRole('button', { name: /S001 · ร้านเก็บเงิน/ })).toBeNull();
+    expect(screen.getByText('ประเภทรายการ')).not.toBeNull();
+    expect(screen.getByText('ยอดเงิน')).not.toBeNull();
+
+    await user.click(screen.getByRole('button', { name: /เลือกรายการ P001 · ร้านจ่ายแล้ว/ }));
+    expect(screen.getByLabelText('รายละเอียด R260803-000001')).not.toBeNull();
+    expect(screen.getByRole('button', { name: 'ดูบิล' })).not.toBeNull();
+    expect(screen.getByRole('button', { name: 'พิมพ์ซ้ำ' })).not.toBeNull();
+    expect(screen.getByRole('button', { name: 'ยกเลิกรายการ' })).not.toBeNull();
+    expect(onOpenReceipt).not.toHaveBeenCalled();
+    expect(onClearShop).toHaveBeenCalledTimes(2);
+
+    await user.click(screen.getByRole('tab', { name: /ค้างชำระทั้งหมด/ }));
+    expect(screen.queryByLabelText('รายละเอียด R260803-000001')).toBeNull();
 
     await user.click(screen.getByRole('tab', { name: 'ทั้งหมด' }));
     expect(screen.getByText(/R260803-000001/)).not.toBeNull();
     expect(screen.getByRole('button', { name: /S001 · ร้านเก็บเงิน/ })).not.toBeNull();
   });
 
+  it('opens paid-row details with every manager action on smaller screens', async () => {
+    const user = userEvent.setup();
+    const payment = {
+      id: 'payment-mobile', receipt_number: 'R260803-000009', received_amount: 100,
+      allocated_amount: 100, change_amount: 0, payment_method: 'cash' as const,
+      status: 'active' as const, recorded_at: '2026-08-03T02:00:00Z', void_reason: null,
+      shops: { code: 'P009', name: 'ร้านมือถือ' },
+    };
+    mocks.rpc.mockResolvedValue({ data: [], error: null });
+
+    render(<FinancialOperations
+      demoData={{ serviceDate: '2026-08-03', queue: [], paymentHistory: [payment] }}
+      userRole="round_lead"
+    />);
+
+    await user.click(screen.getByRole('tab', { name: /ประวัติรับเงิน/ }));
+    await user.click(screen.getByRole('button', { name: /เลือกรายการ P009 · ร้านมือถือ/ }));
+    const dialog = await screen.findByRole('dialog', { name: 'รายละเอียดใบเสร็จ R260803-000009' });
+    expect(dialog).not.toBeNull();
+    expect(screen.getByRole('button', { name: 'พิมพ์ซ้ำ' })).not.toBeNull();
+    expect(screen.getByRole('button', { name: 'ยกเลิกรายการ' })).not.toBeNull();
+  });
+
+  it('labels a shop-level outstanding total from the complete payment-term mix', () => {
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1200 });
+    const mixedShop = {
+      ...queueShop,
+      charges: queueShop.charges.map((charge, index) => ({
+        ...charge,
+        payment_term: index === 0 ? 'credit' as const : 'immediate' as const,
+      })),
+    };
+
+    render(<CollectionDesk
+      busy={false}
+      creditCount={0}
+      creditManagement={null}
+      historyDate="2026-08-03"
+      onClearShop={() => undefined}
+      onHistoryDateChange={() => undefined}
+      onOpenReceipt={() => undefined}
+      onPrintReceipt={() => undefined}
+      onRefresh={() => undefined}
+      onSelectShop={() => undefined}
+      onVoidPayment={() => undefined}
+      paymentHistory={[]}
+      paymentPanel={null}
+      queue={[mixedShop]}
+      runId="run-1"
+      selectedShop={null}
+      serviceDate="2026-08-03"
+      todayPayments={[]}
+    />);
+
+    expect(screen.getByText('ค้างชำระ (ผสม)')).not.toBeNull();
+  });
+
   it('shows payment history one day at a time and navigates to earlier days', async () => {
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1200 });
     const user = userEvent.setup();
     const todayPayment = {
       id: 'payment-today', receipt_number: 'R260803-000001', received_amount: 100,
@@ -225,6 +300,7 @@ describe('FinancialOperations', () => {
     await user.click(screen.getByRole('tab', { name: /ประวัติรับเงิน/ }));
     expect(screen.getByText(/R260803-000001/)).not.toBeNull();
     expect(screen.queryByText(/R260802-000001/)).toBeNull();
+    await user.click(screen.getByRole('button', { name: /เลือกรายการ P001 · ร้านวันนี้/ }));
     expect(screen.getByRole('button', { name: 'พิมพ์ซ้ำ' })).not.toBeNull();
     expect(screen.getByRole('button', { name: 'ยกเลิกรายการ' })).not.toBeNull();
 
@@ -298,22 +374,29 @@ describe('FinancialOperations', () => {
       shops: { code: 'S001', name: 'ร้านเก็บเงิน' },
     };
     mocks.from.mockImplementation((table: string) => {
-      if (table === 'collection_runs') return queryResult(null);
+      if (table === 'collection_runs') return queryResult({ id: 'run-1', opened_at: '2026-08-03T01:00:00Z' });
       if (table === 'payments') return queryResult([payment]);
       return queryResult([]);
     });
     mocks.rpc.mockImplementation(async (name: string) => {
       if (name === 'void_payment') return { data: { payment_id: 'payment-1' }, error: null };
+      if (name === 'get_collection_run_queue') return { data: [], error: null };
       return { data: [], error: null };
     });
 
     render(<FinancialOperations userRole="round_lead" />);
     await user.click(await screen.findByRole('tab', { name: /ประวัติรับเงิน/ }));
+    await user.click(await screen.findByRole('button', { name: /เลือกรายการ S001 · ร้านเก็บเงิน/ }));
+    await screen.findByRole('dialog', { name: 'รายละเอียดใบเสร็จ R260803-000003' });
+    mocks.rpc.mockClear();
     await user.click(await screen.findByRole('button', { name: 'ยกเลิกรายการ' }));
 
     await waitFor(() => expect(mocks.rpc).toHaveBeenCalledWith('void_payment', {
       p_payment_id: 'payment-1',
       p_reason: 'บันทึกยอดผิด',
+    }));
+    await waitFor(() => expect(mocks.rpc).toHaveBeenCalledWith('get_collection_run_queue', {
+      p_collection_run_id: 'run-1',
     }));
   });
 
