@@ -1680,7 +1680,9 @@ input:disabled, select:disabled, textarea:disabled { background: #f2f5f8; color:
 .credit-ar__summary-cards .is-danger { border-color: #f1d4d1; background: #fffafa; }.credit-ar__summary-cards .is-danger strong { color: #bd4848; }
 .credit-ar__summary-cards .is-suspended { border-color: #e2d6eb; background: #fdfaff; }.credit-ar__summary-cards .is-suspended strong { color: #7c4c9e; }
 .credit-ar__customers { min-width: 0; }
-.credit-ar__customers .financial-ops__receivable-controls { padding: 11px; border: 1px solid #e0eaf3; border-radius: 11px; background: #f8fbfe; }
+.credit-ar__customers .financial-ops__receivable-controls { align-items: end; padding: 11px; border: 1px solid #e0eaf3; border-radius: 11px; background: #f8fbfe; }
+.credit-ar__customers .financial-ops__receivable-controls > label:not(.credit-ar__search) { min-width: 0; width: min(120px, 100%); display: grid; flex: 0 1 120px; align-content: end; gap: 5px; }
+.credit-ar__customers .financial-ops__receivable-controls > label:not(.credit-ar__search) select { min-width: 0; width: 100%; }
 .credit-ar__search { min-width: 240px; flex: 1 1 280px; position: relative; }
 .credit-ar__search > svg { position: absolute; left: 10px; color: #7990a5; pointer-events: none; }
 .credit-ar__search input { width: 100%; min-height: 36px; padding: 0 10px 0 34px; border: 1px solid #cdddeb; border-radius: 7px; color: #294867; background: #fff; font: inherit; font-size: .72rem; }

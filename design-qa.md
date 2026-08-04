@@ -44,6 +44,56 @@ final result: passed
 
 ---
 
+## 2026-08-04 — Credit receivables filter layout repair
+
+**Comparison Target**
+
+- Source visual truth: `/Users/bhusitt./Desktop/ภาพถ่ายหน้าจอ2569-08-04เวลา 16.14.22.png` (2236 × 556 px), supplied as evidence of the broken filter layout.
+- Rendered implementation: [outputs/credit-receivables-layout-fixed-focused.png](/Users/bhusitt./Downloads/ส่งน้ำแข็ง/outputs/credit-receivables-layout-fixed-focused.png) (1280 × 720 px), captured in the in-app browser.
+- Combined comparison evidence: [outputs/credit-receivables-layout-comparison.png](/Users/bhusitt./Downloads/ส่งน้ำแข็ง/outputs/credit-receivables-layout-comparison.png). The supplied broken crop is above the corrected browser capture.
+- Viewport and normalization: desktop implementation used a 1280 × 720 CSS px viewport. The 2236 px-wide source crop was downsampled to 1280 px for the comparison board. Mobile was checked at 390 × 844 CSS px; browser metrics, rather than the browser canvas padding, were used for width-containment judgment.
+- State: debtor list with all five optional filters present, default filter values, four store rows, and the table scrolled to its initial left position.
+
+**Findings**
+
+- No actionable P0/P1/P2 differences remain. The source demonstrates the defect: the globally full-width selects cause `ผู้รับผิดชอบ` to expand across most of the second row and leave `เรียงตาม` undersized. The corrected desktop capture keeps all five filters on one row at equal 120 px widths while the search field takes the remaining space.
+- At narrower desktop widths, wrapped filters retain the same 120 px basis instead of stretching to fill an incomplete row. At 390 px, the search occupies one row and filters flow into two stable columns without document overflow.
+
+**Full-view Comparison Evidence**
+
+- The combined board shows the broken uneven second row above the corrected single-row filter bar and unchanged debtor table. Surrounding summary cards, sidebar, typography, colors, and table density remain consistent with the existing application.
+
+**Focused Region Comparison Evidence**
+
+- Browser geometry at 1280 px confirmed one filter row: every filter label and select measured 120 px wide, the search measured 298 px, and the controls measured 972 px without body overflow.
+- At 390 px, the document `scrollWidth` equaled 390 px. The search measured 308 px; filters measured 120 px and flowed at x=41/171. The table stayed inside a 332 px scroll container with its intentional 1140 px internal table width.
+
+**Required Fidelity Surfaces**
+
+- Fonts and typography: unchanged existing Noto Sans Thai stack, weights, sizes, line heights, wrapping, and numeric hierarchy.
+- Spacing and layout rhythm: filter labels now intentionally stack above their controls with a 5 px gap; equal filter widths and end alignment restore a stable toolbar rhythm across complete and wrapped rows.
+- Colors and visual tokens: unchanged existing white, pale-blue, navy, muted-border, and semantic status tokens.
+- Image quality and asset fidelity: no images or icons were added or replaced; the existing logo, sidebar artwork, search icon, status chips, and detail icon remain intact.
+- Copy and content: all labels, options, debtor fields, values, and table headings are unchanged.
+
+**Interaction And Build Checks**
+
+- In-app browser: selecting `เกินกำหนด` in the due-status filter reduced the table to the expected two rows.
+- Browser console: no errors or warnings.
+- Layout and credit contracts: 5/5 passed.
+- Focused financial UI suite: 34/34 passed.
+- Production build: passed. The existing Vite large-chunk warning remains unchanged.
+- `git diff --check`: passed.
+
+**Comparison History**
+
+- First repair constrained wrapped filters to 132 px, which stopped the runaway expansion but still wrapped `เรียงตาม` at the 1280 px desktop viewport.
+- Final repair set a 120 px stable filter basis. The post-fix capture and browser geometry confirm all five filters fit one row at desktop and remain contained on mobile.
+
+final result: passed
+
+---
+
 ## 2026-08-04 — Collection run status bar and assignment modal
 
 **Comparison Target**

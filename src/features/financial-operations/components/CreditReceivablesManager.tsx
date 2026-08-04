@@ -273,7 +273,6 @@ function ReceivableDrawer({
           <button className={receivable.credit_suspended ? 'is-positive' : 'is-danger'} disabled={busy || actionBusy} onClick={toggleSuspension} type="button">{receivable.credit_suspended ? <Play size={16} /> : <Prohibit size={16} />}{receivable.credit_suspended ? 'เปิดใช้เครดิต' : 'ระงับเครดิต'}</button>
         </> : null}
         <button disabled={detailLoading || !onOpenCollection || !runId || !hasCollectibleBalance} onClick={() => onOpenCollection?.(receivable)} type="button"><Coins size={16} />บันทึกรับเงิน</button>
-        <button onClick={() => window.print()} type="button"><FileText size={16} />ดู Statement</button>
       </div>
       {actionError ? <p className="credit-ar__action-error" role="alert">{actionError}</p> : null}
 
