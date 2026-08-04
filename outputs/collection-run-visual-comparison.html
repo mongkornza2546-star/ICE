@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Collection run visual comparison</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 24px; color: #e8eef7; background: #152033; font: 14px system-ui, sans-serif; }
+    h1 { margin: 0 0 18px; font-size: 22px; }
+    h2 { margin: 0; padding: 12px 14px; color: #243b58; background: #f3f7fb; font-size: 15px; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; align-items: start; }
+    figure { margin: 0; overflow: hidden; border: 1px solid #52627a; border-radius: 12px; background: #fff; }
+    img { width: 100%; display: block; object-fit: contain; }
+    .focus { margin-top: 18px; }
+    .focus figure { min-height: 220px; display: grid; grid-template-rows: auto 1fr; }
+    .focus .image-wrap { min-height: 170px; display: grid; place-items: center; padding: 18px; }
+    .focus img { width: auto; max-width: 100%; max-height: 180px; }
+    .active-crop { width: 100%; height: 180px; overflow: hidden; position: relative; }
+    .active-crop img { position: absolute; top: -58px; left: 0; width: 100%; max-height: none; }
+  </style>
+</head>
+<body>
+  <h1>รอบเก็บเงินท้ายวัน — Visual QA</h1>
+  <div class="grid">
+    <figure>
+      <h2>Reference — หน้าตาและ design system เดิม</h2>
+      <img src="collection-run-reference-page.png" alt="Reference page" />
+    </figure>
+    <figure>
+      <h2>Implementation — Status Bar แบบ Active</h2>
+      <img src="collection-run-status-active.png" alt="Active status implementation" />
+    </figure>
+  </div>
+  <div class="grid focus">
+    <figure>
+      <h2>Reference — ปุ่มพิมพ์ใบเสร็จรวมที่ถูกแทนที่</h2>
+      <div class="image-wrap"><img src="collection-run-reference-print-button.png" alt="Old print button" /></div>
+    </figure>
+    <figure>
+      <h2>Implementation — แถบ Active และปุ่มปิดรอบ</h2>
+      <div class="active-crop"><img src="collection-run-status-active.png" alt="Active status bar" /></div>
+    </figure>
+  </div>
+</body>
+</html>

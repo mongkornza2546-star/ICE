@@ -7,6 +7,7 @@ import { MAX_PAYMENT_EVIDENCE_SIZE, uploadPaymentEvidence } from './lib/paymentE
 import { getErrorMessage } from './lib/errorMessage';
 import { usePendingRequests } from './features/employee-delivery/usePendingRequests';
 import { CollectionRunSection } from './features/financial-operations/components/CollectionRunSection';
+import { CollectionRunManager } from './features/financial-operations/components/CollectionRunManager';
 import { CollectionDesk } from './features/financial-operations/components/CollectionDesk';
 import { ManagerFinancialSections, PaymentHistorySection } from './features/financial-operations/components/FinancialOperationsPanels';
 import { HistoryReceiptModal } from './features/financial-operations/components/HistoryReceiptModal';
@@ -36,20 +37,39 @@ import type { AppRole, PaymentMethod } from './types/app';
 
 const PAYMENT_FIELDS = 'id, receipt_number, received_amount, allocated_amount, change_amount, payment_method, status, recorded_at, void_reason, shops(code,name)';
 
-export function FinancialOperations({ userRole = 'round_lead', demoData }: { userRole?: AppRole; demoData?: { serviceDate: string; queue: QueueShop[]; paymentHistory: PaymentHistoryItem[]; receivables?: Receivable[]; approvals?: Approval[]; dueDateRequests?: DueDateRequest[] } }) {
+type FinancialOperationsDemoData = {
+  serviceDate: string;
+  queue: QueueShop[];
+  paymentHistory: PaymentHistoryItem[];
+  receivables?: Receivable[];
+  approvals?: Approval[];
+  dueDateRequests?: DueDateRequest[];
+  collectors?: Collector[];
+  memberIds?: string[];
+  runId?: string | null;
+  runOpenedAt?: string | null;
+};
+
+export function FinancialOperations({ userRole = 'round_lead', demoData }: { userRole?: AppRole; demoData?: FinancialOperationsDemoData }) {
   const serviceDate = demoData?.serviceDate ?? toBangkokDateString();
-  const initialDemoShop = window.innerWidth >= 1100 ? demoData?.queue[0] ?? null : null;
+  const initialDemoRunId = demoData
+    ? demoData.runId === undefined ? 'demo-collection-run' : demoData.runId
+    : null;
+  const initialDemoShop = initialDemoRunId && window.innerWidth >= 1100 ? demoData?.queue[0] ?? null : null;
   const isManager = userRole === 'admin' || userRole === 'round_lead';
   const { getOrCreatePendingRequest, clearPendingRequest } = usePendingRequests();
-  const [runId, setRunId] = useState<string | null>(demoData ? 'demo-collection-run' : null);
-  const [queue, setQueue] = useState<QueueShop[]>(demoData?.queue ?? []);
+  const [runId, setRunId] = useState<string | null>(initialDemoRunId);
+  const [runOpenedAt, setRunOpenedAt] = useState<string | null>(demoData
+    ? demoData.runOpenedAt === undefined ? `${serviceDate}T01:00:00.000Z` : demoData.runOpenedAt
+    : null);
+  const [queue, setQueue] = useState<QueueShop[]>(initialDemoRunId ? demoData?.queue ?? [] : []);
   const [receivables, setReceivables] = useState<Receivable[]>(demoData?.receivables ?? []);
   const [approvals, setApprovals] = useState<Approval[]>(demoData?.approvals ?? []);
   const [dueDateRequests, setDueDateRequests] = useState<DueDateRequest[]>(demoData?.dueDateRequests ?? []);
-  const [collectors, setCollectors] = useState<Collector[]>([]);
+  const [collectors, setCollectors] = useState<Collector[]>(demoData?.collectors ?? []);
   const [collectorAvatarUrls, setCollectorAvatarUrls] = useState<Record<string, string>>({});
   const [failedCollectorAvatars, setFailedCollectorAvatars] = useState<Set<string>>(() => new Set());
-  const [memberIds, setMemberIds] = useState<string[]>([]);
+  const [memberIds, setMemberIds] = useState<string[]>(demoData?.memberIds ?? []);
   const [historyDate, setHistoryDate] = useState(serviceDate);
   const [employeeView, setEmployeeView] = useState<'queue' | 'history'>('queue');
   const [paymentHistory, setPaymentHistory] = useState<PaymentHistoryItem[]>(() => demoData?.paymentHistory.filter((payment) => (
@@ -125,7 +145,7 @@ export function FinancialOperations({ userRole = 'round_lead', demoData }: { use
     setError(null);
     const runResponse = await supabase
       .from('collection_runs')
-      .select('id')
+      .select('id, opened_at')
       .eq('service_date', serviceDate)
       .eq('status', 'open')
       .maybeSingle();
@@ -133,6 +153,7 @@ export function FinancialOperations({ userRole = 'round_lead', demoData }: { use
 
     const nextRunId = runResponse.data?.id ?? null;
     setRunId(nextRunId);
+    setRunOpenedAt(runResponse.data?.opened_at ?? null);
     if (nextRunId) {
       const queueResponse = await supabase.rpc('get_collection_run_queue', {
         p_collection_run_id: nextRunId,
@@ -330,24 +351,42 @@ export function FinancialOperations({ userRole = 'round_lead', demoData }: { use
     try {
       await action();
       if (reload) await load();
+      return true;
     } catch (actionError) {
       setError(getErrorMessage(actionError));
+      return false;
     } finally {
       setBusy(false);
     }
   };
 
-  const saveRun = () => runAction(async () => {
+  const saveRun = (assignedMemberIds = memberIds) => runAction(async () => {
+    if (demoData) {
+      setMemberIds(assignedMemberIds);
+      setRunId('demo-collection-run');
+      setRunOpenedAt(new Date().toISOString());
+      setQueue(demoData.queue);
+      return;
+    }
     if (!supabase) return;
     const { error: rpcError } = await supabase.rpc('open_collection_run', {
       p_service_date: serviceDate,
-      p_member_ids: memberIds.map((userId) => ({ user_id: userId })),
+      p_member_ids: assignedMemberIds.map((userId) => ({ user_id: userId })),
     });
     if (rpcError) throw rpcError;
     setSuccess(runId ? 'บันทึกผู้เก็บเงินแล้ว' : 'เปิดรอบและมอบหมายผู้เก็บเงินแล้ว');
   });
 
   const closeRun = () => runAction(async () => {
+    if (demoData) {
+      setRunId(null);
+      setRunOpenedAt(null);
+      setMemberIds([]);
+      setQueue([]);
+      setSelectedShop(null);
+      setSuccess('ปิดรอบเก็บเงินแล้ว ยอดค้างยังคงอยู่');
+      return;
+    }
     if (!supabase || !runId) return;
     const { error: rpcError } = await supabase.rpc('close_collection_run', {
       p_collection_run_id: runId,
@@ -852,6 +891,18 @@ export function FinancialOperations({ userRole = 'round_lead', demoData }: { use
         paymentHistory={paymentHistory}
         queue={queue}
         runId={runId}
+        runManagement={<CollectionRunManager
+          busy={busy}
+          collectorAvatarUrls={collectorAvatarUrls}
+          collectors={collectors}
+          failedCollectorAvatars={failedCollectorAvatars}
+          memberIds={memberIds}
+          onCloseRun={() => { void closeRun(); }}
+          onCollectorAvatarError={(path) => setFailedCollectorAvatars((current) => new Set(current).add(path))}
+          onOpenRun={saveRun}
+          openedAt={runOpenedAt}
+          runId={runId}
+        />}
         selectedShop={selectedShop}
         serviceDate={serviceDate}
         todayPayments={todayPayments}
@@ -867,28 +918,6 @@ export function FinancialOperations({ userRole = 'round_lead', demoData }: { use
           runId={runId}
         />}
       /> : null}
-
-      {isManager ? <div className="financial-ops__secondary">
-      <CollectionRunSection
-        collectors={collectors}
-        collectorAvatarUrls={collectorAvatarUrls}
-        failedCollectorAvatars={failedCollectorAvatars}
-        isManager={isManager}
-        memberIds={memberIds}
-        onCloseRun={closeRun}
-        onCollectorAvatarError={(path) => setFailedCollectorAvatars((current) => new Set(current).add(path))}
-        onSaveRun={saveRun}
-        onSelectShop={chooseShop}
-        onToggleCollector={(collectorId, checked) => setMemberIds((current) => checked
-          ? [...current, collectorId]
-          : current.filter((id) => id !== collectorId))}
-        queue={queue}
-        runId={runId}
-        showQueue={!runId}
-        busy={busy}
-      />
-
-      </div> : null}
 
       {selectedShop && (!isManager || window.innerWidth < 1100) ? createPortal(
         <PaymentModal

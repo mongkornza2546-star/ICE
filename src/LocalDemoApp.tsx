@@ -15,7 +15,7 @@ import { ShopSettings } from './ShopSettings';
 import { FinancialOperations } from './FinancialOperations';
 import type { DailyWorkDashboard, DeliveryRound, EmployeeStockState, IceTypeOption, ShopCard, ShopCardHistoryEntry, StockControlSummary } from './types/app';
 import type { IceTypeSetting } from './features/admin-reference-settings/types';
-import type { Approval, DueDateRequest, PaymentHistoryItem, QueueShop, Receivable } from './features/financial-operations/types';
+import type { Approval, Collector, DueDateRequest, PaymentHistoryItem, QueueShop, Receivable } from './features/financial-operations/types';
 
 const collectionServiceDate = '2026-07-31';
 const collectionPaymentProfile = {
@@ -61,6 +61,12 @@ const collectionQueue: QueueShop[] = collectionShops.map(([code, name, amount, d
 const collectionPayments: PaymentHistoryItem[] = [
   { id: 'pay-1', receipt_number: 'RC-260731-001', received_amount: 8500, allocated_amount: 8500, change_amount: 0, payment_method: 'cash', status: 'active', recorded_at: '2026-07-31T09:40:00.000Z', void_reason: null, shops: { code: 'DD1', name: 'ร้านอาหารบ้านสวน' } },
   { id: 'pay-2', receipt_number: 'RC-260731-002', received_amount: 3850, allocated_amount: 3850, change_amount: 0, payment_method: 'bank_transfer', status: 'active', recorded_at: '2026-07-31T10:10:00.000Z', void_reason: null, shops: { code: 'EE2', name: 'ร้านเครื่องดื่มเย็นใจ' } },
+];
+
+const collectionCollectors: Collector[] = [
+  { id: 'collector-so', code: 'AUTH-F5466E', display_name: 'โซ', nickname: 'So', avatar_path: null },
+  { id: 'collector-pid', code: 'AUTH-797F76', display_name: 'ผึด', nickname: 'Iamkeo', avatar_path: null },
+  { id: 'collector-nueng', code: 'AUTH-92D09C', display_name: 'หนึ่ง', nickname: null, avatar_path: null },
 ];
 
 const creditReceivables: Receivable[] = [
@@ -555,6 +561,7 @@ export function LocalDemoApp() {
   const gateway = useMemo(() => buildDemoGateway(), [gatewayVersion]);
 
   if (new URLSearchParams(window.location.search).get('screen') === 'collection-layout') {
+    const collectionRunClosed = new URLSearchParams(window.location.search).get('run') === 'closed';
     return (
       <AdminLayout
         activeView="financial_operations"
@@ -569,6 +576,10 @@ export function LocalDemoApp() {
           receivables: creditReceivables,
           approvals: creditApprovals,
           dueDateRequests: creditDueDateRequests,
+          collectors: collectionCollectors,
+          memberIds: collectionRunClosed ? [] : ['collector-so'],
+          runId: collectionRunClosed ? null : 'demo-collection-run',
+          runOpenedAt: collectionRunClosed ? null : `${collectionServiceDate}T01:00:00.000Z`,
         }} userRole="admin" />
       </AdminLayout>
     );

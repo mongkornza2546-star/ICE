@@ -1,3 +1,53 @@
+## 2026-08-04 — Collection run status bar and assignment modal
+
+**Comparison Target**
+
+- Source visual truth: `/Users/bhusitt./Desktop/ภาพถ่ายหน้าจอ2569-08-04เวลา 06.46.56.png` (2880 × 1800 px) for the existing collection-run area and page design system, plus `/Users/bhusitt./Desktop/ภาพถ่ายหน้าจอ2569-08-04เวลา 06.49.59.png` (342 × 142 px) for the removed aggregate-print action. The requested banner/modal states in the prompt define the intentional replacement behavior.
+- Rendered implementation: [outputs/collection-run-status-closed.png](/Users/bhusitt./Downloads/ส่งน้ำแข็ง/outputs/collection-run-status-closed.png) (1280 × 720 px), [outputs/collection-run-status-active.png](/Users/bhusitt./Downloads/ส่งน้ำแข็ง/outputs/collection-run-status-active.png) (1280 × 720 px), and [outputs/collection-run-modal-desktop.png](/Users/bhusitt./Downloads/ส่งน้ำแข็ง/outputs/collection-run-modal-desktop.png) (1280 × 720 px).
+- Responsive implementation: [outputs/collection-run-status-mobile.png](/Users/bhusitt./Downloads/ส่งน้ำแข็ง/outputs/collection-run-status-mobile.png) (390 × 1122 px full-page) and [outputs/collection-run-modal-mobile.png](/Users/bhusitt./Downloads/ส่งน้ำแข็ง/outputs/collection-run-modal-mobile.png) (390 × 844 px viewport).
+- Combined comparison evidence: [outputs/collection-run-visual-comparison.png](/Users/bhusitt./Downloads/ส่งน้ำแข็ง/outputs/collection-run-visual-comparison.png) (1280 × 765 px). It places the supplied page and print-button references together with the rendered Active status bar.
+- Viewport and normalization: desktop used the in-app browser's native 1280 × 720 CSS viewport at device-pixel ratio 2; returned screenshots were CSS-normalized to 1280 × 720. Mobile used 390 × 844 CSS px. The larger source screenshot is shown scaled-to-fit in the comparison board; browser/macOS chrome was excluded from app-layout judgments.
+- State: unopened daily collection run; assignment modal with three eligible employees and no initial selection; confirmed Active run assigned to `So (โซ)` with Bangkok start time; mobile unopened and modal states.
+- Full-view evidence: the comparison board shows that the new bar retains the existing sidebar/topbar frame, pale operational background, navy hierarchy, muted border language, compact blue actions, and Phosphor icon style while removing the unused print control and the oversized assignment section.
+- Focused-region evidence: the same board places the old `พิมพ์ใบเสร็จรวม` button beside the new Active status-bar region. Separate desktop/mobile modal captures verify option cards, selected-count footer, disabled confirmation state, close control, and responsive bottom-sheet layout.
+
+**Findings**
+
+- No actionable P0/P1/P2 differences remain. The change is an intentional replacement rather than a pixel-identical clone: run management is now visible before the summary cards and uses semantic warning/active tones without altering the surrounding collection workspace.
+- P3: the start time appears on a second compact line in the implementation instead of inside parentheses on the same line. This keeps the status readable with multiple assigned employee names and on narrow screens.
+
+**Required Fidelity Surfaces**
+
+- Fonts and typography: retained the existing Thai font stack, compact 11–13 px operational labels, navy headings, bold assignee name, controlled line height, and truncation-safe layout.
+- Spacing and layout rhythm: the desktop bar is a single 62–64 px row with a right-aligned action; mobile converts to two content columns plus a full-width action. The modal uses the existing 18 px desktop radius and becomes a bottom sheet on mobile with safe-area footer padding.
+- Colors and visual tokens: retained the existing white/navy/blue foundation and muted blue-gray borders. Pale amber communicates unopened status; pale green communicates Active status; both remain visually quieter than primary workflow actions.
+- Image quality and asset fidelity: existing ice logo/sidebar artwork remain untouched. New UI symbols use the project's installed Phosphor icon set and existing employee avatar behavior; no emoji, handcrafted SVG, CSS illustration, or placeholder image was introduced.
+- Copy and content: unopened copy, `เปิดรอบและมอบหมาย`, assignment guidance, selected-employee count, `ยืนยันเปิดรอบ`, Active assignee, Bangkok start time, and `ปิดรอบเก็บเงิน` all match the requested workflow.
+
+**Interaction And Build Checks**
+
+- In-app browser: opened the unopened state, opened the modal, selected `So (โซ)`, confirmed the run, and verified the Active bar with current Bangkok time and the close-run action.
+- Accessibility: modal uses `role="dialog"`, `aria-modal`, labelled heading, initial close-button focus, Tab trapping, Escape/backdrop close, body scroll lock, trigger-focus restoration on cancellation, and close-run focus after successful confirmation. Confirmation remains disabled until at least one employee is selected.
+- Responsive browser check: 390 × 844 CSS px; status bar action remains within the 390 px document width and the modal renders as a readable bottom sheet.
+- Browser console: no errors.
+- Focused financial UI suite: `npm run test:ui -- --run tests/financial-operations.test.tsx` passed, 30/30, including stateful open/close transitions, focus restoration, and open failure handling.
+- Production build: `npm run build` passed. The existing Vite large-chunk warning remains unchanged.
+- `git diff --check`: passed.
+
+**Comparison History**
+
+- Initial implementation preserved the old always-visible collector fieldset below the primary workspace. It was replaced with the requested compact manager-only status bar and portal modal, removing the duplicate lower run-management section.
+- The first automated screenshot used a temporary viewport override whose capture scale cropped the right side. QA reset to the browser's native viewport and re-captured the unopened, Active, and modal states at correctly normalized dimensions before judging layout.
+- Post-fix browser evidence confirms the full desktop action area, mobile width containment, employee selection, Active state transition, and zero console errors.
+
+**Follow-up Polish**
+
+- P3: if the team prefers the exact single-line sample, the Active copy can be changed to `รอบปัจจุบัน: So (โซ) (เริ่ม 08:00 น.)` at desktop widths while retaining the stacked mobile treatment.
+
+final result: passed
+
+---
+
 ## 2026-08-03 — Employee collection queue restoration
 
 **Comparison Target**

@@ -35,6 +35,7 @@ export function CollectionDesk({
   selectedShop,
   busy,
   runId,
+  runManagement,
   paymentPanel,
   onRefresh,
   onHistoryDateChange,
@@ -53,6 +54,7 @@ export function CollectionDesk({
   selectedShop: QueueShop | null;
   busy: boolean;
   runId: string | null;
+  runManagement: ReactNode;
   paymentPanel: ReactNode;
   onRefresh: () => void;
   onHistoryDateChange: (serviceDate: string) => void;
@@ -100,12 +102,13 @@ export function CollectionDesk({
       <header className="collection-desk__header">
         <div><h1>เก็บเงินร้านค้า</h1><p>ติดตามยอดค้างชำระและรับชำระเงินจากร้านค้า</p></div>
         <div>
-          <button className="collection-desk__print" onClick={() => window.print()} type="button"><Printer size={18} />พิมพ์ใบเสร็จรวม</button>
           {runId ? <button className="collection-desk__primary" disabled={busy} onClick={onRefresh} type="button">
             <span aria-hidden="true">＋</span>อัปเดตยอดล่าสุด
           </button> : null}
         </div>
       </header>
+
+      {runManagement}
 
       <section className="collection-desk__stats" aria-label="สรุปการเก็บเงิน">
         {stats.map(({ label, value, note, icon: Icon, tone }) => (

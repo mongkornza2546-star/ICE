@@ -686,35 +686,82 @@ describe('FinancialOperations', () => {
 
   it('opens a run with the selected collector assignment', async () => {
     const user = userEvent.setup();
+    let runOpen = false;
+    mocks.from.mockImplementation((table: string) => {
+      if (table === 'collection_runs') return queryResult(runOpen
+        ? { id: 'run-1', opened_at: '2026-08-03T01:00:00.000Z' }
+        : null);
+      if (table === 'collection_run_members') return queryResult(runOpen ? [{ user_id: 'courier-1' }] : []);
+      return queryResult([]);
+    });
+    mocks.rpc.mockImplementation(async (name: string) => {
+      if (name === 'get_credit_receivables') return { data: [], error: null };
+      if (name === 'get_collection_run_queue') return { data: [queueShop], error: null };
+      if (name === 'get_collection_collectors') return {
+        data: [{ id: 'courier-1', code: 'C001', display_name: 'พนักงานหนึ่ง', nickname: 'น้องหนึ่ง', avatar_path: null }],
+        error: null,
+      };
+      if (name === 'open_collection_run') {
+        runOpen = true;
+        return { data: { collection_run_id: 'run-1' }, error: null };
+      }
+      return { data: [], error: null };
+    });
+
+    render(<FinancialOperations userRole="round_lead" />);
+    const openRunButton = await screen.findByRole('button', { name: /เปิดรอบและมอบหมาย/ });
+    await user.click(openRunButton);
+    await user.click(screen.getByRole('button', { name: 'ยกเลิก' }));
+    await waitFor(() => expect(document.activeElement).toBe(openRunButton));
+    await user.click(openRunButton);
+    await user.click(await screen.findByRole('checkbox', { name: /น้องหนึ่ง/ }));
+    await user.click(screen.getByRole('button', { name: 'ยืนยันเปิดรอบ' }));
+
+    await waitFor(() => expect(mocks.rpc).toHaveBeenCalledWith('open_collection_run', expect.objectContaining({
+      p_member_ids: [{ user_id: 'courier-1' }],
+    })));
+    const closeRunButton = await screen.findByRole('button', { name: 'ปิดรอบเก็บเงิน' });
+    expect(screen.getByText(/น้องหนึ่ง \(พนักงานหนึ่ง\)/)).toBeTruthy();
+    expect(screen.getAllByRole('button', { name: /S001 · ร้านเก็บเงิน/ })).toHaveLength(1);
+    await waitFor(() => expect(document.activeElement).toBe(closeRunButton));
+    expect(screen.queryByRole('dialog', { name: 'เปิดรอบเก็บเงินท้ายวัน' })).toBeNull();
+    expect(mocks.rpc).toHaveBeenCalledWith('get_collection_collectors');
+    expect(mocks.from).not.toHaveBeenCalledWith('users');
+  });
+
+  it('keeps the assignment modal open when opening the run fails', async () => {
+    const user = userEvent.setup();
     mocks.from.mockImplementation((table: string) => {
       if (table === 'collection_runs') return queryResult(null);
       return queryResult([]);
     });
     mocks.rpc.mockImplementation(async (name: string) => {
-      if (name === 'get_credit_receivables') return { data: [], error: null };
       if (name === 'get_collection_collectors') return {
-        data: [{ id: 'courier-1', code: 'C001', display_name: 'พนักงานหนึ่ง', nickname: 'น้องหนึ่ง', avatar_path: null }],
+        data: [{ id: 'courier-1', code: 'C001', display_name: 'พนักงานหนึ่ง', nickname: null, avatar_path: null }],
         error: null,
       };
-      if (name === 'open_collection_run') return { data: { collection_run_id: 'run-1' }, error: null };
+      if (name === 'open_collection_run') return { data: null, error: { message: 'เปิดรอบไม่สำเร็จ' } };
       return { data: [], error: null };
     });
 
     render(<FinancialOperations userRole="round_lead" />);
-    await user.click(await screen.findByRole('checkbox', { name: /น้องหนึ่ง/ }));
-    await user.click(screen.getByRole('button', { name: 'เปิดรอบและมอบหมาย' }));
+    await user.click(await screen.findByRole('button', { name: /เปิดรอบและมอบหมาย/ }));
+    await user.click(await screen.findByRole('checkbox', { name: /พนักงานหนึ่ง/ }));
+    await user.click(screen.getByRole('button', { name: 'ยืนยันเปิดรอบ' }));
 
-    await waitFor(() => expect(mocks.rpc).toHaveBeenCalledWith('open_collection_run', expect.objectContaining({
-      p_member_ids: [{ user_id: 'courier-1' }],
-    })));
-    expect(mocks.rpc).toHaveBeenCalledWith('get_collection_collectors');
-    expect(mocks.from).not.toHaveBeenCalledWith('users');
+    expect((await screen.findByRole('alert')).textContent).toContain('เปิดรอบไม่สำเร็จ');
+    expect(screen.getByRole('dialog', { name: 'เปิดรอบเก็บเงินท้ายวัน' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'ปิดรอบเก็บเงิน' })).toBeNull();
   });
 
   it('keeps active-run management available to managers without duplicating the shop queue', async () => {
     const user = userEvent.setup();
+    let runOpen = true;
     mocks.from.mockImplementation((table: string) => {
-      if (table === 'collection_runs') return queryResult({ id: 'run-1' });
+      if (table === 'collection_runs') return queryResult(runOpen
+        ? { id: 'run-1', opened_at: '2026-08-03T01:00:00.000Z' }
+        : null);
+      if (table === 'collection_run_members') return queryResult(runOpen ? [{ user_id: 'courier-1' }] : []);
       return queryResult([]);
     });
     mocks.rpc.mockImplementation(async (name: string) => {
@@ -723,18 +770,23 @@ describe('FinancialOperations', () => {
         data: [{ id: 'courier-1', code: 'C001', display_name: 'พนักงานหนึ่ง', nickname: null, avatar_path: null }],
         error: null,
       };
-      if (name === 'close_collection_run') return { data: { status: 'closed' }, error: null };
+      if (name === 'close_collection_run') {
+        runOpen = false;
+        return { data: { status: 'closed' }, error: null };
+      }
       return { data: [], error: null };
     });
 
     render(<FinancialOperations userRole="round_lead" />);
 
-    await screen.findByRole('checkbox', { name: /พนักงานหนึ่ง/ });
+    expect(await screen.findByText(/รอบปัจจุบัน:/)).toBeTruthy();
     expect(screen.getAllByRole('button', { name: /S001 · ร้านเก็บเงิน/ })).toHaveLength(1);
-    await user.click(screen.getByRole('button', { name: 'ปิดรอบ' }));
+    await user.click(screen.getByRole('button', { name: 'ปิดรอบเก็บเงิน' }));
     await waitFor(() => expect(mocks.rpc).toHaveBeenCalledWith('close_collection_run', {
       p_collection_run_id: 'run-1',
     }));
+    expect(await screen.findByText('ยังไม่ได้เปิดรอบเก็บเงินประจำวัน')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /S001 · ร้านเก็บเงิน/ })).toBeNull();
   });
 
   it('does not offer a manager-only open-run action to couriers', async () => {
@@ -824,6 +876,7 @@ describe('FinancialOperations', () => {
   });
 
   it('shows a collector nickname and the configured profile photo', async () => {
+    const user = userEvent.setup();
     mocks.from.mockImplementation((table: string) => {
       if (table === 'collection_runs') return queryResult(null);
       return queryResult([]);
@@ -841,14 +894,16 @@ describe('FinancialOperations', () => {
       error: null,
     });
 
-    const { container } = render(<FinancialOperations userRole="round_lead" />);
+    render(<FinancialOperations userRole="round_lead" />);
 
-    await screen.findByText('น้องหนึ่ง');
+    await user.click(await screen.findByRole('button', { name: /เปิดรอบและมอบหมาย/ }));
+    await screen.findByText(/น้องหนึ่ง/);
     await waitFor(() => expect(mocks.createSignedUrls).toHaveBeenCalledWith(['courier-1/avatar.webp'], 3600));
-    expect(container.querySelector('img[src="https://cdn.example.test/courier-1/avatar.webp"]')).not.toBeNull();
+    expect(document.querySelector('img[src="https://cdn.example.test/courier-1/avatar.webp"]')).not.toBeNull();
   });
 
   it('keeps the collector fallback visible when avatar signing rejects', async () => {
+    const user = userEvent.setup();
     mocks.from.mockImplementation((table: string) => {
       if (table === 'collection_runs') return queryResult(null);
       return queryResult([]);
@@ -862,12 +917,13 @@ describe('FinancialOperations', () => {
     });
     mocks.createSignedUrls.mockRejectedValue(new Error('storage unavailable'));
 
-    const { container } = render(<FinancialOperations userRole="round_lead" />);
+    render(<FinancialOperations userRole="round_lead" />);
 
+    await user.click(await screen.findByRole('button', { name: /เปิดรอบและมอบหมาย/ }));
     await screen.findByText('พนักงานหนึ่ง');
     await waitFor(() => expect(mocks.createSignedUrls).toHaveBeenCalled());
-    expect(container.querySelector('.financial-ops__collector-avatar img')).toBeNull();
-    expect(container.querySelector('.financial-ops__collector-avatar svg')).not.toBeNull();
+    expect(document.querySelector('.financial-ops__collector-avatar img')).toBeNull();
+    expect(document.querySelector('.financial-ops__collector-avatar svg')).not.toBeNull();
   });
 
   it('does not render a separate recent-payment history section', async () => {
