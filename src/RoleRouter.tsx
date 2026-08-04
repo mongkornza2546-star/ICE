@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Session } from '@supabase/supabase-js';
 import { supabase } from './lib/supabase';
-import { AdminLayout, type AdminView } from './AdminLayout';
+import { AdminLayout, type AdminView, type FinancialPage } from './AdminLayout';
 import { ManagerDashboard } from './ManagerDashboard';
 import { FactoryOrderPage } from './FactoryOrderPage';
 import { AdminReferenceSettings } from './AdminReferenceSettings';
@@ -42,6 +42,7 @@ export function RoleRouter({
   const [profileLoading, setProfileLoading] = useState(true);
   const [profileError, setProfileError] = useState<string | null>(null);
   const [activeView, setActiveView] = useState<AdminView>('manager_overview');
+  const [financialPage, setFinancialPage] = useState<FinancialPage>('collection');
   const [courierView, setCourierView] = useState<'withdrawal' | 'pos' | 'collection'>('pos');
   const [billingServiceDate, setBillingServiceDate] = useState(() => toBangkokDateString());
   const [currentBangkokDate, setCurrentBangkokDate] = useState(() => toBangkokDateString());
@@ -99,12 +100,13 @@ export function RoleRouter({
       const saved = readNavigation(profile.id);
       navigationOwner.current = profile.id;
       setActiveView(saved?.activeView ? saved.activeView as AdminView : 'manager_overview');
+      setFinancialPage(saved?.financialPage === 'credit' ? 'credit' : 'collection');
       setCourierView(saved?.courierView ?? 'pos');
       setBillingServiceDate(currentBangkokDate);
       return;
     }
-    writeNavigation(profile.id, { activeView, courierView, billingServiceDate });
-  }, [activeView, billingServiceDate, courierView, currentBangkokDate, profile]);
+    writeNavigation(profile.id, { activeView, financialPage, courierView, billingServiceDate });
+  }, [activeView, billingServiceDate, courierView, currentBangkokDate, financialPage, profile]);
 
   useEffect(() => {
     const refreshCurrentDate = () => setCurrentBangkokDate(toBangkokDateString());
@@ -303,7 +305,9 @@ export function RoleRouter({
     <AdminLayout
       activeView={currentView}
       allowedViews={allowedViews}
+      financialPage={financialPage}
       onNavigate={navigate}
+      onFinancialPageChange={setFinancialPage}
       onServiceDateChange={profile.role === 'admin' && currentView === 'delivery'
         ? changeBillingServiceDate
         : undefined}
@@ -366,7 +370,7 @@ export function RoleRouter({
       )}
       {visitedViews.has('financial_operations') && (
         <KeepAlive active={currentView === 'financial_operations'}>
-          <FinancialOperations userRole={profile.role} />
+          <FinancialOperations managerPage={financialPage} userRole={profile.role} />
         </KeepAlive>
       )}
     </AdminLayout>

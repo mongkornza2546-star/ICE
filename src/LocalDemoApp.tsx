@@ -558,6 +558,7 @@ function buildDemoGateway(): EmployeeDeliveryGateway & { reset(): void } {
 export function LocalDemoApp() {
   const [gatewayVersion, setGatewayVersion] = useState(0);
   const [draftState, setDraftState] = useState({ dirty: false, submitting: false });
+  const [financialPage, setFinancialPage] = useState<'collection' | 'credit'>('collection');
   const gateway = useMemo(() => buildDemoGateway(), [gatewayVersion]);
 
   if (new URLSearchParams(window.location.search).get('screen') === 'collection-layout') {
@@ -566,7 +567,9 @@ export function LocalDemoApp() {
       <AdminLayout
         activeView="financial_operations"
         allowedViews={['manager_overview', 'factory_order', 'delivery', 'financial_operations', 'stock_operations', 'location_management', 'shops', 'stock_audit', 'reference_settings']}
+        financialPage={financialPage}
         onNavigate={() => undefined}
+        onFinancialPageChange={setFinancialPage}
         profileLabel="bhusit.tanchavanic..."
       >
         <FinancialOperations demoData={{
@@ -580,7 +583,7 @@ export function LocalDemoApp() {
           memberIds: collectionRunClosed ? [] : ['collector-so'],
           runId: collectionRunClosed ? null : 'demo-collection-run',
           runOpenedAt: collectionRunClosed ? null : `${collectionServiceDate}T01:00:00.000Z`,
-        }} userRole="admin" />
+        }} managerPage={financialPage} userRole="admin" />
       </AdminLayout>
     );
   }

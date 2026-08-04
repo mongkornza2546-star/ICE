@@ -30,6 +30,8 @@ export type AdminView =
   | 'shops'
   | 'reference_settings';
 
+export type FinancialPage = 'collection' | 'credit';
+
 const viewMeta: Record<AdminView, { label: string; shortLabel: string; icon: typeof Truck }> = {
   manager_overview: { label: 'งานวันนี้', shortLabel: 'งานวันนี้', icon: ClipboardText },
   factory_order: { label: 'สั่งน้ำแข็งจากโรงงาน', shortLabel: 'สั่งน้ำแข็ง', icon: ShoppingCart },
@@ -48,6 +50,8 @@ export function AdminLayout({
   allowedViews,
   profileLabel,
   onNavigate,
+  financialPage = 'collection',
+  onFinancialPageChange,
   serviceDate,
   onServiceDateChange,
   onSignOut,
@@ -58,6 +62,8 @@ export function AdminLayout({
   allowedViews: AdminView[];
   profileLabel: string;
   onNavigate: (view: AdminView) => void;
+  financialPage?: FinancialPage;
+  onFinancialPageChange?: (page: FinancialPage) => void;
   serviceDate?: string;
   onServiceDateChange?: (serviceDate: string) => void;
   onSignOut?: () => void;
@@ -66,6 +72,7 @@ export function AdminLayout({
 }) {
   const [isDesktopLayout, setIsDesktopLayout] = useState(() => window.innerWidth >= 901);
   const [navigationExpanded, setNavigationExpanded] = useState(() => window.innerWidth >= 901);
+  const [financialNavigationExpanded, setFinancialNavigationExpanded] = useState(activeView === 'financial_operations');
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const todayServiceDate = toBangkokDateString();
   const displayedServiceDate = serviceDate ?? todayServiceDate;
@@ -96,6 +103,10 @@ export function AdminLayout({
     return () => window.removeEventListener('keydown', closeOnEscape);
   }, [isDesktopLayout, navigationExpanded]);
 
+  useEffect(() => {
+    if (activeView === 'financial_operations') setFinancialNavigationExpanded(true);
+  }, [activeView]);
+
   const profileInitial = profileLabel.trim().charAt(0).toLocaleUpperCase() || 'U';
 
   return (
@@ -114,6 +125,52 @@ export function AdminLayout({
         <nav className="admin-nav" aria-label="เมนูหัวหน้า">
           {allowedViews.map((view) => {
             const Icon = viewMeta[view].icon;
+            if (view === 'financial_operations') {
+              return (
+                <div className="admin-nav__group" key={view}>
+                  <button
+                    aria-expanded={financialNavigationExpanded}
+                    className={`admin-nav__item ${activeView === view ? 'admin-nav__item--active' : ''}`}
+                    onClick={() => {
+                      if (activeView !== view) {
+                        onNavigate(view);
+                        onFinancialPageChange?.('collection');
+                        setFinancialNavigationExpanded(true);
+                        return;
+                      }
+                      setFinancialNavigationExpanded((expanded) => !expanded);
+                    }}
+                    type="button"
+                  >
+                    <Icon aria-hidden="true" size={21} weight={activeView === view ? 'fill' : 'regular'} />
+                    <span>{viewMeta[view].label}</span>
+                    <CaretDown aria-hidden="true" className="admin-nav__group-caret" size={15} />
+                  </button>
+                  {financialNavigationExpanded ? (
+                    <div className="admin-nav__subnav" aria-label="เมนูย่อยเก็บเงินและลูกหนี้">
+                      <button
+                        aria-current={activeView === view && financialPage === 'collection' ? 'page' : undefined}
+                        onClick={() => {
+                          onNavigate(view);
+                          onFinancialPageChange?.('collection');
+                          if (!isDesktopLayout) setNavigationExpanded(false);
+                        }}
+                        type="button"
+                      >เก็บเงินร้านค้า</button>
+                      <button
+                        aria-current={activeView === view && financialPage === 'credit' ? 'page' : undefined}
+                        onClick={() => {
+                          onNavigate(view);
+                          onFinancialPageChange?.('credit');
+                          if (!isDesktopLayout) setNavigationExpanded(false);
+                        }}
+                        type="button"
+                      >จัดการลูกหนี้ &amp; เครดิต</button>
+                    </div>
+                  ) : null}
+                </div>
+              );
+            }
             return (
               <button
                 className={`admin-nav__item ${activeView === view ? 'admin-nav__item--active' : ''}`}

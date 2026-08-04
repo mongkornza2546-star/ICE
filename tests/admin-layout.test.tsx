@@ -4,6 +4,27 @@ import { describe, expect, it, vi } from 'vitest';
 import { AdminLayout } from '../src/AdminLayout';
 
 describe('AdminLayout', () => {
+  it('shows collection and credit management as financial sidebar children', async () => {
+    const user = userEvent.setup();
+    const onFinancialPageChange = vi.fn();
+    render(
+      <AdminLayout
+        activeView="financial_operations"
+        allowedViews={['financial_operations']}
+        financialPage="collection"
+        onFinancialPageChange={onFinancialPageChange}
+        onNavigate={() => undefined}
+        profileLabel="Admin"
+      >
+        <p>Financial</p>
+      </AdminLayout>,
+    );
+
+    expect(screen.getByRole('button', { name: 'เก็บเงินร้านค้า' }).getAttribute('aria-current')).toBe('page');
+    await user.click(screen.getByRole('button', { name: 'จัดการลูกหนี้ & เครดิต' }));
+    expect(onFinancialPageChange).toHaveBeenCalledWith('credit');
+  });
+
   it('lets an admin choose a past billing date without allowing a future date', async () => {
     const user = userEvent.setup();
     const onServiceDateChange = vi.fn();

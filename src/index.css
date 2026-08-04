@@ -59,6 +59,15 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .admin-nav__item:hover svg { color: #075ed8; }
 .admin-nav__item--active { color: #fff; background: #0b68df; box-shadow: 0 6px 15px rgba(11, 104, 223, .22); }
 .admin-nav__item--active svg { color: #fff; }
+.admin-nav__group { display: grid; gap: 4px; }
+.admin-nav__group-caret { margin-left: auto; transition: transform 150ms ease; }
+.admin-nav__item[aria-expanded="false"] .admin-nav__group-caret { transform: rotate(-90deg); }
+.admin-nav__subnav { display: grid; gap: 3px; padding: 2px 0 3px 35px; }
+.admin-nav__subnav button { position: relative; min-height: 36px; padding: 7px 9px 7px 14px; border: 0; border-radius: 7px; color: #526a83; background: transparent; font: inherit; font-size: .78rem; font-weight: 600; text-align: left; }
+.admin-nav__subnav button::before { content: ''; position: absolute; left: 1px; top: 50%; width: 5px; height: 5px; border-radius: 50%; background: #a6b8ca; transform: translateY(-50%); }
+.admin-nav__subnav button:hover { color: #075ed8; background: #eff6ff; }
+.admin-nav__subnav button[aria-current="page"] { color: #075ed8; background: #eaf3ff; }
+.admin-nav__subnav button[aria-current="page"]::before { background: #0b68df; }
 .sidebar-status { display: flex; align-items: flex-start; gap: 9px; margin-top: auto; padding: 12px; border: 1px solid #dce6f2; border-radius: 10px; background: rgba(255,255,255,.92); box-shadow: 0 5px 18px rgba(22, 65, 112, .08); }
 .sidebar-status span:last-child { display: grid; gap: 2px; }
 .sidebar-status small { color: #718198; font-size: .68rem; }

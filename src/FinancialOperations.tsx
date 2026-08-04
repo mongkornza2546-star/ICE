@@ -50,7 +50,15 @@ type FinancialOperationsDemoData = {
   runOpenedAt?: string | null;
 };
 
-export function FinancialOperations({ userRole = 'round_lead', demoData }: { userRole?: AppRole; demoData?: FinancialOperationsDemoData }) {
+export function FinancialOperations({
+  userRole = 'round_lead',
+  demoData,
+  managerPage = 'collection',
+}: {
+  userRole?: AppRole;
+  demoData?: FinancialOperationsDemoData;
+  managerPage?: 'collection' | 'credit';
+}) {
   const serviceDate = demoData?.serviceDate ?? toBangkokDateString();
   const initialDemoRunId = demoData
     ? demoData.runId === undefined ? 'demo-collection-run' : demoData.runId
@@ -851,7 +859,7 @@ export function FinancialOperations({ userRole = 'round_lead', demoData }: { use
         </div>
       </div> : null}
 
-      {isManager ? <CollectionDesk
+      {isManager && managerPage === 'collection' ? <CollectionDesk
         busy={busy}
         historyDate={historyDate}
         onHistoryDateChange={changeHistoryDate}
@@ -909,20 +917,20 @@ export function FinancialOperations({ userRole = 'round_lead', demoData }: { use
         selectedShop={selectedShop}
         serviceDate={serviceDate}
         todayPayments={todayPayments}
-        creditCount={receivables.length}
-        creditManagement={<ManagerFinancialSections
-          approvals={approvals}
-          busy={busy}
-          dueDateRequests={dueDateRequests}
-          onDecide={decide}
-          onDecideDueDateRequest={decideDueDateRequest}
-          onToggleCreditCollectionAssignment={toggleCreditCollectionAssignment}
-          receivables={receivables}
-          runId={runId}
-        />}
       /> : null}
 
-      {selectedShop && (!isManager || window.innerWidth < 1100) ? createPortal(
+      {isManager && managerPage === 'credit' ? <ManagerFinancialSections
+        approvals={approvals}
+        busy={busy}
+        dueDateRequests={dueDateRequests}
+        onDecide={decide}
+        onDecideDueDateRequest={decideDueDateRequest}
+        onToggleCreditCollectionAssignment={toggleCreditCollectionAssignment}
+        receivables={receivables}
+        runId={runId}
+      /> : null}
+
+      {selectedShop && (!isManager || managerPage === 'collection') && (!isManager || window.innerWidth < 1100) ? createPortal(
         <PaymentModal
           allocatedAmount={allocatedAmount}
           amount={amount}

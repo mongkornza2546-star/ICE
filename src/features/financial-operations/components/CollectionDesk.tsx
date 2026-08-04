@@ -14,7 +14,7 @@ import { shiftServiceDate } from '../../../lib/serviceDate';
 import type { PaymentHistoryItem, QueueShop } from '../types';
 import { money, paymentMethodLabel, receiptDateTime } from '../utils';
 
-type QueueFilter = 'outstanding' | 'collected' | 'all' | 'credit';
+type QueueFilter = 'outstanding' | 'collected' | 'all';
 
 type CollectionRow = {
   id: string;
@@ -68,8 +68,6 @@ export function CollectionDesk({
   onSelectShop,
   onClearShop,
   onVoidPayment,
-  creditManagement,
-  creditCount,
 }: {
   queue: QueueShop[];
   todayPayments: PaymentHistoryItem[];
@@ -88,8 +86,6 @@ export function CollectionDesk({
   onSelectShop: (shop: QueueShop, trigger: HTMLButtonElement) => void;
   onClearShop: () => void;
   onVoidPayment: (payment: PaymentHistoryItem) => void;
-  creditManagement: ReactNode;
-  creditCount: number;
 }) {
   const [filter, setFilter] = useState<QueueFilter>('outstanding');
   const [query, setQuery] = useState('');
@@ -164,8 +160,8 @@ export function CollectionDesk({
 
   const changeFilter = (nextFilter: QueueFilter) => {
     setFilter(nextFilter);
-    if (nextFilter === 'outstanding' || nextFilter === 'credit') setSelectedPayment(null);
-    if (nextFilter === 'collected' || nextFilter === 'credit') onClearShop();
+    if (nextFilter === 'outstanding') setSelectedPayment(null);
+    if (nextFilter === 'collected') onClearShop();
   };
 
   return (
@@ -190,15 +186,14 @@ export function CollectionDesk({
         ))}
       </section>
 
-      <div className={`collection-desk__workspace ${filter === 'credit' ? 'collection-desk__workspace--credit' : ''}`}>
+      <div className="collection-desk__workspace">
         <section className="collection-desk__queue">
           <div className="collection-desk__tabs" role="tablist" aria-label="กรองรายการร้านค้า">
             <button aria-selected={filter === 'outstanding'} onClick={() => changeFilter('outstanding')} role="tab" type="button">ค้างชำระทั้งหมด <b>{queue.length}</b></button>
             <button aria-selected={filter === 'collected'} onClick={() => changeFilter('collected')} role="tab" type="button">ประวัติรับเงิน <b>{paymentHistory.length}</b></button>
             <button aria-selected={filter === 'all'} onClick={() => changeFilter('all')} role="tab" type="button">ทั้งหมด</button>
-            <button aria-selected={filter === 'credit'} onClick={() => changeFilter('credit')} role="tab" type="button">จัดการลูกหนี้ &amp; เครดิต <b>{creditCount}</b></button>
           </div>
-          {filter === 'credit' ? <div className="collection-desk__credit-tab">{creditManagement}</div> : <>
+          <>
             <div className="collection-desk__filters">
               <label><MagnifyingGlass size={18} /><input onChange={(event) => setQuery(event.target.value)} placeholder="ค้นหาร้านค้า / เลขที่เอกสาร" value={query} /></label>
               <select aria-label="สถานะ" onChange={(event) => changeFilter(event.target.value as QueueFilter)} value={filter}>
@@ -254,10 +249,10 @@ export function CollectionDesk({
               {visibleRows.length === 0 ? <p>ไม่พบรายการที่ค้นหา</p> : null}
             </div>
             <footer><span>แสดง {visibleRows.length ? `1 - ${visibleRows.length}` : '0'} จาก {totalCount} รายการ</span><span><button disabled type="button">‹</button><b>1</b><button disabled type="button">›</button></span><select aria-label="จำนวนรายการต่อหน้า"><option>20 รายการ/หน้า</option></select></footer>
-          </>}
+          </>
         </section>
 
-        {filter !== 'credit' ? <aside className="collection-desk__detail">
+        <aside className="collection-desk__detail">
           <div className="collection-desk__detail-title">รายละเอียดการรับเงิน</div>
           {selectedPayment ? <section className="collection-desk__payment-detail" aria-label={`รายละเอียด ${selectedPayment.receipt_number}`}>
             <header>
@@ -276,7 +271,7 @@ export function CollectionDesk({
               {selectedPayment.status === 'active' ? <><button disabled={busy} onClick={() => onPrintReceipt(selectedPayment)} type="button"><Printer aria-hidden="true" size={16} />พิมพ์ซ้ำ</button><button disabled={busy} onClick={() => onVoidPayment(selectedPayment)} type="button">ยกเลิกรายการ</button></> : null}
             </div>
           </section> : paymentPanel ?? <div className="collection-desk__empty-panel"><Coins size={38} weight="duotone" /><strong>เลือกร้านค้าเพื่อรับชำระเงิน</strong><span>รายละเอียดบิลและแบบฟอร์มรับเงินจะแสดงที่นี่</span></div>}
-        </aside> : null}
+        </aside>
       </div>
     </div>
   );

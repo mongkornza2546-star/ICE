@@ -170,8 +170,6 @@ describe('FinancialOperations', () => {
     };
     render(<CollectionDesk
       busy={false}
-      creditCount={0}
-      creditManagement={null}
       historyDate="2026-08-03"
       onHistoryDateChange={() => undefined}
       onOpenReceipt={onOpenReceipt}
@@ -253,8 +251,6 @@ describe('FinancialOperations', () => {
 
     render(<CollectionDesk
       busy={false}
-      creditCount={0}
-      creditManagement={null}
       historyDate="2026-08-03"
       onClearShop={() => undefined}
       onHistoryDateChange={() => undefined}
@@ -1044,8 +1040,7 @@ describe('FinancialOperations', () => {
       return { data: [], error: null };
     });
 
-    render(<FinancialOperations userRole="round_lead" />);
-    await user.click(await screen.findByRole('tab', { name: /จัดการลูกหนี้ & เครดิต/ }));
+    render(<FinancialOperations managerPage="credit" userRole="round_lead" />);
     await user.click(await screen.findByRole('button', { name: 'ลูกหนี้เครดิต' }));
     expect(await screen.findByText(/เกินกำหนด 2 วัน/)).not.toBeNull();
     expect(screen.getByText(/วงเงินคงเหลือ ไม่จำกัด/)).not.toBeNull();
@@ -1078,9 +1073,8 @@ describe('FinancialOperations', () => {
       return { data: [], error: null };
     });
 
-    render(<FinancialOperations userRole="round_lead" />);
+    render(<FinancialOperations managerPage="credit" userRole="round_lead" />);
 
-    await user.click(await screen.findByRole('tab', { name: /จัดการลูกหนี้ & เครดิต/ }));
     expect(await screen.findByRole('heading', { name: 'จัดการลูกหนี้ & เครดิต' })).not.toBeNull();
     await user.click(screen.getByRole('button', { name: 'Aging Report' }));
 
