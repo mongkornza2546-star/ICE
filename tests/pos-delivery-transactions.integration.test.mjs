@@ -45,6 +45,10 @@ const collectionShopCardsAndChargeNumbers = readFileSync(
   new URL('../supabase/migrations/0109_collection_shop_cards_and_charge_numbers.sql', import.meta.url),
   'utf8',
 );
+const paymentReceiptNumbers = readFileSync(
+  new URL('../supabase/migrations/0110_payment_receipt_numbers.sql', import.meta.url),
+  'utf8',
+);
 const collectionCarryForwardBalances = readFileSync(
   new URL('../supabase/migrations/0115_collection_carry_forward_balances.sql', import.meta.url),
   'utf8',
@@ -63,6 +67,10 @@ const creditCollectionsAndDueDateExtensions = readFileSync(
 );
 const disableDailyStockRefill = readFileSync(
   new URL('../supabase/migrations/0121_disable_daily_stock_refill.sql', import.meta.url),
+  'utf8',
+);
+const creditAccountManagement = readFileSync(
+  new URL('../supabase/migrations/0122_credit_account_management.sql', import.meta.url),
   'utf8',
 );
 
@@ -305,6 +313,21 @@ async function createDatabase(t, { applyCollectionShopCards = true } = {}) {
       reason text,
       occurred_at timestamptz not null default now()
     );
+    create function public.audit_row_update() returns trigger language plpgsql as $$
+    begin
+      if auth.uid() is not null then
+        insert into public.audit_logs (actor_id, entity_type, entity_id, action, before_value, after_value, reason)
+        values (
+          auth.uid(), tg_table_name, new.id,
+          case when to_jsonb(old) ->> 'status' <> 'cancelled' and to_jsonb(new) ->> 'status' = 'cancelled'
+            then 'cancelled' else 'updated' end,
+          to_jsonb(old), to_jsonb(new),
+          case when to_jsonb(new) ->> 'status' = 'cancelled' then to_jsonb(new) ->> 'cancellation_reason' end
+        );
+      end if;
+      return new;
+    end;
+    $$;
     create table public.test_opening_balances (
       service_date date not null,
       location_id uuid not null references public.stock_locations(id),
@@ -511,9 +534,11 @@ async function createDatabase(t, { applyCollectionShopCards = true } = {}) {
   await db.exec(deliveryFinancialResponseItemLabels);
   if (applyCollectionShopCards) {
     await db.exec(collectionShopCardsAndChargeNumbers);
+    await db.exec(paymentReceiptNumbers);
     await db.exec(collectionCarryForwardBalances);
     await db.exec(collectionQueueChargeItems);
     await db.exec(creditCollectionsAndDueDateExtensions);
+    await db.exec(creditAccountManagement);
   }
   await db.exec(disableDailyStockRefill);
   await db.exec(`
@@ -1589,6 +1614,42 @@ test('payment recording enforces actor scope, collection scope, and stored evide
   assert.equal(Number(payment.rows[0].result.allocated_amount), 18);
 });
 
+test('credit account settings are admin-only, audited, and suspension blocks new credit', async (t) => {
+  const db = await createDatabase(t);
+  await db.exec(`
+    update public.auth_context set user_id = '${ADMIN_ID}', app_role = 'admin';
+    update public.shop_payment_profiles
+    set allowed_payment_terms = array['credit']::public.payment_term[],
+        default_payment_term = 'credit', allow_outstanding = true,
+        credit_due_rule = 'net_days', credit_days = 30, credit_limit = 500
+    where shop_id = '${SHOP_ID}';
+  `);
+
+  await db.query(`select public.update_credit_account_settings(
+    '${SHOP_ID}', '{"credit_limit":400,"credit_suspended":true,"credit_suspension_reason":"manual review"}'::jsonb
+  )`);
+  const audited = await db.query(`
+    select after_value from public.audit_logs
+    where entity_type = 'shop_payment_profiles' and action = 'updated'
+    order by occurred_at desc limit 1
+  `);
+  assert.equal(audited.rows[0].after_value.credit_suspended, true);
+  assert.equal(audited.rows[0].after_value.credit_limit, 400);
+
+  await db.exec(`update public.auth_context set user_id = '${COURIER_ID}', app_role = 'courier'`);
+  await assert.rejects(
+    db.query(`select public.update_credit_account_settings('${SHOP_ID}', '{"credit_limit":300}'::jsonb)`),
+    /only an admin/i,
+  );
+  await assert.rejects(
+    db.query(`select public.record_delivery(
+      '${STOP_ID}', '${itemPayload(1)}'::jsonb, 'delivered', null, null,
+      '92000000-0000-4000-8000-000000000007', 'credit'
+    )`),
+    /credit is suspended/i,
+  );
+});
+
 test('couriers collect prior balances together with new charges from today', async (t) => {
   const db = await createDatabase(t);
   const priorDelivery = await db.query(`
@@ -1705,7 +1766,7 @@ test('couriers collect prior balances together with new charges from today', asy
   assert.equal(Number(finalPayment.rows[0].result.allocated_amount), 26);
 });
 
-test('credit collection requires a due charge explicitly assigned to the run', async (t) => {
+test('credit collection includes due charges automatically and supports planned future collection', async (t) => {
   const db = await createDatabase(t);
   await db.exec(`
     update public.shop_payment_profiles
@@ -1736,13 +1797,16 @@ test('credit collection requires a due charge explicitly assigned to the run', a
       date '${SERVICE_DATE}', '[{"user_id":"${OTHER_COURIER_ID}"}]'::jsonb
     ) as result
   `);
-  await assert.rejects(
-    db.query(`select public.set_credit_charge_collection_assignment(
-      '${todayRun.rows[0].result.collection_run_id}', '${chargeId}', true
-    )`),
-    /due by this run/i,
-  );
+  await db.query(`select public.set_credit_charge_collection_assignment(
+    '${todayRun.rows[0].result.collection_run_id}', '${chargeId}', true
+  )`);
+  await db.exec(`update public.auth_context set user_id = '${OTHER_COURIER_ID}', app_role = 'courier'`);
+  const plannedQueue = await db.query(`
+    select public.get_collection_run_queue('${todayRun.rows[0].result.collection_run_id}') as result
+  `);
+  assert.equal(plannedQueue.rows[0].result[0].charges[0].charge_id, chargeId);
 
+  await db.exec(`update public.auth_context set user_id = '${ADMIN_ID}', app_role = 'admin'`);
   const dueRun = await db.query(`
     select public.open_collection_run(
       date '${dueDate}', '[{"user_id":"${OTHER_COURIER_ID}"}]'::jsonb
@@ -1750,39 +1814,14 @@ test('credit collection requires a due charge explicitly assigned to the run', a
   `);
   const dueRunId = dueRun.rows[0].result.collection_run_id;
   await db.exec(`update public.auth_context set user_id = '${OTHER_COURIER_ID}', app_role = 'courier'`);
-  const unassignedQueue = await db.query(`
+  const automaticQueue = await db.query(`
     select public.get_collection_run_queue('${dueRunId}') as result
   `);
-  assert.deepEqual(unassignedQueue.rows[0].result, []);
+  const automaticCharges = automaticQueue.rows[0].result[0].charges;
+  assert.equal(automaticCharges.length, 2);
   await assert.rejects(
     db.query(`select public.record_payment(
-      '${SHOP_ID}', '[{"charge_id":"${chargeId}","amount":18}]'::jsonb,
-      'cash', 18, null, null, '${dueRunId}', 18, null,
-      '92000000-0000-4000-8000-000000000002'
-    )`),
-    /assigned collection scope/i,
-  );
-  await assert.rejects(
-    db.query(`select public.request_credit_due_date_change(
-      '${chargeId}', date '${dueDate}' + 7, 'customer requested more time'
-    )`),
-    /not assigned to the current collector/i,
-  );
-
-  await db.exec(`
-    update public.auth_context set user_id = '${ADMIN_ID}', app_role = 'admin';
-    select public.set_credit_charge_collection_assignment('${dueRunId}', '${chargeId}', true);
-    select public.set_credit_charge_collection_assignment('${dueRunId}', '${secondChargeId}', true);
-    update public.auth_context set user_id = '${OTHER_COURIER_ID}', app_role = 'courier';
-  `);
-  const assignedQueue = await db.query(`
-    select public.get_collection_run_queue('${dueRunId}') as result
-  `);
-  const assignedCharges = assignedQueue.rows[0].result[0].charges;
-  assert.equal(assignedCharges.length, 2);
-  await assert.rejects(
-    db.query(`select public.record_payment(
-      '${SHOP_ID}', '[{"charge_id":"${assignedCharges[1].charge_id}","amount":18}]'::jsonb,
+      '${SHOP_ID}', '[{"charge_id":"${automaticCharges[1].charge_id}","amount":18}]'::jsonb,
       'cash', 18, null, null, '${dueRunId}', 36, null,
       '92000000-0000-4000-8000-000000000006'
     )`),
@@ -1790,12 +1829,28 @@ test('credit collection requires a due charge explicitly assigned to the run', a
   );
   const payment = await db.query(`
     select public.record_payment(
-      '${SHOP_ID}', '[{"charge_id":"${assignedCharges[0].charge_id}","amount":18}]'::jsonb,
+      '${SHOP_ID}', '[{"charge_id":"${automaticCharges[0].charge_id}","amount":18}]'::jsonb,
       'cash', 18, null, null, '${dueRunId}', 36, null,
       '92000000-0000-4000-8000-000000000003'
     ) as result
   `);
   assert.equal(Number(payment.rows[0].result.allocated_amount), 18);
+
+  await db.exec(`update public.auth_context set user_id = '${ADMIN_ID}', app_role = 'admin'`);
+  const receivableSummary = await db.query(`
+    select public.get_credit_receivables(date '${dueDate}') as result
+  `);
+  assert.deepEqual(receivableSummary.rows[0].result[0].charges, []);
+  assert.deepEqual(receivableSummary.rows[0].result[0].payments, []);
+  assert.equal(Number(receivableSummary.rows[0].result[0].outstanding_amount), 18);
+  assert.equal(Number(receivableSummary.rows[0].result[0].due_today_amount), 18);
+
+  const receivableDetail = await db.query(`
+    select public.get_credit_receivable_detail('${SHOP_ID}', date '${dueDate}') as result
+  `);
+  assert.equal(receivableDetail.rows[0].result.charges.length, 2);
+  assert.equal(receivableDetail.rows[0].result.payments.length, 1);
+  assert.equal(receivableDetail.rows[0].result.payments[0].allocations[0].charge_id, automaticCharges[0].charge_id);
 });
 
 test('due-date approval is auditable, guarded, and preserves unlimited credit', async (t) => {

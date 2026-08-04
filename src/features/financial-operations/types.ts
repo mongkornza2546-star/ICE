@@ -45,12 +45,49 @@ export type Receivable = {
   shop_id: string;
   shop_code: string;
   shop_name: string;
+  building_name?: string | null;
+  zone_name?: string | null;
+  responsible_name?: string | null;
+  credit_days?: number | null;
   credit_limit: number | null;
   available_credit_amount: number | null;
+  credit_suspended?: boolean;
+  credit_suspension_reason?: string | null;
   outstanding_amount: number;
   overdue_amount: number;
+  due_today_amount?: number;
+  due_today_charge_count?: number;
+  overdue_charge_count?: number;
+  aging_current_amount?: number;
+  aging_1_7_amount?: number;
+  aging_8_15_amount?: number;
+  aging_16_30_amount?: number;
+  aging_over_30_amount?: number;
   oldest_due_date: string | null;
+  last_payment_at?: string | null;
   charges: ReceivableCharge[];
+  payments?: ReceivablePayment[];
+};
+
+export type ReceivableDetail = {
+  charges: ReceivableCharge[];
+  payments: ReceivablePayment[];
+};
+
+export type ReceivablePayment = {
+  id: string;
+  receipt_number: string;
+  received_amount: number;
+  allocated_amount: number;
+  payment_method: PaymentMethod;
+  status: 'active' | 'voided';
+  recorded_at: string;
+  recorded_by: string | null;
+  allocations: Array<{
+    charge_id: string;
+    charge_number: string;
+    amount: number;
+  }>;
 };
 
 export type ReceivableCharge = {

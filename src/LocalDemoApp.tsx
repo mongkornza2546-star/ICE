@@ -71,21 +71,27 @@ const collectionCollectors: Collector[] = [
 
 const creditReceivables: Receivable[] = [
   {
-    shop_id: 'credit-aa4', shop_code: 'AA4', shop_name: 'ร้านครัวคุณเงินลุงทอง', credit_limit: 20_000, available_credit_amount: 4_750,
+    shop_id: 'credit-bb72', shop_code: 'BB72', shop_name: 'ร้านยอดชา', building_name: 'อาคาร B', zone_name: 'โซน 7', responsible_name: 'Iamkeo', credit_days: 7,
+    credit_limit: null, available_credit_amount: null, outstanding_amount: 300, overdue_amount: 0, oldest_due_date: '2026-08-08', charges: [
+      { charge_id: 'credit-bb72-1', charge_number: 'C260803-000001', service_date: '2026-08-01', due_date: '2026-08-08', original_amount: 300, allocated_amount: 0, outstanding_amount: 300, days_overdue: 0, payment_status: 'unpaid', due_status: 'not_due', assigned_collection_run_id: null },
+    ], payments: [],
+  },
+  {
+    shop_id: 'credit-aa4', shop_code: 'AA4', shop_name: 'ร้านครัวคุณเงินลุงทอง', building_name: 'อาคาร A', zone_name: 'โซน 4', responsible_name: 'โซ', credit_days: 7, credit_limit: 20_000, available_credit_amount: 4_750,
     outstanding_amount: 15_250, overdue_amount: 8_500, oldest_due_date: '2026-07-24', charges: [
       { charge_id: 'credit-aa4-1', charge_number: 'C260724-000021', service_date: '2026-07-20', due_date: '2026-07-24', original_amount: 8_500, allocated_amount: 0, outstanding_amount: 8_500, days_overdue: 7, payment_status: 'unpaid', due_status: 'overdue', assigned_collection_run_id: null },
       { charge_id: 'credit-aa4-2', charge_number: 'C260730-000024', service_date: '2026-07-26', due_date: '2026-08-05', original_amount: 6_750, allocated_amount: 0, outstanding_amount: 6_750, days_overdue: 0, payment_status: 'unpaid', due_status: 'not_due', assigned_collection_run_id: null },
     ],
   },
   {
-    shop_id: 'credit-bb2', shop_code: 'BB2', shop_name: 'ร้านกาแฟ ลานเล่า', credit_limit: 15_000, available_credit_amount: 7_650,
+    shop_id: 'credit-bb2', shop_code: 'BB2', shop_name: 'ร้านกาแฟ ลานเล่า', building_name: 'อาคาร B', zone_name: 'โซน 2', responsible_name: 'Iamkeo', credit_days: 7, credit_limit: 15_000, available_credit_amount: 7_650,
     outstanding_amount: 7_350, overdue_amount: 2_350, oldest_due_date: '2026-07-29', charges: [
       { charge_id: 'credit-bb2-1', charge_number: 'C260729-000022', service_date: '2026-07-22', due_date: '2026-07-29', original_amount: 3_500, allocated_amount: 1_150, outstanding_amount: 2_350, days_overdue: 2, payment_status: 'partial', due_status: 'overdue', assigned_collection_run_id: null },
       { charge_id: 'credit-bb2-2', charge_number: 'C260731-000025', service_date: '2026-07-28', due_date: '2026-08-07', original_amount: 5_000, allocated_amount: 0, outstanding_amount: 5_000, days_overdue: 0, payment_status: 'unpaid', due_status: 'not_due', assigned_collection_run_id: null },
-    ],
+    ], payments: [{ id: 'credit-payment-bb2', receipt_number: 'RC260730-000014', received_amount: 1_150, allocated_amount: 1_150, payment_method: 'cash', status: 'active', recorded_at: '2026-07-30T03:15:00.000Z', recorded_by: 'Iamkeo', allocations: [{ charge_id: 'credit-bb2-1', charge_number: 'C260729-000022', amount: 1_150 }] }], last_payment_at: '2026-07-30T03:15:00.000Z',
   },
   {
-    shop_id: 'credit-cc1', shop_code: 'CC1', shop_name: 'ร้านอาหารเจริญรส', credit_limit: null, available_credit_amount: null,
+    shop_id: 'credit-cc1', shop_code: 'CC1', shop_name: 'ร้านอาหารเจริญรส', building_name: 'อาคาร C', zone_name: 'โซน 1', responsible_name: 'หนึ่ง', credit_days: 10, credit_limit: null, available_credit_amount: null,
     outstanding_amount: 4_200, overdue_amount: 0, oldest_due_date: '2026-08-08', charges: [
       { charge_id: 'credit-cc1-1', charge_number: 'C260731-000026', service_date: '2026-07-29', due_date: '2026-08-08', original_amount: 4_200, allocated_amount: 0, outstanding_amount: 4_200, days_overdue: 0, payment_status: 'unpaid', due_status: 'not_due', assigned_collection_run_id: null },
     ],
@@ -558,7 +564,8 @@ function buildDemoGateway(): EmployeeDeliveryGateway & { reset(): void } {
 export function LocalDemoApp() {
   const [gatewayVersion, setGatewayVersion] = useState(0);
   const [draftState, setDraftState] = useState({ dirty: false, submitting: false });
-  const [financialPage, setFinancialPage] = useState<'collection' | 'credit'>('collection');
+  const [financialPage, setFinancialPage] = useState<'collection' | 'credit'>(() =>
+    new URLSearchParams(window.location.search).get('page') === 'credit' ? 'credit' : 'collection');
   const gateway = useMemo(() => buildDemoGateway(), [gatewayVersion]);
 
   if (new URLSearchParams(window.location.search).get('screen') === 'collection-layout') {
@@ -583,7 +590,7 @@ export function LocalDemoApp() {
           memberIds: collectionRunClosed ? [] : ['collector-so'],
           runId: collectionRunClosed ? null : 'demo-collection-run',
           runOpenedAt: collectionRunClosed ? null : `${collectionServiceDate}T01:00:00.000Z`,
-        }} managerPage={financialPage} userRole="admin" />
+        }} managerPage={financialPage} onManagerPageChange={setFinancialPage} userRole="admin" />
       </AdminLayout>
     );
   }

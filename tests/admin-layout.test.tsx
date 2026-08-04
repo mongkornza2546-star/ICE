@@ -21,8 +21,9 @@ describe('AdminLayout', () => {
     );
 
     expect(screen.getByRole('button', { name: 'เก็บเงินร้านค้า' }).getAttribute('aria-current')).toBe('page');
-    await user.click(screen.getByRole('button', { name: 'จัดการลูกหนี้ & เครดิต' }));
+    await user.click(screen.getByRole('button', { name: 'ลูกหนี้เครดิต' }));
     expect(onFinancialPageChange).toHaveBeenCalledWith('credit');
+    expect((screen.getByRole('button', { name: /รายการธุรกรรม/ }) as HTMLButtonElement).disabled).toBe(true);
   });
 
   it('lets an admin choose a past billing date without allowing a future date', async () => {

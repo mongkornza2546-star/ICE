@@ -370,7 +370,7 @@ export function RoleRouter({
       )}
       {visitedViews.has('financial_operations') && (
         <KeepAlive active={currentView === 'financial_operations'}>
-          <FinancialOperations managerPage={financialPage} userRole={profile.role} />
+          <FinancialOperations managerPage={financialPage} onManagerPageChange={setFinancialPage} userRole={profile.role} />
         </KeepAlive>
       )}
     </AdminLayout>

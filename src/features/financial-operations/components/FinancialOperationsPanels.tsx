@@ -27,7 +27,7 @@ function SectionTitle({
   );
 }
 
-export function ManagerFinancialSections({
+export function LegacyManagerFinancialSections({
   approvals,
   dueDateRequests,
   receivables,
@@ -208,6 +208,8 @@ export function ManagerFinancialSections({
     </section>
   );
 }
+
+export { CreditReceivablesManager as ManagerFinancialSections } from './CreditReceivablesManager';
 
 export function PaymentHistorySection({
   paymentHistory,

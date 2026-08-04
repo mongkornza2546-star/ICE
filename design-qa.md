@@ -1,3 +1,49 @@
+## 2026-08-04 — Credit debtor store-level redesign
+
+**Comparison Target**
+
+- Source visual truth: `/Users/bhusitt./Desktop/ภาพถ่ายหน้าจอ2569-08-04เวลา 08.46.23.png` (2880 × 1800 px). It defines the surrounding production shell, Thai typography, sidebar/topbar, pale operational background, blue active states, border language, and the old mixed shop/bill list that this requirement intentionally replaces.
+- Rendered implementation: [outputs/credit-ar-store-table-qa.png](/Users/bhusitt./Downloads/ส่งน้ำแข็ง/outputs/credit-ar-store-table-qa.png) (1440 × 924 px), captured from the local demo in the in-app browser.
+- Focused detail evidence: [outputs/credit-ar-shop-drawer-qa.png](/Users/bhusitt./Downloads/ส่งน้ำแข็ง/outputs/credit-ar-shop-drawer-qa.png) (1440 × 900 px), showing the selected shop's credit summary, outstanding bills, receipt history, and receipt-to-bill allocation detail.
+- Responsive evidence: [outputs/credit-ar-store-table-mobile-viewport-qa.png](/Users/bhusitt./Downloads/ส่งน้ำแข็ง/outputs/credit-ar-store-table-mobile-viewport-qa.png) (390 × 844 px), plus the full-page responsive capture [outputs/credit-ar-store-table-mobile-qa.png](/Users/bhusitt./Downloads/ส่งน้ำแข็ง/outputs/credit-ar-store-table-mobile-qa.png) (1112 × 1480 rendered pixels).
+- Viewport and normalization: desktop was reviewed at 1440 × 900 CSS px and mobile at 390 × 844 CSS px. The source contains Safari/macOS chrome and is a higher-density capture; comparison therefore normalized to the app content region and judged the shared design system plus the intentionally changed information architecture.
+- State: admin role, `ลูกหนี้เครดิต` sidebar page, `รายชื่อลูกหนี้` tab, representative unlimited/near-limit/overdue/suspended accounts, an overdue filter pass, BB2 detail drawer, and an expanded receipt allocation.
+- Full-view comparison evidence: the source and rendered implementation were inspected together in the same visual review. The new screen preserves the source shell and interaction language while replacing the duplicate shop/bill cards with four summary cards, filters, and one store-level row per debtor.
+- Focused-region evidence: the drawer capture verifies the full drill-down hierarchy requested by the specification without reintroducing bill rows into the top-level debtor list.
+
+**Findings**
+
+- No actionable P0/P1/P2 differences remain. The large structural difference from the source is intentional: the old `BB72 · ร้านยอดชา` and `BB72 · C260803-000001` sibling cards are now one `BB72 ร้านยอดชา` table row, with the bill available only inside the detail drawer.
+- P3: the ten-column debtor table uses intentional horizontal scrolling at 390 px instead of collapsing financially distinct columns. Browser measurements confirmed the page body remains 390 px wide; overflow is contained inside the table region.
+
+**Required Fidelity Surfaces**
+
+- Fonts and typography: retained the existing Thai font stack, navy hierarchy, muted metadata, bold currency figures, compact operational labels, and numeric alignment.
+- Spacing and layout rhythm: retained the fixed shell and low-elevation panels; added a four-card summary grid, a compact filter row, a dense store table, and a right-side detail drawer with consistent radii and dividers.
+- Colors and visual tokens: retained the existing blue/white/navy foundation, pale-blue active states, muted blue-gray borders, and semantic green/amber/red/purple statuses.
+- Image quality and asset fidelity: existing ice logo and sidebar water artwork remain unchanged. New UI symbols use the installed Phosphor icon set; no emoji, handcrafted SVG, generated image, or placeholder artwork was introduced.
+- Copy and content: page/tab/sidebar names, summary labels, store-level credit fields, status priority, bill statuses, receipt history, and receipt allocations match the supplied Thai requirement.
+
+**Interaction And Build Checks**
+
+- In-app browser: opened `ลูกหนี้เครดิต`, verified each store appears once, filtered to overdue stores (2 rows), restored all rows, opened BB2, and expanded receipt `RC260730-000014` to verify its `฿1,150.00` allocation to bill `C260729-000022`.
+- Responsive browser check: at 390 × 844 CSS px the page body had no horizontal overflow; the wide debtor table scrolls within its own container.
+- Browser console: no errors or warnings.
+- Focused UI suite: 37/37 tests passed across credit status, financial operations, and admin navigation.
+- Database/contract suite: 8/8 credit-account and collection contracts passed. The focused PGlite integration test also passed for automatic due collection, oldest-first payment, and planned future collection.
+- Production build: `npm run build` passed. The existing Vite large-chunk warning remains.
+- `git diff --check`: passed.
+
+**Comparison History**
+
+- First visual pass confirmed the source's duplicate shop/bill presentation was removed and that all requested store-level metrics fit the desktop table without clipping.
+- Interaction QA verified the overdue filter, store drawer, receipt history, and allocation expansion. No P0/P1/P2 visual or behavioral repair was required after that pass.
+- Mobile QA confirmed the document itself remains width-contained; only the intentionally wide financial table scrolls horizontally.
+
+final result: passed
+
+---
+
 ## 2026-08-04 — Collection run status bar and assignment modal
 
 **Comparison Target**

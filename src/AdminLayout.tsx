@@ -165,7 +165,8 @@ export function AdminLayout({
                           if (!isDesktopLayout) setNavigationExpanded(false);
                         }}
                         type="button"
-                      >จัดการลูกหนี้ &amp; เครดิต</button>
+                      >ลูกหนี้เครดิต</button>
+                      <button aria-disabled="true" disabled type="button">รายการธุรกรรม <small>เร็ว ๆ นี้</small></button>
                     </div>
                   ) : null}
                 </div>

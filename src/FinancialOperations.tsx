@@ -21,6 +21,7 @@ import type {
   PaymentReceipt,
   QueueShop,
   Receivable,
+  ReceivableDetail,
   ReceiptItemRow,
 } from './features/financial-operations/types';
 import {
@@ -54,10 +55,12 @@ export function FinancialOperations({
   userRole = 'round_lead',
   demoData,
   managerPage = 'collection',
+  onManagerPageChange,
 }: {
   userRole?: AppRole;
   demoData?: FinancialOperationsDemoData;
   managerPage?: 'collection' | 'credit';
+  onManagerPageChange?: (page: 'collection' | 'credit') => void;
 }) {
   const serviceDate = demoData?.serviceDate ?? toBangkokDateString();
   const initialDemoRunId = demoData
@@ -147,8 +150,17 @@ export function FinancialOperations({
     setPaymentHistory((historyResponse.data ?? []) as unknown as PaymentHistoryItem[]);
   }, [demoData, historyDate]);
 
-  const load = useCallback(async () => {
-    if (demoData) return;
+  const load = useCallback(async (preferredShopId?: string) => {
+    if (demoData) {
+      if (preferredShopId) {
+        const preferredShop = demoData.queue.find((shop) => shop.shop_id === preferredShopId);
+        if (!preferredShop) throw new Error('ไม่พบร้านนี้ในรอบเก็บเงินปัจจุบัน');
+        setQueue(demoData.queue);
+        setSelectedShop(preferredShop);
+        if (preferredShop.shop_id !== selectedShopRef.current?.shop_id) resetPaymentForm(preferredShop);
+      }
+      return;
+    }
     if (!supabase) return;
     setError(null);
     const runResponse = await supabase
@@ -169,12 +181,16 @@ export function FinancialOperations({
       if (queueResponse.error) throw queueResponse.error;
       const nextQueue = await withSignedShopImages((queueResponse.data ?? []) as QueueShop[]);
       const currentShop = selectedShopRef.current;
-      const nextSelectedShop = currentShop
+      const preferredShop = preferredShopId
+        ? nextQueue.find((shop) => shop.shop_id === preferredShopId) ?? null
+        : null;
+      if (preferredShopId && !preferredShop) throw new Error('ไม่พบร้านนี้ในรอบเก็บเงินปัจจุบัน');
+      const nextSelectedShop = preferredShop ?? (currentShop
         ? nextQueue.find((shop) => shop.shop_id === currentShop.shop_id) ?? null
-        : (window.innerWidth >= 1100 ? nextQueue[0] ?? null : null);
+        : (window.innerWidth >= 1100 ? nextQueue[0] ?? null : null));
       setQueue(nextQueue);
       setSelectedShop(nextSelectedShop);
-      if (!currentShop && nextSelectedShop) resetPaymentForm(nextSelectedShop);
+      if (nextSelectedShop && nextSelectedShop.shop_id !== currentShop?.shop_id) resetPaymentForm(nextSelectedShop);
     } else {
       setQueue([]);
       setSelectedShop(null);
@@ -788,6 +804,53 @@ export function FinancialOperations({
     setSuccess(assigned ? 'มอบหมายบิลเครดิตเข้ารอบเก็บเงินแล้ว' : 'ถอนบิลเครดิตออกจากรอบเก็บเงินแล้ว');
   });
 
+  const updateCreditSettings = async (
+    receivable: Receivable,
+    changes: {
+      credit_limit?: number | null;
+      credit_days?: number;
+      credit_suspended?: boolean;
+      credit_suspension_reason?: string | null;
+    },
+  ) => {
+    if (demoData) {
+      setReceivables((current) => current.map((item) => item.shop_id === receivable.shop_id ? {
+        ...item,
+        ...changes,
+        available_credit_amount: changes.credit_limit === undefined
+          ? item.available_credit_amount
+          : changes.credit_limit === null
+            ? null
+            : Number(changes.credit_limit) - Number(item.outstanding_amount),
+      } : item));
+      return;
+    }
+    if (!supabase) throw new Error('ไม่พบการเชื่อมต่อฐานข้อมูล');
+    const response = await supabase.rpc('update_credit_account_settings', {
+      p_shop_id: receivable.shop_id,
+      p_changes: changes,
+    });
+    if (response.error) throw response.error;
+    await load();
+  };
+
+  const loadCreditReceivableDetail = useCallback(async (receivable: Receivable): Promise<ReceivableDetail> => {
+    if (demoData) return { charges: receivable.charges, payments: receivable.payments ?? [] };
+    if (!supabase) throw new Error('ไม่พบการเชื่อมต่อฐานข้อมูล');
+    const response = await supabase.rpc('get_credit_receivable_detail', {
+      p_as_of_date: serviceDate,
+      p_shop_id: receivable.shop_id,
+    });
+    if (response.error) throw response.error;
+    const detail = response.data as Partial<ReceivableDetail> | null;
+    return { charges: detail?.charges ?? [], payments: detail?.payments ?? [] };
+  }, [demoData, serviceDate]);
+
+  const openReceivableCollection = async (receivable: Receivable) => {
+    await load(receivable.shop_id);
+    onManagerPageChange?.('collection');
+  };
+
   const changeHistoryDate = (nextHistoryDate: string) => {
     if (nextHistoryDate === historyDate) return;
     historyRequestRef.current += 1;
@@ -925,9 +988,14 @@ export function FinancialOperations({
         dueDateRequests={dueDateRequests}
         onDecide={decide}
         onDecideDueDateRequest={decideDueDateRequest}
+        onLoadDetail={loadCreditReceivableDetail}
+        onOpenCollection={(receivable) => { void openReceivableCollection(receivable).catch((openError: unknown) => setError(getErrorMessage(openError))); }}
         onToggleCreditCollectionAssignment={toggleCreditCollectionAssignment}
+        onUpdateCreditSettings={updateCreditSettings}
         receivables={receivables}
         runId={runId}
+        serviceDate={serviceDate}
+        userRole={userRole}
       /> : null}
 
       {selectedShop && (!isManager || managerPage === 'collection') && (!isManager || window.innerWidth < 1100) ? createPortal(
