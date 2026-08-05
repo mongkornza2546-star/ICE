@@ -1166,6 +1166,110 @@ describe('FinancialOperations', () => {
     expect(screen.getAllByText('ไม่จำกัด').length).toBeGreaterThan(1);
   });
 
+  it('opens a credit bill and submits an audited delivery correction', async () => {
+    const user = userEvent.setup();
+    const onReviseDelivery = vi.fn().mockResolvedValue({
+      ice_types: [{ id: 'ice-1', code: 'SMALL', name: 'น้ำแข็งหลอดเล็ก', unit: 'ถุง' }],
+      charges: [],
+      payments: [],
+    });
+    render(<ManagerFinancialSections
+      approvals={[]}
+      busy={false}
+      dueDateRequests={[]}
+      onDecide={() => undefined}
+      onDecideDueDateRequest={() => undefined}
+      onLoadDetail={async () => ({
+        ice_types: [{ id: 'ice-1', code: 'SMALL', name: 'น้ำแข็งหลอเล็ก', unit: 'ถุง' }],
+        charges: [{
+          charge_id: 'credit-1', charge_number: 'C260803-000001', service_date: '2026-08-03',
+          due_date: '2026-08-08', original_amount: 300, allocated_amount: 0,
+          outstanding_amount: 300, days_overdue: 0, payment_status: 'unpaid', due_status: 'not_due',
+          assigned_collection_run_id: null, delivery_event_id: 'event-1', round_status: 'open',
+          stop_status: 'delivered', note: null, recorded_at: '2026-08-03T02:00:00.000Z',
+          recorded_by: 'พนักงานทดสอบ',
+          items: [{ ice_type_id: 'ice-1', name: 'น้ำแข็งหลอเล็ก', unit: 'ถุง', quantity: 0.5 }],
+        }],
+        payments: [],
+      })}
+      onReviseDelivery={onReviseDelivery}
+      onToggleCreditCollectionAssignment={() => undefined}
+      receivables={[{
+        shop_id: 'shop-1', shop_code: 'S001', shop_name: 'ร้านเครดิต', credit_limit: null,
+        available_credit_amount: null, outstanding_amount: 300, overdue_amount: 0,
+        oldest_due_date: '2026-08-08', charges: [], payments: [],
+      }]}
+      runId="run-1"
+      serviceDate="2026-08-05"
+      userRole="admin"
+    />);
+
+    await user.click(screen.getByRole('button', { name: 'S001 ร้านเครดิต' }));
+    await user.click(await screen.findByRole('button', { name: 'เปิดรายละเอียดบิล C260803-000001' }));
+    expect(screen.getByRole('dialog', { name: 'รายละเอียดบิล C260803-000001' })).toBeTruthy();
+    await user.clear(screen.getByRole('spinbutton', { name: 'น้ำแข็งหลอเล็ก (ถุง)' }));
+    await user.type(screen.getByRole('spinbutton', { name: 'น้ำแข็งหลอเล็ก (ถุง)' }), '1.5');
+    await user.type(screen.getByRole('textbox', { name: 'เหตุผลที่แก้ไขหรือยกเลิก' }), 'บันทึกจำนวนผิด');
+    await user.click(screen.getByRole('button', { name: 'บันทึกการแก้ไข' }));
+
+    await waitFor(() => expect(onReviseDelivery).toHaveBeenCalledWith(
+      expect.objectContaining({ shop_id: 'shop-1' }),
+      expect.objectContaining({ charge_id: 'credit-1' }),
+      expect.objectContaining({
+        action: 'correct',
+        items: [{ ice_type_id: 'ice-1', quantity: 1.5 }],
+        reason: 'บันทึกจำนวนผิด',
+        stop_status: 'delivered',
+      }),
+    ));
+  });
+
+  it('blocks correction when a bill contains an inactive historical ice type', async () => {
+    const user = userEvent.setup();
+    const onReviseDelivery = vi.fn().mockResolvedValue({ charges: [], payments: [], ice_types: [] });
+    render(<ManagerFinancialSections
+      approvals={[]}
+      busy={false}
+      dueDateRequests={[]}
+      onDecide={() => undefined}
+      onDecideDueDateRequest={() => undefined}
+      onLoadDetail={async () => ({
+        ice_types: [{ id: 'ice-1', code: 'SMALL', name: 'น้ำแข็งหลอดเล็ก', unit: 'ถุง' }],
+        charges: [{
+          charge_id: 'credit-1', charge_number: 'C260803-000001', service_date: '2026-08-03',
+          due_date: '2026-08-08', original_amount: 300, allocated_amount: 0,
+          outstanding_amount: 300, days_overdue: 0, payment_status: 'unpaid', due_status: 'not_due',
+          assigned_collection_run_id: null, delivery_event_id: 'event-1', round_status: 'open',
+          stop_status: 'delivered', note: null, recorded_at: '2026-08-03T02:00:00.000Z',
+          recorded_by: 'พนักงานทดสอบ',
+          items: [
+            { ice_type_id: 'ice-1', name: 'น้ำแข็งหลอดเล็ก', unit: 'ถุง', quantity: 1 },
+            { ice_type_id: 'ice-old', name: 'น้ำแข็งรุ่นเดิม', unit: 'ถุง', quantity: 2 },
+          ],
+        }],
+        payments: [],
+      })}
+      onReviseDelivery={onReviseDelivery}
+      onToggleCreditCollectionAssignment={() => undefined}
+      receivables={[{
+        shop_id: 'shop-1', shop_code: 'S001', shop_name: 'ร้านเครดิต', credit_limit: null,
+        available_credit_amount: null, outstanding_amount: 300, overdue_amount: 0,
+        oldest_due_date: '2026-08-08', charges: [], payments: [],
+      }]}
+      runId="run-1"
+      serviceDate="2026-08-05"
+      userRole="admin"
+    />);
+
+    await user.click(screen.getByRole('button', { name: 'S001 ร้านเครดิต' }));
+    await user.click(await screen.findByRole('button', { name: 'เปิดรายละเอียดบิล C260803-000001' }));
+
+    expect(screen.getByText(/น้ำแข็งรุ่นเดิม.*เลิกใช้งาน/)).toBeTruthy();
+    expect((screen.getByRole('button', { name: 'บันทึกการแก้ไข' }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole('button', { name: 'ยกเลิกบิล' }) as HTMLButtonElement).disabled).toBe(false);
+    expect(onReviseDelivery).not.toHaveBeenCalled();
+  });
+
   it('loads one debtor detail on demand and opens collection on that store', async () => {
     const user = userEvent.setup();
     const targetQueueShop = {

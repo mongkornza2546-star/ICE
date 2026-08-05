@@ -26,7 +26,13 @@ select 'delivery charges / bills', count(*) from public.delivery_charges
 union all
 select 'payments / receipts', count(*) from public.payments
 union all
+select 'payment receipt snapshots', count(*) from public.payment_receipt_snapshots
+union all
 select 'collection runs', count(*) from public.collection_runs
+union all
+select 'credit due-date requests', count(*) from public.credit_due_date_requests
+union all
+select 'collection credit assignments', count(*) from public.collection_run_credit_charges
 union all
 select 'stock counts', count(*) from public.stock_count_snapshots
 union all
@@ -57,9 +63,12 @@ $$;
 -- ไม่ใช้ CASCADE เพื่อป้องกันไม่ให้ตาราง master/config ถูกล้างตามไป
 truncate table
   public.payment_allocations,
+  public.payment_receipt_snapshots,
   public.payments,
   public.collection_run_members,
+  public.collection_run_credit_charges,
   public.collection_runs,
+  public.credit_due_date_requests,
   public.delivery_charges,
   public.financial_approval_requests,
   public.factory_receipt_items,
@@ -104,6 +113,9 @@ select
   (select count(*) from public.delivery_events) as sales,
   (select count(*) from public.delivery_charges) as bills,
   (select count(*) from public.payments) as payments,
+  (select count(*) from public.payment_receipt_snapshots) as receipt_snapshots,
+  (select count(*) from public.credit_due_date_requests) as credit_due_date_requests,
+  (select count(*) from public.collection_run_credit_charges) as credit_assignments,
   (select count(*) from public.audit_logs) as audit_logs;
 
 -- หมายเหตุ: evidence_path ใน payments ถูกล้างแล้ว แต่ไฟล์หลักฐานใน Supabase Storage

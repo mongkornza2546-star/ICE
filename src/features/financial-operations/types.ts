@@ -1,4 +1,4 @@
-import type { CreditDueRule, PaymentMethod } from '../../types/app';
+import type { CreditDueRule, IceTypeOption, PaymentMethod, ShopRoundStatus } from '../../types/app';
 
 export type PaymentProfile = {
   allowed_payment_methods: PaymentMethod[];
@@ -74,6 +74,15 @@ export type Receivable = {
 export type ReceivableDetail = {
   charges: ReceivableCharge[];
   payments: ReceivablePayment[];
+  ice_types?: IceTypeOption[];
+};
+
+export type CreditBillRevision = {
+  action: 'correct' | 'cancel';
+  items: Array<{ ice_type_id: string; quantity: number }>;
+  stop_status: Exclude<ShopRoundStatus, 'pending'>;
+  note: string;
+  reason: string;
 };
 
 export type ReceivablePayment = {
@@ -104,6 +113,18 @@ export type ReceivableCharge = {
   payment_status: 'unpaid' | 'partial' | 'paid';
   due_status: 'not_due' | 'due_today' | 'overdue' | 'paid';
   assigned_collection_run_id: string | null;
+  delivery_event_id?: string | null;
+  round_status?: 'open' | 'closed' | 'cancelled' | null;
+  stop_status?: Exclude<ShopRoundStatus, 'pending'> | null;
+  note?: string | null;
+  recorded_at?: string | null;
+  recorded_by?: string | null;
+  items?: Array<{
+    ice_type_id: string;
+    name: string;
+    unit: string;
+    quantity: number;
+  }>;
 };
 
 export type DueDateRequest = {

@@ -73,7 +73,7 @@ const creditReceivables: Receivable[] = [
   {
     shop_id: 'credit-bb72', shop_code: 'BB72', shop_name: 'ร้านยอดชา', building_name: 'อาคาร B', zone_name: 'โซน 7', responsible_name: 'Iamkeo', credit_due_rule: 'weekly', credit_days: null, credit_collection_weekday: 5,
     credit_limit: null, available_credit_amount: null, outstanding_amount: 300, overdue_amount: 0, oldest_due_date: '2026-08-08', charges: [
-      { charge_id: 'credit-bb72-1', charge_number: 'C260803-000001', service_date: '2026-08-01', due_date: '2026-08-08', original_amount: 300, allocated_amount: 0, outstanding_amount: 300, days_overdue: 0, payment_status: 'unpaid', due_status: 'not_due', assigned_collection_run_id: null },
+      { charge_id: 'credit-bb72-1', charge_number: 'C260803-000001', service_date: '2026-08-01', due_date: '2026-08-08', original_amount: 300, allocated_amount: 0, outstanding_amount: 300, days_overdue: 0, payment_status: 'unpaid', due_status: 'not_due', assigned_collection_run_id: null, delivery_event_id: 'demo-event-bb72-1', round_status: 'open', stop_status: 'delivered', note: null, recorded_at: '2026-08-01T03:15:00.000Z', recorded_by: 'Iamkeo', items: [{ ice_type_id: 'ice-small', name: 'น้ำแข็งหลอดเล็ก', unit: 'ถุง', quantity: 5 }] },
     ], payments: [],
   },
   {

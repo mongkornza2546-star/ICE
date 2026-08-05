@@ -89,6 +89,10 @@ const creditCollectionCycles = readFileSync(
   new URL('../supabase/migrations/0126_credit_collection_cycles.sql', import.meta.url),
   'utf8',
 );
+const creditBillDeliveryDetails = readFileSync(
+  new URL('../supabase/migrations/0127_credit_bill_delivery_details.sql', import.meta.url),
+  'utf8',
+);
 
 const COURIER_ID = '10000000-0000-4000-8000-000000000001';
 const ADMIN_ID = '10000000-0000-4000-8000-000000000002';
@@ -558,6 +562,7 @@ async function createDatabase(t, { applyCollectionShopCards = true } = {}) {
     await db.exec(paymentReceiptSnapshots);
     await db.exec(weeklyCreditDueRule);
     await db.exec(creditCollectionCycles);
+    await db.exec(creditBillDeliveryDetails);
   }
   await db.exec(disableDailyStockRefill);
   await db.exec(courierPaymentVoids);
@@ -1211,6 +1216,80 @@ test('credit correction preserves the original due date after the shop cycle cha
     dueDates.rows[0].replacement_due_date.getTime(),
     dueDates.rows[0].original_due_date.getTime(),
   );
+});
+
+test('credit correction preserves open collection and due-date workflows', async (t) => {
+  const db = await createDatabase(t);
+  await db.exec(`
+    update public.shop_payment_profiles
+    set allowed_payment_terms = array['credit']::public.payment_term[],
+        default_payment_term = 'credit', allow_outstanding = true,
+        credit_due_rule = 'net_days', credit_days = 30, credit_limit = null
+    where shop_id = '${SHOP_ID}';
+  `);
+  const delivered = await db.query(`
+    select public.record_delivery(
+      '${STOP_ID}', '${itemPayload(1)}'::jsonb, 'delivered', null, null,
+      '74000000-0000-4000-8000-000000000001', 'credit'
+    ) as result
+  `);
+  const eventId = delivered.rows[0].result.delivery_event_id;
+  const chargeId = delivered.rows[0].result.charge_id;
+  const dueDate = delivered.rows[0].result.due_date;
+
+  await db.exec(`update public.auth_context set user_id = '${ADMIN_ID}', app_role = 'admin'`);
+  const run = await db.query(`
+    select public.open_collection_run(
+      date '${SERVICE_DATE}', '[{"user_id":"${OTHER_COURIER_ID}"}]'::jsonb
+    ) as result
+  `);
+  const runId = run.rows[0].result.collection_run_id;
+  await db.query(`select public.set_credit_charge_collection_assignment('${runId}', '${chargeId}', true)`);
+  const requested = await db.query(`
+    select public.request_credit_due_date_change(
+      '${chargeId}', date '${dueDate}' + 7, 'customer requested more time'
+    ) as result
+  `);
+  const requestId = requested.rows[0].result.id;
+
+  await db.query(`
+    select public.revise_delivery_event(
+      '${eventId}', 'correct', '${itemPayload(0.5)}'::jsonb, 'delivered', null,
+      'correct quantity', '74000000-0000-4000-8000-000000000002'
+    )
+  `);
+  const replacement = await db.query(`
+    select event.id as event_id, charge.id as charge_id
+    from public.delivery_events event
+    join public.delivery_charges charge on charge.delivery_event_id = event.id
+    where event.corrects_event_id = '${eventId}' and event.status = 'active'
+  `);
+  const replacementEventId = replacement.rows[0].event_id;
+  const replacementChargeId = replacement.rows[0].charge_id;
+  const transferred = await db.query(`
+    select
+      (select charge_id from public.collection_run_credit_charges where collection_run_id = '${runId}') as assigned_charge_id,
+      (select charge_id from public.credit_due_date_requests where id = '${requestId}') as request_charge_id
+  `);
+  assert.equal(transferred.rows[0].assigned_charge_id, replacementChargeId);
+  assert.equal(transferred.rows[0].request_charge_id, replacementChargeId);
+
+  const queue = await db.query(`select public.get_collection_run_queue('${runId}') as result`);
+  assert.equal(queue.rows[0].result[0].charges[0].charge_id, replacementChargeId);
+
+  await db.query(`
+    select public.revise_delivery_event(
+      '${replacementEventId}', 'correct', '[]'::jsonb, 'issue', 'delivery did not occur',
+      'correct status', '74000000-0000-4000-8000-000000000003'
+    )
+  `);
+  const closedWorkflows = await db.query(`
+    select
+      (select count(*)::integer from public.collection_run_credit_charges where collection_run_id = '${runId}') as assignment_count,
+      (select status from public.credit_due_date_requests where id = '${requestId}') as request_status
+  `);
+  assert.equal(closedWorkflows.rows[0].assignment_count, 0);
+  assert.equal(closedWorkflows.rows[0].request_status, 'rejected');
 });
 
 test('legacy unpriced correction stays outside the financial ledger', async (t) => {
