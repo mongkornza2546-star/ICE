@@ -272,6 +272,39 @@ describe('FinancialOperations', () => {
     expect(screen.getByText('ค้างชำระ (ผสม)')).not.toBeNull();
   });
 
+  it('shows a shop photo in the collection table and opens it in a larger preview', async () => {
+    const user = userEvent.setup();
+    const onSelectShop = vi.fn();
+    const shopWithImage = { ...queueShop, image_url: 'https://example.test/shop-1.webp' };
+
+    render(<CollectionDesk
+      busy={false}
+      historyDate="2026-08-03"
+      onClearShop={() => undefined}
+      onHistoryDateChange={() => undefined}
+      onOpenReceipt={() => undefined}
+      onPrintReceipt={() => undefined}
+      onRefresh={() => undefined}
+      onSelectShop={onSelectShop}
+      onVoidPayment={() => undefined}
+      paymentHistory={[]}
+      paymentPanel={null}
+      queue={[shopWithImage]}
+      runId="run-1"
+      selectedShop={null}
+      serviceDate="2026-08-03"
+      todayPayments={[]}
+    />);
+
+    await user.click(screen.getByRole('button', { name: 'ดูรูปร้าน ร้านเก็บเงิน ขนาดใหญ่' }));
+    expect(screen.getByRole('dialog', { name: /รูปร้าน S001 · ร้านเก็บเงิน/ })).not.toBeNull();
+    expect(screen.getByAltText('รูปร้าน S001 · ร้านเก็บเงิน').getAttribute('src')).toBe(shopWithImage.image_url);
+    expect(onSelectShop).not.toHaveBeenCalled();
+
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog', { name: /รูปร้าน S001 · ร้านเก็บเงิน/ })).toBeNull();
+  });
+
   it('shows payment history one day at a time and navigates to earlier days', async () => {
     Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1200 });
     const user = userEvent.setup();
@@ -347,6 +380,18 @@ describe('FinancialOperations', () => {
     mocks.rpc.mockImplementation(async (name: string) => {
       if (name === 'get_collection_run_queue') return { data: [], error: null };
       if (name === 'get_payment_receipt_items') return { data: [], error: null };
+      if (name === 'get_payment_receipt_snapshot') return { data: {
+        payment_id: 'payment-1',
+        receipt_number: 'R260803-000002',
+        shop_code: 'S001',
+        shop_name: 'ร้านเก็บเงิน ณ วันออกใบเสร็จ',
+        payment_method: 'cash',
+        received_amount: 100,
+        allocated_amount: 100,
+        change_amount: 0,
+        recorded_at: '2026-08-03T02:00:00Z',
+        charges: [],
+      }, error: null };
       return { data: [], error: null };
     });
 
@@ -359,6 +404,61 @@ describe('FinancialOperations', () => {
 
     await waitFor(() => expect(print).toHaveBeenCalledOnce());
     expect(printDocument.body.textContent).toContain('R260803-000002');
+    expect(printDocument.body.textContent).toContain('ร้านเก็บเงิน ณ วันออกใบเสร็จ');
+  });
+
+  it('lets a courier void a payment they recorded', async () => {
+    const user = userEvent.setup();
+    vi.spyOn(window, 'prompt').mockReturnValue('บันทึกยอดผิด');
+    const payment = {
+      id: 'payment-1', receipt_number: 'R260803-000004', received_amount: 100,
+      allocated_amount: 100, change_amount: 0, payment_method: 'cash', status: 'active',
+      recorded_at: '2026-08-03T02:00:00Z', recorded_by: 'courier-1', void_reason: null,
+      shops: { code: 'S001', name: 'ร้านเก็บเงิน' },
+    };
+    mocks.from.mockImplementation((table: string) => {
+      if (table === 'collection_runs') return queryResult({ id: 'run-1' });
+      if (table === 'payments') return queryResult([payment]);
+      return queryResult([]);
+    });
+    mocks.rpc.mockImplementation(async (name: string) => {
+      if (name === 'void_payment') return { data: { payment_id: 'payment-1' }, error: null };
+      if (name === 'get_collection_run_queue') return { data: [], error: null };
+      return { data: [], error: null };
+    });
+
+    render(<FinancialOperations currentUserId="courier-1" userRole="courier" />);
+    await user.click(await screen.findByRole('button', { name: 'ประวัติรับเงิน' }));
+    await user.click(await screen.findByRole('button', { name: 'ยกเลิกรายการ' }));
+
+    await waitFor(() => expect(mocks.rpc).toHaveBeenCalledWith('void_payment', {
+      p_payment_id: 'payment-1',
+      p_reason: 'บันทึกยอดผิด',
+    }));
+  });
+
+  it('does not offer a courier the void action for another courier\'s payment', async () => {
+    const user = userEvent.setup();
+    const payment = {
+      id: 'payment-1', receipt_number: 'R260803-000005', received_amount: 100,
+      allocated_amount: 100, change_amount: 0, payment_method: 'cash', status: 'active',
+      recorded_at: '2026-08-03T02:00:00Z', recorded_by: 'courier-2', void_reason: null,
+      shops: { code: 'S001', name: 'ร้านเก็บเงิน' },
+    };
+    mocks.from.mockImplementation((table: string) => {
+      if (table === 'collection_runs') return queryResult({ id: 'run-1' });
+      if (table === 'payments') return queryResult([payment]);
+      return queryResult([]);
+    });
+    mocks.rpc.mockImplementation(async (name: string) => {
+      if (name === 'get_collection_run_queue') return { data: [], error: null };
+      return { data: [], error: null };
+    });
+
+    render(<FinancialOperations currentUserId="courier-1" userRole="courier" />);
+    await user.click(await screen.findByRole('button', { name: 'ประวัติรับเงิน' }));
+
+    expect(screen.queryByRole('button', { name: 'ยกเลิกรายการ' })).toBeNull();
   });
 
   it('lets a manager void an active payment from the history tab', async () => {
@@ -484,14 +584,27 @@ describe('FinancialOperations', () => {
         },
         error: null,
       };
-      if (name === 'get_payment_receipt_items') return { data: [{
-        charge_number: 'C260728-000001',
-        received_amount: 100,
-        ice_type_name: 'น้ำแข็งหลอด',
-        ice_type_unit: 'ถุง',
-        quantity: 2,
-        line_total: 100,
-      }], error: null };
+      if (name === 'get_payment_receipt_snapshot') return { data: {
+        payment_id: 'payment-1',
+        receipt_number: 'R260729-000001',
+        shop_code: 'S001',
+        shop_name: 'ชื่อร้านจาก snapshot',
+        payment_method: 'cash',
+        received_amount: 500,
+        allocated_amount: 100,
+        change_amount: 400,
+        recorded_at: '2026-07-29T07:00:00Z',
+        charges: [{
+          charge_number: 'C260728-000001',
+          received_amount: 100,
+          items: [{
+            ice_type_name: 'น้ำแข็งหลอด',
+            ice_type_unit: 'ถุง',
+            quantity: 2,
+            line_total: 100,
+          }],
+        }],
+      }, error: null };
       return { data: [], error: null };
     });
 
@@ -505,7 +618,8 @@ describe('FinancialOperations', () => {
     await user.click(screen.getByRole('button', { name: 'บันทึกรับเงินทันที' }));
     await waitFor(() => expect(print).toHaveBeenCalledOnce());
 
-    expect(printDocument.body.textContent).toContain('S001 · ร้านเก็บเงิน');
+    expect(printDocument.body.textContent).toContain('S001 · ชื่อร้านจาก snapshot');
+    expect(printDocument.body.textContent).not.toContain('S001 · ร้านเก็บเงิน');
     expect(printDocument.body.textContent).toContain('น้ำแข็งหลอด × 2 ถุง');
     expect(printDocument.body.textContent).toContain('รายการสั่งซื้อ C260728-000001');
     expect(printDocument.body.textContent).toContain('ยอดชำระ฿100.00');
@@ -515,7 +629,7 @@ describe('FinancialOperations', () => {
     expect(print).toHaveBeenCalledOnce();
   });
 
-  it('keeps a recorded payment printable when receipt item details cannot be loaded', async () => {
+  it('keeps a recorded payment available when its receipt snapshot cannot be loaded', async () => {
     const user = userEvent.setup();
     const { close } = mockReceiptPrintWindow();
     mocks.from.mockImplementation((table: string) => {
@@ -534,9 +648,9 @@ describe('FinancialOperations', () => {
         },
         error: null,
       };
-      if (name === 'get_payment_receipt_items') return {
+      if (name === 'get_payment_receipt_snapshot') return {
         data: null,
-        error: { code: 'PGRST202', message: 'Could not find the function public.get_payment_receipt_items' },
+        error: { code: 'PGRST202', message: 'Could not find the receipt snapshot' },
       };
       return { data: [], error: null };
     });
@@ -584,7 +698,7 @@ describe('FinancialOperations', () => {
     await user.click(screen.getByRole('button', { name: 'บันทึกรับเงินทันที' }));
 
     expect(await screen.findByText('บันทึกรับเงินเรียบร้อย')).not.toBeNull();
-    await waitFor(() => expect(mocks.rpc).toHaveBeenCalledWith('get_payment_receipt_items', {
+    await waitFor(() => expect(mocks.rpc).toHaveBeenCalledWith('get_payment_receipt_snapshot', {
       p_payment_id: 'payment-1',
     }));
     expect(screen.getByRole('dialog', { name: 'รับเงิน ร้านเก็บเงิน' })).not.toBeNull();

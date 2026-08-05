@@ -1,6 +1,7 @@
 import { supabase } from '../../lib/supabase';
 import type {
   PaymentProfile,
+  PaymentReceiptSnapshot,
   QueueShop,
   ReceiptCharge,
   ReceiptItemRow,
@@ -50,6 +51,30 @@ export function receiptChargesFromRows(rows: ReceiptItemRow[]) {
     charges.set(chargeNumber, charge);
   }
   return [...charges.values()];
+}
+
+export function receiptFromSnapshot(snapshot: PaymentReceiptSnapshot) {
+  return {
+    paymentId: snapshot.payment_id,
+    receiptNumber: snapshot.receipt_number,
+    shopCode: snapshot.shop_code,
+    shopName: snapshot.shop_name,
+    method: snapshot.payment_method,
+    receivedAmount: Number(snapshot.received_amount),
+    allocatedAmount: Number(snapshot.allocated_amount),
+    changeAmount: Number(snapshot.change_amount),
+    recordedAt: snapshot.recorded_at,
+    charges: snapshot.charges.map((charge) => ({
+      chargeNumber: charge.charge_number,
+      receivedAmount: Number(charge.received_amount),
+      items: charge.items.map((item) => ({
+        name: item.ice_type_name,
+        unit: item.ice_type_unit,
+        quantity: Number(item.quantity),
+        lineTotal: Number(item.line_total),
+      })),
+    })),
+  };
 }
 
 export function methodRequires(profile: PaymentProfile, method: PaymentMethod, field: 'evidence') {

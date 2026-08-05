@@ -244,7 +244,7 @@ export function RoleRouter({
           />
         </KeepAlive>
         <KeepAlive active={courierView === 'collection'}>
-          <FinancialOperations userRole="courier" />
+          <FinancialOperations currentUserId={profile.id} userRole="courier" />
         </KeepAlive>
       </EmployeeLayout>
     );

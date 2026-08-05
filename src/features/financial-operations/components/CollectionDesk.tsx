@@ -91,6 +91,7 @@ export function CollectionDesk({
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState<'high' | 'low'>('high');
   const [selectedPayment, setSelectedPayment] = useState<PaymentHistoryItem | null>(null);
+  const [previewImage, setPreviewImage] = useState<{ name: string; url: string } | null>(null);
   const normalizedQuery = query.trim().toLocaleLowerCase();
   const outstandingTotal = queue.reduce((sum, shop) => sum + Number(shop.outstanding_amount), 0);
   const collectedTotal = todayPayments.reduce((sum, payment) => sum + Number(payment.allocated_amount), 0);
@@ -104,6 +105,15 @@ export function CollectionDesk({
       ? paymentHistory.find((payment) => payment.id === current.id) ?? null
       : null);
   }, [paymentHistory]);
+
+  useEffect(() => {
+    if (!previewImage) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setPreviewImage(null);
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [previewImage]);
 
   const visibleRows = useMemo(() => {
     const shopRows: CollectionRow[] = queue
@@ -220,32 +230,44 @@ export function CollectionDesk({
 
             <div className="collection-desk__table-head" aria-hidden="true"><span>ร้านค้า</span><span>ประเภทรายการ</span><span>ยอดเงิน</span><span>เอกสารล่าสุด</span><span>วันที่ล่าสุด</span><span>สถานะ</span><span /></div>
             <div className="collection-desk__rows">
-              {visibleRows.map((row, index) => (
-                <button
-                  aria-label={`เลือกรายการ ${row.shopCode} · ${row.shopName}`}
-                  className={(row.kind === 'shop' ? !selectedPayment && selectedShop?.shop_id === row.id : selectedPayment?.id === row.id) ? 'is-selected' : ''}
-                  key={`${row.kind}-${row.id}`}
-                  onClick={(event) => {
-                    if (row.shop) {
-                      setSelectedPayment(null);
-                      onSelectShop(row.shop, event.currentTarget);
-                    } else if (row.payment) {
-                      onClearShop();
-                      if (window.innerWidth < 1100) onOpenReceipt(row.payment, event.currentTarget);
-                      else setSelectedPayment(row.payment);
-                    }
-                  }}
-                  type="button"
-                >
-                  <span className="collection-desk__identity"><span className={`collection-desk__avatar collection-desk__avatar--${index % 5}`}>{initials(row.shopCode)}</span><span><strong>{row.shopCode} · {row.shopName}</strong><small>{row.kind === 'shop' ? `${row.shop?.charge_count ?? 0} รายการค้าง` : paymentMethodLabel(row.payment!.payment_method)}</small></span></span>
-                  <span className="collection-desk__type">{row.transactionType}</span>
-                  <b>{money.format(row.amount)}</b>
-                  <span className="collection-desk__document"><strong>{row.document}</strong></span>
-                  <time>{row.latestDate}</time>
-                  <em className={`collection-desk__status collection-desk__status--${row.status.tone}`}>{row.status.label}</em>
-                  <CaretRight aria-hidden="true" size={18} />
-                </button>
-              ))}
+              {visibleRows.map((row, index) => {
+                const isSelected = row.kind === 'shop'
+                  ? !selectedPayment && selectedShop?.shop_id === row.id
+                  : selectedPayment?.id === row.id;
+                return (
+                  <div className={isSelected ? 'collection-desk__row is-selected' : 'collection-desk__row'} key={`${row.kind}-${row.id}`}>
+                    <button
+                      aria-label={`เลือกรายการ ${row.shopCode} · ${row.shopName}`}
+                      className="collection-desk__row-action"
+                      onClick={(event) => {
+                        if (row.shop) {
+                          setSelectedPayment(null);
+                          onSelectShop(row.shop, event.currentTarget);
+                        } else if (row.payment) {
+                          onClearShop();
+                          if (window.innerWidth < 1100) onOpenReceipt(row.payment, event.currentTarget);
+                          else setSelectedPayment(row.payment);
+                        }
+                      }}
+                      type="button"
+                    >
+                      <span className="collection-desk__identity"><span aria-hidden="true" className={`collection-desk__avatar collection-desk__avatar--${index % 5}`}>{initials(row.shopCode)}</span><span><strong>{row.shopCode} · {row.shopName}</strong><small>{row.kind === 'shop' ? `${row.shop?.charge_count ?? 0} รายการค้าง` : paymentMethodLabel(row.payment!.payment_method)}</small></span></span>
+                      <span className="collection-desk__type">{row.transactionType}</span>
+                      <b>{money.format(row.amount)}</b>
+                      <span className="collection-desk__document"><strong>{row.document}</strong></span>
+                      <time>{row.latestDate}</time>
+                      <em className={`collection-desk__status collection-desk__status--${row.status.tone}`}>{row.status.label}</em>
+                      <CaretRight aria-hidden="true" size={18} />
+                    </button>
+                    {row.shop?.image_url ? <button
+                      aria-label={`ดูรูปร้าน ${row.shopName} ขนาดใหญ่`}
+                      className="collection-desk__shop-image-button"
+                      onClick={() => setPreviewImage({ name: `${row.shopCode} · ${row.shopName}`, url: row.shop!.image_url! })}
+                      type="button"
+                    ><img alt="" src={row.shop.image_url} /></button> : null}
+                  </div>
+                );
+              })}
               {visibleRows.length === 0 ? <p>ไม่พบรายการที่ค้นหา</p> : null}
             </div>
             <footer><span>แสดง {visibleRows.length ? `1 - ${visibleRows.length}` : '0'} จาก {totalCount} รายการ</span><span><button disabled type="button">‹</button><b>1</b><button disabled type="button">›</button></span><select aria-label="จำนวนรายการต่อหน้า"><option>20 รายการ/หน้า</option></select></footer>
@@ -273,6 +295,18 @@ export function CollectionDesk({
           </section> : paymentPanel ?? <div className="collection-desk__empty-panel"><Coins size={38} weight="duotone" /><strong>เลือกร้านค้าเพื่อรับชำระเงิน</strong><span>รายละเอียดบิลและแบบฟอร์มรับเงินจะแสดงที่นี่</span></div>}
         </aside>
       </div>
+
+      {previewImage ? <div className="image-preview-backdrop" onMouseDown={(event) => {
+        if (event.target === event.currentTarget) setPreviewImage(null);
+      }} role="presentation">
+        <section aria-labelledby="collection-shop-image-preview-title" aria-modal="true" className="image-preview-dialog" role="dialog">
+          <div className="image-preview-dialog__header">
+            <h2 id="collection-shop-image-preview-title">รูปร้าน {previewImage.name}</h2>
+            <button aria-label="ปิดรูปภาพ" className="image-preview-dialog__close" onClick={() => setPreviewImage(null)} type="button"><X size={22} weight="bold" /></button>
+          </div>
+          <img alt={`รูปร้าน ${previewImage.name}`} className="image-preview-dialog__image" src={previewImage.url} />
+        </section>
+      </div> : null}
     </div>
   );
 }

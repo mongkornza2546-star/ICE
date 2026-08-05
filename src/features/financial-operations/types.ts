@@ -146,6 +146,7 @@ export type PaymentHistoryItem = {
   payment_method: PaymentMethod;
   status: 'active' | 'voided';
   recorded_at: string;
+  recorded_by?: string | null;
   void_reason: string | null;
   shops: { code: string; name: string } | null;
 };
@@ -174,6 +175,28 @@ export type PaymentReceipt = {
   changeAmount: number;
   recordedAt: string;
   charges: ReceiptCharge[];
+};
+
+export type PaymentReceiptSnapshot = {
+  payment_id: string;
+  receipt_number: string;
+  shop_code: string;
+  shop_name: string;
+  payment_method: PaymentMethod;
+  received_amount: number | string;
+  allocated_amount: number | string;
+  change_amount: number | string;
+  recorded_at: string;
+  charges: Array<{
+    charge_number: string;
+    received_amount: number | string;
+    items: Array<{
+      ice_type_name: string;
+      ice_type_unit: string;
+      quantity: number | string;
+      line_total: number | string;
+    }>;
+  }>;
 };
 
 export type HistoryReceiptDetail = {

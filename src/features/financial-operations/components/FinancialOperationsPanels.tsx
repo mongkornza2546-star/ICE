@@ -216,6 +216,7 @@ export function PaymentHistorySection({
   historyDate,
   serviceDate,
   isManager,
+  currentUserId,
   busy,
   onHistoryDateChange,
   onOpenReceipt,
@@ -226,6 +227,7 @@ export function PaymentHistorySection({
   historyDate: string;
   serviceDate: string;
   isManager: boolean;
+  currentUserId?: string;
   busy: boolean;
   onHistoryDateChange: (serviceDate: string) => void;
   onOpenReceipt: (payment: PaymentHistoryItem, trigger: HTMLButtonElement) => void;
@@ -273,7 +275,7 @@ export function PaymentHistorySection({
                 {payment.status === 'active' ? (
                   <span className="financial-ops__history-actions">
                     <button disabled={busy} onClick={() => onPrintReceipt(payment)} type="button"><Printer aria-hidden="true" size={16} />พิมพ์ซ้ำ</button>
-                    {isManager ? <button disabled={busy} onClick={() => onVoidPayment(payment)} type="button">ยกเลิกรายการ</button> : null}
+                    {isManager || (Boolean(currentUserId) && payment.recorded_by === currentUserId) ? <button disabled={busy} onClick={() => onVoidPayment(payment)} type="button">ยกเลิกรายการ</button> : null}
                   </span>
                 ) : null}
               </span>

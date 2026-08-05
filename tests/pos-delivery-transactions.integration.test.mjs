@@ -73,6 +73,14 @@ const creditAccountManagement = readFileSync(
   new URL('../supabase/migrations/0122_credit_account_management.sql', import.meta.url),
   'utf8',
 );
+const courierPaymentVoids = readFileSync(
+  new URL('../supabase/migrations/0123_allow_couriers_to_void_own_payments.sql', import.meta.url),
+  'utf8',
+);
+const paymentReceiptSnapshots = readFileSync(
+  new URL('../supabase/migrations/0124_payment_receipt_snapshots.sql', import.meta.url),
+  'utf8',
+);
 
 const COURIER_ID = '10000000-0000-4000-8000-000000000001';
 const ADMIN_ID = '10000000-0000-4000-8000-000000000002';
@@ -539,8 +547,10 @@ async function createDatabase(t, { applyCollectionShopCards = true } = {}) {
     await db.exec(collectionQueueChargeItems);
     await db.exec(creditCollectionsAndDueDateExtensions);
     await db.exec(creditAccountManagement);
+    await db.exec(paymentReceiptSnapshots);
   }
   await db.exec(disableDailyStockRefill);
+  await db.exec(courierPaymentVoids);
   await db.exec(`
     insert into public.ice_type_prices (
       ice_type_id, unit_price, valid_from, created_by
@@ -1612,6 +1622,109 @@ test('payment recording enforces actor scope, collection scope, and stored evide
     ) as result
   `);
   assert.equal(Number(payment.rows[0].result.allocated_amount), 18);
+});
+
+test('payment receipts keep their issued content after source data changes', async (t) => {
+  const db = await createDatabase(t);
+  const delivery = await db.query(`
+    select public.record_delivery(
+      '${STOP_ID}', '${itemPayload(1)}'::jsonb, 'delivered', null, null,
+      '90000000-0000-4000-8000-000000000030', 'immediate'
+    ) as result
+  `);
+  const payment = await db.query(`
+    select public.record_payment(
+      '${SHOP_ID}',
+      '[{"charge_id":"${delivery.rows[0].result.charge_id}","amount":18}]'::jsonb,
+      'cash', 18, null, null, null, 18, null,
+      '90000000-0000-4000-8000-000000000031'
+    ) as result
+  `);
+  const paymentId = payment.rows[0].result.payment_id;
+
+  await db.exec(`
+    update public.shops set name = 'Renamed Shop' where id = '${SHOP_ID}';
+    update public.ice_types set name = 'Renamed Ice' where id = '${ICE_ID}';
+  `);
+
+  const snapshot = await db.query(`
+    select public.get_payment_receipt_snapshot('${paymentId}') as result
+  `);
+  assert.equal(snapshot.rows[0].result.shop_name, 'Shop One');
+  assert.equal(snapshot.rows[0].result.charges[0].items[0].ice_type_name, 'Ice');
+  assert.equal(Number(snapshot.rows[0].result.charges[0].items[0].quantity), 1);
+
+  const items = await db.query(`
+    select * from public.get_payment_receipt_items('${paymentId}')
+  `);
+  assert.equal(items.rows[0].ice_type_name, 'Ice');
+  assert.equal(Number(items.rows[0].quantity), 1);
+
+  await assert.rejects(
+    db.query(`update public.payment_receipt_snapshots set receipt_data = '{}' where payment_id = '${paymentId}'`),
+    /immutable/i,
+  );
+
+  await db.exec(`
+    update public.auth_context
+    set user_id = '${OTHER_COURIER_ID}', app_role = 'courier';
+  `);
+  await assert.rejects(
+    db.query(`select public.get_payment_receipt_snapshot('${paymentId}')`),
+    /cannot be viewed/i,
+  );
+});
+
+test('couriers can void their own payments but not payments recorded by another courier', async (t) => {
+  const db = await createDatabase(t);
+  const delivery = await db.query(`
+    select public.record_delivery(
+      '${STOP_ID}', '${itemPayload(1)}'::jsonb, 'delivered', null, null,
+      '90000000-0000-4000-8000-000000000020', 'immediate'
+    ) as result
+  `);
+  const payment = await db.query(`
+    select public.record_payment(
+      '${SHOP_ID}',
+      '[{"charge_id":"${delivery.rows[0].result.charge_id}","amount":18}]'::jsonb,
+      'cash', 18, null, null, null, 18, null,
+      '90000000-0000-4000-8000-000000000021'
+    ) as result
+  `);
+  const paymentId = payment.rows[0].result.payment_id;
+
+  await db.exec(`
+    update public.auth_context
+    set user_id = '${OTHER_COURIER_ID}', app_role = 'courier';
+  `);
+  await assert.rejects(
+    db.query(`select public.void_payment('${paymentId}', 'not my payment')`),
+    /Couriers can only void payments they recorded/i,
+  );
+
+  await db.exec(`
+    update public.auth_context
+    set user_id = '${COURIER_ID}', app_role = 'courier';
+  `);
+  await db.query(`select public.void_payment('${paymentId}', 'wrong amount')`);
+
+  const result = await db.query(`
+    select payment.status, payment.voided_by, payment.void_reason,
+      exists (
+        select 1 from public.audit_logs audit
+        where audit.entity_type = 'payments'
+          and audit.entity_id = payment.id
+          and audit.action = 'voided'
+      ) as audited
+    from public.payments payment
+    where payment.id = '${paymentId}'
+  `);
+  assert.deepEqual(result.rows[0], {
+    status: 'voided',
+    voided_by: COURIER_ID,
+    void_reason: 'wrong amount',
+    audited: true,
+  });
 });
 
 test('credit account settings are admin-only, audited, and suspension blocks new credit', async (t) => {

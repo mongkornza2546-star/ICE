@@ -19,6 +19,7 @@ import type {
   HistoryReceiptDetail,
   PaymentHistoryItem,
   PaymentReceipt,
+  PaymentReceiptSnapshot,
   QueueShop,
   Receivable,
   ReceivableDetail,
@@ -32,11 +33,12 @@ import {
   paymentMethodLabel,
   receiptChargesFromRows,
   receiptDateTime,
+  receiptFromSnapshot,
   withSignedShopImages,
 } from './features/financial-operations/utils';
 import type { AppRole, PaymentMethod } from './types/app';
 
-const PAYMENT_FIELDS = 'id, receipt_number, received_amount, allocated_amount, change_amount, payment_method, status, recorded_at, void_reason, shops(code,name)';
+const PAYMENT_FIELDS = 'id, receipt_number, received_amount, allocated_amount, change_amount, payment_method, status, recorded_at, recorded_by, void_reason, shops(code,name)';
 
 type FinancialOperationsDemoData = {
   serviceDate: string;
@@ -53,11 +55,13 @@ type FinancialOperationsDemoData = {
 
 export function FinancialOperations({
   userRole = 'round_lead',
+  currentUserId,
   demoData,
   managerPage = 'collection',
   onManagerPageChange,
 }: {
   userRole?: AppRole;
+  currentUserId?: string;
   demoData?: FinancialOperationsDemoData;
   managerPage?: 'collection' | 'credit';
   onManagerPageChange?: (page: 'collection' | 'credit') => void;
@@ -470,6 +474,18 @@ export function FinancialOperations({
     return receiptChargesFromRows((data ?? []) as ReceiptItemRow[]);
   };
 
+  const getReceiptSnapshot = async (paymentId: string) => {
+    if (!supabase) throw new Error('ระบบยังไม่พร้อมโหลดใบเสร็จ');
+    const { data, error: rpcError } = await supabase.rpc('get_payment_receipt_snapshot', {
+      p_payment_id: paymentId,
+    });
+    if (rpcError) throw rpcError;
+    if (!data || typeof data !== 'object' || !('payment_id' in data)) {
+      throw new Error('ไม่พบภาพใบเสร็จที่บันทึกไว้');
+    }
+    return receiptFromSnapshot(data as PaymentReceiptSnapshot);
+  };
+
   const recordPayment = () => {
     const printWindow = printReceiptWanted
       ? window.open('', '_blank', 'popup,width=360,height=680')
@@ -526,9 +542,8 @@ export function FinancialOperations({
           ? 'บันทึกรับเงินแล้ว แต่เบราว์เซอร์บล็อกหน้าต่างพิมพ์ กรุณากดพิมพ์ใบเสร็จอีกครั้ง'
           : null);
         setSuccess('บันทึกรับเงินแล้ว');
-        void getReceiptCharges(data.payment_id)
-          .then((charges) => {
-            const printableReceipt = { ...nextReceipt, charges };
+        void getReceiptSnapshot(data.payment_id)
+          .then((printableReceipt) => {
             setReceipt((current) => (
               current?.paymentId === data.payment_id ? printableReceipt : current
             ));
@@ -537,7 +552,7 @@ export function FinancialOperations({
           .catch((receiptError: unknown) => {
             printWindow?.close();
             setReceiptWarning(
-              `บันทึกรับเงินแล้ว แต่โหลดรายละเอียดรายการสำหรับใบเสร็จไม่สำเร็จ: ${getErrorMessage(receiptError)}`,
+              `บันทึกรับเงินแล้ว แต่โหลดภาพใบเสร็จไม่สำเร็จ: ${getErrorMessage(receiptError)}`,
             );
           });
       } catch (paymentError) {
@@ -688,7 +703,7 @@ export function FinancialOperations({
     printWindow.print();
   };
 
-  const printHistoryReceipt = (payment: PaymentHistoryItem) => {
+  const printStoredReceipt = (paymentId: string) => {
     const printWindow = window.open('', '_blank', 'popup,width=360,height=680');
     if (!printWindow) {
       setError('เบราว์เซอร์บล็อกหน้าต่างพิมพ์ กรุณาอนุญาตป๊อปอัปแล้วลองใหม่');
@@ -696,24 +711,17 @@ export function FinancialOperations({
     }
     void runAction(async () => {
       try {
-        const charges = await getReceiptCharges(payment.id);
-        printReceipt({
-          paymentId: payment.id,
-          receiptNumber: payment.receipt_number,
-          shopCode: payment.shops?.code ?? '—',
-          shopName: payment.shops?.name ?? 'ไม่พบร้าน',
-          method: payment.payment_method,
-          receivedAmount: payment.received_amount,
-          allocatedAmount: payment.allocated_amount,
-          changeAmount: payment.change_amount,
-          recordedAt: payment.recorded_at,
-          charges,
-        }, printWindow);
+        const receiptSnapshot = await getReceiptSnapshot(paymentId);
+        printReceipt(receiptSnapshot, printWindow);
       } catch (printError) {
         printWindow.close();
         throw printError;
       }
     }, false);
+  };
+
+  const printHistoryReceipt = (payment: PaymentHistoryItem) => {
+    printStoredReceipt(payment.id);
   };
 
   const openHistoryReceipt = (payment: PaymentHistoryItem, trigger: HTMLButtonElement) => {
@@ -912,6 +920,7 @@ export function FinancialOperations({
             busy={busy}
             historyDate={historyDate}
             isManager={false}
+            currentUserId={currentUserId}
             onHistoryDateChange={changeHistoryDate}
             onOpenReceipt={openHistoryReceipt}
             onPrintReceipt={printHistoryReceipt}
@@ -947,7 +956,7 @@ export function FinancialOperations({
           onClose={closePayment}
           onEvidenceChange={selectEvidence}
           onPaymentMethodChange={choosePaymentMethod}
-          onPrintReceipt={(targetReceipt) => printReceipt(targetReceipt)}
+          onPrintReceipt={(targetReceipt) => printStoredReceipt(targetReceipt.paymentId)}
           onPrintReceiptWantedChange={setPrintReceiptWanted}
           onRecordPayment={recordPayment}
           onRequestDueDate={requestDueDate}
@@ -1014,7 +1023,7 @@ export function FinancialOperations({
           onClose={closePayment}
           onEvidenceChange={selectEvidence}
           onPaymentMethodChange={choosePaymentMethod}
-          onPrintReceipt={(targetReceipt) => printReceipt(targetReceipt)}
+          onPrintReceipt={(targetReceipt) => printStoredReceipt(targetReceipt.paymentId)}
           onPrintReceiptWantedChange={setPrintReceiptWanted}
           onRecordPayment={recordPayment}
           onRequestDueDate={requestDueDate}
@@ -1039,7 +1048,8 @@ export function FinancialOperations({
           historyReceipt={historyReceipt}
           onClose={() => setHistoryReceipt(null)}
           onPrint={() => printHistoryReceipt(historyReceipt.payment)}
-          onVoid={isManager && historyReceipt.payment.status === 'active' ? () => {
+          onVoid={historyReceipt.payment.status === 'active'
+            && (isManager || (Boolean(currentUserId) && historyReceipt.payment.recorded_by === currentUserId)) ? () => {
             void voidPayment(historyReceipt.payment).then((voided) => {
               if (voided) setHistoryReceipt(null);
             });
