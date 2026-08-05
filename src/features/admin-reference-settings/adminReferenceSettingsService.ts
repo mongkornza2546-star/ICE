@@ -477,6 +477,7 @@ export async function saveShopPaymentProfile(
     allow_outstanding: profile.allow_outstanding,
     credit_due_rule: profile.credit_due_rule,
     credit_days: profile.credit_days,
+    credit_collection_weekday: profile.credit_collection_weekday,
     credit_limit: profile.credit_limit,
     created_by: authData.user.id,
   };
@@ -608,6 +609,7 @@ export async function bulkSaveShopPaymentProfiles(
     allow_outstanding: templateProfile.allow_outstanding,
     credit_due_rule: templateProfile.credit_due_rule,
     credit_days: templateProfile.credit_days,
+    credit_collection_weekday: templateProfile.credit_collection_weekday,
     credit_limit: templateProfile.credit_limit,
     created_by: authData.user.id,
   }));

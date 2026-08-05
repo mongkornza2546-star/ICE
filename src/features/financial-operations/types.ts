@@ -1,4 +1,4 @@
-import type { PaymentMethod } from '../../types/app';
+import type { CreditDueRule, PaymentMethod } from '../../types/app';
 
 export type PaymentProfile = {
   allowed_payment_methods: PaymentMethod[];
@@ -48,7 +48,9 @@ export type Receivable = {
   building_name?: string | null;
   zone_name?: string | null;
   responsible_name?: string | null;
+  credit_due_rule?: CreditDueRule | null;
   credit_days?: number | null;
+  credit_collection_weekday?: number | null;
   credit_limit: number | null;
   available_credit_amount: number | null;
   credit_suspended?: boolean;

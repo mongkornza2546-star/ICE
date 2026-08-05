@@ -38,8 +38,9 @@ export interface ShopPaymentProfile {
   qr_reference_required: boolean;
   qr_evidence_required: boolean;
   allow_outstanding: boolean;
-  credit_due_rule: 'net_days' | 'end_of_month' | null;
+  credit_due_rule: CreditDueRule | null;
   credit_days: number | null;
+  credit_collection_weekday: number | null;
   credit_limit: number | null;
   credit_exposure: number;
   credit_remaining: number | null;
@@ -430,7 +431,7 @@ export interface ShopCard {
   today_totals: Record<string, number>;
 }
 
-export type CreditDueRule = 'net_days' | 'end_of_month';
+export type CreditDueRule = 'net_days' | 'weekly' | 'end_of_month';
 
 export interface IceTypePriceSetting {
   id: string;
@@ -462,6 +463,7 @@ export interface ShopPaymentProfileSetting {
   allow_outstanding: boolean;
   credit_due_rule: CreditDueRule | null;
   credit_days: number | null;
+  credit_collection_weekday: number | null;
   credit_limit: number | null;
 }
 

@@ -42,6 +42,7 @@ const mockProfile: ShopPaymentProfileSetting = {
   allow_outstanding: false,
   credit_due_rule: null,
   credit_days: null,
+  credit_collection_weekday: null,
   credit_limit: null,
 };
 
@@ -100,6 +101,25 @@ describe('Shop Payment and Pricing Settings Components', () => {
       }));
       expect(onSaved).toHaveBeenCalledOnce();
     });
+  });
+
+  it('saves a weekly shop collection cycle', async () => {
+    const user = userEvent.setup();
+    render(<ShopPaymentProfileEditor shopId="shop-1" shopName="ร้านทดสอบ" />);
+
+    await screen.findByText(/เงื่อนไขการชำระเงินของ ร้านทดสอบ/i);
+    await user.click(screen.getByRole('checkbox', { name: /ร้านเครดิต/ }));
+    await user.selectOptions(screen.getByLabelText('รอบเก็บเงิน'), 'weekly');
+    await user.selectOptions(screen.getByLabelText('วันเก็บเงินประจำสัปดาห์'), '5');
+    await user.click(screen.getByRole('button', { name: 'บันทึกโปรไฟล์การชำระเงิน' }));
+
+    await waitFor(() => expect(service.saveShopPaymentProfile).toHaveBeenCalledWith(
+      expect.objectContaining({
+        credit_due_rule: 'weekly',
+        credit_days: null,
+        credit_collection_weekday: 5,
+      }),
+    ));
   });
 
   it('renders and adds a shop special ice price', async () => {

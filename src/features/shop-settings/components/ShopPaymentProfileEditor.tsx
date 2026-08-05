@@ -1,6 +1,7 @@
 import { type FormEvent, useEffect, useState } from 'react';
 import { CreditCard } from '@phosphor-icons/react';
 import type { ShopPaymentProfileSetting, PaymentTerm, PaymentMethod, CreditDueRule } from '../../../types/app';
+import { CREDIT_COLLECTION_WEEKDAY_OPTIONS, formatCreditCollectionCycle } from '../../../lib/creditCollectionCycle';
 import { loadShopPaymentProfile, saveShopPaymentProfile, getErrorMessage } from '../../admin-reference-settings/adminReferenceSettingsService';
 
 interface ShopPaymentProfileEditorProps {
@@ -24,6 +25,7 @@ const defaultProfile = (shop_id: string): ShopPaymentProfileSetting => ({
   allow_outstanding: false,
   credit_due_rule: null,
   credit_days: null,
+  credit_collection_weekday: null,
   credit_limit: null,
 });
 
@@ -77,13 +79,17 @@ export function ShopPaymentProfileEditor({ shopId, shopName, onSaved }: ShopPaym
     const defaultTerm = nextTerms.includes(profile.default_payment_term) ? profile.default_payment_term : nextTerms[0];
 
     const isCredit = nextTerms.includes('credit');
+    const creditRule = isCredit ? (profile.credit_due_rule ?? 'net_days') : null;
     setProfile({
       ...profile,
       allowed_payment_terms: nextTerms,
       default_payment_term: defaultTerm,
       allow_outstanding: isCredit ? true : profile.allow_outstanding,
-      credit_due_rule: isCredit ? (profile.credit_due_rule ?? 'net_days') : null,
-      credit_days: isCredit ? (profile.credit_days ?? 30) : null,
+      credit_due_rule: creditRule,
+      credit_days: creditRule === 'net_days' ? (profile.credit_days ?? 30) : null,
+      credit_collection_weekday: creditRule === 'weekly'
+        ? (profile.credit_collection_weekday ?? 5)
+        : null,
     });
   }
 
@@ -238,23 +244,30 @@ export function ShopPaymentProfileEditor({ shopId, shopName, onSaved }: ShopPaym
         ) : (
           <div className="field-grid" style={{ marginBottom: '1rem', background: 'var(--panel-bg, #f9f9f9)', padding: '1rem', borderRadius: '8px' }}>
             <label>
-              กฎวันครบกำหนดชำระ
+              รอบเก็บเงิน
               <select
-                onChange={(e) => setProfile({
-                  ...profile,
-                  credit_due_rule: e.target.value as CreditDueRule,
-                  credit_days: e.target.value === 'end_of_month' ? null : (profile.credit_days ?? 30),
-                })}
+                onChange={(e) => {
+                  const creditDueRule = e.target.value as CreditDueRule;
+                  setProfile({
+                    ...profile,
+                    credit_due_rule: creditDueRule,
+                    credit_days: creditDueRule === 'net_days' ? (profile.credit_days ?? 30) : null,
+                    credit_collection_weekday: creditDueRule === 'weekly'
+                      ? (profile.credit_collection_weekday ?? 5)
+                      : null,
+                  });
+                }}
                 value={profile.credit_due_rule ?? 'net_days'}
               >
-                <option value="net_days">จำนวนวันเครดิต (Net Days)</option>
-                <option value="end_of_month">ครบกำหนดสิ้นเดือน (End of Month)</option>
+                <option value="weekly">ทุกสัปดาห์</option>
+                <option value="end_of_month">ทุกสิ้นเดือน</option>
+                <option value="net_days">หลังส่งสินค้า X วัน</option>
               </select>
             </label>
 
             {profile.credit_due_rule === 'net_days' ? (
               <label>
-                จำนวนวันเครดิต (วัน)
+                จำนวนวันหลังส่งสินค้า
                 <input
                   min="1"
                   onChange={(e) => setProfile({ ...profile, credit_days: Number(e.target.value) || 1 })}
@@ -263,6 +276,22 @@ export function ShopPaymentProfileEditor({ shopId, shopName, onSaved }: ShopPaym
                 />
               </label>
             ) : null}
+
+            {profile.credit_due_rule === 'weekly' ? (
+              <label>
+                วันเก็บเงินประจำสัปดาห์
+                <select
+                  onChange={(e) => setProfile({ ...profile, credit_collection_weekday: Number(e.target.value) })}
+                  value={profile.credit_collection_weekday ?? 5}
+                >
+                  {CREDIT_COLLECTION_WEEKDAY_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
+
+            <p style={{ alignSelf: 'end', margin: 0 }}>{formatCreditCollectionCycle(profile)}</p>
 
             <label>
               วงเงินเครดิต (บาท - เว้นว่างหากไม่จำกัด)

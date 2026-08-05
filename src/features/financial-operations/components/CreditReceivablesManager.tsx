@@ -17,7 +17,8 @@ import {
   X,
 } from '@phosphor-icons/react';
 import { useEffect, useState, type CSSProperties } from 'react';
-import type { AppRole } from '../../../types/app';
+import type { AppRole, CreditDueRule } from '../../../types/app';
+import { CREDIT_COLLECTION_WEEKDAY_OPTIONS, formatCreditCollectionCycle } from '../../../lib/creditCollectionCycle';
 import type {
   Approval,
   DueDateRequest,
@@ -32,7 +33,9 @@ export type CreditAccountStatus = 'normal' | 'near_limit' | 'at_limit' | 'over_l
 
 type CreditChanges = {
   credit_limit?: number | null;
-  credit_days?: number;
+  credit_due_rule?: CreditDueRule;
+  credit_days?: number | null;
+  credit_collection_weekday?: number | null;
   credit_suspended?: boolean;
   credit_suspension_reason?: string | null;
 };
@@ -170,6 +173,12 @@ function ReceivableDrawer({
   const [selectedPayment, setSelectedPayment] = useState<ReceivablePayment | null>(null);
   const [actionBusy, setActionBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const initialCycleRule = receivable.credit_due_rule
+    ?? (receivable.credit_days ? 'net_days' : 'end_of_month');
+  const [cycleEditorOpen, setCycleEditorOpen] = useState(false);
+  const [cycleRule, setCycleRule] = useState<CreditDueRule>(initialCycleRule);
+  const [cycleDays, setCycleDays] = useState(receivable.credit_days ?? 30);
+  const [cycleWeekday, setCycleWeekday] = useState(receivable.credit_collection_weekday ?? 5);
   const [detail, setDetail] = useState<ReceivableDetail>({
     charges: receivable.charges,
     payments: receivable.payments ?? [],
@@ -194,16 +203,34 @@ function ReceivableDrawer({
   }, [onLoadDetail, receivable.shop_id]);
 
   const updateCredit = async (changes: CreditChanges) => {
-    if (!onUpdateCreditSettings) return;
+    if (!onUpdateCreditSettings) return false;
     setActionBusy(true);
     setActionError(null);
     try {
       await onUpdateCreditSettings(receivable, changes);
+      return true;
     } catch (error) {
       setActionError(error instanceof Error ? error.message : 'ไม่สามารถบันทึกการเปลี่ยนแปลงได้');
+      return false;
     } finally {
       setActionBusy(false);
     }
+  };
+
+  const resetCycleDraft = () => {
+    setCycleRule(initialCycleRule);
+    setCycleDays(receivable.credit_days ?? 30);
+    setCycleWeekday(receivable.credit_collection_weekday ?? 5);
+  };
+
+  const openCycleEditor = () => {
+    resetCycleDraft();
+    setCycleEditorOpen(true);
+  };
+
+  const cancelCycleEditor = () => {
+    resetCycleDraft();
+    setCycleEditorOpen(false);
   };
 
   const editLimit = () => {
@@ -216,14 +243,17 @@ function ReceivableDrawer({
     void updateCredit({ credit_limit: value.trim() === '' ? null : Number(value) });
   };
 
-  const editDays = () => {
-    const value = window.prompt('จำนวนวันเครดิตใหม่', String(receivable.credit_days ?? 7));
-    if (value === null) return;
-    if (!Number.isInteger(Number(value)) || Number(value) < 1) {
-      setActionError('จำนวนวันเครดิตต้องเป็นจำนวนเต็มตั้งแต่ 1 วันขึ้นไป');
+  const saveCycle = async () => {
+    if (cycleRule === 'net_days' && (!Number.isInteger(cycleDays) || cycleDays < 1)) {
+      setActionError('จำนวนวันหลังส่งต้องเป็นจำนวนเต็มตั้งแต่ 1 วันขึ้นไป');
       return;
     }
-    void updateCredit({ credit_days: Number(value) });
+    const saved = await updateCredit({
+      credit_due_rule: cycleRule,
+      credit_days: cycleRule === 'net_days' ? cycleDays : null,
+      credit_collection_weekday: cycleRule === 'weekly' ? cycleWeekday : null,
+    });
+    if (saved) setCycleEditorOpen(false);
   };
 
   const toggleSuspension = () => {
@@ -269,12 +299,25 @@ function ReceivableDrawer({
       <div className="credit-ar__drawer-actions">
         {canAdminister ? <>
           <button disabled={busy || actionBusy} onClick={editLimit} type="button"><PencilSimple size={16} />แก้ไขวงเงิน</button>
-          <button disabled={busy || actionBusy} onClick={editDays} type="button"><CalendarBlank size={16} />แก้วันเครดิต</button>
+          <button disabled={busy || actionBusy} onClick={openCycleEditor} type="button"><CalendarBlank size={16} />แก้รอบเก็บเงิน</button>
           <button className={receivable.credit_suspended ? 'is-positive' : 'is-danger'} disabled={busy || actionBusy} onClick={toggleSuspension} type="button">{receivable.credit_suspended ? <Play size={16} /> : <Prohibit size={16} />}{receivable.credit_suspended ? 'เปิดใช้เครดิต' : 'ระงับเครดิต'}</button>
         </> : null}
         <button disabled={detailLoading || !onOpenCollection || !runId || !hasCollectibleBalance} onClick={() => onOpenCollection?.(receivable)} type="button"><Coins size={16} />บันทึกรับเงิน</button>
       </div>
       {actionError ? <p className="credit-ar__action-error" role="alert">{actionError}</p> : null}
+
+      {cycleEditorOpen ? <div className="modal-backdrop">
+        <section aria-labelledby="credit-cycle-editor-title" className="panel" role="dialog" style={{ maxWidth: 480, width: '90%' }}>
+          <div className="panel-header"><h2 id="credit-cycle-editor-title">แก้รอบเก็บเงิน</h2><button aria-label="ปิดตัวแก้รอบเก็บเงิน" className="ghost-button" onClick={cancelCycleEditor} type="button"><X size={20} /></button></div>
+          <div className="field-grid">
+            <label>รอบเก็บเงิน<select aria-label="รอบเก็บเงิน" onChange={(event) => setCycleRule(event.target.value as CreditDueRule)} value={cycleRule}><option value="weekly">ทุกสัปดาห์</option><option value="end_of_month">ทุกสิ้นเดือน</option><option value="net_days">หลังส่งสินค้า X วัน</option></select></label>
+            {cycleRule === 'weekly' ? <label>วันเก็บเงินประจำสัปดาห์<select aria-label="วันเก็บเงินประจำสัปดาห์" onChange={(event) => setCycleWeekday(Number(event.target.value))} value={cycleWeekday}>{CREDIT_COLLECTION_WEEKDAY_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label> : null}
+            {cycleRule === 'net_days' ? <label>จำนวนวันหลังส่งสินค้า<input aria-label="จำนวนวันหลังส่งสินค้า" min="1" onChange={(event) => setCycleDays(Number(event.target.value))} type="number" value={cycleDays} /></label> : null}
+          </div>
+          <p>{formatCreditCollectionCycle({ credit_due_rule: cycleRule, credit_days: cycleRule === 'net_days' ? cycleDays : null, credit_collection_weekday: cycleRule === 'weekly' ? cycleWeekday : null })}</p>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}><button className="secondary-button" onClick={cancelCycleEditor} type="button">ยกเลิก</button><button className="primary-button" disabled={actionBusy} onClick={() => void saveCycle()} type="button">บันทึกรอบเก็บเงิน</button></div>
+        </section>
+      </div> : null}
 
       <section className="credit-ar__drawer-section">
         <div className="credit-ar__drawer-section-title"><span><CreditCard size={18} /><h3>สรุปเครดิต</h3></span></div>
@@ -284,7 +327,7 @@ function ReceivableDrawer({
           <span><small>เครดิตคงเหลือ</small><strong>{receivable.credit_limit === null ? 'ไม่จำกัด' : money.format(Number(receivable.credit_limit) - Number(receivable.outstanding_amount))}</strong></span>
           <span><small>ยอดค้างทั้งหมด</small><strong>{money.format(receivable.outstanding_amount)}</strong></span>
           <span className={Number(receivable.overdue_amount) > 0 ? 'is-danger' : ''}><small>ยอดเกินกำหนด</small><strong>{money.format(receivable.overdue_amount)}</strong></span>
-          <span><small>เงื่อนไขเครดิต</small><strong>{receivable.credit_days ? `${receivable.credit_days} วัน` : 'สิ้นเดือน'}</strong></span>
+          <span><small>รอบเก็บเงิน</small><strong>{formatCreditCollectionCycle(receivable)}</strong></span>
           <span><small>วันเก็บเงินล่าสุด</small><strong>{receivable.last_payment_at ? thaiDate.format(new Date(receivable.last_payment_at)) : 'ยังไม่มีข้อมูล'}</strong></span>
           <span><small>พื้นที่</small><strong>{[receivable.building_name, receivable.zone_name].filter(Boolean).join(' · ') || '—'}</strong></span>
         </div>
@@ -386,7 +429,7 @@ export function CreditReceivablesManager({
     {activeView === 'overview' ? <><SummaryCards receivables={receivables} /><div className="credit-ar__overview-grid"><section className="credit-ar__panel"><div className="credit-ar__panel-heading"><span><ChartBar size={19} /><h2>อายุลูกหนี้</h2></span><button onClick={() => setActiveView('aging')} type="button">ดูรายงาน</button></div><div className="credit-ar__aging-bars">{agingBuckets.map((bucket) => <div key={bucket.label}><span>{bucket.label}</span><i className={`credit-ar__bar credit-ar__bar--${bucket.tone}`} style={{ '--aging-width': `${totalOutstanding ? Math.max(bucket.amount / totalOutstanding * 100, bucket.amount ? 5 : 0) : 0}%` } as CSSProperties} /><b>{money.format(bucket.amount)}</b></div>)}</div></section><section className="credit-ar__panel"><div className="credit-ar__panel-heading"><span><WarningCircle size={19} /><h2>ร้านที่ต้องติดตาม</h2></span><button onClick={() => setActiveView('customers')} type="button">ดูทั้งหมด</button></div><div className="credit-ar__follow-ups">{receivables.filter((item) => getCreditAccountStatus(item) !== 'normal').slice(0, 5).map((item) => <button key={item.shop_id} onClick={() => setSelectedId(item.shop_id)} type="button"><span><strong>{item.shop_code} · {item.shop_name}</strong><small>เกินกำหนด {money.format(item.overdue_amount)}</small></span><StatusBadge receivable={item} /></button>)}</div></section></div></> : null}
 
     {activeView === 'customers' ? <section className="financial-ops__section credit-ar__customers"><div className="financial-ops__title"><div><UsersThree /><span><h2>รายชื่อลูกหนี้เครดิต</h2><p>หนึ่งร้านต่อหนึ่งแถว ยอดทั้งหมดคำนวณจากยอดคงเหลือของบิล</p></span></div></div><SummaryCards receivables={receivables} /><div className="financial-ops__receivable-controls"><label className="credit-ar__search"><MagnifyingGlass size={17} /><input aria-label="ค้นหาร้านลูกหนี้เครดิต" onChange={(event) => setQuery(event.target.value)} placeholder="ค้นหารหัสร้านหรือชื่อร้าน" type="search" value={query} /></label><label>สถานะเครดิต<select aria-label="กรองสถานะเครดิต" onChange={(event) => setCreditStatus(event.target.value as typeof creditStatus)} value={creditStatus}><option value="all">ทั้งหมด</option>{Object.entries(statusMeta).map(([value, meta]) => <option key={value} value={value}>{meta.label}</option>)}</select></label><label>กำหนดชำระ<select aria-label="กรองสถานะการครบกำหนด" onChange={(event) => setDueStatus(event.target.value as typeof dueStatus)} value={dueStatus}><option value="all">ทั้งหมด</option><option value="not_due">ยังไม่ถึงกำหนด</option><option value="due_today">ถึงกำหนดวันนี้</option><option value="overdue">เกินกำหนด</option></select></label>{zones.length ? <label>อาคาร / โซน<select aria-label="กรองอาคารหรือโซน" onChange={(event) => setZone(event.target.value)} value={zone}><option value="all">ทั้งหมด</option>{zones.map((value) => <option key={value}>{value}</option>)}</select></label> : null}{responsibles.length ? <label>ผู้รับผิดชอบ<select aria-label="กรองผู้รับผิดชอบ" onChange={(event) => setResponsible(event.target.value)} value={responsible}><option value="all">ทั้งหมด</option>{responsibles.map((value) => <option key={value}>{value}</option>)}</select></label> : null}<label>เรียงตาม<select aria-label="เรียงลูกหนี้" onChange={(event) => setSortBy(event.target.value as typeof sortBy)} value={sortBy}><option value="due_date">วันครบกำหนด</option><option value="outstanding">ยอดค้าง</option><option value="overdue">ยอดเกินกำหนด</option></select></label></div>
-      <div className="credit-ar__table-wrap"><table className="credit-ar__table"><thead><tr><th>ร้านค้า</th><th>เงื่อนไขเครดิต</th><th>วงเงิน</th><th>ใช้ไป</th><th>เครดิตคงเหลือ</th><th>ยอดค้าง</th><th>เกินกำหนด</th><th>ครบกำหนดถัดไป</th><th>สถานะ</th><th><span className="sr-only">จัดการ</span></th></tr></thead><tbody>{filtered.map((item) => <tr key={item.shop_id}><td><button className="credit-ar__shop-link" onClick={() => setSelectedId(item.shop_id)} type="button"><strong>{item.shop_code}</strong><span>{item.shop_name}</span><small>{[item.building_name, item.zone_name].filter(Boolean).join(' · ')}</small></button></td><td>{item.credit_days ? `${item.credit_days} วัน` : 'สิ้นเดือน'}</td><td>{item.credit_limit === null ? 'ไม่จำกัด' : money.format(item.credit_limit)}</td><td>{money.format(item.outstanding_amount)}</td><td>{item.credit_limit === null ? 'ไม่จำกัด' : money.format(Number(item.credit_limit) - Number(item.outstanding_amount))}</td><td><strong>{money.format(item.outstanding_amount)}</strong></td><td className={Number(item.overdue_amount) > 0 ? 'is-danger' : ''}>{money.format(item.overdue_amount)}</td><td>{formatDate(item.oldest_due_date, serviceDate)}</td><td><StatusBadge receivable={item} /></td><td><button aria-label={`เปิดรายละเอียด ${item.shop_code}`} className="credit-ar__open-detail" onClick={() => setSelectedId(item.shop_id)} type="button"><ArrowSquareOut size={17} /></button></td></tr>)}</tbody></table></div>{filtered.length === 0 ? <p className="financial-ops__empty">ไม่พบร้านที่ตรงกับตัวกรอง</p> : null}</section> : null}
+      <div className="credit-ar__table-wrap"><table className="credit-ar__table"><thead><tr><th>ร้านค้า</th><th>รอบเก็บเงิน</th><th>วงเงิน</th><th>ใช้ไป</th><th>เครดิตคงเหลือ</th><th>ยอดค้าง</th><th>เกินกำหนด</th><th>ครบกำหนดถัดไป</th><th>สถานะ</th><th><span className="sr-only">จัดการ</span></th></tr></thead><tbody>{filtered.map((item) => <tr key={item.shop_id}><td><button className="credit-ar__shop-link" onClick={() => setSelectedId(item.shop_id)} type="button"><strong>{item.shop_code}</strong><span>{item.shop_name}</span><small>{[item.building_name, item.zone_name].filter(Boolean).join(' · ')}</small></button></td><td>{formatCreditCollectionCycle(item)}</td><td>{item.credit_limit === null ? 'ไม่จำกัด' : money.format(item.credit_limit)}</td><td>{money.format(item.outstanding_amount)}</td><td>{item.credit_limit === null ? 'ไม่จำกัด' : money.format(Number(item.credit_limit) - Number(item.outstanding_amount))}</td><td><strong>{money.format(item.outstanding_amount)}</strong></td><td className={Number(item.overdue_amount) > 0 ? 'is-danger' : ''}>{money.format(item.overdue_amount)}</td><td>{formatDate(item.oldest_due_date, serviceDate)}</td><td><StatusBadge receivable={item} /></td><td><button aria-label={`เปิดรายละเอียด ${item.shop_code}`} className="credit-ar__open-detail" onClick={() => setSelectedId(item.shop_id)} type="button"><ArrowSquareOut size={17} /></button></td></tr>)}</tbody></table></div>{filtered.length === 0 ? <p className="financial-ops__empty">ไม่พบร้านที่ตรงกับตัวกรอง</p> : null}</section> : null}
 
     {activeView === 'requests' ? <div className="credit-ar__request-grid"><section className="financial-ops__section"><div className="financial-ops__title"><div><CreditCard /><span><h2>คำขออนุมัติวงเงิน</h2><p>ตรวจค่าเดิม ค่าใหม่ เหตุผล และผู้ขอก่อนอนุมัติ</p></span></div></div>{approvals.length === 0 ? <p className="financial-ops__empty">ไม่มีคำขอรออนุมัติ</p> : <div className="financial-ops__cards">{approvals.map((approval) => <article key={approval.id}><strong>{approval.shops?.code} · {approval.shops?.name}</strong><span>{approval.kind === 'credit_limit' ? 'ขอเพิ่มวงเงินเครดิต' : 'ขอปรับยอดค้าง'} · {money.format(approval.requested_amount)}</span><p>{approval.reason}</p><small>ผู้ขอ {approval.users?.display_name ?? '—'} · {receiptDateTime.format(new Date(approval.requested_at))}</small><div><button disabled={busy} onClick={() => onDecide(approval.id, 'rejected')} type="button">ไม่อนุมัติ</button><button disabled={busy} onClick={() => onDecide(approval.id, 'approved')} type="button">อนุมัติ</button></div></article>)}</div>}</section><section className="financial-ops__section"><div className="financial-ops__title"><div><CalendarBlank /><span><h2>คำขอขยายวันครบกำหนด</h2><p>เก็บประวัติวันเดิมและวันใหม่ทุกครั้ง</p></span></div></div>{dueDateRequests.length === 0 ? <p className="financial-ops__empty">ไม่มีคำขอเลื่อนกำหนดชำระ</p> : <div className="financial-ops__cards">{dueDateRequests.map((request) => <article key={request.id}><strong>{request.shop_code} · {request.shop_name}</strong><span>{request.charge_number} · {formatDate(request.original_due_date, serviceDate)} → {formatDate(request.requested_due_date, serviceDate)}</span><p>{request.reason}</p><small>ผู้ขอ {request.requested_by} · {receiptDateTime.format(new Date(request.requested_at))}</small><div><button disabled={busy} onClick={() => onDecideDueDateRequest(request.id, 'rejected')} type="button">ไม่อนุมัติ</button><button disabled={busy} onClick={() => onDecideDueDateRequest(request.id, 'approved')} type="button">อนุมัติ</button></div></article>)}</div>}</section></div> : null}
 

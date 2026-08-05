@@ -1426,4 +1426,42 @@ describe('FinancialOperations', () => {
       p_reason: 'ร้านขอเลื่อนรอบรับเงิน',
     }));
   });
+
+  it('shows and edits a weekly collection cycle on the credit page', async () => {
+    const user = userEvent.setup();
+    render(<FinancialOperations
+      demoData={{
+        serviceDate: '2026-08-05',
+        queue: [],
+        paymentHistory: [],
+        receivables: [{
+          shop_id: 'weekly-shop', shop_code: 'W001', shop_name: 'ร้านเก็บวันศุกร์',
+          credit_due_rule: 'weekly', credit_days: null, credit_collection_weekday: 5,
+          credit_limit: null, available_credit_amount: null,
+          outstanding_amount: 100, overdue_amount: 0, oldest_due_date: '2026-08-07',
+          charges: [{
+            charge_id: 'weekly-charge', charge_number: 'C260805-000001',
+            service_date: '2026-08-05', due_date: '2026-08-07', original_amount: 100,
+            allocated_amount: 0, outstanding_amount: 100, days_overdue: 0,
+            payment_status: 'unpaid', due_status: 'not_due', assigned_collection_run_id: null,
+          }],
+          payments: [],
+        }],
+      }}
+      managerPage="credit"
+      userRole="admin"
+    />);
+
+    expect(await screen.findByText('รอบเก็บเงิน: ทุกวันศุกร์')).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: 'W001 ร้านเก็บวันศุกร์' }));
+    await user.click(screen.getByRole('button', { name: 'แก้รอบเก็บเงิน' }));
+    await user.selectOptions(screen.getByRole('combobox', { name: 'รอบเก็บเงิน' }), 'end_of_month');
+    await user.click(screen.getByRole('button', { name: 'ยกเลิก' }));
+    await user.click(screen.getByRole('button', { name: 'แก้รอบเก็บเงิน' }));
+    expect((screen.getByRole('combobox', { name: 'รอบเก็บเงิน' }) as HTMLSelectElement).value).toBe('weekly');
+    await user.selectOptions(screen.getByRole('combobox', { name: 'รอบเก็บเงิน' }), 'end_of_month');
+    await user.click(screen.getByRole('button', { name: 'บันทึกรอบเก็บเงิน' }));
+
+    expect((await screen.findAllByText('รอบเก็บเงิน: ทุกสิ้นเดือน')).length).toBeGreaterThan(0);
+  });
 });

@@ -14,6 +14,7 @@ import {
   WarningCircle,
   X,
 } from '@phosphor-icons/react';
+import { formatCreditCollectionCycle } from '../../lib/creditCollectionCycle';
 import type {
   DeliveryFinancialResult,
   DeliveryPosContext,
@@ -634,9 +635,7 @@ export function EmployeeDeliveryReview({
                     <small>
                       วงเงินคงเหลือ {posContext.payment_profile.credit_remaining == null
                         ? 'ไม่จำกัด'
-                        : money.format(posContext.payment_profile.credit_remaining)} · {posContext.payment_profile.credit_due_rule === 'net_days'
-                        ? `ครบกำหนด ${posContext.payment_profile.credit_days ?? 0} วันหลังส่ง`
-                        : 'ครบกำหนดวันสิ้นเดือน'}
+                        : money.format(posContext.payment_profile.credit_remaining)} · {formatCreditCollectionCycle(posContext.payment_profile)}
                     </small>
                   ) : null}
                 </fieldset>

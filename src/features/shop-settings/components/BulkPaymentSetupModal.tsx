@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { X } from '@phosphor-icons/react';
 import type { ShopSetting, BuildingOption, BuildingZoneOption, PaymentTerm, PaymentMethod, CreditDueRule, ShopPaymentProfileSetting } from '../../../types/app';
 import { bulkSaveShopPaymentProfiles, getErrorMessage } from '../../admin-reference-settings/adminReferenceSettingsService';
+import { CREDIT_COLLECTION_WEEKDAY_OPTIONS, formatCreditCollectionCycle } from '../../../lib/creditCollectionCycle';
 
 interface BulkPaymentSetupModalProps {
   shops: ShopSetting[];
@@ -24,6 +25,7 @@ export function BulkPaymentSetupModal({ shops, buildings, zones, onClose, onSucc
   const [allowOutstanding, setAllowOutstanding] = useState(false);
   const [creditDueRule, setCreditDueRule] = useState<CreditDueRule>('net_days');
   const [creditDays, setCreditDays] = useState(30);
+  const [creditCollectionWeekday, setCreditCollectionWeekday] = useState(5);
   const [creditLimit, setCreditLimit] = useState<number | null>(null);
 
   const [saving, setSaving] = useState(false);
@@ -102,6 +104,9 @@ export function BulkPaymentSetupModal({ shops, buildings, zones, onClose, onSucc
       allow_outstanding: allowedPaymentTerms.includes('credit') ? true : allowOutstanding,
       credit_due_rule: allowedPaymentTerms.includes('credit') ? creditDueRule : null,
       credit_days: allowedPaymentTerms.includes('credit') && creditDueRule === 'net_days' ? creditDays : null,
+      credit_collection_weekday: allowedPaymentTerms.includes('credit') && creditDueRule === 'weekly'
+        ? creditCollectionWeekday
+        : null,
       credit_limit: allowedPaymentTerms.includes('credit') ? creditLimit : null,
     };
 
@@ -262,18 +267,34 @@ export function BulkPaymentSetupModal({ shops, buildings, zones, onClose, onSucc
           {allowedPaymentTerms.includes('credit') ? (
             <div className="field-grid" style={{ marginTop: '1rem' }}>
               <label>
-                กฎวันครบกำหนด
+                รอบเก็บเงิน
                 <select onChange={(e) => setCreditDueRule(e.target.value as CreditDueRule)} value={creditDueRule}>
-                  <option value="net_days">จำนวนวันเครดิต</option>
-                  <option value="end_of_month">สิ้นเดือน</option>
+                  <option value="weekly">ทุกสัปดาห์</option>
+                  <option value="end_of_month">ทุกสิ้นเดือน</option>
+                  <option value="net_days">หลังส่งสินค้า X วัน</option>
                 </select>
               </label>
               {creditDueRule === 'net_days' ? (
                 <label>
-                  จำนวนวันเครดิต
+                  จำนวนวันหลังส่งสินค้า
                   <input min="1" onChange={(e) => setCreditDays(Number(e.target.value) || 1)} type="number" value={creditDays} />
                 </label>
               ) : null}
+              {creditDueRule === 'weekly' ? (
+                <label>
+                  วันเก็บเงินประจำสัปดาห์
+                  <select onChange={(e) => setCreditCollectionWeekday(Number(e.target.value))} value={creditCollectionWeekday}>
+                    {CREDIT_COLLECTION_WEEKDAY_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                </label>
+              ) : null}
+              <p style={{ alignSelf: 'end', margin: 0 }}>{formatCreditCollectionCycle({
+                credit_due_rule: creditDueRule,
+                credit_days: creditDueRule === 'net_days' ? creditDays : null,
+                credit_collection_weekday: creditDueRule === 'weekly' ? creditCollectionWeekday : null,
+              })}</p>
               <label>
                 วงเงินเครดิต (เว้นว่างหากไม่จำกัด)
                 <input min="0" onChange={(e) => setCreditLimit(e.target.value ? Number(e.target.value) : null)} type="number" value={creditLimit ?? ''} />

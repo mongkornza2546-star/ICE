@@ -36,7 +36,7 @@ import {
   receiptFromSnapshot,
   withSignedShopImages,
 } from './features/financial-operations/utils';
-import type { AppRole, PaymentMethod } from './types/app';
+import type { AppRole, CreditDueRule, PaymentMethod } from './types/app';
 
 const PAYMENT_FIELDS = 'id, receipt_number, received_amount, allocated_amount, change_amount, payment_method, status, recorded_at, recorded_by, void_reason, shops(code,name)';
 
@@ -816,7 +816,9 @@ export function FinancialOperations({
     receivable: Receivable,
     changes: {
       credit_limit?: number | null;
-      credit_days?: number;
+      credit_due_rule?: CreditDueRule;
+      credit_days?: number | null;
+      credit_collection_weekday?: number | null;
       credit_suspended?: boolean;
       credit_suspension_reason?: string | null;
     },

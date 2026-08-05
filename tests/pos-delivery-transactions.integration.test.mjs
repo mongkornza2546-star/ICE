@@ -81,6 +81,14 @@ const paymentReceiptSnapshots = readFileSync(
   new URL('../supabase/migrations/0124_payment_receipt_snapshots.sql', import.meta.url),
   'utf8',
 );
+const weeklyCreditDueRule = readFileSync(
+  new URL('../supabase/migrations/0125_add_weekly_credit_due_rule.sql', import.meta.url),
+  'utf8',
+);
+const creditCollectionCycles = readFileSync(
+  new URL('../supabase/migrations/0126_credit_collection_cycles.sql', import.meta.url),
+  'utf8',
+);
 
 const COURIER_ID = '10000000-0000-4000-8000-000000000001';
 const ADMIN_ID = '10000000-0000-4000-8000-000000000002';
@@ -548,6 +556,8 @@ async function createDatabase(t, { applyCollectionShopCards = true } = {}) {
     await db.exec(creditCollectionsAndDueDateExtensions);
     await db.exec(creditAccountManagement);
     await db.exec(paymentReceiptSnapshots);
+    await db.exec(weeklyCreditDueRule);
+    await db.exec(creditCollectionCycles);
   }
   await db.exec(disableDailyStockRefill);
   await db.exec(courierPaymentVoids);
@@ -1153,6 +1163,54 @@ test('financial correction reprices at original service date and cancellation vo
     where event.id = '${correction.rows[0].replacement_id}'
   `);
   assert.deepEqual(cancelled.rows[0], { status: 'cancelled', charge_status: 'voided' });
+});
+
+test('credit correction preserves the original due date after the shop cycle changes', async (t) => {
+  const db = await createDatabase(t);
+  await db.exec(`
+    update public.shop_payment_profiles
+    set allowed_payment_terms = array['credit']::public.payment_term[],
+        default_payment_term = 'credit', allow_outstanding = true,
+        credit_due_rule = 'net_days', credit_days = 30,
+        credit_collection_weekday = null, credit_limit = null
+    where shop_id = '${SHOP_ID}';
+  `);
+  const original = await db.query(`
+    select public.record_delivery(
+      '${STOP_ID}', '${itemPayload(2)}'::jsonb, 'delivered', null, null,
+      '70000000-0000-4000-8000-000000000014', 'credit'
+    ) as result
+  `);
+
+  await db.exec(`
+    update public.auth_context
+    set user_id = '${ADMIN_ID}', app_role = 'admin';
+    update public.shop_payment_profiles
+    set credit_due_rule = 'weekly', credit_days = null,
+        credit_collection_weekday = 5
+    where shop_id = '${SHOP_ID}';
+  `);
+  await db.query(`
+    select public.revise_delivery_event(
+      '${original.rows[0].result.delivery_event_id}', 'correct',
+      '${itemPayload(3)}'::jsonb, 'delivered', null, 'แก้จำนวน',
+      '80000000-0000-4000-8000-000000000014'
+    )
+  `);
+
+  const dueDates = await db.query(`
+    select original_charge.due_date as original_due_date,
+      replacement_charge.due_date as replacement_due_date
+    from public.delivery_events original
+    join public.delivery_events replacement on replacement.corrects_event_id = original.id
+    join public.delivery_charges original_charge on original_charge.delivery_event_id = original.id
+    join public.delivery_charges replacement_charge on replacement_charge.delivery_event_id = replacement.id
+    where original.id = '${original.rows[0].result.delivery_event_id}'
+  `);
+  assert.equal(
+    dueDates.rows[0].replacement_due_date.getTime(),
+    dueDates.rows[0].original_due_date.getTime(),
+  );
 });
 
 test('legacy unpriced correction stays outside the financial ledger', async (t) => {
@@ -2104,4 +2162,191 @@ test('an approved outstanding exception is consumed by one partial payment', asy
     ) as result
   `);
   assert.equal(retry.rows[0].result.payment_id, payment.rows[0].result.payment_id);
+});
+
+test('credit collection cycles resolve weekly, month-end, and net-day due dates', async (t) => {
+  const db = await createDatabase(t);
+  const recordDeliveryDefinition = await db.query(`
+    select pg_get_functiondef(
+      'public.record_delivery(uuid,jsonb,public.shop_round_status,text,timestamptz,uuid,public.payment_term,uuid)'::regprocedure
+    ) as definition
+  `);
+  assert.match(
+    recordDeliveryDefinition.rows[0].definition,
+    /pg_advisory_xact_lock\([\s\S]*?'financial-shop:'[\s\S]*?select profile\.\* into v_profile[\s\S]*?where profile\.shop_id = v_shop_id\s+for share/i,
+  );
+  await db.exec(`
+    update public.shop_payment_profiles
+    set allowed_payment_terms = array['credit']::public.payment_term[],
+        default_payment_term = 'credit', allow_outstanding = true,
+        credit_due_rule = 'weekly', credit_days = null,
+        credit_collection_weekday = 5
+    where shop_id = '${SHOP_ID}';
+  `);
+
+  const weekly = await db.query(`
+    select
+      public.resolve_credit_due_date('${SHOP_ID}', date '2026-07-26') as from_sunday,
+      public.resolve_credit_due_date('${SHOP_ID}', date '2026-07-31') as on_friday
+  `);
+  assert.equal(weekly.rows[0].from_sunday.toISOString().slice(0, 10), '2026-07-31');
+  assert.equal(weekly.rows[0].on_friday.toISOString().slice(0, 10), '2026-07-31');
+
+  await db.exec(`
+    insert into public.collection_runs (
+      service_date, status, opened_by, closed_by, closed_at
+    ) values (
+      date '2026-07-31', 'closed', '${ADMIN_ID}', '${ADMIN_ID}', now()
+    );
+    insert into public.collection_runs (service_date, opened_by)
+    values (date '2026-07-31', '${ADMIN_ID}');
+  `);
+  const afterFirstClose = await db.query(`
+    select public.resolve_credit_due_date('${SHOP_ID}', date '2026-07-31') as due_date
+  `);
+  assert.equal(afterFirstClose.rows[0].due_date.toISOString().slice(0, 10), '2026-08-07');
+
+  await db.exec(`
+    update public.shop_payment_profiles
+    set credit_due_rule = 'end_of_month', credit_days = null,
+        credit_collection_weekday = null
+    where shop_id = '${SHOP_ID}';
+  `);
+  const monthEnds = await db.query(`
+    select
+      public.resolve_credit_due_date('${SHOP_ID}', date '2026-02-10') as feb_28,
+      public.resolve_credit_due_date('${SHOP_ID}', date '2028-02-10') as feb_29,
+      public.resolve_credit_due_date('${SHOP_ID}', date '2026-04-30') as apr_30,
+      public.resolve_credit_due_date('${SHOP_ID}', date '2026-01-15') as jan_31
+  `);
+  assert.deepEqual(Object.fromEntries(Object.entries(monthEnds.rows[0]).map(([key, value]) => [
+    key, value.toISOString().slice(0, 10),
+  ])), {
+    feb_28: '2026-02-28',
+    feb_29: '2028-02-29',
+    apr_30: '2026-04-30',
+    jan_31: '2026-01-31',
+  });
+
+  await db.exec(`
+    insert into public.collection_runs (
+      service_date, status, opened_by, closed_by, closed_at
+    ) values (
+      date '2026-02-28', 'closed', '${ADMIN_ID}', '${ADMIN_ID}', now()
+    );
+  `);
+  const afterMonthEndClose = await db.query(`
+    select public.resolve_credit_due_date('${SHOP_ID}', date '2026-02-10') as due_date
+  `);
+  assert.equal(afterMonthEndClose.rows[0].due_date.toISOString().slice(0, 10), '2026-03-31');
+
+  await db.exec(`
+    update public.shop_payment_profiles
+    set credit_due_rule = 'net_days', credit_days = 30,
+        credit_collection_weekday = null
+    where shop_id = '${SHOP_ID}';
+  `);
+  const netDays = await db.query(`
+    select public.resolve_credit_due_date('${SHOP_ID}', date '2026-07-01') as due_date
+  `);
+  assert.equal(netDays.rows[0].due_date.toISOString().slice(0, 10), '2026-07-31');
+
+  await assert.rejects(
+    db.exec(`
+      update public.shop_payment_profiles
+      set credit_due_rule = 'weekly', credit_days = 30,
+          credit_collection_weekday = 5
+      where shop_id = '${SHOP_ID}';
+    `),
+    /shop_payment_profiles_credit_collection_cycle_check/,
+  );
+
+  await db.exec(`
+    update public.auth_context
+    set user_id = '${ADMIN_ID}', app_role = 'admin', is_active = true;
+  `);
+  await assert.rejects(
+    db.query(`
+      select public.update_credit_account_settings(
+        '${SHOP_ID}', '{"credit_due_rule":"end_of_month"}'::jsonb
+      )
+    `),
+    /must include rule, days, and weekday/,
+  );
+
+  const updatedCycle = await db.query(`
+    select public.update_credit_account_settings(
+      '${SHOP_ID}',
+      '{"credit_due_rule":"weekly","credit_days":null,"credit_collection_weekday":2}'::jsonb
+    ) as result
+  `);
+  assert.equal(updatedCycle.rows[0].result.credit_due_rule, 'weekly');
+  assert.equal(updatedCycle.rows[0].result.credit_days, null);
+  assert.equal(updatedCycle.rows[0].result.credit_collection_weekday, 2);
+});
+
+test('record_delivery uses database acceptance after the first close as its cutoff', async (t) => {
+  const db = await createDatabase(t);
+  await db.exec(`
+    update public.auth_context
+    set user_id = '${ADMIN_ID}', app_role = 'admin', is_active = true;
+    update public.delivery_rounds set service_date = date '2026-07-31'
+    where id = '${ROUND_ID}';
+    update public.shop_payment_profiles
+    set allowed_payment_terms = array['credit']::public.payment_term[],
+        default_payment_term = 'credit', allow_outstanding = true,
+        credit_due_rule = 'weekly', credit_days = null,
+        credit_collection_weekday = 5, credit_limit = null
+    where shop_id = '${SHOP_ID}';
+    insert into public.collection_runs (
+      service_date, status, opened_by, closed_by, closed_at
+    ) values (
+      date '2026-07-31', 'closed', '${ADMIN_ID}', '${ADMIN_ID}', now()
+    );
+    insert into public.collection_runs (service_date, opened_by)
+    values (date '2026-07-31', '${ADMIN_ID}');
+    insert into public.test_opening_balances (
+      service_date, location_id, ice_type_id, quantity
+    ) values (
+      date '2026-07-31', '${HOLDING_ID}', '${ICE_ID}', 10
+    ) on conflict (service_date, location_id, ice_type_id) do update
+      set quantity = excluded.quantity;
+    insert into public.stock_movements (
+      id, service_date, kind, to_location_id, idempotency_key, recorded_by
+    ) values (
+      '65000000-0000-4000-8000-000000000099', date '2026-07-31',
+      'factory_order', '${TRUCK_ID}',
+      '65000000-0000-4000-8000-000000000098', '${ADMIN_ID}'
+    );
+    insert into public.stock_movement_items (movement_id, ice_type_id, quantity)
+    values ('65000000-0000-4000-8000-000000000099', '${ICE_ID}', 10);
+  `);
+
+  const delivered = await db.query(`
+    select public.record_delivery(
+      '${STOP_ID}', '${itemPayload(2)}'::jsonb, 'delivered', null,
+      timestamptz '2026-07-31 08:00:00+07',
+      '70000000-0000-4000-8000-000000000099', 'credit', null
+    ) as result
+  `);
+  assert.equal(delivered.rows[0].result.due_date, '2026-08-07');
+
+  const reopenedRun = await db.query(`
+    select id from public.collection_runs
+    where service_date = date '2026-07-31' and status = 'open'
+  `);
+  await assert.rejects(
+    db.query(`
+      select public.set_credit_charge_collection_assignment(
+        '${reopenedRun.rows[0].id}', '${delivered.rows[0].result.charge_id}', true
+      )
+    `),
+    /closed collection cutoff/i,
+  );
+  const eligibility = await db.query(`
+    select public.is_charge_collectible_in_run(
+      '${delivered.rows[0].result.charge_id}', '${reopenedRun.rows[0].id}'
+    ) as collectible
+  `);
+  assert.equal(eligibility.rows[0].collectible, false);
 });
