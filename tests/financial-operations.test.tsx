@@ -152,6 +152,28 @@ describe('FinancialOperations', () => {
     expect((screen.getByRole('spinbutton', { name: 'ยอดรับเงินจริง' }) as HTMLInputElement).value).toBe('100.00');
   });
 
+  it('opens delivery-bill items from the compact collection panel', async () => {
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1200 });
+    const user = userEvent.setup();
+
+    render(<FinancialOperations
+      demoData={{ serviceDate: '2026-07-28', queue: [queueShop], paymentHistory: [] }}
+      userRole="round_lead"
+    />);
+
+    const bill = screen.getByRole('button', {
+      name: 'ดูรายละเอียดบิลส่งของ C260728-000001',
+    });
+    expect(bill.getAttribute('aria-expanded')).toBe('false');
+    expect(screen.queryByRole('region', { name: 'รายการส่งของบิล C260728-000001' })).toBeNull();
+
+    await user.click(bill);
+
+    expect(bill.getAttribute('aria-expanded')).toBe('true');
+    expect(screen.getByRole('region', { name: 'รายการส่งของบิล C260728-000001' }).textContent)
+      .toContain('น้ำแข็งหลอด × 2 ถุง');
+  });
+
   it('applies document search, status filtering, and the all tab to the displayed rows', async () => {
     Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1200 });
     const user = userEvent.setup();

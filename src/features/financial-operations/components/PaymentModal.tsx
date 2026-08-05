@@ -1,6 +1,7 @@
-import type { RefObject } from 'react';
+import { useState, type RefObject } from 'react';
 import {
   Bank,
+  CaretDown,
   CheckCircle,
   FloppyDisk,
   ListNumbers,
@@ -75,6 +76,7 @@ export function PaymentModal({
   onRequestDueDate: (charge: QueueShop['charges'][number]) => void;
 }) {
   const isPanel = presentation === 'panel';
+  const [expandedChargeId, setExpandedChargeId] = useState<string | null>(null);
   return (
     <div
       aria-label={`รับเงิน ${selectedShop.shop_name}`}
@@ -130,17 +132,35 @@ export function PaymentModal({
               <strong><ListNumbers aria-hidden="true" size={18} /> รายละเอียดบิลและรายการที่สั่ง</strong>
               {selectedShop.charges.map((charge) => {
                 const isPriorBalance = charge.service_date !== serviceDate;
+                const isExpanded = !isPanel || expandedChargeId === charge.charge_id;
+                const chargeHeader = <>
+                  <span>
+                    <em>{isPriorBalance ? 'ยอดค้างจากวันอื่น' : 'บิลวันนี้'}</em>
+                    <b>เลขที่บิล {charge.charge_number}</b>
+                    <small>ส่งวันที่ {formatServiceDate(charge.service_date)}</small>
+                  </span>
+                  <span className="financial-ops__charge-total"><small>ยอดค้างบิลนี้</small><b>{money.format(charge.outstanding_amount)}</b></span>
+                </>;
                 return (
-                  <article className={isPriorBalance ? 'is-prior-balance' : ''} key={charge.charge_id}>
-                    <header>
-                      <span>
-                        <em>{isPriorBalance ? 'ยอดค้างจากวันอื่น' : 'บิลวันนี้'}</em>
-                        <b>เลขที่บิล {charge.charge_number}</b>
-                        <small>ส่งวันที่ {formatServiceDate(charge.service_date)}</small>
-                      </span>
-                      <span><small>ยอดค้างบิลนี้</small><b>{money.format(charge.outstanding_amount)}</b></span>
-                    </header>
-                    <div className="financial-ops__charge-items">
+                  <article className={`${isPriorBalance ? 'is-prior-balance ' : ''}${isExpanded ? 'is-expanded' : ''}`.trim()} key={charge.charge_id}>
+                    {isPanel ? <button
+                      aria-controls={`financial-charge-items-${charge.charge_id}`}
+                      aria-expanded={isExpanded}
+                      aria-label={`ดูรายละเอียดบิลส่งของ ${charge.charge_number}`}
+                      className="financial-ops__charge-toggle"
+                      onClick={() => setExpandedChargeId((current) => current === charge.charge_id ? null : charge.charge_id)}
+                      type="button"
+                    >
+                      {chargeHeader}
+                      <CaretDown aria-hidden="true" className="financial-ops__charge-caret" size={17} weight="bold" />
+                    </button> : <header>{chargeHeader}</header>}
+                    <div
+                      aria-label={`รายการส่งของบิล ${charge.charge_number}`}
+                      className="financial-ops__charge-items"
+                      hidden={!isExpanded}
+                      id={`financial-charge-items-${charge.charge_id}`}
+                      role="region"
+                    >
                       {(charge.items ?? []).map((item) => (
                         <div key={item.ice_type_id}>
                           <span>{item.name} × {item.quantity.toLocaleString('th-TH')} {item.unit}</span>
