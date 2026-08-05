@@ -405,12 +405,18 @@ export interface ShopSetting {
 
 export interface ShopCardHistoryEntry {
   event_id: string;
+  charge_id?: string | null;
   recorded_at: string;
+  recorded_by_id?: string | null;
   round_name: string;
   recorded_by: string;
   stop_status: Exclude<ShopRoundStatus, 'pending'>;
   note: string | null;
   items: Record<string, number>;
+  allocated_amount?: number;
+  can_correct?: boolean;
+  can_cancel?: boolean;
+  correction_blocker?: string | null;
 }
 
 export interface ShopCard {

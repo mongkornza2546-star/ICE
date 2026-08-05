@@ -44,6 +44,7 @@ describe('RoleRouter recovery', () => {
     mockedSupabase.signOut.mockResolvedValue(undefined);
     writeNavigation(profile.id, {
       activeView: 'manager_overview',
+      financialPage: 'collection',
       courierView: 'withdrawal',
       billingServiceDate: '2026-07-15',
     });
@@ -60,6 +61,7 @@ describe('RoleRouter recovery', () => {
     ).toBe('page'));
     await waitFor(() => expect(readNavigation(profile.id)).toEqual({
       activeView: 'manager_overview',
+      financialPage: 'collection',
       courierView: 'withdrawal',
       billingServiceDate: toBangkokDateString(),
     }));

@@ -100,7 +100,7 @@ export function RoleRouter({
       const saved = readNavigation(profile.id);
       navigationOwner.current = profile.id;
       setActiveView(saved?.activeView ? saved.activeView as AdminView : 'manager_overview');
-      setFinancialPage(saved?.financialPage === 'credit' ? 'credit' : 'collection');
+      setFinancialPage(saved?.financialPage === 'credit' || saved?.financialPage === 'refund' ? saved.financialPage : 'collection');
       setCourierView(saved?.courierView ?? 'pos');
       setBillingServiceDate(currentBangkokDate);
       return;
@@ -296,7 +296,7 @@ export function RoleRouter({
 
   const changeBillingServiceDate = (serviceDate: string) => {
     if (serviceDate === billingServiceDate) return;
-    if (serviceDate > currentBangkokDate) return;
+    if (serviceDate > toBangkokDateString()) return;
     if (!confirmLeavingDelivery()) return;
     setBillingServiceDate(serviceDate);
   };
@@ -340,7 +340,7 @@ export function RoleRouter({
       )}
       {visitedViews.has('shops') && (
         <KeepAlive active={currentView === 'shops'}>
-          <ShopSettings isActive={currentView === 'shops'} />
+          <ShopSettings isActive={currentView === 'shops'} userRole={profile.role} />
         </KeepAlive>
       )}
       {visitedViews.has('reference_settings') && (

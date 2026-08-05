@@ -13,6 +13,8 @@ import { env } from '../../../lib/env';
 import { getErrorMessage } from '../../../lib/errorMessage';
 import { formatServiceDate, money, paymentMethodLabel } from '../../financial-operations/utils';
 import type { FinancialPaymentStatus, PaymentMethod, PaymentTerm } from '../../../types/app';
+import type { AppRole } from '../../../types/app';
+import { DeliveryCorrectionDialog } from '../../delivery-corrections/DeliveryCorrectionDialog';
 
 type PurchaseHistoryItem = {
   ice_type_id: string;
@@ -42,6 +44,12 @@ export type PurchaseHistoryEntry = {
   allocated_amount: number;
   outstanding_amount: number;
   payment_status: FinancialPaymentStatus | null;
+  delivery_status?: 'active' | 'replaced' | 'cancelled';
+  charge_status?: 'active' | 'voided' | null;
+  base_amount?: number | null;
+  round_status?: 'open' | 'closed';
+  day_closed?: boolean;
+  adjustments?: Array<{ id: string; amount_delta: number; reason: string }>;
   items: PurchaseHistoryItem[];
   payments: PurchaseHistoryPayment[];
 };
@@ -126,12 +134,14 @@ function entryPaymentMethods(entry: PurchaseHistoryEntry) {
     .join(' + ');
 }
 
-export function ShopPurchaseHistory({ isActive, shopId }: { isActive: boolean; shopId: string }) {
+export function ShopPurchaseHistory({ isActive, shopId, userRole = 'admin' }: { isActive: boolean; shopId: string; userRole?: AppRole }) {
   const [entries, setEntries] = useState<PurchaseHistoryEntry[]>([]);
   const [period, setPeriod] = useState<HistoryPeriod>('90');
   const [paymentFilter, setPaymentFilter] = useState<HistoryPaymentFilter>('all');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [correctionEventId, setCorrectionEventId] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
 
   const loadHistory = useCallback(async () => {
     if (!shopId) return;
@@ -253,6 +263,8 @@ export function ShopPurchaseHistory({ isActive, shopId }: { isActive: boolean; s
                     </span>
                     <span className={`shop-purchase-status shop-purchase-status--${entry.payment_status ?? 'legacy'}`}>{paymentStatusLabel(entry.payment_status)}</span>
                   </div>
+                  {entry.delivery_status === 'replaced' ? <p className="muted">บิลนี้ถูกแทนที่ด้วยบิลแก้ไขแล้ว</p>
+                    : entry.delivery_status === 'cancelled' || entry.charge_status === 'voided' ? <p className="muted">บิลนี้ถูกยกเลิกแล้ว</p> : null}
                   <div className="shop-purchase-card__items">
                     {entry.items.map((item) => (
                       <span key={item.ice_type_id}>
@@ -267,12 +279,16 @@ export function ShopPurchaseHistory({ isActive, shopId }: { isActive: boolean; s
                     <span><small>ยอดรวม</small><strong>{entry.total_amount == null ? 'ไม่ระบุยอด' : money.format(Number(entry.total_amount))}</strong></span>
                     <span><small>ยอดค้าง</small><strong className={entry.outstanding_amount > 0 ? 'is-outstanding' : ''}>{entry.total_amount == null ? '—' : money.format(Number(entry.outstanding_amount))}</strong></span>
                   </div>
+                  {entry.adjustments?.map((adjustment) => <p className="muted" key={adjustment.id}>{adjustment.reason} · {adjustment.amount_delta >= 0 ? '+' : ''}{money.format(Number(adjustment.amount_delta))}</p>)}
+                  {entry.charge_id && entry.delivery_status !== 'cancelled' && entry.charge_status !== 'voided' ? <button className="secondary-button" onClick={() => setCorrectionEventId(entry.delivery_event_id)} type="button">{entry.round_status === 'closed' || entry.day_closed ? 'สร้างเอกสารปรับปรุง' : 'แก้ไขหรือยกเลิกบิล'}</button> : null}
                 </div>
               </article>
             );
           })}
         </div>
       )}
+      {success ? <p className="employee-success" role="status">{success}</p> : null}
+      {correctionEventId ? <DeliveryCorrectionDialog eventId={correctionEventId} onClose={() => setCorrectionEventId(null)} onSuccess={async (message) => { setSuccess(message); await loadHistory(); }} userRole={userRole} /> : null}
     </section>
   );
 }

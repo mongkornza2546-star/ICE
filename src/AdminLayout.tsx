@@ -30,7 +30,7 @@ export type AdminView =
   | 'shops'
   | 'reference_settings';
 
-export type FinancialPage = 'collection' | 'credit';
+export type FinancialPage = 'collection' | 'credit' | 'refund';
 
 const viewMeta: Record<AdminView, { label: string; shortLabel: string; icon: typeof Truck }> = {
   manager_overview: { label: 'งานวันนี้', shortLabel: 'งานวันนี้', icon: ClipboardText },
@@ -166,7 +166,15 @@ export function AdminLayout({
                         }}
                         type="button"
                       >ลูกหนี้เครดิต</button>
-                      <button aria-disabled="true" disabled type="button">รายการธุรกรรม <small>เร็ว ๆ นี้</small></button>
+                      <button
+                        aria-current={activeView === view && financialPage === 'refund' ? 'page' : undefined}
+                        onClick={() => {
+                          onNavigate(view);
+                          onFinancialPageChange?.('refund');
+                          if (!isDesktopLayout) setNavigationExpanded(false);
+                        }}
+                        type="button"
+                      >คิวคืนเงิน</button>
                     </div>
                   ) : null}
                 </div>

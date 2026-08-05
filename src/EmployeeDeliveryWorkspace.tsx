@@ -322,6 +322,7 @@ export function EmployeeDeliveryWorkspace({
         onRequestApproval={data.handleRequestApproval}
         onNoteChange={data.setNote}
         onReturnToDelivery={data.returnToDelivery}
+        onCorrectionSuccess={() => { data.retryLoad(); }}
         onSubmit={data.handleSubmit}
         problemOpen={data.problemOpen}
         round={data.selectedRound}

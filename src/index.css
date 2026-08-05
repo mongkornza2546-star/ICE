@@ -1822,6 +1822,37 @@ input:disabled, select:disabled, textarea:disabled { background: #f2f5f8; color:
   .employee-pos-shop > .employee-status { grid-column: 1 / -1; justify-self: start; }
 }
 
+.delivery-correction-layer { z-index: 130; }
+.delivery-correction-dialog { width: min(720px, 100%); max-height: calc(100dvh - 32px); overflow: auto; }
+.delivery-correction-dialog__summary,
+.delivery-correction-dialog__preview { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.delivery-correction-dialog__summary span,
+.delivery-correction-dialog__preview span { display: grid; gap: 4px; padding: 12px; border-radius: 10px; background: #f4f8fc; }
+.delivery-correction-dialog__summary small,
+.delivery-correction-dialog__preview small { color: #66788d; }
+.delivery-correction-dialog__notice { display: flex; gap: 8px; padding: 10px 12px; border: 1px solid #f1cc78; border-radius: 10px; background: #fff8e8; color: #765311; }
+.delivery-correction-dialog__preview { padding-top: 12px; border-top: 1px solid #dbe5ef; }
+.delivery-correction-dialog__preview strong { color: #075e54; }
+.delivery-correction-dialog__stock-impact { display: grid; gap: 5px; padding: 12px; border-radius: 10px; background: #eef8f5; color: #285f55; }
+
+.refund-queue { display: grid; gap: 16px; }
+.refund-queue__filter { display: flex; align-items: center; gap: 8px; width: fit-content; }
+.refund-queue__list { display: grid; gap: 12px; }
+.refund-queue__list > article { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(250px, .7fr); align-items: center; gap: 18px; padding: 18px; border: 1px solid #dce6ef; border-radius: 14px; background: #fff; }
+.refund-queue__list h3 { margin: 2px 0; }
+.refund-queue__list p { margin: 6px 0 0; color: #63758a; }
+.refund-queue__actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.refund-queue__actions .primary-button { grid-column: 1 / -1; justify-content: center; }
+
+@media (max-width: 700px) {
+  .delivery-correction-dialog { max-height: 100dvh; border-radius: 18px 18px 0 0; }
+  .delivery-correction-dialog__summary,
+  .delivery-correction-dialog__preview { grid-template-columns: 1fr; }
+  .refund-queue__list > article { grid-template-columns: 1fr; }
+  .refund-queue__actions { grid-template-columns: 1fr; }
+  .refund-queue__actions .primary-button { grid-column: auto; }
+}
+
 @media (max-width: 900px) {
   .credit-ar__summary-cards, .credit-ar__metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .credit-ar__aging-summary--five { grid-template-columns: repeat(2, minmax(0, 1fr)); }

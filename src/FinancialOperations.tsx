@@ -12,10 +12,10 @@ import { CollectionDesk } from './features/financial-operations/components/Colle
 import { ManagerFinancialSections, PaymentHistorySection } from './features/financial-operations/components/FinancialOperationsPanels';
 import { HistoryReceiptModal } from './features/financial-operations/components/HistoryReceiptModal';
 import { PaymentModal } from './features/financial-operations/components/PaymentModal';
+import { RefundQueuePanel } from './features/financial-operations/components/RefundQueuePanel';
 import type {
   Approval,
   Collector,
-  CreditBillRevision,
   DueDateRequest,
   HistoryReceiptDetail,
   PaymentHistoryItem,
@@ -23,7 +23,6 @@ import type {
   PaymentReceiptSnapshot,
   QueueShop,
   Receivable,
-  ReceivableCharge,
   ReceivableDetail,
   ReceiptItemRow,
 } from './features/financial-operations/types';
@@ -65,8 +64,8 @@ export function FinancialOperations({
   userRole?: AppRole;
   currentUserId?: string;
   demoData?: FinancialOperationsDemoData;
-  managerPage?: 'collection' | 'credit';
-  onManagerPageChange?: (page: 'collection' | 'credit') => void;
+  managerPage?: 'collection' | 'credit' | 'refund';
+  onManagerPageChange?: (page: 'collection' | 'credit' | 'refund') => void;
 }) {
   const serviceDate = demoData?.serviceDate ?? toBangkokDateString();
   const initialDemoRunId = demoData
@@ -866,60 +865,6 @@ export function FinancialOperations({
     return { charges: detail?.charges ?? [], payments: detail?.payments ?? [], ice_types: detail?.ice_types ?? [] };
   }, [demoData, serviceDate]);
 
-  const reviseCreditDelivery = async (
-    receivable: Receivable,
-    charge: ReceivableCharge,
-    revision: CreditBillRevision,
-  ): Promise<ReceivableDetail> => {
-    if (!charge.delivery_event_id) throw new Error('ไม่พบรายการส่งต้นทางของบิลนี้');
-    if (demoData) {
-      const nextCharges = revision.action === 'cancel'
-        ? receivable.charges.filter((item) => item.charge_id !== charge.charge_id)
-        : receivable.charges.map((item) => item.charge_id === charge.charge_id ? {
-          ...item,
-          stop_status: revision.stop_status,
-          note: revision.note || null,
-          items: revision.items.map((nextItem) => {
-            const currentItem = item.items?.find((option) => option.ice_type_id === nextItem.ice_type_id);
-            return {
-              ice_type_id: nextItem.ice_type_id,
-              name: currentItem?.name ?? 'น้ำแข็ง',
-              unit: currentItem?.unit ?? 'ถุง',
-              quantity: nextItem.quantity,
-            };
-          }),
-        } : item);
-      const nextOutstanding = nextCharges.reduce((total, item) => total + Number(item.outstanding_amount), 0);
-      const nextOverdue = nextCharges.filter((item) => item.due_status === 'overdue')
-        .reduce((total, item) => total + Number(item.outstanding_amount), 0);
-      const nextReceivable = {
-        ...receivable,
-        charges: nextCharges,
-        outstanding_amount: nextOutstanding,
-        overdue_amount: nextOverdue,
-        available_credit_amount: receivable.credit_limit === null ? null : Number(receivable.credit_limit) - nextOutstanding,
-      };
-      setReceivables((current) => current.map((item) => item.shop_id === receivable.shop_id ? nextReceivable : item));
-      setSuccess(revision.action === 'cancel' ? 'ยกเลิกบิลและคืนสต๊อกแล้ว' : 'แก้ไขบิลและเก็บประวัติแล้ว');
-      return loadCreditReceivableDetail(nextReceivable);
-    }
-    if (!supabase) throw new Error('ไม่พบการเชื่อมต่อฐานข้อมูล');
-    const response = await supabase.rpc('revise_delivery_event', {
-      p_event_id: charge.delivery_event_id,
-      p_action: revision.action,
-      p_items: revision.items,
-      p_stop_status: revision.stop_status,
-      p_note: revision.note || null,
-      p_reason: revision.reason,
-      p_idempotency_key: crypto.randomUUID(),
-      p_approval_id: null,
-    });
-    if (response.error) throw response.error;
-    await load();
-    setSuccess(revision.action === 'cancel' ? 'ยกเลิกบิลและคืนสต๊อกแล้ว' : 'แก้ไขบิลและเก็บประวัติแล้ว');
-    return loadCreditReceivableDetail(receivable);
-  };
-
   const openReceivableCollection = async (receivable: Receivable) => {
     await load(receivable.shop_id);
     onManagerPageChange?.('collection');
@@ -1065,7 +1010,7 @@ export function FinancialOperations({
         onDecideDueDateRequest={decideDueDateRequest}
         onLoadDetail={loadCreditReceivableDetail}
         onOpenCollection={(receivable) => { void openReceivableCollection(receivable).catch((openError: unknown) => setError(getErrorMessage(openError))); }}
-        onReviseDelivery={reviseCreditDelivery}
+        onRefreshReceivables={() => load()}
         onToggleCreditCollectionAssignment={toggleCreditCollectionAssignment}
         onUpdateCreditSettings={updateCreditSettings}
         receivables={receivables}
@@ -1073,6 +1018,8 @@ export function FinancialOperations({
         serviceDate={serviceDate}
         userRole={userRole}
       /> : null}
+
+      {isManager && managerPage === 'refund' ? <RefundQueuePanel /> : null}
 
       {selectedShop && (!isManager || managerPage === 'collection') && (!isManager || window.innerWidth < 1100) ? createPortal(
         <PaymentModal

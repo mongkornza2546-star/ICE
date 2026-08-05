@@ -565,7 +565,7 @@ function buildDemoGateway(): EmployeeDeliveryGateway & { reset(): void } {
 export function LocalDemoApp() {
   const [gatewayVersion, setGatewayVersion] = useState(0);
   const [draftState, setDraftState] = useState({ dirty: false, submitting: false });
-  const [financialPage, setFinancialPage] = useState<'collection' | 'credit'>(() =>
+  const [financialPage, setFinancialPage] = useState<'collection' | 'credit' | 'refund'>(() =>
     new URLSearchParams(window.location.search).get('page') === 'credit' ? 'credit' : 'collection');
   const gateway = useMemo(() => buildDemoGateway(), [gatewayVersion]);
 

@@ -16,12 +16,11 @@ import {
   WarningCircle,
   X,
 } from '@phosphor-icons/react';
-import { useEffect, useState, type CSSProperties, type FormEvent } from 'react';
+import { useEffect, useState, type CSSProperties } from 'react';
 import type { AppRole, CreditDueRule } from '../../../types/app';
 import { CREDIT_COLLECTION_WEEKDAY_OPTIONS, formatCreditCollectionCycle } from '../../../lib/creditCollectionCycle';
 import type {
   Approval,
-  CreditBillRevision,
   DueDateRequest,
   Receivable,
   ReceivableCharge,
@@ -29,6 +28,7 @@ import type {
   ReceivablePayment,
 } from '../types';
 import { money, paymentMethodLabel, receiptDateTime } from '../utils';
+import { DeliveryCorrectionDialog } from '../../delivery-corrections/DeliveryCorrectionDialog';
 
 export type CreditAccountStatus = 'normal' | 'near_limit' | 'at_limit' | 'over_limit' | 'overdue' | 'suspended';
 
@@ -52,9 +52,9 @@ export type CreditReceivablesManagerProps = {
   onDecide: (approvalId: string, decision: 'approved' | 'rejected') => void;
   onDecideDueDateRequest: (requestId: string, decision: 'approved' | 'rejected') => void;
   onLoadDetail?: (receivable: Receivable) => Promise<ReceivableDetail>;
+  onRefreshReceivables?: () => Promise<void>;
   onToggleCreditCollectionAssignment: (charge: ReceivableCharge, assigned: boolean) => Promise<unknown> | void;
   onOpenCollection?: (receivable: Receivable) => void;
-  onReviseDelivery?: (receivable: Receivable, charge: ReceivableCharge, revision: CreditBillRevision) => Promise<ReceivableDetail>;
   onUpdateCreditSettings?: (receivable: Receivable, changes: CreditChanges) => Promise<void> | void;
 };
 
@@ -148,146 +148,32 @@ function SummaryCards({ receivables }: { receivables: Receivable[] }) {
   </div>;
 }
 
-const deliveryStatusOptions: Array<{ value: CreditBillRevision['stop_status']; label: string }> = [
-  { value: 'delivered', label: 'ส่งแล้ว' },
-  { value: 'full_bin', label: 'ถังเต็ม' },
-  { value: 'closed_shop', label: 'ปิดร้าน' },
-  { value: 'no_access', label: 'เข้าไม่ได้' },
-  { value: 'issue', label: 'มีปัญหา' },
-];
-
-function CreditBillDialog({
-  busy,
-  canRevise,
-  charge,
-  iceTypes,
-  onClose,
-  onRevise,
-}: {
-  busy: boolean;
-  canRevise: boolean;
-  charge: ReceivableCharge;
-  iceTypes: ReceivableDetail['ice_types'];
-  onClose: () => void;
-  onRevise: (revision: CreditBillRevision) => Promise<void>;
-}) {
-  const [status, setStatus] = useState<CreditBillRevision['stop_status']>(charge.stop_status ?? 'delivered');
-  const [quantities, setQuantities] = useState<Record<string, number>>(() => Object.fromEntries(
-    (charge.items ?? []).map((item) => [item.ice_type_id, item.quantity]),
-  ));
-  const [note, setNote] = useState(charge.note ?? '');
-  const [reason, setReason] = useState('');
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const editableIceTypes = iceTypes?.length ? iceTypes : (charge.items ?? []).map((item) => ({
-    id: item.ice_type_id,
-    code: item.ice_type_id,
-    name: item.name,
-    unit: item.unit,
-  }));
-  const activeIceTypeIds = new Set((iceTypes ?? []).map((ice) => ice.id));
-  const inactiveItems = iceTypes === undefined
-    ? []
-    : (charge.items ?? []).filter((item) => !activeIceTypeIds.has(item.ice_type_id));
-  const blockedReason = charge.allocated_amount > 0
-    ? 'บิลนี้มีการรับชำระแล้ว ต้องยกเลิกใบรับเงินก่อน'
-    : charge.round_status && charge.round_status !== 'open'
-      ? 'รอบส่งนี้ปิดแล้ว จึงแก้ไขหรือยกเลิกไม่ได้'
-      : !charge.delivery_event_id
-        ? 'บิลนี้ไม่พบรายการส่งต้นทาง'
-        : null;
-  const correctionBlockedReason = inactiveItems.length > 0
-    ? `${inactiveItems.map((item) => `${item.name} ${item.quantity} ${item.unit}`).join(', ')} เป็นชนิดน้ำแข็งที่เลิกใช้งาน จึงแก้ไขบิลไม่ได้ แต่ยังยกเลิกบิลได้`
-    : null;
-
-  const submitRevision = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (busy || !canRevise || blockedReason || correctionBlockedReason) return;
-    if (!reason.trim()) {
-      setError('ต้องระบุเหตุผลที่แก้ไขหรือยกเลิก');
-      return;
-    }
-    const items = status === 'delivered'
-      ? editableIceTypes.map((ice) => ({ ice_type_id: ice.id, quantity: quantities[ice.id] ?? 0 }))
-        .filter((item) => item.quantity > 0)
-      : [];
-    if (status === 'delivered' && items.length === 0) {
-      setError('รายการส่งแล้วต้องมีน้ำแข็งอย่างน้อย 1 ชนิด');
-      return;
-    }
-    if (status !== 'delivered' && !note.trim()) {
-      setError('สถานะที่ไม่ได้ส่งต้องมีหมายเหตุ');
-      return;
-    }
-    setSubmitting(true);
-    setError(null);
-    try {
-      await onRevise({ action: 'correct', items, stop_status: status, note: note.trim(), reason: reason.trim() });
-    } catch (revisionError) {
-      setError(revisionError instanceof Error ? revisionError.message : 'ไม่สามารถแก้ไขบิลได้');
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const cancelBill = async () => {
-    if (busy || !canRevise || blockedReason) return;
-    if (!reason.trim()) {
-      setError('ต้องระบุเหตุผลที่แก้ไขหรือยกเลิก');
-      return;
-    }
-    if (!window.confirm(`ยืนยันยกเลิกบิล ${charge.charge_number} และคืนสต๊อกหรือไม่`)) return;
-    setSubmitting(true);
-    setError(null);
-    try {
-      await onRevise({ action: 'cancel', items: [], stop_status: status, note: note.trim(), reason: reason.trim() });
-    } catch (revisionError) {
-      setError(revisionError instanceof Error ? revisionError.message : 'ไม่สามารถยกเลิกบิลได้');
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  return <div className="modal-backdrop credit-bill-detail-layer">
-    <form aria-label={`รายละเอียดบิล ${charge.charge_number}`} aria-modal="true" className="modal-card credit-bill-detail" onSubmit={submitRevision} role="dialog">
-      <div className="panel-header"><div><p className="eyebrow">รายละเอียดบิลและรายการที่สั่ง</p><h2>{charge.charge_number}</h2></div><button aria-label="ปิดรายละเอียดบิล" className="ghost-button" disabled={submitting} onClick={onClose} type="button"><X size={20} /></button></div>
-      <div className="credit-bill-detail__summary"><span>วันส่ง<strong>{formatDate(charge.service_date, '')}</strong></span><span>ยอดบิล<strong>{money.format(charge.original_amount)}</strong></span><span>ชำระแล้ว<strong>{money.format(charge.allocated_amount)}</strong></span><span>คงเหลือ<strong>{money.format(charge.outstanding_amount)}</strong></span></div>
-      <div className="field-grid"><label>สถานะ<select disabled={!canRevise || Boolean(blockedReason) || Boolean(correctionBlockedReason) || submitting} onChange={(event) => setStatus(event.target.value as CreditBillRevision['stop_status'])} value={status}>{deliveryStatusOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label><label>เหตุผลที่แก้ไขหรือยกเลิก<input disabled={!canRevise || Boolean(blockedReason) || submitting} onChange={(event) => setReason(event.target.value)} required value={reason} /></label></div>
-      {status === 'delivered' ? <div className="field-grid field-grid--three">{editableIceTypes.map((ice) => <label key={ice.id}>{ice.name} ({ice.unit})<input aria-label={`${ice.name} (${ice.unit})`} disabled={!canRevise || Boolean(blockedReason) || Boolean(correctionBlockedReason) || submitting} min="0" onChange={(event) => setQuantities((current) => ({ ...current, [ice.id]: Math.max(0, Number(event.target.value) || 0) }))} step="0.5" type="number" value={quantities[ice.id] ?? 0} /></label>)}</div> : null}
-      <label>หมายเหตุ<textarea disabled={!canRevise || Boolean(blockedReason) || Boolean(correctionBlockedReason) || submitting} onChange={(event) => setNote(event.target.value)} rows={2} value={note} /></label>
-      {charge.recorded_by ? <p className="muted">บันทึกโดย {charge.recorded_by}{charge.recorded_at ? ` · ${receiptDateTime.format(new Date(charge.recorded_at))}` : ''}</p> : null}
-      {blockedReason ? <p className="credit-ar__action-error" role="alert">{blockedReason}</p> : null}
-      {correctionBlockedReason ? <p className="credit-ar__action-error" role="alert">{correctionBlockedReason}</p> : null}
-      {error ? <p className="credit-ar__action-error" role="alert">{error}</p> : null}
-      <div className="modal-actions"><button className="ghost-button danger-button" disabled={!canRevise || Boolean(blockedReason) || submitting} onClick={() => void cancelBill()} type="button">ยกเลิกบิล</button><button className="primary-button" disabled={!canRevise || Boolean(blockedReason) || Boolean(correctionBlockedReason) || submitting} type="submit">{submitting ? 'กำลังบันทึก...' : 'บันทึกการแก้ไข'}</button></div>
-    </form>
-  </div>;
-}
-
 function ReceivableDrawer({
   busy,
   canAdminister,
   onLoadDetail,
   onClose,
   onOpenCollection,
-  onReviseDelivery,
+  onRefreshReceivables,
   onToggleCreditCollectionAssignment,
   onUpdateCreditSettings,
   receivable,
   runId,
   serviceDate,
+  userRole,
 }: {
   busy: boolean;
   canAdminister: boolean;
   onLoadDetail?: (receivable: Receivable) => Promise<ReceivableDetail>;
   onClose: () => void;
   onOpenCollection?: (receivable: Receivable) => void;
-  onReviseDelivery?: CreditReceivablesManagerProps['onReviseDelivery'];
+  onRefreshReceivables?: () => Promise<void>;
   onToggleCreditCollectionAssignment: (charge: ReceivableCharge, assigned: boolean) => Promise<unknown> | void;
   onUpdateCreditSettings?: (receivable: Receivable, changes: CreditChanges) => Promise<void> | void;
   receivable: Receivable;
   runId: string | null;
   serviceDate: string;
+  userRole: AppRole;
 }) {
   const [billFilter, setBillFilter] = useState<'open' | 'all'>('open');
   const [selectedPayment, setSelectedPayment] = useState<ReceivablePayment | null>(null);
@@ -408,10 +294,9 @@ function ReceivableDrawer({
     }
   };
 
-  const reviseDelivery = async (revision: CreditBillRevision) => {
-    if (!selectedCharge || !onReviseDelivery) return;
-    const nextDetail = await onReviseDelivery(receivable, selectedCharge, revision);
-    setDetail(nextDetail);
+  const refreshAfterCorrection = async () => {
+    await onRefreshReceivables?.();
+    if (onLoadDetail) setDetail(await onLoadDetail(receivable));
     setSelectedCharge(null);
   };
 
@@ -477,7 +362,7 @@ function ReceivableDrawer({
         {detailLoading ? <p className="financial-ops__empty">กำลังโหลดประวัติรับชำระ...</p> : detail.payments.length === 0 ? <p className="financial-ops__empty">ยังไม่มีประวัติรับชำระ</p> : <div className="credit-ar__payment-list">{detail.payments.map((payment) => <button key={payment.id} onClick={() => setSelectedPayment(payment)} type="button"><span><strong>{payment.receipt_number}</strong><small>{receiptDateTime.format(new Date(payment.recorded_at))} · {paymentMethodLabel(payment.payment_method)} · ผู้รับ {payment.recorded_by ?? '—'}</small></span><b>{money.format(payment.received_amount)}</b><em className={payment.status === 'active' ? 'is-active' : ''}>{payment.status === 'active' ? 'สำเร็จ' : 'ยกเลิก'}</em><CaretRight size={16} /></button>)}</div>}
         {selectedPayment ? <div className="credit-ar__allocation-detail"><header><span><Receipt size={17} /><strong>การจัดสรร {selectedPayment.receipt_number}</strong></span><button aria-label="ปิดรายละเอียดการจัดสรร" onClick={() => setSelectedPayment(null)} type="button"><X size={16} /></button></header>{selectedPayment.allocations.map((allocation) => <div key={`${selectedPayment.id}-${allocation.charge_id}`}><span>{allocation.charge_number}</span><b>{money.format(allocation.amount)}</b></div>)}</div> : null}
       </section>
-      {selectedCharge ? <CreditBillDialog busy={busy || actionBusy} canRevise={canAdminister && Boolean(onReviseDelivery)} charge={selectedCharge} iceTypes={detail.ice_types} onClose={() => setSelectedCharge(null)} onRevise={reviseDelivery} /> : null}
+      {selectedCharge?.delivery_event_id ? <DeliveryCorrectionDialog eventId={selectedCharge.delivery_event_id} onClose={() => setSelectedCharge(null)} onSuccess={refreshAfterCorrection} userRole={userRole} /> : selectedCharge ? <p className="credit-ar__action-error">ไม่พบรายการส่งต้นทางของบิลนี้</p> : null}
     </aside>
   </div>;
 }
@@ -490,7 +375,7 @@ export function CreditReceivablesManager({
   onDecideDueDateRequest,
   onLoadDetail,
   onOpenCollection,
-  onReviseDelivery,
+  onRefreshReceivables,
   onToggleCreditCollectionAssignment,
   onUpdateCreditSettings,
   receivables,
@@ -565,6 +450,6 @@ export function CreditReceivablesManager({
 
     {activeView === 'aging' ? <section className="financial-ops__section credit-ar__aging-report"><div className="financial-ops__title"><div><ChartBar /><span><h2>รายงานอายุลูกหนี้</h2><p>คำนวณจากยอดคงเหลือหลังหักการรับชำระแล้ว</p></span></div></div><div className="credit-ar__aging-summary credit-ar__aging-summary--five">{agingBuckets.map((bucket) => <article className={`credit-ar__aging-summary-card credit-ar__aging-summary-card--${bucket.tone}`} key={bucket.label}><span>{bucket.label}</span><strong>{money.format(bucket.amount)}</strong><small>{totalOutstanding ? `${(bucket.amount / totalOutstanding * 100).toFixed(0)}% ของยอดค้าง` : 'ไม่มีรายการ'}</small></article>)}</div><div className="credit-ar__report-heading"><span><WarningCircle size={18} /><h2>ยอดค้างชำระเกินกำหนด</h2></span><b>{money.format(totalOverdue)}</b></div>{overdueReceivables.length === 0 ? <p className="financial-ops__empty">ไม่มีรายการค้างชำระเกินกำหนด</p> : <div className="financial-ops__receivable-charges">{overdueReceivables.map((item) => <article key={item.shop_id}><span><strong>{item.shop_code} · {item.shop_name}</strong><small>ครบกำหนดเก่าสุด {formatDate(item.oldest_due_date, serviceDate)} · {overdueChargeCount(item)} บิล</small></span><b>{money.format(item.overdue_amount)}</b><button onClick={() => setSelectedId(item.shop_id)} type="button">เปิดรายละเอียด</button></article>)}</div>}</section> : null}
 
-    {selected ? <ReceivableDrawer busy={busy} canAdminister={userRole === 'admin'} key={selected.shop_id} onClose={() => setSelectedId(null)} onLoadDetail={onLoadDetail} onOpenCollection={onOpenCollection} onReviseDelivery={onReviseDelivery} onToggleCreditCollectionAssignment={onToggleCreditCollectionAssignment} onUpdateCreditSettings={onUpdateCreditSettings} receivable={selected} runId={runId} serviceDate={serviceDate} /> : null}
+    {selected ? <ReceivableDrawer busy={busy} canAdminister={userRole === 'admin'} key={selected.shop_id} onClose={() => setSelectedId(null)} onLoadDetail={onLoadDetail} onOpenCollection={onOpenCollection} onRefreshReceivables={onRefreshReceivables} onToggleCreditCollectionAssignment={onToggleCreditCollectionAssignment} onUpdateCreditSettings={onUpdateCreditSettings} receivable={selected} runId={runId} serviceDate={serviceDate} userRole={userRole} /> : null}
   </section>;
 }

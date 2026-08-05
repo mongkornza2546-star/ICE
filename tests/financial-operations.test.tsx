@@ -1168,10 +1168,19 @@ describe('FinancialOperations', () => {
 
   it('opens a credit bill and submits an audited delivery correction', async () => {
     const user = userEvent.setup();
-    const onReviseDelivery = vi.fn().mockResolvedValue({
-      ice_types: [{ id: 'ice-1', code: 'SMALL', name: 'น้ำแข็งหลอดเล็ก', unit: 'ถุง' }],
-      charges: [],
-      payments: [],
+    const onRefreshReceivables = vi.fn().mockResolvedValue(undefined);
+    mocks.rpc.mockImplementation(async (name: string) => {
+      if (name === 'get_delivery_correction_context') return { data: {
+        delivery_event_id: 'event-1', charge_number: 'C260803-000001', shop_name: 'ร้านเครดิต',
+        service_date: '2026-08-03', round_status: 'open', day_closed: false,
+        original_amount: 300, effective_amount: 300, allocated_amount: 0,
+        can_correct: true, can_cancel: true, blocker_reason: null,
+        ice_types: [{ ice_type_id: 'ice-1', code: 'SMALL', name: 'น้ำแข็งหลอเล็ก', unit: 'ถุง', unit_price: 200 }],
+        items: [{ ice_type_id: 'ice-1', name: 'น้ำแข็งหลอเล็ก', unit: 'ถุง', quantity: 0.5, unit_price: 200 }],
+      }, error: null };
+      if (name === 'preview_delivery_correction') return { data: { old_amount: 300, new_amount: 300, allocated_amount: 0, refund_amount: 0, outstanding_amount: 300 }, error: null };
+      if (name === 'apply_open_delivery_correction') return { data: {}, error: null };
+      return { data: [], error: null };
     });
     render(<ManagerFinancialSections
       approvals={[]}
@@ -1192,7 +1201,7 @@ describe('FinancialOperations', () => {
         }],
         payments: [],
       })}
-      onReviseDelivery={onReviseDelivery}
+      onRefreshReceivables={onRefreshReceivables}
       onToggleCreditCollectionAssignment={() => undefined}
       receivables={[{
         shop_id: 'shop-1', shop_code: 'S001', shop_name: 'ร้านเครดิต', credit_limit: null,
@@ -1206,27 +1215,36 @@ describe('FinancialOperations', () => {
 
     await user.click(screen.getByRole('button', { name: 'S001 ร้านเครดิต' }));
     await user.click(await screen.findByRole('button', { name: 'เปิดรายละเอียดบิล C260803-000001' }));
-    expect(screen.getByRole('dialog', { name: 'รายละเอียดบิล C260803-000001' })).toBeTruthy();
+    expect(await screen.findByRole('dialog', { name: 'แก้ไขบิล C260803-000001' })).toBeTruthy();
     await user.clear(screen.getByRole('spinbutton', { name: 'น้ำแข็งหลอเล็ก (ถุง)' }));
     await user.type(screen.getByRole('spinbutton', { name: 'น้ำแข็งหลอเล็ก (ถุง)' }), '1.5');
-    await user.type(screen.getByRole('textbox', { name: 'เหตุผลที่แก้ไขหรือยกเลิก' }), 'บันทึกจำนวนผิด');
-    await user.click(screen.getByRole('button', { name: 'บันทึกการแก้ไข' }));
+    await user.type(screen.getByRole('textbox', { name: 'เหตุผล' }), 'บันทึกจำนวนผิด');
+    await user.click(screen.getByRole('button', { name: 'คำนวณผลกระทบ' }));
+    await user.click(await screen.findByRole('button', { name: 'ยืนยันแก้ไข' }));
 
-    await waitFor(() => expect(onReviseDelivery).toHaveBeenCalledWith(
-      expect.objectContaining({ shop_id: 'shop-1' }),
-      expect.objectContaining({ charge_id: 'credit-1' }),
-      expect.objectContaining({
-        action: 'correct',
-        items: [{ ice_type_id: 'ice-1', quantity: 1.5 }],
-        reason: 'บันทึกจำนวนผิด',
-        stop_status: 'delivered',
-      }),
-    ));
+    await waitFor(() => expect(mocks.rpc).toHaveBeenCalledWith('apply_open_delivery_correction', expect.objectContaining({
+      p_action: 'correct', p_event_id: 'event-1', p_items: [{ ice_type_id: 'ice-1', quantity: 1.5 }],
+      p_reason: 'บันทึกจำนวนผิด', p_stop_status: 'delivered',
+    })));
+    expect(onRefreshReceivables).toHaveBeenCalledOnce();
   });
 
-  it('blocks correction when a bill contains an inactive historical ice type', async () => {
+  it('keeps an inactive historical ice type available for a correction', async () => {
     const user = userEvent.setup();
-    const onReviseDelivery = vi.fn().mockResolvedValue({ charges: [], payments: [], ice_types: [] });
+    mocks.rpc.mockImplementation(async (name: string) => name === 'get_delivery_correction_context' ? { data: {
+      delivery_event_id: 'event-1', charge_number: 'C260803-000001', shop_name: 'ร้านเครดิต',
+      service_date: '2026-08-03', round_status: 'open', day_closed: false,
+      original_amount: 300, effective_amount: 300, allocated_amount: 0,
+      can_correct: true, can_cancel: true, blocker_reason: null,
+      ice_types: [
+        { ice_type_id: 'ice-1', code: 'SMALL', name: 'น้ำแข็งหลอดเล็ก', unit: 'ถุง', unit_price: 100 },
+        { ice_type_id: 'ice-old', code: 'OLD', name: 'น้ำแข็งรุ่นเดิม', unit: 'ถุง', unit_price: 100 },
+      ],
+      items: [
+        { ice_type_id: 'ice-1', name: 'น้ำแข็งหลอดเล็ก', unit: 'ถุง', quantity: 1, unit_price: 100 },
+        { ice_type_id: 'ice-old', name: 'น้ำแข็งรุ่นเดิม', unit: 'ถุง', quantity: 2, unit_price: 100 },
+      ],
+    }, error: null } : { data: [], error: null });
     render(<ManagerFinancialSections
       approvals={[]}
       busy={false}
@@ -1249,7 +1267,6 @@ describe('FinancialOperations', () => {
         }],
         payments: [],
       })}
-      onReviseDelivery={onReviseDelivery}
       onToggleCreditCollectionAssignment={() => undefined}
       receivables={[{
         shop_id: 'shop-1', shop_code: 'S001', shop_name: 'ร้านเครดิต', credit_limit: null,
@@ -1264,10 +1281,9 @@ describe('FinancialOperations', () => {
     await user.click(screen.getByRole('button', { name: 'S001 ร้านเครดิต' }));
     await user.click(await screen.findByRole('button', { name: 'เปิดรายละเอียดบิล C260803-000001' }));
 
-    expect(screen.getByText(/น้ำแข็งรุ่นเดิม.*เลิกใช้งาน/)).toBeTruthy();
-    expect((screen.getByRole('button', { name: 'บันทึกการแก้ไข' }) as HTMLButtonElement).disabled).toBe(true);
-    expect((screen.getByRole('button', { name: 'ยกเลิกบิล' }) as HTMLButtonElement).disabled).toBe(false);
-    expect(onReviseDelivery).not.toHaveBeenCalled();
+    expect(await screen.findByRole('spinbutton', { name: 'น้ำแข็งรุ่นเดิม (ถุง)' })).toHaveProperty('value', '2');
+    expect((screen.getByRole('button', { name: 'คำนวณผลกระทบ' }) as HTMLButtonElement).disabled).toBe(false);
+    expect((screen.getByRole('button', { name: 'ยกเลิกบิลส่งของ' }) as HTMLButtonElement).disabled).toBe(false);
   });
 
   it('loads one debtor detail on demand and opens collection on that store', async () => {
@@ -1567,5 +1583,33 @@ describe('FinancialOperations', () => {
     await user.click(screen.getByRole('button', { name: 'บันทึกรอบเก็บเงิน' }));
 
     expect((await screen.findAllByText('รอบเก็บเงิน: ทุกสิ้นเดือน')).length).toBeGreaterThan(0);
+  });
+
+  it('settles a pending refund from the manager refund queue', async () => {
+    const user = userEvent.setup();
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    mocks.from.mockReturnValue(queryResult(null));
+    let settled = false;
+    mocks.rpc.mockImplementation(async (name: string) => {
+      if (name === 'get_refund_queue') return { data: settled ? [] : [{
+        id: 'refund-1', shop_code: 'S001', shop_name: 'ร้านเครดิต',
+        receipt_number: 'R260805-000001', charge_number: 'C260805-000001', amount: 50,
+        status: 'pending', reason: 'แก้จำนวนส่ง', created_at: '2026-08-05T02:00:00.000Z', age_days: 0, settlement: null,
+      }], error: null };
+      if (name === 'settle_refund') { settled = true; return { data: { status: 'settled' }, error: null }; }
+      return { data: [], error: null };
+    });
+
+    render(<FinancialOperations managerPage="refund" userRole="admin" />);
+
+    expect((await screen.findAllByText('฿50.00')).length).toBe(2);
+    await user.selectOptions(screen.getByRole('combobox', { name: 'วิธีคืนเงิน' }), 'bank_transfer');
+    await user.type(screen.getByRole('textbox', { name: 'เลขอ้างอิงการคืนเงิน' }), 'TX-001');
+    await user.click(screen.getByRole('button', { name: 'บันทึกคืนเงิน' }));
+
+    await waitFor(() => expect(mocks.rpc).toHaveBeenCalledWith('settle_refund', expect.objectContaining({
+      p_obligation_id: 'refund-1', p_refund_method: 'bank_transfer', p_reference_number: 'TX-001',
+    })));
+    expect(await screen.findByText('ไม่มียอดรอคืน')).toBeTruthy();
   });
 });

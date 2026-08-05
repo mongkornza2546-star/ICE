@@ -29,6 +29,7 @@ import type {
 import { MAX_PAYMENT_EVIDENCE_SIZE } from '../../lib/paymentEvidence';
 import { formatShortTime, renderTotals, statusTone, stockQuantity, toTotals } from './utils';
 import { PROBLEM_STATUSES, STATUS_LABELS } from './constants';
+import { DeliveryCorrectionDialog } from '../delivery-corrections/DeliveryCorrectionDialog';
 
 const TERM_LABELS: Record<PaymentTerm, string> = {
   immediate: 'จ่ายทันที',
@@ -94,6 +95,7 @@ export function EmployeeDeliveryReview({
   onRequestApproval,
   onNoteChange,
   onReturnToDelivery,
+  onCorrectionSuccess,
 }: {
   round: DeliveryRound;
   shopCard: ShopCard;
@@ -140,10 +142,12 @@ export function EmployeeDeliveryReview({
   onRequestApproval: () => void;
   onNoteChange: (value: string) => void;
   onReturnToDelivery: () => void;
+  onCorrectionSuccess: (message: string) => void | Promise<void>;
 }) {
   const [selectedIceTypeId, setSelectedIceTypeId] = useState('');
   const [mobileStep, setMobileStep] = useState<'items' | 'review'>('items');
   const [paymentEvidenceError, setPaymentEvidenceError] = useState<string | null>(null);
+  const [correctionEventId, setCorrectionEventId] = useState<string | null>(null);
   const isDelivery = status === 'delivered';
   const contextItems = posContext?.items ?? iceTypes.map((iceType) => ({
     ...iceType,
@@ -718,16 +722,24 @@ export function EmployeeDeliveryReview({
           <div className="employee-history-list">
             {shopCard.today_history.map((entry) => (
               <article key={entry.event_id}>
-                <strong>{formatShortTime(entry.recorded_at)} · {entry.round_name}</strong>
+                <div><strong>{formatShortTime(entry.recorded_at)} · {entry.round_name}</strong>
+                {entry.can_correct ? <button className="employee-text-button" onClick={() => setCorrectionEventId(entry.event_id)} type="button">แก้จำนวนส่ง</button> : null}</div>
                 <span>{entry.stop_status && entry.stop_status !== 'delivered'
                   ? `${STATUS_LABELS[entry.stop_status]}${entry.note ? ` · ${entry.note}` : ''}`
                   : renderTotals(entry.items, iceTypes)}</span>
                 <small>{entry.recorded_by}</small>
+                {entry.correction_blocker && !entry.can_correct ? <small title={entry.correction_blocker}>{entry.correction_blocker}</small> : null}
               </article>
             ))}
           </div>
         )}
       </section>
+      {correctionEventId ? <DeliveryCorrectionDialog
+        eventId={correctionEventId}
+        onClose={() => setCorrectionEventId(null)}
+        onSuccess={onCorrectionSuccess}
+        userRole="courier"
+      /> : null}
     </div>
   );
 }
