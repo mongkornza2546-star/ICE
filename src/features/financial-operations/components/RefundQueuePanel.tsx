@@ -24,12 +24,20 @@ type RefundQueueItem = {
   };
 };
 
+type RefundSummary = {
+  service_date: string;
+  gross_received: number;
+  refunded_amount: number;
+  net_received: number;
+};
+
 function requestKey() {
   return globalThis.crypto?.randomUUID?.() ?? `refund-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
 export function RefundQueuePanel() {
   const [items, setItems] = useState<RefundQueueItem[]>([]);
+  const [summary, setSummary] = useState<RefundSummary | null>(null);
   const [showAll, setShowAll] = useState(false);
   const [loading, setLoading] = useState(true);
   const [settlingId, setSettlingId] = useState<string | null>(null);
@@ -44,9 +52,14 @@ export function RefundQueuePanel() {
     setError(null);
     try {
       if (!supabase) throw new Error('ยังไม่ได้ตั้งค่า Supabase');
-      const { data, error: loadError } = await supabase.rpc('get_refund_queue', { p_pending_only: !showAll });
-      if (loadError) throw loadError;
-      setItems((data ?? []) as RefundQueueItem[]);
+      const [queueResult, summaryResult] = await Promise.all([
+        supabase.rpc('get_refund_queue', { p_pending_only: !showAll }),
+        supabase.rpc('get_financial_refund_summary', { p_service_date: null }),
+      ]);
+      if (queueResult.error) throw queueResult.error;
+      if (summaryResult.error) throw summaryResult.error;
+      setItems((queueResult.data ?? []) as RefundQueueItem[]);
+      setSummary(summaryResult.data as RefundSummary);
     } catch (loadError) {
       setError(getErrorMessage(loadError));
     } finally {
@@ -96,7 +109,12 @@ export function RefundQueuePanel() {
       <div><p className="eyebrow">การเงินหลังแก้ไขบิล</p><h1>คิวคืนเงิน</h1><span>คืนเต็มจำนวนตามรายการปรับปรุง พร้อมเก็บผู้คืนและเวลา</span></div>
       <button disabled={loading} onClick={() => void load()} type="button"><ArrowClockwise size={18} />รีเฟรช</button>
     </header>
-    <div className="credit-ar__summary-cards"><article><span>ยอดรอคืน</span><strong>{money.format(pendingTotal)}</strong><small>{items.filter((item) => item.status === 'pending').length} รายการ</small></article></div>
+    <div className="credit-ar__summary-cards">
+      <article><span>ยอดรับรวม</span><strong>{money.format(Number(summary?.gross_received ?? 0))}</strong><small>วันนี้</small></article>
+      <article><span>ยอดคืนจริง</span><strong>{money.format(Number(summary?.refunded_amount ?? 0))}</strong><small>วันนี้</small></article>
+      <article><span>ยอดรับสุทธิ</span><strong>{money.format(Number(summary?.net_received ?? 0))}</strong><small>วันนี้</small></article>
+      <article><span>ยอดรอคืน</span><strong>{money.format(pendingTotal)}</strong><small>{items.filter((item) => item.status === 'pending').length} รายการ</small></article>
+    </div>
     <label className="refund-queue__filter"><input checked={showAll} onChange={(event) => setShowAll(event.target.checked)} type="checkbox" />แสดงรายการที่คืนแล้ว</label>
     {success ? <p className="employee-success" role="status"><CheckCircle size={18} />{success}</p> : null}
     {error ? <p className="credit-ar__action-error" role="alert"><WarningCircle size={18} />{error}</p> : null}

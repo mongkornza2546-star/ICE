@@ -5,6 +5,7 @@ import test from 'node:test';
 const correctionMigration = readFileSync(new URL('../supabase/migrations/0128_delivery_corrections_refunds_and_adjustments.sql', import.meta.url), 'utf8');
 const projectionMigration = readFileSync(new URL('../supabase/migrations/0129_effective_charge_projections.sql', import.meta.url), 'utf8');
 const paymentMigration = readFileSync(new URL('../supabase/migrations/0130_effective_charge_payments.sql', import.meta.url), 'utf8');
+const correctionHardeningMigration = readFileSync(new URL('../supabase/migrations/0131_delivery_correction_hardening_and_refund_summary.sql', import.meta.url), 'utf8');
 const purchaseHistory = readFileSync(new URL('../src/features/shop-settings/components/ShopPurchaseHistory.tsx', import.meta.url), 'utf8');
 
 test('delivery corrections preserve payments and keep append-only refund and allocation history', () => {
@@ -41,4 +42,13 @@ test('purchase-history adjustment fields match the SQL projection', () => {
   assert.match(purchaseHistory, /adjustment\.id/);
   assert.match(purchaseHistory, /adjustment\.amount_delta/);
   assert.match(projectionMigration, /then 'replaced'/);
+});
+
+test('courier corrections stay quantity-only and refund reporting separates gross, refunded, and net cash', () => {
+  assert.match(correctionHardeningMigration, /Couriers can only correct delivered quantities/);
+  assert.match(correctionHardeningMigration, /create function public\.get_financial_refund_summary/);
+  assert.match(correctionHardeningMigration, /'gross_received'/);
+  assert.match(correctionHardeningMigration, /'refunded_amount'/);
+  assert.match(correctionHardeningMigration, /'net_received'/);
+  assert.match(correctionHardeningMigration, /grant execute on function public\.get_financial_refund_summary/);
 });

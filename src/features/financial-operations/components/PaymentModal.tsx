@@ -43,6 +43,7 @@ export function PaymentModal({
   onReferenceChange,
   onPrintReceiptWantedChange,
   onRecordPayment,
+  onEditCharge,
   onPrintReceipt,
   onRequestDueDate,
 }: {
@@ -72,6 +73,7 @@ export function PaymentModal({
   onReferenceChange: (reference: string) => void;
   onPrintReceiptWantedChange: (wanted: boolean) => void;
   onRecordPayment: () => void;
+  onEditCharge?: (charge: QueueShop['charges'][number]) => void;
   onPrintReceipt: (receipt: PaymentReceipt) => void;
   onRequestDueDate: (charge: QueueShop['charges'][number]) => void;
 }) {
@@ -169,6 +171,13 @@ export function PaymentModal({
                       ))}
                       {(charge.items ?? []).length === 0 ? <small>ไม่พบรายละเอียดสินค้าของบิลนี้</small> : null}
                     </div>
+                    {isExpanded && onEditCharge && charge.delivery_event_id ? <button
+                      aria-label={`แก้ไขหรือยกเลิกใบส่งของ ${charge.charge_number}`}
+                      className="financial-ops__charge-edit"
+                      disabled={busy}
+                      onClick={() => onEditCharge(charge)}
+                      type="button"
+                    >แก้ไขหรือยกเลิกใบส่งของ</button> : null}
                     {charge.payment_term === 'credit' ? (
                       <button
                         className="financial-ops__due-date-request"

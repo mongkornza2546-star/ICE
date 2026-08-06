@@ -105,6 +105,10 @@ const effectiveChargePayments = readFileSync(
   new URL('../supabase/migrations/0130_effective_charge_payments.sql', import.meta.url),
   'utf8',
 );
+const deliveryCorrectionHardeningAndRefundSummary = readFileSync(
+  new URL('../supabase/migrations/0131_delivery_correction_hardening_and_refund_summary.sql', import.meta.url),
+  'utf8',
+);
 
 const COURIER_ID = '10000000-0000-4000-8000-000000000001';
 const ADMIN_ID = '10000000-0000-4000-8000-000000000002';
@@ -594,6 +598,7 @@ async function createDatabase(t, { applyCollectionShopCards = true } = {}) {
     await db.exec(deliveryCorrectionsRefundsAndAdjustments);
     await db.exec(effectiveChargeProjections);
     await db.exec(effectiveChargePayments);
+    await db.exec(deliveryCorrectionHardeningAndRefundSummary);
   }
   await db.exec(`
     insert into public.ice_type_prices (
@@ -2686,6 +2691,29 @@ test('couriers may correct only their own latest unpaid delivery and cannot canc
   assert.ok(corrected.rows[0].result.replacement_event_id);
 });
 
+test('couriers cannot turn an unpaid delivery into a non-delivery through the correction RPC', async (t) => {
+  const db = await createDatabase(t);
+  const delivery = await db.query(`select public.record_delivery(
+    '${STOP_ID}', '${itemPayload(1)}'::jsonb, 'delivered', null, null,
+    'a4100000-0000-4000-8000-000000000001', 'immediate'
+  ) as result`);
+
+  await assert.rejects(
+    db.query(`select public.apply_open_delivery_correction(
+      '${delivery.rows[0].result.delivery_event_id}', 'correct', '[]'::jsonb,
+      'issue', 'ร้านปิด', 'attempted status change',
+      'a4100000-0000-4000-8000-000000000002'
+    )`),
+    /couriers can only correct delivered quantities/i,
+  );
+
+  const state = await db.query(`select event.status, charge.status as charge_status
+    from public.delivery_events event
+    join public.delivery_charges charge on charge.delivery_event_id = event.id
+    where event.id = '${delivery.rows[0].result.delivery_event_id}'`);
+  assert.deepEqual(state.rows[0], { status: 'active', charge_status: 'active' });
+});
+
 test('closed-round adjustment changes effective billing and open-day stock without rewriting the round', async (t) => {
   const db = await createDatabase(t);
   const delivery = await db.query(`
@@ -2865,6 +2893,75 @@ test('refunds settle once and corrected payments cannot be voided', async (t) =>
     )`),
     /not pending/i,
   );
+});
+
+test('financial refund summary separates gross receipts, settled refunds, and net receipts under concurrent settlement', async (t) => {
+  const db = await createDatabase(t);
+  const delivery = await db.query(`select public.record_delivery(
+    '${STOP_ID}', '${itemPayload(2)}'::jsonb, 'delivered', null, null,
+    'a6100000-0000-4000-8000-000000000001', 'immediate'
+  ) as result`);
+  await db.query(`select public.record_payment(
+    '${SHOP_ID}', '[{"charge_id":"${delivery.rows[0].result.charge_id}","amount":36}]'::jsonb,
+    'cash', 36, null, null, null, 36, null,
+    'a6100000-0000-4000-8000-000000000002'
+  )`);
+  await db.exec(`update public.auth_context set user_id = '${ADMIN_ID}', app_role = 'admin'`);
+  await db.query(`select public.apply_open_delivery_correction(
+    '${delivery.rows[0].result.delivery_event_id}', 'cancel', '[]'::jsonb,
+    'delivered', null, 'duplicate sale', 'a6100000-0000-4000-8000-000000000003'
+  )`);
+
+  const before = await db.query(`select public.get_financial_refund_summary(date '${SERVICE_DATE}') as result`);
+  assert.deepEqual(before.rows[0].result, {
+    service_date: SERVICE_DATE,
+    gross_received: 36,
+    refunded_amount: 0,
+    net_received: 36,
+  });
+  const obligation = await db.query('select id from public.refund_obligations');
+  const obligationId = obligation.rows[0].id;
+  const attempts = await Promise.allSettled([
+    db.query(`select public.settle_refund(
+      '${obligationId}', 'cash', null, 'a6100000-0000-4000-8000-000000000004'
+    )`),
+    db.query(`select public.settle_refund(
+      '${obligationId}', 'cash', null, 'a6100000-0000-4000-8000-000000000005'
+    )`),
+  ]);
+  assert.equal(attempts.filter((attempt) => attempt.status === 'fulfilled').length, 1);
+  assert.equal(attempts.filter((attempt) => attempt.status === 'rejected').length, 1);
+
+  const after = await db.query(`select public.get_financial_refund_summary(date '${SERVICE_DATE}') as result`);
+  assert.deepEqual(after.rows[0].result, {
+    service_date: SERVICE_DATE,
+    gross_received: 36,
+    refunded_amount: 36,
+    net_received: 0,
+  });
+  const settlementCount = await db.query('select count(*)::integer as count from public.refund_settlements');
+  assert.equal(settlementCount.rows[0].count, 1);
+});
+
+test('concurrent correction retries create one replacement and one revision', async (t) => {
+  const db = await createDatabase(t);
+  const delivery = await db.query(`select public.record_delivery(
+    '${STOP_ID}', '${itemPayload(2)}'::jsonb, 'delivered', null, null,
+    'a6200000-0000-4000-8000-000000000001', 'immediate'
+  ) as result`);
+  await db.exec(`update public.auth_context set user_id = '${ADMIN_ID}', app_role = 'admin'`);
+  const correctionSql = `select public.apply_open_delivery_correction(
+    '${delivery.rows[0].result.delivery_event_id}', 'correct', '${itemPayload(1)}'::jsonb,
+    'delivered', null, 'concurrent retry', 'a6200000-0000-4000-8000-000000000002'
+  ) as result`;
+
+  const results = await Promise.all([db.query(correctionSql), db.query(correctionSql)]);
+  assert.equal(results.filter((result) => result.rows[0].result.idempotent_replay === true).length, 1);
+  const counts = await db.query(`select
+    (select count(*)::integer from public.delivery_event_revisions) as revisions,
+    (select count(*)::integer from public.delivery_events
+      where corrects_event_id = '${delivery.rows[0].result.delivery_event_id}') as replacements`);
+  assert.deepEqual(counts.rows[0], { revisions: 1, replacements: 1 });
 });
 
 test('an increased closed-period adjustment is collectible at its effective amount', async (t) => {

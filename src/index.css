@@ -1525,7 +1525,9 @@ input:disabled, select:disabled, textarea:disabled { background: #f2f5f8; color:
 .financial-ops__charge-list .is-prior-balance em { color: #925b00; background: #ffedc2; }
 .financial-ops__charge-list b { color: #244865; font-size: .72rem; }
 .financial-ops__charge-list small { color: #71859a; font-size: .63rem; }
-.financial-ops__due-date-request { min-height: 34px; border: 1px solid #90bde4; border-radius: 7px; color: #0869c7; background: #fff; font: inherit; font-size: .68rem; font-weight: 800; }
+.financial-ops__due-date-request, .financial-ops__charge-edit { min-height: 34px; border: 1px solid #90bde4; border-radius: 7px; color: #0869c7; background: #fff; font: inherit; font-size: .68rem; font-weight: 800; }
+.financial-ops__charge-edit { border-color: #b7d2e8; color: #315d85; background: #f7fbff; }
+.financial-ops__charge-edit:disabled { cursor: not-allowed; opacity: .52; }
 .financial-ops__charge-items { display: grid; gap: 5px; padding-top: 7px; border-top: 1px dashed #dce7ef; }
 .financial-ops__charge-items[hidden] { display: none; }
 .financial-ops__charge-items > div, .financial-ops__current-order > div { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: #536f87; font-size: .7rem; }

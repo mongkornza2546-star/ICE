@@ -13,6 +13,8 @@ describe('ShopPurchaseHistory', () => {
     expect(screen.getAllByText('ชำระแล้ว')).toHaveLength(2);
     expect(screen.getByText('ชำระบางส่วน')).toBeTruthy();
     expect(screen.getByText('ค้างชำระ')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'แก้ไขหรือยกเลิกบิล' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'สร้างเอกสารปรับปรุง' })).toBeNull();
 
     fireEvent.change(screen.getByLabelText('สถานะชำระเงิน'), { target: { value: 'outstanding' } });
 

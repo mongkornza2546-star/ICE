@@ -13,6 +13,7 @@ export type PaymentProfile = {
 
 export type QueueCharge = {
   charge_id: string;
+  delivery_event_id?: string | null;
   charge_number: string;
   service_date: string;
   payment_term?: 'immediate' | 'end_of_day' | 'credit';

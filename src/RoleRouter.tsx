@@ -340,7 +340,7 @@ export function RoleRouter({
       )}
       {visitedViews.has('shops') && (
         <KeepAlive active={currentView === 'shops'}>
-          <ShopSettings isActive={currentView === 'shops'} userRole={profile.role} />
+          <ShopSettings isActive={currentView === 'shops'} />
         </KeepAlive>
       )}
       {visitedViews.has('reference_settings') && (

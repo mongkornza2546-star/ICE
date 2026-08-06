@@ -53,6 +53,17 @@ function requestKey() {
   return globalThis.crypto?.randomUUID?.() ?? `correction-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
+function correctionConfirmation(preview: CorrectionPreview, isClosed: boolean) {
+  const newAmount = money.format(Number(preview.new_amount));
+  const allocated = money.format(Number(preview.allocated_amount));
+  const effect = Number(preview.refund_amount) > 0
+    ? `จะสร้างรายการรอคืนเงิน ${money.format(Number(preview.refund_amount))}`
+    : Number(preview.outstanding_amount) > 0
+      ? `ร้านจะมียอดค้างเพิ่ม ${money.format(Number(preview.outstanding_amount))}`
+      : 'บิลจะชำระครบและไม่มีรายการคืนเงิน';
+  return `${isClosed ? 'ยอดปรับปรุง' : 'บิลใหม่'} ${newAmount} เงินที่รับและจัดสรรแล้ว ${allocated}\nหลังยืนยัน ${effect} ใบเสร็จเดิมยังคงอยู่`;
+}
+
 export function DeliveryCorrectionDialog({
   eventId,
   onClose,
@@ -197,8 +208,7 @@ export function DeliveryCorrectionDialog({
     event.preventDefault();
     if (!context || !preview) return void previewChange();
     if (!reason.trim()) return setError('กรุณาระบุเหตุผล');
-    if (isClosed && items.length === 0
-      && !window.confirm('ยืนยันสร้างเอกสารปรับปรุงให้ยอดบิลเป็นศูนย์หรือไม่')) return;
+    if (!window.confirm(correctionConfirmation(preview, isClosed))) return;
     setSubmitting(true);
     setError(null);
     try {
@@ -232,7 +242,10 @@ export function DeliveryCorrectionDialog({
 
   const cancelBill = async () => {
     if (!context || !context.can_cancel || !reason.trim()) return setError('กรุณาระบุเหตุผลก่อนยกเลิกบิล');
-    if (!window.confirm(`ยืนยันยกเลิกบิล ${context.charge_number ?? ''} หรือไม่`)) return;
+    const cancellationEffect = Number(context.allocated_amount) > 0
+      ? `หลังยืนยันจะสร้างรายการรอคืนเงิน ${money.format(Number(context.allocated_amount))} ใบเสร็จเดิมยังคงอยู่`
+      : 'หลังยืนยันบิลส่งของจะถูกยกเลิก โดยไม่ยกเลิกรับเงินอัตโนมัติ';
+    if (!window.confirm(`ยืนยันยกเลิกบิล ${context.charge_number ?? ''} หรือไม่\n${cancellationEffect}`)) return;
     setSubmitting(true);
     setError(null);
     try {

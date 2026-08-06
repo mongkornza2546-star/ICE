@@ -3,7 +3,7 @@ import { Buildings, CaretRight, CheckCircle, Clock, ClockCounterClockwise, Credi
 import { supabase } from './lib/supabase';
 import { env } from './lib/env';
 import { parseShopImportFile, type ShopImportRow } from './lib/shopImport';
-import type { AppRole, BuildingOption, BuildingZoneOption, ShopSetting, IceTypeOption } from './types/app';
+import type { BuildingOption, BuildingZoneOption, ShopSetting, IceTypeOption } from './types/app';
 import { ShopImageEditor } from './features/admin-reference-settings/components/ShopImageEditor';
 import { ShopPaymentProfileEditor } from './features/shop-settings/components/ShopPaymentProfileEditor';
 import { ShopSpecialPriceEditor } from './features/shop-settings/components/ShopSpecialPriceEditor';
@@ -67,12 +67,10 @@ export function ShopSettings({
   allowReadOnlyPreview = false,
   isActive = true,
   readOnly = false,
-  userRole = 'admin',
 }: {
   allowReadOnlyPreview?: boolean;
   isActive?: boolean;
   readOnly?: boolean;
-  userRole?: AppRole;
 }) {
   const managementReadOnly = readOnly || env.isDemoMode;
   const historyOnlyPreview = managementReadOnly && allowReadOnlyPreview;
@@ -833,7 +831,7 @@ export function ShopSettings({
             </div> : null}
             {!historyOnlyPreview ? <div className="shop-editor-tab-content" hidden={editorTab !== 'payment'}>{draft.id ? <ShopPaymentProfileEditor onSaved={refreshReadiness} shopId={draft.id} shopName={draft.name} /> : <p className="muted">บันทึกข้อมูลร้านก่อน แล้วจึงตั้งค่าการชำระเงิน</p>}</div> : null}
             {!historyOnlyPreview ? <div className="shop-editor-tab-content" hidden={editorTab !== 'prices'}>{draft.id ? <ShopSpecialPriceEditor iceTypes={iceTypes} onSaved={refreshReadiness} shopId={draft.id} shopName={draft.name} /> : <p className="muted">บันทึกข้อมูลร้านก่อน แล้วจึงตั้งค่าราคาพิเศษน้ำแข็ง</p>}</div> : null}
-            <div className="shop-editor-tab-content" hidden={editorTab !== 'history'}><ShopPurchaseHistory isActive={editorTab === 'history'} shopId={draft.id} userRole={userRole} /></div>
+            <div className="shop-editor-tab-content" hidden={editorTab !== 'history'}><ShopPurchaseHistory isActive={editorTab === 'history'} shopId={draft.id} /></div>
           </section>
         </div>
       ) : null}

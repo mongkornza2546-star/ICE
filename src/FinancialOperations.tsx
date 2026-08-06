@@ -13,6 +13,7 @@ import { ManagerFinancialSections, PaymentHistorySection } from './features/fina
 import { HistoryReceiptModal } from './features/financial-operations/components/HistoryReceiptModal';
 import { PaymentModal } from './features/financial-operations/components/PaymentModal';
 import { RefundQueuePanel } from './features/financial-operations/components/RefundQueuePanel';
+import { DeliveryCorrectionDialog } from './features/delivery-corrections/DeliveryCorrectionDialog';
 import type {
   Approval,
   Collector,
@@ -104,6 +105,7 @@ export function FinancialOperations({
   const [receipt, setReceipt] = useState<PaymentReceipt | null>(null);
   const [receiptWarning, setReceiptWarning] = useState<string | null>(null);
   const [historyReceipt, setHistoryReceipt] = useState<HistoryReceiptDetail | null>(null);
+  const [correctionEventId, setCorrectionEventId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -439,6 +441,10 @@ export function FinancialOperations({
     setReference('');
     setEvidence(null);
     setEvidenceError(null);
+  };
+
+  const openChargeCorrection = (charge: QueueShop['charges'][number]) => {
+    if (charge.delivery_event_id) setCorrectionEventId(charge.delivery_event_id);
   };
 
   const receivedAmount = Number(amount);
@@ -966,6 +972,7 @@ export function FinancialOperations({
           onAmountChange={setAmount}
           onClose={closePayment}
           onEvidenceChange={selectEvidence}
+          onEditCharge={openChargeCorrection}
           onPaymentMethodChange={choosePaymentMethod}
           onPrintReceipt={(targetReceipt) => printStoredReceipt(targetReceipt.paymentId)}
           onPrintReceiptWantedChange={setPrintReceiptWanted}
@@ -1036,6 +1043,7 @@ export function FinancialOperations({
           onAmountChange={setAmount}
           onClose={closePayment}
           onEvidenceChange={selectEvidence}
+          onEditCharge={openChargeCorrection}
           onPaymentMethodChange={choosePaymentMethod}
           onPrintReceipt={(targetReceipt) => printStoredReceipt(targetReceipt.paymentId)}
           onPrintReceiptWantedChange={setPrintReceiptWanted}
@@ -1068,6 +1076,19 @@ export function FinancialOperations({
               if (voided) setHistoryReceipt(null);
             });
           } : undefined}
+        />,
+        document.body,
+      ) : null}
+
+      {correctionEventId ? createPortal(
+        <DeliveryCorrectionDialog
+          eventId={correctionEventId}
+          onClose={() => setCorrectionEventId(null)}
+          onSuccess={async (message) => {
+            setSuccess(message);
+            await refreshFinancialData();
+          }}
+          userRole={userRole}
         />,
         document.body,
       ) : null}

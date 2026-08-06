@@ -54,6 +54,7 @@ describe('DeliveryCorrectionDialog', () => {
 
   it('preserves the existing note and submits an approved credit correction', async () => {
     const user = userEvent.setup();
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
     mocks.rpc.mockImplementation(async (name: string) => {
       if (name === 'get_delivery_correction_context') return { data: {
         delivery_event_id: 'event-2', round_stop_id: 'stop-1', charge_number: 'C260806-000002',
@@ -85,6 +86,9 @@ describe('DeliveryCorrectionDialog', () => {
     await user.click(screen.getByRole('button', { name: 'ขออนุมัติวงเงิน' }));
     await waitFor(() => expect(screen.getByRole('button', { name: 'ยืนยันแก้ไข' })).toHaveProperty('disabled', false));
     await user.click(screen.getByRole('button', { name: 'ยืนยันแก้ไข' }));
+
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('ใบเสร็จเดิมยังคงอยู่'));
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('ยอดค้างเพิ่ม ฿36.00'));
 
     await waitFor(() => expect(mocks.rpc).toHaveBeenCalledWith('request_financial_approval', expect.objectContaining({
       p_round_stop_id: 'stop-1', p_items: [{ ice_type_id: 'ice-1', quantity: 2 }], p_requested_amount: 36,

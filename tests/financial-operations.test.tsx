@@ -84,6 +84,7 @@ const queueShop = {
   charges: [
     {
       charge_id: 'charge-1',
+      delivery_event_id: 'event-1',
       charge_number: 'C260728-000001',
       service_date: '2026-07-28',
       original_amount: 60,
@@ -98,6 +99,7 @@ const queueShop = {
     },
     {
       charge_id: 'charge-2',
+      delivery_event_id: 'event-2',
       charge_number: 'C260728-000002',
       service_date: '2026-07-28',
       original_amount: 40,
@@ -172,6 +174,30 @@ describe('FinancialOperations', () => {
     expect(bill.getAttribute('aria-expanded')).toBe('true');
     expect(screen.getByRole('region', { name: 'รายการส่งของบิล C260728-000001' }).textContent)
       .toContain('น้ำแข็งหลอด × 2 ถุง');
+  });
+
+  it('opens delivery-bill correction from the collection panel', async () => {
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1200 });
+    const user = userEvent.setup();
+    mocks.rpc.mockImplementation(async (name: string) => name === 'get_delivery_correction_context' ? { data: {
+      delivery_event_id: 'event-1', charge_number: 'C260728-000001', shop_name: 'ร้านเก็บเงิน',
+      service_date: '2026-07-28', round_status: 'open', day_closed: false,
+      original_amount: 60, effective_amount: 60, allocated_amount: 0,
+      can_correct: true, can_cancel: true, blocker_reason: null,
+      ice_types: [{ ice_type_id: 'ice-1', code: 'TUBE', name: 'น้ำแข็งหลอด', unit: 'ถุง', unit_price: 30 }],
+      items: [{ ice_type_id: 'ice-1', name: 'น้ำแข็งหลอด', unit: 'ถุง', quantity: 2, unit_price: 30 }],
+    }, error: null } : { data: [], error: null });
+
+    render(<FinancialOperations
+      demoData={{ serviceDate: '2026-07-28', queue: [queueShop], paymentHistory: [] }}
+      userRole="round_lead"
+    />);
+
+    await user.click(screen.getByRole('button', { name: 'ดูรายละเอียดบิลส่งของ C260728-000001' }));
+    await user.click(screen.getByRole('button', { name: 'แก้ไขหรือยกเลิกใบส่งของ C260728-000001' }));
+
+    expect(await screen.findByRole('dialog', { name: 'แก้ไขบิล C260728-000001' })).not.toBeNull();
+    expect(mocks.rpc).toHaveBeenCalledWith('get_delivery_correction_context', { p_event_id: 'event-1' });
   });
 
   it('applies document search, status filtering, and the all tab to the displayed rows', async () => {
@@ -1190,6 +1216,7 @@ describe('FinancialOperations', () => {
 
   it('opens a credit bill and submits an audited delivery correction', async () => {
     const user = userEvent.setup();
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
     const onRefreshReceivables = vi.fn().mockResolvedValue(undefined);
     mocks.rpc.mockImplementation(async (name: string) => {
       if (name === 'get_delivery_correction_context') return { data: {
@@ -1613,6 +1640,9 @@ describe('FinancialOperations', () => {
     mocks.from.mockReturnValue(queryResult(null));
     let settled = false;
     mocks.rpc.mockImplementation(async (name: string) => {
+      if (name === 'get_financial_refund_summary') return { data: {
+        service_date: '2026-08-05', gross_received: 100, refunded_amount: 20, net_received: 80,
+      }, error: null };
       if (name === 'get_refund_queue') return { data: settled ? [] : [{
         id: 'refund-1', shop_code: 'S001', shop_name: 'ร้านเครดิต',
         receipt_number: 'R260805-000001', charge_number: 'C260805-000001', amount: 50,
@@ -1624,6 +1654,12 @@ describe('FinancialOperations', () => {
 
     render(<FinancialOperations managerPage="refund" userRole="admin" />);
 
+    expect(await screen.findByText('ยอดรับรวม')).toBeTruthy();
+    expect(screen.getByText('ยอดคืนจริง')).toBeTruthy();
+    expect(screen.getByText('ยอดรับสุทธิ')).toBeTruthy();
+    expect(screen.getByText('฿100.00')).toBeTruthy();
+    expect(screen.getByText('฿20.00')).toBeTruthy();
+    expect(screen.getByText('฿80.00')).toBeTruthy();
     expect((await screen.findAllByText('฿50.00')).length).toBe(2);
     await user.selectOptions(screen.getByRole('combobox', { name: 'วิธีคืนเงิน' }), 'bank_transfer');
     await user.type(screen.getByRole('textbox', { name: 'เลขอ้างอิงการคืนเงิน' }), 'TX-001');
