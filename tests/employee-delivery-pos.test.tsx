@@ -227,6 +227,191 @@ describe('employee delivery POS', () => {
     })));
   });
 
+  it('keeps an immediate delivery local until one atomic sale RPC records delivery and payment', async () => {
+    const user = userEvent.setup();
+    const api = gateway();
+    api.recordImmediateSale = vi.fn().mockResolvedValue({
+      delivery: {
+        delivery_event_id: 'event-atomic',
+        round_stop_id: shop.round_stop_id,
+        charge_id: 'charge-atomic',
+        charge_number: null,
+        service_date: round.service_date,
+        total_amount: 10,
+        payment_term: 'immediate',
+        payment_status: 'paid',
+        due_date: null,
+        approval_id: null,
+      },
+      payment: {
+        payment_id: 'payment-atomic',
+        receipt_number: 'REC2607-00001',
+        shop_id: shop.shop_id,
+        payment_method: 'cash',
+        received_amount: 10,
+        allocated_amount: 10,
+        change_amount: 0,
+        status: 'active',
+        recorded_at: '2026-07-27T02:00:00Z',
+      },
+      receipt_number: 'REC2607-00001',
+      print_document: {
+        document_type: 'REC',
+        document_number: 'REC2607-00001',
+        document_title: 'ใบส่งของ / ใบเสร็จรับเงิน',
+        status: 'active',
+        recorded_at: '2026-07-27T02:00:00Z',
+        service_date: round.service_date,
+        shop_code: shop.shop_code,
+        shop_name: shop.shop_name,
+        payment_term: 'immediate',
+        payment_method: 'cash',
+        received_amount: 10,
+        allocated_amount: 10,
+        change_amount: 0,
+        charges: [],
+      },
+    });
+    const openSpy = vi.spyOn(window, 'open').mockReturnValue(null);
+    render(<EmployeeDeliveryWorkspace gateway={api} />);
+    await user.click(await screen.findByRole('button', { name: /S001 ร้านทดสอบ/ }));
+    await user.click(within(await selectIceAndGetKeypad(user)).getByRole('button', { name: '1' }));
+    await user.click(screen.getByRole('button', { name: 'ยืนยันส่งร้านนี้' }));
+
+    expect(api.recordDelivery).not.toHaveBeenCalled();
+    expect(await screen.findByRole('heading', { name: 'บันทึกรับชำระเงิน' })).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: 'ยืนยันรับเงิน' }));
+    await waitFor(() => expect(api.recordImmediateSale).toHaveBeenCalledWith(expect.objectContaining({
+      roundStopId: 'stop-1',
+      items: [{ ice_type_id: 'ice-1', quantity: 1 }],
+      paymentMethod: 'cash',
+      receivedAmount: 10,
+      expectedTotal: 10,
+    })));
+    expect(api.recordPayment).not.toHaveBeenCalled();
+    openSpy.mockRestore();
+  });
+
+  it('reuses an atomic-sale key and uploaded evidence path after reload', async () => {
+    const user = userEvent.setup();
+    const openSpy = vi.spyOn(window, 'open').mockReturnValue(null);
+    const api = gateway();
+    api.uploadPaymentEvidence = vi.fn().mockResolvedValue('courier/key/payment.jpg');
+    api.recordImmediateSale = vi.fn()
+      .mockRejectedValueOnce(new Error('network timeout'))
+      .mockResolvedValueOnce({
+        delivery: {
+          delivery_event_id: 'event-atomic', round_stop_id: shop.round_stop_id,
+          charge_id: 'charge-atomic', charge_number: null, service_date: round.service_date,
+          total_amount: 10, payment_term: 'immediate', payment_status: 'paid',
+          due_date: null, approval_id: null,
+        },
+        payment: {
+          payment_id: 'payment-atomic', receipt_number: 'REC2607-00001', shop_id: shop.shop_id,
+          payment_method: 'cash', received_amount: 10, allocated_amount: 10,
+          change_amount: 0, status: 'active', recorded_at: '2026-07-27T02:00:00Z',
+        },
+        receipt_number: 'REC2607-00001',
+        print_document: {
+          document_type: 'REC', document_number: 'REC2607-00001',
+          document_title: 'ใบส่งของ / ใบเสร็จรับเงิน', status: 'active',
+          recorded_at: '2026-07-27T02:00:00Z', service_date: round.service_date,
+          shop_code: shop.shop_code, shop_name: shop.shop_name, payment_term: 'immediate',
+          payment_method: 'cash', received_amount: 10, allocated_amount: 10,
+          change_amount: 0, charges: [],
+        },
+      });
+
+    const firstView = render(<EmployeeDeliveryWorkspace
+      gateway={api}
+      requestScope="atomic-evidence-reload"
+      serviceDate={round.service_date}
+    />);
+    await user.click(await screen.findByRole('button', { name: /S001 ร้านทดสอบ/ }));
+    await user.click(within(await selectIceAndGetKeypad(user)).getByRole('button', { name: '1' }));
+    await user.click(screen.getByRole('button', { name: 'ยืนยันส่งร้านนี้' }));
+    await user.upload(
+      await screen.findByLabelText('หลักฐานการชำระ'),
+      new File(['evidence'], 'payment.jpg', { type: 'image/jpeg', lastModified: 1234 }),
+    );
+    await user.click(screen.getByRole('button', { name: 'ยืนยันรับเงิน' }));
+    expect((await screen.findByRole('alert')).textContent).toContain('เชื่อมต่อไม่สำเร็จ');
+    const firstCall = vi.mocked(api.recordImmediateSale).mock.calls[0][0];
+
+    firstView.unmount();
+    render(<EmployeeDeliveryWorkspace
+      gateway={api}
+      requestScope="atomic-evidence-reload"
+      serviceDate={round.service_date}
+    />);
+    await screen.findByRole('heading', { name: 'บันทึกรับชำระเงิน' });
+    await user.click(screen.getByRole('button', { name: 'ยืนยันรับเงิน' }));
+    await waitFor(() => expect(api.recordImmediateSale).toHaveBeenCalledTimes(2));
+
+    const secondCall = vi.mocked(api.recordImmediateSale).mock.calls[1][0];
+    expect(secondCall.idempotencyKey).toBe(firstCall.idempotencyKey);
+    expect(secondCall.evidencePath).toBe(firstCall.evidencePath);
+    expect(api.uploadPaymentEvidence).toHaveBeenCalledTimes(1);
+    openSpy.mockRestore();
+  });
+
+  it('deletes uploaded atomic-sale evidence when returning to edit the draft', async () => {
+    const user = userEvent.setup();
+    const openSpy = vi.spyOn(window, 'open').mockReturnValue(null);
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const api = gateway();
+    api.uploadPaymentEvidence = vi.fn().mockResolvedValue('courier/key/payment.jpg');
+    api.deletePaymentEvidence = vi.fn().mockRejectedValue(new Error('cleanup failed'));
+    api.recordImmediateSale = vi.fn().mockRejectedValue(new Error('network timeout'));
+
+    render(<EmployeeDeliveryWorkspace gateway={api} />);
+    await user.click(await screen.findByRole('button', { name: /S001 ร้านทดสอบ/ }));
+    await user.click(within(await selectIceAndGetKeypad(user)).getByRole('button', { name: '1' }));
+    await user.click(screen.getByRole('button', { name: 'ยืนยันส่งร้านนี้' }));
+    await user.upload(
+      await screen.findByLabelText('หลักฐานการชำระ'),
+      new File(['evidence'], 'payment.jpg', { type: 'image/jpeg' }),
+    );
+    await user.click(screen.getByRole('button', { name: 'ยืนยันรับเงิน' }));
+    expect((await screen.findByRole('alert')).textContent).toContain('เชื่อมต่อไม่สำเร็จ');
+
+    await user.click(screen.getByRole('button', { name: 'กลับไปแก้รายการ' }));
+
+    expect(await screen.findByRole('button', { name: 'ยืนยันส่งร้านนี้' })).toBeTruthy();
+    expect(api.deletePaymentEvidence).toHaveBeenCalledWith(
+      'courier/key/payment.jpg',
+      expect.any(String),
+    );
+    openSpy.mockRestore();
+  });
+
+  it('refreshes the draft and asks for confirmation when the server total changes', async () => {
+    const user = userEvent.setup();
+    const openSpy = vi.spyOn(window, 'open').mockReturnValue(null);
+    const api = gateway();
+    api.loadDeliveryPosContext = vi.fn()
+      .mockResolvedValueOnce(context)
+      .mockResolvedValueOnce({
+        ...context,
+        items: [{ ...context.items[0], unit_price: 12 }],
+      });
+    api.recordImmediateSale = vi.fn().mockRejectedValue(
+      new Error('Immediate sale total changed; refresh prices and confirm again'),
+    );
+
+    render(<EmployeeDeliveryWorkspace gateway={api} />);
+    await user.click(await screen.findByRole('button', { name: /S001 ร้านทดสอบ/ }));
+    await user.click(within(await selectIceAndGetKeypad(user)).getByRole('button', { name: '1' }));
+    await user.click(screen.getByRole('button', { name: 'ยืนยันส่งร้านนี้' }));
+    await user.click(screen.getByRole('button', { name: 'ยืนยันรับเงิน' }));
+
+    await waitFor(() => expect(api.loadDeliveryPosContext).toHaveBeenCalledTimes(2));
+    expect((await screen.findByRole('alert')).textContent).toContain('ราคาเปลี่ยน');
+    expect(screen.getByRole('region', { name: 'ยอดที่ต้องชำระ' }).textContent).toContain('12.00');
+    expect(api.recordImmediateSale).toHaveBeenCalledWith(expect.objectContaining({ expectedTotal: 10 }));
+    openSpy.mockRestore();
+  });
+
   it('uses the product label preserved in the delivery result', async () => {
     const user = userEvent.setup();
     const api = gateway();

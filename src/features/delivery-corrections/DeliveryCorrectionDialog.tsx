@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
-import { WarningCircle, X } from '@phosphor-icons/react';
+import { Printer, WarningCircle, X } from '@phosphor-icons/react';
 import { supabase } from '../../lib/supabase';
 import { getErrorMessage } from '../../lib/errorMessage';
 import type { AppRole } from '../../types/app';
+import { printSalesDocument, salesDocumentFromStored, type StoredSalesDocument } from '../../lib/salesDocumentPrint';
 
 type CorrectionItem = {
   ice_type_id: string;
@@ -16,6 +17,7 @@ type CorrectionItem = {
 type CorrectionContext = {
   delivery_event_id: string;
   round_stop_id: string;
+  charge_id: string;
   charge_number: string | null;
   shop_name: string;
   service_date: string;
@@ -24,7 +26,7 @@ type CorrectionContext = {
   original_amount: number;
   effective_amount: number;
   allocated_amount: number;
-  payment_term: 'immediate' | 'credit';
+  payment_term: 'immediate' | 'end_of_day' | 'credit';
   note: string | null;
   can_correct: boolean;
   can_cancel: boolean;
@@ -141,6 +143,30 @@ export function DeliveryCorrectionDialog({
           - Number(items.find((item) => item.ice_type_id === product.ice_type_id)?.quantity ?? 0),
       })).filter((item) => item.quantity_delta !== 0),
     };
+  };
+
+  const printDeliveryDocument = async () => {
+    if (!context?.charge_id) return;
+    const printWindow = window.open('', '_blank', 'popup,width=360,height=680');
+    if (!printWindow) {
+      setError('เบราว์เซอร์บล็อกหน้าต่างพิมพ์ กรุณาอนุญาตป๊อปอัปแล้วลองใหม่');
+      return;
+    }
+    setSubmitting(true);
+    setError(null);
+    try {
+      if (!supabase) throw new Error('ยังไม่ได้ตั้งค่า Supabase');
+      const { data, error: printError } = await supabase.rpc('get_charge_print_document', {
+        p_charge_id: context.charge_id,
+      });
+      if (printError) throw printError;
+      printSalesDocument(salesDocumentFromStored(data as StoredSalesDocument), printWindow);
+    } catch (printError) {
+      printWindow.close();
+      setError(getErrorMessage(printError));
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const previewChange = async () => {
@@ -261,7 +287,9 @@ export function DeliveryCorrectionDialog({
         p_approval_id: null,
       });
       if (saveError) throw saveError;
-      await onSuccess('ยกเลิกบิลแล้ว ยอดที่รับชำระจะเข้าคิวคืนเงิน');
+      await onSuccess(context.payment_term === 'immediate'
+        ? 'ยกเลิกรายการขายสดแล้ว สามารถบันทึกขายใหม่ได้'
+        : 'ยกเลิกบิลแล้ว ยอดที่รับชำระจะเข้าคิวคืนเงิน');
       onClose();
     } catch (saveError) {
       setError(getErrorMessage(saveError));
@@ -270,12 +298,13 @@ export function DeliveryCorrectionDialog({
     }
   };
 
-  const editable = Boolean(context && (context.can_correct || canCreateAdjustment));
+  const immediateSale = context?.payment_term === 'immediate';
+  const editable = Boolean(context && !immediateSale && (context.can_correct || canCreateAdjustment));
 
   return <div className="modal-backdrop delivery-correction-layer">
     <form aria-label={`แก้ไขบิล ${context?.charge_number ?? ''}`} aria-modal="true" className="modal-card delivery-correction-dialog" onSubmit={submitChange} role="dialog">
       <div className="panel-header">
-        <div><p className="eyebrow">{isClosed ? 'เอกสารปรับปรุง' : 'แก้ไขบิล'}</p><h2>{context?.charge_number ?? 'รายการส่ง'}</h2></div>
+        <div><p className="eyebrow">{isClosed ? 'เอกสารปรับปรุง' : 'แก้ไขบิล'}</p><h2>{context?.charge_number ?? 'รายการขายสด'}</h2></div>
         <button aria-label="ปิด" className="ghost-button" disabled={submitting} onClick={onClose} type="button"><X size={20} /></button>
       </div>
       {loading ? <p className="muted">กำลังโหลดข้อมูลบิล...</p> : context ? <>
@@ -285,10 +314,13 @@ export function DeliveryCorrectionDialog({
           <span><small>รับชำระแล้ว</small><strong>{money.format(Number(context.allocated_amount))}</strong></span>
         </div>
         {isClosed ? <p className="delivery-correction-dialog__notice"><WarningCircle size={18} />รอบหรือวันนี้ปิดแล้ว ระบบจะเก็บเป็นเอกสารปรับปรุงโดยไม่แก้รายการเดิม</p> : null}
+        {immediateSale ? <p className="delivery-correction-dialog__notice"><WarningCircle size={18} />{Number(context.allocated_amount) > 0
+          ? 'ขายสดแก้ไขในบิลเดิมไม่ได้ ให้ยกเลิก REC ก่อน แล้วจึงยกเลิกรายการส่งและบันทึกขายใหม่'
+          : 'REC ถูกยกเลิกแล้ว ให้ยกเลิกรายการส่งนี้ก่อนบันทึกขายใหม่'}</p> : null}
         <div className="field-grid field-grid--three">
           {(context.ice_types ?? context.items).map((ice) => <label key={ice.ice_type_id}>{ice.name} ({ice.unit})<input disabled={!editable || submitting} min="0" onChange={(event) => { setQuantities((current) => ({ ...current, [ice.ice_type_id]: Math.max(0, Math.round((Number(event.target.value) || 0) * 2) / 2) })); setPreview(null); setApprovalId(null); setApprovalStatus(null); }} step="0.5" type="number" value={quantities[ice.ice_type_id] ?? 0} /></label>)}
         </div>
-        <label>เหตุผล<input disabled={!editable || submitting} onChange={(event) => setReason(event.target.value)} required value={reason} /></label>
+        <label>เหตุผล<input disabled={(!editable && !context.can_cancel) || submitting} onChange={(event) => setReason(event.target.value)} required value={reason} /></label>
         {!isClosed ? <label>หมายเหตุ<textarea disabled={!editable || submitting} onChange={(event) => setNote(event.target.value)} rows={2} value={note} /></label> : null}
         {preview ? <div className="delivery-correction-dialog__preview">
           <span><small>ยอดใหม่</small><strong>{money.format(Number(preview.new_amount))}</strong></span>
@@ -304,7 +336,11 @@ export function DeliveryCorrectionDialog({
       </> : null}
       {error ? <p className="credit-ar__action-error" role="alert">{error}</p> : null}
       <div className="modal-actions">
-        {!isClosed && context?.can_cancel ? <button className="ghost-button danger-button" disabled={submitting} onClick={() => void cancelBill()} type="button">ยกเลิกบิลส่งของ</button> : null}
+        {context?.charge_number ? <button className="ghost-button" disabled={submitting} onClick={() => void printDeliveryDocument()} type="button"><Printer size={18} />พิมพ์เอกสาร</button> : null}
+        {context?.can_cancel && (!isClosed || immediateSale)
+          && (!immediateSale || Number(context.allocated_amount) === 0)
+          ? <button className="ghost-button danger-button" disabled={submitting} onClick={() => void cancelBill()} type="button">ยกเลิกบิลส่งของ</button>
+          : null}
         <button className="secondary-button" disabled={!editable || submitting} onClick={() => void previewChange()} type="button">คำนวณผลกระทบ</button>
         <button className="primary-button" disabled={!editable || !preview || submitting || Boolean(preview.approval_required && !approvalId)} type="submit">{submitting ? 'กำลังบันทึก...' : isClosed ? 'สร้างเอกสารปรับปรุง' : 'ยืนยันแก้ไข'}</button>
       </div>

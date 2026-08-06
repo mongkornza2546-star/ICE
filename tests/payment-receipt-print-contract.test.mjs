@@ -26,6 +26,10 @@ const financialOperations = readFileSync(
   new URL('../src/FinancialOperations.tsx', import.meta.url),
   'utf8',
 );
+const salesDocumentPrint = readFileSync(
+  new URL('../src/lib/salesDocumentPrint.ts', import.meta.url),
+  'utf8',
+);
 const financialOperationsPanels = readFileSync(
   new URL('../src/features/financial-operations/components/FinancialOperationsPanels.tsx', import.meta.url),
   'utf8',
@@ -50,7 +54,8 @@ test('receipt numbers are assigned in the payment transaction and returned by th
 
 test('receipt printing is isolated from the global application print stylesheet', () => {
   assert.match(financialOperations, /window\.open\('', '_blank'/);
-  assert.match(financialOperations, /@page \{ size: 57mm \$\{receiptHeightMm\}mm; margin: 0; \}/);
+  assert.match(financialOperations, /printSalesDocument/);
+  assert.match(salesDocumentPrint, /@page \{ size: 57mm \$\{heightMm\}mm; margin: 0; \}/);
   assert.match(financialOperations, /get_payment_receipt_items/);
   assert.match(financialOperations, /get_payment_receipt_snapshot/);
   assert.doesNotMatch(globalStyles, /@page\s*\{\s*size:\s*57mm 30mm/);

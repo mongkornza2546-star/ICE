@@ -117,6 +117,10 @@ const paymentCorrectionTargets = readFileSync(
   new URL('../supabase/migrations/0133_payment_correction_targets.sql', import.meta.url),
   'utf8',
 );
+const monthlySalesDocuments = readFileSync(
+  new URL('../supabase/migrations/0134_monthly_sales_documents_and_atomic_immediate_sales.sql', import.meta.url),
+  'utf8',
+);
 
 const COURIER_ID = '10000000-0000-4000-8000-000000000001';
 const ADMIN_ID = '10000000-0000-4000-8000-000000000002';
@@ -631,6 +635,250 @@ async function createDatabase(t, { applyCollectionShopCards = true } = {}) {
 function itemPayload(quantity) {
   return JSON.stringify([{ ice_type_id: ICE_ID, quantity }]);
 }
+
+test('monthly document migration issues atomic immediate REC and preserves idempotency', async (t) => {
+  const db = await createDatabase(t);
+  await db.exec(monthlySalesDocuments);
+  const key = 'a0000000-0000-4000-8000-000000000001';
+  const saleSql = `select public.record_immediate_sale(
+    '${STOP_ID}', '${itemPayload(2)}'::jsonb, null, now(),
+    'cash', 40, null, null, 36, '${key}'
+  ) as result`;
+
+  const first = await db.query(saleSql);
+  const replay = await db.query(saleSql);
+  assert.equal(first.rows[0].result.receipt_number, replay.rows[0].result.receipt_number);
+  assert.match(first.rows[0].result.receipt_number, /^REC\d{4}-00001$/);
+  assert.equal(first.rows[0].result.delivery.charge_number, null);
+  assert.equal(first.rows[0].result.print_document.document_title, 'ใบส่งของ / ใบเสร็จรับเงิน');
+  const evidenceCleanup = await db.query(`select public.can_delete_payment_evidence(
+    '${key}', '${COURIER_ID}/${key}.jpg'
+  ) as allowed`);
+  assert.equal(evidenceCleanup.rows[0].allowed, false);
+
+  const persisted = await db.query(`
+    select
+      (select count(*)::integer from public.delivery_events) as deliveries,
+      (select count(*)::integer from public.payments) as payments,
+      (select count(*)::integer from public.payment_receipt_snapshots) as snapshots
+  `);
+  assert.deepEqual(persisted.rows[0], { deliveries: 1, payments: 1, snapshots: 1 });
+});
+
+test('monthly document migration rejects a direct immediate delivery without a REC', async (t) => {
+  const db = await createDatabase(t);
+  await db.exec(monthlySalesDocuments);
+
+  await assert.rejects(
+    db.query(`select public.record_delivery(
+      '${STOP_ID}', '${itemPayload(1)}'::jsonb, 'delivered', null, now(),
+      'a0000000-0000-4000-8000-000000000013', 'immediate', null
+    )`),
+    /must be recorded atomically with a receipt/i,
+  );
+
+  const counts = await db.query(`select
+    (select count(*)::integer from public.delivery_events) as deliveries,
+    (select count(*)::integer from public.delivery_charges) as charges,
+    (select count(*)::integer from public.payments) as payments
+  `);
+  assert.deepEqual(counts.rows[0], { deliveries: 0, charges: 0, payments: 0 });
+});
+
+test('monthly INV and REC counters are independent and reject overflow', async (t) => {
+  const db = await createDatabase(t);
+  await db.exec(monthlySalesDocuments);
+  const period = '2026-08-01';
+  const numbers = await db.query(`
+    select public.next_sales_document_number('INV', date '${period}') as inv,
+      public.next_sales_document_number('REC', date '${period}') as rec
+  `);
+  assert.equal(numbers.rows[0].inv, 'INV2608-00001');
+  assert.equal(numbers.rows[0].rec, 'REC2608-00001');
+  await db.exec(`update public.document_counters set last_sequence = 99999
+    where document_type = 'INV' and period_month = date '${period}'`);
+  await assert.rejects(
+    db.query(`select public.next_sales_document_number('INV', date '${period}')`),
+    /exceeds 99999/i,
+  );
+});
+
+test('an immediate payment validation failure rolls back delivery, stock, charge, and counters', async (t) => {
+  const db = await createDatabase(t);
+  await db.exec(monthlySalesDocuments);
+  await assert.rejects(
+    db.query(`select public.record_immediate_sale(
+      '${STOP_ID}', '${itemPayload(2)}'::jsonb, null, now(),
+      'cash', 20, null, null, 36, 'a0000000-0000-4000-8000-000000000002'
+    )`),
+    /must cover the full immediate sale amount/i,
+  );
+  const counts = await db.query(`
+    select
+      (select count(*)::integer from public.delivery_events) as deliveries,
+      (select count(*)::integer from public.delivery_charges) as charges,
+      (select count(*)::integer from public.payments) as payments,
+      (select count(*)::integer from public.document_counters) as counters
+  `);
+  assert.deepEqual(counts.rows[0], { deliveries: 0, charges: 0, payments: 0, counters: 0 });
+});
+
+test('an immediate server-price change rolls back and requires client reconfirmation', async (t) => {
+  const db = await createDatabase(t);
+  await db.exec(monthlySalesDocuments);
+
+  await assert.rejects(
+    db.query(`select public.record_immediate_sale(
+      '${STOP_ID}', '${itemPayload(2)}'::jsonb, null, now(),
+      'cash', 40, null, null, 40, 'a0000000-0000-4000-8000-000000000008'
+    )`),
+    /Immediate sale total changed/i,
+  );
+
+  const counts = await db.query(`select
+    (select count(*)::integer from public.delivery_events) as deliveries,
+    (select count(*)::integer from public.payments) as payments,
+    (select count(*)::integer from public.document_counters) as counters
+  `);
+  assert.deepEqual(counts.rows[0], { deliveries: 0, payments: 0, counters: 0 });
+});
+
+test('immediate sales require void then cancel and cannot be corrected in place', async (t) => {
+  const db = await createDatabase(t);
+  await db.exec(monthlySalesDocuments);
+  const sale = await db.query(`select public.record_immediate_sale(
+    '${STOP_ID}', '${itemPayload(1)}'::jsonb, null, now(),
+    'cash', 20, null, null, 18, 'a0000000-0000-4000-8000-000000000005'
+  ) as result`);
+  const eventId = sale.rows[0].result.delivery.delivery_event_id;
+  await db.exec(`update public.auth_context set user_id = '${ROUND_LEAD_ID}', app_role = 'round_lead'`);
+
+  await assert.rejects(
+    db.query(`select public.apply_open_delivery_correction(
+      '${eventId}', 'correct', '${itemPayload(2)}'::jsonb, 'delivered', null,
+      'change quantity', 'a0000000-0000-4000-8000-000000000006', null
+    )`),
+    /Immediate sales cannot be corrected in place/i,
+  );
+  await assert.rejects(
+    db.query(`select public.apply_open_delivery_correction(
+      '${eventId}', 'cancel', '[]'::jsonb, 'delivered', null,
+      'cancel sale', 'a0000000-0000-4000-8000-000000000007', null
+    )`),
+    /Void the active immediate-sale receipt/i,
+  );
+  const state = await db.query(`select event.status as event_status, charge.status as charge_status
+    from public.delivery_events event join public.delivery_charges charge on charge.delivery_event_id = event.id
+    where event.id = '${eventId}'`);
+  assert.deepEqual(state.rows[0], { event_status: 'active', charge_status: 'active' });
+});
+
+test('closed-period adjustments reject immediate sales', async (t) => {
+  const db = await createDatabase(t);
+  await db.exec(monthlySalesDocuments);
+  const sale = await db.query(`select public.record_immediate_sale(
+    '${STOP_ID}', '${itemPayload(1)}'::jsonb, null, now(),
+    'cash', 20, null, null, 18, 'a0000000-0000-4000-8000-000000000009'
+  ) as result`);
+  const eventId = sale.rows[0].result.delivery.delivery_event_id;
+  await db.exec(`
+    update public.delivery_rounds set status = 'closed' where id = '${ROUND_ID}';
+    update public.auth_context set user_id = '${ADMIN_ID}', app_role = 'admin';
+  `);
+
+  await assert.rejects(
+    db.query(`select public.create_closed_delivery_adjustment(
+      '${eventId}', '${itemPayload(0.5)}'::jsonb, 'incorrect immediate sale',
+      'a0000000-0000-4000-8000-000000000010'
+    )`),
+    /Immediate sales cannot be adjusted in place/i,
+  );
+});
+
+test('a closed-round immediate sale can be voided and cancelled before re-entry', async (t) => {
+  const db = await createDatabase(t);
+  await db.exec(monthlySalesDocuments);
+  const sale = await db.query(`select public.record_immediate_sale(
+    '${STOP_ID}', '${itemPayload(1)}'::jsonb, null, now(),
+    'cash', 20, null, null, 18, 'a0000000-0000-4000-8000-000000000011'
+  ) as result`);
+  const eventId = sale.rows[0].result.delivery.delivery_event_id;
+  const paymentId = sale.rows[0].result.payment.payment_id;
+  await db.exec(`
+    update public.delivery_rounds set status = 'closed' where id = '${ROUND_ID}';
+    update public.auth_context set user_id = '${ROUND_LEAD_ID}', app_role = 'round_lead';
+  `);
+
+  await db.query(`select public.void_payment('${paymentId}', 'incorrect immediate sale')`);
+  const targets = await db.query(`select public.get_payment_correction_targets('${paymentId}') as result`);
+  assert.equal(targets.rows[0].result.length, 1);
+  assert.equal(targets.rows[0].result[0].delivery_event_id, eventId);
+  await db.query(`select public.apply_open_delivery_correction(
+    '${eventId}', 'cancel', '[]'::jsonb, 'delivered', null,
+    'incorrect immediate sale', 'a0000000-0000-4000-8000-000000000012', null
+  )`);
+
+  const state = await db.query(`select event.status as event_status, charge.status as charge_status,
+      payment.status as payment_status
+    from public.delivery_events event
+    join public.delivery_charges charge on charge.delivery_event_id = event.id
+    join public.payment_allocations allocation on allocation.charge_id = charge.id
+    join public.payments payment on payment.id = allocation.payment_id
+    where event.id = '${eventId}'`);
+  assert.deepEqual(state.rows[0], {
+    event_status: 'cancelled', charge_status: 'voided', payment_status: 'voided',
+  });
+});
+
+test('a legacy unpaid immediate delivery cannot skip the REC void step after closing', async (t) => {
+  const db = await createDatabase(t);
+  const delivery = await db.query(`select public.record_delivery(
+    '${STOP_ID}', '${itemPayload(1)}'::jsonb, 'delivered', null, now(),
+    'a0000000-0000-4000-8000-000000000014', 'immediate', null
+  ) as result`);
+  const eventId = delivery.rows[0].result.delivery_event_id;
+  await db.exec(monthlySalesDocuments);
+  await db.exec(`
+    update public.delivery_rounds set status = 'closed' where id = '${ROUND_ID}';
+    update public.auth_context set user_id = '${ROUND_LEAD_ID}', app_role = 'round_lead';
+  `);
+
+  const context = await db.query(
+    `select public.get_delivery_correction_context('${eventId}') as result`,
+  );
+  assert.equal(context.rows[0].result.can_cancel, false);
+  assert.match(context.rows[0].result.blocker_reason, /closed|\u0e1b\u0e34\u0e14/i);
+});
+
+test('legacy charge numbers stay unchanged while new non-immediate deliveries receive snapshot INV numbers', async (t) => {
+  const db = await createDatabase(t);
+  await db.exec(`update public.shop_payment_profiles set
+    allowed_payment_terms = array['end_of_day']::public.payment_term[],
+    default_payment_term = 'end_of_day' where shop_id = '${SHOP_ID}'`);
+  const legacy = await db.query(`select public.record_delivery(
+    '${STOP_ID}', '${itemPayload(1)}'::jsonb, 'delivered', null, now(),
+    'a0000000-0000-4000-8000-000000000003', 'end_of_day', null
+  ) as result`);
+  const legacyChargeId = legacy.rows[0].result.charge_id;
+  const legacyNumber = (await db.query(`select charge_number from public.delivery_charges
+    where id = '${legacyChargeId}'`)).rows[0].charge_number;
+  assert.match(legacyNumber, /^C\d{6}-\d{6}$/);
+
+  await db.exec(monthlySalesDocuments);
+  const current = await db.query(`select public.record_delivery(
+    '${STOP_ID}', '${itemPayload(1)}'::jsonb, 'delivered', null, now(),
+    'a0000000-0000-4000-8000-000000000004', 'end_of_day', null
+  ) as result`);
+  assert.equal(current.rows[0].result.charge_number, `INV${SERVICE_DATE.slice(2, 7).replace('-', '')}-00001`);
+  assert.equal(current.rows[0].result.print_document.document_title, 'ใบส่งของ / ใบแจ้งหนี้');
+
+  const preserved = await db.query(`select charge_number from public.delivery_charges
+    where id = '${legacyChargeId}'`);
+  assert.equal(preserved.rows[0].charge_number, legacyNumber);
+  const snapshots = await db.query(`select count(*)::integer as count
+    from public.delivery_charge_document_snapshots`);
+  assert.equal(snapshots.rows[0].count, 2);
+});
 
 test('round leads and admins list only active collection couriers', async (t) => {
   const db = await createDatabase(t);

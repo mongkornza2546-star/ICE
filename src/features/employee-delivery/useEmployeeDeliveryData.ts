@@ -11,11 +11,24 @@ import type {
   ShopRoundStatus,
 } from '../../types/app';
 import type { EmployeeDeliveryGateway, EmployeeDeliveryDraftState } from '../../EmployeeDeliveryWorkspace';
-import { usePendingRequests } from './usePendingRequests';
+import { usePendingRequests, type PendingRequestIdentity } from './usePendingRequests';
 import { compareShopCodes, normalizeSearch, stockQuantity, employeeErrorMessage } from './utils';
 import { clearRecovery, readRecovery, writeRecovery } from '../../lib/recoveryStorage';
+import { printSalesDocument, salesDocumentFromStored } from '../../lib/salesDocumentPrint';
 
 const PAD_VALUES = ['0', '1', '2', '3', '4', '5', '+'] as const;
+
+function buildImmediateSalePayloadSignature(requestScope: string, payload: {
+  roundStopId: string;
+  items: Array<{ ice_type_id: string; quantity: number }>;
+  note: string | null;
+  paymentMethod: PaymentMethod;
+  receivedAmount: number;
+  expectedTotal: number;
+  referenceNumber: string | null;
+}) {
+  return `${requestScope}:immediate-sale:${JSON.stringify(payload)}`;
+}
 
 interface EmployeeWorkspaceRecovery {
   selectedRoundId: string;
@@ -32,11 +45,19 @@ interface EmployeeWorkspaceRecovery {
   paymentMethod: PaymentMethod;
   paymentAmount: string;
   paymentReference: string;
+  immediateSaleRetry: ImmediateSaleRetry | null;
   approvalId: string | null;
   approvalReason: string;
   status: Exclude<ShopRoundStatus, 'pending'>;
   problemOpen: boolean;
   note: string;
+}
+
+interface ImmediateSaleRetry extends PendingRequestIdentity {
+  payloadSignature: string;
+  storageSignature: string;
+  evidence: { name: string; size: number; lastModified: number } | null;
+  evidencePath: string | null;
 }
 
 export function useEmployeeDeliveryData({
@@ -80,6 +101,7 @@ export function useEmployeeDeliveryData({
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentReference, setPaymentReference] = useState('');
   const [paymentEvidence, setPaymentEvidence] = useState<File | null>(null);
+  const [immediateSaleRetry, setImmediateSaleRetry] = useState<ImmediateSaleRetry | null>(null);
   const [paymentSubmitting, setPaymentSubmitting] = useState(false);
   const [approvalId, setApprovalId] = useState<string | null>(null);
   const [approvalReason, setApprovalReason] = useState('');
@@ -129,6 +151,7 @@ export function useEmployeeDeliveryData({
     paymentMethod,
     paymentAmount,
     paymentReference,
+    immediateSaleRetry,
     approvalId,
     approvalReason,
     status,
@@ -150,6 +173,7 @@ export function useEmployeeDeliveryData({
     paymentMethod,
     paymentAmount,
     paymentReference,
+    immediateSaleRetry,
     approvalId,
     approvalReason,
     status,
@@ -162,6 +186,14 @@ export function useEmployeeDeliveryData({
       ...recoverySnapshotRef.current,
       ...overrides,
     });
+  };
+
+  const releaseImmediateSaleRetry = (retry: ImmediateSaleRetry | null) => {
+    if (!retry) return;
+    clearPendingRequest(retry.storageSignature, retry.key);
+    if (retry.evidencePath && gateway.deletePaymentEvidence) {
+      void gateway.deletePaymentEvidence(retry.evidencePath, retry.key).catch(() => undefined);
+    }
   };
 
   useEffect(() => {
@@ -307,6 +339,7 @@ export function useEmployeeDeliveryData({
     setPosContextError(null);
     setPaymentResult(null);
     setPaymentOpen(false);
+    setImmediateSaleRetry(null);
     setPaymentSubmitting(false);
     setApprovalId(null);
     setApprovalReason('');
@@ -384,6 +417,7 @@ export function useEmployeeDeliveryData({
     setPosContextError(null);
     setPaymentResult(null);
     setPaymentOpen(false);
+    setImmediateSaleRetry(null);
     setApprovalId(null);
     window.requestAnimationFrame(() => {
       window.scrollTo({ top: browseScrollY.current, behavior: 'auto' });
@@ -404,6 +438,7 @@ export function useEmployeeDeliveryData({
     setPosContextError(null);
     setPaymentResult(null);
     setPaymentOpen(false);
+    setImmediateSaleRetry(null);
     if (recovery) {
       setDeliveryQuantities(recovery.deliveryQuantities);
       setStatus(recovery.status);
@@ -411,10 +446,11 @@ export function useEmployeeDeliveryData({
       setNote(recovery.note);
       setPaymentTerm(recovery.paymentTerm);
       setPaymentResult(recovery.paymentResult);
-      setPaymentOpen(recovery.paymentOpen && Boolean(recovery.paymentResult?.charge_id));
+      setPaymentOpen(recovery.paymentOpen && Boolean(recovery.paymentResult));
       setPaymentMethod(recovery.paymentMethod);
       setPaymentAmount(recovery.paymentAmount);
       setPaymentReference(recovery.paymentReference);
+      setImmediateSaleRetry(recovery.immediateSaleRetry ?? null);
       setApprovalId(recovery.approvalId);
       setApprovalReason(recovery.approvalReason);
     }
@@ -477,7 +513,7 @@ export function useEmployeeDeliveryData({
       writeRecovery(requestScope, serviceDate, recoveryMode, recoverySnapshotRef.current);
     }, 250);
     return () => window.clearTimeout(timeout);
-  }, [approvalId, approvalReason, deliveryQuantities, items.length, note, paymentAmount, paymentMethod, paymentOpen, paymentReference, paymentResult, paymentTerm, problemOpen, query, recoveryHydrated, recoveryMode, recoveryReadyToPersist, requestScope, selectedBuildingId, selectedCardId, selectedIceTypeId, selectedRoundId, selectedZone, serviceDate, status, transferItems.length, transferQuantities]);
+  }, [approvalId, approvalReason, deliveryQuantities, immediateSaleRetry, items.length, note, paymentAmount, paymentMethod, paymentOpen, paymentReference, paymentResult, paymentTerm, problemOpen, query, recoveryHydrated, recoveryMode, recoveryReadyToPersist, requestScope, selectedBuildingId, selectedCardId, selectedIceTypeId, selectedRoundId, selectedZone, serviceDate, status, transferItems.length, transferQuantities]);
 
   const changeShop = (card: ShopCard) => {
     if (card.round_stop_id === selectedCardId) return;
@@ -571,6 +607,26 @@ export function useEmployeeDeliveryData({
     returnToBrowse();
   };
 
+  const cancelImmediateSaleDraft = () => {
+    if (paymentSubmitting || !paymentOpen) return;
+    if (!window.confirm('กลับไปแก้รายการและยกเลิกข้อมูลรับเงินนี้หรือไม่?')) return;
+    releaseImmediateSaleRetry(immediateSaleRetry);
+    persistRecoveryNow({
+      paymentResult: null,
+      paymentOpen: false,
+      paymentAmount: '',
+      paymentReference: '',
+      immediateSaleRetry: null,
+    });
+    setPaymentResult(null);
+    setPaymentOpen(false);
+    setPaymentAmount('');
+    setPaymentReference('');
+    setPaymentEvidence(null);
+    setImmediateSaleRetry(null);
+    setEntryError(null);
+  };
+
   const changeTransferQuantity = (iceTypeId: string, delta: number) => {
     if (transferSubmitting || selectedRound?.status === 'closed') return;
     const available = stockQuantity(stockState?.truck_location.balances, iceTypeId);
@@ -653,6 +709,51 @@ export function useEmployeeDeliveryData({
         return;
       }
     }
+    if (isDelivery && paymentTerm === 'immediate' && gateway.recordImmediateSale) {
+      const totalAmount = items.reduce((total, item) => {
+        const contextItem = posContext?.items.find((candidate) => candidate.ice_type_id === item.ice_type_id);
+        return total + item.quantity * (contextItem?.unit_price ?? 0);
+      }, 0);
+      const draftResult: DeliveryFinancialResult = {
+        delivery_event_id: '',
+        round_stop_id: selectedCard.round_stop_id,
+        charge_id: null,
+        service_date: selectedRound.service_date,
+        total_amount: totalAmount,
+        payment_term: 'immediate',
+        payment_status: 'unpaid',
+        due_date: null,
+        approval_id: null,
+        items: items.map((item) => {
+          const contextItem = posContext?.items.find((candidate) => candidate.ice_type_id === item.ice_type_id);
+          return {
+            ...item,
+            name: contextItem?.name,
+            unit: contextItem?.unit,
+            unit_price: contextItem?.unit_price ?? null,
+            line_total: item.quantity * (contextItem?.unit_price ?? 0),
+            price_source: contextItem?.price_source ?? null,
+            price_source_id: contextItem?.price_source_id ?? null,
+          };
+        }),
+      };
+      persistRecoveryNow({
+        paymentResult: draftResult,
+        paymentOpen: true,
+        paymentAmount: String(totalAmount),
+        immediateSaleRetry: null,
+        approvalId: null,
+        approvalReason: '',
+      });
+      setPaymentResult(draftResult);
+      setPaymentOpen(true);
+      setPaymentAmount(String(totalAmount));
+      setImmediateSaleRetry(null);
+      setApprovalId(null);
+      setApprovalReason('');
+      setEntryError(null);
+      return;
+    }
     const signature = `${requestScope}:${JSON.stringify({
       roundStopId: selectedCard.round_stop_id,
       items: isDelivery ? items : [],
@@ -662,6 +763,9 @@ export function useEmployeeDeliveryData({
       approvalId,
     })}`;
     const request = getOrCreatePendingRequest(signature);
+    const printWindow = isDelivery && paymentTerm !== 'immediate'
+      ? window.open('', '_blank', 'popup,width=360,height=680')
+      : null;
     const requestId = ++submissionRequestId.current;
     setSubmitting(true);
     setEntryError(null);
@@ -695,11 +799,17 @@ export function useEmployeeDeliveryData({
         setSubmitting(false);
         return;
       }
+      if (result?.print_document) {
+        printSalesDocument(salesDocumentFromStored(result.print_document), printWindow);
+      } else {
+        printWindow?.close();
+      }
       clearRecovery(requestScope, serviceDate, recoveryMode);
       clearPendingRequest(signature, request.key);
       await handleRecorded(isDelivery, result);
       if (requestId === submissionRequestId.current) setSubmitting(false);
     } catch (submitError) {
+      printWindow?.close();
       if (requestId !== submissionRequestId.current) return;
       setEntryError(employeeErrorMessage(submitError));
       setSubmitting(false);
@@ -748,60 +858,177 @@ export function useEmployeeDeliveryData({
     }
   };
 
-  const finishPaymentLater = async () => {
-    if (!paymentResult || paymentSubmitting) return;
-    clearRecovery(requestScope, serviceDate, recoveryMode);
-    setPaymentOpen(false);
-    await handleRecorded(true);
-    setSubmitting(false);
-  };
-
   const handlePaymentSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!selectedCard || !paymentResult?.charge_id || !paymentResult.total_amount
-      || !gateway.recordPayment || paymentSubmitting) return;
+    if (!selectedCard || !paymentResult?.total_amount
+      || (!gateway.recordImmediateSale && !gateway.recordPayment) || paymentSubmitting) return;
+    const usesAtomicSale = Boolean(gateway.recordImmediateSale);
     const receivedAmount = Number(paymentAmount);
     if (!Number.isFinite(receivedAmount) || receivedAmount <= 0) {
       setEntryError('ใส่ยอดรับเงินที่ถูกต้อง');
       return;
     }
-    if (paymentMethod !== 'cash' && receivedAmount > paymentResult.total_amount) {
+    if (usesAtomicSale && paymentMethod === 'cash' && receivedAmount < paymentResult.total_amount) {
+      setEntryError('ขายสดต้องรับเงินสดครบยอดก่อนบันทึก');
+      return;
+    }
+    if (usesAtomicSale && paymentMethod !== 'cash' && receivedAmount !== paymentResult.total_amount) {
+      setEntryError('ยอดโอนหรือ QR ต้องเท่ากับยอดเรียกเก็บ');
+      return;
+    }
+    if (!usesAtomicSale && paymentMethod !== 'cash' && receivedAmount > paymentResult.total_amount) {
       setEntryError('ยอดโอนหรือ QR ต้องไม่เกินยอดเรียกเก็บ');
       return;
     }
     const allocatedAmount = Math.min(receivedAmount, paymentResult.total_amount);
-    const signature = `${requestScope}:payment:${JSON.stringify({
-      chargeId: paymentResult.charge_id,
+    const atomicPayloadSignature = buildImmediateSalePayloadSignature(requestScope, {
+      roundStopId: selectedCard.round_stop_id,
+      items,
+      note: note.trim() || null,
       paymentMethod,
       receivedAmount,
-      allocatedAmount,
+      expectedTotal: paymentResult.total_amount,
       referenceNumber: paymentReference.trim() || null,
-    })}`;
-    const request = getOrCreatePendingRequest(signature);
-    setPaymentSubmitting(true);
-    setEntryError(null);
-    try {
-      const evidencePath = paymentEvidence && gateway.uploadPaymentEvidence
-        ? await gateway.uploadPaymentEvidence(paymentEvidence, request.key)
-        : null;
-      await gateway.recordPayment({
-        shopId: selectedCard.shop_id,
+    });
+    const evidenceMetadata = paymentEvidence ? {
+      name: paymentEvidence.name,
+      size: paymentEvidence.size,
+      lastModified: paymentEvidence.lastModified,
+    } : immediateSaleRetry?.payloadSignature === atomicPayloadSignature
+      ? immediateSaleRetry.evidence
+      : null;
+    const atomicStorageSignature = `${atomicPayloadSignature}:evidence:${JSON.stringify(evidenceMetadata)}`;
+    const reusableAtomicRetry = usesAtomicSale
+      && immediateSaleRetry?.payloadSignature === atomicPayloadSignature
+      && immediateSaleRetry.storageSignature === atomicStorageSignature
+      ? immediateSaleRetry
+      : null;
+    const signature = usesAtomicSale
+      ? atomicStorageSignature
+      : `${requestScope}:payment:${JSON.stringify({
         chargeId: paymentResult.charge_id,
         paymentMethod,
         receivedAmount,
         allocatedAmount,
         referenceNumber: paymentReference.trim() || null,
-        evidencePath,
-        expectedOutstandingAmount: paymentResult.total_amount,
-        approvalId,
-        idempotencyKey: request.key,
-      });
+      })}`;
+    const request = reusableAtomicRetry ?? getOrCreatePendingRequest(signature);
+    let atomicRetry = reusableAtomicRetry;
+    if (usesAtomicSale && !atomicRetry) {
+      releaseImmediateSaleRetry(immediateSaleRetry);
+      atomicRetry = {
+        ...request,
+        payloadSignature: atomicPayloadSignature,
+        storageSignature: atomicStorageSignature,
+        evidence: evidenceMetadata,
+        evidencePath: null,
+      };
+      setImmediateSaleRetry(atomicRetry);
+      persistRecoveryNow({ immediateSaleRetry: atomicRetry });
+    }
+    const printWindow = usesAtomicSale ? window.open('', '_blank', 'popup,width=360,height=680') : null;
+    setPaymentSubmitting(true);
+    setEntryError(null);
+    try {
+      let evidencePath = atomicRetry?.evidencePath ?? null;
+      if (paymentEvidence && gateway.uploadPaymentEvidence) {
+        evidencePath = await gateway.uploadPaymentEvidence(paymentEvidence, request.key);
+        if (atomicRetry && evidencePath !== atomicRetry.evidencePath) {
+          atomicRetry = { ...atomicRetry, evidencePath };
+          setImmediateSaleRetry(atomicRetry);
+          persistRecoveryNow({ immediateSaleRetry: atomicRetry });
+        }
+      }
+      if (!usesAtomicSale) {
+        if (!gateway.recordPayment || !paymentResult.charge_id) return;
+        await gateway.recordPayment({
+          shopId: selectedCard.shop_id,
+          chargeId: paymentResult.charge_id,
+          paymentMethod,
+          receivedAmount,
+          allocatedAmount,
+          referenceNumber: paymentReference.trim() || null,
+          evidencePath,
+          expectedOutstandingAmount: paymentResult.total_amount,
+          approvalId,
+          idempotencyKey: request.key,
+        });
+        clearRecovery(requestScope, serviceDate, recoveryMode);
+        clearPendingRequest(signature, request.key);
+        setPaymentOpen(false);
+        await handleRecorded(true);
+        return;
+      }
+      const sale = await gateway.recordImmediateSale!({
+          roundStopId: selectedCard.round_stop_id,
+          items,
+          note: note.trim() || null,
+          clientRecordedAt: request.clientRecordedAt,
+          paymentMethod,
+          receivedAmount,
+          referenceNumber: paymentReference.trim() || null,
+          evidencePath,
+          expectedTotal: paymentResult.total_amount,
+          idempotencyKey: request.key,
+        });
       clearRecovery(requestScope, serviceDate, recoveryMode);
       clearPendingRequest(signature, request.key);
+      setImmediateSaleRetry(null);
       setPaymentOpen(false);
-      await handleRecorded(true);
+      const printed = printSalesDocument(salesDocumentFromStored(sale.print_document), printWindow);
+      await handleRecorded(true, sale.delivery);
+      if (!printed) {
+        setSuccess(`บันทึกขายสดและออก ${sale.receipt_number} แล้ว แต่ป๊อปอัปถูกบล็อก กรุณาพิมพ์ซ้ำจากประวัติรับเงิน`);
+      }
     } catch (paymentError) {
-      setEntryError(employeeErrorMessage(paymentError));
+      printWindow?.close();
+      const rawMessage = paymentError instanceof Error
+        ? paymentError.message
+        : typeof paymentError === 'object' && paymentError && 'message' in paymentError
+          ? String(paymentError.message)
+          : String(paymentError);
+      if (usesAtomicSale
+        && rawMessage.toLowerCase().includes('immediate sale total changed')
+        && gateway.loadDeliveryPosContext) {
+        releaseImmediateSaleRetry(atomicRetry);
+        setImmediateSaleRetry(null);
+        try {
+          const refreshedContext = await gateway.loadDeliveryPosContext(selectedCard.round_stop_id);
+          const refreshedTotal = items.reduce((total, item) => {
+            const refreshedItem = refreshedContext.items.find((candidate) => candidate.ice_type_id === item.ice_type_id);
+            return total + item.quantity * (refreshedItem?.unit_price ?? 0);
+          }, 0);
+          const refreshedResult: DeliveryFinancialResult = {
+            ...paymentResult,
+            total_amount: refreshedTotal,
+            items: items.map((item) => {
+              const refreshedItem = refreshedContext.items.find((candidate) => candidate.ice_type_id === item.ice_type_id);
+              return {
+                ...item,
+                name: refreshedItem?.name,
+                unit: refreshedItem?.unit,
+                unit_price: refreshedItem?.unit_price ?? null,
+                line_total: item.quantity * (refreshedItem?.unit_price ?? 0),
+                price_source: refreshedItem?.price_source ?? null,
+                price_source_id: refreshedItem?.price_source_id ?? null,
+              };
+            }),
+          };
+          setPosContext(refreshedContext);
+          setPaymentResult(refreshedResult);
+          setPaymentAmount(String(refreshedTotal));
+          persistRecoveryNow({
+            paymentResult: refreshedResult,
+            paymentAmount: String(refreshedTotal),
+            immediateSaleRetry: null,
+          });
+          setEntryError('ราคาเปลี่ยนแล้ว ระบบโหลดราคาล่าสุดให้แล้ว กรุณาตรวจสอบและยืนยันรับเงินอีกครั้ง');
+        } catch (refreshError) {
+          setEntryError(`ราคาเปลี่ยน แต่โหลดราคาล่าสุดไม่สำเร็จ: ${employeeErrorMessage(refreshError)}`);
+        }
+      } else {
+        setEntryError(employeeErrorMessage(paymentError));
+      }
     } finally {
       setPaymentSubmitting(false);
       setSubmitting(false);
@@ -830,6 +1057,22 @@ export function useEmployeeDeliveryData({
     setEntryError(null);
   };
 
+  const currentImmediateSalePayloadSignature = selectedCard && paymentResult?.total_amount
+    ? buildImmediateSalePayloadSignature(requestScope, {
+      roundStopId: selectedCard.round_stop_id,
+      items,
+      note: note.trim() || null,
+      paymentMethod,
+      receivedAmount: Number(paymentAmount),
+      expectedTotal: paymentResult.total_amount,
+      referenceNumber: paymentReference.trim() || null,
+    })
+    : null;
+  const paymentEvidenceUploaded = Boolean(
+    immediateSaleRetry?.evidencePath
+      && immediateSaleRetry.payloadSignature === currentImmediateSalePayloadSignature,
+  );
+
   return {
     rounds,
     iceTypes,
@@ -853,6 +1096,7 @@ export function useEmployeeDeliveryData({
     paymentAmount,
     paymentReference,
     paymentEvidence,
+    paymentEvidenceUploaded,
     paymentSubmitting,
     approvalId,
     approvalReason,
@@ -903,7 +1147,7 @@ export function useEmployeeDeliveryData({
     handleStockTransfer,
     handleSubmit,
     handlePaymentSubmit,
-    finishPaymentLater,
+    cancelImmediateSaleDraft,
     handleRequestApproval,
     openCard,
     changeShop,

@@ -100,4 +100,33 @@ describe('DeliveryCorrectionDialog', () => {
       p_approval_id: 'approval-1', p_note: 'รับถุงคืนจากร้าน',
     }));
   });
+
+  it('allows a voided immediate sale to be cancelled after its round closes', async () => {
+    const user = userEvent.setup();
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    mocks.rpc.mockImplementation(async (name: string) => {
+      if (name === 'get_delivery_correction_context') return { data: {
+        delivery_event_id: 'event-3', charge_number: null, shop_name: 'ร้านขายสด',
+        service_date: '2026-08-06', round_status: 'closed', day_closed: false,
+        original_amount: 18, effective_amount: 18, allocated_amount: 0,
+        payment_term: 'immediate', can_correct: false, can_cancel: true, blocker_reason: null,
+        ice_types: [{ ice_type_id: 'ice-1', code: 'SMALL', name: 'น้ำแข็งหลอด', unit: 'ถุง', unit_price: 18 }],
+        items: [{ ice_type_id: 'ice-1', name: 'น้ำแข็งหลอด', unit: 'ถุง', quantity: 1, unit_price: 18 }],
+      }, error: null };
+      if (name === 'apply_open_delivery_correction') return { data: {}, error: null };
+      return { data: null, error: null };
+    });
+
+    render(<DeliveryCorrectionDialog eventId="event-3" onClose={vi.fn()} onSuccess={vi.fn()} userRole="admin" />);
+
+    const reason = await screen.findByRole('textbox', { name: 'เหตุผล' });
+    expect(reason).toHaveProperty('disabled', false);
+    await user.type(reason, 'ยกเลิกหลัง void ใบเสร็จ');
+    await user.click(screen.getByRole('button', { name: 'ยกเลิกบิลส่งของ' }));
+
+    await waitFor(() => expect(mocks.rpc).toHaveBeenCalledWith(
+      'apply_open_delivery_correction',
+      expect.objectContaining({ p_event_id: 'event-3', p_action: 'cancel' }),
+    ));
+  });
 });

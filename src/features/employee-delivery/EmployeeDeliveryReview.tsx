@@ -12,7 +12,6 @@ import {
   Trash,
   UploadSimple,
   WarningCircle,
-  X,
 } from '@phosphor-icons/react';
 import { formatCreditCollectionCycle } from '../../lib/creditCollectionCycle';
 import type {
@@ -52,6 +51,7 @@ const money = new Intl.NumberFormat('th-TH', {
 export function EmployeeDeliveryReview({
   round,
   shopCard,
+  atomicImmediateSale,
   assignedStockState,
   deliveryQuantities,
   posContext,
@@ -64,6 +64,7 @@ export function EmployeeDeliveryReview({
   paymentAmount,
   paymentReference,
   paymentEvidence,
+  paymentEvidenceUploaded,
   paymentSubmitting,
   approvalId,
   approvalReason,
@@ -89,8 +90,8 @@ export function EmployeeDeliveryReview({
   onPaymentAmountChange,
   onPaymentReferenceChange,
   onPaymentEvidenceChange,
+  onPaymentCancel,
   onPaymentSubmit,
-  onPaymentLater,
   onApprovalReasonChange,
   onRequestApproval,
   onNoteChange,
@@ -99,6 +100,7 @@ export function EmployeeDeliveryReview({
 }: {
   round: DeliveryRound;
   shopCard: ShopCard;
+  atomicImmediateSale: boolean;
   assignedStockState: EmployeeStockState | null;
   deliveryQuantities: Record<string, number>;
   posContext: DeliveryPosContext | null;
@@ -111,6 +113,7 @@ export function EmployeeDeliveryReview({
   paymentAmount: string;
   paymentReference: string;
   paymentEvidence: File | null;
+  paymentEvidenceUploaded: boolean;
   paymentSubmitting: boolean;
   approvalId: string | null;
   approvalReason: string;
@@ -136,8 +139,8 @@ export function EmployeeDeliveryReview({
   onPaymentAmountChange: (amount: string) => void;
   onPaymentReferenceChange: (reference: string) => void;
   onPaymentEvidenceChange: (file: File | null) => void;
+  onPaymentCancel: () => void;
   onPaymentSubmit: (event: FormEvent<HTMLFormElement>) => void;
-  onPaymentLater: () => void;
   onApprovalReasonChange: (reason: string) => void;
   onRequestApproval: () => void;
   onNoteChange: (value: string) => void;
@@ -228,13 +231,13 @@ export function EmployeeDeliveryReview({
     setPaymentEvidenceError(null);
   };
 
-  if (paymentOpen && paymentResult?.charge_id) {
+  if (paymentOpen && paymentResult) {
     const profile = posContext?.payment_profile;
     const availablePaymentMethods = profile?.allowed_payment_methods ?? ['cash', 'bank_transfer', 'qr'];
     const totalDue = paymentResult.total_amount ?? 0;
     const receivedAmount = Number(paymentAmount) || 0;
-    const allocatedAmount = Math.min(receivedAmount, totalDue);
-    const remainingAmount = Math.max(totalDue - allocatedAmount, 0);
+    const allocatedAmount = receivedAmount >= totalDue ? totalDue : receivedAmount;
+    const remainingAmount = Math.max(totalDue - receivedAmount, 0);
     const changeAmount = paymentMethod === 'cash'
       ? Math.max(receivedAmount - allocatedAmount, 0)
       : 0;
@@ -243,14 +246,18 @@ export function EmployeeDeliveryReview({
       : paymentMethod === 'bank_transfer'
         ? true
         : profile?.qr_evidence_required;
-    const outstandingApprovalRequired = Boolean(
+    const cashUnderpayment = atomicImmediateSale && paymentMethod === 'cash' && receivedAmount < totalDue;
+    const nonCashMismatch = atomicImmediateSale && paymentMethod !== 'cash' && receivedAmount !== totalDue;
+    const nonCashOverpayment = !atomicImmediateSale && paymentMethod !== 'cash' && receivedAmount > totalDue;
+    const outstandingApprovalRequired = !atomicImmediateSale && Boolean(
       profile && !profile.allow_outstanding && remainingAmount > 0,
     );
-    const nonCashOverpayment = paymentMethod !== 'cash'
-      && receivedAmount > totalDue;
-    const paymentReady = (!evidenceRequired || Boolean(paymentEvidence))
-      && (!outstandingApprovalRequired || Boolean(approvalId))
-      && !nonCashOverpayment;
+    const paymentReady = (!evidenceRequired || Boolean(paymentEvidence) || paymentEvidenceUploaded)
+      && receivedAmount > 0
+      && !cashUnderpayment
+      && !nonCashMismatch
+      && !nonCashOverpayment
+      && (!outstandingApprovalRequired || Boolean(approvalId));
     const resultItems = paymentResult.items ?? [];
     const billedItems = resultItems.length > 0
       ? resultItems
@@ -278,16 +285,7 @@ export function EmployeeDeliveryReview({
             <h2>บันทึกรับชำระเงิน</h2>
             <b>{shopCard.shop_name}</b>
           </span>
-          {profile?.allow_outstanding !== false ? (
-            <button
-              aria-label="ยังไม่รับเงินตอนนี้"
-              disabled={paymentSubmitting}
-              onClick={onPaymentLater}
-              type="button"
-            >
-              <X aria-hidden="true" size={23} />
-            </button>
-          ) : <span aria-hidden="true" />}
+          <span aria-hidden="true" />
         </header>
         <form onSubmit={onPaymentSubmit}>
           <fieldset disabled={paymentSubmitting}>
@@ -395,12 +393,18 @@ export function EmployeeDeliveryReview({
             />
             <span className="financial-ops__dropzone">
               <UploadSimple aria-hidden="true" size={25} weight="duotone" />
-              <b>{paymentEvidence ? paymentEvidence.name : 'อัปโหลดรูปสลิป'}</b>
+              <b>{paymentEvidence
+                ? paymentEvidence.name
+                : paymentEvidenceUploaded
+                  ? 'ใช้หลักฐานที่อัปโหลดแล้ว'
+                  : 'อัปโหลดรูปสลิป'}</b>
               <small>JPG, PNG, WebP หรือ PDF ไม่เกิน 5 MB</small>
             </span>
             {paymentEvidenceError ? <small className="financial-ops__evidence-error" role="alert">{paymentEvidenceError}</small> : null}
           </label>
 
+          {cashUnderpayment ? <p className="employee-error" role="alert">ขายสดต้องรับเงินสดครบยอดก่อนบันทึก</p> : null}
+          {nonCashMismatch ? <p className="employee-error" role="alert">ยอดโอนหรือ QR ต้องเท่ากับยอดเรียกเก็บ</p> : null}
           {nonCashOverpayment ? <p className="employee-error" role="alert">ยอดโอนหรือ QR ต้องไม่เกินยอดเรียกเก็บ</p> : null}
           {outstandingApprovalRequired ? (
             <div className="employee-approval-request">
@@ -424,11 +428,7 @@ export function EmployeeDeliveryReview({
           ) : null}
           {entryError ? <p className="employee-error" role="alert">{entryError}</p> : null}
           <div className="financial-ops__payment-actions">
-            {profile?.allow_outstanding !== false ? (
-              <button disabled={paymentSubmitting} onClick={onPaymentLater} type="button">
-                ยังไม่รับเงินตอนนี้
-              </button>
-            ) : null}
+            {atomicImmediateSale ? <button disabled={paymentSubmitting} onClick={onPaymentCancel} type="button">กลับไปแก้รายการ</button> : null}
             <button disabled={paymentSubmitting || !paymentReady} type="submit">
               {paymentSubmitting ? 'กำลังบันทึกรับเงิน...' : 'ยืนยันรับเงิน'}
             </button>

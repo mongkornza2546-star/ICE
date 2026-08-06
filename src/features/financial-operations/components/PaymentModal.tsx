@@ -138,7 +138,7 @@ export function PaymentModal({
                 const chargeHeader = <>
                   <span>
                     <em>{isPriorBalance ? 'ยอดค้างจากวันอื่น' : 'บิลวันนี้'}</em>
-                    <b>เลขที่บิล {charge.charge_number}</b>
+                    <b>{charge.charge_number ? `เลขที่บิล ${charge.charge_number}` : 'ขายสด'}</b>
                     <small>ส่งวันที่ {formatServiceDate(charge.service_date)}</small>
                   </span>
                   <span className="financial-ops__charge-total"><small>ยอดค้างบิลนี้</small><b>{money.format(charge.outstanding_amount)}</b></span>
@@ -148,7 +148,7 @@ export function PaymentModal({
                     {isPanel ? <button
                       aria-controls={`financial-charge-items-${charge.charge_id}`}
                       aria-expanded={isExpanded}
-                      aria-label={`ดูรายละเอียดบิลส่งของ ${charge.charge_number}`}
+                      aria-label={`ดูรายละเอียดบิลส่งของ ${charge.charge_number ?? 'ขายสด'}`}
                       className="financial-ops__charge-toggle"
                       onClick={() => setExpandedChargeId((current) => current === charge.charge_id ? null : charge.charge_id)}
                       type="button"
@@ -157,7 +157,7 @@ export function PaymentModal({
                       <CaretDown aria-hidden="true" className="financial-ops__charge-caret" size={17} weight="bold" />
                     </button> : <header>{chargeHeader}</header>}
                     <div
-                      aria-label={`รายการส่งของบิล ${charge.charge_number}`}
+                      aria-label={`รายการส่งของบิล ${charge.charge_number ?? 'ขายสด'}`}
                       className="financial-ops__charge-items"
                       hidden={!isExpanded}
                       id={`financial-charge-items-${charge.charge_id}`}
@@ -172,7 +172,7 @@ export function PaymentModal({
                       {(charge.items ?? []).length === 0 ? <small>ไม่พบรายละเอียดสินค้าของบิลนี้</small> : null}
                     </div>
                     {isExpanded && onEditCharge && charge.delivery_event_id ? <button
-                      aria-label={`แก้ไขหรือยกเลิกใบส่งของ ${charge.charge_number}`}
+                      aria-label={`แก้ไขหรือยกเลิกใบส่งของ ${charge.charge_number ?? 'ขายสด'}`}
                       className="financial-ops__charge-edit"
                       disabled={busy}
                       onClick={() => onEditCharge(charge)}

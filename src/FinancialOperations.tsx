@@ -5,6 +5,7 @@ import { supabase } from './lib/supabase';
 import { bangkokDayUtcRange, toBangkokDateString } from './lib/serviceDate';
 import { MAX_PAYMENT_EVIDENCE_SIZE, uploadPaymentEvidence } from './lib/paymentEvidence';
 import { getErrorMessage } from './lib/errorMessage';
+import { printSalesDocument } from './lib/salesDocumentPrint';
 import { usePendingRequests } from './features/employee-delivery/usePendingRequests';
 import { CollectionRunSection } from './features/financial-operations/components/CollectionRunSection';
 import { CollectionRunManager } from './features/financial-operations/components/CollectionRunManager';
@@ -31,11 +32,8 @@ import type {
 import {
   USER_AVATAR_BUCKET,
   allocateOldestFirst,
-  money,
   methodRequires,
-  paymentMethodLabel,
   receiptChargesFromRows,
-  receiptDateTime,
   receiptFromSnapshot,
   withSignedShopImages,
 } from './features/financial-operations/utils';
@@ -601,123 +599,41 @@ export function FinancialOperations({
   };
 
   const printReceipt = (targetReceipt: PaymentReceipt, existingPrintWindow?: Window) => {
-    const receiptHeightMm = Math.min(
-      180,
-      Math.max(42, 31 + (targetReceipt.changeAmount > 0 ? 3 : 0)
-        + targetReceipt.charges.length * 4.5 + targetReceipt.charges.reduce(
-        (total, charge) => total + charge.items.length * 5,
-        0,
-      )),
-    );
-    const printWindow = existingPrintWindow
-      ?? window.open('', '_blank', `popup,width=360,height=${Math.ceil(receiptHeightMm * 3.78)}`);
-    if (!printWindow) {
-      setError('เบราว์เซอร์บล็อกหน้าต่างพิมพ์ กรุณาอนุญาตป๊อปอัปแล้วลองใหม่');
-      return;
-    }
+    const printed = printSalesDocument({
+      documentType: 'REC',
+      documentNumber: targetReceipt.receiptNumber,
+      title: targetReceipt.title ?? 'ใบเสร็จรับเงิน',
+      status: targetReceipt.status ?? 'active',
+      issuedAt: targetReceipt.recordedAt,
+      serviceDate: targetReceipt.serviceDate ?? null,
+      shop: {
+        code: targetReceipt.shopCode,
+        name: targetReceipt.shopName,
+        location: targetReceipt.shopLocation ?? null,
+      },
+      paymentTerm: targetReceipt.paymentTerm ?? null,
+      paymentMethod: targetReceipt.method,
+      items: targetReceipt.charges.flatMap((charge) => charge.items.map((item) => ({
+        name: item.name,
+        unit: item.unit,
+        quantity: item.quantity,
+        unitPrice: item.unitPrice ?? null,
+        lineTotal: item.lineTotal,
+      }))),
+      allocations: targetReceipt.charges.map((charge) => ({
+        documentNumber: charge.chargeNumber,
+        amount: charge.receivedAmount,
+      })),
+      totals: {
+        total: targetReceipt.allocatedAmount,
+        received: targetReceipt.receivedAmount,
+        change: targetReceipt.changeAmount,
+      },
+      voidInfo: targetReceipt.voidInfo ?? null,
+    }, existingPrintWindow);
+    if (!printed) setError('เบราว์เซอร์บล็อกหน้าต่างพิมพ์ กรุณาอนุญาตป๊อปอัปแล้วลองใหม่');
+    return;
 
-    const printDocument = printWindow.document;
-    const style = printDocument.createElement('style');
-    style.textContent = `
-      @page { size: 57mm ${receiptHeightMm}mm; margin: 0; }
-      * { box-sizing: border-box; }
-      html, body { width: 57mm; min-height: ${receiptHeightMm}mm; margin: 0; }
-      body {
-        padding: 2mm 2.5mm;
-        color: #000;
-        background: #fff;
-        font-family: "Noto Sans Thai", Tahoma, sans-serif;
-        font-size: 7.5pt;
-        line-height: 1.12;
-      }
-      main { display: grid; align-content: start; gap: .7mm; }
-      strong { font-size: 9pt; text-align: center; }
-      span, small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-      .items { display: grid; gap: .7mm; margin-top: .5mm; padding-top: .8mm; border-top: .25mm dashed #000; }
-      .charge { display: grid; gap: .35mm; }
-      .charge-number { font-size: 6.5pt; font-weight: 700; }
-      .item { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 1mm; font-size: 7pt; }
-      .item-name { overflow: visible; text-overflow: clip; white-space: normal; }
-      .charge-payment { font-size: 6.5pt; text-align: right; }
-      .total {
-        display: flex;
-        justify-content: space-between;
-        margin-top: .5mm;
-        padding-top: .8mm;
-        border-top: .25mm dashed #000;
-        font-size: 9pt;
-        font-weight: 700;
-      }
-      .cash-summary { text-align: right; }
-      small { font-size: 6.5pt; }
-    `;
-    printDocument.head.replaceChildren(style);
-
-    const receiptElement = printDocument.createElement('main');
-    const addLine = (tag: 'strong' | 'span' | 'small', text: string, className?: string) => {
-      const element = printDocument.createElement(tag);
-      element.textContent = text;
-      if (className) element.className = className;
-      receiptElement.append(element);
-    };
-    addLine('strong', 'ใบเสร็จรับเงิน');
-    addLine('span', `${targetReceipt.shopCode} · ${targetReceipt.shopName}`);
-    addLine('span', `${receiptDateTime.format(new Date(targetReceipt.recordedAt))} · ${paymentMethodLabel(targetReceipt.method)}`);
-
-    const items = printDocument.createElement('section');
-    items.className = 'items';
-    if (targetReceipt.charges.length === 0) {
-      const empty = printDocument.createElement('small');
-      empty.textContent = 'ไม่มีรายละเอียดรายการสั่งซื้อ';
-      items.append(empty);
-    }
-    for (const charge of targetReceipt.charges) {
-      const chargeElement = printDocument.createElement('div');
-      chargeElement.className = 'charge';
-      const chargeNumber = printDocument.createElement('span');
-      chargeNumber.className = 'charge-number';
-      chargeNumber.textContent = `รายการสั่งซื้อ ${charge.chargeNumber}`;
-      chargeElement.append(chargeNumber);
-      for (const item of charge.items) {
-        const itemElement = printDocument.createElement('div');
-        itemElement.className = 'item';
-        const itemName = printDocument.createElement('span');
-        itemName.className = 'item-name';
-        itemName.textContent = `${item.name} × ${item.quantity} ${item.unit}`;
-        const itemAmount = printDocument.createElement('span');
-        itemAmount.textContent = money.format(item.lineTotal);
-        itemElement.append(itemName, itemAmount);
-        chargeElement.append(itemElement);
-      }
-      const chargePayment = printDocument.createElement('small');
-      chargePayment.className = 'charge-payment';
-      chargePayment.textContent = `รับชำระบิลนี้ ${money.format(charge.receivedAmount)}`;
-      chargeElement.append(chargePayment);
-      items.append(chargeElement);
-    }
-    receiptElement.append(items);
-
-    const total = printDocument.createElement('span');
-    total.className = 'total';
-    const totalLabel = printDocument.createElement('b');
-    totalLabel.textContent = 'ยอดชำระ';
-    const totalAmount = printDocument.createElement('b');
-    totalAmount.textContent = money.format(targetReceipt.allocatedAmount);
-    total.append(totalLabel, totalAmount);
-    receiptElement.append(total);
-    if (targetReceipt.method === 'cash' && targetReceipt.changeAmount > 0) {
-      addLine(
-        'small',
-        `รับเงิน ${money.format(targetReceipt.receivedAmount)} · เงินทอน ${money.format(targetReceipt.changeAmount)}`,
-        'cash-summary',
-      );
-    }
-    addLine('small', `เลขที่ ${targetReceipt.receiptNumber}`);
-    printDocument.body.replaceChildren(receiptElement);
-
-    printWindow.addEventListener('afterprint', () => printWindow.close(), { once: true });
-    printWindow.focus();
-    printWindow.print();
   };
 
   const printStoredReceipt = (paymentId: string) => {
@@ -747,7 +663,7 @@ export function FinancialOperations({
       payment,
       charges: null,
       error: null,
-      correctionTargets: isManager && payment.status === 'active' ? null : [],
+      correctionTargets: isManager ? null : [],
       correctionError: null,
     });
     void getReceiptCharges(payment.id)
@@ -761,7 +677,7 @@ export function FinancialOperations({
           ? { ...current, error: getErrorMessage(receiptError) }
           : current);
       });
-    if (isManager && payment.status === 'active') {
+    if (isManager) {
       void getPaymentCorrectionTargets(payment.id)
         .then((correctionTargets) => {
           setHistoryReceipt((current) => current?.payment.id === payment.id
@@ -814,7 +730,7 @@ export function FinancialOperations({
 
   const requestDueDate = (charge: QueueShop['charges'][number]) => runAction(async () => {
     if (!supabase) return;
-    const requestedDueDate = window.prompt(`วันครบกำหนดใหม่สำหรับ ${charge.charge_number} (YYYY-MM-DD)`)?.trim();
+    const requestedDueDate = window.prompt(`วันครบกำหนดใหม่สำหรับ ${charge.charge_number ?? 'รายการเครดิต'} (YYYY-MM-DD)`)?.trim();
     if (!requestedDueDate) return;
     const reason = window.prompt('เหตุผลที่ขอเลื่อนกำหนดชำระ')?.trim();
     if (!reason) return;

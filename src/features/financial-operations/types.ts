@@ -14,7 +14,7 @@ export type PaymentProfile = {
 export type QueueCharge = {
   charge_id: string;
   delivery_event_id?: string | null;
-  charge_number: string;
+  charge_number: string | null;
   service_date: string;
   payment_term?: 'immediate' | 'end_of_day' | 'credit';
   due_date?: string | null;
@@ -97,14 +97,14 @@ export type ReceivablePayment = {
   recorded_by: string | null;
   allocations: Array<{
     charge_id: string;
-    charge_number: string;
+    charge_number: string | null;
     amount: number;
   }>;
 };
 
 export type ReceivableCharge = {
   charge_id: string;
-  charge_number: string;
+  charge_number: string | null;
   service_date: string;
   due_date: string;
   original_amount: number;
@@ -179,18 +179,19 @@ export type ReceiptItem = {
   name: string;
   unit: string;
   quantity: number;
+  unitPrice?: number | null;
   lineTotal: number;
 };
 
 export type ReceiptCharge = {
-  chargeNumber: string;
+  chargeNumber: string | null;
   receivedAmount: number;
   items: ReceiptItem[];
 };
 
 export type PaymentCorrectionTarget = {
   charge_id: string;
-  charge_number: string;
+  charge_number: string | null;
   delivery_event_id: string;
   payment_allocated_amount: number;
   allocated_amount: number;
@@ -207,6 +208,12 @@ export type PaymentReceipt = {
   allocatedAmount: number;
   changeAmount: number;
   recordedAt: string;
+  title?: string;
+  status?: 'active' | 'voided';
+  serviceDate?: string | null;
+  shopLocation?: string | null;
+  paymentTerm?: 'immediate' | 'end_of_day' | 'credit' | null;
+  voidInfo?: { voidedAt: string; reason: string; voidedBy?: string | null } | null;
   charges: ReceiptCharge[];
 };
 
@@ -220,13 +227,21 @@ export type PaymentReceiptSnapshot = {
   allocated_amount: number | string;
   change_amount: number | string;
   recorded_at: string;
+  document_title?: string;
+  status?: 'active' | 'voided';
+  service_date?: string | null;
+  shop_location?: string | null;
+  payment_term?: 'immediate' | 'end_of_day' | 'credit' | null;
+  void_info?: { voided_at: string; reason: string; voided_by?: string | null } | null;
   charges: Array<{
-    charge_number: string;
+    charge_number: string | null;
+    payment_term?: 'immediate' | 'end_of_day' | 'credit' | null;
     received_amount: number | string;
     items: Array<{
       ice_type_name: string;
       ice_type_unit: string;
       quantity: number | string;
+      unit_price?: number | string | null;
       line_total: number | string;
     }>;
   }>;

@@ -309,20 +309,20 @@ describe('FinancialOperations', () => {
     });
     mocks.rpc.mockImplementation(async (name: string) => {
       if (name === 'get_payment_receipt_items') return { data: [{
-        charge_number: 'C260803-000010', received_amount: 60,
+        charge_number: 'INV2608-00010', received_amount: 60,
         ice_type_name: 'น้ำแข็งหลอด', ice_type_unit: 'ถุง', quantity: 2, line_total: 60,
       }], error: null };
       if (name === 'get_payment_correction_targets') return { data: [{
-        charge_id: 'charge-current', charge_number: 'C260803-000011',
+        charge_id: 'charge-current', charge_number: 'INV2608-00011',
         delivery_event_id: 'event-current', payment_allocated_amount: 60,
         allocated_amount: 60, effective_amount: 60,
       }], error: null };
       if (name === 'get_delivery_correction_context') return { data: {
-        delivery_event_id: 'event-current', round_stop_id: 'stop-1',
-        charge_number: 'C260803-000011', shop_name: 'ร้านแก้บิล',
+        delivery_event_id: 'event-current', round_stop_id: 'stop-1', charge_id: 'charge-current',
+        charge_number: 'INV2608-00011', shop_name: 'ร้านแก้บิล',
         service_date: '2026-08-03', round_status: 'open', day_closed: false,
         original_amount: 60, effective_amount: 60, allocated_amount: 60,
-        payment_term: 'immediate', note: null, can_correct: true, can_cancel: true,
+        payment_term: 'end_of_day', note: null, can_correct: true, can_cancel: true,
         blocker_reason: null,
         ice_types: [{ ice_type_id: 'ice-1', name: 'น้ำแข็งหลอด', unit: 'ถุง', unit_price: 30 }],
         items: [{ ice_type_id: 'ice-1', name: 'น้ำแข็งหลอด', unit: 'ถุง', quantity: 2, unit_price: 30 }],
@@ -340,10 +340,10 @@ describe('FinancialOperations', () => {
     await user.click(screen.getByRole('tab', { name: /ประวัติรับเงิน/ }));
     await user.click(screen.getByRole('button', { name: /เลือกรายการ P010 · ร้านแก้บิล/ }));
     await user.click(screen.getByRole('button', { name: 'ดูบิล' }));
-    await user.click(await screen.findByRole('button', { name: 'แก้ไขหรือยกเลิกใบส่งของ C260803-000011' }));
+    await user.click(await screen.findByRole('button', { name: 'แก้ไขหรือยกเลิกใบส่งของ INV2608-00011' }));
 
     expect(screen.queryByRole('dialog', { name: 'รายละเอียดใบเสร็จ R260803-000010' })).toBeNull();
-    expect(await screen.findByRole('dialog', { name: 'แก้ไขบิล C260803-000011' })).not.toBeNull();
+    expect(await screen.findByRole('dialog', { name: 'แก้ไขบิล INV2608-00011' })).not.toBeNull();
     expect(mocks.rpc).toHaveBeenCalledWith('get_delivery_correction_context', { p_event_id: 'event-current' });
 
     const quantity = screen.getByRole('spinbutton', { name: 'น้ำแข็งหลอด (ถุง)' });
@@ -355,6 +355,49 @@ describe('FinancialOperations', () => {
 
     await waitFor(() => expect(paymentQueryCount).toBe(4));
     expect(await screen.findByText('แก้ไขบิลแล้ว')).not.toBeNull();
+  });
+
+  it('opens a voided immediate receipt so its delivery can be cancelled', async () => {
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1200 });
+    const user = userEvent.setup();
+    const payment = {
+      id: 'payment-voided-immediate', receipt_number: 'REC2608-00012', received_amount: 30,
+      allocated_amount: 30, change_amount: 0, payment_method: 'cash' as const,
+      status: 'voided' as const, recorded_at: '2026-08-03T02:00:00Z',
+      void_reason: 'ขายผิดรายการ', shops: { code: 'P012', name: 'ร้านขายสด' },
+    };
+    mocks.rpc.mockImplementation(async (name: string) => {
+      if (name === 'get_payment_receipt_items') return { data: [{
+        charge_number: null, received_amount: 30,
+        ice_type_name: 'น้ำแข็งหลอด', ice_type_unit: 'ถุง', quantity: 1, line_total: 30,
+      }], error: null };
+      if (name === 'get_payment_correction_targets') return { data: [{
+        charge_id: 'charge-immediate', charge_number: null,
+        delivery_event_id: 'event-immediate', payment_allocated_amount: 30,
+        allocated_amount: 0, effective_amount: 30,
+      }], error: null };
+      if (name === 'get_delivery_correction_context') return { data: {
+        delivery_event_id: 'event-immediate', charge_number: null, shop_name: 'ร้านขายสด',
+        service_date: '2026-08-03', round_status: 'closed', day_closed: false,
+        original_amount: 30, effective_amount: 30, allocated_amount: 0,
+        payment_term: 'immediate', can_correct: false, can_cancel: true, blocker_reason: null,
+        ice_types: [{ ice_type_id: 'ice-1', name: 'น้ำแข็งหลอด', unit: 'ถุง', unit_price: 30 }],
+        items: [{ ice_type_id: 'ice-1', name: 'น้ำแข็งหลอด', unit: 'ถุง', quantity: 1, unit_price: 30 }],
+      }, error: null };
+      return { data: [], error: null };
+    });
+
+    render(<FinancialOperations
+      demoData={{ serviceDate: '2026-08-03', queue: [], paymentHistory: [payment] }}
+      userRole="round_lead"
+    />);
+    await user.click(screen.getByRole('tab', { name: /ประวัติรับเงิน/ }));
+    await user.click(screen.getByRole('button', { name: /เลือกรายการ P012 · ร้านขายสด/ }));
+    await user.click(screen.getByRole('button', { name: 'ดูบิล' }));
+    await user.click(await screen.findByRole('button', { name: 'แก้ไขหรือยกเลิกใบส่งของ ขายสด' }));
+
+    expect(await screen.findByRole('dialog', { name: 'แก้ไขบิล' })).not.toBeNull();
+    expect(mocks.rpc).toHaveBeenCalledWith('get_delivery_correction_context', { p_event_id: 'event-immediate' });
   });
 
   it('labels a shop-level outstanding total from the complete payment-term mix', () => {
@@ -744,7 +787,7 @@ describe('FinancialOperations', () => {
     expect(printDocument.body.textContent).toContain('ยอดชำระ฿100.00');
     expect(printDocument.body.textContent).toContain('รับเงิน ฿500.00 · เงินทอน ฿400.00');
     expect(printDocument.body.textContent).toContain('R260729-000001');
-    expect(printDocument.head.textContent).toContain('@page { size: 57mm 43.5mm; margin: 0; }');
+    expect(printDocument.head.textContent).toContain('@page { size: 57mm 58mm; margin: 0; }');
     expect(print).toHaveBeenCalledOnce();
   });
 

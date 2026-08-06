@@ -17,3 +17,15 @@ export async function uploadPaymentEvidence(file: File, idempotencyKey: string) 
   if (error) throw error;
   return path;
 }
+
+export async function deletePaymentEvidence(path: string, idempotencyKey: string) {
+  if (!supabase) throw new Error('ยังไม่ได้ตั้งค่า Supabase');
+  const { data: canDelete, error: checkError } = await supabase.rpc('can_delete_payment_evidence', {
+    p_idempotency_key: idempotencyKey,
+    p_evidence_path: path,
+  });
+  if (checkError) throw checkError;
+  if (!canDelete) return;
+  const { error } = await supabase.storage.from('payment-evidence').remove([path]);
+  if (error) throw error;
+}

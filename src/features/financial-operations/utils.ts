@@ -34,9 +34,9 @@ export function paymentMethodLabel(method: PaymentMethod) {
 }
 
 export function receiptChargesFromRows(rows: ReceiptItemRow[]) {
-  const charges = new Map<string, ReceiptCharge>();
+  const charges = new Map<string | null, ReceiptCharge>();
   for (const row of rows) {
-    const chargeNumber = row.charge_number ?? 'ไม่พบเลขที่บิล';
+    const chargeNumber = row.charge_number;
     const charge = charges.get(chargeNumber) ?? {
       chargeNumber,
       receivedAmount: Number(row.received_amount),
@@ -64,14 +64,25 @@ export function receiptFromSnapshot(snapshot: PaymentReceiptSnapshot) {
     allocatedAmount: Number(snapshot.allocated_amount),
     changeAmount: Number(snapshot.change_amount),
     recordedAt: snapshot.recorded_at,
+    title: snapshot.document_title ?? 'ใบเสร็จรับเงิน',
+    status: snapshot.status ?? 'active',
+    serviceDate: snapshot.service_date ?? null,
+    shopLocation: snapshot.shop_location ?? null,
+    paymentTerm: snapshot.payment_term ?? null,
+    voidInfo: snapshot.void_info ? {
+      voidedAt: snapshot.void_info.voided_at,
+      reason: snapshot.void_info.reason,
+      voidedBy: snapshot.void_info.voided_by,
+    } : null,
     charges: snapshot.charges.map((charge) => ({
       chargeNumber: charge.charge_number,
       receivedAmount: Number(charge.received_amount),
       items: charge.items.map((item) => ({
         name: item.ice_type_name,
         unit: item.ice_type_unit,
-        quantity: Number(item.quantity),
-        lineTotal: Number(item.line_total),
+      quantity: Number(item.quantity),
+      unitPrice: item.unit_price == null ? null : Number(item.unit_price),
+      lineTotal: Number(item.line_total),
       })),
     })),
   };

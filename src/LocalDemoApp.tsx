@@ -552,6 +552,70 @@ function buildDemoGateway(): EmployeeDeliveryGateway & { reset(): void } {
         status: 'active' as const,
       };
     },
+    async recordImmediateSale(payload) {
+      const delivery = await this.recordDelivery({
+        roundStopId: payload.roundStopId,
+        items: payload.items,
+        status: 'delivered',
+        note: payload.note,
+        clientRecordedAt: payload.clientRecordedAt,
+        idempotencyKey: payload.idempotencyKey,
+        paymentTerm: 'immediate',
+        approvalId: null,
+      });
+      if (!delivery) throw new Error('เดโม่ไม่สามารถสร้างรายการขายสดได้');
+      const card = Object.values(cardsByRound).flat()
+        .find((candidate) => candidate.round_stop_id === payload.roundStopId);
+      const receiptNumber = 'REC2607-00001';
+      const receivedAt = new Date().toISOString();
+      return {
+        delivery: { ...delivery, charge_number: null, payment_status: 'paid' as const },
+        payment: {
+          payment_id: `demo-payment-${payload.idempotencyKey}`,
+          receipt_number: receiptNumber,
+          shop_id: card?.shop_id ?? '',
+          payment_method: payload.paymentMethod,
+          received_amount: payload.receivedAmount,
+          allocated_amount: delivery.total_amount ?? 0,
+          change_amount: payload.paymentMethod === 'cash'
+            ? Math.max(payload.receivedAmount - (delivery.total_amount ?? 0), 0)
+            : 0,
+          status: 'active' as const,
+          recorded_at: receivedAt,
+        },
+        receipt_number: receiptNumber,
+        print_document: {
+          document_type: 'REC' as const,
+          document_number: receiptNumber,
+          document_title: 'ใบส่งของ / ใบเสร็จรับเงิน',
+          status: 'active' as const,
+          recorded_at: receivedAt,
+          service_date: delivery.service_date,
+          shop_code: card?.shop_code ?? '',
+          shop_name: card?.shop_name ?? '',
+          shop_location: card ? `${card.building_name} · ${card.floor_or_zone}` : null,
+          payment_term: 'immediate' as const,
+          payment_method: payload.paymentMethod,
+          received_amount: payload.receivedAmount,
+          allocated_amount: delivery.total_amount,
+          change_amount: payload.paymentMethod === 'cash'
+            ? Math.max(payload.receivedAmount - (delivery.total_amount ?? 0), 0)
+            : 0,
+          charges: [{
+            charge_number: null,
+            payment_term: 'immediate' as const,
+            received_amount: delivery.total_amount ?? 0,
+            items: (delivery.items ?? []).map((item) => ({
+              ice_type_name: item.name ?? demoIceTypes.find((ice) => ice.id === item.ice_type_id)?.name ?? 'สินค้า',
+              ice_type_unit: item.unit ?? demoIceTypes.find((ice) => ice.id === item.ice_type_id)?.unit ?? '',
+              quantity: item.quantity,
+              unit_price: item.unit_price,
+              line_total: item.line_total ?? 0,
+            })),
+          }],
+        },
+      };
+    },
     reset() {
       cardsByRound = Object.fromEntries(
         Object.entries(demoCardsByRound).map(([roundId, cards]) => [roundId, cloneCards(cards)]),

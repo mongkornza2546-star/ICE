@@ -7,6 +7,7 @@ import type {
   DeliveryRound,
   EmployeeStockState,
   FinancialPaymentResult,
+  ImmediateSaleResult,
   IceTypeOption,
   PaymentMethod,
   PaymentTerm,
@@ -20,7 +21,7 @@ import { EmployeeShopPicker } from './features/employee-delivery/EmployeeShopPic
 import { EmployeeDeliveryReview } from './features/employee-delivery/EmployeeDeliveryReview';
 import { useEmployeeDeliveryData } from './features/employee-delivery/useEmployeeDeliveryData';
 import { toBangkokDateString } from './lib/serviceDate';
-import { uploadPaymentEvidence } from './lib/paymentEvidence';
+import { deletePaymentEvidence, uploadPaymentEvidence } from './lib/paymentEvidence';
 
 export interface EmployeeDeliveryPayload {
   roundStopId: string;
@@ -43,6 +44,19 @@ export interface EmployeePaymentPayload {
   evidencePath: string | null;
   expectedOutstandingAmount: number;
   approvalId: string | null;
+  idempotencyKey: string;
+}
+
+export interface EmployeeImmediateSalePayload {
+  roundStopId: string;
+  items: Array<{ ice_type_id: string; quantity: number }>;
+  note: string | null;
+  clientRecordedAt: string;
+  paymentMethod: PaymentMethod;
+  receivedAmount: number;
+  referenceNumber: string | null;
+  evidencePath: string | null;
+  expectedTotal: number;
   idempotencyKey: string;
 }
 
@@ -70,7 +84,9 @@ export interface EmployeeDeliveryGateway {
   recordEmployeeStockTransfer(payload: EmployeeStockTransferPayload): Promise<EmployeeStockState>;
   recordDelivery(payload: EmployeeDeliveryPayload): Promise<DeliveryFinancialResult | void>;
   recordPayment?(payload: EmployeePaymentPayload): Promise<FinancialPaymentResult>;
+  recordImmediateSale?(payload: EmployeeImmediateSalePayload): Promise<ImmediateSaleResult>;
   uploadPaymentEvidence?(file: File, idempotencyKey: string): Promise<string>;
+  deletePaymentEvidence?(path: string, idempotencyKey: string): Promise<void>;
   requestFinancialApproval?(payload: EmployeeApprovalPayload): Promise<{
     id: string;
     status: 'pending' | 'approved' | 'rejected' | 'consumed';
@@ -212,8 +228,28 @@ function createSupabaseGateway(): EmployeeDeliveryGateway {
       if (error) throw error;
       return data as FinancialPaymentResult;
     },
+    async recordImmediateSale(payload) {
+      if (!supabase) throw new Error('ยังไม่ได้ตั้งค่า Supabase');
+      const { data, error } = await supabase.rpc('record_immediate_sale', {
+        p_round_stop_id: payload.roundStopId,
+        p_items: payload.items,
+        p_note: payload.note,
+        p_client_recorded_at: payload.clientRecordedAt,
+        p_payment_method: payload.paymentMethod,
+        p_received_amount: payload.receivedAmount,
+        p_reference_number: payload.referenceNumber,
+        p_evidence_path: payload.evidencePath,
+        p_expected_total: payload.expectedTotal,
+        p_idempotency_key: payload.idempotencyKey,
+      });
+      if (error) throw error;
+      return data as ImmediateSaleResult;
+    },
     async uploadPaymentEvidence(file, idempotencyKey) {
       return uploadPaymentEvidence(file, idempotencyKey);
+    },
+    async deletePaymentEvidence(path, idempotencyKey) {
+      return deletePaymentEvidence(path, idempotencyKey);
     },
     async requestFinancialApproval(payload) {
       if (!supabase) throw new Error('ยังไม่ได้ตั้งค่า Supabase');
@@ -286,6 +322,7 @@ export function EmployeeDeliveryWorkspace({
       <div className="employee-workspace">
         <EmployeeDeliveryReview
         assignedStockState={enableAssignedStockFlow ? data.stockState : null}
+        atomicImmediateSale={Boolean(gateway.recordImmediateSale)}
         deliveryQuantities={data.deliveryQuantities}
         posContext={data.posContext}
         posContextError={data.posContextError}
@@ -297,6 +334,7 @@ export function EmployeeDeliveryWorkspace({
         paymentAmount={data.paymentAmount}
         paymentReference={data.paymentReference}
         paymentEvidence={data.paymentEvidence}
+        paymentEvidenceUploaded={data.paymentEvidenceUploaded}
         paymentSubmitting={data.paymentSubmitting}
         approvalId={data.approvalId}
         approvalReason={data.approvalReason}
@@ -316,8 +354,8 @@ export function EmployeeDeliveryWorkspace({
         onPaymentAmountChange={data.setPaymentAmount}
         onPaymentReferenceChange={data.setPaymentReference}
         onPaymentEvidenceChange={data.setPaymentEvidence}
+        onPaymentCancel={data.cancelImmediateSaleDraft}
         onPaymentSubmit={data.handlePaymentSubmit}
-        onPaymentLater={data.finishPaymentLater}
         onApprovalReasonChange={data.setApprovalReason}
         onRequestApproval={data.handleRequestApproval}
         onNoteChange={data.setNote}

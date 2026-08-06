@@ -28,6 +28,10 @@ select 'payments / receipts', count(*) from public.payments
 union all
 select 'payment receipt snapshots', count(*) from public.payment_receipt_snapshots
 union all
+select 'delivery document snapshots', count(*) from public.delivery_charge_document_snapshots
+union all
+select 'document counters', count(*) from public.document_counters
+union all
 select 'collection runs', count(*) from public.collection_runs
 union all
 select 'credit due-date requests', count(*) from public.credit_due_date_requests
@@ -64,6 +68,7 @@ $$;
 truncate table
   public.payment_allocations,
   public.payment_receipt_snapshots,
+  public.delivery_charge_document_snapshots,
   public.payments,
   public.collection_run_members,
   public.collection_run_credit_charges,
@@ -99,6 +104,8 @@ truncate table
   public.audit_logs
 restart identity;
 
+truncate table public.document_counters;
+
 -- เลขที่ใบเสร็จถูกสร้างจาก sequence แยก จึงต้อง reset เอง
 alter sequence if exists public.payment_receipt_number_seq restart with 1;
 alter sequence if exists public.delivery_charge_number_seq restart with 1;
@@ -114,6 +121,8 @@ select
   (select count(*) from public.delivery_charges) as bills,
   (select count(*) from public.payments) as payments,
   (select count(*) from public.payment_receipt_snapshots) as receipt_snapshots,
+  (select count(*) from public.delivery_charge_document_snapshots) as delivery_document_snapshots,
+  (select count(*) from public.document_counters) as document_counters,
   (select count(*) from public.credit_due_date_requests) as credit_due_date_requests,
   (select count(*) from public.collection_run_credit_charges) as credit_assignments,
   (select count(*) from public.audit_logs) as audit_logs;

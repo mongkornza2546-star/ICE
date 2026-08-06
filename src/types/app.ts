@@ -72,12 +72,14 @@ export interface DeliveryFinancialResult {
   delivery_event_id: string;
   round_stop_id: string;
   charge_id: string | null;
+  charge_number?: string | null;
   service_date: string | null;
   total_amount: number | null;
   payment_term: PaymentTerm | null;
   payment_status: FinancialPaymentStatus | null;
   due_date: string | null;
   approval_id: string | null;
+  print_document?: import('../lib/salesDocumentPrint').StoredSalesDocument | null;
   items?: Array<{
     ice_type_id: string;
     name?: string;
@@ -92,12 +94,21 @@ export interface DeliveryFinancialResult {
 
 export interface FinancialPaymentResult {
   payment_id: string;
+  receipt_number?: string;
   shop_id: string;
   payment_method: PaymentMethod;
   received_amount: number;
   allocated_amount: number;
   change_amount: number;
   status: 'active' | 'voided';
+  recorded_at?: string;
+}
+
+export interface ImmediateSaleResult {
+  delivery: DeliveryFinancialResult;
+  payment: FinancialPaymentResult;
+  receipt_number: string;
+  print_document: import('../lib/salesDocumentPrint').StoredSalesDocument;
 }
 
 export interface UserProfile {

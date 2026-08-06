@@ -67,9 +67,9 @@ export function HistoryReceiptModal({
           {historyReceipt.charges === null && !historyReceipt.error ? <p>กำลังโหลดรายละเอียดบิล...</p> : null}
           {historyReceipt.error ? <p className="employee-error" role="alert">โหลดรายละเอียดบิลไม่สำเร็จ: {historyReceipt.error}</p> : null}
           {historyReceipt.charges?.length === 0 ? <p>ไม่พบรายการบิลในใบเสร็จนี้</p> : null}
-          {historyReceipt.charges?.map((charge) => (
-            <article key={charge.chargeNumber}>
-              <header><strong>{charge.chargeNumber}</strong><b>{money.format(charge.receivedAmount)}</b></header>
+          {historyReceipt.charges?.map((charge, chargeIndex) => (
+            <article key={charge.chargeNumber ?? `immediate-${chargeIndex}`}>
+              <header><strong>{charge.chargeNumber ?? 'ขายสด'}</strong><b>{money.format(charge.receivedAmount)}</b></header>
               {charge.items.map((item, index) => (
                 <div key={`${item.name}-${index}`}>
                   <span>{item.name} × {item.quantity} {item.unit}</span>
@@ -80,15 +80,15 @@ export function HistoryReceiptModal({
           ))}
         </section>
 
-        {onCorrect && historyReceipt.payment.status === 'active' ? (
+        {onCorrect ? (
           <section className="financial-ops__receipt-charges" aria-label="บิลปัจจุบันที่แก้ไขได้">
             <strong><ListNumbers aria-hidden="true" size={18} /> บิลที่ชำระครบและแก้ไขได้</strong>
             {historyReceipt.correctionTargets === null && !historyReceipt.correctionError ? <p>กำลังตรวจสอบบิล...</p> : null}
             {historyReceipt.correctionError ? <p className="employee-error" role="alert">ตรวจสอบสิทธิ์แก้ไขบิลไม่สำเร็จ: {historyReceipt.correctionError}</p> : null}
             {historyReceipt.correctionTargets?.map((target) => (
               <article key={target.charge_id}>
-                <header><strong>{target.charge_number}</strong><b>{money.format(target.effective_amount)}</b></header>
-                <button disabled={busy} onClick={() => onCorrect(target)} type="button">แก้ไขหรือยกเลิกใบส่งของ {target.charge_number}</button>
+                <header><strong>{target.charge_number ?? 'ขายสด'}</strong><b>{money.format(target.effective_amount)}</b></header>
+                <button disabled={busy} onClick={() => onCorrect(target)} type="button">แก้ไขหรือยกเลิกใบส่งของ {target.charge_number ?? 'ขายสด'}</button>
               </article>
             ))}
           </section>
