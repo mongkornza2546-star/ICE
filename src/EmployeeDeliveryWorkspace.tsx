@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { CheckCircle, WarningCircle } from '@phosphor-icons/react';
+import { CheckCircle, Printer, WarningCircle } from '@phosphor-icons/react';
 import { supabase } from './lib/supabase';
 import type {
   DeliveryFinancialResult,
@@ -414,7 +414,13 @@ export function EmployeeDeliveryWorkspace({
         </section>
       ) : null}
 
-      {data.success ? <p aria-live="polite" className="employee-success"><CheckCircle aria-hidden="true" size={22} weight="fill" />{data.success}</p> : null}
+      {data.success ? <div aria-live="polite" className="employee-success">
+        <CheckCircle aria-hidden="true" size={22} weight="fill" />
+        <span>{data.success}</span>
+        {data.latestReceiptAvailable ? <button className="employee-success__print" onClick={data.printLatestReceipt} type="button">
+          <Printer aria-hidden="true" size={18} />พิมพ์ใบเสร็จ
+        </button> : null}
+      </div> : null}
       {data.error ? (
         <div className="employee-error employee-error--retry" role="alert">
           <span><WarningCircle aria-hidden="true" size={22} weight="fill" />{data.error}</span>

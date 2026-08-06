@@ -99,10 +99,8 @@ export function FinancialOperations({
   const [reference, setReference] = useState('');
   const [evidence, setEvidence] = useState<File | null>(null);
   const [evidenceError, setEvidenceError] = useState<string | null>(null);
-  const [printReceiptWanted, setPrintReceiptWanted] = useState(true);
   const [selectedShop, setSelectedShop] = useState<QueueShop | null>(initialDemoShop);
   const [receipt, setReceipt] = useState<PaymentReceipt | null>(null);
-  const [receiptWarning, setReceiptWarning] = useState<string | null>(null);
   const [historyReceipt, setHistoryReceipt] = useState<HistoryReceiptDetail | null>(null);
   const [correctionEventId, setCorrectionEventId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -125,13 +123,11 @@ export function FinancialOperations({
 
   const resetPaymentForm = useCallback((shop: QueueShop) => {
     setReceipt(null);
-    setReceiptWarning(null);
     setMethod(shop.payment_profile.default_payment_method);
     setAmount(Number(shop.outstanding_amount).toFixed(2));
     setReference('');
     setEvidence(null);
     setEvidenceError(null);
-    setPrintReceiptWanted(true);
     setError(null);
   }, []);
 
@@ -502,78 +498,54 @@ export function FinancialOperations({
   };
 
   const recordPayment = () => {
-    const printWindow = printReceiptWanted
-      ? window.open('', '_blank', 'popup,width=360,height=680')
-      : null;
     return runAction(async () => {
-      try {
-        if (!supabase || !runId || !selectedShop || !paymentReady) return;
-        const signature = `collection-payment:${JSON.stringify({
-          runId,
-          shopId: selectedShop.shop_id,
-          allocations,
-          method,
-          receivedAmount,
-          reference: reference.trim() || null,
-          evidence: evidence ? {
-            name: evidence.name,
-            size: evidence.size,
-            lastModified: evidence.lastModified,
-          } : null,
-        })}`;
-        const request = getOrCreatePendingRequest(signature);
-        const evidencePath = evidence ? await uploadPaymentEvidence(evidence, request.key) : null;
-        const { data, error: rpcError } = await supabase.rpc('record_payment', {
-          p_shop_id: selectedShop.shop_id,
-          p_allocations: allocations,
-          p_payment_method: method,
-          p_received_amount: receivedAmount,
-          p_reference_number: reference.trim() || null,
-          p_evidence_path: evidencePath,
-          p_collection_run_id: runId,
-          p_expected_outstanding_amount: selectedShop.outstanding_amount,
-          p_approval_id: null,
-          p_idempotency_key: request.key,
-        });
-        if (rpcError) throw rpcError;
-        if (!data?.payment_id || !data.receipt_number || !data.recorded_at) {
-          throw new Error('ระบบไม่ได้ส่งเลขที่หรือเวลาของใบเสร็จกลับมา');
-        }
-        clearPendingRequest(signature, request.key);
-        const nextReceipt: PaymentReceipt = {
-          paymentId: data.payment_id,
-          receiptNumber: data.receipt_number,
-          shopCode: selectedShop.shop_code,
-          shopName: selectedShop.shop_name,
-          method,
-          receivedAmount,
-          allocatedAmount: Number(data.allocated_amount),
-          changeAmount: Number(data.change_amount),
-          recordedAt: data.recorded_at,
-          charges: [],
-        };
-        setReceipt(nextReceipt);
-        setReceiptWarning(printReceiptWanted && !printWindow
-          ? 'บันทึกรับเงินแล้ว แต่เบราว์เซอร์บล็อกหน้าต่างพิมพ์ กรุณากดพิมพ์ใบเสร็จอีกครั้ง'
-          : null);
-        setSuccess('บันทึกรับเงินแล้ว');
-        void getReceiptSnapshot(data.payment_id)
-          .then((printableReceipt) => {
-            setReceipt((current) => (
-              current?.paymentId === data.payment_id ? printableReceipt : current
-            ));
-            if (printWindow) printReceipt(printableReceipt, printWindow);
-          })
-          .catch((receiptError: unknown) => {
-            printWindow?.close();
-            setReceiptWarning(
-              `บันทึกรับเงินแล้ว แต่โหลดภาพใบเสร็จไม่สำเร็จ: ${getErrorMessage(receiptError)}`,
-            );
-          });
-      } catch (paymentError) {
-        printWindow?.close();
-        throw paymentError;
+      if (!supabase || !runId || !selectedShop || !paymentReady) return;
+      const signature = `collection-payment:${JSON.stringify({
+        runId,
+        shopId: selectedShop.shop_id,
+        allocations,
+        method,
+        receivedAmount,
+        reference: reference.trim() || null,
+        evidence: evidence ? {
+          name: evidence.name,
+          size: evidence.size,
+          lastModified: evidence.lastModified,
+        } : null,
+      })}`;
+      const request = getOrCreatePendingRequest(signature);
+      const evidencePath = evidence ? await uploadPaymentEvidence(evidence, request.key) : null;
+      const { data, error: rpcError } = await supabase.rpc('record_payment', {
+        p_shop_id: selectedShop.shop_id,
+        p_allocations: allocations,
+        p_payment_method: method,
+        p_received_amount: receivedAmount,
+        p_reference_number: reference.trim() || null,
+        p_evidence_path: evidencePath,
+        p_collection_run_id: runId,
+        p_expected_outstanding_amount: selectedShop.outstanding_amount,
+        p_approval_id: null,
+        p_idempotency_key: request.key,
+      });
+      if (rpcError) throw rpcError;
+      if (!data?.payment_id || !data.receipt_number || !data.recorded_at) {
+        throw new Error('ระบบไม่ได้ส่งเลขที่หรือเวลาของใบเสร็จกลับมา');
       }
+      clearPendingRequest(signature, request.key);
+      const nextReceipt: PaymentReceipt = {
+        paymentId: data.payment_id,
+        receiptNumber: data.receipt_number,
+        shopCode: selectedShop.shop_code,
+        shopName: selectedShop.shop_name,
+        method,
+        receivedAmount,
+        allocatedAmount: Number(data.allocated_amount),
+        changeAmount: Number(data.change_amount),
+        recordedAt: data.recorded_at,
+        charges: [],
+      };
+      setReceipt(nextReceipt);
+      setSuccess('บันทึกรับเงินแล้ว');
     }, false);
   };
 
@@ -594,7 +566,6 @@ export function FinancialOperations({
       });
     }
     setReceipt(null);
-    setReceiptWarning(null);
     setSelectedShop(null);
   };
 
@@ -926,15 +897,12 @@ export function FinancialOperations({
           onEditCharge={openChargeCorrection}
           onPaymentMethodChange={choosePaymentMethod}
           onPrintReceipt={(targetReceipt) => printStoredReceipt(targetReceipt.paymentId)}
-          onPrintReceiptWantedChange={setPrintReceiptWanted}
           onRecordPayment={recordPayment}
           onRequestDueDate={requestDueDate}
           onReferenceChange={setReference}
           paymentReady={paymentReady}
           presentation="panel"
-          printReceiptWanted={printReceiptWanted}
           receipt={receipt}
-          receiptWarning={receiptWarning}
           reference={reference}
           remainingAmount={remainingAmount}
           selectedShop={selectedShop}
@@ -997,14 +965,11 @@ export function FinancialOperations({
           onEditCharge={openChargeCorrection}
           onPaymentMethodChange={choosePaymentMethod}
           onPrintReceipt={(targetReceipt) => printStoredReceipt(targetReceipt.paymentId)}
-          onPrintReceiptWantedChange={setPrintReceiptWanted}
           onRecordPayment={recordPayment}
           onRequestDueDate={requestDueDate}
           onReferenceChange={setReference}
           paymentReady={paymentReady}
-          printReceiptWanted={printReceiptWanted}
           receipt={receipt}
-          receiptWarning={receiptWarning}
           reference={reference}
           remainingAmount={remainingAmount}
           selectedShop={selectedShop}

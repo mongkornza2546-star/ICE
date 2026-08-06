@@ -117,6 +117,19 @@ async function selectIceAndGetKeypad(user: ReturnType<typeof userEvent.setup>) {
   return screen.findByRole('region', { name: 'แป้นใส่จำนวน' });
 }
 
+function mockSalesPrintWindow() {
+  const printDocument = document.implementation.createHTMLDocument('เอกสารการขาย');
+  const print = vi.fn();
+  const open = vi.spyOn(window, 'open').mockReturnValue({
+    document: printDocument,
+    addEventListener: vi.fn(),
+    focus: vi.fn(),
+    print,
+    close: vi.fn(),
+  } as unknown as Window);
+  return { open, print, printDocument };
+}
+
 describe('employee delivery POS', () => {
   it('loads server-owned context and uses digit, backspace, and clear keypad behavior', async () => {
     const user = userEvent.setup();
@@ -227,6 +240,123 @@ describe('employee delivery POS', () => {
     })));
   });
 
+  it('records an end-of-day delivery without opening a print window', async () => {
+    const user = userEvent.setup();
+    const api = gateway();
+    api.loadDeliveryPosContext = vi.fn().mockResolvedValue({
+      ...context,
+      payment_profile: {
+        ...context.payment_profile!,
+        allowed_payment_terms: ['end_of_day'],
+        default_payment_term: 'end_of_day',
+      },
+    });
+    api.recordDelivery = vi.fn().mockResolvedValue({
+      delivery_event_id: 'event-end-of-day',
+      round_stop_id: shop.round_stop_id,
+      charge_id: 'charge-end-of-day',
+      charge_number: 'INV2607-00001',
+      service_date: round.service_date,
+      total_amount: 10,
+      payment_term: 'end_of_day',
+      payment_status: 'unpaid',
+      due_date: round.service_date,
+      approval_id: null,
+      print_document: {
+        document_type: 'INV',
+        document_number: 'INV2607-00001',
+        document_title: 'ใบสรุปยอด',
+        status: 'active',
+        issued_at: '2026-07-27T02:00:00Z',
+        service_date: round.service_date,
+        shop_code: shop.shop_code,
+        shop_name: shop.shop_name,
+        payment_term: 'end_of_day',
+        total_amount: 10,
+        items: [{
+          ice_type_name: 'หลอด',
+          ice_type_unit: 'ถุง',
+          quantity: 1,
+          unit_price: 10,
+          line_total: 10,
+        }],
+      },
+    });
+    const openSpy = vi.spyOn(window, 'open').mockReturnValue(null);
+
+    render(<EmployeeDeliveryWorkspace gateway={api} />);
+    await user.click(await screen.findByRole('button', { name: /S001 ร้านทดสอบ/ }));
+    await user.click(within(await selectIceAndGetKeypad(user)).getByRole('button', { name: '1' }));
+    await user.click(screen.getByRole('button', { name: 'ยืนยันส่งร้านนี้' }));
+
+    await waitFor(() => expect(api.recordDelivery).toHaveBeenCalledWith(expect.objectContaining({
+      paymentTerm: 'end_of_day',
+    })));
+    expect(openSpy).not.toHaveBeenCalled();
+    openSpy.mockRestore();
+  });
+
+  it('keeps automatic document printing for credit deliveries', async () => {
+    const user = userEvent.setup();
+    const api = gateway();
+    api.loadDeliveryPosContext = vi.fn().mockResolvedValue({
+      ...context,
+      payment_profile: {
+        ...context.payment_profile!,
+        allowed_payment_terms: ['credit'],
+        default_payment_term: 'credit',
+        credit_due_rule: 'net_days',
+        credit_days: 30,
+        credit_limit: null,
+        credit_remaining: null,
+      },
+    });
+    api.recordDelivery = vi.fn().mockResolvedValue({
+      delivery_event_id: 'event-credit',
+      round_stop_id: shop.round_stop_id,
+      charge_id: 'charge-credit',
+      charge_number: 'INV2607-00002',
+      service_date: round.service_date,
+      total_amount: 10,
+      payment_term: 'credit',
+      payment_status: 'unpaid',
+      due_date: '2026-08-26',
+      approval_id: null,
+      print_document: {
+        document_type: 'INV',
+        document_number: 'INV2607-00002',
+        document_title: 'ใบส่งของ / ใบแจ้งหนี้',
+        status: 'active',
+        issued_at: '2026-07-27T02:00:00Z',
+        service_date: round.service_date,
+        due_date: '2026-08-26',
+        shop_code: shop.shop_code,
+        shop_name: shop.shop_name,
+        payment_term: 'credit',
+        total_amount: 10,
+        items: [{
+          ice_type_name: 'หลอด',
+          ice_type_unit: 'ถุง',
+          quantity: 1,
+          unit_price: 10,
+          line_total: 10,
+        }],
+      },
+    });
+    const { open, print, printDocument } = mockSalesPrintWindow();
+
+    render(<EmployeeDeliveryWorkspace gateway={api} />);
+    await user.click(await screen.findByRole('button', { name: /S001 ร้านทดสอบ/ }));
+    await user.click(within(await selectIceAndGetKeypad(user)).getByRole('button', { name: '1' }));
+    await user.click(screen.getByRole('button', { name: 'ยืนยันส่งร้านนี้' }));
+
+    await waitFor(() => expect(print).toHaveBeenCalledOnce());
+    expect(open).toHaveBeenCalledOnce();
+    expect(printDocument.body.textContent).toContain('INV2607-00002');
+    expect(printDocument.body.textContent).toContain('ครบกำหนด 2026-08-26');
+    open.mockRestore();
+  });
+
   it('keeps an immediate delivery local until one atomic sale RPC records delivery and payment', async () => {
     const user = userEvent.setup();
     const api = gateway();
@@ -257,7 +387,7 @@ describe('employee delivery POS', () => {
       receipt_number: 'REC2607-00001',
       print_document: {
         document_type: 'REC',
-        document_number: 'REC2607-00001',
+        document_number: 'REC-SNAPSHOT-00001',
         document_title: 'ใบส่งของ / ใบเสร็จรับเงิน',
         status: 'active',
         recorded_at: '2026-07-27T02:00:00Z',
@@ -289,6 +419,9 @@ describe('employee delivery POS', () => {
       expectedTotal: 10,
     })));
     expect(api.recordPayment).not.toHaveBeenCalled();
+    expect(openSpy).not.toHaveBeenCalled();
+    await user.click(await screen.findByRole('button', { name: 'พิมพ์ใบเสร็จ' }));
+    expect(openSpy).toHaveBeenCalledOnce();
     openSpy.mockRestore();
   });
 

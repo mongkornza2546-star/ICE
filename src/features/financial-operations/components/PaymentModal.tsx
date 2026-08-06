@@ -26,9 +26,7 @@ export function PaymentModal({
   reference,
   evidence,
   evidenceError,
-  printReceiptWanted,
   receipt,
-  receiptWarning,
   allocatedAmount,
   changeAmount,
   remainingAmount,
@@ -41,7 +39,6 @@ export function PaymentModal({
   onAmountChange,
   onEvidenceChange,
   onReferenceChange,
-  onPrintReceiptWantedChange,
   onRecordPayment,
   onEditCharge,
   onPrintReceipt,
@@ -56,9 +53,7 @@ export function PaymentModal({
   reference: string;
   evidence: File | null;
   evidenceError: string | null;
-  printReceiptWanted: boolean;
   receipt: PaymentReceipt | null;
-  receiptWarning: string | null;
   allocatedAmount: number;
   changeAmount: number;
   remainingAmount: number;
@@ -71,7 +66,6 @@ export function PaymentModal({
   onAmountChange: (amount: string) => void;
   onEvidenceChange: (file: File | null) => void;
   onReferenceChange: (reference: string) => void;
-  onPrintReceiptWantedChange: (wanted: boolean) => void;
   onRecordPayment: () => void;
   onEditCharge?: (charge: QueueShop['charges'][number]) => void;
   onPrintReceipt: (receipt: PaymentReceipt) => void;
@@ -118,9 +112,8 @@ export function PaymentModal({
         {receipt ? (
           <div className="financial-ops__payment-complete">
             <CheckCircle aria-hidden="true" size={24} weight="fill" />
-            <span><strong>บันทึกรับเงินเรียบร้อย</strong><small>เลือกพิมพ์ใบเสร็จสำหรับร้านที่ต้องการ</small></span>
-            {receiptWarning ? <small className="financial-ops__receipt-warning" role="status">{receiptWarning}</small> : null}
-            {printReceiptWanted ? <button onClick={() => onPrintReceipt(receipt)} type="button"><Printer aria-hidden="true" size={19} />พิมพ์ใบเสร็จ</button> : null}
+            <span><strong>บันทึกรับเงินเรียบร้อย</strong><small>กดพิมพ์เมื่อร้านต้องการใบเสร็จ</small></span>
+            <button onClick={() => onPrintReceipt(receipt)} type="button"><Printer aria-hidden="true" size={19} />พิมพ์ใบเสร็จ</button>
             <button onClick={onClose} type="button">เสร็จสิ้น</button>
           </div>
         ) : (
@@ -286,11 +279,6 @@ export function PaymentModal({
                 placeholder="เช่น ลูกค้าจ่ายแบงก์ใหญ่"
                 value={reference}
               />
-            </label>
-
-            <label className="financial-ops__print-choice">
-              <input checked={printReceiptWanted} disabled={busy} onChange={(event) => onPrintReceiptWantedChange(event.target.checked)} type="checkbox" />
-              <span>พิมพ์ใบรับเงินหลังบันทึก</span>
             </label>
 
             <footer className="financial-ops__payment-actions">

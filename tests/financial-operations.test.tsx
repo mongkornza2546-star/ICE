@@ -714,7 +714,6 @@ describe('FinancialOperations', () => {
     expect(screen.queryByRole('button', { name: 'พักยอด / เครดิต' })).toBeNull();
     await user.clear(amount);
     await user.type(amount, '50');
-    await user.click(screen.getByRole('checkbox', { name: 'พิมพ์ใบรับเงินหลังบันทึก' }));
     await user.click(screen.getByRole('button', { name: 'บันทึกรับเงินทันที' }));
 
     await waitFor(() => expect(mocks.rpc).toHaveBeenCalledWith('record_payment', expect.objectContaining({
@@ -727,7 +726,7 @@ describe('FinancialOperations', () => {
     })));
   });
 
-  it('automatically prints the ordered items after payment is recorded when requested', async () => {
+  it('offers receipt printing only after payment is recorded and the user presses print', async () => {
     const user = userEvent.setup();
     const { printDocument, print } = mockReceiptPrintWindow();
     mocks.from.mockImplementation((table: string) => {
@@ -773,12 +772,22 @@ describe('FinancialOperations', () => {
     render(<FinancialOperations userRole="courier" />);
     await user.click(await screen.findByRole('button', { name: /S001 · ร้านเก็บเงิน/ }));
     expect(screen.queryByRole('button', { name: 'พิมพ์ใบเสร็จ' })).toBeNull();
+    expect(screen.queryByRole('checkbox', { name: 'พิมพ์ใบรับเงินหลังบันทึก' })).toBeNull();
 
     const amount = screen.getByRole('spinbutton', { name: 'ยอดรับเงินจริง' });
     await user.clear(amount);
     await user.type(amount, '500');
     await user.click(screen.getByRole('button', { name: 'บันทึกรับเงินทันที' }));
+    await screen.findByRole('button', { name: 'พิมพ์ใบเสร็จ' });
+    expect(mocks.rpc).not.toHaveBeenCalledWith('get_payment_receipt_snapshot', {
+      p_payment_id: 'payment-1',
+    });
+    expect(print).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: 'พิมพ์ใบเสร็จ' }));
     await waitFor(() => expect(print).toHaveBeenCalledOnce());
+    expect(mocks.rpc).toHaveBeenCalledWith('get_payment_receipt_snapshot', {
+      p_payment_id: 'payment-1',
+    });
 
     expect(printDocument.body.textContent).toContain('S001 · ชื่อร้านจาก snapshot');
     expect(printDocument.body.textContent).not.toContain('S001 · ร้านเก็บเงิน');
@@ -823,7 +832,12 @@ describe('FinancialOperations', () => {
 
     expect(await screen.findByRole('button', { name: 'พิมพ์ใบเสร็จ' })).not.toBeNull();
     expect(screen.getByText('บันทึกรับเงินเรียบร้อย')).not.toBeNull();
+    expect(close).not.toHaveBeenCalled();
+    expect(mocks.rpc).not.toHaveBeenCalledWith('get_payment_receipt_snapshot', expect.anything());
+
+    await user.click(screen.getByRole('button', { name: 'พิมพ์ใบเสร็จ' }));
     await waitFor(() => expect(close).toHaveBeenCalledOnce());
+    expect(screen.getByText('บันทึกรับเงินเรียบร้อย')).not.toBeNull();
   });
 
   it('keeps the receipt open until close and refreshes history when Escape closes it', async () => {
@@ -856,13 +870,10 @@ describe('FinancialOperations', () => {
 
     render(<FinancialOperations userRole="courier" />);
     await user.click(await screen.findByRole('button', { name: /S001 · ร้านเก็บเงิน/ }));
-    await user.click(screen.getByRole('checkbox', { name: 'พิมพ์ใบรับเงินหลังบันทึก' }));
     await user.click(screen.getByRole('button', { name: 'บันทึกรับเงินทันที' }));
 
     expect(await screen.findByText('บันทึกรับเงินเรียบร้อย')).not.toBeNull();
-    await waitFor(() => expect(mocks.rpc).toHaveBeenCalledWith('get_payment_receipt_snapshot', {
-      p_payment_id: 'payment-1',
-    }));
+    expect(mocks.rpc).not.toHaveBeenCalledWith('get_payment_receipt_snapshot', expect.anything());
     expect(screen.getByRole('dialog', { name: 'รับเงิน ร้านเก็บเงิน' })).not.toBeNull();
     expect(queueLoadCount).toBe(1);
     expect(paymentQueryCount).toBe(2);
@@ -942,7 +953,6 @@ describe('FinancialOperations', () => {
     expect(note.hasAttribute('required')).toBe(false);
     expect((screen.getByLabelText('หลักฐานการชำระ') as HTMLInputElement).required).toBe(true);
     await user.upload(screen.getByLabelText('หลักฐานการชำระ'), new File(['slip'], 'slip.jpg', { type: 'image/jpeg' }));
-    await user.click(screen.getByRole('checkbox', { name: 'พิมพ์ใบรับเงินหลังบันทึก' }));
     await user.click(screen.getByRole('button', { name: 'บันทึกรับเงินทันที' }));
 
     await waitFor(() => expect(mocks.rpc).toHaveBeenCalledWith('record_payment', expect.objectContaining({
@@ -984,7 +994,6 @@ describe('FinancialOperations', () => {
     await user.click(screen.getByRole('button', { name: 'QR' }));
     await user.upload(screen.getByLabelText('หลักฐานการชำระ'), new File(['slip'], 'slip.jpg', { type: 'image/jpeg' }));
     await user.click(screen.getByRole('button', { name: 'เงินสด' }));
-    await user.click(screen.getByRole('checkbox', { name: 'พิมพ์ใบรับเงินหลังบันทึก' }));
     await user.click(screen.getByRole('button', { name: 'บันทึกรับเงินทันที' }));
 
     await waitFor(() => expect(mocks.rpc).toHaveBeenCalledWith('record_payment', expect.objectContaining({

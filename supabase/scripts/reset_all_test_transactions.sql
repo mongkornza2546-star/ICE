@@ -26,6 +26,14 @@ select 'delivery charges / bills', count(*) from public.delivery_charges
 union all
 select 'payments / receipts', count(*) from public.payments
 union all
+select 'payment allocation changes', count(*) from public.payment_allocation_changes
+union all
+select 'refund obligations / settlements',
+  (select count(*) from public.refund_obligations)
+  + (select count(*) from public.refund_settlements)
+union all
+select 'delivery charge adjustments', count(*) from public.delivery_charge_adjustments
+union all
 select 'payment receipt snapshots', count(*) from public.payment_receipt_snapshots
 union all
 select 'delivery document snapshots', count(*) from public.delivery_charge_document_snapshots
@@ -66,6 +74,11 @@ $$;
 -- ใช้ TRUNCATE ครั้งเดียวเพื่อรองรับ FK ที่เชื่อมกันแบบ RESTRICT/วนกลับ
 -- ไม่ใช้ CASCADE เพื่อป้องกันไม่ให้ตาราง master/config ถูกล้างตามไป
 truncate table
+  public.delivery_adjustment_items,
+  public.delivery_charge_adjustments,
+  public.refund_settlements,
+  public.refund_obligations,
+  public.payment_allocation_changes,
   public.payment_allocations,
   public.payment_receipt_snapshots,
   public.delivery_charge_document_snapshots,
@@ -120,6 +133,11 @@ select
   (select count(*) from public.delivery_events) as sales,
   (select count(*) from public.delivery_charges) as bills,
   (select count(*) from public.payments) as payments,
+  (select count(*) from public.payment_allocation_changes) as payment_allocation_changes,
+  (select count(*) from public.refund_obligations) as refund_obligations,
+  (select count(*) from public.refund_settlements) as refund_settlements,
+  (select count(*) from public.delivery_charge_adjustments) as delivery_charge_adjustments,
+  (select count(*) from public.delivery_adjustment_items) as delivery_adjustment_items,
   (select count(*) from public.payment_receipt_snapshots) as receipt_snapshots,
   (select count(*) from public.delivery_charge_document_snapshots) as delivery_document_snapshots,
   (select count(*) from public.document_counters) as document_counters,

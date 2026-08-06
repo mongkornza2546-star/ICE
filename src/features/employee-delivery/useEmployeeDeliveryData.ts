@@ -14,7 +14,7 @@ import type { EmployeeDeliveryGateway, EmployeeDeliveryDraftState } from '../../
 import { usePendingRequests, type PendingRequestIdentity } from './usePendingRequests';
 import { compareShopCodes, normalizeSearch, stockQuantity, employeeErrorMessage } from './utils';
 import { clearRecovery, readRecovery, writeRecovery } from '../../lib/recoveryStorage';
-import { printSalesDocument, salesDocumentFromStored } from '../../lib/salesDocumentPrint';
+import { printSalesDocument, salesDocumentFromStored, type StoredSalesDocument } from '../../lib/salesDocumentPrint';
 
 const PAD_VALUES = ['0', '1', '2', '3', '4', '5', '+'] as const;
 
@@ -117,8 +117,14 @@ export function useEmployeeDeliveryData({
   const [loadedReferenceServiceDate, setLoadedReferenceServiceDate] = useState<string | null>(null);
   const [loadingCards, setLoadingCards] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
+  const [success, setSuccessMessage] = useState<string | null>(null);
+  const [latestReceipt, setLatestReceipt] = useState<StoredSalesDocument | null>(null);
   const [referenceReloadId, setReferenceReloadId] = useState(0);
+
+  const setSuccess = useCallback((message: string | null, receipt: StoredSalesDocument | null = null) => {
+    setSuccessMessage(message);
+    setLatestReceipt(receipt);
+  }, []);
 
   const referenceRequestId = useRef(0);
   const cardsRequestId = useRef(0);
@@ -763,7 +769,8 @@ export function useEmployeeDeliveryData({
       approvalId,
     })}`;
     const request = getOrCreatePendingRequest(signature);
-    const printWindow = isDelivery && paymentTerm !== 'immediate'
+    const shouldPrintDeliveryDocument = isDelivery && paymentTerm === 'credit';
+    const printWindow = shouldPrintDeliveryDocument
       ? window.open('', '_blank', 'popup,width=360,height=680')
       : null;
     const requestId = ++submissionRequestId.current;
@@ -799,7 +806,7 @@ export function useEmployeeDeliveryData({
         setSubmitting(false);
         return;
       }
-      if (result?.print_document) {
+      if (result?.print_document && shouldPrintDeliveryDocument) {
         printSalesDocument(salesDocumentFromStored(result.print_document), printWindow);
       } else {
         printWindow?.close();
@@ -926,7 +933,6 @@ export function useEmployeeDeliveryData({
       setImmediateSaleRetry(atomicRetry);
       persistRecoveryNow({ immediateSaleRetry: atomicRetry });
     }
-    const printWindow = usesAtomicSale ? window.open('', '_blank', 'popup,width=360,height=680') : null;
     setPaymentSubmitting(true);
     setEntryError(null);
     try {
@@ -975,13 +981,9 @@ export function useEmployeeDeliveryData({
       clearPendingRequest(signature, request.key);
       setImmediateSaleRetry(null);
       setPaymentOpen(false);
-      const printed = printSalesDocument(salesDocumentFromStored(sale.print_document), printWindow);
       await handleRecorded(true, sale.delivery);
-      if (!printed) {
-        setSuccess(`บันทึกขายสดและออก ${sale.receipt_number} แล้ว แต่ป๊อปอัปถูกบล็อก กรุณาพิมพ์ซ้ำจากประวัติรับเงิน`);
-      }
+      setSuccess(`บันทึกขายสดและออก ${sale.receipt_number} แล้ว`, sale.print_document);
     } catch (paymentError) {
-      printWindow?.close();
       const rawMessage = paymentError instanceof Error
         ? paymentError.message
         : typeof paymentError === 'object' && paymentError && 'message' in paymentError
@@ -1072,6 +1074,12 @@ export function useEmployeeDeliveryData({
     immediateSaleRetry?.evidencePath
       && immediateSaleRetry.payloadSignature === currentImmediateSalePayloadSignature,
   );
+  const latestReceiptAvailable = Boolean(latestReceipt);
+  const printLatestReceipt = () => {
+    if (!latestReceipt) return;
+    const printed = printSalesDocument(salesDocumentFromStored(latestReceipt));
+    if (!printed) setError('เบราว์เซอร์บล็อกหน้าต่างพิมพ์ กรุณาอนุญาตป๊อปอัปแล้วลองใหม่');
+  };
 
   return {
     rounds,
@@ -1112,6 +1120,7 @@ export function useEmployeeDeliveryData({
     loadingCards,
     error,
     success,
+    latestReceiptAvailable,
     selectedRound,
     selectedCard,
     items,
@@ -1136,6 +1145,7 @@ export function useEmployeeDeliveryData({
     setPaymentEvidence,
     setApprovalReason,
     retryLoad,
+    printLatestReceipt,
     chooseRound,
     setPadValue,
     chooseProblemStatus,
