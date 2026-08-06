@@ -1,6 +1,6 @@
 import type { RefObject } from 'react';
 import { Coins, ListNumbers, Printer, X } from '@phosphor-icons/react';
-import type { HistoryReceiptDetail } from '../types';
+import type { HistoryReceiptDetail, PaymentCorrectionTarget } from '../types';
 import { money, paymentMethodLabel, receiptDateTime } from '../utils';
 
 export function HistoryReceiptModal({
@@ -11,6 +11,7 @@ export function HistoryReceiptModal({
   onClose,
   onPrint,
   onVoid,
+  onCorrect,
 }: {
   historyReceipt: HistoryReceiptDetail;
   busy: boolean;
@@ -19,6 +20,7 @@ export function HistoryReceiptModal({
   onClose: () => void;
   onPrint: () => void;
   onVoid?: () => void;
+  onCorrect?: (target: PaymentCorrectionTarget) => void;
 }) {
   return (
     <div
@@ -77,6 +79,20 @@ export function HistoryReceiptModal({
             </article>
           ))}
         </section>
+
+        {onCorrect && historyReceipt.payment.status === 'active' ? (
+          <section className="financial-ops__receipt-charges" aria-label="บิลปัจจุบันที่แก้ไขได้">
+            <strong><ListNumbers aria-hidden="true" size={18} /> บิลที่ชำระครบและแก้ไขได้</strong>
+            {historyReceipt.correctionTargets === null && !historyReceipt.correctionError ? <p>กำลังตรวจสอบบิล...</p> : null}
+            {historyReceipt.correctionError ? <p className="employee-error" role="alert">ตรวจสอบสิทธิ์แก้ไขบิลไม่สำเร็จ: {historyReceipt.correctionError}</p> : null}
+            {historyReceipt.correctionTargets?.map((target) => (
+              <article key={target.charge_id}>
+                <header><strong>{target.charge_number}</strong><b>{money.format(target.effective_amount)}</b></header>
+                <button disabled={busy} onClick={() => onCorrect(target)} type="button">แก้ไขหรือยกเลิกใบส่งของ {target.charge_number}</button>
+              </article>
+            ))}
+          </section>
+        ) : null}
 
         <div className="financial-ops__receipt-actions">
           <button disabled={busy} onClick={onPrint} type="button"><Printer aria-hidden="true" size={19} />พิมพ์ซ้ำ</button>

@@ -288,6 +288,75 @@ describe('FinancialOperations', () => {
     expect(screen.getByRole('button', { name: 'ยกเลิกรายการ' })).not.toBeNull();
   });
 
+  it('opens the current fully paid bill from a manager transaction and refreshes after correction', async () => {
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1200 });
+    const user = userEvent.setup();
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    let paymentQueryCount = 0;
+    const payment = {
+      id: 'payment-current', receipt_number: 'R260803-000010', received_amount: 60,
+      allocated_amount: 60, change_amount: 0, payment_method: 'cash' as const,
+      status: 'active' as const, recorded_at: '2026-08-03T02:00:00Z', void_reason: null,
+      shops: { code: 'P010', name: 'ร้านแก้บิล' },
+    };
+    mocks.from.mockImplementation((table: string) => {
+      if (table === 'collection_runs') return queryResult(null);
+      if (table === 'payments') {
+        paymentQueryCount += 1;
+        return queryResult([payment]);
+      }
+      return queryResult([]);
+    });
+    mocks.rpc.mockImplementation(async (name: string) => {
+      if (name === 'get_payment_receipt_items') return { data: [{
+        charge_number: 'C260803-000010', received_amount: 60,
+        ice_type_name: 'น้ำแข็งหลอด', ice_type_unit: 'ถุง', quantity: 2, line_total: 60,
+      }], error: null };
+      if (name === 'get_payment_correction_targets') return { data: [{
+        charge_id: 'charge-current', charge_number: 'C260803-000011',
+        delivery_event_id: 'event-current', payment_allocated_amount: 60,
+        allocated_amount: 60, effective_amount: 60,
+      }], error: null };
+      if (name === 'get_delivery_correction_context') return { data: {
+        delivery_event_id: 'event-current', round_stop_id: 'stop-1',
+        charge_number: 'C260803-000011', shop_name: 'ร้านแก้บิล',
+        service_date: '2026-08-03', round_status: 'open', day_closed: false,
+        original_amount: 60, effective_amount: 60, allocated_amount: 60,
+        payment_term: 'immediate', note: null, can_correct: true, can_cancel: true,
+        blocker_reason: null,
+        ice_types: [{ ice_type_id: 'ice-1', name: 'น้ำแข็งหลอด', unit: 'ถุง', unit_price: 30 }],
+        items: [{ ice_type_id: 'ice-1', name: 'น้ำแข็งหลอด', unit: 'ถุง', quantity: 2, unit_price: 30 }],
+      }, error: null };
+      if (name === 'preview_delivery_correction') return { data: {
+        old_amount: 60, new_amount: 30, allocated_amount: 60,
+        refund_amount: 30, outstanding_amount: 0, stock_deltas: [],
+      }, error: null };
+      if (name === 'apply_open_delivery_correction') return { data: {}, error: null };
+      return { data: [], error: null };
+    });
+
+    render(<FinancialOperations userRole="round_lead" />);
+    await waitFor(() => expect(paymentQueryCount).toBe(2));
+    await user.click(screen.getByRole('tab', { name: /ประวัติรับเงิน/ }));
+    await user.click(screen.getByRole('button', { name: /เลือกรายการ P010 · ร้านแก้บิล/ }));
+    await user.click(screen.getByRole('button', { name: 'ดูบิล' }));
+    await user.click(await screen.findByRole('button', { name: 'แก้ไขหรือยกเลิกใบส่งของ C260803-000011' }));
+
+    expect(screen.queryByRole('dialog', { name: 'รายละเอียดใบเสร็จ R260803-000010' })).toBeNull();
+    expect(await screen.findByRole('dialog', { name: 'แก้ไขบิล C260803-000011' })).not.toBeNull();
+    expect(mocks.rpc).toHaveBeenCalledWith('get_delivery_correction_context', { p_event_id: 'event-current' });
+
+    const quantity = screen.getByRole('spinbutton', { name: 'น้ำแข็งหลอด (ถุง)' });
+    await user.clear(quantity);
+    await user.type(quantity, '1');
+    await user.type(screen.getByRole('textbox', { name: 'เหตุผล' }), 'ส่งจริงหนึ่งถุง');
+    await user.click(screen.getByRole('button', { name: 'คำนวณผลกระทบ' }));
+    await user.click(await screen.findByRole('button', { name: 'ยืนยันแก้ไข' }));
+
+    await waitFor(() => expect(paymentQueryCount).toBe(4));
+    expect(await screen.findByText('แก้ไขบิลแล้ว')).not.toBeNull();
+  });
+
   it('labels a shop-level outstanding total from the complete payment-term mix', () => {
     Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1200 });
     const mixedShop = {
@@ -447,6 +516,8 @@ describe('FinancialOperations', () => {
     await user.click(await screen.findByRole('button', { name: 'ประวัติรับเงิน' }));
     await user.click(await screen.findByRole('button', { name: /ดูบิล R260803-000002/ }));
     expect(await screen.findByRole('dialog', { name: 'รายละเอียดใบเสร็จ R260803-000002' })).not.toBeNull();
+    expect(screen.queryByText('บิลที่ชำระครบและแก้ไขได้')).toBeNull();
+    expect(mocks.rpc).not.toHaveBeenCalledWith('get_payment_correction_targets', expect.anything());
     await user.click(screen.getByRole('button', { name: 'ปิดรายละเอียดใบเสร็จ' }));
     await user.click(await screen.findByRole('button', { name: 'พิมพ์ซ้ำ' }));
 
@@ -1276,6 +1347,41 @@ describe('FinancialOperations', () => {
       p_reason: 'บันทึกจำนวนผิด', p_stop_status: 'delivered',
     })));
     expect(onRefreshReceivables).toHaveBeenCalledOnce();
+  });
+
+  it('keeps a fully paid credit bill out of the correction entry point', async () => {
+    const user = userEvent.setup();
+    render(<ManagerFinancialSections
+      approvals={[]}
+      busy={false}
+      dueDateRequests={[]}
+      onDecide={() => undefined}
+      onDecideDueDateRequest={() => undefined}
+      onLoadDetail={async () => ({
+        charges: [{
+          charge_id: 'credit-paid', charge_number: 'C260803-000099', service_date: '2026-08-03',
+          due_date: '2026-08-08', original_amount: 300, allocated_amount: 300,
+          outstanding_amount: 0, days_overdue: 0, payment_status: 'paid', due_status: 'paid',
+          assigned_collection_run_id: null, delivery_event_id: 'event-paid',
+        }],
+        payments: [],
+      })}
+      onToggleCreditCollectionAssignment={() => undefined}
+      receivables={[{
+        shop_id: 'shop-1', shop_code: 'S001', shop_name: 'ร้านเครดิต', credit_limit: null,
+        available_credit_amount: null, outstanding_amount: 0, overdue_amount: 0,
+        oldest_due_date: null, charges: [], payments: [],
+      }]}
+      runId="run-1"
+      serviceDate="2026-08-05"
+      userRole="admin"
+    />);
+
+    await user.click(screen.getByRole('button', { name: 'S001 ร้านเครดิต' }));
+    await user.selectOptions(screen.getByLabelText('กรองบิลในรายละเอียดร้าน'), 'all');
+
+    expect(await screen.findByText('C260803-000099')).not.toBeNull();
+    expect(screen.queryByRole('button', { name: 'เปิดรายละเอียดบิล C260803-000099' })).toBeNull();
   });
 
   it('keeps an inactive historical ice type available for a correction', async () => {

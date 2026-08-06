@@ -188,6 +188,15 @@ export type ReceiptCharge = {
   items: ReceiptItem[];
 };
 
+export type PaymentCorrectionTarget = {
+  charge_id: string;
+  charge_number: string;
+  delivery_event_id: string;
+  payment_allocated_amount: number;
+  allocated_amount: number;
+  effective_amount: number;
+};
+
 export type PaymentReceipt = {
   paymentId: string;
   receiptNumber: string;
@@ -227,6 +236,8 @@ export type HistoryReceiptDetail = {
   payment: PaymentHistoryItem;
   charges: ReceiptCharge[] | null;
   error: string | null;
+  correctionTargets: PaymentCorrectionTarget[] | null;
+  correctionError: string | null;
 };
 
 export type ReceiptItemRow = {

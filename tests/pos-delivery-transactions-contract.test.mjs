@@ -6,6 +6,10 @@ const migration = readFileSync(
   new URL('../supabase/migrations/0030_pos_delivery_transactions.sql', import.meta.url),
   'utf8',
 );
+const readOnlyPriceResolution = readFileSync(
+  new URL('../supabase/migrations/0132_read_only_delivery_price_resolution.sql', import.meta.url),
+  'utf8',
+);
 
 test('POS context is scoped to the selected open stop and server-owned service date', () => {
   assert.match(migration, /create or replace function public\.get_delivery_pos_context\(p_round_stop_id uuid\)/);
@@ -29,6 +33,26 @@ test('record_delivery snapshots resolved prices and creates one idempotent charg
   assert.match(migration, /insert into public\.delivery_charges/);
   assert.match(migration, /set status = 'consumed'/);
   assert.match(migration, /return public\.delivery_financial_response\(v_event_id\)/);
+});
+
+test('read-only price resolution skips locks while delivery writes retain both price-row locks', () => {
+  const resolver = readOnlyPriceResolution.match(
+    /create or replace function public\.resolve_delivery_price\([\s\S]*?\n\$\$;/,
+  )?.[0];
+  assert.ok(resolver);
+
+  const writeBranchStart = resolver.indexOf('\n  end if;\n\n  return query');
+  assert.notEqual(writeBranchStart, -1);
+  const readOnlyBranch = resolver.slice(0, writeBranchStart);
+  const writeBranch = resolver.slice(writeBranchStart);
+
+  assert.match(readOnlyBranch, /current_setting\('transaction_read_only'\) = 'on'/);
+  assert.doesNotMatch(readOnlyBranch, /for share;/);
+  assert.match(
+    writeBranch,
+    /from public\.shop_ice_type_prices[\s\S]*for share;[\s\S]*from public\.ice_type_prices[\s\S]*for share;/,
+  );
+  assert.equal((writeBranch.match(/for share;/g) ?? []).length, 2);
 });
 
 test('financial-aware revisions preserve legacy exclusion and original-date pricing', () => {

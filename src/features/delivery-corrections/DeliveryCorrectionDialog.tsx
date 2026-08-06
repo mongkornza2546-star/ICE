@@ -299,7 +299,7 @@ export function DeliveryCorrectionDialog({
           <strong>{approvalStatus === 'approved' ? 'อนุมัติวงเงินแล้ว' : approvalStatus === 'pending' ? 'ส่งคำขอแล้ว รออนุมัติ' : 'ยอดใหม่เกินวงเงินเครดิต'}</strong>
           {approvalStatus !== 'approved' ? <button disabled={submitting} onClick={() => void requestApproval()} type="button">{approvalStatus === 'pending' ? 'ตรวจสถานะคำขอ' : 'ขออนุมัติวงเงิน'}</button> : null}
         </div> : null}
-        {preview?.stock_deltas?.length ? <div className="delivery-correction-dialog__stock-impact"><strong>ผลต่อสต๊อก</strong>{context.day_closed ? <span>วันนี้ปิดสต๊อกแล้ว จึงไม่เปลี่ยน snapshot สิ้นวัน</span> : preview.stock_deltas.map((item) => <span key={item.ice_type_id}>{item.name}: {item.quantity_delta > 0 ? 'คืนเข้า' : 'ตัดออก'} {Math.abs(item.quantity_delta).toLocaleString('th-TH')} {item.unit}</span>)}</div> : null}
+        {preview?.stock_deltas?.length ? <div className="delivery-correction-dialog__stock-impact"><strong>ผลต่อสต๊อก</strong>{context.day_closed ? <span>วันนี้ปิดสต๊อกแล้ว จึงไม่เปลี่ยน snapshot สิ้นวัน</span> : preview.stock_deltas.map((item) => <span key={item.ice_type_id}>{item.name}: {item.quantity_delta > 0 ? 'รับคืนเข้าสต๊อก' : 'ส่งเพิ่มให้ร้าน'} {Math.abs(item.quantity_delta).toLocaleString('th-TH')} {item.unit}</span>)}</div> : null}
         {context.blocker_reason && !canCreateAdjustment ? <p className="credit-ar__action-error" role="alert">{context.blocker_reason}</p> : null}
       </> : null}
       {error ? <p className="credit-ar__action-error" role="alert">{error}</p> : null}

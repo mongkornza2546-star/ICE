@@ -109,6 +109,14 @@ const deliveryCorrectionHardeningAndRefundSummary = readFileSync(
   new URL('../supabase/migrations/0131_delivery_correction_hardening_and_refund_summary.sql', import.meta.url),
   'utf8',
 );
+const readOnlyDeliveryPriceResolution = readFileSync(
+  new URL('../supabase/migrations/0132_read_only_delivery_price_resolution.sql', import.meta.url),
+  'utf8',
+);
+const paymentCorrectionTargets = readFileSync(
+  new URL('../supabase/migrations/0133_payment_correction_targets.sql', import.meta.url),
+  'utf8',
+);
 
 const COURIER_ID = '10000000-0000-4000-8000-000000000001';
 const ADMIN_ID = '10000000-0000-4000-8000-000000000002';
@@ -599,6 +607,8 @@ async function createDatabase(t, { applyCollectionShopCards = true } = {}) {
     await db.exec(effectiveChargeProjections);
     await db.exec(effectiveChargePayments);
     await db.exec(deliveryCorrectionHardeningAndRefundSummary);
+    await db.exec(readOnlyDeliveryPriceResolution);
+    await db.exec(paymentCorrectionTargets);
   }
   await db.exec(`
     insert into public.ice_type_prices (
@@ -2482,7 +2492,16 @@ test('paid open-period correction preserves the receipt and creates a refund for
     ) as result
   `);
   const paymentId = payment.rows[0].result.payment_id;
+  await assert.rejects(
+    db.query(`select public.get_payment_correction_targets('${paymentId}')`),
+    /Only a round lead or admin can view payment correction targets/i,
+  );
   await db.exec(`update public.auth_context set user_id = '${ADMIN_ID}', app_role = 'admin'`);
+
+  const originalTargets = await db.query(`select public.get_payment_correction_targets('${paymentId}') as result`);
+  assert.equal(originalTargets.rows[0].result.length, 1);
+  assert.equal(originalTargets.rows[0].result[0].delivery_event_id, eventId);
+  assert.equal(Number(originalTargets.rows[0].result[0].effective_amount), 36);
 
   const corrected = await db.query(`
     select public.apply_open_delivery_correction(
@@ -2513,6 +2532,20 @@ test('paid open-period correction preserves the receipt and creates a refund for
     charge_id: replacementChargeId, amount: '18.00', refund_amount: '18.00',
     refund_status: 'pending', allocated_amount: '36.00', receipt_amount: '36.00',
   });
+
+  const pendingRefundTargets = await db.query(`select public.get_payment_correction_targets('${paymentId}') as result`);
+  assert.equal(pendingRefundTargets.rows[0].result.length, 0);
+
+  const obligation = await db.query(`select id from public.refund_obligations where payment_id = '${paymentId}'`);
+  await db.query(`select public.settle_refund(
+    '${obligation.rows[0].id}', 'cash', null,
+    'a1000000-0000-4000-8000-000000000004'
+  )`);
+  const settledRefundTargets = await db.query(`select public.get_payment_correction_targets('${paymentId}') as result`);
+  assert.equal(settledRefundTargets.rows[0].result.length, 1);
+  assert.equal(settledRefundTargets.rows[0].result[0].charge_id, replacementChargeId);
+  assert.equal(settledRefundTargets.rows[0].result[0].delivery_event_id, corrected.rows[0].result.replacement_event_id);
+  assert.equal(Number(settledRefundTargets.rows[0].result[0].effective_amount), 18);
 
   const replay = await db.query(`
     select public.apply_open_delivery_correction(
@@ -3060,6 +3093,24 @@ test('open credit corrections preserve credit-limit approval checks', async (t) 
     status: 'consumed',
     consumed_by_delivery_event_id: corrected.rows[0].result.replacement_event_id,
   });
+});
+
+test('delivery correction preview works in a read-only transaction', async (t) => {
+  const db = await createDatabase(t);
+  const delivery = await db.query(`select public.record_delivery(
+    '${STOP_ID}', '${itemPayload(1)}'::jsonb, 'delivered', null, null,
+    'a8150000-0000-4000-8000-000000000001', 'immediate'
+  ) as result`);
+  await db.exec(`update public.auth_context set user_id = '${ADMIN_ID}', app_role = 'admin'`);
+
+  await db.exec('begin read only');
+  const preview = await db.query(`select public.preview_delivery_correction(
+    '${delivery.rows[0].result.delivery_event_id}', 'correct', '${itemPayload(2)}'::jsonb,
+    'delivered'
+  ) as result`);
+  await db.exec('commit');
+
+  assert.equal(Number(preview.rows[0].result.new_amount), 36);
 });
 
 test('delivery correction idempotency rejects a changed payload', async (t) => {

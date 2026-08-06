@@ -66,7 +66,9 @@ describe('DeliveryCorrectionDialog', () => {
       }, error: null };
       if (name === 'preview_delivery_correction') return { data: {
         old_amount: 18, new_amount: 36, allocated_amount: 0, refund_amount: 0,
-        outstanding_amount: 36, stock_deltas: [], approval_required: true,
+        outstanding_amount: 36,
+        stock_deltas: [{ ice_type_id: 'ice-1', name: 'น้ำแข็งหลอด', unit: 'ถุง', quantity_delta: -1 }],
+        approval_required: true,
       }, error: null };
       if (name === 'request_financial_approval') return { data: { id: 'approval-1', status: 'approved' }, error: null };
       if (name === 'apply_open_delivery_correction') return { data: {}, error: null };
@@ -81,6 +83,7 @@ describe('DeliveryCorrectionDialog', () => {
     await user.type(quantity, '2');
     await user.type(screen.getByRole('textbox', { name: 'เหตุผล' }), 'เพิ่มจำนวนที่ส่งจริง');
     await user.click(screen.getByRole('button', { name: 'คำนวณผลกระทบ' }));
+    expect(await screen.findByText('น้ำแข็งหลอด: ส่งเพิ่มให้ร้าน 1 ถุง')).toBeTruthy();
     expect(await screen.findByRole('button', { name: 'ขออนุมัติวงเงิน' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'ยืนยันแก้ไข' })).toHaveProperty('disabled', true);
     await user.click(screen.getByRole('button', { name: 'ขออนุมัติวงเงิน' }));

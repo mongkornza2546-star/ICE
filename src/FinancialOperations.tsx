@@ -20,6 +20,7 @@ import type {
   DueDateRequest,
   HistoryReceiptDetail,
   PaymentHistoryItem,
+  PaymentCorrectionTarget,
   PaymentReceipt,
   PaymentReceiptSnapshot,
   QueueShop,
@@ -493,6 +494,15 @@ export function FinancialOperations({
     return receiptFromSnapshot(data as PaymentReceiptSnapshot);
   };
 
+  const getPaymentCorrectionTargets = async (paymentId: string) => {
+    if (!supabase) return [];
+    const { data, error: rpcError } = await supabase.rpc('get_payment_correction_targets', {
+      p_payment_id: paymentId,
+    });
+    if (rpcError) throw rpcError;
+    return (data ?? []) as PaymentCorrectionTarget[];
+  };
+
   const recordPayment = () => {
     const printWindow = printReceiptWanted
       ? window.open('', '_blank', 'popup,width=360,height=680')
@@ -733,7 +743,13 @@ export function FinancialOperations({
 
   const openHistoryReceipt = (payment: PaymentHistoryItem, trigger: HTMLButtonElement) => {
     historyReturnFocusRef.current = trigger;
-    setHistoryReceipt({ payment, charges: null, error: null });
+    setHistoryReceipt({
+      payment,
+      charges: null,
+      error: null,
+      correctionTargets: isManager && payment.status === 'active' ? null : [],
+      correctionError: null,
+    });
     void getReceiptCharges(payment.id)
       .then((charges) => {
         setHistoryReceipt((current) => current?.payment.id === payment.id
@@ -745,6 +761,25 @@ export function FinancialOperations({
           ? { ...current, error: getErrorMessage(receiptError) }
           : current);
       });
+    if (isManager && payment.status === 'active') {
+      void getPaymentCorrectionTargets(payment.id)
+        .then((correctionTargets) => {
+          setHistoryReceipt((current) => current?.payment.id === payment.id
+            ? { ...current, correctionTargets }
+            : current);
+        })
+        .catch((targetError: unknown) => {
+          setHistoryReceipt((current) => current?.payment.id === payment.id
+            ? { ...current, correctionTargets: [], correctionError: getErrorMessage(targetError) }
+            : current);
+        });
+    }
+  };
+
+  const openHistoryChargeCorrection = (target: PaymentCorrectionTarget) => {
+    historyReturnFocusRef.current = null;
+    setHistoryReceipt(null);
+    setCorrectionEventId(target.delivery_event_id);
   };
 
   const decide = (approvalId: string, decision: 'approved' | 'rejected') => runAction(async () => {
@@ -1070,6 +1105,7 @@ export function FinancialOperations({
           historyReceipt={historyReceipt}
           onClose={() => setHistoryReceipt(null)}
           onPrint={() => printHistoryReceipt(historyReceipt.payment)}
+          onCorrect={isManager ? openHistoryChargeCorrection : undefined}
           onVoid={historyReceipt.payment.status === 'active'
             && (isManager || (Boolean(currentUserId) && historyReceipt.payment.recorded_by === currentUserId)) ? () => {
             void voidPayment(historyReceipt.payment).then((voided) => {
