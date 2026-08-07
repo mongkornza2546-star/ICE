@@ -179,8 +179,9 @@ export function CollectionDesk({
       <header className="collection-desk__header">
         <div><h1>เก็บเงินร้านค้า</h1><p>ติดตามยอดค้างชำระและรับชำระเงินจากร้านค้า</p></div>
         <div>
+          <span className="collection-desk__auto-refresh"><i aria-hidden="true" />อัปเดตอัตโนมัติทุก 30 วินาที</span>
           {runId ? <button className="collection-desk__primary" disabled={busy} onClick={onRefresh} type="button">
-            <span aria-hidden="true">＋</span>อัปเดตยอดล่าสุด
+            อัปเดตตอนนี้
           </button> : null}
         </div>
       </header>

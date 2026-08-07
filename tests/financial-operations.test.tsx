@@ -1211,6 +1211,45 @@ describe('FinancialOperations', () => {
     await waitFor(() => expect(paymentQueryCount).toBe(4));
   });
 
+  it('automatically refreshes manager collection data every 30 seconds', async () => {
+    let scheduledRefresh: TimerHandler | undefined;
+    const setInterval = window.setInterval.bind(window);
+    const clearIntervalSpy = vi.spyOn(window, 'clearInterval');
+    vi.spyOn(window, 'setInterval').mockImplementation((handler, timeout, ...args) => {
+      if (timeout === 30_000) {
+        scheduledRefresh = handler;
+        return 42;
+      }
+      return setInterval(handler, timeout, ...args);
+    });
+    let paymentQueryCount = 0;
+    mocks.from.mockImplementation((table: string) => {
+      if (table === 'collection_runs') return queryResult({ id: 'run-1' });
+      if (table === 'payments') {
+        paymentQueryCount += 1;
+        return queryResult([]);
+      }
+      return queryResult([]);
+    });
+    mocks.rpc.mockImplementation(async (name: string) => {
+      if (name === 'get_collection_run_queue') return { data: [], error: null };
+      return { data: [], error: null };
+    });
+
+    const view = render(<FinancialOperations userRole="round_lead" />);
+    await waitFor(() => expect(paymentQueryCount).toBe(2));
+    expect(window.setInterval).toHaveBeenCalledWith(expect.any(Function), 30_000);
+    expect(screen.getByText('อัปเดตอัตโนมัติทุก 30 วินาที')).not.toBeNull();
+
+    await act(async () => {
+      if (typeof scheduledRefresh === 'function') scheduledRefresh();
+    });
+    await waitFor(() => expect(paymentQueryCount).toBe(4));
+
+    view.unmount();
+    expect(clearIntervalSpy).toHaveBeenCalledWith(42);
+  });
+
   it('ignores an obsolete history error after the selected date changes', async () => {
     const user = userEvent.setup();
     const obsoleteHistory = deferredQueryResult();

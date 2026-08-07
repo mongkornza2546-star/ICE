@@ -40,6 +40,7 @@ import {
 import type { AppRole, CreditDueRule, PaymentMethod } from './types/app';
 
 const PAYMENT_FIELDS = 'id, receipt_number, received_amount, allocated_amount, change_amount, payment_method, status, recorded_at, recorded_by, void_reason, shops(code,name)';
+const COLLECTION_AUTO_REFRESH_MS = 30_000;
 
 type FinancialOperationsDemoData = {
   serviceDate: string;
@@ -114,6 +115,7 @@ export function FinancialOperations({
   const historyCloseButtonRef = useRef<HTMLButtonElement>(null);
   const historyReturnFocusRef = useRef<HTMLButtonElement | null>(null);
   const historyRequestRef = useRef(0);
+  const autoRefreshRunningRef = useRef(false);
   const selectedShopRef = useRef<QueueShop | null>(selectedShop);
   const busyRef = useRef(busy);
   const receiptRef = useRef<PaymentReceipt | null>(receipt);
@@ -244,6 +246,18 @@ export function FinancialOperations({
     await Promise.all([load(), loadPaymentHistory()]);
   }, [load, loadPaymentHistory]);
 
+  const autoRefreshFinancialData = useCallback(() => {
+    if (busyRef.current || autoRefreshRunningRef.current) return;
+    autoRefreshRunningRef.current = true;
+    void refreshFinancialData()
+      .catch((loadError: unknown) => {
+        setError(getErrorMessage(loadError));
+      })
+      .finally(() => {
+        autoRefreshRunningRef.current = false;
+      });
+  }, [refreshFinancialData]);
+
   useEffect(() => {
     void load().catch((loadError: unknown) => {
       setError(getErrorMessage(loadError));
@@ -255,6 +269,21 @@ export function FinancialOperations({
       setError(getErrorMessage(loadError));
     });
   }, [loadPaymentHistory]);
+
+  useEffect(() => {
+    if (demoData || !isManager || managerPage !== 'collection') return undefined;
+    const refreshWhenActive = () => {
+      if (document.visibilityState !== 'hidden') autoRefreshFinancialData();
+    };
+    const intervalId = window.setInterval(refreshWhenActive, COLLECTION_AUTO_REFRESH_MS);
+    window.addEventListener('focus', refreshWhenActive);
+    document.addEventListener('visibilitychange', refreshWhenActive);
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener('focus', refreshWhenActive);
+      document.removeEventListener('visibilitychange', refreshWhenActive);
+    };
+  }, [autoRefreshFinancialData, demoData, isManager, managerPage]);
 
   useEffect(() => {
     if (!selectedShop || window.innerWidth >= 1100) return;

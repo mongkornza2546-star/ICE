@@ -769,10 +769,6 @@ export function useEmployeeDeliveryData({
       approvalId,
     })}`;
     const request = getOrCreatePendingRequest(signature);
-    const shouldPrintDeliveryDocument = isDelivery && paymentTerm === 'credit';
-    const printWindow = shouldPrintDeliveryDocument
-      ? window.open('', '_blank', 'popup,width=360,height=680')
-      : null;
     const requestId = ++submissionRequestId.current;
     setSubmitting(true);
     setEntryError(null);
@@ -806,17 +802,11 @@ export function useEmployeeDeliveryData({
         setSubmitting(false);
         return;
       }
-      if (result?.print_document && shouldPrintDeliveryDocument) {
-        printSalesDocument(salesDocumentFromStored(result.print_document), printWindow);
-      } else {
-        printWindow?.close();
-      }
       clearRecovery(requestScope, serviceDate, recoveryMode);
       clearPendingRequest(signature, request.key);
       await handleRecorded(isDelivery, result);
       if (requestId === submissionRequestId.current) setSubmitting(false);
     } catch (submitError) {
-      printWindow?.close();
       if (requestId !== submissionRequestId.current) return;
       setEntryError(employeeErrorMessage(submitError));
       setSubmitting(false);

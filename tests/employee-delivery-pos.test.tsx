@@ -117,19 +117,6 @@ async function selectIceAndGetKeypad(user: ReturnType<typeof userEvent.setup>) {
   return screen.findByRole('region', { name: 'แป้นใส่จำนวน' });
 }
 
-function mockSalesPrintWindow() {
-  const printDocument = document.implementation.createHTMLDocument('เอกสารการขาย');
-  const print = vi.fn();
-  const open = vi.spyOn(window, 'open').mockReturnValue({
-    document: printDocument,
-    addEventListener: vi.fn(),
-    focus: vi.fn(),
-    print,
-    close: vi.fn(),
-  } as unknown as Window);
-  return { open, print, printDocument };
-}
-
 describe('employee delivery POS', () => {
   it('loads server-owned context and uses digit, backspace, and clear keypad behavior', async () => {
     const user = userEvent.setup();
@@ -296,7 +283,7 @@ describe('employee delivery POS', () => {
     openSpy.mockRestore();
   });
 
-  it('keeps automatic document printing for credit deliveries', async () => {
+  it('records a credit delivery without opening a print window', async () => {
     const user = userEvent.setup();
     const api = gateway();
     api.loadDeliveryPosContext = vi.fn().mockResolvedValue({
@@ -343,18 +330,18 @@ describe('employee delivery POS', () => {
         }],
       },
     });
-    const { open, print, printDocument } = mockSalesPrintWindow();
+    const openSpy = vi.spyOn(window, 'open').mockReturnValue(null);
 
     render(<EmployeeDeliveryWorkspace gateway={api} />);
     await user.click(await screen.findByRole('button', { name: /S001 ร้านทดสอบ/ }));
     await user.click(within(await selectIceAndGetKeypad(user)).getByRole('button', { name: '1' }));
     await user.click(screen.getByRole('button', { name: 'ยืนยันส่งร้านนี้' }));
 
-    await waitFor(() => expect(print).toHaveBeenCalledOnce());
-    expect(open).toHaveBeenCalledOnce();
-    expect(printDocument.body.textContent).toContain('INV2607-00002');
-    expect(printDocument.body.textContent).toContain('ครบกำหนด 2026-08-26');
-    open.mockRestore();
+    await waitFor(() => expect(api.recordDelivery).toHaveBeenCalledWith(expect.objectContaining({
+      paymentTerm: 'credit',
+    })));
+    expect(openSpy).not.toHaveBeenCalled();
+    openSpy.mockRestore();
   });
 
   it('keeps an immediate delivery local until one atomic sale RPC records delivery and payment', async () => {
