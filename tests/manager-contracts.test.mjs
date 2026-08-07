@@ -45,6 +45,32 @@ test('Excel shop import is parsed client-side and committed through one admin RP
   assert.match(parser, /รหัสศูนย์ราชการ/);
 });
 
+test('active stall codes are globally unique while inactive history remains reusable', () => {
+  const migration = read('supabase/migrations/0135_active_shop_stall_code_uniqueness.sql');
+  const component = read('src/ShopSettings.tsx');
+  const parser = read('src/lib/shopImport.ts');
+
+  assert.match(migration, /shops_one_active_stall_code_uidx/);
+  assert.match(migration, /lock table public\.shops in share row exclusive mode;/);
+  assert.ok(
+    migration.indexOf('lock table public.shops') < migration.indexOf('do $$'),
+    'shop writes must be locked before the duplicate preflight',
+  );
+  assert.match(migration, /on public\.shops \(upper\(trim\(government_shop_code\)\)\)/);
+  assert.match(migration, /where status = 'active'/);
+  assert.match(migration, /shops_enforce_one_active_stall/);
+  assert.match(migration, /pg_advisory_xact_lock/);
+  assert.match(migration, /rename to import_shop_catalog_without_stall_validation/);
+  assert.match(
+    migration,
+    /case when coalesce[\s\S]*= 'inactive' then 0 else 1 end,[\s\S]*nullif\(upper\(trim\(coalesce\(row\.item->>'government_shop_code', ''\)\)\), ''\) nulls last,[\s\S]*upper\(trim\(row\.item->>'shop_code'\)\),[\s\S]*row\.ordinality/,
+  );
+  assert.match(component, /รหัสล็อก\/พื้นที่ขาย/);
+  assert.match(component, /activeStallConflict/);
+  assert.match(parser, /LEGACY_STALL_HEADER/);
+  assert.match(parser, /activeStallRows/);
+});
+
 test('new rounds and shop settings do not depend on routes', () => {
   const migration = read('supabase/migrations/0006_rounds_without_routes.sql');
   const component = read('src/ShopSettings.tsx');

@@ -69,11 +69,13 @@ export function FinancialOperations({
   onManagerPageChange?: (page: 'collection' | 'credit' | 'refund') => void;
 }) {
   const serviceDate = demoData?.serviceDate ?? toBangkokDateString();
+  const isManager = userRole === 'admin' || userRole === 'round_lead';
   const initialDemoRunId = demoData
     ? demoData.runId === undefined ? 'demo-collection-run' : demoData.runId
     : null;
-  const initialDemoShop = initialDemoRunId && window.innerWidth >= 1100 ? demoData?.queue[0] ?? null : null;
-  const isManager = userRole === 'admin' || userRole === 'round_lead';
+  const initialDemoShop = initialDemoRunId && isManager && window.innerWidth >= 1100
+    ? demoData?.queue[0] ?? null
+    : null;
   const { getOrCreatePendingRequest, clearPendingRequest } = usePendingRequests();
   const [runId, setRunId] = useState<string | null>(initialDemoRunId);
   const [runOpenedAt, setRunOpenedAt] = useState<string | null>(demoData
@@ -191,7 +193,7 @@ export function FinancialOperations({
       if (preferredShopId && !preferredShop) throw new Error('ไม่พบร้านนี้ในรอบเก็บเงินปัจจุบัน');
       const nextSelectedShop = preferredShop ?? (currentShop
         ? nextQueue.find((shop) => shop.shop_id === currentShop.shop_id) ?? null
-        : (window.innerWidth >= 1100 ? nextQueue[0] ?? null : null));
+        : (isManager && window.innerWidth >= 1100 ? nextQueue[0] ?? null : null));
       setQueue(nextQueue);
       setSelectedShop(nextSelectedShop);
       if (nextSelectedShop && nextSelectedShop.shop_id !== currentShop?.shop_id) resetPaymentForm(nextSelectedShop);

@@ -127,7 +127,7 @@ describe('FinancialOperations', () => {
     Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1024 });
   });
 
-  it('initializes the automatically selected desktop shop with its payment defaults', async () => {
+  it('does not automatically open the first collection shop for a courier on desktop', async () => {
     Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1200 });
     const transferShop = {
       ...queueShop,
@@ -148,6 +148,11 @@ describe('FinancialOperations', () => {
     });
 
     render(<FinancialOperations userRole="courier" />);
+
+    const shopButton = await screen.findByRole('button', { name: /S001 · ร้านเก็บเงิน/ });
+    expect(screen.queryByRole('dialog', { name: 'รับเงิน ร้านเก็บเงิน' })).toBeNull();
+
+    await userEvent.setup().click(shopButton);
 
     expect(await screen.findByRole('dialog', { name: 'รับเงิน ร้านเก็บเงิน' })).not.toBeNull();
     expect(screen.getByRole('button', { name: 'โอนเงิน' }).getAttribute('aria-pressed')).toBe('true');

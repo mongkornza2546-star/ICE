@@ -3,6 +3,7 @@ export function QuantityStepper({
   purpose,
   quantity,
   maxQuantity,
+  unit,
   disabled,
   onChange,
 }: {
@@ -10,6 +11,7 @@ export function QuantityStepper({
   purpose: string;
   quantity: number;
   maxQuantity?: number;
+  unit?: string;
   disabled: boolean;
   onChange: (delta: number) => void;
 }) {
@@ -21,7 +23,10 @@ export function QuantityStepper({
         onClick={() => onChange(-1)}
         type="button"
       >−</button>
-      <output aria-label={`จำนวน${iceTypeName}`}>{quantity}</output>
+      <output aria-label={`จำนวน${iceTypeName}`}>
+        <strong>{quantity}</strong>
+        {unit ? <small>{unit}</small> : null}
+      </output>
       <button
         aria-label={`เพิ่ม${iceTypeName}อีกหนึ่ง`}
         disabled={disabled || (typeof maxQuantity === 'number' && quantity >= maxQuantity)}

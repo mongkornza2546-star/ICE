@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { Coins, Package, Storefront } from '@phosphor-icons/react';
 import {
   EmployeeDeliveryWorkspace,
   type EmployeeDeliveryGateway,
@@ -109,24 +110,25 @@ const creditDueDateRequests: DueDateRequest[] = [
 const demoRounds: DeliveryRound[] = [
   {
     id: 'demo-round-morning',
-    service_date: '2026-07-18',
-    name: 'รอบเช้า',
+    service_date: '2026-08-07',
+    name: 'งานประจำวัน',
     status: 'open',
-    opened_at: '2026-07-18T01:00:00.000Z',
+    opened_at: '2026-08-07T01:00:00.000Z',
   },
   {
     id: 'demo-round-afternoon',
-    service_date: '2026-07-18',
+    service_date: '2026-08-07',
     name: 'รอบบ่าย',
-    status: 'open',
-    opened_at: '2026-07-18T06:00:00.000Z',
+    status: 'closed',
+    opened_at: '2026-08-07T06:00:00.000Z',
+    closed_at: '2026-08-07T10:00:00.000Z',
   },
 ];
 
 const demoIceTypes: IceTypeOption[] = [
-  { id: 'ice-block', code: 'BLOCK', name: 'น้ำแข็งก้อน', unit: 'ถุง' },
-  { id: 'ice-small', code: 'SMALL', name: 'น้ำแข็งเล็ก', unit: 'ถุง' },
-  { id: 'ice-tube', code: 'TUBE', name: 'น้ำแข็งหลอด', unit: 'ถุง' },
+  { id: 'ice-block', code: 'BLOCK', name: 'หลอดเล็ก', unit: 'ถุง' },
+  { id: 'ice-small', code: 'SMALL', name: 'หลอดเล็กโม่', unit: 'ถุง' },
+  { id: 'ice-tube', code: 'TUBE', name: 'เปลือย (หลอดใหญ่)', unit: 'ถุง' },
 ];
 
 const referencePreviewIceTypes: IceTypeSetting[] = [
@@ -262,18 +264,18 @@ const demoOpeningStockState: EmployeeStockState = {
       ice_type_id: iceType.id,
       ice_type_name: iceType.name,
       unit: iceType.unit,
-      quantity: 40,
+      quantity: iceType.id === 'ice-block' ? 100 : iceType.id === 'ice-small' ? 50 : 0,
     })),
   },
   holding_location: {
     id: 'holding-demo',
     code: 'TEAM-DEMO',
-    name: 'รถเข็นเดโม่',
+    name: 'test01@gmail.com · จุดรับสต๊อก',
     balances: demoIceTypes.map((iceType) => ({
       ice_type_id: iceType.id,
       ice_type_name: iceType.name,
       unit: iceType.unit,
-      quantity: 4,
+      quantity: 0,
     })),
   },
 };
@@ -666,6 +668,34 @@ export function LocalDemoApp() {
         <FinancialOperations
           demoData={{ serviceDate: collectionServiceDate, queue: collectionQueue, paymentHistory: collectionPayments }}
           userRole="courier"
+        />
+      </EmployeeLayout>
+    );
+  }
+
+  if (new URLSearchParams(window.location.search).get('screen') === 'employee-withdrawal-layout') {
+    return (
+      <EmployeeLayout onSignOut={() => undefined} profileLabel="test01@gmail.com">
+        <nav aria-label="งานพนักงาน" className="employee-task-tabs">
+          <button aria-current="page" type="button">
+            <Package aria-hidden="true" size={22} weight="duotone" />
+            <span>เบิก</span>
+          </button>
+          <button type="button">
+            <Storefront aria-hidden="true" size={22} weight="duotone" />
+            <span>POS</span>
+          </button>
+          <button type="button">
+            <Coins aria-hidden="true" size={22} weight="duotone" />
+            <span>เก็บเงิน</span>
+          </button>
+        </nav>
+        <EmployeeDeliveryWorkspace
+          enableAssignedStockFlow
+          gateway={gateway}
+          requestScope={`withdrawal-layout-${gatewayVersion}`}
+          serviceDate="2026-08-07"
+          viewMode="withdrawal"
         />
       </EmployeeLayout>
     );

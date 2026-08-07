@@ -3,12 +3,16 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { PGlite } from '@electric-sql/pglite';
 
-const migration = readFileSync(
+const catalogMigration = readFileSync(
   new URL('../supabase/migrations/0010_shop_catalog_excel_import.sql', import.meta.url),
   'utf8',
 );
+const stallMigration = readFileSync(
+  new URL('../supabase/migrations/0135_active_shop_stall_code_uniqueness.sql', import.meta.url),
+  'utf8',
+);
 
-async function createDatabase(t) {
+async function createDatabase(t, { applyStallMigration = true } = {}) {
   const db = new PGlite();
   t.after(() => db.close());
 
@@ -48,7 +52,8 @@ async function createDatabase(t) {
       status public.shop_status not null
     );
   `);
-  await db.exec(migration);
+  await db.exec(catalogMigration);
+  if (applyStallMigration) await db.exec(stallMigration);
   return db;
 }
 
@@ -131,6 +136,197 @@ test('save_shop stores an optional government shop code separately from the inte
   const saved = await db.query("select code, government_shop_code from public.shops where code = 'BB28'");
 
   assert.deepEqual(saved.rows[0], { code: 'BB28', government_shop_code: 'ศร. 028' });
+});
+
+test('stall migration rejects pre-existing normalized active duplicates without choosing a winner', async (t) => {
+  const db = await createDatabase(t, { applyStallMigration: false });
+  await importRows(db, [
+    row({ shopCode: 'BB27', governmentShopCode: ' BMFD-0309 ' }),
+    row({ shopCode: 'BB28', governmentShopCode: 'bmfd-0309' }),
+  ]);
+
+  await assert.rejects(db.exec(stallMigration), /Active shop stall codes must be resolved.*BMFD-0309.*BB27.*BB28/is);
+  const indexes = await db.query(`
+    select count(*)::integer as count
+    from pg_indexes
+    where schemaname = 'public' and indexname = 'shops_one_active_stall_code_uidx'
+  `);
+  assert.equal(indexes.rows[0].count, 0);
+});
+
+test('one active shop may use a normalized stall while inactive history remains reusable', async (t) => {
+  const db = await createDatabase(t);
+  await importRows(db, [row({ shopCode: 'BB27', governmentShopCode: 'BMFD-0309', status: 'inactive' })]);
+  const zone = await db.query("select id from public.building_zones where code = 'DOME-1'");
+
+  await db.query(
+    "select public.save_shop(null::uuid, 'BB28'::text, 'ร้านใหม่'::text, $1::uuid, null::text, null::text, 1::smallint, null::text, 'active'::public.shop_status, ' bmfd-0309 '::text)",
+    [zone.rows[0].id],
+  );
+  await db.query(
+    "select public.save_shop(null::uuid, 'BB29'::text, 'ร้านประวัติ'::text, $1::uuid, null::text, null::text, 1::smallint, null::text, 'inactive'::public.shop_status, 'BMFD-0309'::text)",
+    [zone.rows[0].id],
+  );
+
+  const shops = await db.query("select code, status from public.shops where upper(trim(government_shop_code)) = 'BMFD-0309' order by code");
+  assert.deepEqual(shops.rows, [
+    { code: 'BB27', status: 'inactive' },
+    { code: 'BB28', status: 'active' },
+    { code: 'BB29', status: 'inactive' },
+  ]);
+
+  await assert.rejects(
+    db.query(
+      "select public.save_shop(null::uuid, 'BB30'::text, 'ร้านซ้ำ'::text, $1::uuid, null::text, null::text, 1::smallint, null::text, 'active'::public.shop_status, 'BMFD-0309'::text)",
+      [zone.rows[0].id],
+    ),
+    /รหัสล็อกนี้มีร้านที่ใช้งานอยู่แล้ว/,
+  );
+});
+
+test('reactivating an old shop is rejected while the replacement occupies its stall', async (t) => {
+  const db = await createDatabase(t);
+  await importRows(db, [row({ shopCode: 'BB27', governmentShopCode: 'BMFD-0309', status: 'inactive' })]);
+  const zone = await db.query("select id from public.building_zones where code = 'DOME-1'");
+  const oldShop = await db.query("select id from public.shops where code = 'BB27'");
+  await db.query(
+    "select public.save_shop(null::uuid, 'BB28'::text, 'ร้านใหม่'::text, $1::uuid, null::text, null::text, 1::smallint, null::text, 'active'::public.shop_status, 'BMFD-0309'::text)",
+    [zone.rows[0].id],
+  );
+
+  await assert.rejects(
+    db.query(
+      "select public.save_shop($1::uuid, 'BB27'::text, 'ร้านเดิม'::text, $2::uuid, null::text, null::text, 1::smallint, null::text, 'active'::public.shop_status, 'BMFD-0309'::text)",
+      [oldShop.rows[0].id, zone.rows[0].id],
+    ),
+    /รหัสล็อกนี้มีร้านที่ใช้งานอยู่แล้ว/,
+  );
+});
+
+test('direct writes remain protected while blank active stall codes stay optional', async (t) => {
+  const db = await createDatabase(t);
+  await importRows(db, [row({ shopCode: 'BB27', governmentShopCode: 'BMFD-0309' })]);
+  const zone = await db.query("select id from public.building_zones where code = 'DOME-1'");
+
+  await db.query(
+    "insert into public.shops (code, name, zone_id, government_shop_code, normal_rounds_per_day, status) values ('BB28', 'ไม่มีรหัส', $1, null, 1, 'active'), ('BB29', 'รหัสว่าง', $1, '   ', 1, 'active')",
+    [zone.rows[0].id],
+  );
+  await assert.rejects(
+    db.query(
+      "insert into public.shops (code, name, zone_id, government_shop_code, normal_rounds_per_day, status) values ('BB30', 'ร้านซ้ำ', $1, ' bmfd-0309 ', 1, 'active')",
+      [zone.rows[0].id],
+    ),
+    /รหัสล็อกนี้มีร้านที่ใช้งานอยู่แล้ว|duplicate key/i,
+  );
+});
+
+test('shop import rejects final active stall conflicts atomically', async (t) => {
+  const db = await createDatabase(t);
+  await importRows(db, [row({ shopCode: 'BB27', governmentShopCode: 'BMFD-0309' })]);
+
+  await assert.rejects(importRows(db, [
+    row({ shopCode: 'BB28', governmentShopCode: 'BMFD-0310', shopName: 'ร้านหนึ่ง' }),
+    row({ shopCode: 'BB29', governmentShopCode: ' bmfd-0310 ', shopName: 'ร้านสอง' }),
+  ]), /รหัสล็อก BMFD-0310 มีร้านที่ใช้งานอยู่แล้ว/);
+  await assert.rejects(importRows(db, [
+    row({ shopCode: 'BB28', governmentShopCode: 'BMFD-0309' }),
+  ]), /รหัสล็อก BMFD-0309 มีร้านที่ใช้งานอยู่แล้ว/);
+
+  const shops = await db.query('select code from public.shops order by code');
+  assert.deepEqual(shops.rows, [{ code: 'BB27' }]);
+});
+
+test('shop import performs an inactive-to-active stall handover regardless of row order', async (t) => {
+  const db = await createDatabase(t);
+  await importRows(db, [row({ shopCode: 'BB27', governmentShopCode: 'BMFD-0309' })]);
+
+  await importRows(db, [
+    row({ shopCode: 'BB28', governmentShopCode: 'bmfd-0309', shopName: 'ร้านใหม่', status: 'active' }),
+    row({ shopCode: 'BB27', governmentShopCode: 'BMFD-0309', shopName: 'ร้านเดิม', status: 'inactive' }),
+  ]);
+
+  const shops = await db.query("select code, status from public.shops where upper(trim(government_shop_code)) = 'BMFD-0309' order by code");
+  assert.deepEqual(shops.rows, [
+    { code: 'BB27', status: 'inactive' },
+    { code: 'BB28', status: 'active' },
+  ]);
+});
+
+test('shop import processes multi-stall handovers in a stable lock order', async (t) => {
+  const db = await createDatabase(t);
+  await importRows(db, [
+    row({ shopCode: 'BB27', governmentShopCode: 'BMFD-0309' }),
+    row({ shopCode: 'BB28', governmentShopCode: 'BMFD-0310' }),
+  ]);
+  await db.exec(`
+    create table shop_write_order (
+      sequence_no bigint generated always as identity primary key,
+      shop_code text not null,
+      shop_status public.shop_status not null
+    );
+    create function record_shop_write_order()
+    returns trigger
+    language plpgsql
+    as $$
+    begin
+      insert into shop_write_order (shop_code, shop_status)
+      values (new.code, new.status);
+      return new;
+    end;
+    $$;
+    create trigger shops_record_write_order
+      after insert or update on public.shops
+      for each row execute function record_shop_write_order();
+  `);
+
+  await importRows(db, [
+    row({ shopCode: 'BB30', governmentShopCode: 'BMFD-0310', shopName: 'ร้านใหม่ Y', status: 'active' }),
+    row({ shopCode: 'BB28', governmentShopCode: 'BMFD-0310', shopName: 'ร้านเดิม Y', status: 'inactive' }),
+    row({ shopCode: 'BB29', governmentShopCode: 'BMFD-0309', shopName: 'ร้านใหม่ X', status: 'active' }),
+    row({ shopCode: 'BB27', governmentShopCode: 'BMFD-0309', shopName: 'ร้านเดิม X', status: 'inactive' }),
+  ]);
+
+  const writes = await db.query(`
+    select shop_code, shop_status as status
+    from shop_write_order
+    order by sequence_no
+  `);
+  assert.deepEqual(writes.rows, [
+    { shop_code: 'BB27', status: 'inactive' },
+    { shop_code: 'BB28', status: 'inactive' },
+    { shop_code: 'BB29', status: 'active' },
+    { shop_code: 'BB30', status: 'active' },
+  ]);
+});
+
+test('a replacement shop receives a new identity without inheriting old shop settings', async (t) => {
+  const db = await createDatabase(t);
+  await importRows(db, [row({ shopCode: 'BB27', governmentShopCode: 'BMFD-0309', status: 'inactive' })]);
+  await db.exec(`
+    create table public.shop_payment_profiles (shop_id uuid primary key, profile text not null);
+    create table public.shop_special_prices (shop_id uuid not null, price numeric not null);
+    create table public.shop_rented_tanks (shop_id uuid not null, tank_code text not null);
+    insert into public.shop_payment_profiles select id, 'credit' from public.shops where code = 'BB27';
+    insert into public.shop_special_prices select id, 42 from public.shops where code = 'BB27';
+    insert into public.shop_rented_tanks select id, 'T-OLD' from public.shops where code = 'BB27';
+  `);
+  const zone = await db.query("select id from public.building_zones where code = 'DOME-1'");
+  const oldShop = await db.query("select id from public.shops where code = 'BB27'");
+
+  const created = await db.query(
+    "select public.save_shop(null::uuid, 'BB28'::text, 'ร้านใหม่'::text, $1::uuid, null::text, null::text, 1::smallint, null::text, 'active'::public.shop_status, 'BMFD-0309'::text) as id",
+    [zone.rows[0].id],
+  );
+  assert.notEqual(created.rows[0].id, oldShop.rows[0].id);
+
+  const inherited = await db.query(`
+    select
+      (select count(*)::integer from public.shop_payment_profiles where shop_id = $1) as payment_profiles,
+      (select count(*)::integer from public.shop_special_prices where shop_id = $1) as special_prices,
+      (select count(*)::integer from public.shop_rented_tanks where shop_id = $1) as rented_tanks
+  `, [created.rows[0].id]);
+  assert.deepEqual(inherited.rows[0], { payment_profiles: 0, special_prices: 0, rented_tanks: 0 });
 });
 
 test('code identity is case-insensitive and stored in canonical uppercase', async (t) => {

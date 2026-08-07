@@ -313,6 +313,51 @@ describe('EmployeeDeliveryWorkspace', () => {
     expect(screen.queryByText(/เติมน้ำแข็ง|เบิกเพิ่มระหว่างวัน/)).toBeNull();
   });
 
+  it('uses card semantics and renders signed product images in the withdrawal layout', async () => {
+    const imageUrl = 'https://example.test/ice-block.webp';
+    const gateway = createGateway({
+      loadReferenceData: vi.fn().mockResolvedValue({
+        rounds: [round],
+        iceTypes: [{ ...iceTypes[0], image_path: 'ice/block.webp', image_url: imageUrl }, iceTypes[1]],
+      }),
+    });
+    render(
+      <EmployeeDeliveryWorkspace
+        enableAssignedStockFlow
+        gateway={gateway}
+        viewMode="withdrawal"
+      />,
+    );
+
+    const stockList = await screen.findByRole('list', { name: 'ยอดก่อนและหลังรับน้ำแข็ง' });
+    expect(screen.queryByRole('table', { name: 'ยอดก่อนและหลังรับน้ำแข็ง' })).toBeNull();
+    expect(within(stockList).getAllByRole('listitem')).toHaveLength(2);
+    expect(stockList.querySelector<HTMLImageElement>('.employee-stock-product-image')?.src).toBe(imageUrl);
+    expect(within(stockList).getByRole('group', { name: 'ยอดก้อน' }).textContent).toContain('รถหลัง20 ถุง');
+  });
+
+  it('resets every withdrawal quantity without submitting a transfer', async () => {
+    const user = userEvent.setup();
+    const gateway = createGateway();
+    render(
+      <EmployeeDeliveryWorkspace
+        enableAssignedStockFlow
+        gateway={gateway}
+        viewMode="withdrawal"
+      />,
+    );
+
+    await screen.findByRole('list', { name: 'ยอดก่อนและหลังรับน้ำแข็ง' });
+    await user.click(screen.getByRole('button', { name: 'เพิ่มก้อนอีกหนึ่ง' }));
+    await user.click(screen.getByRole('button', { name: 'เพิ่มเล็กอีกหนึ่ง' }));
+    await user.click(screen.getByRole('button', { name: 'รีเซ็ตทั้งหมด' }));
+
+    expect(screen.getByLabelText('จำนวนก้อน').textContent).toBe('0ถุง');
+    expect(screen.getByLabelText('จำนวนเล็ก').textContent).toBe('0ถุง');
+    expect((screen.getByRole('button', { name: 'ยืนยันรับน้ำแข็ง' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(gateway.recordEmployeeStockTransfer).not.toHaveBeenCalled();
+  });
+
   it('shows shop selection before entering any delivery quantity', async () => {
     render(<EmployeeDeliveryWorkspace gateway={createGateway()} />);
 
@@ -368,8 +413,15 @@ describe('EmployeeDeliveryWorkspace', () => {
     await user.click(screen.getByRole('button', { name: 'เพิ่มก้อนอีกหนึ่ง' }));
     await user.click(screen.getByRole('button', { name: 'เพิ่มก้อนอีกหนึ่ง' }));
 
-    const blockRow = screen.getByText('ก้อน').closest('.employee-stock-row');
-    expect(blockRow?.textContent).toContain('20−2+1857');
+    const blockRow = screen.getByText('ก้อน').closest('.employee-stock-row') as HTMLElement;
+    expect(within(blockRow).getAllByRole('cell').map((cell) => cell.textContent)).toEqual([
+      'ก้อนถุง',
+      '20',
+      '−2+',
+      '18',
+      '5',
+      '7',
+    ]);
     await user.click(screen.getByRole('button', { name: 'ยืนยันรับน้ำแข็ง' }));
 
     await waitFor(() => expect(gateway.recordEmployeeStockTransfer).toHaveBeenCalledWith({

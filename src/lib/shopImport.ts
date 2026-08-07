@@ -16,8 +16,10 @@ export interface ShopImportRow {
   status: 'active' | 'inactive';
 }
 
+const STALL_HEADER = 'รหัสล็อก/พื้นที่ขาย';
+const LEGACY_STALL_HEADER = 'รหัสศูนย์ราชการ';
 const HEADERS = [
-  'รหัสตึก', 'ชื่อตึก', 'รหัสโซน', 'ชื่อโซนย่อย', 'ลำดับโซน', 'รหัสร้าน', 'รหัสศูนย์ราชการ',
+  'รหัสตึก', 'ชื่อตึก', 'รหัสโซน', 'ชื่อโซนย่อย', 'ลำดับโซน', 'รหัสร้าน', STALL_HEADER,
   'ชื่อร้าน', 'ผู้ติดต่อ', 'เบอร์โทร', 'รอบปกติต่อวัน', 'หมายเหตุการเข้าถึง', 'สถานะ',
 ] as const;
 
@@ -30,19 +32,33 @@ export async function parseShopImportFile(file: File): Promise<ShopImportRow[]> 
 
   const headerIndex = rows.findIndex((cells) => {
     const values = cells.map(toText);
-    return HEADERS.every((name) => values.includes(name));
+    return HEADERS.every((name) => name === STALL_HEADER
+      ? values.includes(STALL_HEADER) || values.includes(LEGACY_STALL_HEADER)
+      : values.includes(name));
   });
   if (headerIndex < 0) throw new Error('ไม่พบหัวตาราง กรุณาใช้ไฟล์แม่แบบของระบบ');
 
   const header = rows[headerIndex].map(toText);
-  const missingHeaders = HEADERS.filter((name) => !header.includes(name));
+  const hasStallHeader = header.includes(STALL_HEADER);
+  const hasLegacyStallHeader = header.includes(LEGACY_STALL_HEADER);
+  if (hasStallHeader && hasLegacyStallHeader) {
+    throw new Error(`พบทั้งหัวคอลัมน์ ${STALL_HEADER} และ ${LEGACY_STALL_HEADER} กรุณาใช้เพียงชื่อเดียว`);
+  }
+  const missingHeaders = HEADERS.filter((name) => name === STALL_HEADER
+    ? !hasStallHeader && !hasLegacyStallHeader
+    : !header.includes(name));
   if (missingHeaders.length > 0) {
     throw new Error(`หัวตารางไม่ตรงกับแม่แบบ: ขาด ${missingHeaders.join(', ')}`);
   }
 
-  const column = Object.fromEntries(HEADERS.map((name) => [name, header.indexOf(name)]));
+  const selectedStallHeader = hasStallHeader ? STALL_HEADER : LEGACY_STALL_HEADER;
+  const column = Object.fromEntries(HEADERS.map((name) => [
+    name,
+    header.indexOf(name === STALL_HEADER ? selectedStallHeader : name),
+  ])) as Record<(typeof HEADERS)[number], number>;
   const parsed: ShopImportRow[] = [];
   const shopCodes = new Set<string>();
+  const activeStallRows = new Map<string, number>();
   const errors: string[] = [];
 
   rows.slice(headerIndex + 1).forEach((cells, index) => {
@@ -74,6 +90,17 @@ export async function parseShopImportFile(file: File): Promise<ShopImportRow[]> 
         : null;
     if (!status) errors.push(`แถว ${rowNumber}: สถานะต้องเป็น ใช้งาน หรือ พักใช้งาน`);
 
+    const governmentShopCode = toText(cells[column[STALL_HEADER]]);
+    const normalizedStallCode = normalizeStallCode(governmentShopCode);
+    if (status === 'active' && normalizedStallCode) {
+      const firstRow = activeStallRows.get(normalizedStallCode);
+      if (firstRow) {
+        errors.push(`แถว ${rowNumber}: รหัสล็อก/พื้นที่ขาย ${governmentShopCode} ซ้ำกับแถว ${firstRow} ในไฟล์`);
+      } else {
+        activeStallRows.set(normalizedStallCode, rowNumber);
+      }
+    }
+
     parsed.push({
       building_code: toCode(cells[column['รหัสตึก']]),
       building_name: toText(cells[column['ชื่อตึก']]),
@@ -81,7 +108,7 @@ export async function parseShopImportFile(file: File): Promise<ShopImportRow[]> 
       zone_name: toText(cells[column['ชื่อโซนย่อย']]),
       zone_sort_order: zoneSortOrder || 0,
       shop_code: shopCode,
-      government_shop_code: toText(cells[column['รหัสศูนย์ราชการ']]),
+      government_shop_code: governmentShopCode,
       shop_name: toText(cells[column['ชื่อร้าน']]),
       contact_name: toText(cells[column['ผู้ติดต่อ']]),
       contact_phone: toText(cells[column['เบอร์โทร']]),
@@ -104,6 +131,10 @@ function toText(value: unknown) {
 
 function toCode(value: unknown) {
   return toText(value).toLocaleUpperCase('en');
+}
+
+function normalizeStallCode(value: unknown) {
+  return toText(value).toLocaleUpperCase('en-US');
 }
 
 function toPositiveInteger(value: unknown) {

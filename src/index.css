@@ -604,6 +604,13 @@ select.shop-filter-button { min-width: 126px; max-width: 164px; padding-right: 2
 .shop-editor-fields > label { grid-column: span 3; color: #657995; font-size: .74rem; font-weight: 700; }
 .shop-editor-fields > label:nth-child(7), .shop-editor-fields > label:nth-child(8), .shop-editor-fields > label:nth-child(9) { grid-column: span 2; }
 .shop-editor-fields input, .shop-editor-fields select, .shop-editor-form textarea { min-height: 40px; border-color: #d7e0ec; border-radius: 8px; color: #263d5d; font-size: .78rem; }
+.shop-stall-field__help { color: #7a899c; font-size: .66rem; font-weight: 500; line-height: 1.45; }
+.shop-stall-code-status { display: block; padding: 7px 9px; border: 1px solid transparent; border-radius: 7px; font-size: .68rem; font-weight: 700; line-height: 1.4; }
+.shop-stall-code-status--available, .shop-stall-code-status--current { border-color: #bfe6ce; color: #167742; background: #eefaf2; }
+.shop-stall-code-status--historical { border-color: #c9dcf5; color: #236399; background: #f0f7ff; }
+.shop-stall-code-status--occupied { border-color: #efd49c; color: #8b5a0c; background: #fff8e8; }
+.shop-stall-code-status--conflict { border-color: #f2bdc1; color: #b43b43; background: #fff1f2; }
+.shop-stall-field input[aria-invalid="true"] { border-color: #e36a72; box-shadow: 0 0 0 2px rgba(227, 106, 114, .12); }
 .shop-editor-form > label { color: #657995; font-size: .74rem; font-weight: 700; }
 .shop-editor-form textarea { min-height: 68px; padding-top: 10px; }
 .shop-editor-form textarea::placeholder { color: #aab6c5; }
@@ -1950,6 +1957,344 @@ input:disabled, select:disabled, textarea:disabled { background: #f2f5f8; color:
   .employee-submit-card { grid-template-columns: 1fr; bottom: max(8px, env(safe-area-inset-bottom)); padding: 12px; }
   .employee-submit { width: 100%; min-width: 0; }
   .employee-history-list article { grid-template-columns: 1fr; gap: 3px; }
+}
+
+/* Employee withdrawal workspace — mobile-first card layout */
+.employee-workspace--withdrawal {
+  width: min(920px, 100%);
+  margin: 0 auto;
+  gap: 14px;
+}
+.employee-workspace--withdrawal .employee-intro { align-items: center; }
+.employee-workspace--withdrawal .employee-round-badge {
+  min-width: 224px;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-color: #72a6f6;
+  color: #1764cf;
+  background: #fff;
+}
+.employee-workspace--withdrawal .employee-round-badge > span {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+.employee-workspace--withdrawal .employee-round-badge strong {
+  overflow: hidden;
+  color: #1764cf;
+  font-size: .78rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.employee-workspace--withdrawal .employee-round-badge small {
+  color: #4a617e;
+  font-size: .78rem;
+}
+.employee-workspace--withdrawal .employee-entry-section {
+  gap: 16px;
+  padding: 18px;
+  border-color: #e1e8f1;
+  border-radius: 18px;
+  box-shadow: 0 10px 30px rgba(36, 74, 120, .07);
+}
+.employee-workspace--withdrawal .employee-entry-section__heading {
+  align-items: center;
+  gap: 12px;
+}
+.employee-workspace--withdrawal .employee-entry-section__heading > span {
+  flex-basis: 42px;
+  width: 42px;
+  height: 42px;
+  font-size: 1rem;
+  box-shadow: 0 7px 16px rgba(11, 104, 223, .23);
+}
+.employee-workspace--withdrawal .employee-entry-section__heading h2 {
+  color: #173856;
+  font-size: 1.06rem;
+}
+.employee-workspace--withdrawal .employee-entry-section__heading p {
+  color: #6c7f97;
+  font-size: .75rem;
+}
+.employee-workspace--withdrawal .employee-stock-route {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  min-height: 68px;
+  padding: 12px 16px;
+  border-color: #c9dcf7;
+  border-radius: 13px;
+  color: #1764cf;
+  background: #fff;
+}
+.employee-workspace--withdrawal .employee-stock-route > svg:first-child { color: #1764cf; }
+.employee-workspace--withdrawal .employee-stock-route > span {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+.employee-workspace--withdrawal .employee-stock-route small {
+  color: #617591;
+  font-size: .7rem;
+}
+.employee-workspace--withdrawal .employee-stock-route strong {
+  overflow: hidden;
+  color: #1764cf;
+  font-size: .8rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.employee-workspace--withdrawal .employee-stock-table {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  overflow: visible;
+  border: 0;
+  background: transparent;
+}
+.employee-workspace--withdrawal .employee-stock-row--header { display: none; }
+.employee-workspace--withdrawal .employee-stock-row {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 84px minmax(0, 1fr);
+  grid-template-rows: auto 78px auto;
+  align-items: center;
+  gap: 9px 10px;
+  padding: 14px;
+  border: 1px solid #cae0fb;
+  border-radius: 15px;
+  color: #405c7a;
+  background: #fff;
+  text-align: left;
+  box-shadow: 0 5px 15px rgba(24, 75, 136, .035);
+}
+.employee-workspace--withdrawal .employee-stock-row.employee-stock-row--header { display: none; }
+.employee-workspace--withdrawal .employee-stock-row > [data-label]::before { display: none; }
+.employee-workspace--withdrawal .employee-stock-row > strong {
+  grid-column: 1 / -1;
+  grid-row: 1;
+  display: block;
+  overflow: hidden;
+  padding: 0 112px 0 0;
+  border: 0;
+  color: #163858;
+  font-size: .83rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.employee-workspace--withdrawal .employee-stock-row > strong small {
+  display: inline;
+  color: inherit;
+  font-size: inherit;
+}
+.employee-workspace--withdrawal .employee-stock-available {
+  grid-column: 2;
+  grid-row: 1;
+  justify-self: end;
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 9px;
+  border-radius: 999px;
+  color: #5f7189;
+  background: #f2f7fe;
+  font-size: .67rem;
+  white-space: nowrap;
+}
+.employee-workspace--withdrawal .employee-stock-available small {
+  color: #1764cf;
+  font-size: inherit;
+}
+.employee-workspace--withdrawal .employee-stock-product-image {
+  grid-column: 1;
+  grid-row: 2;
+  width: 80px;
+  height: 78px;
+  display: block;
+  object-fit: contain;
+  mix-blend-mode: multiply;
+}
+.employee-workspace--withdrawal .employee-stock-transfer-cell {
+  grid-column: 2;
+  grid-row: 2;
+  min-height: 0;
+  padding: 0;
+  background: transparent;
+}
+.employee-workspace--withdrawal .employee-quantity-stepper {
+  grid-template-columns: minmax(64px, 1fr) 52px minmax(64px, 1fr);
+  gap: 10px;
+  margin: 0;
+}
+.employee-workspace--withdrawal .employee-quantity-stepper button {
+  min-width: 0;
+  min-height: 54px;
+  border-color: #96bdfb;
+  border-radius: 11px;
+  color: #1764cf;
+  background: #f0f6ff;
+}
+.employee-workspace--withdrawal .employee-quantity-stepper output {
+  min-width: 0;
+  display: grid;
+  place-items: center;
+  gap: 0;
+  font-size: inherit;
+}
+.employee-workspace--withdrawal .employee-quantity-stepper output strong {
+  color: #12365d;
+  font-size: 1.35rem;
+  line-height: 1;
+}
+.employee-workspace--withdrawal .employee-quantity-stepper output small {
+  color: #687b93;
+  font-size: .64rem;
+  font-weight: 500;
+}
+.employee-workspace--withdrawal .employee-stock-stats {
+  grid-column: 1 / -1;
+  grid-row: 3;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
+}
+.employee-workspace--withdrawal .employee-stock-stats > span {
+  min-width: 0;
+  min-height: 54px;
+  display: flex;
+  flex-wrap: wrap;
+  align-content: center;
+  align-items: baseline;
+  gap: 2px 4px;
+  padding: 8px 9px;
+  border-radius: 10px;
+  color: #536b86;
+  background: #f6f8fc;
+  font-size: .64rem;
+}
+.employee-workspace--withdrawal .employee-stock-stats small {
+  flex-basis: 100%;
+  color: #6e8097;
+  font-size: .62rem;
+}
+.employee-workspace--withdrawal .employee-stock-stats strong {
+  color: #173c64;
+  font-size: .74rem;
+}
+.employee-workspace--withdrawal .employee-stock-stats > span:last-child strong { color: #18844c; }
+.employee-workspace--withdrawal .employee-stock-actions {
+  display: grid;
+  grid-template-columns: minmax(0, .85fr) minmax(0, 1.15fr);
+  gap: 10px;
+}
+.employee-workspace--withdrawal .employee-stock-actions button {
+  min-width: 0;
+  min-height: 52px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 11px;
+  font-size: .78rem;
+  font-weight: 800;
+}
+.employee-workspace--withdrawal .employee-stock-reset {
+  border: 1px solid #176de0;
+  color: #1764cf;
+  background: #fff;
+}
+.employee-workspace--withdrawal .employee-stock-reset:disabled {
+  cursor: not-allowed;
+  opacity: .5;
+}
+.employee-workspace--withdrawal .employee-stock-submit {
+  justify-self: stretch;
+  width: 100%;
+}
+
+@media (max-width: 759px) {
+  .employee-shell { background: #f6faff; }
+  .employee-header { border-bottom-color: #d4e2f2; box-shadow: none; }
+  .employee-main { padding-right: 16px; padding-left: 16px; }
+  .employee-task-tabs { padding: 4px max(13px, env(safe-area-inset-right)) calc(4px + env(safe-area-inset-bottom)) max(13px, env(safe-area-inset-left)); }
+  .employee-task-tabs button { min-height: 46px; margin: 0 3px; }
+  .employee-workspace--withdrawal .employee-intro {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 140px;
+    align-items: end;
+    gap: 10px;
+    padding: 3px 1px 2px;
+  }
+  .employee-workspace--withdrawal { margin-top: -15px; gap: 8px; }
+  .employee-workspace--withdrawal .employee-intro h1 { font-size: 1.55rem; }
+  .employee-workspace--withdrawal .employee-intro p:not(.employee-eyebrow) {
+    max-width: 230px;
+    font-size: .72rem;
+    line-height: 1.45;
+  }
+  .employee-workspace--withdrawal .employee-round-badge {
+    width: 140px;
+    min-width: 0;
+    gap: 7px;
+    padding: 10px;
+  }
+  .employee-workspace--withdrawal .employee-round-badge > svg:first-child { width: 21px; }
+  .employee-workspace--withdrawal .employee-round-badge strong,
+  .employee-workspace--withdrawal .employee-round-badge small { font-size: .68rem; }
+  .employee-workspace--withdrawal .employee-entry-section {
+    gap: 8px;
+    padding: 10px;
+    border-radius: 16px;
+  }
+  .employee-workspace--withdrawal .employee-entry-section__heading > span {
+    flex-basis: 28px;
+    width: 28px;
+    height: 28px;
+    font-size: .78rem;
+  }
+  .employee-workspace--withdrawal .employee-entry-section__heading h2 { font-size: .9rem; }
+  .employee-workspace--withdrawal .employee-entry-section__heading p { font-size: .65rem; }
+  .employee-workspace--withdrawal .employee-stock-route {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    min-height: 54px;
+    padding: 10px 12px;
+  }
+  .employee-workspace--withdrawal .employee-stock-route > svg:last-child { display: block; }
+  .employee-workspace--withdrawal .employee-stock-route > svg:first-child { display: block; }
+  .employee-workspace--withdrawal .employee-stock-table { grid-template-columns: 1fr; gap: 8px; }
+  .employee-workspace--withdrawal .employee-stock-row {
+    grid-template-columns: 86px minmax(0, 1fr);
+    grid-template-rows: auto 54px auto;
+    gap: 5px 10px;
+    margin: 0;
+    padding: 8px;
+  }
+  .employee-workspace--withdrawal .employee-stock-row > strong { padding-right: 112px; }
+  .employee-workspace--withdrawal .employee-stock-available { min-height: 24px; }
+  .employee-workspace--withdrawal .employee-stock-product-image {
+    width: 82px;
+    height: 56px;
+  }
+  .employee-workspace--withdrawal .employee-quantity-stepper {
+    grid-template-columns: minmax(56px, 1fr) 44px minmax(56px, 1fr);
+    gap: 8px;
+  }
+  .employee-workspace--withdrawal .employee-quantity-stepper button { min-height: 46px; }
+  .employee-workspace--withdrawal .employee-stock-stats > span {
+    min-height: 38px;
+    padding: 4px 8px;
+  }
+  .employee-workspace--withdrawal .employee-stock-actions { gap: 7px; }
+  .employee-workspace--withdrawal .employee-stock-actions button {
+    min-height: 48px;
+    padding: 0 8px;
+    font-size: .72rem;
+  }
 }
 
 /* ==========================================================================

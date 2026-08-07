@@ -158,6 +158,74 @@ describe('ShopSettings card catalog', () => {
     expect(screen.queryByRole('dialog')).toBeNull();
   });
 
+  it('shows normalized stall availability and blocks only active conflicts', async () => {
+    const user = userEvent.setup();
+    const stallShops = [shops[0], { ...shops[1], government_shop_code: 'GOV-02' }];
+    mocks.from.mockImplementation((table: string) => {
+      if (table === 'shops') return queryResult(stallShops);
+      if (table === 'buildings') return queryResult([
+        { id: 'building-a', code: 'A', name: 'ตึก A' },
+        { id: 'building-b', code: 'B', name: 'ตึก B' },
+      ]);
+      if (table === 'building_zones') return queryResult([
+        { id: 'zone-a', building_id: 'building-a', code: 'A1', name: 'โซน A1', sort_order: 1, is_active: true },
+        { id: 'zone-b', building_id: 'building-b', code: 'B1', name: 'โซน B1', sort_order: 1, is_active: true },
+      ]);
+      if (table === 'ice_types') return queryResult([{ id: 'ice-block', code: 'BLOCK', name: 'ก้อน', unit: 'ถุง' }]);
+      if (table === 'shop_rented_tanks') return queryResult([]);
+      throw new Error(`Unexpected table: ${table}`);
+    });
+    render(<ShopSettings />);
+
+    await user.click(await screen.findByRole('button', { name: 'ร้านใหม่' }));
+    const stallInput = screen.getByRole('textbox', { name: /รหัสล็อก\/พื้นที่ขาย/ });
+    const saveButton = screen.getByRole('button', { name: 'บันทึกข้อมูลร้าน' }) as HTMLButtonElement;
+
+    await user.type(stallInput, 'GOV-03');
+    expect(screen.getByText('ว่าง — ใช้งานได้')).toBeTruthy();
+
+    await user.clear(stallInput);
+    await user.type(stallInput, ' gov-02 ');
+    expect(screen.getByText(/เคยมีร้านเดิม — BB02 · ร้านน้ำฝน/)).toBeTruthy();
+
+    await user.clear(stallInput);
+    await user.type(stallInput, 'gov-01');
+    expect(screen.getByText(/มีร้านใช้งานอยู่ — AA01 · ร้านเจ๊อ้อย/)).toBeTruthy();
+    expect(stallInput.getAttribute('aria-invalid')).toBe('true');
+    expect(saveButton.disabled).toBe(true);
+
+    await user.selectOptions(screen.getByRole('combobox', { name: 'สถานะร้าน' }), 'inactive');
+    expect(stallInput.getAttribute('aria-invalid')).toBeNull();
+    expect(saveButton.disabled).toBe(false);
+
+    await user.click(screen.getByRole('button', { name: 'ปิดหน้าต่างข้อมูลร้าน' }));
+    await user.click(screen.getByRole('button', { name: /AA01 ร้านเจ๊อ้อย/ }));
+    expect(screen.getByText('ใช้งานโดยร้านนี้')).toBeTruthy();
+    expect((screen.getByRole('button', { name: 'บันทึกข้อมูลร้าน' }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('surfaces the authoritative database stall conflict when local availability is stale', async () => {
+    const user = userEvent.setup();
+    render(<ShopSettings />);
+    await user.click(await screen.findByRole('button', { name: 'ร้านใหม่' }));
+    mocks.rpc.mockResolvedValueOnce({
+      data: null,
+      error: { message: 'รหัสล็อกนี้มีร้านที่ใช้งานอยู่แล้ว กรุณาปิดร้านเดิมก่อนเปิดร้านใหม่' },
+    });
+
+    await user.type(screen.getByRole('textbox', { name: 'รหัสร้าน' }), 'CC03');
+    await user.type(screen.getByRole('textbox', { name: 'ชื่อร้าน' }), 'ร้านใหม่');
+    await user.type(screen.getByRole('textbox', { name: /รหัสล็อก\/พื้นที่ขาย/ }), 'GOV-STALE');
+    await user.click(screen.getByRole('button', { name: 'บันทึกข้อมูลร้าน' }));
+
+    expect((await screen.findByRole('alert')).textContent).toContain('รหัสล็อกนี้มีร้านที่ใช้งานอยู่แล้ว');
+    expect(mocks.rpc).toHaveBeenCalledWith('save_shop', expect.objectContaining({
+      p_code: 'CC03',
+      p_government_shop_code: 'GOV-STALE',
+      p_status: 'active',
+    }));
+  });
+
   it('sorts shop cards by code using natural numeric order', async () => {
     const unsortedShops = [
       { ...shops[0], id: 'shop-10', code: 'AA10', name: 'ร้านสิบ', image_path: null },

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { CheckCircle, Printer, WarningCircle } from '@phosphor-icons/react';
+import { CalendarBlank, CaretDown, CheckCircle, Printer, WarningCircle } from '@phosphor-icons/react';
 import { supabase } from './lib/supabase';
 import type {
   DeliveryFinancialResult,
@@ -22,6 +22,7 @@ import { EmployeeDeliveryReview } from './features/employee-delivery/EmployeeDel
 import { useEmployeeDeliveryData } from './features/employee-delivery/useEmployeeDeliveryData';
 import { toBangkokDateString } from './lib/serviceDate';
 import { deletePaymentEvidence, uploadPaymentEvidence } from './lib/paymentEvidence';
+import { withSignedImageUrls } from './lib/signedImageUrls';
 
 export interface EmployeeDeliveryPayload {
   roundStopId: string;
@@ -99,27 +100,30 @@ export interface EmployeeDeliveryDraftState {
 }
 
 async function withSignedIceTypeImages(context: DeliveryPosContext): Promise<DeliveryPosContext> {
-  if (!supabase) return context;
-  const imagePaths = context.items
-    .map((item) => item.image_path)
-    .filter((path): path is string => Boolean(path));
-  if (imagePaths.length === 0) return context;
-  const { data: signedData, error: imageError } = await supabase.storage
-    .from('ice-type-images')
-    .createSignedUrls(imagePaths, 3600);
-  if (imageError) return context;
-  const imageUrls = new Map(
-    (signedData ?? [])
-      .filter((entry) => entry.path && entry.signedUrl)
-      .map((entry) => [entry.path!, entry.signedUrl!]),
-  );
+  const client = supabase;
+  if (!client) return context;
   return {
     ...context,
-    items: context.items.map((item) => ({
-      ...item,
-      image_url: item.image_path ? imageUrls.get(item.image_path) ?? null : null,
-    })),
+    items: await withSignedImageUrls(context.items, (imagePaths) => client.storage
+      .from('ice-type-images')
+      .createSignedUrls(imagePaths, 3600)),
   };
+}
+
+async function withSignedIceTypeOptions(iceTypes: IceTypeOption[]): Promise<IceTypeOption[]> {
+  const client = supabase;
+  if (!client) return iceTypes;
+  return withSignedImageUrls(iceTypes, (imagePaths) => client.storage
+    .from('ice-type-images')
+    .createSignedUrls(imagePaths, 3600));
+}
+
+function formatEmployeeServiceDate(serviceDate: string) {
+  return new Intl.DateTimeFormat('th-TH-u-ca-gregory', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  }).format(new Date(`${serviceDate}T12:00:00+07:00`));
 }
 
 function createSupabaseGateway(): EmployeeDeliveryGateway {
@@ -139,7 +143,7 @@ function createSupabaseGateway(): EmployeeDeliveryGateway {
       if (iceTypesResponse.error) throw iceTypesResponse.error;
       return {
         rounds: (sessionResponse.data?.sessions ?? []) as DeliveryRound[],
-        iceTypes: (iceTypesResponse.data ?? []) as IceTypeOption[],
+        iceTypes: await withSignedIceTypeOptions((iceTypesResponse.data ?? []) as IceTypeOption[]),
       };
     },
     async loadShopCards(roundId) {
@@ -377,7 +381,7 @@ export function EmployeeDeliveryWorkspace({
   const openRounds = data.rounds.filter((r) => r.status === 'open' && !r.cancelled_at);
 
   return (
-    <div className="employee-workspace">
+    <div className={`employee-workspace ${resolvedViewMode === 'withdrawal' ? 'employee-workspace--withdrawal' : ''}`}>
       <section className="employee-intro">
         <div>
           <p className="employee-eyebrow">{isBackdatedBilling ? 'ออกบิลย้อนหลัง · เฉพาะแอดมิน' : 'งานพนักงาน'}</p>
@@ -392,8 +396,14 @@ export function EmployeeDeliveryWorkspace({
         </div>
         {data.selectedRound ? (
           <div className={`employee-round-badge ${data.selectedRound.status === 'closed' ? 'employee-round-badge--closed' : ''}`}>
-            <strong>{isBackdatedBilling ? 'งานย้อนหลัง' : 'งานวันนี้'}: {data.selectedRound.name}</strong>
-            <span>{data.selectedRound.service_date} · {data.selectedRound.cancelled_at ? 'ยกเลิกแล้ว' : data.selectedRound.status === 'open' ? 'กำลังดำเนินการ' : 'ปิดแล้ว'}</span>
+            {resolvedViewMode === 'withdrawal' ? <CalendarBlank aria-hidden="true" size={24} weight="duotone" /> : null}
+            <span>
+              <strong>{isBackdatedBilling ? 'งานย้อนหลัง' : data.selectedRound.name}</strong>
+              <small>{formatEmployeeServiceDate(data.selectedRound.service_date)}</small>
+            </span>
+            {resolvedViewMode === 'withdrawal' && openRounds.length > 1
+              ? <CaretDown aria-hidden="true" size={16} weight="bold" />
+              : null}
           </div>
         ) : null}
       </section>
@@ -453,6 +463,13 @@ export function EmployeeDeliveryWorkspace({
               changeTransferQuantity={data.changeTransferQuantity}
               selectedRound={data.selectedRound}
               handleStockTransfer={data.handleStockTransfer}
+              resetTransferQuantities={() => {
+                data.iceTypes.forEach((iceType) => {
+                  const quantity = data.transferQuantities[iceType.id] ?? 0;
+                  if (quantity > 0) data.changeTransferQuantity(iceType.id, -quantity);
+                });
+              }}
+              variant={resolvedViewMode === 'withdrawal' ? 'cards' : 'table'}
               transferItems={data.transferItems}
             />
           ) : null}

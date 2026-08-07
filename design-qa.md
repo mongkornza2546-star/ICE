@@ -1,3 +1,48 @@
+## 2026-08-07 — Employee ice-withdrawal mobile layout
+
+**Comparison Target**
+
+- Source visual truth: `/Users/bhusitt./Downloads/ChatGPT Image 7 ส.ค. 2569 17_34_13.png` (852 × 1851 px, @2x mobile capture including device/browser chrome).
+- Normalized source content: [outputs/employee-withdrawal-reference-normalized.png](/Users/bhusitt./Downloads/ส่งน้ำแข็ง/outputs/employee-withdrawal-reference-normalized.png) (426 × 848 px), cropped to the app-owned header/content/bottom-navigation region.
+- Rendered implementation: [outputs/employee-withdrawal-layout-mobile-final.png](/Users/bhusitt./Downloads/ส่งน้ำแข็ง/outputs/employee-withdrawal-layout-mobile-final.png) (426 × 848 px), captured from `?screen=employee-withdrawal-layout` in the Codex in-app browser.
+- Viewport and normalization: implementation viewport 426 × 848 CSS px at DPR 1. The 852 px-wide @2x source was downsampled to 426 px and device/browser chrome was removed before comparison.
+- State: courier `เบิก` tab, one open daily round dated 07 Aug 2026, truck stock 100/50/0 bags, holding stock 0, no quantities selected.
+- Full-view comparison evidence: normalized source and final browser capture were opened together at the same 426 × 848 size. Header, horizontal intro/date badge, white task panel, route card, three product cards, paired actions, and fixed three-tab navigation align to the same page regions.
+- Focused-region evidence: the full-resolution 426 px comparison keeps Thai labels, card controls, stat cells, icons, and action/navigation rows legible; no additional crop was needed.
+
+**Findings**
+
+- No actionable P0/P1/P2 layout differences remain.
+- Accepted data-state difference: the local demo deliberately has no uploaded `image_url`, so product-image slots are blank in the implementation capture. Production now signs each existing `ice_types.image_path` and renders the user's uploaded image with `object-fit: contain`; no generated fallback or placeholder image is used.
+- Accepted behavior difference: zero-quantity reset/confirm actions remain disabled to preserve the existing validation contract, while the visual reference presents them at full emphasis.
+
+**Required Fidelity Surfaces**
+
+- Fonts and typography: the existing Thai font stack, navy hierarchy, compact blue eyebrow, product labels, muted metadata, and numeric emphasis closely match the source. Long product names are now protected from the earlier one-column truncation.
+- Spacing and layout rhythm: the 16 px mobile page margin, section top at 151 px, 149 px product cards, 8 px card gaps, 48 px action row, and 55 px bottom navigation align with the normalized source. The document and viewport widths are both 426 px.
+- Colors and visual tokens: retained the source's white/pale-blue field, navy text, blue outlines and selected state, low-contrast gray stat tiles, green post-transfer value, and restrained shadow/border treatment.
+- Image quality and asset fidelity: logo and UI icons use existing assets/the installed Phosphor set. Product art is sourced only from uploaded `image_path` values and displayed as a contained raster image; generated fallback art was removed at the user's direction.
+- Copy and content: `เบิกน้ำแข็ง`, task guidance, daily-work date, truck/holding route, before/after stock labels, reset, confirmation, and bottom-tab copy match the requested workflow.
+- Accessibility and interaction: quantity controls retain explicit labels, disabled bounds, live numeric output and 46 px mobile tap targets. Reset and confirmation remain semantic buttons; the product rows retain table/group semantics.
+
+**Interaction And Build Checks**
+
+- In-app browser: added one `หลอดเล็ก`, verified output `1 ถุง`, reset to `0 ถุง`, added again, confirmed the transfer, and received the success message for the holding location.
+- Browser console: no errors.
+- Responsive check: at 1024 × 900 CSS px, three product cards render as equal 287 px columns and document `scrollWidth` equals 1024 px.
+- Focused UI suite: `npx vitest run tests/employee-delivery-workspace.test.tsx` passed, 26/26.
+- Demo production build: `npm run build:demo` passed. The existing Vite large-chunk warning remains unchanged.
+
+**Comparison History**
+
+- First pass found a P1 legacy table header inside the card stack, duplicate `data-label` text, and a 1224 px-tall page that pushed actions behind the bottom navigation. The header/pseudo-label rules were overridden, product cards were reduced to the source density, and the viewport was normalized to app-owned content.
+- Second pass found P2 route-icon suppression, long-title truncation, and a 73 px bottom navigation overlapping the action row. The truck icon was restored, product titles span the card with reserved stock-pill space, and navigation was reduced to 55 px.
+- Final side-by-side pass at 426 × 848 confirms aligned major regions, fully visible actions/navigation, readable untruncated product names, no document overflow, and no remaining P0/P1/P2 layout findings.
+
+final result: passed
+
+---
+
 ## 2026-08-04 — Credit debtor store-level redesign
 
 **Comparison Target**

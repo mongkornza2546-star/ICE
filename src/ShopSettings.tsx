@@ -382,6 +382,39 @@ export function ShopSettings({
     () => shops.find((shop) => shop.id === draft.id) ?? null,
     [draft.id, shops],
   );
+  const stallAvailability = useMemo(() => {
+    const normalizedCode = normalizeStallCode(draft.government_shop_code);
+    if (!normalizedCode) return null;
+
+    const matchingShops = shops
+      .filter((shop) => normalizeStallCode(shop.government_shop_code) === normalizedCode)
+      .sort((left, right) => SHOP_CODE_COLLATOR.compare(left.code, right.code));
+    const activeOtherShop = matchingShops.find((shop) => shop.status === 'active' && shop.id !== draft.id);
+    if (activeOtherShop) {
+      return {
+        kind: 'occupied' as const,
+        message: `มีร้านใช้งานอยู่ — ${activeOtherShop.code} · ${activeOtherShop.name} กรุณาปิดร้านเดิมก่อนเปิดร้านนี้`,
+      };
+    }
+
+    const currentShop = matchingShops.find((shop) => shop.id === draft.id);
+    if (currentShop?.status === 'active') {
+      return { kind: 'current' as const, message: 'ใช้งานโดยร้านนี้' };
+    }
+
+    const historicalShops = matchingShops.filter((shop) => shop.status === 'inactive');
+    if (historicalShops.length > 0) {
+      const firstShop = historicalShops[0];
+      const remainingCount = historicalShops.length - 1;
+      return {
+        kind: 'historical' as const,
+        message: `เคยมีร้านเดิม — ${firstShop.code} · ${firstShop.name}${remainingCount > 0 ? ` และอีก ${remainingCount} ร้าน` : ''} พักใช้งานแล้ว สามารถใช้รหัสนี้กับร้านใหม่ได้`,
+      };
+    }
+
+    return { kind: 'available' as const, message: 'ว่าง — ใช้งานได้' };
+  }, [draft.government_shop_code, draft.id, shops]);
+  const activeStallConflict = draft.status === 'active' && stallAvailability?.kind === 'occupied';
 
   useEffect(() => {
     if (!tankImageFile) {
@@ -758,7 +791,25 @@ export function ShopSettings({
             {!historyOnlyPreview ? <form className="settings-form shop-editor-form" hidden={editorTab !== 'basic'} onSubmit={handleSave}>
               <div className="shop-editor-fields">
                 <TextField label="รหัสร้าน" required value={draft.code} onChange={(code) => setDraft({ ...draft, code })} />
-                <TextField label="รหัสศูนย์ราชการ" value={draft.government_shop_code} onChange={(government_shop_code) => setDraft({ ...draft, government_shop_code })} />
+                <label className="shop-stall-field">
+                  รหัสล็อก/พื้นที่ขาย
+                  <input
+                    aria-describedby={`shop-stall-code-help${stallAvailability ? ' shop-stall-code-status' : ''}`}
+                    aria-invalid={activeStallConflict || undefined}
+                    value={draft.government_shop_code}
+                    onChange={(event) => setDraft({ ...draft, government_shop_code: event.target.value })}
+                  />
+                  <small className="shop-stall-field__help" id="shop-stall-code-help">รหัสประจำพื้นที่ขายของศูนย์ราชการ ใช้ซ้ำได้เมื่อร้านเดิมย้ายออก แต่ห้ามมีร้านใช้งานพร้อมกันในล็อกเดียวกัน</small>
+                  {stallAvailability ? (
+                    <span
+                      aria-live="polite"
+                      className={`shop-stall-code-status shop-stall-code-status--${activeStallConflict ? 'conflict' : stallAvailability.kind}`}
+                      id="shop-stall-code-status"
+                    >
+                      {stallAvailability.message}
+                    </span>
+                  ) : null}
+                </label>
                 <TextField label="ชื่อร้าน" required value={draft.name} onChange={(name) => setDraft({ ...draft, name })} />
                 <label>อาคาร<select required value={draft.building_id} onChange={(event) => { const building_id = event.target.value; setDraft({ ...draft, building_id, zone_id: zones.find((zone) => zone.building_id === building_id)?.id ?? '' }); }}><option value="">เลือกตึก</option>{buildings.map((building) => <option key={building.id} value={building.id}>{building.code} · {building.name}</option>)}</select></label>
                 <label>โซนย่อย<select required value={draft.zone_id} onChange={(event) => setDraft({ ...draft, zone_id: event.target.value })}><option value="">เลือกโซนย่อย</option>{zones.filter((zone) => zone.building_id === draft.building_id).map((zone) => <option key={zone.id} value={zone.id}>{zone.code} · {zone.name}</option>)}</select></label>
@@ -768,7 +819,7 @@ export function ShopSettings({
                 <label className="shop-editor-field--rounds">รอบปกติต่อวัน<input min={1} required type="number" value={draft.normal_rounds_per_day} onChange={(event) => setDraft({ ...draft, normal_rounds_per_day: Math.max(1, Number(event.target.value) || 1) })} /></label>
               </div>
               <label>หมายเหตุการเข้าถึง<textarea rows={3} placeholder="ระบุหมายเหตุการเข้าถึง (ถ้ามี)" value={draft.access_note} onChange={(event) => setDraft({ ...draft, access_note: event.target.value })} /></label>
-              <footer className="shop-editor-savebar"><button className="secondary-button" disabled={saving} onClick={closeEditor} type="button">ยกเลิก</button><button className="primary-button" disabled={saving} type="submit">{saving ? 'กำลังบันทึก...' : 'บันทึกข้อมูลร้าน'}</button></footer>
+              <footer className="shop-editor-savebar"><button className="secondary-button" disabled={saving} onClick={closeEditor} type="button">ยกเลิก</button><button className="primary-button" disabled={saving || activeStallConflict} type="submit">{saving ? 'กำลังบันทึก...' : 'บันทึกข้อมูลร้าน'}</button></footer>
             </form> : null}
 
             {!historyOnlyPreview ? <div className="shop-editor-tab-content" hidden={editorTab !== 'assets'}>
@@ -868,6 +919,10 @@ function TextField({ label, value, required, onChange }: { label: string; value:
       <input required={required} value={value} onChange={(event) => onChange(event.target.value)} />
     </label>
   );
+}
+
+function normalizeStallCode(value: string | null | undefined) {
+  return value?.trim().toLocaleUpperCase('en-US') ?? '';
 }
 
 function EditorStat({ icon, label, value, tone }: { icon: ReactNode; label: string; value: string; tone?: 'active' | 'inactive' }) {
