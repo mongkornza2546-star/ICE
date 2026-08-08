@@ -125,6 +125,10 @@ const accountingReadModel = readFileSync(
   new URL('../supabase/migrations/0136_accounting_read_model.sql', import.meta.url),
   'utf8',
 );
+const accountingFactoryOrderStock = readFileSync(
+  new URL('../supabase/migrations/0138_accounting_factory_orders_as_truck_stock.sql', import.meta.url),
+  'utf8',
+);
 
 const COURIER_ID = '10000000-0000-4000-8000-000000000001';
 const ADMIN_ID = '10000000-0000-4000-8000-000000000002';
@@ -669,6 +673,7 @@ async function applyAccountingReadModel(db) {
     );
   `);
   await db.exec(accountingReadModel);
+  await db.exec(accountingFactoryOrderStock);
 }
 
 test('accounting migration returns retained cash and manager-only canonical rows', async (t) => {
@@ -706,6 +711,82 @@ test('accounting migration returns retained cash and manager-only canonical rows
     )`),
     /Only a round lead or admin can view accounting transactions/,
   );
+});
+
+test('accounting reconciliation treats factory orders as truck stock without a receipt', async (t) => {
+  const db = await createDatabase(t);
+  await applyAccountingReadModel(db);
+  await db.exec(`
+    update public.auth_context set user_id = '${ADMIN_ID}', app_role = 'admin';
+    insert into public.stock_movements (
+      id, service_date, kind, from_location_id, to_location_id,
+      idempotency_key, recorded_by
+    ) values (
+      '65000000-0000-4000-8000-000000000010', date '${SERVICE_DATE}',
+      'transfer', '${TRUCK_ID}', '${HOLDING_ID}',
+      '65000000-0000-4000-8000-000000000011', '${ADMIN_ID}'
+    );
+    insert into public.stock_movement_items (movement_id, ice_type_id, quantity)
+    values ('65000000-0000-4000-8000-000000000010', '${ICE_ID}', 15);
+  `);
+
+  const response = await db.query(`select public.get_accounting_reconciliation(
+    date '${SERVICE_DATE}'
+  ) result`);
+  const reconciliation = response.rows[0].result;
+  const truck = reconciliation.holders.find((holder) => holder.location_id === TRUCK_ID);
+  const employee = reconciliation.holders.find((holder) => holder.location_id === HOLDING_ID);
+
+  assert.equal(Number(reconciliation.aggregate[0].factory_in), 30);
+  assert.equal(Number(truck.items[0].factory_in), 30);
+  assert.equal(Number(truck.items[0].expected), 15);
+  assert.equal(Number(employee.items[0].factory_in), 0);
+  assert.equal(Number(employee.items[0].expected), 15);
+
+  await db.exec(`
+    insert into public.stock_count_snapshots (
+      id, service_date, location_id, counted_at
+    ) values (
+      '65000000-0000-4000-8000-000000000012', date '${SERVICE_DATE}',
+      '${TRUCK_ID}', now()
+    );
+    insert into public.stock_count_snapshot_items (
+      snapshot_id, ice_type_id, actual_quantity
+    ) values (
+      '65000000-0000-4000-8000-000000000012', '${ICE_ID}', 15
+    );
+    insert into public.factory_receipts (
+      id, factory_order_id, service_date, truck_location_id, recorded_at
+    ) values (
+      '65000000-0000-4000-8000-000000000013',
+      '65000000-0000-4000-8000-000000000001',
+      date '${SERVICE_DATE}', '${HOLDING_ID}', now() + interval '1 second'
+    );
+    insert into public.factory_receipt_items (
+      factory_receipt_id, ice_type_id, expected_quantity,
+      actual_quantity, variance_quantity
+    ) values (
+      '65000000-0000-4000-8000-000000000013', '${ICE_ID}', 30, 28, -2
+    );
+  `);
+  const legacyResponse = await db.query(`select public.get_accounting_reconciliation(
+    date '${SERVICE_DATE}'
+  ) result`);
+  const legacyReconciliation = legacyResponse.rows[0].result;
+  const legacyTruck = legacyReconciliation.holders.find(
+    (holder) => holder.location_id === TRUCK_ID,
+  );
+  const legacyEmployee = legacyReconciliation.holders.find(
+    (holder) => holder.location_id === HOLDING_ID,
+  );
+
+  assert.equal(Number(legacyReconciliation.aggregate[0].factory_in), 28);
+  assert.equal(Number(legacyTruck.items[0].factory_in), 28);
+  assert.equal(Number(legacyTruck.items[0].expected), 13);
+  assert.equal(legacyTruck.items[0].count_status, 'stale');
+  assert.equal(legacyTruck.items[0].actual, null);
+  assert.equal(Number(legacyEmployee.items[0].factory_in), 0);
+  assert.equal(Number(legacyEmployee.items[0].expected), 15);
 });
 
 test('accounting review derives stock variance only from a current complete count', async (t) => {

@@ -472,7 +472,11 @@ as $$
     where ice_type.is_active
   ), source_latest as (
     select greatest(
-      coalesce((select max(recorded_at) from public.factory_receipts where service_date = p_service_date), '-infinity'),
+      coalesce((select max(receipt.recorded_at)
+        from public.factory_receipts receipt
+        join public.stock_movements factory_order on factory_order.id = receipt.factory_order_id
+        where factory_order.service_date = p_service_date and factory_order.status = 'active'
+          and factory_order.kind = 'factory_order'), '-infinity'),
       coalesce((select max(recorded_at) from public.stock_movements where service_date = p_service_date), '-infinity'),
       coalesce((select max(event.recorded_at) from public.delivery_events event
         join public.round_stops stop on stop.id = event.round_stop_id
@@ -489,12 +493,19 @@ as $$
     ) as recorded_at
   ), aggregate_values as materialized (
     select ice.*,
-      coalesce((select sum(item.actual_quantity)
+      (coalesce((select sum(item.quantity)
+        from public.stock_movements movement
+        join public.stock_movement_items item on item.movement_id = movement.id
+        where movement.service_date = p_service_date and movement.status = 'active'
+          and movement.kind = 'factory_order' and item.ice_type_id = ice.id
+          and not exists (select 1 from public.factory_receipts receipt
+            where receipt.factory_order_id = movement.id)), 0)
+       + coalesce((select sum(item.actual_quantity)
         from public.factory_receipts receipt
         join public.factory_receipt_items item on item.factory_receipt_id = receipt.id
         join public.stock_movements movement on movement.id = receipt.factory_order_id
-        where receipt.service_date = p_service_date and movement.status = 'active'
-          and item.ice_type_id = ice.id), 0)::numeric as factory_in,
+        where movement.service_date = p_service_date and movement.status = 'active'
+          and movement.kind = 'factory_order' and item.ice_type_id = ice.id), 0))::numeric as factory_in,
       (coalesce((select sum(item.quantity)
         from public.delivery_events event
         join public.delivery_items item on item.delivery_event_id = event.id
@@ -576,11 +587,20 @@ begin
   ), holder_rows as materialized (
     select location.id location_id, location.name location_name, location.kind::text location_kind,
       assigned.display_name employee_name, ice.id ice_type_id, ice.name ice_type_name, ice.unit,
-      coalesce((select sum(item.actual_quantity) from public.factory_receipts receipt
+      (coalesce((select sum(item.quantity)
+        from public.stock_movements movement
+        join public.stock_movement_items item on item.movement_id = movement.id
+        where movement.service_date = p_service_date and movement.status = 'active'
+          and movement.kind = 'factory_order' and movement.to_location_id = location.id
+          and item.ice_type_id = ice.id
+          and not exists (select 1 from public.factory_receipts receipt
+            where receipt.factory_order_id = movement.id)), 0)
+       + coalesce((select sum(item.actual_quantity) from public.factory_receipts receipt
         join public.factory_receipt_items item on item.factory_receipt_id = receipt.id
         join public.stock_movements factory_order on factory_order.id = receipt.factory_order_id
-        where receipt.service_date = p_service_date and factory_order.status = 'active'
-          and receipt.truck_location_id = location.id and item.ice_type_id = ice.id), 0)::numeric factory_in,
+        where factory_order.service_date = p_service_date and factory_order.status = 'active'
+          and factory_order.kind = 'factory_order' and factory_order.to_location_id = location.id
+          and item.ice_type_id = ice.id), 0))::numeric factory_in,
       (coalesce((select sum(item.quantity) from public.delivery_events event
         join public.delivery_items item on item.delivery_event_id = event.id
         join public.round_stops stop on stop.id = event.round_stop_id
@@ -622,6 +642,11 @@ begin
         coalesce((select max(movement.recorded_at) from public.stock_movements movement
           where movement.service_date = p_service_date
             and (movement.from_location_id = location.id or movement.to_location_id = location.id)), '-infinity'),
+        coalesce((select max(receipt.recorded_at) from public.factory_receipts receipt
+          join public.stock_movements factory_order on factory_order.id = receipt.factory_order_id
+          where factory_order.service_date = p_service_date and factory_order.status = 'active'
+            and factory_order.kind = 'factory_order'
+            and factory_order.to_location_id = location.id), '-infinity'),
         coalesce((select max(event.recorded_at) from public.delivery_events event
           join public.round_stops stop on stop.id = event.round_stop_id
           join public.delivery_rounds round on round.id = stop.round_id
