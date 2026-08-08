@@ -1226,7 +1226,7 @@ input:disabled, select:disabled, textarea:disabled { background: #f2f5f8; color:
 .employee-stock-route svg { flex: 0 0 auto; color: #1670d8; }
 .employee-stock-route strong { color: #075fc8; }
 .employee-stock-table { overflow-x: auto; border: 1px solid #dbe6f0; border-radius: 12px; background: #fff; }
-.employee-stock-row { min-width: 760px; display: grid; grid-template-columns: minmax(130px, 1.3fr) .65fr minmax(166px, 1fr) .65fr .65fr .65fr; align-items: center; gap: 8px; padding: 10px 12px; border-top: 1px solid #e5ecf3; color: #3e5873; font-size: .76rem; text-align: center; }
+.employee-stock-row { min-width: 640px; display: grid; grid-template-columns: minmax(130px, 1.3fr) .65fr minmax(166px, 1fr) .65fr .65fr; align-items: center; gap: 8px; padding: 10px 12px; border-top: 1px solid #e5ecf3; color: #3e5873; font-size: .76rem; text-align: center; }
 .employee-stock-row:first-child { border-top: 0; }
 .employee-stock-row > strong { display: grid; gap: 1px; color: #1e405f; text-align: left; }
 .employee-stock-row > strong small { color: #7b8b9d; font-size: .62rem; font-weight: 500; }
@@ -2280,7 +2280,7 @@ input:disabled, select:disabled, textarea:disabled { background: #f2f5f8; color:
   grid-column: 1 / -1;
   grid-row: 3;
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 7px;
 }
 .employee-workspace--withdrawal .employee-stock-stats > span {

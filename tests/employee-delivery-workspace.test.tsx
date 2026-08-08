@@ -335,7 +335,7 @@ describe('EmployeeDeliveryWorkspace', () => {
     expect(screen.queryByRole('table', { name: 'ยอดก่อนและหลังรับน้ำแข็ง' })).toBeNull();
     expect(within(stockList).getAllByRole('listitem')).toHaveLength(2);
     expect(stockList.querySelector<HTMLImageElement>('.employee-stock-product-image')?.src).toBe(imageUrl);
-    expect(within(stockList).getByRole('group', { name: 'ยอดก้อน' }).textContent).toContain('รถหลัง20 ถุง');
+    expect(within(stockList).getByRole('group', { name: 'ยอดก้อน' }).textContent).not.toContain('รถหลัง');
 
     await user.click(within(stockList).getByRole('button', { name: 'ดูรูป ก้อน ขนาดใหญ่' }));
     expect(screen.getByRole('dialog')).toBeTruthy();
@@ -425,7 +425,7 @@ describe('EmployeeDeliveryWorkspace', () => {
 
     const blockRow = screen.getByText('ก้อน').closest('.employee-stock-row') as HTMLElement;
     expect(within(blockRow).getByRole('group', { name: 'ยอดก้อน' }).textContent).toContain('จุดหลัง0 ถุง');
-    expect(within(blockRow).getByRole('group', { name: 'ยอดก้อน' }).textContent).toContain('รถหลัง25 ถุง');
+    expect(within(blockRow).getByRole('group', { name: 'ยอดก้อน' }).textContent).not.toContain('รถหลัง');
 
     await user.clear(quantityInput);
     await user.type(quantityInput, '2');
@@ -500,7 +500,6 @@ describe('EmployeeDeliveryWorkspace', () => {
       'ก้อนถุง',
       '20',
       '−+',
-      '18',
       '5',
       '7',
     ]);

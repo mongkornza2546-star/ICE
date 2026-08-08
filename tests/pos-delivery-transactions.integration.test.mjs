@@ -133,6 +133,10 @@ const accountingReconciliationHardening = readFileSync(
   new URL('../supabase/migrations/0139_accounting_reconciliation_hardening.sql', import.meta.url),
   'utf8',
 );
+const courierPosAssignedStock = readFileSync(
+  new URL('../supabase/migrations/0140_courier_pos_consumes_assigned_stock.sql', import.meta.url),
+  'utf8',
+);
 
 const COURIER_ID = '10000000-0000-4000-8000-000000000001';
 const ADMIN_ID = '10000000-0000-4000-8000-000000000002';
@@ -1402,6 +1406,87 @@ test('POS context and delivery use override price, aggregate stock, and idempote
   `);
   assert.equal(adminContext.rows[0].result.stock_source.id, null);
   assert.equal(adminContext.rows[0].result.items[0].stock_quantity, 28);
+});
+
+test('courier POS consumes the assigned holding balance after a sale', async (t) => {
+  const db = await createDatabase(t);
+  await db.exec(monthlySalesDocuments);
+  await db.exec(courierPosAssignedStock);
+  await db.exec(`
+    update public.auth_context set user_id = '${ADMIN_ID}', app_role = 'admin';
+    insert into public.stock_movements (
+      id, service_date, kind, from_location_id, to_location_id, idempotency_key, recorded_by
+    ) values (
+      '65000000-0000-4000-8000-000000000140', date '${SERVICE_DATE}',
+      'transfer', '${TRUCK_ID}', '${HOLDING_ID}',
+      '65000000-0000-4000-8000-000000000141', '${ADMIN_ID}'
+    );
+    insert into public.stock_movement_items (movement_id, ice_type_id, quantity)
+    values ('65000000-0000-4000-8000-000000000140', '${ICE_ID}', 10);
+    update public.auth_context set user_id = '${COURIER_ID}', app_role = 'courier';
+  `);
+
+  const context = await db.query(`select public.get_delivery_pos_context('${STOP_ID}') as result`);
+  assert.equal(context.rows[0].result.stock_source.id, HOLDING_ID);
+  assert.equal(context.rows[0].result.stock_source.code, 'TEAM-1');
+  assert.equal(Number(context.rows[0].result.items[0].stock_quantity), 10);
+
+  const sale = await db.query(`
+    select public.record_immediate_sale(
+      '${STOP_ID}', '${itemPayload(2)}'::jsonb, null, now(),
+      'cash', 36, null, null, 36,
+      '70000000-0000-4000-8000-000000000140'
+    ) as result
+  `);
+  assert.equal(sale.rows[0].result.delivery.source_stock_location_id, HOLDING_ID);
+
+  const balances = await db.query(`
+    select
+      public.stock_balance_at(date '${SERVICE_DATE}', '${HOLDING_ID}', '${ICE_ID}') as holding,
+      public.daily_aggregate_stock_balance_at(date '${SERVICE_DATE}', '${ICE_ID}') as aggregate
+  `);
+  assert.deepEqual(
+    { holding: Number(balances.rows[0].holding), aggregate: Number(balances.rows[0].aggregate) },
+    { holding: 8, aggregate: 28 },
+  );
+
+  await assert.rejects(
+    db.query(`
+      select public.record_delivery(
+        '${STOP_ID}', '${itemPayload(9)}'::jsonb, 'delivered', null, null,
+        '70000000-0000-4000-8000-000000000142', 'immediate'
+      )
+    `),
+    /holding does not have enough stock/i,
+  );
+
+  await db.exec(`
+    update public.shop_payment_profiles
+    set allowed_payment_terms = array['immediate', 'end_of_day']::public.payment_term[]
+    where shop_id = '${SHOP_ID}'
+  `);
+  const unpaid = await db.query(`
+    select public.record_delivery(
+      '${STOP_ID}', '${itemPayload(2)}'::jsonb, 'delivered', null, null,
+      '70000000-0000-4000-8000-000000000143', 'end_of_day'
+    ) as result
+  `);
+  await assert.rejects(
+    db.query(`
+      select public.apply_open_delivery_correction(
+        '${unpaid.rows[0].result.delivery_event_id}', 'correct', '${itemPayload(9)}'::jsonb,
+        'delivered', null, 'ยอดแก้เกินของที่เบิก',
+        '70000000-0000-4000-8000-000000000144', null
+      )
+    `),
+    /holding does not have enough stock/i,
+  );
+  const correctedBalance = await db.query(`
+    select public.stock_balance_at(
+      date '${SERVICE_DATE}', '${HOLDING_ID}', '${ICE_ID}'
+    ) as holding
+  `);
+  assert.equal(Number(correctedBalance.rows[0].holding), 6);
 });
 
 test('delivery creation and correction reject quantities outside half-bag increments', async (t) => {

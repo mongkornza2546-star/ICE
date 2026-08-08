@@ -140,13 +140,11 @@ export function EmployeeStockTransferSection({
                       <div className="employee-stock-stats" role="group" aria-label={`ยอด${iceType.name}`}>
                         {isReturn ? (
                           <>
-                            <span><small>จุดหลัง</small><strong>{holdingBefore - transferQuantity}</strong> {iceType.unit}</span>
                             <span><small>รถก่อน</small><strong>{truckBefore}</strong> {iceType.unit}</span>
-                            <span><small>รถหลัง</small><strong>{truckBefore + transferQuantity}</strong> {iceType.unit}</span>
+                            <span><small>จุดหลัง</small><strong>{holdingBefore - transferQuantity}</strong> {iceType.unit}</span>
                           </>
                         ) : (
                           <>
-                            <span><small>รถหลัง</small><strong>{truckBefore - transferQuantity}</strong> {iceType.unit}</span>
                             <span><small>จุดก่อน</small><strong>{holdingBefore}</strong> {iceType.unit}</span>
                             <span><small>จุดหลัง</small><strong>{holdingBefore + transferQuantity}</strong> {iceType.unit}</span>
                           </>
@@ -159,7 +157,7 @@ export function EmployeeStockTransferSection({
             ) : (
               <div className="employee-stock-table" role="table" aria-label={isReturn ? 'ยอดก่อนและหลังคืนน้ำแข็ง' : 'ยอดก่อนและหลังรับน้ำแข็ง'}>
                 <div className="employee-stock-row employee-stock-row--header" role="row">
-                  <span role="columnheader">ชนิด</span><span role="columnheader">{isReturn ? 'จุดก่อน' : 'รถก่อน'}</span><span role="columnheader">{movementLabel}</span><span role="columnheader">{isReturn ? 'จุดหลัง' : 'รถหลัง'}</span><span role="columnheader">{isReturn ? 'รถก่อน' : 'จุดก่อน'}</span><span role="columnheader">{isReturn ? 'รถหลัง' : 'จุดหลัง'}</span>
+                  <span role="columnheader">ชนิด</span><span role="columnheader">{isReturn ? 'จุดก่อน' : 'รถก่อน'}</span><span role="columnheader">{movementLabel}</span><span role="columnheader">{isReturn ? 'รถก่อน' : 'จุดก่อน'}</span><span role="columnheader">จุดหลัง</span>
                 </div>
                 {iceTypes.map((iceType) => {
                   const truckBefore = stockQuantity(stockState.truck_location.balances, iceType.id);
@@ -179,9 +177,8 @@ export function EmployeeStockTransferSection({
                           purpose={movementLabel}
                         />
                       </div>
-                      <span data-label={isReturn ? 'จุดหลัง' : 'รถหลัง'} role="cell">{isReturn ? holdingBefore - transferQuantity : truckBefore - transferQuantity}</span>
                       <span data-label={isReturn ? 'รถก่อน' : 'จุดก่อน'} role="cell">{isReturn ? truckBefore : holdingBefore}</span>
-                      <b data-label={isReturn ? 'รถหลัง' : 'จุดหลัง'} role="cell">{isReturn ? truckBefore + transferQuantity : holdingBefore + transferQuantity}</b>
+                      <b data-label="จุดหลัง" role="cell">{isReturn ? holdingBefore - transferQuantity : holdingBefore + transferQuantity}</b>
                     </div>
                   );
                 })}
