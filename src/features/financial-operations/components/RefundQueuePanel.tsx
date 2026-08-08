@@ -4,6 +4,7 @@ import { supabase } from '../../../lib/supabase';
 import { getErrorMessage } from '../../../lib/errorMessage';
 import type { PaymentMethod } from '../../../types/app';
 import { money, paymentMethodLabel, receiptDateTime } from '../utils';
+import { publishDataChange, subscribeToDataChange } from '../../../lib/dataChange';
 
 type RefundQueueItem = {
   id: string;
@@ -68,6 +69,7 @@ export function RefundQueuePanel() {
   }, [showAll]);
 
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => subscribeToDataChange(['refund', 'payment'], () => { void load(); }), [load]);
 
   const pendingTotal = useMemo(() => items.filter((item) => item.status === 'pending')
     .reduce((total, item) => total + Number(item.amount), 0), [items]);
@@ -94,6 +96,7 @@ export function RefundQueuePanel() {
         })(),
       });
       if (settleError) throw settleError;
+      publishDataChange(['accounting', 'refund', 'payment']);
       setSuccess(`บันทึกคืนเงิน ${item.charge_number} แล้ว`);
       setReference('');
       await load();

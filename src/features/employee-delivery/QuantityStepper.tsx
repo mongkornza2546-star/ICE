@@ -28,18 +28,14 @@ export function QuantityStepper({
           aria-label={`จำนวน${iceTypeName}`}
           disabled={disabled}
           inputMode="numeric"
-          max={maxQuantity}
-          min={0}
           onChange={(event) => {
-            const enteredQuantity = Number(event.currentTarget.value);
-            const nextQuantity = Number.isFinite(enteredQuantity)
-              ? Math.max(0, Math.trunc(enteredQuantity))
-              : 0;
+            const digitsOnly = event.currentTarget.value.replace(/\D/g, '');
+            const nextQuantity = Number(digitsOnly || '0');
             onChange(nextQuantity - quantity);
           }}
+          pattern="[0-9]*"
           placeholder="0"
-          step={1}
-          type="number"
+          type="text"
           value={quantity === 0 ? '' : quantity}
         />
         {unit ? <small>{unit}</small> : null}

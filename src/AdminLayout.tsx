@@ -30,13 +30,13 @@ export type AdminView =
   | 'shops'
   | 'reference_settings';
 
-export type FinancialPage = 'collection' | 'credit' | 'refund';
+export type FinancialPage = 'collection' | 'transactions' | 'credit' | 'refund';
 
 const viewMeta: Record<AdminView, { label: string; shortLabel: string; icon: typeof Truck }> = {
   manager_overview: { label: 'งานวันนี้', shortLabel: 'งานวันนี้', icon: ClipboardText },
   factory_order: { label: 'สั่งน้ำแข็งจากโรงงาน', shortLabel: 'สั่งน้ำแข็ง', icon: ShoppingCart },
   delivery: { label: 'บันทึกส่งน้ำแข็ง', shortLabel: 'บันทึกส่ง', icon: Truck },
-  financial_operations: { label: 'เก็บเงินและลูกหนี้', shortLabel: 'การเงิน', icon: Coins },
+  financial_operations: { label: 'การเงินและบัญชี', shortLabel: 'การเงิน', icon: Coins },
   stock_operations: { label: 'โอน / ตรวจ / ปิดสต๊อก', shortLabel: 'จัดการสต๊อก', icon: MapPin },
   stock_audit: { label: 'Audit สต็อก', shortLabel: 'Audit สต็อก', icon: ClockCounterClockwise },
   location_management: { label: 'สถานที่และจุดถือครอง', shortLabel: 'สถานที่', icon: Gear },
@@ -147,7 +147,7 @@ export function AdminLayout({
                     <CaretDown aria-hidden="true" className="admin-nav__group-caret" size={15} />
                   </button>
                   {financialNavigationExpanded ? (
-                    <div className="admin-nav__subnav" aria-label="เมนูย่อยเก็บเงินและลูกหนี้">
+                    <div className="admin-nav__subnav" aria-label="เมนูย่อยการเงินและบัญชี">
                       <button
                         aria-current={activeView === view && financialPage === 'collection' ? 'page' : undefined}
                         onClick={() => {
@@ -157,6 +157,15 @@ export function AdminLayout({
                         }}
                         type="button"
                       >เก็บเงินร้านค้า</button>
+                      <button
+                        aria-current={activeView === view && financialPage === 'transactions' ? 'page' : undefined}
+                        onClick={() => {
+                          onNavigate(view);
+                          onFinancialPageChange?.('transactions');
+                          if (!isDesktopLayout) setNavigationExpanded(false);
+                        }}
+                        type="button"
+                      >บัญชี / รายการธุรกรรม</button>
                       <button
                         aria-current={activeView === view && financialPage === 'credit' ? 'page' : undefined}
                         onClick={() => {

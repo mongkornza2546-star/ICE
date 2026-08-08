@@ -23,6 +23,7 @@ import { useEmployeeDeliveryData } from './features/employee-delivery/useEmploye
 import { toBangkokDateString } from './lib/serviceDate';
 import { deletePaymentEvidence, uploadPaymentEvidence } from './lib/paymentEvidence';
 import { withSignedImageUrls } from './lib/signedImageUrls';
+import { subscribeToDataChange } from './lib/dataChange';
 
 export interface EmployeeDeliveryPayload {
   roundStopId: string;
@@ -309,6 +310,10 @@ export function EmployeeDeliveryWorkspace({
   useEffect(() => {
     onDraftStateChange?.(deliveryDraftState);
   }, [deliveryDraftState, onDraftStateChange]);
+
+  useEffect(() => subscribeToDataChange(['stock', 'pos'], () => {
+    if (!data.anySubmitting) data.retryLoad();
+  }), [data.anySubmitting, data.retryLoad]);
 
   if (data.loadingReference) {
     return <EmployeeState

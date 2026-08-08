@@ -121,6 +121,10 @@ const monthlySalesDocuments = readFileSync(
   new URL('../supabase/migrations/0134_monthly_sales_documents_and_atomic_immediate_sales.sql', import.meta.url),
   'utf8',
 );
+const accountingReadModel = readFileSync(
+  new URL('../supabase/migrations/0136_accounting_read_model.sql', import.meta.url),
+  'utf8',
+);
 
 const COURIER_ID = '10000000-0000-4000-8000-000000000001';
 const ADMIN_ID = '10000000-0000-4000-8000-000000000002';
@@ -635,6 +639,133 @@ async function createDatabase(t, { applyCollectionShopCards = true } = {}) {
 function itemPayload(quantity) {
   return JSON.stringify([{ ice_type_id: ICE_ID, quantity }]);
 }
+
+async function applyAccountingReadModel(db) {
+  await db.exec(monthlySalesDocuments);
+  await db.exec(`
+    alter table public.stock_movements
+      add column if not exists original_movement_id uuid references public.stock_movements(id),
+      add column if not exists replacement_movement_id uuid references public.stock_movements(id);
+    alter table public.factory_receipts
+      add column if not exists note text,
+      add column if not exists recorded_by uuid references public.users(id),
+      add column if not exists recorded_at timestamptz not null default now(),
+      add column if not exists idempotency_key uuid,
+      add column if not exists request_fingerprint text;
+    alter table public.factory_receipt_items
+      add column if not exists expected_quantity numeric(12,1) not null default 0,
+      add column if not exists variance_quantity numeric(12,1) not null default 0;
+    create table public.stock_count_snapshots (
+      id uuid primary key default gen_random_uuid(),
+      service_date date not null,
+      location_id uuid not null references public.stock_locations(id),
+      counted_at timestamptz not null default now()
+    );
+    create table public.stock_count_snapshot_items (
+      snapshot_id uuid not null references public.stock_count_snapshots(id),
+      ice_type_id uuid not null references public.ice_types(id),
+      actual_quantity numeric(12,1) not null,
+      primary key (snapshot_id, ice_type_id)
+    );
+  `);
+  await db.exec(accountingReadModel);
+}
+
+test('accounting migration returns retained cash and manager-only canonical rows', async (t) => {
+  const db = await createDatabase(t);
+  await applyAccountingReadModel(db);
+  await db.exec(`
+    update public.auth_context set user_id = '${COURIER_ID}', app_role = 'courier';
+  `);
+  await db.query(`select public.record_immediate_sale(
+    '${STOP_ID}', '${itemPayload(2)}'::jsonb, null, now(),
+    'cash', 50, null, null, 36,
+    '9f000000-0000-4000-8000-000000000001'
+  )`);
+  await db.exec(`update public.auth_context set user_id = '${ADMIN_ID}', app_role = 'admin'`);
+  const ledger = await db.query(`select public.get_accounting_transactions(
+    date '${SERVICE_DATE}', date '${SERVICE_DATE}', '{}'::jsonb,
+    '{"key":"document_number","direction":"asc"}'::jsonb, 100, 0
+  ) result`);
+  assert.equal(ledger.rows[0].result.total_count > 0, true);
+  assert.equal(ledger.rows[0].result.rows.some((row) => row.type === 'SALE'), true);
+  assert.equal(ledger.rows[0].result.rows.some((row) => row.source_table === 'delivery_charges'), true);
+  const receipt = ledger.rows[0].result.rows.find((row) => row.type === 'REC');
+  const reconciliation = await db.query(`select public.get_accounting_reconciliation(
+    date '${SERVICE_DATE}'
+  ) result`);
+  assert.equal(Number(receipt.cash_in), 36);
+  assert.equal(Number(receipt.details.received_amount), 50);
+  assert.equal(Number(reconciliation.rows[0].result.financial.cash_received), 36);
+  assert.equal(Number(reconciliation.rows[0].result.financial.net_cash), 36);
+
+  await db.exec(`update public.auth_context set user_id = '${COURIER_ID}', app_role = 'courier'`);
+  await assert.rejects(
+    db.query(`select public.get_accounting_transactions(
+      date '${SERVICE_DATE}', date '${SERVICE_DATE}', '{}'::jsonb, '{}'::jsonb, 100, 0
+    )`),
+    /Only a round lead or admin can view accounting transactions/,
+  );
+});
+
+test('accounting review derives stock variance only from a current complete count', async (t) => {
+  const db = await createDatabase(t);
+  await applyAccountingReadModel(db);
+  await db.exec(`
+    update public.auth_context set user_id = '${ADMIN_ID}', app_role = 'admin';
+    update public.shop_payment_profiles
+    set allowed_payment_terms = array['end_of_day']::public.payment_term[],
+        default_payment_term = 'end_of_day', allow_outstanding = true
+    where shop_id = '${SHOP_ID}';
+  `);
+  await db.query(`select public.record_delivery(
+    '${STOP_ID}', '${itemPayload(2)}'::jsonb, 'delivered', null, null,
+    '9f000000-0000-4000-8000-000000000011', 'end_of_day'
+  )`);
+  const charge = await db.query(`select id, original_amount
+    from public.delivery_charges where service_date = date '${SERVICE_DATE}'`);
+  const balance = await db.query(`select public.daily_aggregate_stock_balance_at(
+    date '${SERVICE_DATE}', '${ICE_ID}'
+  ) value`);
+  const actual = Number(balance.rows[0].value) + 1;
+  await db.query(`select public.close_daily_aggregate_stock(
+    date '${SERVICE_DATE}',
+    '[{"ice_type_id":"${ICE_ID}","actual_quantity":${actual},"note":"test variance"}]'::jsonb,
+    'test variance', '9f000000-0000-4000-8000-000000000012'
+  )`);
+
+  let review = await db.query(`select public.get_accounting_review_queue(
+    date '${SERVICE_DATE}', date '${SERVICE_DATE}', '{}'::jsonb, 100, 0
+  ) result`);
+  assert.equal(review.rows[0].result.rows.some((item) => item.issue_type === 'STOCK_VARIANCE'), true);
+
+  await db.exec(`
+    insert into public.delivery_charge_adjustments (
+      idempotency_key, request_fingerprint, charge_id, scope, amount_delta,
+      corrected_total, reason, created_by, created_at
+    ) select
+      '9f000000-0000-4000-8000-000000000013', 'accounting-stale-test', id,
+      'day_closed', -18, original_amount - 18, 'test post-close correction',
+      '${ADMIN_ID}', (select closed_at + interval '1 second'
+        from public.daily_aggregate_stock_closures where service_date = date '${SERVICE_DATE}')
+    from public.delivery_charges where id = '${charge.rows[0].id}';
+    insert into public.delivery_adjustment_items (
+      adjustment_id, ice_type_id, original_quantity, corrected_quantity, unit_price
+    ) values (
+      '9f000000-0000-4000-8000-000000000013', '${ICE_ID}', 2, 1, 18
+    );
+  `);
+
+  const staleReconciliation = await db.query(`select public.get_accounting_reconciliation(
+    date '${SERVICE_DATE}'
+  ) result`);
+  assert.equal(staleReconciliation.rows[0].result.aggregate[0].count_status, 'stale');
+  assert.equal(staleReconciliation.rows[0].result.aggregate[0].actual, null);
+  review = await db.query(`select public.get_accounting_review_queue(
+    date '${SERVICE_DATE}', date '${SERVICE_DATE}', '{}'::jsonb, 100, 0
+  ) result`);
+  assert.equal(review.rows[0].result.rows.some((item) => item.issue_type === 'STOCK_VARIANCE'), false);
+});
 
 test('monthly document migration issues atomic immediate REC and preserves idempotency', async (t) => {
   const db = await createDatabase(t);

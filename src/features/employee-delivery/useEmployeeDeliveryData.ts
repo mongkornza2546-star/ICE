@@ -15,6 +15,7 @@ import { usePendingRequests, type PendingRequestIdentity } from './usePendingReq
 import { compareShopCodes, normalizeSearch, stockQuantity, employeeErrorMessage } from './utils';
 import { clearRecovery, readRecovery, writeRecovery } from '../../lib/recoveryStorage';
 import { printSalesDocument, salesDocumentFromStored, type StoredSalesDocument } from '../../lib/salesDocumentPrint';
+import { publishDataChange } from '../../lib/dataChange';
 
 const PAD_VALUES = ['0', '1', '2', '3', '4', '5', '+'] as const;
 
@@ -661,6 +662,7 @@ export function useEmployeeDeliveryData({
         items: transferItems,
         idempotencyKey: request.key,
       });
+      publishDataChange(['accounting', 'stock']);
       if (requestId !== transferRequestId.current || activeStockRoundId.current !== selectedRound.id) return;
       const clearedTransferQuantities = Object.fromEntries(iceTypes.map((iceType) => [iceType.id, 0]));
       persistRecoveryNow({ transferQuantities: clearedTransferQuantities });
@@ -783,6 +785,7 @@ export function useEmployeeDeliveryData({
         paymentTerm: isDelivery ? paymentTerm : null,
         approvalId,
       });
+      publishDataChange(['accounting', 'stock', 'pos', 'receivable']);
       if (requestId !== submissionRequestId.current) return;
       if (result && isDelivery && result.payment_term === 'immediate' && result.charge_id) {
         const nextPaymentAmount = String(result.total_amount ?? '');
@@ -949,6 +952,7 @@ export function useEmployeeDeliveryData({
           approvalId,
           idempotencyKey: request.key,
         });
+        publishDataChange(['accounting', 'payment', 'receivable']);
         clearRecovery(requestScope, serviceDate, recoveryMode);
         clearPendingRequest(signature, request.key);
         setPaymentOpen(false);
@@ -966,7 +970,8 @@ export function useEmployeeDeliveryData({
           evidencePath,
           expectedTotal: paymentResult.total_amount,
           idempotencyKey: request.key,
-        });
+      });
+      publishDataChange(['accounting', 'payment', 'receivable', 'stock', 'pos']);
       clearRecovery(requestScope, serviceDate, recoveryMode);
       clearPendingRequest(signature, request.key);
       setImmediateSaleRetry(null);

@@ -100,7 +100,7 @@ export function RoleRouter({
       const saved = readNavigation(profile.id);
       navigationOwner.current = profile.id;
       setActiveView(saved?.activeView ? saved.activeView as AdminView : 'manager_overview');
-      setFinancialPage(saved?.financialPage === 'credit' || saved?.financialPage === 'refund' ? saved.financialPage : 'collection');
+      setFinancialPage(saved?.financialPage === 'transactions' || saved?.financialPage === 'credit' || saved?.financialPage === 'refund' ? saved.financialPage : 'collection');
       setCourierView(saved?.courierView ?? 'pos');
       setBillingServiceDate(currentBangkokDate);
       return;

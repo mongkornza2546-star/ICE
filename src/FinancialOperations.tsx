@@ -15,6 +15,7 @@ import { HistoryReceiptModal } from './features/financial-operations/components/
 import { PaymentModal } from './features/financial-operations/components/PaymentModal';
 import { RefundQueuePanel } from './features/financial-operations/components/RefundQueuePanel';
 import { DeliveryCorrectionDialog } from './features/delivery-corrections/DeliveryCorrectionDialog';
+import { AccountingPage } from './features/accounting/AccountingPage';
 import type {
   Approval,
   Collector,
@@ -38,6 +39,7 @@ import {
   withSignedShopImages,
 } from './features/financial-operations/utils';
 import type { AppRole, CreditDueRule, PaymentMethod } from './types/app';
+import { publishDataChange, subscribeToDataChange } from './lib/dataChange';
 
 const PAYMENT_FIELDS = 'id, receipt_number, received_amount, allocated_amount, change_amount, payment_method, status, recorded_at, recorded_by, void_reason, shops(code,name)';
 const COLLECTION_AUTO_REFRESH_MS = 30_000;
@@ -65,8 +67,8 @@ export function FinancialOperations({
   userRole?: AppRole;
   currentUserId?: string;
   demoData?: FinancialOperationsDemoData;
-  managerPage?: 'collection' | 'credit' | 'refund';
-  onManagerPageChange?: (page: 'collection' | 'credit' | 'refund') => void;
+  managerPage?: 'collection' | 'transactions' | 'credit' | 'refund';
+  onManagerPageChange?: (page: 'collection' | 'transactions' | 'credit' | 'refund') => void;
 }) {
   const serviceDate = demoData?.serviceDate ?? toBangkokDateString();
   const isManager = userRole === 'admin' || userRole === 'round_lead';
@@ -259,6 +261,8 @@ export function FinancialOperations({
         autoRefreshRunningRef.current = false;
       });
   }, [refreshFinancialData]);
+
+  useEffect(() => subscribeToDataChange(['payment', 'receivable', 'refund'], autoRefreshFinancialData), [autoRefreshFinancialData]);
 
   useEffect(() => {
     void load().catch((loadError: unknown) => {
@@ -577,6 +581,7 @@ export function FinancialOperations({
       };
       setReceipt(nextReceipt);
       setSuccess('บันทึกรับเงินแล้ว');
+      publishDataChange(['accounting', 'payment', 'receivable']);
     }, false);
   };
 
@@ -725,7 +730,8 @@ export function FinancialOperations({
         p_reason: reason,
       });
       if (rpcError) throw rpcError;
-      await refreshFinancialData();
+      publishDataChange(['accounting', 'payment', 'receivable']);
+      await Promise.allSettled([refreshFinancialData()]);
       setSuccess('ยกเลิกรายการรับเงินแล้ว ยอดค้างถูกคำนวณใหม่');
     }, false);
   };
@@ -959,6 +965,8 @@ export function FinancialOperations({
         todayPayments={todayPayments}
       /> : null}
 
+      {isManager && managerPage === 'transactions' ? <AccountingPage userRole={userRole} demoMode={Boolean(demoData)} /> : null}
+
       {isManager && managerPage === 'credit' ? <ManagerFinancialSections
         approvals={approvals}
         busy={busy}
@@ -1032,9 +1040,8 @@ export function FinancialOperations({
         <DeliveryCorrectionDialog
           eventId={correctionEventId}
           onClose={() => setCorrectionEventId(null)}
-          onSuccess={async (message) => {
+          onSuccess={(message) => {
             setSuccess(message);
-            await refreshFinancialData();
           }}
           userRole={userRole}
         />,

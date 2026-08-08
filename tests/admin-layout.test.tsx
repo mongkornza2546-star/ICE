@@ -21,6 +21,8 @@ describe('AdminLayout', () => {
     );
 
     expect(screen.getByRole('button', { name: 'เก็บเงินร้านค้า' }).getAttribute('aria-current')).toBe('page');
+    await user.click(screen.getByRole('button', { name: 'บัญชี / รายการธุรกรรม' }));
+    expect(onFinancialPageChange).toHaveBeenCalledWith('transactions');
     await user.click(screen.getByRole('button', { name: 'ลูกหนี้เครดิต' }));
     expect(onFinancialPageChange).toHaveBeenCalledWith('credit');
     await user.click(screen.getByRole('button', { name: 'คิวคืนเงิน' }));

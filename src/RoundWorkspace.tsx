@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { ManagerRoundControl } from './ManagerRoundControl';
 import { ManagerStockControl } from './ManagerStockControl';
 import { useReferenceData } from './hooks/useReferenceData';
+import { subscribeToDataChange } from './lib/dataChange';
 
 export function todayIsoDate() {
   const now = new Date();
@@ -26,6 +27,8 @@ export function RoundWorkspace({ isActive }: { isActive: boolean }) {
     if (!isActive) return;
     void loadReferenceData();
   }, [isActive, loadReferenceData]);
+
+  useEffect(() => subscribeToDataChange(['stock'], () => { if (isActive) void loadReferenceData(); }), [isActive, loadReferenceData]);
 
   const stockRound = useMemo(
     () => rounds.find((round) => (

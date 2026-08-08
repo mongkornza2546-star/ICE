@@ -4,6 +4,7 @@ import { supabase } from '../../lib/supabase';
 import { getErrorMessage } from '../../lib/errorMessage';
 import type { AppRole } from '../../types/app';
 import { printSalesDocument, salesDocumentFromStored, type StoredSalesDocument } from '../../lib/salesDocumentPrint';
+import { publishDataChange } from '../../lib/dataChange';
 
 type CorrectionItem = {
   ice_type_id: string;
@@ -257,7 +258,10 @@ export function DeliveryCorrectionDialog({
       };
       const { error: saveError } = await supabase.rpc(rpc, args);
       if (saveError) throw saveError;
-      await onSuccess(isClosed ? 'สร้างเอกสารปรับปรุงบิลแล้ว' : 'แก้ไขบิลแล้ว');
+      publishDataChange(['accounting', 'payment', 'receivable', 'refund', 'stock', 'pos']);
+      await Promise.allSettled([Promise.resolve(onSuccess(
+        isClosed ? 'สร้างเอกสารปรับปรุงบิลแล้ว' : 'แก้ไขบิลแล้ว',
+      ))]);
       onClose();
     } catch (saveError) {
       setError(getErrorMessage(saveError));
@@ -287,9 +291,10 @@ export function DeliveryCorrectionDialog({
         p_approval_id: null,
       });
       if (saveError) throw saveError;
-      await onSuccess(context.payment_term === 'immediate'
+      publishDataChange(['accounting', 'payment', 'receivable', 'refund', 'stock', 'pos']);
+      await Promise.allSettled([Promise.resolve(onSuccess(context.payment_term === 'immediate'
         ? 'ยกเลิกรายการขายสดแล้ว สามารถบันทึกขายใหม่ได้'
-        : 'ยกเลิกบิลแล้ว ยอดที่รับชำระจะเข้าคิวคืนเงิน');
+        : 'ยกเลิกบิลแล้ว ยอดที่รับชำระจะเข้าคิวคืนเงิน'))]);
       onClose();
     } catch (saveError) {
       setError(getErrorMessage(saveError));
