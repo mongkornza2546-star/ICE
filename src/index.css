@@ -244,13 +244,14 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .factory-order-alert strong { color: #1e3a8a; font-size: .85rem; font-weight: 600; }
 .factory-order-alert p { margin-top: 3px; color: #475569; font-size: .74rem; }
 .factory-order-fields { display: grid; grid-template-columns: 1fr 1.1fr 1.1fr; gap: 16px; margin: 16px 0; }
+.factory-order-fields label { min-width: 0; }
 .factory-order-fields label, .factory-order-bottom-fields label { display: grid; gap: 6px; color: #475569; font-size: .78rem; font-weight: 600; }
 .factory-order-fields label > input, .factory-order-fields label > select, .factory-order-bottom-fields textarea { width: 100%; }
 .field-with-icon { position: relative; display: block; }
 .field-with-icon svg { position: absolute; top: 11px; left: 12px; z-index: 1; color: #64748b; }
 .field-with-icon input, .field-with-icon select { padding-left: 36px; }
-.factory-order-fields .field-with-icon { width: 100%; }
-.factory-order-fields .field-with-icon input { width: 100%; padding-left: 36px; }
+.factory-order-fields .field-with-icon { width: 100%; min-width: 0; max-width: 100%; }
+.factory-order-fields .field-with-icon input { width: 100%; min-width: 0; max-width: 100%; padding-left: 36px; }
 .factory-order-card input, .factory-order-card select, .factory-order-card textarea { min-height: 40px; border: 1px solid #cbd5e1; border-radius: 8px; color: #0f172a; background: #fff; font-size: .85rem; transition: border-color 0.15s, box-shadow 0.15s; }
 .factory-order-card input:focus, .factory-order-card select:focus, .factory-order-card textarea:focus { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15); outline: none; }
 .factory-order-card input, .factory-order-card select { padding: 0 12px; }
@@ -1126,7 +1127,7 @@ input:disabled, select:disabled, textarea:disabled { background: #f2f5f8; color:
 .employee-filters { display: grid; grid-template-columns: minmax(230px, .38fr) minmax(260px, 1fr); gap: 12px; padding: 14px; border: 1px solid #dce6f1; border-radius: 15px; background: #fff; box-shadow: 0 7px 22px rgba(19,57,103,.055); }
 .employee-filters--round { grid-template-columns: minmax(230px, 360px); }
 .employee-round-select { display: grid; gap: 5px; color: #526981; font-size: .75rem; font-weight: 600; }
-.employee-round-select select, .employee-search input { width: 100%; min-height: 50px; border: 1px solid #cfdce9; border-radius: 11px; background: #fff; color: #1f3857; font-size: .9rem; }
+.employee-round-select select, .employee-search input { width: 100%; min-height: 50px; border: 1px solid #cfdce9; border-radius: 11px; background: #fff; color: #1f3857; font-size: 1rem; }
 .employee-round-select select { padding: 0 38px 0 12px; }
 .employee-search { position: relative; align-self: end; }
 .employee-search svg { position: absolute; top: 50%; left: 15px; color: #66809c; transform: translateY(-50%); pointer-events: none; }
