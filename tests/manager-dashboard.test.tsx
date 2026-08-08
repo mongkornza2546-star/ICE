@@ -155,10 +155,12 @@ describe('ManagerDashboard', () => {
     expect(onNavigate).toHaveBeenLastCalledWith('delivery');
   });
 
-  it('does not hide staff behind inert see-all buttons', async () => {
+  it('omits the nonessential staff and per-location stock panels', async () => {
     renderDashboard();
 
-    expect(await screen.findByText('นิรันดร์')).toBeTruthy();
-    expect(screen.queryByRole('button', { name: 'ดูทั้งหมด' })).toBeNull();
+    expect(await screen.findByRole('heading', { name: 'สรุปเส้นทางการกระจายน้ำแข็งวันนี้' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'การแจ้งเตือนที่ต้องดำเนินการ' })).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: 'สถานะพนักงานประจำรอบ' })).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'สต๊อกคงเหลือแยกตามจุดถือครอง' })).toBeNull();
   });
 });

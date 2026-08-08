@@ -4,7 +4,6 @@ import {
   CaretRight,
   CheckCircle,
   ClipboardText,
-  Clock,
   CurrencyDollar,
   DotsThreeVertical,
   Factory,
@@ -64,14 +63,6 @@ function formatServiceDate(value: string) {
   }).format(new Date(`${value}T12:00:00`));
 }
 
-function formatTime(value?: string | null) {
-  if (!value) return '-';
-  return new Intl.DateTimeFormat('th-TH', {
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(new Date(value));
-}
-
 function formatCurrency(amount: number) {
   return new Intl.NumberFormat('th-TH', {
     style: 'currency',
@@ -125,10 +116,6 @@ function summarizeQuantity(items: Array<{ unit: string; quantity: number }>) {
     unit: undefined,
     total: null,
   };
-}
-
-function quantityLabel(summary: ReturnType<typeof summarizeQuantity>) {
-  return summary.unit ? `${summary.value} ${summary.unit}` : summary.value;
 }
 
 export function ManagerDashboard({
@@ -257,7 +244,7 @@ export function ManagerDashboard({
     );
   }
 
-  const { session, members, deliverySummary, salesSummary, readiness, cancellationState, problems } = dashboard;
+  const { session, deliverySummary, salesSummary, readiness, cancellationState, problems } = dashboard;
   const locations = (stockSummary?.locations ?? []).filter((location) => location.holds_inventory === true);
   const stockTotals = summarizeStock(stockSummary ? { ...stockSummary, locations } : null);
   const totalStock = summarizeQuantity(stockTotals);
@@ -344,44 +331,6 @@ export function ManagerDashboard({
               );
             })}
             {locations.length === 0 ? <p className="dashboard-flow__empty">ยังไม่มีจุดถือครองสำหรับวันนี้</p> : null}
-          </div>
-        </section>
-
-        <section className="dashboard-panel dashboard-team-panel">
-          <PanelHeading title="สถานะพนักงานประจำรอบ" />
-          <div className="dashboard-team-grid">
-            {members.map((member) => (
-              <article className="dashboard-team-member" key={member.id}>
-                <span className="dashboard-team-member__avatar"><User size={25} weight="fill" /></span>
-                <div className="dashboard-team-member__identity"><strong>{member.display_name}</strong><small>{member.role_label}</small></div>
-                <div className="dashboard-team-member__activity"><Clock size={14} /><span>{member.last_activity ? `${member.last_activity.description} · ${formatTime(member.last_activity.timestamp)}` : 'ยังไม่มีกิจกรรมวันนี้'}</span></div>
-              </article>
-            ))}
-            {members.length === 0 ? <p className="empty-text">ยังไม่มีพนักงานปฏิบัติงานวันนี้</p> : null}
-          </div>
-        </section>
-      </div>
-
-      <div className="dashboard-mid-grid dashboard-mid-grid--lower">
-        <section className="dashboard-panel dashboard-stock-panel">
-          <PanelHeading detail={`รวม ${quantityLabel(totalStock)}`} title="สต๊อกคงเหลือแยกตามจุดถือครอง" />
-          <div className="dashboard-stock-grid">
-            {locations.slice(0, 6).map((location) => {
-              const quantity = summarizeQuantity(location.balances);
-              const percent = totalStock.total !== null && totalStock.total > 0 && quantity.total !== null
-                ? Math.max(0, Math.min(100, Math.round((quantity.total / totalStock.total) * 100)))
-                : null;
-              return (
-                <article className="dashboard-stock-item" key={location.id}>
-                  <span><MapPin size={18} weight="fill" /> {location.name}</span>
-                  <strong>{quantity.value}</strong>
-                  {quantity.unit ? <small>{quantity.unit}</small> : null}
-                  {percent !== null ? <div className="dashboard-stock-item__progress" aria-label={`${percent}% ของสต๊อกรวม`}><i style={{ width: `${percent}%` }} /></div> : null}
-                  {percent !== null ? <em>{percent}%</em> : null}
-                </article>
-              );
-            })}
-            {locations.length === 0 ? <p className="empty-text">ยังไม่มีข้อมูลสต๊อกคงเหลือ</p> : null}
           </div>
         </section>
 
