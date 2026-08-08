@@ -240,6 +240,7 @@ export interface EmployeeStockLocation {
 export interface EmployeeStockState {
   round_id: string;
   service_date: string;
+  withdrawn_balances: StockBalanceItem[];
   truck_location: EmployeeStockLocation;
   holding_location: EmployeeStockLocation;
 }

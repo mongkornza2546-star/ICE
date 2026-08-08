@@ -50,6 +50,12 @@ function employeeStockState(overrides: Partial<EmployeeStockState> = {}): Employ
   return {
     round_id: round.id,
     service_date: round.service_date,
+    withdrawn_balances: iceTypes.map((iceType) => ({
+      ice_type_id: iceType.id,
+      ice_type_name: iceType.name,
+      unit: iceType.unit,
+      quantity: 10,
+    })),
     truck_location: {
       id: 'truck-main',
       code: 'TRUCK-MAIN',
@@ -331,8 +337,8 @@ describe('EmployeeDeliveryWorkspace', () => {
       />,
     );
 
-    const stockList = await screen.findByRole('list', { name: 'ยอดก่อนและหลังรับน้ำแข็ง' });
-    expect(screen.queryByRole('table', { name: 'ยอดก่อนและหลังรับน้ำแข็ง' })).toBeNull();
+    const stockList = await screen.findByRole('list', { name: 'ยอดเบิกและยอดควรเหลือ' });
+    expect(screen.queryByRole('table', { name: 'ยอดเบิกและยอดควรเหลือ' })).toBeNull();
     expect(within(stockList).getAllByRole('listitem')).toHaveLength(2);
     expect(stockList.querySelector<HTMLImageElement>('.employee-stock-product-image')?.src).toBe(imageUrl);
     expect(within(stockList).getByRole('group', { name: 'ยอดก้อน' }).textContent).not.toContain('รถหลัง');
@@ -342,6 +348,39 @@ describe('EmployeeDeliveryWorkspace', () => {
     expect(within(screen.getByRole('dialog')).getByRole('img', { name: 'ก้อน' }).getAttribute('src')).toBe(imageUrl);
     await user.click(screen.getByRole('button', { name: 'ปิดรูปภาพ' }));
     expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('keeps the withdrawn-today amount separate from the remaining sale stock', async () => {
+    const gateway = createGateway({
+      loadEmployeeStockState: vi.fn().mockResolvedValue(employeeStockState({
+        withdrawn_balances: iceTypes.map((iceType) => ({
+          ice_type_id: iceType.id,
+          ice_type_name: iceType.name,
+          unit: iceType.unit,
+          quantity: iceType.id === 'ice-block' ? 12 : 10,
+        })),
+        holding_location: {
+          ...employeeStockState().holding_location,
+          balances: employeeStockState().holding_location.balances.map((item) => ({
+            ...item,
+            quantity: item.ice_type_id === 'ice-block' ? 4 : item.quantity,
+          })),
+        },
+      })),
+    });
+
+    render(
+      <EmployeeDeliveryWorkspace
+        enableAssignedStockFlow
+        gateway={gateway}
+        viewMode="withdrawal"
+      />,
+    );
+
+    const blockRow = (await screen.findByText('ก้อน')).closest('.employee-stock-row') as HTMLElement;
+    const stats = within(blockRow).getByRole('group', { name: 'ยอดก้อน' });
+    expect(stats.textContent).toContain('เบิกวันนี้12 ถุง');
+    expect(stats.textContent).toContain('ควรเหลือ4 ถุง');
   });
 
   it('resets every withdrawal quantity without submitting a transfer', async () => {
@@ -355,7 +394,7 @@ describe('EmployeeDeliveryWorkspace', () => {
       />,
     );
 
-    await screen.findByRole('list', { name: 'ยอดก่อนและหลังรับน้ำแข็ง' });
+    await screen.findByRole('list', { name: 'ยอดเบิกและยอดควรเหลือ' });
     await user.click(screen.getByRole('button', { name: 'เพิ่มก้อนอีกหนึ่ง' }));
     await user.click(screen.getByRole('button', { name: 'เพิ่มเล็กอีกหนึ่ง' }));
     await user.click(screen.getByRole('button', { name: 'รีเซ็ตทั้งหมด' }));
@@ -415,17 +454,18 @@ describe('EmployeeDeliveryWorkspace', () => {
       />,
     );
 
-    await screen.findByRole('list', { name: 'ยอดก่อนและหลังรับน้ำแข็ง' });
+    await screen.findByRole('list', { name: 'ยอดเบิกและยอดควรเหลือ' });
     await user.click(screen.getByRole('button', { name: 'คืนขึ้นรถ' }));
     expect(screen.getByRole('heading', { name: 'คืนน้ำแข็งขึ้นรถ' })).toBeTruthy();
+    expect(screen.getByRole('list', { name: 'ยอดก่อนและหลังคืนน้ำแข็ง' })).toBeTruthy();
 
     const quantityInput = screen.getByRole('textbox', { name: 'จำนวนก้อน' });
     await user.type(quantityInput, '99');
     expect((quantityInput as HTMLInputElement).value).toBe('5');
 
     const blockRow = screen.getByText('ก้อน').closest('.employee-stock-row') as HTMLElement;
-    expect(within(blockRow).getByRole('group', { name: 'ยอดก้อน' }).textContent).toContain('จุดหลัง0 ถุง');
-    expect(within(blockRow).getByRole('group', { name: 'ยอดก้อน' }).textContent).not.toContain('รถหลัง');
+    expect(within(blockRow).getByRole('group', { name: 'ยอดก้อน' }).textContent).toContain('รถก่อน20 ถุง');
+    expect(within(blockRow).getByRole('group', { name: 'ยอดก้อน' }).textContent).toContain('เหลือหลังคืน0 ถุง');
 
     await user.clear(quantityInput);
     await user.type(quantityInput, '2');
@@ -500,8 +540,8 @@ describe('EmployeeDeliveryWorkspace', () => {
       'ก้อนถุง',
       '20',
       '−+',
+      '10',
       '5',
-      '7',
     ]);
     await user.click(screen.getByRole('button', { name: 'ยืนยันรับน้ำแข็ง' }));
 

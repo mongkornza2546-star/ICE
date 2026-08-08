@@ -5,6 +5,7 @@ import {
   Storefront,
   UserCircle,
 } from '@phosphor-icons/react';
+import { useMemo, useState } from 'react';
 import type { Collector, QueueShop } from '../types';
 import { money } from '../utils';
 
@@ -39,6 +40,27 @@ export function CollectionRunSection({
   onSaveRun: () => void;
   onSelectShop: (shop: QueueShop, trigger: HTMLButtonElement) => void;
 }) {
+  const [buildingId, setBuildingId] = useState('');
+  const [zoneId, setZoneId] = useState('');
+  const buildings = useMemo(() => {
+    const found = new Map<string, string>();
+    queue.forEach((shop) => {
+      if (shop.building_id && shop.building_name) found.set(shop.building_id, shop.building_name);
+    });
+    return [...found].map(([id, name]) => ({ id, name })).sort((left, right) => left.name.localeCompare(right.name, 'th'));
+  }, [queue]);
+  const zones = useMemo(() => {
+    const found = new Map<string, string>();
+    queue.forEach((shop) => {
+      if (shop.building_id === buildingId && shop.zone_id && shop.zone_name) found.set(shop.zone_id, shop.zone_name);
+    });
+    return [...found].map(([id, name]) => ({ id, name })).sort((left, right) => left.name.localeCompare(right.name, 'th'));
+  }, [buildingId, queue]);
+  const visibleQueue = queue.filter((shop) => (
+    (!buildingId || shop.building_id === buildingId)
+    && (!zoneId || shop.zone_id === zoneId)
+  ));
+
   return (
     <section className="financial-ops__section">
       <div className="financial-ops__title">
@@ -80,9 +102,23 @@ export function CollectionRunSection({
       {showQueue && !runId ? <p className="financial-ops__empty">{isManager
         ? 'เลือกรายชื่อผู้เก็บเงินเพื่อเปิดรอบ'
         : 'วันนี้ยังไม่มีรอบเก็บเงินที่มอบหมายให้คุณ'}</p> : null}
-      {showQueue && (runId && queue.length === 0 ? <p className="financial-ops__empty">ไม่มียอดค้างที่ต้องเก็บ</p> : (
+      {showQueue && runId && queue.length > 0 ? <div className="financial-ops__queue-filters">
+        <label>ตึก
+          <select aria-label="เลือกตึก" onChange={(event) => { setBuildingId(event.target.value); setZoneId(''); }} value={buildingId}>
+            <option value="">ทุกตึก</option>
+            {buildings.map((building) => <option key={building.id} value={building.id}>{building.name}</option>)}
+          </select>
+        </label>
+        <label>โซน
+          <select aria-label="เลือกโซน" disabled={!buildingId} onChange={(event) => setZoneId(event.target.value)} value={zoneId}>
+            <option value="">ทุกโซน</option>
+            {zones.map((zone) => <option key={zone.id} value={zone.id}>{zone.name}</option>)}
+          </select>
+        </label>
+      </div> : null}
+      {showQueue && (runId && queue.length === 0 ? <p className="financial-ops__empty">ไม่มียอดค้างที่ต้องเก็บ</p> : visibleQueue.length === 0 ? <p className="financial-ops__empty">ไม่พบยอดค้างในตึกหรือโซนที่เลือก</p> : (
         <div className="financial-ops__shop-grid">
-          {queue.map((shop) => (
+          {visibleQueue.map((shop) => (
             <button
               aria-label={`${shop.shop_code} · ${shop.shop_name} ค้าง ${money.format(shop.outstanding_amount)}`}
               className="financial-ops__shop-card"

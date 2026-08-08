@@ -159,6 +159,58 @@ describe('FinancialOperations', () => {
     expect((screen.getByRole('spinbutton', { name: 'ยอดรับเงินจริง' }) as HTMLInputElement).value).toBe('100.00');
   });
 
+  it('filters a courier collection queue by the selected building and zone', async () => {
+    const user = userEvent.setup();
+    const buildingAZone1 = {
+      ...queueShop,
+      shop_code: 'A001',
+      shop_name: 'ร้านอาคารเอ โซนหนึ่ง',
+      building_id: 'building-a',
+      building_name: 'อาคาร A',
+      zone_id: 'zone-a-1',
+      zone_name: 'โซน 1',
+    };
+    const buildingAZone2 = {
+      ...queueShop,
+      shop_id: 'shop-2',
+      shop_code: 'A002',
+      shop_name: 'ร้านอาคารเอ โซนสอง',
+      building_id: 'building-a',
+      building_name: 'อาคาร A',
+      zone_id: 'zone-a-2',
+      zone_name: 'โซน 2',
+    };
+    const buildingB = {
+      ...queueShop,
+      shop_id: 'shop-3',
+      shop_code: 'B001',
+      shop_name: 'ร้านอาคารบี',
+      building_id: 'building-b',
+      building_name: 'อาคาร B',
+      zone_id: 'zone-b-1',
+      zone_name: 'โซน 1',
+    };
+
+    render(<FinancialOperations
+      demoData={{ serviceDate: '2026-07-28', queue: [buildingAZone1, buildingAZone2, buildingB], paymentHistory: [] }}
+      userRole="courier"
+    />);
+
+    const building = screen.getByRole('combobox', { name: 'เลือกตึก' });
+    const zone = screen.getByRole('combobox', { name: 'เลือกโซน' });
+    expect((zone as HTMLSelectElement).disabled).toBe(true);
+
+    await user.selectOptions(building, 'building-a');
+    expect((zone as HTMLSelectElement).disabled).toBe(false);
+    expect(screen.getByRole('button', { name: /A001 · ร้านอาคารเอ โซนหนึ่ง/ })).not.toBeNull();
+    expect(screen.getByRole('button', { name: /A002 · ร้านอาคารเอ โซนสอง/ })).not.toBeNull();
+    expect(screen.queryByRole('button', { name: /B001 · ร้านอาคารบี/ })).toBeNull();
+
+    await user.selectOptions(zone, 'zone-a-2');
+    expect(screen.queryByRole('button', { name: /A001 · ร้านอาคารเอ โซนหนึ่ง/ })).toBeNull();
+    expect(screen.getByRole('button', { name: /A002 · ร้านอาคารเอ โซนสอง/ })).not.toBeNull();
+  });
+
   it('opens delivery-bill items from the compact collection panel', async () => {
     Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1200 });
     const user = userEvent.setup();

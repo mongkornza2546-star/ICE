@@ -1536,6 +1536,10 @@ input:disabled, select:disabled, textarea:disabled { background: #f2f5f8; color:
 .financial-ops__header h1, .financial-ops__header p, .financial-ops__title h2, .financial-ops__title p { margin: 0; }
 .financial-ops__header > button, .financial-ops__title > button { min-height: 44px; padding: 8px 13px; border: 1px solid #b9d3e8; border-radius: 9px; color: #1265ac; background: #fff; font-weight: 800; }
 .financial-ops__section { display: grid; gap: 12px; padding: 16px; border: 1px solid #d8e5ef; border-radius: 14px; background: #fff; }
+.financial-ops__queue-filters { display: grid; grid-template-columns: repeat(2, minmax(0, 220px)); gap: 10px; }
+.financial-ops__queue-filters label { display: grid; gap: 5px; color: #385b77; font-size: .72rem; font-weight: 800; }
+.financial-ops__queue-filters select { min-height: 40px; padding: 0 10px; border: 1px solid #c9dbe9; border-radius: 8px; color: #294867; background: #fff; font: inherit; }
+.financial-ops__queue-filters select:disabled { color: #91a1b0; background: #f5f8fb; }
 .financial-ops__title > div { justify-content: flex-start; color: #1671bf; }
 .financial-ops__title h2 { color: #183655; font-size: 1rem; }
 .financial-ops__title p { color: #71859a; font-size: .68rem; }
@@ -1857,6 +1861,7 @@ input:disabled, select:disabled, textarea:disabled { background: #f2f5f8; color:
   .employee-pos-keypad-backdrop { position: fixed; inset: 0; z-index: -1; display: block; border: 0; background: rgba(18, 42, 67, .38); }
   .employee-pos-cart .employee-submit { position: sticky; bottom: 8px; z-index: 2; }
   .financial-ops__header { align-items: stretch; flex-direction: column; }
+  .financial-ops__queue-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .financial-ops__shop-grid { grid-template-columns: 1fr; }
   .financial-ops__shop-card { min-height: 126px; grid-template-columns: 126px minmax(0, 1fr); grid-template-rows: 1fr; }
   .financial-ops__shop-visual { min-height: 126px; }

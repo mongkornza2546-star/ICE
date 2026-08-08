@@ -11,6 +11,10 @@ const stockReturnMigration = readFileSync(
   new URL('../supabase/migrations/0137_employee_stock_returns.sql', import.meta.url),
   'utf8',
 );
+const withdrawnBalancesMigration = readFileSync(
+  new URL('../supabase/migrations/0141_employee_withdrawn_balances.sql', import.meta.url),
+  'utf8',
+);
 
 const USER_ID = '10000000-0000-4000-8000-000000000001';
 const OTHER_USER_ID = '10000000-0000-4000-8000-000000000002';
@@ -107,6 +111,7 @@ async function createDatabase(t) {
       name text not null,
       kind public.stock_location_kind not null,
       assigned_user_id uuid references public.users(id),
+      is_courier_source boolean not null default false,
       is_active boolean not null
     );
 
@@ -270,6 +275,7 @@ async function createDatabase(t) {
 
   await db.exec(migration);
   await db.exec(stockReturnMigration);
+  await db.exec(withdrawnBalancesMigration);
 
   await db.exec(`
     insert into public.users (id, display_name) values
@@ -285,11 +291,11 @@ async function createDatabase(t) {
       ('${OTHER_ROUND_ID}', '${USER_ID}');
 
     insert into public.stock_locations (
-      id, code, name, kind, assigned_user_id, is_active
+      id, code, name, kind, assigned_user_id, is_courier_source, is_active
     ) values
-      ('${TRUCK_ID}', 'TRUCK-MAIN', 'Main truck', 'truck', null, true),
-      ('${HOLDING_ID}', 'TEAM-COURIER', 'Courier holding', 'team', '${USER_ID}', true),
-      ('${SHOP_SOURCE_ID}', 'SITE-SHOP', 'Shop source', 'work_site', null, true);
+      ('${TRUCK_ID}', 'TRUCK-MAIN', 'Main truck', 'truck', null, true, true),
+      ('${HOLDING_ID}', 'TEAM-COURIER', 'Courier holding', 'team', '${USER_ID}', false, true),
+      ('${SHOP_SOURCE_ID}', 'SITE-SHOP', 'Shop source', 'work_site', null, false, true);
 
     insert into public.ice_types (id, code, name, unit, is_active) values
       ('${ICE_SMALL_ID}', 'ICE-SMALL', 'Small ice', 'bag', true),
@@ -361,6 +367,10 @@ function balanceFor(location, iceTypeId) {
   return location.balances.find((balance) => balance.ice_type_id === iceTypeId)?.quantity;
 }
 
+function withdrawnBalanceFor(state, iceTypeId) {
+  return state.withdrawn_balances.find((balance) => balance.ice_type_id === iceTypeId)?.quantity;
+}
+
 test('state and multi-item transfer use the truck and assigned holding atomically', async (t) => {
   const db = await createDatabase(t);
   const requestKey = '70000000-0000-4000-8000-000000000001';
@@ -372,6 +382,7 @@ test('state and multi-item transfer use the truck and assigned holding atomicall
   assert.equal(initial.holding_location.id, HOLDING_ID);
   assert.equal(balanceFor(initial.truck_location, ICE_SMALL_ID), 10);
   assert.equal(balanceFor(initial.holding_location, ICE_SMALL_ID), 0);
+  assert.equal(withdrawnBalanceFor(initial, ICE_SMALL_ID), 0);
 
   const response = await transfer(db, [
     [ICE_SMALL_ID, 4],
@@ -382,6 +393,8 @@ test('state and multi-item transfer use the truck and assigned holding atomicall
   assert.equal(balanceFor(state.truck_location, ICE_BLOCK_ID), 0);
   assert.equal(balanceFor(state.holding_location, ICE_SMALL_ID), 4);
   assert.equal(balanceFor(state.holding_location, ICE_BLOCK_ID), 2);
+  assert.equal(withdrawnBalanceFor(state, ICE_SMALL_ID), 4);
+  assert.equal(withdrawnBalanceFor(state, ICE_BLOCK_ID), 2);
 
   const movement = await db.query(`
     select kind, from_location_id, to_location_id, recorded_by
@@ -427,6 +440,8 @@ test('employee return moves only available holding stock back to the truck atomi
   assert.equal(balanceFor(state.truck_location, ICE_BLOCK_ID), 1);
   assert.equal(balanceFor(state.holding_location, ICE_SMALL_ID), 1);
   assert.equal(balanceFor(state.holding_location, ICE_BLOCK_ID), 1);
+  assert.equal(withdrawnBalanceFor(state, ICE_SMALL_ID), 4);
+  assert.equal(withdrawnBalanceFor(state, ICE_BLOCK_ID), 2);
 
   const movement = await db.query(`
     select kind, from_location_id, to_location_id, recorded_by
@@ -459,6 +474,25 @@ test('employee return moves only available holding stock back to the truck atomi
     )
   `);
   assert.equal(count.rows[0].count, 1);
+
+  const secondWithdrawalKey = '71000000-0000-4000-8000-000000000010';
+  const secondWithdrawal = await transfer(
+    db,
+    [[ICE_SMALL_ID, 2]],
+    secondWithdrawalKey,
+    OTHER_ROUND_ID,
+  );
+  assert.equal(withdrawnBalanceFor(secondWithdrawal.rows[0].result, ICE_SMALL_ID), 6);
+  assert.equal(balanceFor(secondWithdrawal.rows[0].result.holding_location, ICE_SMALL_ID), 3);
+
+  await db.exec(`
+    update public.stock_movements
+    set status = 'cancelled'
+    where idempotency_key = '${secondWithdrawalKey}'
+  `);
+  const stateAfterCancellation = (await getState(db, OTHER_ROUND_ID)).rows[0].result;
+  assert.equal(withdrawnBalanceFor(stateAfterCancellation, ICE_SMALL_ID), 4);
+  assert.equal(balanceFor(stateAfterCancellation.holding_location, ICE_SMALL_ID), 1);
 });
 
 test('employee return preserves half-bag quantities exactly', async (t) => {
@@ -492,11 +526,13 @@ test('employee return replay survives a change to the configured truck', async (
   const requestKey = '71000000-0000-4000-8000-000000000008';
   await returnStock(db, [[ICE_SMALL_ID, 1]], requestKey);
   await db.exec(`
-    update public.stock_locations set is_active = false where id = '${TRUCK_ID}';
+    update public.stock_locations
+    set is_courier_source = false, is_active = false
+    where id = '${TRUCK_ID}';
     insert into public.stock_locations (
-      id, code, name, kind, assigned_user_id, is_active
+      id, code, name, kind, assigned_user_id, is_courier_source, is_active
     ) values (
-      '${REPLACEMENT_TRUCK_ID}', 'TRUCK-REPLACEMENT', 'Replacement truck', 'truck', null, true
+      '${REPLACEMENT_TRUCK_ID}', 'TRUCK-REPLACEMENT', 'Replacement truck', 'truck', null, true, true
     )
   `);
 
@@ -617,6 +653,9 @@ test('courier delivery consumes assigned holding and manager delivery keeps shop
     '80000000-0000-4000-8000-000000000001',
   );
   assert.equal(courierDelivery.rows[0].result.source_stock_location_id, HOLDING_ID);
+  const stateAfterSale = (await getState(db)).rows[0].result;
+  assert.equal(withdrawnBalanceFor(stateAfterSale, ICE_SMALL_ID), 4);
+  assert.equal(balanceFor(stateAfterSale.holding_location, ICE_SMALL_ID), 1);
 
   let balances = await db.query(`
     select

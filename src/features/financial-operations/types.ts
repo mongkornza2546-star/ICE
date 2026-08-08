@@ -33,6 +33,10 @@ export type QueueShop = {
   shop_id: string;
   shop_code: string;
   shop_name: string;
+  building_id?: string | null;
+  building_name?: string | null;
+  zone_id?: string | null;
+  zone_name?: string | null;
   image_path: string | null;
   image_url?: string | null;
   outstanding_amount: number;

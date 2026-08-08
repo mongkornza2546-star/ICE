@@ -107,15 +107,16 @@ export function EmployeeStockTransferSection({
               </div>
             )}
             {isCardLayout ? (
-              <div className="employee-stock-table" role="list" aria-label={isReturn ? 'ยอดก่อนและหลังคืนน้ำแข็ง' : 'ยอดก่อนและหลังรับน้ำแข็ง'}>
+              <div className="employee-stock-table" role="list" aria-label={isReturn ? 'ยอดก่อนและหลังคืนน้ำแข็ง' : 'ยอดเบิกและยอดควรเหลือ'}>
                 {iceTypes.map((iceType) => {
                   const truckBefore = stockQuantity(stockState.truck_location.balances, iceType.id);
                   const holdingBefore = stockQuantity(stockState.holding_location.balances, iceType.id);
+                  const withdrawnToday = stockQuantity(stockState.withdrawn_balances, iceType.id);
                   const transferQuantity = transferQuantities[iceType.id] ?? 0;
                   return (
                     <div className="employee-stock-row" key={iceType.id} role="listitem">
                       <strong><span>{iceType.name}</span> <small>({iceType.unit})</small></strong>
-                      <span className="employee-stock-available"><small>{isReturn ? 'จุดก่อน' : 'รถก่อน'}</small>{isReturn ? holdingBefore : truckBefore} {iceType.unit}</span>
+                      <span className="employee-stock-available"><small>{isReturn ? 'เหลือก่อนคืน' : 'เหลือบนรถ'}</small>{isReturn ? holdingBefore : truckBefore} {iceType.unit}</span>
                       {iceType.image_url ? (
                         <button
                           aria-label={`ดูรูป ${iceType.name} ขนาดใหญ่`}
@@ -141,12 +142,12 @@ export function EmployeeStockTransferSection({
                         {isReturn ? (
                           <>
                             <span><small>รถก่อน</small><strong>{truckBefore}</strong> {iceType.unit}</span>
-                            <span><small>จุดหลัง</small><strong>{holdingBefore - transferQuantity}</strong> {iceType.unit}</span>
+                            <span><small>เหลือหลังคืน</small><strong>{holdingBefore - transferQuantity}</strong> {iceType.unit}</span>
                           </>
                         ) : (
                           <>
-                            <span><small>จุดก่อน</small><strong>{holdingBefore}</strong> {iceType.unit}</span>
-                            <span><small>จุดหลัง</small><strong>{holdingBefore + transferQuantity}</strong> {iceType.unit}</span>
+                            <span><small>เบิกวันนี้</small><strong>{withdrawnToday}</strong> {iceType.unit}</span>
+                            <span><small>ควรเหลือ</small><strong>{holdingBefore}</strong> {iceType.unit}</span>
                           </>
                         )}
                       </div>
@@ -155,18 +156,19 @@ export function EmployeeStockTransferSection({
                 })}
               </div>
             ) : (
-              <div className="employee-stock-table" role="table" aria-label={isReturn ? 'ยอดก่อนและหลังคืนน้ำแข็ง' : 'ยอดก่อนและหลังรับน้ำแข็ง'}>
+              <div className="employee-stock-table" role="table" aria-label={isReturn ? 'ยอดก่อนและหลังคืนน้ำแข็ง' : 'ยอดเบิกและยอดควรเหลือ'}>
                 <div className="employee-stock-row employee-stock-row--header" role="row">
-                  <span role="columnheader">ชนิด</span><span role="columnheader">{isReturn ? 'จุดก่อน' : 'รถก่อน'}</span><span role="columnheader">{movementLabel}</span><span role="columnheader">{isReturn ? 'รถก่อน' : 'จุดก่อน'}</span><span role="columnheader">จุดหลัง</span>
+                  <span role="columnheader">ชนิด</span><span role="columnheader">{isReturn ? 'เหลือก่อนคืน' : 'เหลือบนรถ'}</span><span role="columnheader">{movementLabel}</span><span role="columnheader">{isReturn ? 'รถก่อน' : 'เบิกวันนี้'}</span><span role="columnheader">{isReturn ? 'เหลือหลังคืน' : 'ควรเหลือ'}</span>
                 </div>
                 {iceTypes.map((iceType) => {
                   const truckBefore = stockQuantity(stockState.truck_location.balances, iceType.id);
                   const holdingBefore = stockQuantity(stockState.holding_location.balances, iceType.id);
+                  const withdrawnToday = stockQuantity(stockState.withdrawn_balances, iceType.id);
                   const transferQuantity = transferQuantities[iceType.id] ?? 0;
                   return (
                     <div className="employee-stock-row" key={iceType.id} role="row">
                       <strong role="cell">{iceType.name}<small>{iceType.unit}</small></strong>
-                      <span data-label={isReturn ? 'จุดก่อน' : 'รถก่อน'} role="cell">{isReturn ? holdingBefore : truckBefore}</span>
+                      <span data-label={isReturn ? 'เหลือก่อนคืน' : 'เหลือบนรถ'} role="cell">{isReturn ? holdingBefore : truckBefore}</span>
                       <div className="employee-stock-transfer-cell" data-label={movementLabel} role="cell">
                         <QuantityStepper
                           disabled={transferSubmitting || selectedRound?.status === 'closed'}
@@ -177,8 +179,8 @@ export function EmployeeStockTransferSection({
                           purpose={movementLabel}
                         />
                       </div>
-                      <span data-label={isReturn ? 'รถก่อน' : 'จุดก่อน'} role="cell">{isReturn ? truckBefore : holdingBefore}</span>
-                      <b data-label="จุดหลัง" role="cell">{isReturn ? holdingBefore - transferQuantity : holdingBefore + transferQuantity}</b>
+                      <span data-label={isReturn ? 'รถก่อน' : 'เบิกวันนี้'} role="cell">{isReturn ? truckBefore : withdrawnToday}</span>
+                      <b data-label={isReturn ? 'เหลือหลังคืน' : 'ควรเหลือ'} role="cell">{isReturn ? holdingBefore - transferQuantity : holdingBefore}</b>
                     </div>
                   );
                 })}

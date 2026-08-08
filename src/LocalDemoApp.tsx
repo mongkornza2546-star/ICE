@@ -256,6 +256,12 @@ const demoCardsByRound: Record<string, ShopCard[]> = {
 const demoOpeningStockState: EmployeeStockState = {
   round_id: demoRounds[0].id,
   service_date: demoRounds[0].service_date,
+  withdrawn_balances: demoIceTypes.map((iceType) => ({
+    ice_type_id: iceType.id,
+    ice_type_name: iceType.name,
+    unit: iceType.unit,
+    quantity: 0,
+  })),
   truck_location: {
     id: 'truck-main',
     code: 'TRUCK-MAIN',
@@ -361,6 +367,7 @@ function cloneStockState(state: EmployeeStockState, roundId = state.round_id): E
   return {
     ...state,
     round_id: roundId,
+    withdrawn_balances: state.withdrawn_balances.map((item) => ({ ...item })),
     truck_location: { ...state.truck_location, balances: state.truck_location.balances.map((item) => ({ ...item })) },
     holding_location: { ...state.holding_location, balances: state.holding_location.balances.map((item) => ({ ...item })) },
   };
@@ -468,8 +475,10 @@ function buildDemoGateway(): EmployeeDeliveryGateway & { reset(): void } {
       if (!transferKeys.has(payload.idempotencyKey)) {
         transferKeys.add(payload.idempotencyKey);
         for (const item of payload.items) {
+          const withdrawn = stockState.withdrawn_balances.find((balance) => balance.ice_type_id === item.ice_type_id);
           const truck = stockState.truck_location.balances.find((balance) => balance.ice_type_id === item.ice_type_id);
           const holding = stockState.holding_location.balances.find((balance) => balance.ice_type_id === item.ice_type_id);
+          if (withdrawn) withdrawn.quantity += item.quantity;
           if (truck) truck.quantity -= item.quantity;
           if (holding) holding.quantity += item.quantity;
         }
