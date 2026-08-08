@@ -250,8 +250,10 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .field-with-icon { position: relative; display: block; }
 .field-with-icon svg { position: absolute; top: 11px; left: 12px; z-index: 1; color: #64748b; }
 .field-with-icon input, .field-with-icon select { padding-left: 36px; }
-.factory-order-fields .field-with-icon { width: 100%; min-width: 0; max-width: 100%; }
-.factory-order-fields .field-with-icon input { width: 100%; min-width: 0; max-width: 100%; padding-left: 36px; }
+.factory-order-fields .field-with-icon { width: 100%; min-width: 0; max-width: 100%; overflow: hidden; border: 1px solid #cbd5e1; border-radius: 8px; background: #fff; }
+.factory-order-fields .field-with-icon input { width: 100%; min-width: 0; max-width: 100%; padding-left: 36px; border: 0; border-radius: 0; background: transparent; -webkit-appearance: none; appearance: none; }
+.factory-order-fields .field-with-icon:focus-within { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15); }
+.factory-order-fields .field-with-icon input:focus { box-shadow: none; }
 .factory-order-card input, .factory-order-card select, .factory-order-card textarea { min-height: 40px; border: 1px solid #cbd5e1; border-radius: 8px; color: #0f172a; background: #fff; font-size: .85rem; transition: border-color 0.15s, box-shadow 0.15s; }
 .factory-order-card input:focus, .factory-order-card select:focus, .factory-order-card textarea:focus { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15); outline: none; }
 .factory-order-card input, .factory-order-card select { padding: 0 12px; }
@@ -3534,4 +3536,25 @@ input:disabled, select:disabled, textarea:disabled { background: #f2f5f8; color:
   .employee-shop-tile__body > strong { font-size: .94rem; }
   .employee-shop-tile__body > b { font-size: .84rem; }
   .employee-shop-tile__body > small { font-size: .68rem; }
+}
+
+/* Prevent phone browsers from zooming focused form controls. */
+@media (max-width: 1024px) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="hidden"]),
+  select,
+  textarea,
+  [contenteditable="true"] {
+    font-size: 1rem !important;
+  }
+
+  .employee-quantity-value input {
+    font-size: 1.25rem !important;
+  }
+
+  .employee-workspace--withdrawal .employee-quantity-value input,
+  .quantity-stepper input,
+  .financial-ops__modal .financial-ops__payment-amount input,
+  .employee-payment-sheet .financial-ops__payment-amount input {
+    font-size: 1.35rem !important;
+  }
 }
