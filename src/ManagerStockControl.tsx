@@ -14,6 +14,7 @@ import {
   X,
 } from '@phosphor-icons/react';
 import { supabase } from './lib/supabase';
+import { publishDataChange } from './lib/dataChange';
 import { useRpcAction } from './hooks/useRpcAction';
 import type {
   DeliveryRound,
@@ -246,6 +247,7 @@ export function ManagerStockControl({
       deps: [actionRound?.id, demoSummary, round?.id, serviceDate],
       successMessage: (_, args) => `บันทึก “${MOVEMENT_LABELS[args.kind]}” แล้ว`,
       onSuccess: async () => {
+        publishDataChange(['accounting', 'stock']);
         if (!demoSummary) {
           await loadSummary(serviceDate, round?.id ?? null);
         }

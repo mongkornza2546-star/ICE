@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { CheckCircle, Cube, Warning } from '@phosphor-icons/react';
 import { supabase } from '../../../lib/supabase';
+import { publishDataChange } from '../../../lib/dataChange';
 
 interface AggregateItem {
   ice_type_id: string;
@@ -126,6 +127,7 @@ export function DailyAggregateStockClose({
         setError(closeError.message);
       } else {
         pendingRequest.current = null;
+        publishDataChange(['accounting', 'stock']);
         await load();
         onClosed?.();
       }
@@ -148,7 +150,10 @@ export function DailyAggregateStockClose({
         p_reason: reason,
       });
       if (cancelError) setError(cancelError.message);
-      else await load();
+      else {
+        publishDataChange(['accounting', 'stock']);
+        await load();
+      }
     } catch (cancelError) {
       setError(cancelError instanceof Error ? cancelError.message : 'ยกเลิกรายการเดิมไม่สำเร็จ');
     } finally {

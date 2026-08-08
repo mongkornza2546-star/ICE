@@ -114,6 +114,9 @@ describe('ManagerStockControl movement tabs', () => {
   });
 
   it('submits a transfer with different source and destination locations', async () => {
+    const changes: string[][] = [];
+    const listener = (event: Event) => changes.push((event as CustomEvent<{ scopes: string[] }>).detail.scopes);
+    window.addEventListener('ice-data-change', listener);
     const { user, form } = await renderMovementForm('โอนระหว่างจุด');
     await user.click(within(form).getByRole('button', { name: /สมชาย ใจดี/ }));
     await user.type(within(form).getByRole('spinbutton'), '2');
@@ -124,6 +127,8 @@ describe('ManagerStockControl movement tabs', () => {
       p_from_location_id: 'truck-1',
       p_to_location_id: 'team-1',
     });
+    expect(changes).toContainEqual(['accounting', 'stock']);
+    window.removeEventListener('ice-data-change', listener);
   });
 
   it('keeps only inventory holders available as transfer sources', async () => {
@@ -453,6 +458,9 @@ describe('ManagerStockControl daily close', () => {
   });
 
   it('closes aggregate stock from one count per ice type', async () => {
+    const changes: string[][] = [];
+    const listener = (event: Event) => changes.push((event as CustomEvent<{ scopes: string[] }>).detail.scopes);
+    window.addEventListener('ice-data-change', listener);
     const user = userEvent.setup();
     render(<ManagerStockControl operationRound={round} round={round} serviceDate={round.service_date} />);
 
@@ -481,10 +489,15 @@ describe('ManagerStockControl daily close', () => {
         p_idempotency_key: expect.any(String),
       }),
     ));
+    expect(changes).toContainEqual(['accounting', 'stock']);
+    window.removeEventListener('ice-data-change', listener);
   });
 
   it('lets a manager cancel an active legacy refill with an audited reason', async () => {
     let cancelled = false;
+    const changes: string[][] = [];
+    const listener = (event: Event) => changes.push((event as CustomEvent<{ scopes: string[] }>).detail.scopes);
+    window.addEventListener('ice-data-change', listener);
     vi.spyOn(window, 'prompt').mockReturnValue('บันทึกผิด');
     mocks.rpc.mockImplementation(async (name: string) => {
       if (name === 'get_stock_control_summary') return { data: summary, error: null };
@@ -529,6 +542,8 @@ describe('ManagerStockControl daily close', () => {
       p_reason: 'บันทึกผิด',
     }));
     expect(await screen.findByText(/ยกเลิกโดย หัวหน้าทดสอบ · บันทึกผิด/)).toBeTruthy();
+    expect(changes).toContainEqual(['accounting', 'stock']);
+    window.removeEventListener('ice-data-change', listener);
   });
 });
 

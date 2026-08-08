@@ -12,6 +12,7 @@ import {
   Truck,
 } from '@phosphor-icons/react';
 import { supabase } from './lib/supabase';
+import { publishDataChange } from './lib/dataChange';
 import { useRpcAction } from './hooks/useRpcAction';
 import type { FactoryOrderSummary, StockBalanceItem, StockMovementEntry } from './types/app';
 
@@ -227,6 +228,7 @@ export function FactoryOrderPage() {
       deps: [serviceDate, truckId],
       successMessage: 'บันทึกคำสั่งซื้อและเพิ่มยอดเข้าสู่สต็อกรถแล้ว',
       onSuccess: (data) => {
+        publishDataChange(['accounting', 'stock']);
         const nextSummary = data as FactoryOrderSummary;
         const nextTruck = nextSummary.locations.find((location) => location.id === truckId)
           ?? nextSummary.locations.find((location) => location.kind === 'truck');
@@ -250,6 +252,7 @@ export function FactoryOrderPage() {
       deps: [serviceDate, truckId],
       successMessage: 'ยกเลิกคำสั่งซื้อเรียบร้อยแล้ว',
       onSuccess: (data) => {
+        publishDataChange(['accounting', 'stock']);
         const nextSummary = data as FactoryOrderSummary;
         const nextTruck = nextSummary.locations.find((location) => location.id === truckId)
           ?? nextSummary.locations.find((location) => location.kind === 'truck');

@@ -79,8 +79,10 @@ export type ReconciliationLine = {
   unit: string;
   factory_in: number;
   sold: number;
+  legacy_refill?: number;
   damaged: number;
   returned_to_factory: number;
+  closed_returned_to_factory?: number;
   expected: number;
   actual: number | null;
   variance: number | null;

@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AccountingPage } from '../src/features/accounting/AccountingPage';
@@ -72,6 +72,95 @@ describe('AccountingPage', () => {
     await user.click(screen.getByRole('button', { name: 'ปิด' }));
     await user.click(screen.getByRole('button', { name: 'รายการต้องตรวจสอบ' }));
     await waitFor(() => expect(mocks.rpc).toHaveBeenCalledWith('get_accounting_review_queue', expect.objectContaining({ p_limit: 100, p_offset: 0 })));
+  });
+
+  it('shows only authoritative aggregate stock and distinguishes a stale count', async () => {
+    mocks.rpc.mockImplementation(async (name: string) => {
+      if (name === 'get_accounting_reconciliation') return { data: {
+        service_date: '2026-08-08',
+        aggregate: [{
+          ice_type_id: 'ice-aggregate', ice_type_name: 'หลอดเล็ก', unit: 'ถุง',
+          factory_in: 100, sold: 15, legacy_refill: 2, damaged: 0, returned_to_factory: 0,
+          closed_returned_to_factory: 83,
+          expected: 83, actual: null, variance: null, count_status: 'stale',
+        }],
+        holders: [{
+          location_id: 'truck-1', location_name: 'รถบรรทุก', location_kind: 'truck', employee_name: null,
+          items: [{
+            ice_type_id: 'ice-holder', ice_type_name: 'ไม้', unit: 'ถุง',
+            factory_in: 50, sold: 0, damaged: 0, returned_to_factory: 0,
+            expected: 35, actual: null, variance: null, count_status: 'incomplete',
+          }],
+        }],
+        financial: { effective_sales: 0, allocated_to_sales: 0, outstanding_collectible: 0, outstanding_credit: 0, cash_received: 0, cash_refunded: 0, net_cash: 0, pending_refunds: 0 },
+      }, error: null };
+      return { data: { rows: [], total_count: 0 }, error: null };
+    });
+
+    render(<AccountingPage userRole="admin" />);
+
+    expect(await screen.findByText('สต๊อกรวมประจำวัน')).not.toBeNull();
+    expect(screen.getByText('ยอดนับล้าสมัย')).not.toBeNull();
+    expect(screen.getByText('เติมเดิม')).not.toBeNull();
+    expect(screen.getByText('คืนตอนปิด')).not.toBeNull();
+    expect(screen.queryByText('รถใหญ่และจุดถือครอง')).toBeNull();
+    expect(screen.queryByText('รถบรรทุก')).toBeNull();
+    expect(screen.queryByText('ไม้')).toBeNull();
+  });
+
+  it('does not show authoritative zeroes while reconciliation is still loading', async () => {
+    const request = deferred<unknown>();
+    mocks.rpc.mockImplementation(() => request.promise);
+
+    render(<AccountingPage userRole="admin" />);
+
+    expect(screen.getByText('กำลังโหลดข้อมูล...')).not.toBeNull();
+    expect(screen.queryByText('ยอดขาย effective')).toBeNull();
+    expect(screen.queryByText('฿0.00')).toBeNull();
+  });
+
+  it('keeps the newest reconciliation when an older date request finishes last', async () => {
+    const olderRequest = deferred<unknown>();
+    const newerRequest = deferred<unknown>();
+    let callCount = 0;
+    mocks.rpc.mockImplementation((name: string) => {
+      if (name !== 'get_accounting_reconciliation') return Promise.resolve({ data: [], error: null });
+      callCount += 1;
+      return callCount === 1 ? olderRequest.promise : newerRequest.promise;
+    });
+
+    render(<AccountingPage userRole="admin" />);
+    fireEvent.change(screen.getByLabelText('วันที่ธุรกรรม'), { target: { value: '2026-08-07' } });
+
+    await act(async () => {
+      newerRequest.resolve({ data: {
+        service_date: '2026-08-07',
+        aggregate: [{
+          ice_type_id: 'new', ice_type_name: 'ยอดวันที่ใหม่', unit: 'ถุง',
+          factory_in: 20, sold: 0, damaged: 0, returned_to_factory: 0,
+          expected: 20, actual: null, variance: null, count_status: 'incomplete',
+        }],
+        holders: [],
+        financial: { effective_sales: 20, allocated_to_sales: 0, outstanding_collectible: 20, outstanding_credit: 0, cash_received: 0, cash_refunded: 0, net_cash: 0, pending_refunds: 0 },
+      }, error: null });
+    });
+    expect(await screen.findByText('ยอดวันที่ใหม่')).not.toBeNull();
+
+    await act(async () => {
+      olderRequest.resolve({ data: {
+        service_date: '2026-08-08',
+        aggregate: [{
+          ice_type_id: 'old', ice_type_name: 'ยอดวันที่เก่า', unit: 'ถุง',
+          factory_in: 10, sold: 0, damaged: 0, returned_to_factory: 0,
+          expected: 10, actual: null, variance: null, count_status: 'incomplete',
+        }],
+        holders: [],
+        financial: { effective_sales: 10, allocated_to_sales: 0, outstanding_collectible: 10, outstanding_credit: 0, cash_received: 0, cash_refunded: 0, net_cash: 0, pending_refunds: 0 },
+      }, error: null });
+    });
+
+    await waitFor(() => expect(screen.queryByText('ยอดวันที่เก่า')).toBeNull());
+    expect(screen.getByText('ยอดวันที่ใหม่')).not.toBeNull();
   });
 
   it('protects exported text from Excel formula injection', () => {

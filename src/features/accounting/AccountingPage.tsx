@@ -63,6 +63,7 @@ export function AccountingPage({ userRole = 'round_lead', demoMode = false }: { 
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [refreshToken, setRefreshToken] = useState(0);
+  const loadRequestId = useRef(0);
   const drawerRequestId = useRef(0);
 
   const validateRange = useCallback(() => {
@@ -72,10 +73,14 @@ export function AccountingPage({ userRole = 'round_lead', demoMode = false }: { 
   }, [fromDate, toDate]);
 
   const load = useCallback(async () => {
+    const requestId = loadRequestId.current + 1;
+    loadRequestId.current = requestId;
     setLoading(true);
     setError(null);
+    if (tab === 'reconciliation') setReconciliation(null);
     try {
       if (demoMode) {
+        if (loadRequestId.current !== requestId) return;
         setReconciliation({ service_date: serviceDate, aggregate: [], holders: [], financial: { effective_sales: 0, allocated_to_sales: 0, outstanding_collectible: 0, outstanding_credit: 0, cash_received: 0, cash_refunded: 0, net_cash: 0, pending_refunds: 0 } });
         setTransactions(emptyTransactions());
         setReviews({ rows: [], total_count: 0 });
@@ -84,6 +89,7 @@ export function AccountingPage({ userRole = 'round_lead', demoMode = false }: { 
       if (!supabase) throw new Error('ยังไม่ได้ตั้งค่า Supabase');
       if (tab === 'reconciliation') {
         const response = await supabase.rpc('get_accounting_reconciliation', { p_service_date: serviceDate });
+        if (loadRequestId.current !== requestId) return;
         if (response.error) throw response.error;
         setReconciliation(response.data as AccountingReconciliation);
       } else {
@@ -93,6 +99,7 @@ export function AccountingPage({ userRole = 'round_lead', demoMode = false }: { 
             p_from_date: fromDate, p_to_date: toDate, p_filters: filters, p_sort: sort,
             p_limit: PAGE_SIZE, p_offset: page * PAGE_SIZE,
           });
+          if (loadRequestId.current !== requestId) return;
           if (response.error) throw response.error;
           setTransactions(response.data as unknown as AccountingTransactionsResponse);
         } else {
@@ -100,14 +107,15 @@ export function AccountingPage({ userRole = 'round_lead', demoMode = false }: { 
             p_from_date: fromDate, p_to_date: toDate, p_filters: filters,
             p_limit: PAGE_SIZE, p_offset: page * PAGE_SIZE,
           });
+          if (loadRequestId.current !== requestId) return;
           if (response.error) throw response.error;
           setReviews(response.data as unknown as AccountingReviewResponse);
         }
       }
     } catch (loadError) {
-      setError(getErrorMessage(loadError));
+      if (loadRequestId.current === requestId) setError(getErrorMessage(loadError));
     } finally {
-      setLoading(false);
+      if (loadRequestId.current === requestId) setLoading(false);
     }
   }, [demoMode, filters, fromDate, page, serviceDate, sort, tab, toDate, validateRange]);
 
@@ -204,17 +212,15 @@ function ReconciliationPanel({ data, serviceDate, setServiceDate }: { data: Acco
   const cards = data?.financial;
   return <div className="accounting-reconciliation">
     <label className="accounting-reconciliation__date">วันที่ธุรกรรม<input onChange={(event) => setServiceDate(event.target.value)} type="date" value={serviceDate} /></label>
-    <div className="accounting-financial-cards">
+    {data ? <><div className="accounting-financial-cards">
       {[['ยอดขาย effective', cards?.effective_sales], ['จัดสรรเข้าบิลวันนี้', cards?.allocated_to_sales], ['ควรเก็บแล้ว', cards?.outstanding_collectible], ['ลูกหนี้เครดิต', cards?.outstanding_credit], ['รับเงินจริง', cards?.cash_received], ['คืนเงินจริง', cards?.cash_refunded], ['เงินสุทธิ', cards?.net_cash], ['ยอดรอคืน', cards?.pending_refunds]].map(([label, value]) => <article key={label}><span>{label}</span><strong>{money.format(Number(value ?? 0))}</strong></article>)}
     </div>
-    <ReconciliationTable heading="สต๊อกรวมประจำวัน" rows={data?.aggregate ?? []} />
-    <h2>รถใหญ่และจุดถือครอง</h2>
-    {(data?.holders ?? []).map((holder) => <ReconciliationTable heading={`${holder.location_name}${holder.employee_name ? ` · ${holder.employee_name}` : ''}`} key={holder.location_id} rows={holder.items} />)}
+    <ReconciliationTable heading="สต๊อกรวมประจำวัน" rows={data.aggregate} /></> : null}
   </div>;
 }
 
 function ReconciliationTable({ heading, rows }: { heading: string; rows: AccountingReconciliation['aggregate'] }) {
-  return <article className="accounting-reconciliation__table"><h3>{heading}</h3><div className="accounting-table-wrap"><table><thead><tr><th>ชนิด</th><th>โรงงานเข้า</th><th>ขาย</th><th>เสียหาย</th><th>คืนโรงงาน</th><th>ควรเหลือ</th><th>นับจริง</th><th>ต่าง</th><th>สถานะ</th></tr></thead><tbody>{rows.length ? rows.map((row) => <tr className={row.variance ? 'accounting-row--issue' : ''} key={row.ice_type_id}><th>{row.ice_type_name}</th><td>{number.format(row.factory_in)}</td><td>{number.format(row.sold)}</td><td>{number.format(row.damaged)}</td><td>{number.format(row.returned_to_factory)}</td><td>{number.format(row.expected)}</td><td>{row.actual == null ? '—' : number.format(row.actual)}</td><td>{row.variance == null ? '—' : number.format(row.variance)}</td><td>{row.count_status !== 'complete' ? 'ยังนับไม่ครบ' : row.variance ? 'ต้องตรวจสอบ' : 'ตรงยอด'}</td></tr>) : <tr><td colSpan={9}>ยังไม่มีข้อมูล</td></tr>}</tbody></table></div></article>;
+  return <article className="accounting-reconciliation__table"><h3>{heading}</h3><div className="accounting-table-wrap"><table><thead><tr><th>ชนิด</th><th>โรงงานเข้า</th><th>ขาย</th><th>เติมเดิม</th><th>เสียหาย</th><th>คืนก่อนปิด</th><th>ควรเหลือ</th><th>นับจริง</th><th>คืนตอนปิด</th><th>ต่าง</th><th>สถานะ</th></tr></thead><tbody>{rows.length ? rows.map((row) => <tr className={row.variance || row.count_status === 'stale' ? 'accounting-row--issue' : ''} key={row.ice_type_id}><th>{row.ice_type_name}</th><td>{number.format(row.factory_in)}</td><td>{number.format(row.sold)}</td><td>{number.format(row.legacy_refill ?? 0)}</td><td>{number.format(row.damaged)}</td><td>{number.format(row.returned_to_factory)}</td><td>{number.format(row.expected)}</td><td>{row.actual == null ? '—' : number.format(row.actual)}</td><td>{number.format(row.closed_returned_to_factory ?? 0)}</td><td>{row.variance == null ? '—' : number.format(row.variance)}</td><td>{row.count_status === 'incomplete' ? 'ยังนับไม่ครบ' : row.count_status === 'stale' ? 'ยอดนับล้าสมัย' : row.variance ? 'ต้องตรวจสอบ' : 'ตรงยอด'}</td></tr>) : <tr><td colSpan={11}>ยังไม่มีข้อมูล</td></tr>}</tbody></table></div></article>;
 }
 
 function TransactionsTable({ rows, sort, setSort, onOpen }: { rows: AccountingTransaction[]; sort: AccountingSort; setSort: (sort: AccountingSort) => void; onOpen: (row: AccountingTransaction) => void }) {

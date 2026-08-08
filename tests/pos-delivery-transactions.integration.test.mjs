@@ -129,6 +129,10 @@ const accountingFactoryOrderStock = readFileSync(
   new URL('../supabase/migrations/0138_accounting_factory_orders_as_truck_stock.sql', import.meta.url),
   'utf8',
 );
+const accountingReconciliationHardening = readFileSync(
+  new URL('../supabase/migrations/0139_accounting_reconciliation_hardening.sql', import.meta.url),
+  'utf8',
+);
 
 const COURIER_ID = '10000000-0000-4000-8000-000000000001';
 const ADMIN_ID = '10000000-0000-4000-8000-000000000002';
@@ -250,7 +254,8 @@ async function createDatabase(t, { applyCollectionShopCards = true } = {}) {
       name text not null,
       unit text not null,
       image_path text,
-      is_active boolean not null default true
+      is_active boolean not null default true,
+      created_at timestamptz not null default now()
     );
     create table public.round_stops (
       id uuid primary key,
@@ -649,7 +654,10 @@ async function applyAccountingReadModel(db) {
   await db.exec(`
     alter table public.stock_movements
       add column if not exists original_movement_id uuid references public.stock_movements(id),
-      add column if not exists replacement_movement_id uuid references public.stock_movements(id);
+      add column if not exists replacement_movement_id uuid references public.stock_movements(id),
+      add column if not exists cancelled_by uuid references public.users(id),
+      add column if not exists cancelled_at timestamptz,
+      add column if not exists cancellation_reason text;
     alter table public.factory_receipts
       add column if not exists note text,
       add column if not exists recorded_by uuid references public.users(id),
@@ -674,6 +682,7 @@ async function applyAccountingReadModel(db) {
   `);
   await db.exec(accountingReadModel);
   await db.exec(accountingFactoryOrderStock);
+  await db.exec(accountingReconciliationHardening);
 }
 
 test('accounting migration returns retained cash and manager-only canonical rows', async (t) => {
@@ -734,14 +743,10 @@ test('accounting reconciliation treats factory orders as truck stock without a r
     date '${SERVICE_DATE}'
   ) result`);
   const reconciliation = response.rows[0].result;
-  const truck = reconciliation.holders.find((holder) => holder.location_id === TRUCK_ID);
-  const employee = reconciliation.holders.find((holder) => holder.location_id === HOLDING_ID);
 
   assert.equal(Number(reconciliation.aggregate[0].factory_in), 30);
-  assert.equal(Number(truck.items[0].factory_in), 30);
-  assert.equal(Number(truck.items[0].expected), 15);
-  assert.equal(Number(employee.items[0].factory_in), 0);
-  assert.equal(Number(employee.items[0].expected), 15);
+  assert.equal(Number(reconciliation.aggregate[0].expected), 30);
+  assert.deepEqual(reconciliation.holders, []);
 
   await db.exec(`
     insert into public.stock_count_snapshots (
@@ -773,20 +778,176 @@ test('accounting reconciliation treats factory orders as truck stock without a r
     date '${SERVICE_DATE}'
   ) result`);
   const legacyReconciliation = legacyResponse.rows[0].result;
-  const legacyTruck = legacyReconciliation.holders.find(
-    (holder) => holder.location_id === TRUCK_ID,
-  );
-  const legacyEmployee = legacyReconciliation.holders.find(
-    (holder) => holder.location_id === HOLDING_ID,
-  );
 
   assert.equal(Number(legacyReconciliation.aggregate[0].factory_in), 28);
-  assert.equal(Number(legacyTruck.items[0].factory_in), 28);
-  assert.equal(Number(legacyTruck.items[0].expected), 13);
-  assert.equal(legacyTruck.items[0].count_status, 'stale');
-  assert.equal(legacyTruck.items[0].actual, null);
-  assert.equal(Number(legacyEmployee.items[0].factory_in), 0);
-  assert.equal(Number(legacyEmployee.items[0].expected), 15);
+  assert.equal(Number(legacyReconciliation.aggregate[0].expected), 28);
+  assert.equal(legacyReconciliation.aggregate[0].count_status, 'incomplete');
+  assert.equal(legacyReconciliation.aggregate[0].actual, null);
+  assert.deepEqual(legacyReconciliation.holders, []);
+});
+
+test('accounting ledger includes order-based factory stock without a receipt', async (t) => {
+  const db = await createDatabase(t);
+  await applyAccountingReadModel(db);
+  await db.exec(`update public.auth_context set user_id = '${ADMIN_ID}', app_role = 'admin'`);
+
+  const response = await db.query(`select public.get_accounting_transactions(
+    date '${SERVICE_DATE}', date '${SERVICE_DATE}', '{}'::jsonb,
+    '{"key":"occurred_at","direction":"asc"}'::jsonb, 100, 0
+  ) result`);
+  const factory = response.rows[0].result.rows.find(
+    (entry) => entry.type === 'FACTORY' && entry.source_table === 'stock_movements',
+  );
+
+  assert.ok(factory);
+  assert.equal(Number(factory.quantity_in), 30);
+  assert.equal(factory.holder_name, 'Main truck');
+});
+
+test('accounting reconciliation subtracts active legacy refills from expected stock', async (t) => {
+  const db = await createDatabase(t);
+  await applyAccountingReadModel(db);
+  await db.exec(`
+    update public.auth_context set user_id = '${ADMIN_ID}', app_role = 'admin';
+    insert into public.daily_stock_uses (
+      id, service_date, kind, status, idempotency_key, request_fingerprint, recorded_by
+    ) values (
+      '65000000-0000-4000-8000-000000000020', date '${SERVICE_DATE}',
+      'refill', 'active', '65000000-0000-4000-8000-000000000021',
+      'legacy-accounting-regression', '${ADMIN_ID}'
+    );
+    insert into public.daily_stock_use_items (use_id, ice_type_id, quantity)
+    values ('65000000-0000-4000-8000-000000000020', '${ICE_ID}', 0.5);
+  `);
+
+  const response = await db.query(`select public.get_accounting_reconciliation(
+    date '${SERVICE_DATE}'
+  ) result`);
+  const row = response.rows[0].result.aggregate[0];
+
+  assert.equal(Number(row.legacy_refill), 0.5);
+  assert.equal(Number(row.expected), 29.5);
+});
+
+test('accounting reconciliation retains referenced inactive ice types', async (t) => {
+  const db = await createDatabase(t);
+  await applyAccountingReadModel(db);
+  await db.exec(`
+    update public.auth_context set user_id = '${ADMIN_ID}', app_role = 'admin';
+    update public.ice_types set is_active = false where id = '${ICE_ID}';
+  `);
+
+  const response = await db.query(`select public.get_accounting_reconciliation(
+    date '${SERVICE_DATE}'
+  ) result`);
+
+  assert.equal(response.rows[0].result.aggregate[0].ice_type_id, ICE_ID);
+});
+
+test('accounting reconciliation excludes source-less deliveries from aggregate stock', async (t) => {
+  const db = await createDatabase(t);
+  await applyAccountingReadModel(db);
+  await db.exec(`
+    update public.auth_context set user_id = '${ADMIN_ID}', app_role = 'admin';
+    insert into public.delivery_events (
+      id, round_stop_id, recorded_by, idempotency_key, source_stock_location_id
+    ) values (
+      '65000000-0000-4000-8000-000000000025', '${STOP_ID}', '${ADMIN_ID}',
+      '65000000-0000-4000-8000-000000000026', null
+    );
+    insert into public.delivery_items (delivery_event_id, ice_type_id, quantity)
+    values ('65000000-0000-4000-8000-000000000025', '${ICE_ID}', 2);
+  `);
+
+  const balance = await db.query(`select public.daily_aggregate_stock_balance_at(
+    date '${SERVICE_DATE}', '${ICE_ID}'
+  ) value`);
+  const response = await db.query(`select public.get_accounting_reconciliation(
+    date '${SERVICE_DATE}'
+  ) result`);
+  const row = response.rows[0].result.aggregate[0];
+
+  assert.equal(Number(row.sold), 0);
+  assert.equal(Number(row.expected), Number(balance.rows[0].value));
+});
+
+test('accounting reconciliation exposes aggregate close return and no holder model', async (t) => {
+  const db = await createDatabase(t);
+  await applyAccountingReadModel(db);
+  await db.exec(`update public.auth_context set user_id = '${ADMIN_ID}', app_role = 'admin'`);
+  await db.query(`select public.close_daily_aggregate_stock(
+    date '${SERVICE_DATE}',
+    '[{"ice_type_id":"${ICE_ID}","actual_quantity":30}]'::jsonb,
+    null, '65000000-0000-4000-8000-000000000030'
+  )`);
+
+  const response = await db.query(`select public.get_accounting_reconciliation(
+    date '${SERVICE_DATE}'
+  ) result`);
+  const reconciliation = response.rows[0].result;
+
+  assert.equal(Number(reconciliation.aggregate[0].closed_returned_to_factory), 30);
+  assert.deepEqual(reconciliation.holders, []);
+});
+
+test('accounting reconciliation keeps a historical close complete after a catalog addition', async (t) => {
+  const db = await createDatabase(t);
+  await applyAccountingReadModel(db);
+  const laterIceId = '50000000-0000-4000-8000-000000000004';
+  await db.exec(`update public.auth_context set user_id = '${ADMIN_ID}', app_role = 'admin'`);
+  await db.query(`select public.close_daily_aggregate_stock(
+    date '${SERVICE_DATE}',
+    '[{"ice_type_id":"${ICE_ID}","actual_quantity":30}]'::jsonb,
+    null, '65000000-0000-4000-8000-000000000035'
+  )`);
+  await db.exec(`
+    insert into public.ice_types (id, code, name, unit, is_active)
+    values ('${laterIceId}', 'ICE-LATER', 'Later ice', 'bag', true)
+  `);
+
+  const response = await db.query(`select public.get_accounting_reconciliation(
+    date '${SERVICE_DATE}'
+  ) result`);
+  const reconciliation = response.rows[0].result;
+  const originalIce = reconciliation.aggregate.find((row) => row.ice_type_id === ICE_ID);
+
+  assert.equal(originalIce.count_status, 'complete');
+  assert.equal(Number(originalIce.actual), 30);
+  assert.equal(reconciliation.aggregate.some((row) => row.ice_type_id === laterIceId), false);
+});
+
+test('accounting count completeness matches ice type identity, not only row count', async (t) => {
+  const db = await createDatabase(t);
+  await applyAccountingReadModel(db);
+  const secondIceId = '50000000-0000-4000-8000-000000000002';
+  const retiredIceId = '50000000-0000-4000-8000-000000000003';
+  await db.exec(`
+    update public.auth_context set user_id = '${ADMIN_ID}', app_role = 'admin';
+    insert into public.ice_types (id, code, name, unit, is_active) values
+      ('${secondIceId}', 'ICE-2', 'Ice 2', 'bag', true),
+      ('${retiredIceId}', 'ICE-3', 'Retired ice', 'bag', false);
+    insert into public.daily_aggregate_stock_closures (
+      service_date, status, idempotency_key, closed_by, closed_at
+    ) values (
+      date '${SERVICE_DATE}', 'closed', '65000000-0000-4000-8000-000000000040',
+      '${ADMIN_ID}', now()
+    );
+    insert into public.daily_aggregate_stock_closure_items (
+      service_date, ice_type_id, system_quantity, actual_quantity, variance_quantity
+    ) values
+      (date '${SERVICE_DATE}', '${secondIceId}', 0, 0, 0),
+      (date '${SERVICE_DATE}', '${retiredIceId}', 0, 0, 0);
+  `);
+
+  const response = await db.query(`select public.get_accounting_reconciliation(
+    date '${SERVICE_DATE}'
+  ) result`);
+  const originalIce = response.rows[0].result.aggregate.find(
+    (row) => row.ice_type_id === ICE_ID,
+  );
+
+  assert.equal(originalIce.count_status, 'incomplete');
+  assert.equal(originalIce.actual, null);
 });
 
 test('accounting review derives stock variance only from a current complete count', async (t) => {

@@ -222,6 +222,10 @@ test('factory order persists by service date and active truck before reporting s
 
   assert.match(component, /client\.rpc\('get_factory_order_summary'/);
   assert.match(component, /supabase\.rpc\('record_factory_order'/);
+  assert.equal(
+    [...component.matchAll(/publishDataChange\(\['accounting', 'stock'\]\)/g)].length,
+    2,
+  );
   assert.match(component, /p_service_date: serviceDate/);
   assert.match(component, /p_truck_location_id: truckId/);
   assert.match(component, /p_idempotency_key: requestKey/);
