@@ -352,10 +352,30 @@ describe('EmployeeDeliveryWorkspace', () => {
     await user.click(screen.getByRole('button', { name: 'เพิ่มเล็กอีกหนึ่ง' }));
     await user.click(screen.getByRole('button', { name: 'รีเซ็ตทั้งหมด' }));
 
-    expect(screen.getByLabelText('จำนวนก้อน').textContent).toBe('0ถุง');
-    expect(screen.getByLabelText('จำนวนเล็ก').textContent).toBe('0ถุง');
+    expect((screen.getByRole('spinbutton', { name: 'จำนวนก้อน' }) as HTMLInputElement).value).toBe('');
+    expect((screen.getByRole('spinbutton', { name: 'จำนวนเล็ก' }) as HTMLInputElement).value).toBe('');
     expect((screen.getByRole('button', { name: 'ยืนยันรับน้ำแข็ง' }) as HTMLButtonElement).disabled).toBe(true);
     expect(gateway.recordEmployeeStockTransfer).not.toHaveBeenCalled();
+  });
+
+  it('accepts a typed withdrawal quantity and caps it at the truck balance', async () => {
+    const user = userEvent.setup();
+    render(
+      <EmployeeDeliveryWorkspace
+        enableAssignedStockFlow
+        gateway={createGateway()}
+        viewMode="withdrawal"
+      />,
+    );
+
+    const quantityInput = await screen.findByRole('spinbutton', { name: 'จำนวนก้อน' });
+    await user.type(quantityInput, '12');
+    expect((quantityInput as HTMLInputElement).value).toBe('12');
+
+    await user.clear(quantityInput);
+    await user.type(quantityInput, '99');
+    expect((quantityInput as HTMLInputElement).value).toBe('20');
+    expect((screen.getByRole('button', { name: 'เพิ่มก้อนอีกหนึ่ง' }) as HTMLButtonElement).disabled).toBe(true);
   });
 
   it('shows shop selection before entering any delivery quantity', async () => {
@@ -414,10 +434,11 @@ describe('EmployeeDeliveryWorkspace', () => {
     await user.click(screen.getByRole('button', { name: 'เพิ่มก้อนอีกหนึ่ง' }));
 
     const blockRow = screen.getByText('ก้อน').closest('.employee-stock-row') as HTMLElement;
+    expect((within(blockRow).getByRole('spinbutton', { name: 'จำนวนก้อน' }) as HTMLInputElement).value).toBe('2');
     expect(within(blockRow).getAllByRole('cell').map((cell) => cell.textContent)).toEqual([
       'ก้อนถุง',
       '20',
-      '−2+',
+      '−+',
       '18',
       '5',
       '7',

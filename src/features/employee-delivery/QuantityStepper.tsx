@@ -23,10 +23,27 @@ export function QuantityStepper({
         onClick={() => onChange(-1)}
         type="button"
       >−</button>
-      <output aria-label={`จำนวน${iceTypeName}`}>
-        <strong>{quantity}</strong>
+      <span className="employee-quantity-value">
+        <input
+          aria-label={`จำนวน${iceTypeName}`}
+          disabled={disabled}
+          inputMode="numeric"
+          max={maxQuantity}
+          min={0}
+          onChange={(event) => {
+            const enteredQuantity = Number(event.currentTarget.value);
+            const nextQuantity = Number.isFinite(enteredQuantity)
+              ? Math.max(0, Math.trunc(enteredQuantity))
+              : 0;
+            onChange(nextQuantity - quantity);
+          }}
+          placeholder="0"
+          step={1}
+          type="number"
+          value={quantity === 0 ? '' : quantity}
+        />
         {unit ? <small>{unit}</small> : null}
-      </output>
+      </span>
       <button
         aria-label={`เพิ่ม${iceTypeName}อีกหนึ่ง`}
         disabled={disabled || (typeof maxQuantity === 'number' && quantity >= maxQuantity)}
