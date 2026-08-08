@@ -1,7 +1,7 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import { ManagerDashboard, type ManagerDashboardView } from '../src/ManagerDashboard';
+import { ManagerDashboard, type DailyAggregateStockSummary, type ManagerDashboardView } from '../src/ManagerDashboard';
 import type { DailyWorkDashboard, StockControlSummary } from '../src/types/app';
 
 const dashboard: DailyWorkDashboard = {
@@ -87,11 +87,21 @@ const stockSummary: StockControlSummary = {
   recent_movements: [],
 };
 
+const aggregateStockSummary: DailyAggregateStockSummary = {
+  service_date: '2026-07-27',
+  status: 'open',
+  items: [
+    { ice_type_id: 'bag', name: 'หลอดเล็ก', unit: 'ถุง', available_quantity: 9.5 },
+    { ice_type_id: 'row', name: 'น้ำแข็งก้อน', unit: 'แถว', available_quantity: 1 },
+  ],
+};
+
 function renderDashboard(onNavigate = vi.fn<(view: ManagerDashboardView) => void>()) {
   render(
     <ManagerDashboard
       demoDashboard={dashboard}
       demoStockSummary={stockSummary}
+      demoAggregateStockSummary={aggregateStockSummary}
       isActive
       onNavigate={onNavigate}
       profileRole="round_lead"
@@ -101,12 +111,12 @@ function renderDashboard(onNavigate = vi.fn<(view: ManagerDashboardView) => void
 }
 
 describe('ManagerDashboard', () => {
-  it('uses only inventory holders and keeps mixed units and half quantities explicit', async () => {
+  it('uses the daily aggregate stock rather than inventory-holder balances', async () => {
     renderDashboard();
 
     const stockCard = (await screen.findByText('สต๊อกคงเหลือ')).closest('article');
     expect(stockCard).not.toBeNull();
-    expect(within(stockCard!).getByText('11.5 ถุง · 1 แถว')).toBeTruthy();
+    expect(within(stockCard!).getByText('9.5 ถุง · 1 แถว')).toBeTruthy();
     expect(screen.queryByText('จุดปฏิบัติงาน A')).toBeNull();
     expect(screen.queryByText('หลายหน่วย')).toBeNull();
   });
@@ -131,6 +141,7 @@ describe('ManagerDashboard', () => {
           session: { id: null, service_date: '2026-07-27', status: 'not_started' },
         }}
         demoStockSummary={stockSummary}
+        demoAggregateStockSummary={aggregateStockSummary}
         isActive
         onNavigate={vi.fn()}
         profileRole="round_lead"

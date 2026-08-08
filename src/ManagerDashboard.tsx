@@ -16,17 +16,22 @@ import {
   WarningCircle,
   XCircle,
 } from '@phosphor-icons/react';
+import { subscribeToDataChange } from './lib/dataChange';
 import { supabase } from './lib/supabase';
 import type {
   DailyWorkDashboard,
   StockControlSummary,
 } from './types/app';
 
-export interface StockTotal {
-  iceTypeId: string;
-  name: string;
-  unit: string;
-  quantity: number;
+export interface DailyAggregateStockSummary {
+  service_date: string;
+  status: 'open' | 'closed';
+  items: Array<{
+    ice_type_id: string;
+    name: string;
+    unit: string;
+    available_quantity: number;
+  }>;
 }
 
 export type ManagerDashboardView =
@@ -75,28 +80,6 @@ function formatQuantity(value: number) {
   return value.toLocaleString('th-TH', { maximumFractionDigits: 1 });
 }
 
-function summarizeStock(stock: StockControlSummary | null): StockTotal[] {
-  const totals = new Map<string, StockTotal>();
-
-  for (const location of stock?.locations ?? []) {
-    for (const balance of location.balances) {
-      const current = totals.get(balance.ice_type_id);
-      if (current) {
-        current.quantity += balance.quantity;
-      } else {
-        totals.set(balance.ice_type_id, {
-          iceTypeId: balance.ice_type_id,
-          name: balance.ice_type_name,
-          unit: balance.unit,
-          quantity: balance.quantity,
-        });
-      }
-    }
-  }
-
-  return [...totals.values()];
-}
-
 function summarizeQuantity(items: Array<{ unit: string; quantity: number }>) {
   const totals = new Map<string, number>();
   for (const item of items) {
@@ -124,15 +107,18 @@ export function ManagerDashboard({
   onNavigate,
   demoDashboard,
   demoStockSummary,
+  demoAggregateStockSummary,
 }: {
   isActive: boolean;
   profileRole: 'round_lead' | 'admin';
   onNavigate: (view: ManagerDashboardView) => void;
   demoDashboard?: DailyWorkDashboard;
   demoStockSummary?: StockControlSummary;
+  demoAggregateStockSummary?: DailyAggregateStockSummary;
 }) {
   const [dashboard, setDashboard] = useState<DailyWorkDashboard | null>(null);
   const [stockSummary, setStockSummary] = useState<StockControlSummary | null>(null);
+  const [aggregateStockSummary, setAggregateStockSummary] = useState<DailyAggregateStockSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
@@ -147,9 +133,10 @@ export function ManagerDashboard({
     if (!isActive) return undefined;
     const currentRequest = ++requestId.current;
 
-    if (demoDashboard && demoStockSummary) {
+    if (demoDashboard && demoStockSummary && demoAggregateStockSummary) {
       setDashboard(demoDashboard);
       setStockSummary(demoStockSummary);
+      setAggregateStockSummary(demoAggregateStockSummary);
       setError(null);
       setLoading(false);
       return undefined;
@@ -169,21 +156,25 @@ export function ManagerDashboard({
 
       try {
         const serviceDate = todayIsoDate();
-        const [dashRes, stockRes] = await Promise.all([
+        const [dashRes, stockRes, aggregateRes] = await Promise.all([
           client.rpc('get_daily_work_dashboard', { p_service_date: serviceDate }),
           client.rpc('get_stock_control_summary', { p_service_date: serviceDate }),
+          client.rpc('get_daily_aggregate_stock_summary', { p_service_date: serviceDate }),
         ]);
 
         if (currentRequest !== requestId.current) return;
         if (dashRes.error) throw new Error(dashRes.error.message);
         if (stockRes.error) throw new Error(stockRes.error.message);
+        if (aggregateRes.error) throw new Error(aggregateRes.error.message);
 
         setDashboard(dashRes.data as DailyWorkDashboard);
         setStockSummary(stockRes.data as StockControlSummary);
+        setAggregateStockSummary(aggregateRes.data as DailyAggregateStockSummary);
         setLoading(false);
       } catch (loadError) {
         if (currentRequest !== requestId.current) return;
         setDashboard(null);
+        setAggregateStockSummary(null);
         setError(loadError instanceof Error ? loadError.message : 'โหลดข้อมูลงานวันนี้ไม่สำเร็จ');
         setLoading(false);
       }
@@ -193,7 +184,11 @@ export function ManagerDashboard({
     return () => {
       requestId.current += 1;
     };
-  }, [isActive, reloadKey]);
+  }, [isActive, reloadKey, demoAggregateStockSummary, demoDashboard, demoStockSummary]);
+
+  useEffect(() => subscribeToDataChange(['stock', 'pos'], () => {
+    if (isActive) setReloadKey((key) => key + 1);
+  }), [isActive]);
 
   const handleCancelSession = async () => {
     if (!cancelReason.trim()) {
@@ -228,7 +223,7 @@ export function ManagerDashboard({
     return <DashboardState title="ภาพรวมงานวันนี้" detail={formatServiceDate(serviceDate)} message="กำลังโหลดข้อมูลงานวันนี้..." />;
   }
 
-  if (error || !dashboard) {
+  if (error || !dashboard || !aggregateStockSummary) {
     return (
       <div className="manager-dashboard">
         <DashboardHeading title="ภาพรวมงานวันนี้" detail={formatServiceDate(serviceDate)} />
@@ -246,7 +241,10 @@ export function ManagerDashboard({
 
   const { session, deliverySummary, salesSummary, readiness, cancellationState, problems } = dashboard;
   const locations = (stockSummary?.locations ?? []).filter((location) => location.holds_inventory === true);
-  const stockTotals = summarizeStock(stockSummary ? { ...stockSummary, locations } : null);
+  const stockTotals = aggregateStockSummary.items.map((item) => ({
+    unit: item.unit,
+    quantity: Number(item.available_quantity),
+  }));
   const totalStock = summarizeQuantity(stockTotals);
   const hasStartedWork = session.status !== 'not_started';
   const pendingCount = hasStartedWork
@@ -297,7 +295,7 @@ export function ManagerDashboard({
       </DashboardHeading>
 
       <section className="dashboard-overview-grid" aria-label="ตัวเลขสรุปวันนี้">
-        <OverviewCard icon={Truck} label="สต๊อกคงเหลือ" value={totalStock.value} unit={totalStock.unit} detail={`จาก ${locations.length} จุดถือครอง`} tone="blue" />
+        <OverviewCard icon={Truck} label="สต๊อกคงเหลือ" value={totalStock.value} unit={totalStock.unit} detail="ยอดรวมประจำวันหลังหักยอดขาย" tone="blue" />
         <OverviewCard icon={CurrencyDollar} label="ยอดขายสุทธิ" value={formatCurrency(salesSummary.netSalesValue)} detail="ยอดขายที่บันทึกแล้ววันนี้" tone="green" />
         <OverviewCard icon={Storefront} label="ส่งร้านแล้ว" value={formatQuantity(deliverySummary.actualShopCount)} unit="ร้าน" detail={`${formatQuantity(deliverySummary.activeDeliveryCount)} รายการส่ง`} tone="sky" />
         <OverviewCard

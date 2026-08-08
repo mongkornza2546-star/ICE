@@ -332,6 +332,18 @@ const managerStockDemoSummary: StockControlSummary = {
   recent_movements: [],
 };
 
+const managerAggregateStockDemoSummary = {
+  service_date: managerStockDemoRound.service_date,
+  status: 'open' as const,
+  items: [
+    { ice_type_id: 'tube', name: 'หลอดเล็ก', unit: 'ถุง', available_quantity: 67.5 },
+    { ice_type_id: 'crushed', name: 'โม่', unit: 'ถุง', available_quantity: 9 },
+    { ice_type_id: 'half', name: 'หลอดเล็กโม่', unit: 'ถุง', available_quantity: 22 },
+    { ice_type_id: 'cube', name: 'น้ำแข็งก้อน', unit: 'แถว', available_quantity: 1 },
+    { ice_type_id: 'melt', name: 'เปลือย (หลอดใหญ่)', unit: 'ถุง', available_quantity: 3 },
+  ],
+};
+
 const managerDashboardDemo: DailyWorkDashboard = {
   session: { id: 'demo-session', service_date: managerStockDemoRound.service_date, status: 'in_progress', opened_at: '2026-07-20T01:00:00.000Z', opened_by_name: 'หัวหน้างานเดโม่' },
   members: [
@@ -736,6 +748,7 @@ export function LocalDemoApp() {
         <ManagerDashboard
           demoDashboard={managerDashboardDemo}
           demoStockSummary={managerStockDemoSummary}
+          demoAggregateStockSummary={managerAggregateStockDemoSummary}
           isActive
           onNavigate={() => undefined}
           profileRole="admin"

@@ -180,8 +180,9 @@ test('manager dashboard reloads from the daily-work RPC whenever its keep-alive 
   assert.match(component, /if \(!isActive\) return undefined;/);
   assert.match(component, /client\.rpc\('get_daily_work_dashboard'/);
   assert.match(component, /client\.rpc\('get_stock_control_summary'/);
+  assert.match(component, /client\.rpc\('get_daily_aggregate_stock_summary'/);
   assert.match(component, /p_service_date: serviceDate/);
-  assert.match(component, /\}, \[isActive, reloadKey\]\);/);
+  assert.match(component, /subscribeToDataChange\(\['stock', 'pos'\]/);
   assert.match(component, /currentRequest !== requestId\.current/);
   assert.match(router, /<ManagerDashboard[\s\S]*isActive=\{currentView === 'manager_overview'\}/);
   assert.doesNotMatch(component, /เครดิต|รับชำระ|ใบเสร็จ/);
