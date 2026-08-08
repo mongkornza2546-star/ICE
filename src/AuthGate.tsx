@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useState } from 'react';
 import { Session } from '@supabase/supabase-js';
 import { env } from './lib/env';
 import { getRecoverableSessionNotice } from './lib/authErrors';
@@ -10,14 +10,14 @@ export function AuthGate() {
   const [authNotice, setAuthNotice] = useState<string | null>(null);
   const [bootLoading, setBootLoading] = useState(true);
 
-  const recoverSession = async (message: string | null | undefined) => {
+  const recoverSession = useCallback(async (message: string | null | undefined) => {
     const notice = getRecoverableSessionNotice(message);
     if (!notice) return false;
 
     setAuthNotice(notice);
     await supabase?.auth.signOut();
     return true;
-  };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
