@@ -82,6 +82,7 @@ function createGateway(overrides: Partial<EmployeeDeliveryGateway> = {}) {
     loadShopCards: vi.fn().mockResolvedValue([shopA, shopB]),
     loadEmployeeStockState: vi.fn().mockResolvedValue(employeeStockState()),
     recordEmployeeStockTransfer: vi.fn().mockResolvedValue(employeeStockState()),
+    recordEmployeeStockReturn: vi.fn().mockResolvedValue(employeeStockState()),
     recordDelivery: vi.fn().mockResolvedValue(undefined),
     ...overrides,
   };
@@ -309,7 +310,7 @@ describe('EmployeeDeliveryWorkspace', () => {
       />,
     );
 
-    expect(await screen.findByRole('heading', { name: 'เบิกน้ำแข็ง' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: 'เบิกและคืนน้ำแข็ง' })).toBeTruthy();
     expect(screen.queryByText(/เติมน้ำแข็ง|เบิกเพิ่มระหว่างวัน/)).toBeNull();
   });
 
@@ -352,8 +353,8 @@ describe('EmployeeDeliveryWorkspace', () => {
     await user.click(screen.getByRole('button', { name: 'เพิ่มเล็กอีกหนึ่ง' }));
     await user.click(screen.getByRole('button', { name: 'รีเซ็ตทั้งหมด' }));
 
-    expect((screen.getByRole('spinbutton', { name: 'จำนวนก้อน' }) as HTMLInputElement).value).toBe('');
-    expect((screen.getByRole('spinbutton', { name: 'จำนวนเล็ก' }) as HTMLInputElement).value).toBe('');
+    expect((screen.getByRole('textbox', { name: 'จำนวนก้อน' }) as HTMLInputElement).value).toBe('');
+    expect((screen.getByRole('textbox', { name: 'จำนวนเล็ก' }) as HTMLInputElement).value).toBe('');
     expect((screen.getByRole('button', { name: 'ยืนยันรับน้ำแข็ง' }) as HTMLButtonElement).disabled).toBe(true);
     expect(gateway.recordEmployeeStockTransfer).not.toHaveBeenCalled();
   });
@@ -368,7 +369,7 @@ describe('EmployeeDeliveryWorkspace', () => {
       />,
     );
 
-    const quantityInput = await screen.findByRole('spinbutton', { name: 'จำนวนก้อน' });
+    const quantityInput = await screen.findByRole('textbox', { name: 'จำนวนก้อน' });
     await user.type(quantityInput, '12');
     expect((quantityInput as HTMLInputElement).value).toBe('12');
 
@@ -376,6 +377,59 @@ describe('EmployeeDeliveryWorkspace', () => {
     await user.type(quantityInput, '99');
     expect((quantityInput as HTMLInputElement).value).toBe('20');
     expect((screen.getByRole('button', { name: 'เพิ่มก้อนอีกหนึ่ง' }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('returns stock from the assigned holding to the truck and caps it at the holding balance', async () => {
+    const user = userEvent.setup();
+    const initialStock = employeeStockState();
+    const returnedStock = employeeStockState({
+      truck_location: {
+        ...initialStock.truck_location,
+        balances: initialStock.truck_location.balances.map((item) => ({
+          ...item,
+          quantity: item.ice_type_id === 'ice-block' ? 22 : item.quantity,
+        })),
+      },
+      holding_location: {
+        ...initialStock.holding_location,
+        balances: initialStock.holding_location.balances.map((item) => ({
+          ...item,
+          quantity: item.ice_type_id === 'ice-block' ? 3 : item.quantity,
+        })),
+      },
+    });
+    const recordEmployeeStockReturn = vi.fn().mockResolvedValue(returnedStock);
+    const gateway = createGateway({ recordEmployeeStockReturn });
+    render(
+      <EmployeeDeliveryWorkspace
+        enableAssignedStockFlow
+        gateway={gateway}
+        viewMode="withdrawal"
+      />,
+    );
+
+    await screen.findByRole('list', { name: 'ยอดก่อนและหลังรับน้ำแข็ง' });
+    await user.click(screen.getByRole('button', { name: 'คืนขึ้นรถ' }));
+    expect(screen.getByRole('heading', { name: 'คืนน้ำแข็งขึ้นรถ' })).toBeTruthy();
+
+    const quantityInput = screen.getByRole('textbox', { name: 'จำนวนก้อน' });
+    await user.type(quantityInput, '99');
+    expect((quantityInput as HTMLInputElement).value).toBe('5');
+
+    const blockRow = screen.getByText('ก้อน').closest('.employee-stock-row') as HTMLElement;
+    expect(within(blockRow).getByRole('group', { name: 'ยอดก้อน' }).textContent).toContain('จุดหลัง0 ถุง');
+    expect(within(blockRow).getByRole('group', { name: 'ยอดก้อน' }).textContent).toContain('รถหลัง25 ถุง');
+
+    await user.clear(quantityInput);
+    await user.type(quantityInput, '2');
+    await user.click(screen.getByRole('button', { name: 'ยืนยันคืนของ' }));
+
+    await waitFor(() => expect(recordEmployeeStockReturn).toHaveBeenCalledWith({
+      roundId: round.id,
+      items: [{ ice_type_id: 'ice-block', quantity: 2 }],
+      idempotencyKey: expect.any(String),
+    }));
+    await screen.findByText('คืนน้ำแข็งขึ้น รถบรรทุกหลัก แล้ว');
   });
 
   it('shows shop selection before entering any delivery quantity', async () => {
@@ -434,7 +488,7 @@ describe('EmployeeDeliveryWorkspace', () => {
     await user.click(screen.getByRole('button', { name: 'เพิ่มก้อนอีกหนึ่ง' }));
 
     const blockRow = screen.getByText('ก้อน').closest('.employee-stock-row') as HTMLElement;
-    expect((within(blockRow).getByRole('spinbutton', { name: 'จำนวนก้อน' }) as HTMLInputElement).value).toBe('2');
+    expect((within(blockRow).getByRole('textbox', { name: 'จำนวนก้อน' }) as HTMLInputElement).value).toBe('2');
     expect(within(blockRow).getAllByRole('cell').map((cell) => cell.textContent)).toEqual([
       'ก้อนถุง',
       '20',

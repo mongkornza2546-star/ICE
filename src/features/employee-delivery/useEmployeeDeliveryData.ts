@@ -18,6 +18,7 @@ import { printSalesDocument, salesDocumentFromStored, type StoredSalesDocument }
 import { publishDataChange } from '../../lib/dataChange';
 
 const PAD_VALUES = ['0', '1', '2', '3', '4', '5', '+'] as const;
+export type StockTransferMode = 'receive' | 'return';
 
 function buildImmediateSalePayloadSignature(requestScope: string, payload: {
   roundStopId: string;
@@ -40,6 +41,7 @@ interface EmployeeWorkspaceRecovery {
   selectedIceTypeId: string;
   deliveryQuantities: Record<string, number>;
   transferQuantities: Record<string, number>;
+  stockTransferMode: StockTransferMode;
   paymentTerm: PaymentTerm;
   paymentResult: DeliveryFinancialResult | null;
   paymentOpen: boolean;
@@ -91,6 +93,7 @@ export function useEmployeeDeliveryData({
   const [selectedIceTypeId, setSelectedIceTypeId] = useState('');
   const [deliveryQuantities, setDeliveryQuantities] = useState<Record<string, number>>({});
   const [transferQuantities, setTransferQuantities] = useState<Record<string, number>>({});
+  const [stockTransferMode, setStockTransferMode] = useState<StockTransferMode>('receive');
   const [stockState, setStockState] = useState<EmployeeStockState | null>(null);
   const [posContext, setPosContext] = useState<DeliveryPosContext | null>(null);
   const [loadingPosContext, setLoadingPosContext] = useState(false);
@@ -152,6 +155,7 @@ export function useEmployeeDeliveryData({
     selectedIceTypeId,
     deliveryQuantities,
     transferQuantities,
+    stockTransferMode,
     paymentTerm,
     paymentResult,
     paymentOpen,
@@ -174,6 +178,7 @@ export function useEmployeeDeliveryData({
     selectedIceTypeId,
     deliveryQuantities,
     transferQuantities,
+    stockTransferMode,
     paymentTerm,
     paymentResult,
     paymentOpen,
@@ -267,12 +272,14 @@ export function useEmployeeDeliveryData({
     }
     pendingCardRecovery.current = {
       ...saved,
+      stockTransferMode: saved.stockTransferMode === 'return' ? 'return' : 'receive',
       selectedRoundId: selectedRoundStillExists ? saved.selectedRoundId : '',
       selectedIceTypeId: selectedIceTypeStillExists ? saved.selectedIceTypeId : iceTypes[0]?.id ?? '',
     };
     setSelectedBuildingId(saved.selectedBuildingId);
     setSelectedZone(saved.selectedZone);
     setQuery(saved.query);
+    setStockTransferMode(saved.stockTransferMode === 'return' ? 'return' : 'receive');
     setSelectedIceTypeId(selectedIceTypeStillExists ? saved.selectedIceTypeId : iceTypes[0]?.id ?? '');
     if (selectedRoundStillExists) setSelectedRoundId(saved.selectedRoundId);
   }, [iceTypes, loadedReferenceServiceDate, loadingReference, recoveryMode, recoveryScope, requestScope, rounds, serviceDate]);
@@ -520,7 +527,7 @@ export function useEmployeeDeliveryData({
       writeRecovery(requestScope, serviceDate, recoveryMode, recoverySnapshotRef.current);
     }, 250);
     return () => window.clearTimeout(timeout);
-  }, [approvalId, approvalReason, deliveryQuantities, immediateSaleRetry, items.length, note, paymentAmount, paymentMethod, paymentOpen, paymentReference, paymentResult, paymentTerm, problemOpen, query, recoveryHydrated, recoveryMode, recoveryReadyToPersist, requestScope, selectedBuildingId, selectedCardId, selectedIceTypeId, selectedRoundId, selectedZone, serviceDate, status, transferItems.length, transferQuantities]);
+  }, [approvalId, approvalReason, deliveryQuantities, immediateSaleRetry, items.length, note, paymentAmount, paymentMethod, paymentOpen, paymentReference, paymentResult, paymentTerm, problemOpen, query, recoveryHydrated, recoveryMode, recoveryReadyToPersist, requestScope, selectedBuildingId, selectedCardId, selectedIceTypeId, selectedRoundId, selectedZone, serviceDate, status, stockTransferMode, transferItems.length, transferQuantities]);
 
   const changeShop = (card: ShopCard) => {
     if (card.round_stop_id === selectedCardId) return;
@@ -636,7 +643,12 @@ export function useEmployeeDeliveryData({
 
   const changeTransferQuantity = (iceTypeId: string, delta: number) => {
     if (transferSubmitting || selectedRound?.status === 'closed') return;
-    const available = stockQuantity(stockState?.truck_location.balances, iceTypeId);
+    const available = stockQuantity(
+      stockTransferMode === 'return'
+        ? stockState?.holding_location.balances
+        : stockState?.truck_location.balances,
+      iceTypeId,
+    );
     setTransferQuantities((current) => ({
       ...current,
       [iceTypeId]: Math.max(0, Math.min(available, (current[iceTypeId] ?? 0) + delta)),
@@ -645,9 +657,25 @@ export function useEmployeeDeliveryData({
     setSuccess(null);
   };
 
+  const changeStockTransferMode = (nextMode: StockTransferMode) => {
+    if (nextMode === stockTransferMode || transferSubmitting) return;
+    if (transferItems.length > 0
+      && !window.confirm('เปลี่ยนประเภทรายการแล้ว จำนวนที่กรอกไว้จะถูกล้าง ต้องการเปลี่ยนหรือไม่?')) return;
+    const clearedTransferQuantities = Object.fromEntries(iceTypes.map((iceType) => [iceType.id, 0]));
+    persistRecoveryNow({
+      stockTransferMode: nextMode,
+      transferQuantities: clearedTransferQuantities,
+    });
+    setStockTransferMode(nextMode);
+    setTransferQuantities(clearedTransferQuantities);
+    setStockError(null);
+    setSuccess(null);
+  };
+
   const handleStockTransfer = async () => {
     if (!selectedRound || !stockState || transferSubmitting || transferItems.length === 0) return;
-    const signature = `${requestScope}:stock-transfer:${JSON.stringify({
+    const operation = stockTransferMode === 'return' ? 'stock-return' : 'stock-transfer';
+    const signature = `${requestScope}:${operation}:${JSON.stringify({
       roundId: selectedRound.id,
       items: transferItems,
     })}`;
@@ -657,7 +685,10 @@ export function useEmployeeDeliveryData({
     setStockError(null);
     setSuccess(null);
     try {
-      const nextState = await gateway.recordEmployeeStockTransfer({
+      const recordStockMovement = stockTransferMode === 'return'
+        ? gateway.recordEmployeeStockReturn
+        : gateway.recordEmployeeStockTransfer;
+      const nextState = await recordStockMovement({
         roundId: selectedRound.id,
         items: transferItems,
         idempotencyKey: request.key,
@@ -669,7 +700,9 @@ export function useEmployeeDeliveryData({
       clearPendingRequest(signature, request.key);
       setStockState(nextState);
       setTransferQuantities(clearedTransferQuantities);
-      setSuccess(`รับน้ำแข็งเข้า ${nextState.holding_location.name} แล้ว`);
+      setSuccess(stockTransferMode === 'return'
+        ? `คืนน้ำแข็งขึ้น ${nextState.truck_location.name} แล้ว`
+        : `รับน้ำแข็งเข้า ${nextState.holding_location.name} แล้ว`);
     } catch (transferError) {
       if (requestId !== transferRequestId.current || activeStockRoundId.current !== selectedRound.id) return;
       setStockError(employeeErrorMessage(transferError));
@@ -1088,6 +1121,7 @@ export function useEmployeeDeliveryData({
     selectedIceTypeId,
     deliveryQuantities,
     transferQuantities,
+    stockTransferMode,
     stockState,
     posContext,
     loadingPosContext,
@@ -1147,6 +1181,7 @@ export function useEmployeeDeliveryData({
     returnToDelivery,
     attemptBack,
     changeTransferQuantity,
+    changeStockTransferMode,
     setDeliveryQuantity,
     clearDeliveryQuantities,
     handleStockTransfer,

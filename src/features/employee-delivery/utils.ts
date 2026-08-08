@@ -52,6 +52,7 @@ export function employeeErrorMessage(error: unknown) {
   if (normalized.includes('none is configured')) return 'ยังไม่มีจุดถือครองที่ผูกกับบัญชีนี้ กรุณาแจ้งหัวหน้า';
   if (normalized.includes('multiple are configured')) return 'พบจุดถือครองของบัญชีนี้หลายจุด ให้หัวหน้ากำหนดเหลือหนึ่งจุด';
   if (normalized.includes('truck does not have enough stock')) return 'น้ำแข็งบนรถมีไม่พอตามยอดที่รับเพิ่ม ตรวจยอดแล้วลองอีกครั้ง';
+  if (normalized.includes('employee holding does not have enough stock')) return 'ของที่จุดถือครองมีไม่พอตามยอดที่จะคืน ตรวจยอดแล้วลองอีกครั้ง';
   if (normalized.includes('not enough stock')) return 'สต๊อกต้นทางมีไม่พอตามยอดนี้ แจ้งหัวหน้าก่อนบันทึกอีกครั้ง';
   if (normalized.includes('no active truck')) return 'ยังไม่มีรถหลักที่เปิดใช้งาน กรุณาแจ้งหัวหน้า';
   if (normalized.includes('multiple active trucks')) return 'พบรถหลายคันแต่ยังไม่ได้กำหนดรถหลัก กรุณาแจ้งหัวหน้า';

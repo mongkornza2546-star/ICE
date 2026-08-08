@@ -1,5 +1,6 @@
 import { ArrowClockwise, Check, Truck, WarningCircle, CaretRight } from '@phosphor-icons/react';
 import type { DeliveryRound, EmployeeStockState, IceTypeOption } from '../../types/app';
+import type { StockTransferMode } from './useEmployeeDeliveryData';
 import { EmployeeState } from './EmployeeState';
 import { QuantityStepper } from './QuantityStepper';
 import { stockQuantity } from './utils';
@@ -13,6 +14,8 @@ export function EmployeeStockTransferSection({
   iceTypes,
   transferQuantities,
   changeTransferQuantity,
+  stockTransferMode,
+  changeStockTransferMode,
   selectedRound,
   handleStockTransfer,
   resetTransferQuantities,
@@ -27,6 +30,8 @@ export function EmployeeStockTransferSection({
   iceTypes: IceTypeOption[];
   transferQuantities: Record<string, number>;
   changeTransferQuantity: (iceTypeId: string, delta: number) => void;
+  stockTransferMode: StockTransferMode;
+  changeStockTransferMode: (mode: StockTransferMode) => void;
   selectedRound: DeliveryRound | null;
   handleStockTransfer: () => void;
   resetTransferQuantities: () => void;
@@ -34,15 +39,33 @@ export function EmployeeStockTransferSection({
   transferItems: Array<{ ice_type_id: string; quantity: number }>;
 }) {
   const isCardLayout = variant === 'cards';
+  const isReturn = stockTransferMode === 'return';
+  const movementLabel = isReturn ? 'คืนขึ้นรถ' : 'รับเพิ่ม';
 
   return (
     <section className="employee-entry-section employee-task-section" aria-labelledby="employee-stock-step">
         <div className="employee-entry-section__heading">
           <span>1</span>
           <div>
-            <h2 id="employee-stock-step">รับน้ำแข็งเข้าจุดถือครอง</h2>
-            <p>รับจากรถเพิ่มได้หลายครั้ง แต่ละครั้งเป็นรายการโอนใหม่</p>
+            <h2 id="employee-stock-step">{isReturn ? 'คืนน้ำแข็งขึ้นรถ' : 'รับน้ำแข็งเข้าจุดถือครอง'}</h2>
+            <p>{isReturn
+              ? 'คืนของที่เหลือจากจุดถือครองกลับขึ้นรถ'
+              : 'รับจากรถเพิ่มได้หลายครั้ง แต่ละครั้งเป็นรายการโอนใหม่'}</p>
           </div>
+        </div>
+        <div aria-label="เลือกประเภทรายการสต๊อก" className="employee-stock-mode" role="group">
+          <button
+            aria-pressed={!isReturn}
+            disabled={transferSubmitting}
+            onClick={() => changeStockTransferMode('receive')}
+            type="button"
+          >เบิกจากรถ</button>
+          <button
+            aria-pressed={isReturn}
+            disabled={transferSubmitting}
+            onClick={() => changeStockTransferMode('return')}
+            type="button"
+          >คืนขึ้นรถ</button>
         </div>
         {stockError ? (
           <div className="employee-error employee-error--retry" role="alert">
@@ -60,20 +83,20 @@ export function EmployeeStockTransferSection({
               <div className="employee-stock-route">
                 <Truck aria-hidden="true" size={28} weight="duotone" />
                 <span>
-                  <small>{stockState.truck_location.name}</small>
-                  <strong>{stockState.holding_location.name}</strong>
+                  <small>{isReturn ? stockState.holding_location.name : stockState.truck_location.name}</small>
+                  <strong>{isReturn ? stockState.truck_location.name : stockState.holding_location.name}</strong>
                 </span>
                 <CaretRight aria-hidden="true" size={20} weight="bold" />
               </div>
             ) : (
               <div className="employee-stock-route">
-                <span><Truck aria-hidden="true" size={22} />{stockState.truck_location.name}</span>
+                <span><Truck aria-hidden="true" size={22} />{isReturn ? stockState.holding_location.name : stockState.truck_location.name}</span>
                 <CaretRight aria-hidden="true" size={20} />
-                <strong>{stockState.holding_location.name}</strong>
+                <strong>{isReturn ? stockState.truck_location.name : stockState.holding_location.name}</strong>
               </div>
             )}
             {isCardLayout ? (
-              <div className="employee-stock-table" role="list" aria-label="ยอดก่อนและหลังรับน้ำแข็ง">
+              <div className="employee-stock-table" role="list" aria-label={isReturn ? 'ยอดก่อนและหลังคืนน้ำแข็ง' : 'ยอดก่อนและหลังรับน้ำแข็ง'}>
                 {iceTypes.map((iceType) => {
                   const truckBefore = stockQuantity(stockState.truck_location.balances, iceType.id);
                   const holdingBefore = stockQuantity(stockState.holding_location.balances, iceType.id);
@@ -81,7 +104,7 @@ export function EmployeeStockTransferSection({
                   return (
                     <div className="employee-stock-row" key={iceType.id} role="listitem">
                       <strong><span>{iceType.name}</span> <small>({iceType.unit})</small></strong>
-                      <span className="employee-stock-available"><small>รถก่อน</small>{truckBefore} {iceType.unit}</span>
+                      <span className="employee-stock-available"><small>{isReturn ? 'จุดก่อน' : 'รถก่อน'}</small>{isReturn ? holdingBefore : truckBefore} {iceType.unit}</span>
                       {iceType.image_url ? (
                         <img alt="" aria-hidden="true" className="employee-stock-product-image" loading="lazy" src={iceType.image_url} />
                       ) : null}
@@ -89,26 +112,36 @@ export function EmployeeStockTransferSection({
                         <QuantityStepper
                           disabled={transferSubmitting || selectedRound?.status === 'closed'}
                           iceTypeName={iceType.name}
-                          maxQuantity={truckBefore}
+                          maxQuantity={isReturn ? holdingBefore : truckBefore}
                           onChange={(delta) => changeTransferQuantity(iceType.id, delta)}
                           quantity={transferQuantity}
-                          purpose="รับเพิ่ม"
+                          purpose={movementLabel}
                           unit={iceType.unit}
                         />
                       </div>
                       <div className="employee-stock-stats" role="group" aria-label={`ยอด${iceType.name}`}>
-                        <span><small>รถหลัง</small><strong>{truckBefore - transferQuantity}</strong> {iceType.unit}</span>
-                        <span><small>จุดก่อน</small><strong>{holdingBefore}</strong> {iceType.unit}</span>
-                        <span><small>จุดหลัง</small><strong>{holdingBefore + transferQuantity}</strong> {iceType.unit}</span>
+                        {isReturn ? (
+                          <>
+                            <span><small>จุดหลัง</small><strong>{holdingBefore - transferQuantity}</strong> {iceType.unit}</span>
+                            <span><small>รถก่อน</small><strong>{truckBefore}</strong> {iceType.unit}</span>
+                            <span><small>รถหลัง</small><strong>{truckBefore + transferQuantity}</strong> {iceType.unit}</span>
+                          </>
+                        ) : (
+                          <>
+                            <span><small>รถหลัง</small><strong>{truckBefore - transferQuantity}</strong> {iceType.unit}</span>
+                            <span><small>จุดก่อน</small><strong>{holdingBefore}</strong> {iceType.unit}</span>
+                            <span><small>จุดหลัง</small><strong>{holdingBefore + transferQuantity}</strong> {iceType.unit}</span>
+                          </>
+                        )}
                       </div>
                     </div>
                   );
                 })}
               </div>
             ) : (
-              <div className="employee-stock-table" role="table" aria-label="ยอดก่อนและหลังรับน้ำแข็ง">
+              <div className="employee-stock-table" role="table" aria-label={isReturn ? 'ยอดก่อนและหลังคืนน้ำแข็ง' : 'ยอดก่อนและหลังรับน้ำแข็ง'}>
                 <div className="employee-stock-row employee-stock-row--header" role="row">
-                  <span role="columnheader">ชนิด</span><span role="columnheader">รถก่อน</span><span role="columnheader">รับเพิ่ม</span><span role="columnheader">รถหลัง</span><span role="columnheader">จุดก่อน</span><span role="columnheader">จุดหลัง</span>
+                  <span role="columnheader">ชนิด</span><span role="columnheader">{isReturn ? 'จุดก่อน' : 'รถก่อน'}</span><span role="columnheader">{movementLabel}</span><span role="columnheader">{isReturn ? 'จุดหลัง' : 'รถหลัง'}</span><span role="columnheader">{isReturn ? 'รถก่อน' : 'จุดก่อน'}</span><span role="columnheader">{isReturn ? 'รถหลัง' : 'จุดหลัง'}</span>
                 </div>
                 {iceTypes.map((iceType) => {
                   const truckBefore = stockQuantity(stockState.truck_location.balances, iceType.id);
@@ -117,20 +150,20 @@ export function EmployeeStockTransferSection({
                   return (
                     <div className="employee-stock-row" key={iceType.id} role="row">
                       <strong role="cell">{iceType.name}<small>{iceType.unit}</small></strong>
-                      <span data-label="รถก่อน" role="cell">{truckBefore}</span>
-                      <div className="employee-stock-transfer-cell" data-label="รับเพิ่ม" role="cell">
+                      <span data-label={isReturn ? 'จุดก่อน' : 'รถก่อน'} role="cell">{isReturn ? holdingBefore : truckBefore}</span>
+                      <div className="employee-stock-transfer-cell" data-label={movementLabel} role="cell">
                         <QuantityStepper
                           disabled={transferSubmitting || selectedRound?.status === 'closed'}
                           iceTypeName={iceType.name}
-                          maxQuantity={truckBefore}
+                          maxQuantity={isReturn ? holdingBefore : truckBefore}
                           onChange={(delta) => changeTransferQuantity(iceType.id, delta)}
                           quantity={transferQuantity}
-                          purpose="รับเพิ่ม"
+                          purpose={movementLabel}
                         />
                       </div>
-                      <span data-label="รถหลัง" role="cell">{truckBefore - transferQuantity}</span>
-                      <span data-label="จุดก่อน" role="cell">{holdingBefore}</span>
-                      <b data-label="จุดหลัง" role="cell">{holdingBefore + transferQuantity}</b>
+                      <span data-label={isReturn ? 'จุดหลัง' : 'รถหลัง'} role="cell">{isReturn ? holdingBefore - transferQuantity : truckBefore - transferQuantity}</span>
+                      <span data-label={isReturn ? 'รถก่อน' : 'จุดก่อน'} role="cell">{isReturn ? truckBefore : holdingBefore}</span>
+                      <b data-label={isReturn ? 'รถหลัง' : 'จุดหลัง'} role="cell">{isReturn ? truckBefore + transferQuantity : holdingBefore + transferQuantity}</b>
                     </div>
                   );
                 })}
@@ -148,14 +181,14 @@ export function EmployeeStockTransferSection({
                   รีเซ็ตทั้งหมด
                 </button>
                 <button
-                  aria-label="ยืนยันรับน้ำแข็ง"
+                  aria-label={isReturn ? 'ยืนยันคืนของ' : 'ยืนยันรับน้ำแข็ง'}
                   className="employee-submit employee-stock-submit"
                   disabled={transferSubmitting || transferItems.length === 0 || selectedRound?.status === 'closed'}
                   onClick={() => void handleStockTransfer()}
                   type="button"
                 >
                   <Check aria-hidden="true" size={22} weight="bold" />
-                  {selectedRound?.status === 'closed' ? 'รอบนี้ปิดแล้ว' : transferSubmitting ? 'กำลังบันทึก...' : 'ยืนยันการเบิก'}
+                  {selectedRound?.status === 'closed' ? 'รอบนี้ปิดแล้ว' : transferSubmitting ? 'กำลังบันทึก...' : isReturn ? 'ยืนยันคืนของ' : 'ยืนยันการเบิก'}
                 </button>
               </div>
             ) : (
@@ -165,7 +198,7 @@ export function EmployeeStockTransferSection({
                 onClick={() => void handleStockTransfer()}
                 type="button"
               >
-                {selectedRound?.status === 'closed' ? 'รอบนี้ปิดแล้ว' : transferSubmitting ? 'กำลังบันทึก...' : 'ยืนยันรับน้ำแข็ง'}
+                {selectedRound?.status === 'closed' ? 'รอบนี้ปิดแล้ว' : transferSubmitting ? 'กำลังบันทึก...' : isReturn ? 'ยืนยันคืนของ' : 'ยืนยันรับน้ำแข็ง'}
               </button>
             )}
           </>

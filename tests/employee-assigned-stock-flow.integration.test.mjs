@@ -7,6 +7,10 @@ const migration = readFileSync(
   new URL('../supabase/migrations/0015_employee_assigned_stock_flow.sql', import.meta.url),
   'utf8',
 );
+const stockReturnMigration = readFileSync(
+  new URL('../supabase/migrations/0137_employee_stock_returns.sql', import.meta.url),
+  'utf8',
+);
 
 const USER_ID = '10000000-0000-4000-8000-000000000001';
 const OTHER_USER_ID = '10000000-0000-4000-8000-000000000002';
@@ -19,6 +23,8 @@ const STOP_ID = '50000000-0000-4000-8000-000000000001';
 const TRUCK_ID = '60000000-0000-4000-8000-000000000001';
 const HOLDING_ID = '60000000-0000-4000-8000-000000000002';
 const SHOP_SOURCE_ID = '60000000-0000-4000-8000-000000000003';
+const REPLACEMENT_TRUCK_ID = '60000000-0000-4000-8000-000000000004';
+const OTHER_HOLDING_ID = '60000000-0000-4000-8000-000000000005';
 const SERVICE_DATE = '2026-07-18';
 
 async function createDatabase(t) {
@@ -121,6 +127,7 @@ async function createDatabase(t) {
       to_location_id uuid references public.stock_locations(id),
       note text,
       idempotency_key uuid not null unique,
+      request_fingerprint text,
       status public.stock_movement_status not null default 'active',
       recorded_by uuid not null references public.users(id),
       recorded_at timestamptz not null default now()
@@ -129,7 +136,7 @@ async function createDatabase(t) {
     create table public.stock_movement_items (
       movement_id uuid not null references public.stock_movements(id),
       ice_type_id uuid not null references public.ice_types(id),
-      quantity integer not null check (quantity > 0),
+      quantity numeric(12, 1) not null check (quantity > 0),
       primary key (movement_id, ice_type_id)
     );
 
@@ -168,7 +175,7 @@ async function createDatabase(t) {
     create table public.delivery_items (
       delivery_event_id uuid not null references public.delivery_events(id),
       ice_type_id uuid not null references public.ice_types(id),
-      quantity integer not null check (quantity > 0),
+      quantity numeric(12, 1) not null check (quantity > 0),
       primary key (delivery_event_id, ice_type_id)
     );
 
@@ -185,7 +192,7 @@ async function createDatabase(t) {
       service_date date not null,
       location_id uuid not null references public.stock_locations(id),
       ice_type_id uuid not null references public.ice_types(id),
-      quantity integer not null,
+      quantity numeric(12, 1) not null,
       primary key (service_date, location_id, ice_type_id)
     );
 
@@ -193,7 +200,7 @@ async function createDatabase(t) {
       p_service_date date,
       p_location_id uuid,
       p_ice_type_id uuid
-    ) returns integer
+    ) returns numeric(12, 1)
     language sql stable as $$
       with opening as (
         select coalesce(sum(balance.quantity), 0) as quantity
@@ -223,7 +230,7 @@ async function createDatabase(t) {
           and event.source_stock_location_id = p_location_id
           and item.ice_type_id = p_ice_type_id
       )
-      select (opening.quantity + movements.quantity - deliveries.quantity)::integer
+      select (opening.quantity + movements.quantity - deliveries.quantity)::numeric(12, 1)
       from opening, movements, deliveries
     $$;
 
@@ -262,6 +269,7 @@ async function createDatabase(t) {
   `);
 
   await db.exec(migration);
+  await db.exec(stockReturnMigration);
 
   await db.exec(`
     insert into public.users (id, display_name) values
@@ -319,6 +327,16 @@ async function getState(db, roundId = ROUND_ID) {
 async function transfer(db, entries, key, roundId = ROUND_ID) {
   return db.query(`
     select public.record_employee_stock_transfer(
+      '${roundId}',
+      '${items(entries)}'::jsonb,
+      '${key}'
+    ) as result
+  `);
+}
+
+async function returnStock(db, entries, key, roundId = ROUND_ID) {
+  return db.query(`
+    select public.record_employee_stock_return(
       '${roundId}',
       '${items(entries)}'::jsonb,
       '${key}'
@@ -390,6 +408,138 @@ test('state and multi-item transfer use the truck and assigned holding atomicall
        where movement.idempotency_key = '${requestKey}') as audits
   `);
   assert.deepEqual(counts.rows[0], { movements: 1, items: 2, audits: 1 });
+});
+
+test('employee return moves only available holding stock back to the truck atomically', async (t) => {
+  const db = await createDatabase(t);
+  await transfer(db, [
+    [ICE_SMALL_ID, 4],
+    [ICE_BLOCK_ID, 2],
+  ], '71000000-0000-4000-8000-000000000001');
+
+  const requestKey = '71000000-0000-4000-8000-000000000002';
+  const response = await returnStock(db, [
+    [ICE_SMALL_ID, 3],
+    [ICE_BLOCK_ID, 1],
+  ], requestKey);
+  const state = response.rows[0].result;
+  assert.equal(balanceFor(state.truck_location, ICE_SMALL_ID), 9);
+  assert.equal(balanceFor(state.truck_location, ICE_BLOCK_ID), 1);
+  assert.equal(balanceFor(state.holding_location, ICE_SMALL_ID), 1);
+  assert.equal(balanceFor(state.holding_location, ICE_BLOCK_ID), 1);
+
+  const movement = await db.query(`
+    select kind, from_location_id, to_location_id, recorded_by
+    from public.stock_movements
+    where idempotency_key = '${requestKey}'
+  `);
+  assert.deepEqual(movement.rows[0], {
+    kind: 'transfer',
+    from_location_id: HOLDING_ID,
+    to_location_id: TRUCK_ID,
+    recorded_by: USER_ID,
+  });
+
+  const replay = await returnStock(db, [
+    [ICE_BLOCK_ID, 1],
+    [ICE_SMALL_ID, 3],
+  ], requestKey);
+  assert.equal(balanceFor(replay.rows[0].result.holding_location, ICE_SMALL_ID), 1);
+
+  await assert.rejects(
+    returnStock(db, [[ICE_SMALL_ID, 2]], '71000000-0000-4000-8000-000000000003'),
+    /holding does not have enough stock/i,
+  );
+  const count = await db.query(`
+    select count(*)::integer as count
+    from public.stock_movements
+    where idempotency_key in (
+      '${requestKey}',
+      '71000000-0000-4000-8000-000000000003'
+    )
+  `);
+  assert.equal(count.rows[0].count, 1);
+});
+
+test('employee return preserves half-bag quantities exactly', async (t) => {
+  const db = await createDatabase(t);
+  await transfer(db, [[ICE_SMALL_ID, 1]], '71000000-0000-4000-8000-000000000004');
+
+  const requestKey = '71000000-0000-4000-8000-000000000005';
+  const response = await returnStock(db, [[ICE_SMALL_ID, 0.5]], requestKey);
+  const state = response.rows[0].result;
+  assert.equal(balanceFor(state.truck_location, ICE_SMALL_ID), 9.5);
+  assert.equal(balanceFor(state.holding_location, ICE_SMALL_ID), 0.5);
+
+  const stored = await db.query(`
+    select item.quantity
+    from public.stock_movement_items item
+    join public.stock_movements movement on movement.id = item.movement_id
+    where movement.idempotency_key = '${requestKey}'
+  `);
+  assert.equal(Number(stored.rows[0].quantity), 0.5);
+
+  await assert.rejects(
+    returnStock(db, [[ICE_SMALL_ID, 0.25]], '71000000-0000-4000-8000-000000000006'),
+    /whole or half-bag quantity/i,
+  );
+});
+
+test('employee return replay survives a change to the configured truck', async (t) => {
+  const db = await createDatabase(t);
+  await transfer(db, [[ICE_SMALL_ID, 2]], '71000000-0000-4000-8000-000000000007');
+
+  const requestKey = '71000000-0000-4000-8000-000000000008';
+  await returnStock(db, [[ICE_SMALL_ID, 1]], requestKey);
+  await db.exec(`
+    update public.stock_locations set is_active = false where id = '${TRUCK_ID}';
+    insert into public.stock_locations (
+      id, code, name, kind, assigned_user_id, is_active
+    ) values (
+      '${REPLACEMENT_TRUCK_ID}', 'TRUCK-REPLACEMENT', 'Replacement truck', 'truck', null, true
+    )
+  `);
+
+  const replay = await returnStock(db, [[ICE_SMALL_ID, 1]], requestKey);
+  assert.equal(replay.rows[0].result.truck_location.id, REPLACEMENT_TRUCK_ID);
+
+  const count = await db.query(`
+    select count(*)::integer as count
+    from public.stock_movements
+    where idempotency_key = '${requestKey}'
+  `);
+  assert.equal(count.rows[0].count, 1);
+});
+
+test('employee return replay rejects payload, round, and actor mismatches', async (t) => {
+  const db = await createDatabase(t);
+  await transfer(db, [[ICE_SMALL_ID, 2]], '71000000-0000-4000-8000-000000000009');
+
+  const requestKey = '71000000-0000-4000-8000-000000000010';
+  await returnStock(db, [[ICE_SMALL_ID, 1]], requestKey);
+  await assert.rejects(
+    returnStock(db, [[ICE_SMALL_ID, 2]], requestKey),
+    /different employee stock return request/i,
+  );
+  await assert.rejects(
+    returnStock(db, [[ICE_SMALL_ID, 1]], requestKey, OTHER_ROUND_ID),
+    /different employee stock return request/i,
+  );
+
+  await db.exec(`
+    insert into public.delivery_round_members (round_id, user_id)
+    values ('${ROUND_ID}', '${OTHER_USER_ID}');
+    insert into public.stock_locations (
+      id, code, name, kind, assigned_user_id, is_active
+    ) values (
+      '${OTHER_HOLDING_ID}', 'TEAM-OTHER', 'Other holding', 'team', '${OTHER_USER_ID}', true
+    );
+    update public.auth_context set user_id = '${OTHER_USER_ID}' where singleton
+  `);
+  await assert.rejects(
+    returnStock(db, [[ICE_SMALL_ID, 1]], requestKey),
+    /belongs to another user/i,
+  );
 });
 
 test('transfer replay normalizes item order and rejects every payload mismatch', async (t) => {
@@ -474,7 +624,10 @@ test('courier delivery consumes assigned holding and manager delivery keeps shop
       public.stock_balance_at(date '${SERVICE_DATE}', '${HOLDING_ID}', '${ICE_SMALL_ID}') as holding,
       public.stock_balance_at(date '${SERVICE_DATE}', '${SHOP_SOURCE_ID}', '${ICE_SMALL_ID}') as shop
   `);
-  assert.deepEqual(balances.rows[0], { truck: 6, holding: 1, shop: 5 });
+  assert.deepEqual(
+    Object.fromEntries(Object.entries(balances.rows[0]).map(([key, value]) => [key, Number(value)])),
+    { truck: 6, holding: 1, shop: 5 },
+  );
 
   await assert.rejects(
     deliver(db, 2, '80000000-0000-4000-8000-000000000002'),
@@ -494,7 +647,10 @@ test('courier delivery consumes assigned holding and manager delivery keeps shop
       public.stock_balance_at(date '${SERVICE_DATE}', '${HOLDING_ID}', '${ICE_SMALL_ID}') as holding,
       public.stock_balance_at(date '${SERVICE_DATE}', '${SHOP_SOURCE_ID}', '${ICE_SMALL_ID}') as shop
   `);
-  assert.deepEqual(balances.rows[0], { holding: 1, shop: 3 });
+  assert.deepEqual(
+    Object.fromEntries(Object.entries(balances.rows[0]).map(([key, value]) => [key, Number(value)])),
+    { holding: 1, shop: 3 },
+  );
 });
 
 test('zero, inactive, and multiple employee holdings are rejected', async (t) => {
@@ -536,24 +692,38 @@ test('zero, inactive, and multiple employee holdings are rejected', async (t) =>
   );
 });
 
-test('transfer rejects closed rounds, closed stock days, and unassigned couriers', async (t) => {
+test('employee stock movements reject closed rounds, closed stock days, and unassigned couriers', async (t) => {
   const db = await createDatabase(t);
 
-  await db.exec(`update public.delivery_rounds set status = 'closed' where id = '${ROUND_ID}'`);
+  await db.exec(`update public.auth_context set app_role = 'round_lead' where singleton`);
   await assert.rejects(
-    transfer(db, [[ICE_SMALL_ID, 1]], 'a0000000-0000-4000-8000-000000000001'),
-    /round is already closed/i,
+    returnStock(db, [[ICE_SMALL_ID, 1]], 'a0000000-0000-4000-8000-000000000007'),
+    /only an active courier/i,
   );
+  await db.exec(`update public.auth_context set app_role = 'courier' where singleton`);
+
+  await db.exec(`update public.delivery_rounds set status = 'closed' where id = '${ROUND_ID}'`);
+  for (const [operation, key] of [
+    [transfer, 'a0000000-0000-4000-8000-000000000001'],
+    [returnStock, 'a0000000-0000-4000-8000-000000000004'],
+  ]) {
+    await assert.rejects(operation(db, [[ICE_SMALL_ID, 1]], key), /round is already closed/i);
+  }
 
   await db.exec(`
     update public.delivery_rounds set status = 'open' where id = '${ROUND_ID}';
     insert into public.daily_stock_closures (service_date, status)
     values (date '${SERVICE_DATE}', 'closed')
   `);
-  await assert.rejects(
-    transfer(db, [[ICE_SMALL_ID, 1]], 'a0000000-0000-4000-8000-000000000002'),
-    /stock for this service date is already closed/i,
-  );
+  for (const [operation, key] of [
+    [transfer, 'a0000000-0000-4000-8000-000000000002'],
+    [returnStock, 'a0000000-0000-4000-8000-000000000005'],
+  ]) {
+    await assert.rejects(
+      operation(db, [[ICE_SMALL_ID, 1]], key),
+      /stock for this service date is already closed/i,
+    );
+  }
 
   await db.exec(`
     delete from public.daily_stock_closures;
@@ -561,8 +731,13 @@ test('transfer rejects closed rounds, closed stock days, and unassigned couriers
     where round_id = '${ROUND_ID}' and user_id = '${USER_ID}'
   `);
   await assert.rejects(getState(db), /not assigned to this delivery round/i);
-  await assert.rejects(
-    transfer(db, [[ICE_SMALL_ID, 1]], 'a0000000-0000-4000-8000-000000000003'),
-    /not assigned to this delivery round/i,
-  );
+  for (const [operation, key] of [
+    [transfer, 'a0000000-0000-4000-8000-000000000003'],
+    [returnStock, 'a0000000-0000-4000-8000-000000000006'],
+  ]) {
+    await assert.rejects(
+      operation(db, [[ICE_SMALL_ID, 1]], key),
+      /not assigned to this delivery round/i,
+    );
+  }
 });

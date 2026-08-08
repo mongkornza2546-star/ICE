@@ -84,6 +84,7 @@ export interface EmployeeDeliveryGateway {
   loadDeliveryPosContext?(roundStopId: string): Promise<DeliveryPosContext>;
   loadEmployeeStockState(roundId: string): Promise<EmployeeStockState>;
   recordEmployeeStockTransfer(payload: EmployeeStockTransferPayload): Promise<EmployeeStockState>;
+  recordEmployeeStockReturn(payload: EmployeeStockTransferPayload): Promise<EmployeeStockState>;
   recordDelivery(payload: EmployeeDeliveryPayload): Promise<DeliveryFinancialResult | void>;
   recordPayment?(payload: EmployeePaymentPayload): Promise<FinancialPaymentResult>;
   recordImmediateSale?(payload: EmployeeImmediateSalePayload): Promise<ImmediateSaleResult>;
@@ -194,6 +195,16 @@ function createSupabaseGateway(): EmployeeDeliveryGateway {
     async recordEmployeeStockTransfer(payload) {
       if (!supabase) throw new Error('ยังไม่ได้ตั้งค่า Supabase');
       const { data, error } = await supabase.rpc('record_employee_stock_transfer', {
+        p_round_id: payload.roundId,
+        p_items: payload.items,
+        p_idempotency_key: payload.idempotencyKey,
+      });
+      if (error) throw error;
+      return data as EmployeeStockState;
+    },
+    async recordEmployeeStockReturn(payload) {
+      if (!supabase) throw new Error('ยังไม่ได้ตั้งค่า Supabase');
+      const { data, error } = await supabase.rpc('record_employee_stock_return', {
         p_round_id: payload.roundId,
         p_items: payload.items,
         p_idempotency_key: payload.idempotencyKey,
@@ -391,12 +402,12 @@ export function EmployeeDeliveryWorkspace({
         <div>
           <p className="employee-eyebrow">{isBackdatedBilling ? 'ออกบิลย้อนหลัง · เฉพาะแอดมิน' : 'งานพนักงาน'}</p>
           <h1>{resolvedViewMode === 'withdrawal'
-            ? 'เบิกน้ำแข็ง'
+            ? 'เบิกและคืนน้ำแข็ง'
             : isBackdatedBilling
               ? `เลือกร้านเพื่อออกบิลวันที่ ${serviceDate}`
               : 'เลือกร้าน แล้วบันทึกส่ง'}</h1>
           <p>{resolvedViewMode === 'withdrawal'
-            ? 'เบิกน้ำแข็งจากคลังเข้าจุดถือครองเพื่อเริ่มงาน'
+            ? 'เบิกจากรถเข้าจุดถือครอง หรือคืนของที่เหลือกลับขึ้นรถ'
             : 'เลือกร้านก่อน ระบบจะตรวจสต๊อกต้นทาง ราคา และเงื่อนไขชำระของร้านนั้น'}</p>
         </div>
         {data.selectedRound ? (
@@ -466,6 +477,8 @@ export function EmployeeDeliveryWorkspace({
               iceTypes={data.iceTypes}
               transferQuantities={data.transferQuantities}
               changeTransferQuantity={data.changeTransferQuantity}
+              stockTransferMode={data.stockTransferMode}
+              changeStockTransferMode={data.changeStockTransferMode}
               selectedRound={data.selectedRound}
               handleStockTransfer={data.handleStockTransfer}
               resetTransferQuantities={() => {

@@ -88,6 +88,7 @@ function gateway(): EmployeeDeliveryGateway {
     loadDeliveryPosContext: vi.fn().mockResolvedValue(context),
     loadEmployeeStockState: vi.fn(),
     recordEmployeeStockTransfer: vi.fn(),
+    recordEmployeeStockReturn: vi.fn(),
     recordDelivery: vi.fn().mockResolvedValue({
       delivery_event_id: 'event-1',
       round_stop_id: shop.round_stop_id,

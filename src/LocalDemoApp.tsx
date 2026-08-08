@@ -476,6 +476,19 @@ function buildDemoGateway(): EmployeeDeliveryGateway & { reset(): void } {
       }
       return cloneStockState(stockState, payload.roundId);
     },
+    async recordEmployeeStockReturn(payload: EmployeeStockTransferPayload) {
+      await delay(180);
+      if (!transferKeys.has(payload.idempotencyKey)) {
+        transferKeys.add(payload.idempotencyKey);
+        for (const item of payload.items) {
+          const truck = stockState.truck_location.balances.find((balance) => balance.ice_type_id === item.ice_type_id);
+          const holding = stockState.holding_location.balances.find((balance) => balance.ice_type_id === item.ice_type_id);
+          if (holding) holding.quantity -= item.quantity;
+          if (truck) truck.quantity += item.quantity;
+        }
+      }
+      return cloneStockState(stockState, payload.roundId);
+    },
     async recordDelivery(payload) {
       await delay(240);
       const round = demoRounds.find((entry) =>

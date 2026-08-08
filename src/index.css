@@ -2096,6 +2096,36 @@ input:disabled, select:disabled, textarea:disabled { background: #f2f5f8; color:
   color: #6c7f97;
   font-size: .75rem;
 }
+.employee-workspace--withdrawal .employee-stock-mode {
+  width: fit-content;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(120px, 1fr));
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid #c9dcf7;
+  border-radius: 12px;
+  background: #f2f7fe;
+}
+.employee-workspace--withdrawal .employee-stock-mode button {
+  min-height: 40px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 9px;
+  color: #617591;
+  background: transparent;
+  font: inherit;
+  font-size: .76rem;
+  font-weight: 800;
+}
+.employee-workspace--withdrawal .employee-stock-mode button[aria-pressed="true"] {
+  color: #fff;
+  background: #176de0;
+  box-shadow: 0 5px 12px rgba(23, 109, 224, .2);
+}
+.employee-workspace--withdrawal .employee-stock-mode button:disabled {
+  cursor: not-allowed;
+  opacity: .6;
+}
 .employee-workspace--withdrawal .employee-stock-route {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
@@ -2343,6 +2373,15 @@ input:disabled, select:disabled, textarea:disabled { background: #f2f5f8; color:
   }
   .employee-workspace--withdrawal .employee-entry-section__heading h2 { font-size: .9rem; }
   .employee-workspace--withdrawal .employee-entry-section__heading p { font-size: .65rem; }
+  .employee-workspace--withdrawal .employee-stock-mode {
+    width: 100%;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .employee-workspace--withdrawal .employee-stock-mode button {
+    min-height: 38px;
+    padding: 0 8px;
+    font-size: .7rem;
+  }
   .employee-workspace--withdrawal .employee-stock-route {
     grid-template-columns: auto minmax(0, 1fr) auto;
     align-items: center;
