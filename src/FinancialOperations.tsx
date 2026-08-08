@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { CheckCircle, ClockCounterClockwise, ListBullets, WarningCircle } from '@phosphor-icons/react';
+import { CheckCircle, ClockCounterClockwise, FileText, ListBullets, WarningCircle } from '@phosphor-icons/react';
 import { supabase } from './lib/supabase';
 import { bangkokDayUtcRange, toBangkokDateString } from './lib/serviceDate';
 import { MAX_PAYMENT_EVIDENCE_SIZE, uploadPaymentEvidence } from './lib/paymentEvidence';
@@ -14,6 +14,7 @@ import { ManagerFinancialSections, PaymentHistorySection } from './features/fina
 import { HistoryReceiptModal } from './features/financial-operations/components/HistoryReceiptModal';
 import { PaymentModal } from './features/financial-operations/components/PaymentModal';
 import { RefundQueuePanel } from './features/financial-operations/components/RefundQueuePanel';
+import { DailyCreditAcknowledgementPanel } from './features/financial-operations/components/DailyCreditAcknowledgementPanel';
 import { DeliveryCorrectionDialog } from './features/delivery-corrections/DeliveryCorrectionDialog';
 import { AccountingPage } from './features/accounting/AccountingPage';
 import type {
@@ -92,7 +93,7 @@ export function FinancialOperations({
   const [failedCollectorAvatars, setFailedCollectorAvatars] = useState<Set<string>>(() => new Set());
   const [memberIds, setMemberIds] = useState<string[]>(demoData?.memberIds ?? []);
   const [historyDate, setHistoryDate] = useState(serviceDate);
-  const [employeeView, setEmployeeView] = useState<'queue' | 'history'>('queue');
+  const [employeeView, setEmployeeView] = useState<'queue' | 'history' | 'credit_signoff'>('queue');
   const [paymentHistory, setPaymentHistory] = useState<PaymentHistoryItem[]>(() => demoData?.paymentHistory.filter((payment) => (
     toBangkokDateString(new Date(payment.recorded_at)) === serviceDate
   )) ?? []);
@@ -866,13 +867,21 @@ export function FinancialOperations({
             <ClockCounterClockwise aria-hidden="true" size={21} weight="duotone" />
             <span>ประวัติรับเงิน</span>
           </button>
+          <button
+            aria-current={employeeView === 'credit_signoff' ? 'page' : undefined}
+            onClick={() => setEmployeeView('credit_signoff')}
+            type="button"
+          >
+            <FileText aria-hidden="true" size={21} weight="duotone" />
+            <span>ใบเซ็นเครดิต</span>
+          </button>
         </nav>
 
         <div className="financial-ops__employee-page">
           <header className="financial-ops__header">
             <div>
               <p className="eyebrow">การเงินหน้าร้าน</p>
-              <h1>{employeeView === 'queue' ? 'คิวเก็บเงินของฉัน' : 'ประวัติรับเงินของฉัน'}</h1>
+              <h1>{employeeView === 'queue' ? 'คิวเก็บเงินของฉัน' : employeeView === 'history' ? 'ประวัติรับเงินของฉัน' : 'ใบเซ็นเครดิตรายวัน'}</h1>
               <span>วันที่ธุรกิจ {serviceDate}</span>
             </div>
             <button disabled={busy} onClick={() => void refreshFinancialData().catch((loadError: unknown) => setError(getErrorMessage(loadError)))} type="button">รีเฟรชยอดล่าสุด</button>
@@ -892,7 +901,7 @@ export function FinancialOperations({
             queue={queue}
             runId={runId}
             busy={busy}
-          /> : <PaymentHistorySection
+          /> : employeeView === 'history' ? <PaymentHistorySection
             busy={busy}
             historyDate={historyDate}
             isManager={false}
@@ -903,7 +912,7 @@ export function FinancialOperations({
             onVoidPayment={voidPayment}
             paymentHistory={paymentHistory}
             serviceDate={serviceDate}
-          />}
+          /> : <DailyCreditAcknowledgementPanel serviceDate={serviceDate} />}
         </div>
       </div> : null}
 

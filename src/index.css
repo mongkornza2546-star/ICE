@@ -1373,6 +1373,24 @@ input:disabled, select:disabled, textarea:disabled { background: #f2f5f8; color:
 .financial-ops__employee-nav button:hover { color: #0865b3; background: #f2f8fe; }
 .financial-ops__employee-nav button[aria-current="page"] { color: #0865b3; background: #eaf5ff; box-shadow: inset 3px 0 #0875db; }
 .financial-ops__employee-page { min-width: 0; display: grid; gap: 16px; }
+.daily-credit-signoff { display: grid; gap: 12px; }
+.daily-credit-signoff .financial-ops__title { align-items: center; }
+.daily-credit-signoff .financial-ops__title > label { display: grid; gap: 4px; color: #496881; font-size: .7rem; font-weight: 800; }
+.daily-credit-signoff .financial-ops__title input { min-height: 38px; padding: 6px 8px; border: 1px solid #cbdbea; border-radius: 8px; font: inherit; }
+.daily-credit-signoff__list { display: grid; gap: 10px; }
+.daily-credit-signoff__list > article { display: grid; gap: 9px; padding: 13px; border: 1px solid #d8e5ef; border-radius: 12px; background: #fff; }
+.daily-credit-signoff__summary { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
+.daily-credit-signoff__summary span { display: grid; gap: 3px; min-width: 0; color: #183655; }
+.daily-credit-signoff__summary small { color: #5e7189; font-size: .7rem; }
+.daily-credit-signoff__summary b { color: #0865b3; white-space: nowrap; }
+.daily-credit-signoff__warning { display: inline-flex; align-items: center; gap: 5px; margin: 0; color: #8a6010; font-size: .7rem; font-weight: 700; }
+.daily-credit-signoff__list footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding-top: 9px; border-top: 1px solid #e5edf4; color: #5e7189; font-size: .7rem; }
+.daily-credit-signoff__list footer > div { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+.daily-credit-signoff__list footer button, .daily-credit-signoff__upload { min-height: 34px; display: inline-flex; align-items: center; gap: 5px; padding: 6px 9px; border: 1px solid #cbdbea; border-radius: 8px; color: #31536f; background: #fff; font: inherit; font-size: .7rem; font-weight: 800; cursor: pointer; }
+.daily-credit-signoff__list footer button:first-child { border-color: #0875db; color: #fff; background: #0870e8; }
+.daily-credit-signoff__list footer button:disabled, .daily-credit-signoff__upload:has(input:disabled) { opacity: .55; cursor: default; }
+.daily-credit-signoff__upload input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.daily-credit-signoff__list .is-stale { color: #a76008; font-weight: 800; }
 .collection-desk { display: grid; gap: 18px; }
 .collection-desk__header { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
 .collection-desk__header h1, .collection-desk__header p { margin: 0; }
@@ -1513,7 +1531,7 @@ input:disabled, select:disabled, textarea:disabled { background: #f2f5f8; color:
 
 @media (max-width: 759px) {
   .financial-ops__employee-workspace { grid-template-columns: minmax(0, 1fr); gap: 12px; }
-  .financial-ops__employee-nav { position: static; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; padding: 5px; }
+  .financial-ops__employee-nav { position: static; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; padding: 5px; }
   .financial-ops__employee-nav button { justify-content: center; min-height: 46px; padding: 7px; text-align: center; }
   .financial-ops__employee-nav button[aria-current="page"] { box-shadow: inset 0 -3px #0875db; }
   .collection-desk__header { align-items: stretch; flex-direction: column; }
@@ -1531,6 +1549,10 @@ input:disabled, select:disabled, textarea:disabled { background: #f2f5f8; color:
   .collection-desk__type, .collection-desk__document, .collection-desk__rows time, .collection-desk__status { display: none; }
   .collection-desk__queue > footer { grid-template-columns: 1fr auto; }
   .collection-desk__queue > footer select { display: none; }
+  .daily-credit-signoff .financial-ops__title { align-items: stretch; flex-direction: column; }
+  .daily-credit-signoff .financial-ops__title > label { max-width: 180px; }
+  .daily-credit-signoff__summary, .daily-credit-signoff__list footer { align-items: stretch; flex-direction: column; }
+  .daily-credit-signoff__list footer > div { justify-content: flex-start; }
 }
 .financial-ops__header, .financial-ops__title, .financial-ops__title > div, .financial-ops__list > button, .financial-ops__list > div { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .financial-ops__header h1, .financial-ops__header p, .financial-ops__title h2, .financial-ops__title p { margin: 0; }

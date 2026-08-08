@@ -137,6 +137,10 @@ const courierPosAssignedStock = readFileSync(
   new URL('../supabase/migrations/0140_courier_pos_consumes_assigned_stock.sql', import.meta.url),
   'utf8',
 );
+const dailyCreditAcknowledgements = readFileSync(
+  new URL('../supabase/migrations/0142_daily_credit_acknowledgements.sql', import.meta.url),
+  'utf8',
+);
 
 const COURIER_ID = '10000000-0000-4000-8000-000000000001';
 const ADMIN_ID = '10000000-0000-4000-8000-000000000002';
@@ -687,7 +691,120 @@ async function applyAccountingReadModel(db) {
   await db.exec(accountingReadModel);
   await db.exec(accountingFactoryOrderStock);
   await db.exec(accountingReconciliationHardening);
+  await db.exec(dailyCreditAcknowledgements);
 }
+
+test('daily credit acknowledgement combines a shop day and versions when its effective source changes', async (t) => {
+  const db = await createDatabase(t);
+  await applyAccountingReadModel(db);
+  await db.exec(`
+    update public.auth_context set user_id = '${COURIER_ID}', app_role = 'courier';
+    update public.shop_payment_profiles set
+      allowed_payment_terms = array['credit']::public.payment_term[],
+      default_payment_term = 'credit',
+      allow_outstanding = true,
+      credit_due_rule = 'net_days',
+      credit_days = 7,
+      credit_collection_weekday = null,
+      credit_limit = null
+    where shop_id = '${SHOP_ID}';
+  `);
+
+  const firstDelivery = await db.query(`select public.record_delivery(
+    '${STOP_ID}', '${itemPayload(1)}'::jsonb, 'delivered', null, now(),
+    '91000000-0000-4000-8000-000000000001', 'credit', null
+  ) result`);
+  await db.query(`select public.record_delivery(
+    '${STOP_ID}', '${itemPayload(2)}'::jsonb, 'delivered', null, now(),
+    '91000000-0000-4000-8000-000000000002', 'credit', null
+  )`);
+
+  const first = await db.query(`select public.prepare_daily_credit_acknowledgement(
+    '${SHOP_ID}', date '${SERVICE_DATE}'
+  ) result`);
+  const same = await db.query(`select public.prepare_daily_credit_acknowledgement(
+    '${SHOP_ID}', date '${SERVICE_DATE}'
+  ) result`);
+  assert.equal(first.rows[0].result.invoices.length, 2);
+  assert.equal(Number(first.rows[0].result.total_amount), 54);
+  assert.equal(first.rows[0].result.version, 1);
+  assert.equal(same.rows[0].result.document_id, first.rows[0].result.document_id);
+
+  const evidencePath = `${COURIER_ID}/${first.rows[0].result.document_id}/signed.jpg`;
+  await db.exec(`insert into storage.objects (bucket_id, name) values ('credit-signoff-evidence', '${evidencePath}')`);
+  await db.query(`select public.attach_daily_credit_acknowledgement_evidence(
+    '${first.rows[0].result.document_id}', '${evidencePath}'
+  )`);
+  const stored = await db.query(`select public.get_daily_credit_acknowledgement(
+    '${first.rows[0].result.document_id}'
+  ) result`);
+  assert.equal(stored.rows[0].result.evidences.length, 1);
+
+  const listed = await db.query(`select public.list_daily_credit_acknowledgements(date '${SERVICE_DATE}') result`);
+  assert.equal(listed.rows[0].result.length, 1);
+  assert.equal(Number(listed.rows[0].result[0].total_amount), 54);
+  assert.equal(listed.rows[0].result[0].is_stale, false);
+  assert.equal(listed.rows[0].result[0].evidence_count, 1);
+
+  const thirdDelivery = await db.query(`select public.record_delivery(
+    '${STOP_ID}', '${itemPayload(1)}'::jsonb, 'delivered', null, now(),
+    '91000000-0000-4000-8000-000000000003', 'credit', null
+  ) result`);
+  const stale = await db.query(`select public.list_daily_credit_acknowledgements(date '${SERVICE_DATE}') result`);
+  assert.equal(stale.rows[0].result[0].is_stale, true);
+
+  const updated = await db.query(`select public.prepare_daily_credit_acknowledgement(
+    '${SHOP_ID}', date '${SERVICE_DATE}'
+  ) result`);
+  assert.equal(updated.rows[0].result.version, 2);
+  assert.equal(Number(updated.rows[0].result.total_amount), 72);
+
+  const wrongDocumentPath = `${COURIER_ID}/${first.rows[0].result.document_id}/wrong-document.jpg`;
+  await db.exec(`insert into storage.objects (bucket_id, name)
+    values ('credit-signoff-evidence', '${wrongDocumentPath}')`);
+  await assert.rejects(
+    db.query(`select public.attach_daily_credit_acknowledgement_evidence(
+      '${updated.rows[0].result.document_id}', '${wrongDocumentPath}'
+    )`),
+    /does not match the daily credit acknowledgement/i,
+  );
+
+  await db.exec(`update public.auth_context set user_id = '${ADMIN_ID}', app_role = 'admin'`);
+  await db.query(`select public.apply_open_delivery_correction(
+    '${thirdDelivery.rows[0].result.delivery_event_id}', 'cancel', '[]'::jsonb,
+    'delivered', null, 'remove extra delivery',
+    '91000000-0000-4000-8000-000000000004', null
+  )`);
+  const reverted = await db.query(`select public.prepare_daily_credit_acknowledgement(
+    '${SHOP_ID}', date '${SERVICE_DATE}'
+  ) result`);
+  assert.equal(reverted.rows[0].result.version, 3);
+  assert.equal(Number(reverted.rows[0].result.total_amount), 54);
+  assert.notEqual(reverted.rows[0].result.document_id, first.rows[0].result.document_id);
+  const revertedList = await db.query(`select public.list_daily_credit_acknowledgements(
+    date '${SERVICE_DATE}'
+  ) result`);
+  assert.equal(revertedList.rows[0].result[0].is_stale, false);
+  assert.equal(revertedList.rows[0].result[0].document_version, 3);
+
+  await db.exec(`update public.delivery_rounds set status = 'closed' where id = '${ROUND_ID}'`);
+  await db.query(`select public.create_closed_delivery_adjustment(
+    '${firstDelivery.rows[0].result.delivery_event_id}', '${itemPayload(2)}'::jsonb,
+    'correct signed quantity', '91000000-0000-4000-8000-000000000005'
+  )`);
+  const adjustedList = await db.query(`select public.list_daily_credit_acknowledgements(
+    date '${SERVICE_DATE}'
+  ) result`);
+  assert.equal(adjustedList.rows[0].result[0].is_stale, true);
+  assert.equal(Number(adjustedList.rows[0].result[0].total_amount), 72);
+  const adjusted = await db.query(`select public.prepare_daily_credit_acknowledgement(
+    '${SHOP_ID}', date '${SERVICE_DATE}'
+  ) result`);
+  assert.equal(adjusted.rows[0].result.version, 4);
+  assert.equal(Number(adjusted.rows[0].result.total_amount), 72);
+  assert.equal(Number(adjusted.rows[0].result.invoices[0].items[0].quantity), 2);
+  assert.equal(Number(adjusted.rows[0].result.invoices[0].total_amount), 36);
+});
 
 test('accounting migration returns retained cash and manager-only canonical rows', async (t) => {
   const db = await createDatabase(t);
