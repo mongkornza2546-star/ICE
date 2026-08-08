@@ -1545,8 +1545,12 @@ input:disabled, select:disabled, textarea:disabled { background: #f2f5f8; color:
   .collection-desk__stat-icon { width: 42px; height: 42px; flex-basis: 42px; }
   .collection-desk__filters { grid-template-columns: 1fr 1fr; }
   .collection-desk__filters label { grid-column: 1 / -1; }
-  .collection-desk__history-date { display: grid; grid-template-columns: 1fr 1.3fr 1fr; }
+  .collection-desk__history-date { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .collection-desk__history-date label { grid-column: 1 / -1; grid-row: 1; }
+  .collection-desk__history-date button:first-child { grid-column: 1; grid-row: 2; }
+  .collection-desk__history-date button:last-child { grid-column: 2; grid-row: 2; }
   .collection-desk__history-date button, .collection-desk__history-date label { min-width: 0; padding: 5px; }
+  .collection-desk__history-date input { min-width: 0; width: 100%; }
   .collection-desk__table-head { display: none; }
   .collection-desk__row-action { grid-template-columns: minmax(0, 1fr) auto 18px; }
   .collection-desk__type, .collection-desk__document, .collection-desk__rows time, .collection-desk__status { display: none; }
@@ -1903,8 +1907,12 @@ input:disabled, select:disabled, textarea:disabled { background: #f2f5f8; color:
   .financial-ops__payment-actions { position: sticky; bottom: calc(-1 * max(16px, env(safe-area-inset-bottom))); z-index: 2; margin-right: -14px; margin-bottom: calc(-1 * max(16px, env(safe-area-inset-bottom))); margin-left: -14px; padding: 14px 14px max(14px, env(safe-area-inset-bottom)); background: #fff; }
   .financial-ops__history-item { align-items: stretch; flex-direction: column; gap: 4px; padding: 8px 10px; }
   .financial-ops__history-side { display: flex !important; align-items: center; justify-content: space-between; gap: 10px !important; }
-  .financial-ops__history-date { display: grid; grid-template-columns: 1fr 1.3fr 1fr; }
+  .financial-ops__history-date { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .financial-ops__history-date label { grid-column: 1 / -1; grid-row: 1; }
+  .financial-ops__history-date button:first-child { grid-column: 1; grid-row: 2; }
+  .financial-ops__history-date button:last-child { grid-column: 2; grid-row: 2; }
   .financial-ops__history-date button, .financial-ops__history-date label { min-width: 0; padding: 5px; }
+  .financial-ops__history-date input { min-width: 0; width: 100%; }
   .financial-ops__receipt-summary { grid-template-columns: 1fr; }
   .financial-ops__collectors { align-items: stretch; flex-direction: column; }
   .financial-ops__collectors button { width: 100%; margin-left: 0; }
