@@ -48,7 +48,7 @@ describe('AccountingPage', () => {
     });
   });
 
-  it('loads three read-only tabs, server ledger rows, and a lineage drawer', async () => {
+  it('loads three read-only tabs and a user-focused transaction drawer', async () => {
     const user = userEvent.setup();
     render(<AccountingPage userRole="admin" />);
     expect(await screen.findByText('ยอดขาย effective')).not.toBeNull();
@@ -61,7 +61,12 @@ describe('AccountingPage', () => {
 
     await user.click(screen.getByRole('button', { name: 'INV2608-00001' }));
     expect(screen.getByLabelText('รายละเอียด INV2608-00001')).not.toBeNull();
-    expect(screen.getByText(/delivery_charges · charge-1/)).not.toBeNull();
+    expect(screen.getByText('Payment')).not.toBeNull();
+    expect(screen.queryByText('Source')).toBeNull();
+    expect(screen.queryByText('Group ID')).toBeNull();
+    expect(screen.queryByText('Delivery event')).toBeNull();
+    expect(screen.queryByText('Audit lineage')).toBeNull();
+    expect(screen.queryByText(/delivery_charges · charge-1/)).toBeNull();
     expect(screen.getByRole('button', { name: 'แก้ไขรายการส่ง' })).not.toBeNull();
 
     await user.click(screen.getByRole('button', { name: 'ปิด' }));

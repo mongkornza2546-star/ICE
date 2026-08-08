@@ -315,6 +315,7 @@ describe('EmployeeDeliveryWorkspace', () => {
   });
 
   it('uses card semantics and renders signed product images in the withdrawal layout', async () => {
+    const user = userEvent.setup();
     const imageUrl = 'https://example.test/ice-block.webp';
     const gateway = createGateway({
       loadReferenceData: vi.fn().mockResolvedValue({
@@ -335,6 +336,12 @@ describe('EmployeeDeliveryWorkspace', () => {
     expect(within(stockList).getAllByRole('listitem')).toHaveLength(2);
     expect(stockList.querySelector<HTMLImageElement>('.employee-stock-product-image')?.src).toBe(imageUrl);
     expect(within(stockList).getByRole('group', { name: 'ยอดก้อน' }).textContent).toContain('รถหลัง20 ถุง');
+
+    await user.click(within(stockList).getByRole('button', { name: 'ดูรูป ก้อน ขนาดใหญ่' }));
+    expect(screen.getByRole('dialog')).toBeTruthy();
+    expect(within(screen.getByRole('dialog')).getByRole('img', { name: 'ก้อน' }).getAttribute('src')).toBe(imageUrl);
+    await user.click(screen.getByRole('button', { name: 'ปิดรูปภาพ' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
   });
 
   it('resets every withdrawal quantity without submitting a transfer', async () => {

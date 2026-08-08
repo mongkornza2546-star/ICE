@@ -1,4 +1,5 @@
-import { ArrowClockwise, Check, Truck, WarningCircle, CaretRight } from '@phosphor-icons/react';
+import { useEffect, useState } from 'react';
+import { ArrowClockwise, Check, Truck, WarningCircle, CaretRight, X } from '@phosphor-icons/react';
 import type { DeliveryRound, EmployeeStockState, IceTypeOption } from '../../types/app';
 import type { StockTransferMode } from './useEmployeeDeliveryData';
 import { EmployeeState } from './EmployeeState';
@@ -41,6 +42,16 @@ export function EmployeeStockTransferSection({
   const isCardLayout = variant === 'cards';
   const isReturn = stockTransferMode === 'return';
   const movementLabel = isReturn ? 'คืนขึ้นรถ' : 'รับเพิ่ม';
+  const [previewImage, setPreviewImage] = useState<{ name: string; url: string } | null>(null);
+
+  useEffect(() => {
+    if (!previewImage) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setPreviewImage(null);
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [previewImage]);
 
   return (
     <section className="employee-entry-section employee-task-section" aria-labelledby="employee-stock-step">
@@ -106,7 +117,14 @@ export function EmployeeStockTransferSection({
                       <strong><span>{iceType.name}</span> <small>({iceType.unit})</small></strong>
                       <span className="employee-stock-available"><small>{isReturn ? 'จุดก่อน' : 'รถก่อน'}</small>{isReturn ? holdingBefore : truckBefore} {iceType.unit}</span>
                       {iceType.image_url ? (
-                        <img alt="" aria-hidden="true" className="employee-stock-product-image" loading="lazy" src={iceType.image_url} />
+                        <button
+                          aria-label={`ดูรูป ${iceType.name} ขนาดใหญ่`}
+                          className="employee-stock-product-image-button"
+                          onClick={() => setPreviewImage({ name: iceType.name, url: iceType.image_url! })}
+                          type="button"
+                        >
+                          <img alt={iceType.name} className="employee-stock-product-image" loading="lazy" src={iceType.image_url} />
+                        </button>
                       ) : null}
                       <div className="employee-stock-transfer-cell">
                         <QuantityStepper
@@ -202,6 +220,21 @@ export function EmployeeStockTransferSection({
               </button>
             )}
           </>
+        ) : null}
+        {previewImage ? (
+          <div className="image-preview-backdrop" onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setPreviewImage(null);
+          }} role="presentation">
+            <section aria-labelledby="employee-stock-image-preview-title" aria-modal="true" className="image-preview-dialog" role="dialog">
+              <div className="image-preview-dialog__header">
+                <h2 id="employee-stock-image-preview-title">รูป {previewImage.name}</h2>
+                <button aria-label="ปิดรูปภาพ" className="image-preview-dialog__close" onClick={() => setPreviewImage(null)} type="button">
+                  <X size={22} weight="bold" />
+                </button>
+              </div>
+              <img alt={previewImage.name} className="image-preview-dialog__image" src={previewImage.url} />
+            </section>
+          </div>
         ) : null}
     </section>
   );

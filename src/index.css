@@ -2222,11 +2222,25 @@ input:disabled, select:disabled, textarea:disabled { background: #f2f5f8; color:
   color: #1764cf;
   font-size: inherit;
 }
-.employee-workspace--withdrawal .employee-stock-product-image {
+.employee-workspace--withdrawal .employee-stock-product-image-button {
   grid-column: 1;
   grid-row: 2;
   width: 80px;
   height: 78px;
+  display: block;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  cursor: zoom-in;
+}
+.employee-workspace--withdrawal .employee-stock-product-image-button:focus-visible {
+  outline: 2px solid #1764cf;
+  outline-offset: 2px;
+}
+.employee-workspace--withdrawal .employee-stock-product-image-button .employee-stock-product-image {
+  width: 100%;
+  height: 100%;
   display: block;
   object-fit: contain;
   mix-blend-mode: multiply;
@@ -2405,7 +2419,7 @@ input:disabled, select:disabled, textarea:disabled { background: #f2f5f8; color:
   }
   .employee-workspace--withdrawal .employee-stock-row > strong { padding-right: 112px; }
   .employee-workspace--withdrawal .employee-stock-available { min-height: 24px; }
-  .employee-workspace--withdrawal .employee-stock-product-image {
+  .employee-workspace--withdrawal .employee-stock-product-image-button {
     width: 82px;
     height: 56px;
   }
