@@ -39,6 +39,21 @@
 .accounting-filters__search input { padding-left: 34px; }
 .accounting-filters .accounting-filters__checkbox { display: flex; flex-direction: row; align-items: center; gap: 7px; min-height: 40px; }
 .accounting-filters__checkbox input { min-height: auto; }
+.accounting-filters--shop-summary { display: grid; grid-template-columns: minmax(250px, 1.45fr) minmax(165px, 1.15fr) minmax(145px, 1fr) minmax(190px, 1.25fr) minmax(120px, .8fr) auto; align-items: end; }
+.accounting-filters--shop-summary > label { min-width: 0; }
+.accounting-filters--shop-summary > label > select, .accounting-filters--shop-summary > label > input { width: 100%; min-width: 0; }
+.accounting-filters__field { min-width: 0; display: grid; gap: 5px; color: #50635b; font-size: .8rem; font-weight: 700; }
+.accounting-filters__field > span:last-child { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.accounting-filters__field select { width: 100%; min-width: 0; }
+.accounting-filters__range > span:last-child { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 6px; }
+.accounting-filters__range > span:last-child > span { color: #718079; font-size: .74rem; font-weight: 600; }
+.accounting-filters__range input { width: 100%; min-width: 0; padding-inline: 8px; }
+.accounting-filters--shop-summary .accounting-filters__search { min-width: 0; }
+.accounting-filters--shop-summary .accounting-filters__search svg { bottom: 11px; }
+.accounting-filters__more { justify-content: center; margin-left: 0 !important; white-space: nowrap; color: #176d51 !important; font-weight: 700 !important; }
+.accounting-filters__more--active { border-color: #7eb9a5 !important; background: #eef8f4 !important; }
+.accounting-filters__extra { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(2, minmax(180px, 260px)); gap: 10px; padding-top: 10px; border-top: 1px solid #e4ebe7; }
+.accounting-filters__extra label { display: grid; gap: 5px; }
 .accounting-table-wrap { width: 100%; overflow: auto; border: 1px solid #dfe7e2; border-radius: 12px; background: #fff; }
 .accounting-table-wrap--ledger { max-height: min(66vh, 720px); }
 .accounting-table-wrap table { width: 100%; border-collapse: separate; border-spacing: 0; }
@@ -129,6 +144,23 @@
   .accounting-filters > * { flex: 1 1 150px; }
   .accounting-filters > button { margin-left: 0; }
   .accounting-drawer dl { grid-template-columns: 1fr; }
+}
+
+@media (min-width: 761px) and (max-width: 1200px) {
+  .accounting-filters--shop-summary { grid-template-columns: minmax(175px, 1.5fr) minmax(100px, 1fr) minmax(100px, 1fr) minmax(120px, 1fr) minmax(85px, .7fr) auto; gap: 6px; padding: 10px; }
+  .accounting-filters--shop-summary label, .accounting-filters--shop-summary .accounting-filters__field { font-size: .7rem; }
+  .accounting-filters--shop-summary input, .accounting-filters--shop-summary select, .accounting-filters--shop-summary button { min-height: 36px; padding: 6px; font-size: .7rem; }
+  .accounting-filters--shop-summary .accounting-filters__search input { padding-left: 28px; }
+  .accounting-filters--shop-summary .accounting-filters__search svg { left: 8px; bottom: 10px; }
+  .accounting-filters--shop-summary .accounting-filters__more { gap: 4px; padding-inline: 7px; }
+  .accounting-filters__range > span:last-child, .accounting-filters__field > span:last-child { gap: 4px; }
+  .accounting-filters__range input { font-size: .68rem; padding-inline: 4px; }
+}
+
+@media (max-width: 760px) {
+  .accounting-filters--shop-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .accounting-filters--shop-summary .accounting-filters__range, .accounting-filters--shop-summary .accounting-filters__search, .accounting-filters--shop-summary .accounting-filters__more, .accounting-filters__extra { grid-column: 1 / -1; }
+  .accounting-filters__extra { grid-template-columns: 1fr; }
 }
 
 * { box-sizing: border-box; }
@@ -2069,7 +2101,7 @@ input:disabled, select:disabled, textarea:disabled { background: #f2f5f8; color:
   .employee-brand small { font-size: .64rem; }
   .employee-profile > svg, .employee-profile > span { display: none; }
   .employee-profile button { min-width: 46px; min-height: 46px; }
-  .employee-main { padding: 15px 12px max(26px, env(safe-area-inset-bottom)); }
+  .employee-main { padding: 15px 12px calc(86px + env(safe-area-inset-bottom)); }
   .employee-intro { align-items: stretch; flex-direction: column; gap: 10px; }
   .employee-intro h1 { font-size: 1.55rem; }
   .employee-intro p:not(.employee-eyebrow) { font-size: .78rem; line-height: 1.5; }

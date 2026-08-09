@@ -23,3 +23,10 @@ test('all three employee stock modes fit one row and navigation advertises damag
   assert.match(router, /เติม \/ คืน \/ ละลาย/);
   assert.match(workspace, /เติมจากรถ[\s\S]*บันทึกน้ำแข็งละลาย/);
 });
+
+test('mobile employee content clears the fixed task navigation', () => {
+  assert.match(
+    stylesheet,
+    /@media \(max-width: 679px\)[\s\S]*?\.employee-main\s*\{[^}]*padding:\s*15px 12px calc\(86px \+ env\(safe-area-inset-bottom\)\)/,
+  );
+});

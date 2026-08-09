@@ -1,3 +1,46 @@
+## 2026-08-09 — Accounting shop-summary filter single row
+
+**Comparison Target**
+
+- Source visual truth: `/Users/bhusitt./Desktop/ภาพถ่ายหน้าจอ2569-08-09เวลา 18.44.33.png` (1296 × 112 px).
+- Rendered implementation: [outputs/accounting-filter-single-row-1440.png](/Users/bhusitt./Downloads/ส่งน้ำแข็ง/outputs/accounting-filter-single-row-1440.png) (1440 × 900 px), with the focused filter crop at [outputs/accounting-filter-implementation-crop.png](/Users/bhusitt./Downloads/ส่งน้ำแข็ง/outputs/accounting-filter-implementation-crop.png) (1118 × 96 px).
+- Combined comparison evidence: [outputs/accounting-filter-visual-comparison.png](/Users/bhusitt./Downloads/ส่งน้ำแข็ง/outputs/accounting-filter-visual-comparison.png), displaying the supplied reference and implementation crop in one browser-rendered comparison input.
+- Viewport and normalization: implementation captured at 1440 × 900 CSS px at DPR 1. The 1296 px-wide source was displayed at the implementation crop width of 1118 px; the implementation crop remained at native 1118 × 96 px.
+- State: admin role, `บัญชี / เอกสารและการเงิน`, `สรุปรายร้าน` tab, default date/filter values, additional filters collapsed.
+- Full-view comparison evidence: both bars show one compact labelled row with a grouped date range, location, shop search, financial filters and a right-aligned outlined additional-filter action.
+- Focused-region evidence: the 1118 px crop keeps every label, date, select, search field, icon and button legible. No additional detail crop was required.
+
+**Findings**
+
+- No actionable P0/P1/P2 differences remain.
+- Accepted product-specific difference: the reference has one generic `อาคาร / โซน` control, while the implementation retains separate building and zone selectors inside the same visual group so existing filtering behavior is preserved.
+- Accepted product-specific difference: `เรียงลำดับ` replaces the reference's document-type slot because the shop-summary view has sorting but no document-type filter.
+
+**Required Fidelity Surfaces**
+
+- Fonts and typography: retained the existing Noto Sans Thai stack, 700-weight field labels, compact control text, readable date values, and the existing page hierarchy.
+- Spacing and layout rhythm: the desktop filter is one 94.5 px-high row; all nine controls share the same 40 px baseline, with a 42 px outlined action aligned at the end. At 1000 × 800, the bar remains one compact row and the document `scrollWidth` equals the 1000 px viewport.
+- Colors and visual tokens: retained the existing white panel, muted green-gray border, dark green text, green filter icon/action, 14 px panel radius and existing focus outline.
+- Image quality and asset fidelity: no raster assets were added to the product UI. Search and filter symbols continue to use the installed Phosphor icon set; no placeholder or handcrafted icon was introduced.
+- Copy and content: added the reference-style labels `ช่วงเวลา`, `อาคาร / โซน`, `ร้านค้า`, and `ตัวกรองเพิ่มเติม`; all prior filter options and accessible names remain available.
+
+**Interaction And Build Checks**
+
+- In-app browser: opened and closed `ตัวกรองเพิ่มเติม`, verified the direct-shop selector appears, and confirmed the primary bar returns to one row.
+- Browser console: no errors or warnings.
+- Focused UI suite: `npx vitest run tests/accounting-shop-summary.test.tsx` passed, 17/17.
+- Production build: `npm run build` passed. The existing Vite large-chunk warning remains unchanged.
+
+**Comparison History**
+
+- Initial supplied implementation had separate date labels followed by full-width wrapped selects, producing six stacked filter rows.
+- First code pass moved low-frequency controls behind the additional-filter action but temporarily hid sorting from the default accessibility tree. Sorting and all existing tested selectors were restored to the primary bar by grouping related controls instead of removing behavior.
+- First 1440 px visual pass found the native date values too tight. The date group was widened and a compact 761–1200 px responsive grid was added. The final browser capture shows complete dates, a single aligned row and no document overflow.
+
+final result: passed
+
+---
+
 ## 2026-08-07 — Employee ice-withdrawal mobile layout
 
 **Comparison Target**

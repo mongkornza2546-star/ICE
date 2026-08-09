@@ -405,6 +405,7 @@ function ShopSummaryPanel({ data, filters, fromDate, onOpenShop, reviewCount, se
   updateFilter: (change: Partial<AccountingFilters>) => void;
 }) {
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => new Set());
+  const [extraFiltersOpen, setExtraFiltersOpen] = useState(false);
   const cards: Array<[string, number | null, 'money' | 'count', string?]> = [
     ['ยอดขายช่วงนี้', data.totals.sales_amount, 'money'],
     ['รับแล้วของยอดขายช่วงนี้', data.totals.paid_amount, 'money', 'นับเงินที่จัดสรรเข้าบิลซึ่งขายในช่วงวันที่เลือก'],
@@ -420,18 +421,24 @@ function ShopSummaryPanel({ data, filters, fromDate, onOpenShop, reviewCount, se
     <div className="accounting-financial-cards">
       {cards.map(([label, value, format, title]) => <article key={label} title={title}><span>{label}</span><strong>{value == null ? '—' : format === 'money' ? money.format(value) : value.toLocaleString('th-TH')}</strong></article>)}
     </div>
-    <div className="accounting-filters">
-      <label>จาก<input max={toDate} onChange={(event) => setFromDate(event.target.value)} type="date" value={fromDate} /></label>
-      <label>ถึง<input max={today} min={fromDate} onChange={(event) => setToDate(event.target.value)} type="date" value={toDate} /></label>
-      <label className="accounting-filters__search"><MagnifyingGlass size={17} /><span className="sr-only">ค้นหาร้าน</span><input onChange={(event) => updateFilter({ shop_search: event.target.value })} placeholder="ชื่อหรือรหัสร้าน" value={filters.shop_search ?? ''} /></label>
-      <select aria-label="อาคาร" onChange={(event) => updateFilter({ building_id: event.target.value || undefined, zone_id: undefined })} value={filters.building_id ?? ''}><option value="">ทุกอาคาร</option>{data.facets.buildings.map((item) => <option key={item.value} value={item.value}>{item.label} ({item.count})</option>)}</select>
-      <select aria-label="โซน" onChange={(event) => updateFilter({ zone_id: event.target.value || undefined })} title="ตัวกรองโซนใช้ตำแหน่งปัจจุบันของร้าน" value={filters.zone_id ?? ''}><option value="">ทุกโซน</option>{data.facets.zones.map((item) => <option key={item.value} value={item.value}>{item.label} ({item.count})</option>)}</select>
-      <select aria-label="ร้าน" onChange={(event) => updateFilter({ shop_id: event.target.value || undefined })} value={filters.shop_id ?? ''}><option value="">ทุกร้าน</option>{data.facets.shops.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select>
-      <select aria-label="เงื่อนไขชำระ" onChange={(event) => updateFilter({ payment_term: (event.target.value || undefined) as AccountingFilters['payment_term'] })} value={filters.payment_term ?? ''}><option value="">ทุกเงื่อนไขชำระ</option>{Object.entries(paymentTermLabels).filter(([value]) => value !== 'mixed').map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
-      <select aria-label="สถานะชำระ" onChange={(event) => updateFilter({ payment_status: (event.target.value || undefined) as AccountingFilters['payment_status'] })} value={filters.payment_status ?? ''}><option value="">ทุกสถานะชำระ</option>{Object.entries(paymentStatusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
-      <select aria-label="เรียงลำดับ" onChange={(event) => updateFilter({ shop_sort: event.target.value === 'area' ? undefined : event.target.value as AccountingFilters['shop_sort'] })} value={filters.shop_sort ?? 'area'}>
+    <div className="accounting-filters accounting-filters--shop-summary">
+      <label className="accounting-filters__range"><span>ช่วงเวลา</span><span><input aria-label="จาก" max={toDate} onChange={(event) => setFromDate(event.target.value)} type="date" value={fromDate} /><span aria-hidden="true">ถึง</span><input aria-label="ถึง" max={today} min={fromDate} onChange={(event) => setToDate(event.target.value)} type="date" value={toDate} /></span></label>
+      <div className="accounting-filters__field"><span>อาคาร / โซน</span><span>
+        <select aria-label="อาคาร" onChange={(event) => updateFilter({ building_id: event.target.value || undefined, zone_id: undefined })} value={filters.building_id ?? ''}><option value="">ทุกอาคาร</option>{data.facets.buildings.map((item) => <option key={item.value} value={item.value}>{item.label} ({item.count})</option>)}</select>
+        <select aria-label="โซน" onChange={(event) => updateFilter({ zone_id: event.target.value || undefined })} title="ตัวกรองโซนใช้ตำแหน่งปัจจุบันของร้าน" value={filters.zone_id ?? ''}><option value="">ทุกโซน</option>{data.facets.zones.map((item) => <option key={item.value} value={item.value}>{item.label} ({item.count})</option>)}</select>
+      </span></div>
+      <label className="accounting-filters__search"><span>ร้านค้า</span><MagnifyingGlass size={17} /><input aria-label="ค้นหาร้าน" onChange={(event) => updateFilter({ shop_search: event.target.value })} placeholder="ค้นหาร้านค้า" value={filters.shop_search ?? ''} /></label>
+      <div className="accounting-filters__field"><span>สถานะ / เงื่อนไขชำระ</span><span>
+        <select aria-label="สถานะชำระ" onChange={(event) => updateFilter({ payment_status: (event.target.value || undefined) as AccountingFilters['payment_status'] })} value={filters.payment_status ?? ''}><option value="">ทุกสถานะ</option>{Object.entries(paymentStatusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
+        <select aria-label="เงื่อนไขชำระ" onChange={(event) => updateFilter({ payment_term: (event.target.value || undefined) as AccountingFilters['payment_term'] })} value={filters.payment_term ?? ''}><option value="">ทุกเงื่อนไข</option>{Object.entries(paymentTermLabels).filter(([value]) => value !== 'mixed').map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
+      </span></div>
+      <label><span>เรียงลำดับ</span><select aria-label="เรียงลำดับ" onChange={(event) => updateFilter({ shop_sort: event.target.value === 'area' ? undefined : event.target.value as AccountingFilters['shop_sort'] })} value={filters.shop_sort ?? 'area'}>
         <option value="area">ตามพื้นที่</option><option value="outstanding">ค้างมากสุด</option><option value="overdue">เกินกำหนดมากสุด</option><option value="sales">ยอดขายมากสุด</option><option value="name">ชื่อร้าน</option><option value="code">รหัสร้าน</option>
-      </select>
+      </select></label>
+      <button aria-expanded={extraFiltersOpen} className={extraFiltersOpen ? 'accounting-filters__more accounting-filters__more--active' : 'accounting-filters__more'} onClick={() => setExtraFiltersOpen((open) => !open)} type="button"><Funnel size={17} />ตัวกรองเพิ่มเติม</button>
+      {extraFiltersOpen ? <div className="accounting-filters__extra">
+        <label><span>เลือกร้านโดยตรง</span><select aria-label="ร้าน" onChange={(event) => updateFilter({ shop_id: event.target.value || undefined })} value={filters.shop_id ?? ''}><option value="">ทุกร้าน</option>{data.facets.shops.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
+      </div> : null}
     </div>
     <ShopSummaryTable
       collapsedGroups={collapsedGroups}
