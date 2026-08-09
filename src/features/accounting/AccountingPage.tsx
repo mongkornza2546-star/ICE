@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { ArrowClockwise, DownloadSimple, Funnel, MagnifyingGlass, WarningCircle, X } from '@phosphor-icons/react';
 import { DeliveryCorrectionDialog } from '../delivery-corrections/DeliveryCorrectionDialog';
 import { supabase } from '../../lib/supabase';
@@ -333,15 +334,21 @@ export function AccountingPage({ userRole = 'round_lead', demoMode = false }: { 
         updateFilter={updateShopFilter}
       />
       <AccountingPagination page={page} pageSize={PAGE_SIZE} setPage={setPage} totalCount={totalCount} />
-      {selectedShop ? <ShopInvoiceDetail
-        entries={shopHistory}
-        error={shopHistoryError}
-        fromDate={fromDate}
-        loading={shopHistoryLoading}
-        onClose={closeShopInvoices}
-        shop={selectedShop}
-        toDate={toDate}
-      /> : null}
+      {selectedShop ? createPortal(
+        <div className="accounting-shop-detail-layer">
+          <button aria-label="ปิดหน้าต่างรายละเอียดร้าน" className="accounting-shop-detail-backdrop" onClick={closeShopInvoices} type="button" />
+          <ShopInvoiceDetail
+            entries={shopHistory}
+            error={shopHistoryError}
+            fromDate={fromDate}
+            loading={shopHistoryLoading}
+            onClose={closeShopInvoices}
+            shop={selectedShop}
+            toDate={toDate}
+          />
+        </div>,
+        document.body,
+      ) : null}
     </> : tab === 'reconciliation' ? <ReconciliationPanel data={reconciliation} serviceDate={serviceDate} setServiceDate={setServiceDate} /> : <>
       <div className="accounting-filters">
         <label>จาก<input max={toDate} onChange={(event) => { setFromDate(event.target.value); setPage(0); }} type="date" value={fromDate} /></label>
@@ -420,7 +427,20 @@ function ShopInvoiceDetail({ entries, error, fromDate, loading, onClose, shop, t
   shop: AccountingShopSummaryRow;
   toDate: string;
 }) {
-  return <section aria-label={`รายละเอียดบิลของ ${shop.shop_code} · ${shop.shop_name}`} className="accounting-shop-detail">
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+    document.body.style.overflow = 'hidden';
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [onClose]);
+
+  return <section aria-label={`รายละเอียดบิลของ ${shop.shop_code} · ${shop.shop_name}`} aria-modal="true" className="accounting-shop-detail" role="dialog">
     <header>
       <div><p className="eyebrow">รายละเอียดตามใบส่งของ / ใบแจ้งหนี้</p><h2>{shop.shop_code} · {shop.shop_name}</h2><span>ช่วงเดียวกับสรุป: {accountingDate.format(new Date(`${fromDate}T12:00:00+07:00`))} – {accountingDate.format(new Date(`${toDate}T12:00:00+07:00`))}</span><small>ยอดรับแล้วและยอดค้างเป็นยอดปัจจุบัน จึงรวมการรับชำระหลังช่วงสรุป</small></div>
       <button aria-label="ปิดรายละเอียดร้าน" onClick={onClose} type="button"><X size={19} /></button>

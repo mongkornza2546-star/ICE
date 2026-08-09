@@ -124,13 +124,20 @@ describe('accounting shop summary', () => {
       p_limit: 100,
       p_offset: 0,
     }));
-    const detail = await screen.findByRole('region', { name: 'รายละเอียดบิลของ S001 · ร้านสมใจ' });
+    const detail = await screen.findByRole('dialog', { name: 'รายละเอียดบิลของ S001 · ร้านสมใจ' });
+    expect(detail.getAttribute('aria-modal')).toBe('true');
     expect(within(detail).getByText(/ช่วงเดียวกับสรุป/)).toBeTruthy();
     expect(within(detail).getByText(/ยอดรับแล้วและยอดค้างเป็นยอดปัจจุบัน/)).toBeTruthy();
     expect(within(detail).getByText('INV2608-00001')).toBeTruthy();
     expect(within(detail).getByText(/น้ำแข็งหลอด/)).toBeTruthy();
     expect(within(detail).getByText(/เงินสด.*300\.00/)).toBeTruthy();
     expect(screen.getByRole('button', { name: 'สรุปรายร้าน' }).getAttribute('aria-current')).toBe('page');
+    expect(document.body.style.overflow).toBe('hidden');
+
+    await user.keyboard('{Escape}');
+
+    expect(screen.queryByRole('dialog', { name: 'รายละเอียดบิลของ S001 · ร้านสมใจ' })).toBeNull();
+    expect(document.body.style.overflow).toBe('');
   });
 
   it('renders payment dates in Bangkok time regardless of the browser timezone', async () => {
@@ -151,7 +158,7 @@ describe('accounting shop summary', () => {
       render(<AccountingPage />);
       await user.click(await screen.findByRole('button', { name: /S001 · ร้านสมใจ/ }));
 
-      const detail = await screen.findByRole('region', { name: 'รายละเอียดบิลของ S001 · ร้านสมใจ' });
+      const detail = await screen.findByRole('dialog', { name: 'รายละเอียดบิลของ S001 · ร้านสมใจ' });
       const bangkokDateLabel = new Intl.DateTimeFormat('th-TH', { timeZone: 'Asia/Bangkok' }).format(new Date(recordedAt));
       expect(detail.querySelector('.accounting-shop-detail__payments')?.textContent).toContain(bangkokDateLabel);
     } finally {
@@ -420,7 +427,7 @@ describe('accounting shop summary', () => {
 
     await user.click(await screen.findByRole('button', { name: /S001 · ร้านสมใจ/ }));
 
-    const detail = await screen.findByRole('region', { name: 'รายละเอียดบิลของ S001 · ร้านสมใจ' });
+    const detail = await screen.findByRole('dialog', { name: 'รายละเอียดบิลของ S001 · ร้านสมใจ' });
     expect(within(detail).getByText(/น้ำแข็งหลอด 10 ถุง/, { selector: 'strong' })).toBeTruthy();
     expect(within(detail).getByText(/แก้เป็น 8 ถุง/)).toBeTruthy();
     expect(within(detail).getByText(/น้ำแข็งก้อน.*แก้เป็น 2 ถุง/)).toBeTruthy();
