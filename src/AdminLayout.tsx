@@ -165,7 +165,7 @@ export function AdminLayout({
                           if (!isDesktopLayout) setNavigationExpanded(false);
                         }}
                         type="button"
-                      >บัญชี / รายการธุรกรรม</button>
+                      >บัญชี / เอกสารและการเงิน</button>
                       <button
                         aria-current={activeView === view && financialPage === 'credit' ? 'page' : undefined}
                         onClick={() => {

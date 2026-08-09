@@ -22,6 +22,7 @@ export type AccountingFilters = {
   employee_id?: string;
   payment_term?: 'immediate' | 'end_of_day' | 'credit';
   payment_status?: 'paid' | 'outstanding' | 'overdue';
+  shop_sort?: 'area' | 'outstanding' | 'overdue' | 'sales' | 'name' | 'code';
   types?: AccountingTransactionType[];
   issues_only?: boolean;
 };
@@ -87,6 +88,10 @@ export type AccountingShopSummaryRow = {
   current_zone_id: string | null;
   current_zone_name: string | null;
   historical_zone_name: string | null;
+  building_sort_order?: number;
+  zone_sort_order?: number;
+  delivery_sequence?: number | null;
+  period_activity_status?: 'purchased' | 'closed_shop' | 'recorded_no_sale' | 'not_recorded';
   payment_term: 'immediate' | 'end_of_day' | 'credit' | 'mixed' | null;
   employee_names: string | null;
   sales_amount: number;
@@ -101,8 +106,25 @@ export type AccountingShopSummaryRow = {
   payment_status: 'paid' | 'outstanding' | 'overdue';
 };
 
+export type AccountingShopSummaryGroup = {
+  building_id: string;
+  building_name: string;
+  current_zone_id: string | null;
+  current_zone_name: string | null;
+  building_sort_order: number;
+  zone_sort_order: number;
+  total_shop_count: number;
+  purchased_shop_count: number;
+  closed_shop_count: number;
+  recorded_no_sale_shop_count: number;
+  not_recorded_shop_count: number;
+  sales_amount: number;
+  cumulative_outstanding_amount: number;
+};
+
 export type AccountingShopSummaryResponse = {
   rows: AccountingShopSummaryRow[];
+  groups?: AccountingShopSummaryGroup[];
   total_count: number;
   totals: {
     sales_amount: number;

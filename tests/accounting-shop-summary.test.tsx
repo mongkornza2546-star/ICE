@@ -27,6 +27,10 @@ const populatedSummary = {
     current_zone_id: 'zone-current',
     current_zone_name: 'ชั้น 9 ปัจจุบัน',
     historical_zone_name: 'ชั้น 1 ตอนส่ง',
+    building_sort_order: 1,
+    zone_sort_order: 9,
+    delivery_sequence: 3,
+    period_activity_status: 'purchased',
     payment_term: 'end_of_day',
     employee_names: 'พนักงานหนึ่ง',
     sales_amount: 1_250,
@@ -39,6 +43,21 @@ const populatedSummary = {
     cumulative_overdue_amount: 400,
     oldest_outstanding_due_date: bangkokDate(-3),
     payment_status: 'overdue',
+  }],
+  groups: [{
+    building_id: 'building-1',
+    building_name: 'อาคาร A',
+    current_zone_id: 'zone-current',
+    current_zone_name: 'ชั้น 9 ปัจจุบัน',
+    building_sort_order: 1,
+    zone_sort_order: 9,
+    total_shop_count: 1,
+    purchased_shop_count: 1,
+    closed_shop_count: 0,
+    recorded_no_sale_shop_count: 0,
+    not_recorded_shop_count: 0,
+    sales_amount: 1_250,
+    cumulative_outstanding_amount: 750,
   }],
   total_count: 1,
   totals: {
@@ -111,15 +130,40 @@ describe('accounting shop summary', () => {
     expect(screen.getByRole('columnheader', { name: 'สถานะชำระ' })).toBeTruthy();
   });
 
-  it('keeps the raw ledger available as a separate view', async () => {
+  it('keeps financial documents separate from the stock audit', async () => {
     const user = userEvent.setup();
     render(<AccountingPage demoMode />);
 
-    await user.click(screen.getByRole('button', { name: 'รายละเอียดธุรกรรม' }));
+    await user.click(screen.getByRole('button', { name: 'เอกสารและการเงิน' }));
 
-    expect(screen.getByRole('button', { name: 'รายละเอียดธุรกรรม' }).getAttribute('aria-current')).toBe('page');
+    expect(screen.getByRole('button', { name: 'เอกสารและการเงิน' }).getAttribute('aria-current')).toBe('page');
     expect(screen.getByPlaceholderText('เลขเอกสาร / อ้างอิง')).toBeTruthy();
     expect(screen.getByRole('columnheader', { name: /ประเภท/ })).toBeTruthy();
+    expect(screen.getByRole('option', { name: 'ใบส่งของ' })).toBeTruthy();
+    expect(screen.queryByRole('option', { name: 'รับจากโรงงาน' })).toBeNull();
+  });
+
+  it('groups the default area view, collapses a zone, and requests alternate sorting', async () => {
+    const user = userEvent.setup();
+    mockSuccessfulShopSummary();
+    render(<AccountingPage />);
+
+    const shop = await screen.findByRole('button', { name: /S001 · ร้านสมใจ/ });
+    expect(screen.getByRole('columnheader', { name: 'อาคาร / โซนประจำร้าน' })).toBeTruthy();
+    expect((screen.getByRole('combobox', { name: 'เรียงลำดับ' }) as HTMLSelectElement).value).toBe('area');
+    expect(screen.getByText('ลำดับส่ง 3')).toBeTruthy();
+    expect(screen.getByText('พื้นที่ในรายการล่าสุดต่างจากพื้นที่ประจำร้าน')).toBeTruthy();
+
+    const group = screen.getByRole('button', { name: /อาคาร A \/ ชั้น 9 ปัจจุบัน.*1 ร้าน.*ซื้อ 1/ });
+    await user.click(group);
+    expect(screen.queryByRole('button', { name: /S001 · ร้านสมใจ/ })).toBeNull();
+
+    await user.selectOptions(screen.getByRole('combobox', { name: 'เรียงลำดับ' }), 'outstanding');
+    await waitFor(() => expect(rpcMock).toHaveBeenCalledWith('get_accounting_shop_summary', expect.objectContaining({
+      p_filters: { shop_sort: 'outstanding' },
+    })));
+    expect(await screen.findByRole('button', { name: /S001 · ร้านสมใจ/ })).toBeTruthy();
+    expect(shop).toBeTruthy();
   });
 
   it('renders an active shop with no period sales and its cumulative old debt', async () => {
@@ -285,7 +329,11 @@ describe('accounting shop summary', () => {
   });
 
   it('renders populated results and sends shop filters and pagination to the summary RPC', async () => {
-    const pagedSummary = { ...populatedSummary, total_count: 101 };
+    const pagedSummary = {
+      ...populatedSummary,
+      groups: populatedSummary.groups.map((group) => ({ ...group, total_shop_count: 101 })),
+      total_count: 101,
+    };
     rpcMock.mockImplementation(async (name: string) => {
       if (name === 'get_accounting_shop_summary') return { data: pagedSummary, error: null };
       if (name === 'get_accounting_review_queue') return { data: { rows: [], total_count: 2 }, error: null };
@@ -306,6 +354,7 @@ describe('accounting shop summary', () => {
     });
     expect(screen.getAllByText(/1,250\.00/).length).toBeGreaterThan(0);
     expect(screen.getByText('1 / 2')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /แสดง 1 จาก 101 ร้าน/ })).toBeTruthy();
 
     await user.selectOptions(screen.getByRole('combobox', { name: 'อาคาร' }), 'building-1');
     await waitFor(() => expect(rpcMock).toHaveBeenCalledWith('get_accounting_shop_summary', {
@@ -561,7 +610,10 @@ describe('accounting shop summary', () => {
 
     await waitFor(() => expect(screen.getByRole('button', { name: /รายการต้องตรวจสอบ/ }).textContent).toContain('2'));
     expect((screen.getByLabelText('จาก') as HTMLInputElement).value).toBe(initialFromDate);
-    await user.click(screen.getByRole('button', { name: 'รายละเอียดธุรกรรม' }));
+    await user.click(screen.getByRole('button', { name: 'เอกสารและการเงิน' }));
+    await waitFor(() => expect(rpcMock).toHaveBeenCalledWith('get_accounting_transactions', expect.objectContaining({
+      p_filters: { types: ['SALE', 'INV', 'REC', 'REF', 'ADJ'] },
+    })));
     fireEvent.change(screen.getByLabelText('จาก'), { target: { value: nextFromDate } });
 
     await waitFor(() => expect(rpcMock).toHaveBeenCalledWith('get_accounting_review_queue', {
@@ -580,7 +632,7 @@ describe('accounting shop summary', () => {
 
     await screen.findByRole('button', { name: /S001 · ร้านสมใจ/ });
 
-    expect(screen.getByText('อาคาร A / ชั้น 9 ปัจจุบัน')).toBeTruthy();
+    expect(screen.getAllByText('อาคาร A / ชั้น 9 ปัจจุบัน').length).toBeGreaterThan(0);
     expect(screen.getByRole('option', { name: 'อาคาร A / ชั้น 9 ปัจจุบัน (1)' })).toBeTruthy();
   });
 });

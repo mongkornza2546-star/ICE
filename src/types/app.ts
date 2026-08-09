@@ -387,6 +387,7 @@ export interface BuildingOption {
   id: string;
   code: string;
   name: string;
+  sort_order?: number;
   is_active?: boolean;
 }
 
@@ -410,6 +411,7 @@ export interface ShopSetting {
   government_shop_code: string | null;
   contact_name: string | null;
   contact_phone: string | null;
+  delivery_sequence: number | null;
   normal_rounds_per_day: number;
   access_note: string | null;
   status: 'active' | 'inactive';

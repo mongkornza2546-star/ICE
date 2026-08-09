@@ -11,7 +11,11 @@ const activeShopsMigration = readFileSync(
   new URL('../supabase/migrations/0144_accounting_all_active_shops.sql', import.meta.url),
   'utf8',
 );
-const migration = `${accountingMigration}\n${activeShopsMigration}`;
+const areaGroupsMigration = readFileSync(
+  new URL('../supabase/migrations/0145_accounting_shop_summary_area_groups.sql', import.meta.url),
+  'utf8',
+);
+const migration = `${accountingMigration}\n${activeShopsMigration}\n${areaGroupsMigration}`;
 
 const USER_ID = '10000000-0000-4000-8000-000000000001';
 const SHOP_ID = '20000000-0000-4000-8000-000000000001';
@@ -56,12 +60,17 @@ async function createDatabase(t, { applyMigration = true } = {}) {
     );
     create table public.buildings (
       id uuid primary key,
-      name text not null
+      code text not null unique default gen_random_uuid()::text,
+      name text not null,
+      is_active boolean not null default true,
+      created_at timestamptz not null default now()
     );
     create table public.building_zones (
       id uuid primary key,
       building_id uuid not null references public.buildings(id),
-      name text not null
+      name text not null,
+      sort_order integer not null default 1,
+      is_active boolean not null default true
     );
     create table public.shops (
       id uuid primary key,
@@ -76,12 +85,24 @@ async function createDatabase(t, { applyMigration = true } = {}) {
       allowed_payment_terms public.payment_term[] not null,
       default_payment_term public.payment_term not null
     );
+    create table public.delivery_rounds (
+      id uuid primary key,
+      service_date date not null,
+      round_type text not null default 'daily',
+      opened_at timestamptz not null default now(),
+      cancelled_at timestamptz,
+      created_at timestamptz not null default now()
+    );
     create table public.round_stops (
       id uuid primary key,
       shop_id uuid not null references public.shops(id),
       building_id_snapshot uuid not null,
       building_name_snapshot text not null,
-      floor_or_zone_snapshot text not null
+      floor_or_zone_snapshot text not null,
+      round_id uuid references public.delivery_rounds(id),
+      sequence_no integer,
+      status text not null default 'pending',
+      updated_at timestamptz not null default now()
     );
     create table public.delivery_events (
       id uuid primary key,
@@ -175,8 +196,34 @@ async function createDatabase(t, { applyMigration = true } = {}) {
     end
     $$;
 
+    create function public.ensure_daily_delivery_round(p_service_date date)
+    returns uuid language plpgsql security definer set search_path = public as $$
+    declare
+      v_round_id uuid;
+    begin
+      select id into v_round_id from public.delivery_rounds
+      where service_date = p_service_date and round_type = 'daily' and cancelled_at is null
+      order by created_at limit 1;
+      if v_round_id is not null then return v_round_id; end if;
+
+      v_round_id := gen_random_uuid();
+      insert into public.delivery_rounds (id, service_date) values (v_round_id, p_service_date);
+      insert into public.round_stops (
+        id, shop_id, building_id_snapshot, building_name_snapshot,
+        floor_or_zone_snapshot, round_id, sequence_no
+      )
+      select gen_random_uuid(), shop.id, building.id, building.name, zone.name,
+        v_round_id, row_number() over (order by shop.code)::integer
+      from public.shops shop
+      join public.buildings building on building.id = shop.building_id
+      join public.building_zones zone on zone.id = shop.zone_id
+      where shop.status = 'active';
+      return v_round_id;
+    end
+    $$;
+
     insert into public.users values ('${USER_ID}', 'Courier One');
-    insert into public.buildings values
+    insert into public.buildings (id, name) values
       ('${OLD_BUILDING_ID}', 'Old Building'),
       ('${CURRENT_BUILDING_ID}', 'Current Building');
     insert into public.building_zones values
@@ -186,7 +233,9 @@ async function createDatabase(t, { applyMigration = true } = {}) {
       ('${SHOP_ID}', 'S001', 'Mixed Shop', '${OLD_BUILDING_ID}', '${OLD_ZONE_ID}', 'active');
     insert into public.shop_payment_profiles values
       ('${SHOP_ID}', array['immediate', 'end_of_day', 'credit']::public.payment_term[], 'immediate');
-    insert into public.round_stops values
+    insert into public.round_stops (
+      id, shop_id, building_id_snapshot, building_name_snapshot, floor_or_zone_snapshot
+    ) values
       ('${STOP_ID}', '${SHOP_ID}', '${OLD_BUILDING_ID}', 'Old Building', 'Old Zone');
   `);
 
@@ -232,6 +281,7 @@ test('active shops without period sales remain visible while inactive shops are 
   assert.equal(summary.rows[0].cumulative_overdue_amount, 0);
   assert.equal(summary.rows[0].invoice_count, 0);
   assert.equal(summary.rows[0].payment_status, 'paid');
+  assert.equal(summary.rows[0].delivery_sequence, null);
   assert.equal(summary.rows[0].building_id, OLD_BUILDING_ID);
   assert.equal(summary.rows[0].current_zone_id, OLD_ZONE_ID);
   assert.deepEqual(summary.facets.shops.map((facet) => facet.value), [SHOP_ID]);
@@ -405,7 +455,9 @@ test('shop rows, sales filters, and facets use the current shop location', async
     update public.shops
     set building_id = '${CURRENT_BUILDING_ID}', zone_id = '${CURRENT_ZONE_ID}'
     where id = '${SHOP_ID}';
-    insert into public.round_stops values
+    insert into public.round_stops (
+      id, shop_id, building_id_snapshot, building_name_snapshot, floor_or_zone_snapshot
+    ) values
       ('${CURRENT_STOP_ID}', '${SHOP_ID}', '${CURRENT_BUILDING_ID}', 'Current Building', 'Current Zone');
     insert into public.delivery_events values
       ('${IMMEDIATE_EVENT_ID}', '${STOP_ID}', '${USER_ID}', 'active', '2026-08-01T02:00:00Z'),
@@ -502,7 +554,9 @@ test('a receipt for a moved shop is attributed once to its current building', as
     update public.shops
     set building_id = '${CURRENT_BUILDING_ID}', zone_id = '${CURRENT_ZONE_ID}'
     where id = '${SHOP_ID}';
-    insert into public.round_stops values
+    insert into public.round_stops (
+      id, shop_id, building_id_snapshot, building_name_snapshot, floor_or_zone_snapshot
+    ) values
       ('${CURRENT_STOP_ID}', '${SHOP_ID}', '${CURRENT_BUILDING_ID}', 'Current Building', 'Current Zone');
     insert into public.delivery_events values
       ('${IMMEDIATE_EVENT_ID}', '${STOP_ID}', '${USER_ID}', 'active', '2026-07-01T02:00:00Z'),
@@ -543,7 +597,9 @@ test('invoice detail server-filters the exact term, historical building, and cur
     update public.shops
     set building_id = '${CURRENT_BUILDING_ID}', zone_id = '${CURRENT_ZONE_ID}'
     where id = '${SHOP_ID}';
-    insert into public.round_stops values
+    insert into public.round_stops (
+      id, shop_id, building_id_snapshot, building_name_snapshot, floor_or_zone_snapshot
+    ) values
       ('${CURRENT_STOP_ID}', '${SHOP_ID}', '${CURRENT_BUILDING_ID}', 'Current Building', 'Current Zone');
     insert into public.delivery_events values
       ('${IMMEDIATE_EVENT_ID}', '${STOP_ID}', '${USER_ID}', 'active', '2026-08-01T02:00:00Z'),
@@ -696,6 +752,105 @@ test('a zero-effective active charge is paid in both summary and invoice detail'
   assert.equal(detail[0].payment_status, 'paid');
 });
 
+test('area sort uses building, zone, delivery sequence, and code while groups stay complete', async (t) => {
+  const db = await createDatabase(t);
+  await db.exec(`
+    insert into public.delivery_rounds (id, service_date, opened_at) values
+      ('b0000000-0000-4000-8000-000000000001', '2026-08-01', '2026-08-01T01:00:00Z');
+    update public.round_stops
+    set round_id = 'b0000000-0000-4000-8000-000000000001',
+      sequence_no = 2, status = 'closed_shop'
+    where id = '${STOP_ID}';
+    update public.shops set delivery_sequence = 2 where id = '${SHOP_ID}';
+    insert into public.shops (
+      id, code, name, building_id, zone_id, status, delivery_sequence
+    ) values
+      ('20000000-0000-4000-8000-000000000010', 'Z999', 'First delivery',
+        '${OLD_BUILDING_ID}', '${OLD_ZONE_ID}', 'active', 1),
+      ('20000000-0000-4000-8000-000000000011', 'A000', 'No delivery order',
+        '${OLD_BUILDING_ID}', '${OLD_ZONE_ID}', 'active', null);
+    insert into public.round_stops (
+      id, shop_id, building_id_snapshot, building_name_snapshot, floor_or_zone_snapshot,
+      round_id, sequence_no, status
+    ) values (
+      '50000000-0000-4000-8000-000000000010',
+      '20000000-0000-4000-8000-000000000010', '${OLD_BUILDING_ID}',
+      'Old Building', 'Old Zone', 'b0000000-0000-4000-8000-000000000001', 1, 'delivered'
+    );
+  `);
+
+  const area = await getSummary(db);
+  const byCode = await getSummary(db, '{"shop_sort":"code"}');
+
+  assert.deepEqual(area.rows.map((row) => row.shop_code), ['Z999', 'S001', 'A000']);
+  assert.deepEqual(area.rows.map((row) => row.delivery_sequence), [1, 2, null]);
+  assert.deepEqual(byCode.rows.map((row) => row.shop_code), ['A000', 'S001', 'Z999']);
+  assert.equal(area.groups.length, 1);
+  assert.deepEqual({
+    total: area.groups[0].total_shop_count,
+    closed: area.groups[0].closed_shop_count,
+    recordedNoSale: area.groups[0].recorded_no_sale_shop_count,
+    notRecorded: area.groups[0].not_recorded_shop_count,
+  }, { total: 3, closed: 1, recordedNoSale: 1, notRecorded: 1 });
+  await assert.rejects(
+    getSummary(db, '{"shop_sort":"unsupported"}'),
+    /unsupported accounting shop sort/i,
+  );
+});
+
+test('new daily rounds snapshot the configured area and shop delivery order', async (t) => {
+  const db = await createDatabase(t);
+  await db.exec(`
+    update public.shops set delivery_sequence = 2 where id = '${SHOP_ID}';
+    insert into public.shops (
+      id, code, name, building_id, zone_id, status, delivery_sequence
+    ) values (
+      '20000000-0000-4000-8000-000000000010', 'Z999', 'First delivery',
+      '${OLD_BUILDING_ID}', '${OLD_ZONE_ID}', 'active', 1
+    );
+  `);
+
+  const created = await db.query(
+    "select public.ensure_daily_delivery_round(date '2026-08-02') as round_id",
+  );
+  const stops = await db.query(`
+    select shop.code, stop.sequence_no
+    from public.round_stops stop
+    join public.shops shop on shop.id = stop.shop_id
+    where stop.round_id = '${created.rows[0].round_id}'
+    order by stop.sequence_no
+  `);
+
+  assert.deepEqual(stops.rows, [
+    { code: 'Z999', sequence_no: 1 },
+    { code: 'S001', sequence_no: 2 },
+  ]);
+});
+
+test('area-order migration can be reapplied after its helper backup exists', async (t) => {
+  const db = await createDatabase(t);
+
+  await assert.doesNotReject(db.exec(areaGroupsMigration));
+});
+
+test('building reordering shifts competing positions atomically', async (t) => {
+  const db = await createDatabase(t);
+  const saved = await db.query(`
+    select public.save_building_settings(
+      '${CURRENT_BUILDING_ID}', 'CURRENT', 'Current Building', 1, true
+    ) as building_id
+  `);
+  const ordered = await db.query(`
+    select id, sort_order from public.buildings order by sort_order
+  `);
+
+  assert.equal(saved.rows[0].building_id, CURRENT_BUILDING_ID);
+  assert.deepEqual(ordered.rows, [
+    { id: CURRENT_BUILDING_ID, sort_order: 1 },
+    { id: OLD_BUILDING_ID, sort_order: 2 },
+  ]);
+});
+
 test('explicit null pagination uses the documented default page', async (t) => {
   const db = await createDatabase(t);
   await db.exec(`
@@ -705,7 +860,9 @@ test('explicit null pagination uses the documented default page', async (t) => {
       '${OLD_BUILDING_ID}', '${OLD_ZONE_ID}'
     from generate_series(1, 101) value;
 
-    insert into public.round_stops
+    insert into public.round_stops (
+      id, shop_id, building_id_snapshot, building_name_snapshot, floor_or_zone_snapshot
+    )
     select md5('pagination-stop-' || value)::uuid,
       md5('pagination-shop-' || value)::uuid,
       '${OLD_BUILDING_ID}', 'Old Building', 'Old Zone'

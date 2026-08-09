@@ -35,6 +35,7 @@ interface ShopDraft {
   government_shop_code: string;
   contact_name: string;
   contact_phone: string;
+  delivery_sequence: number | null;
   normal_rounds_per_day: number;
   access_note: string;
   status: 'active' | 'inactive';
@@ -58,6 +59,7 @@ const emptyDraft: ShopDraft = {
   government_shop_code: '',
   contact_name: '',
   contact_phone: '',
+  delivery_sequence: null,
   normal_rounds_per_day: 1,
   access_note: '',
   status: 'active',
@@ -203,7 +205,7 @@ export function ShopSettings({
       setIceTypes([{ id: 'demo-ice', code: 'BLOCK', name: 'น้ำแข็งก้อน', unit: 'ถุง' }]);
       setShops(demoShopNames.map((name, index) => {
         const building = demoBuildings[index % demoBuildings.length];
-        return { id: `demo-shop-${index + 1}`, code: demoCodes[index], name, image_path: null, building_id: building.id, zone_id: `demo-zone-${building.code.toLowerCase()}`, floor_or_zone: `โซน ${building.code}`, government_shop_code: null, contact_name: null, contact_phone: index === 3 || index === 6 ? null : `08${index + 1}-234-567${index}`, normal_rounds_per_day: 1, access_note: null, status: 'active' };
+        return { id: `demo-shop-${index + 1}`, code: demoCodes[index], name, image_path: null, building_id: building.id, zone_id: `demo-zone-${building.code.toLowerCase()}`, floor_or_zone: `โซน ${building.code}`, government_shop_code: null, contact_name: null, contact_phone: index === 3 || index === 6 ? null : `08${index + 1}-234-567${index}`, delivery_sequence: Math.floor(index / demoBuildings.length) + 1, normal_rounds_per_day: 1, access_note: null, status: 'active' };
       }));
       setLoading(false);
       return;
@@ -218,7 +220,7 @@ export function ShopSettings({
     const [shopsResponse, buildingsResponse, zonesResponse, iceTypesResponse] = await Promise.all([
       supabase
         .from('shops')
-        .select('id, code, name, image_path, building_id, zone_id, floor_or_zone, government_shop_code, contact_name, contact_phone, normal_rounds_per_day, access_note, status')
+        .select('id, code, name, image_path, building_id, zone_id, floor_or_zone, government_shop_code, contact_name, contact_phone, delivery_sequence, normal_rounds_per_day, access_note, status')
         .order('code'),
       supabase.from('buildings').select('id, code, name').eq('is_active', true).order('code'),
       supabase.from('building_zones').select('id, building_id, code, name, sort_order, is_active').eq('is_active', true).order('sort_order'),
@@ -344,6 +346,7 @@ export function ShopSettings({
       government_shop_code: shop.government_shop_code ?? '',
       contact_name: shop.contact_name ?? '',
       contact_phone: shop.contact_phone ?? '',
+      delivery_sequence: shop.delivery_sequence,
       normal_rounds_per_day: shop.normal_rounds_per_day,
       access_note: shop.access_note ?? '',
       status: shop.status,
@@ -589,6 +592,7 @@ export function ShopSettings({
       p_zone_id: draft.zone_id,
       p_contact_name: draft.contact_name || null,
       p_contact_phone: draft.contact_phone || null,
+      p_delivery_sequence: draft.delivery_sequence,
       p_normal_rounds_per_day: draft.normal_rounds_per_day,
       p_access_note: draft.access_note || null,
       p_status: draft.status,
@@ -772,6 +776,7 @@ export function ShopSettings({
               <EditorStat icon={<Buildings size={24} />} label="อาคาร / โซนย่อย" value={editorBuilding && editorZone ? `${editorBuilding.code} · ${editorZone.name}` : '—'} />
               <EditorStat icon={<User size={24} />} label="ผู้ติดต่อ" value={draft.contact_name || '—'} />
               <EditorStat icon={<Phone size={24} />} label="เบอร์โทร" value={draft.contact_phone || '—'} />
+              <EditorStat icon={<ListBullets size={24} />} label="ลำดับส่งในโซน" value={draft.delivery_sequence?.toLocaleString('th-TH') ?? 'ยังไม่กำหนด'} />
               <EditorStat icon={<Clock size={24} />} label="รอบปกติต่อวัน" value={`${draft.normal_rounds_per_day} รอบ`} />
               <EditorStat icon={<Storefront size={24} />} label="สถานะร้าน" value={draft.status === 'active' ? 'ใช้งาน' : 'พักใช้งาน'} tone={draft.status} />
               <EditorStat icon={<FileText size={24} />} label="หมายเหตุการเข้าถึง" value={draft.access_note || '—'} />
@@ -816,6 +821,7 @@ export function ShopSettings({
                 <TextField label="ผู้ติดต่อ" value={draft.contact_name} onChange={(contact_name) => setDraft({ ...draft, contact_name })} />
                 <TextField label="เบอร์โทร" value={draft.contact_phone} onChange={(contact_phone) => setDraft({ ...draft, contact_phone })} />
                 <label>สถานะร้าน<select value={draft.status} onChange={(event) => setDraft({ ...draft, status: event.target.value as ShopDraft['status'] })}><option value="active">ใช้งาน</option><option value="inactive">พักใช้งาน</option></select></label>
+                <label>ลำดับส่งในโซน<input min={1} placeholder="ยังไม่กำหนด" step={1} type="number" value={draft.delivery_sequence ?? ''} onChange={(event) => setDraft({ ...draft, delivery_sequence: event.target.value === '' ? null : Math.max(1, Math.floor(Number(event.target.value) || 1)) })} /></label>
                 <label className="shop-editor-field--rounds">รอบปกติต่อวัน<input min={1} required type="number" value={draft.normal_rounds_per_day} onChange={(event) => setDraft({ ...draft, normal_rounds_per_day: Math.max(1, Number(event.target.value) || 1) })} /></label>
               </div>
               <label>หมายเหตุการเข้าถึง<textarea rows={3} placeholder="ระบุหมายเหตุการเข้าถึง (ถ้ามี)" value={draft.access_note} onChange={(event) => setDraft({ ...draft, access_note: event.target.value })} /></label>

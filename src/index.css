@@ -65,6 +65,14 @@
 .accounting-shop-summary { display: grid; gap: 18px; }
 .accounting-shop-table th:first-child { min-width: 220px; }
 .accounting-shop-table th:first-child small { display: block; margin-top: 4px; color: #718079; font-weight: 500; }
+.accounting-shop-table .accounting-shop-sequence--missing { color: #a5681d; }
+.accounting-shop-moved { display: block; width: fit-content; margin-top: 5px; border-radius: 999px; background: #fff1d8; color: #8c5a0c; padding: 2px 7px; font-size: .68rem; font-weight: 700; }
+.accounting-table tbody .accounting-shop-group { cursor: default; }
+.accounting-table tbody .accounting-shop-group:hover { background: transparent; }
+.accounting-shop-group th { position: sticky; z-index: 1; left: 0; padding: 0; border-bottom-color: #cadbd2; background: #e5f1eb; }
+.accounting-shop-group button { width: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 7px 12px; border: 0; background: transparent; padding: 11px 13px; color: #244b3d; text-align: left; }
+.accounting-shop-group button strong { margin-right: 6px; }
+.accounting-shop-group button > span:not(:first-child) { border-left: 1px solid #bdd0c6; padding-left: 12px; color: #526b61; font-size: .76rem; font-weight: 700; }
 .accounting-shop-detail-layer { position: fixed; z-index: 100; inset: 0; display: grid; place-items: center; padding: 24px; }
 .accounting-shop-detail-backdrop { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: #102a225c; backdrop-filter: blur(2px); }
 .accounting-shop-detail { position: relative; z-index: 1; width: min(1400px, 100%); max-height: calc(100dvh - 48px); display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 14px; overflow: hidden; border: 1px solid #d8e3dd; border-radius: 14px; background: #fff; padding: 16px; box-shadow: 0 24px 70px #102a2242; }

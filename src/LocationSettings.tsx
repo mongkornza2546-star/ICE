@@ -6,7 +6,7 @@ export function LocationSettings() {
   const [buildings, setBuildings] = useState<BuildingOption[]>([]);
   const [zones, setZones] = useState<BuildingZoneOption[]>([]);
   const [selectedBuildingId, setSelectedBuildingId] = useState('');
-  const [buildingDraft, setBuildingDraft] = useState({ id: '', code: '', name: '', is_active: true });
+  const [buildingDraft, setBuildingDraft] = useState({ id: '', code: '', name: '', sort_order: 1, is_active: true });
   const [zoneDraft, setZoneDraft] = useState({ id: '', code: '', name: '', sort_order: 1, is_active: true });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<'building' | 'zone' | null>(null);
@@ -21,7 +21,7 @@ export function LocationSettings() {
     if (!supabase) return;
     setLoading(true);
     const [buildingResponse, zoneResponse] = await Promise.all([
-      supabase.from('buildings').select('id, code, name, is_active').order('code'),
+      supabase.from('buildings').select('id, code, name, sort_order, is_active').order('sort_order').order('code'),
       supabase.from('building_zones').select('id, building_id, code, name, sort_order, is_active').order('sort_order'),
     ]);
     const firstError = buildingResponse.error ?? zoneResponse.error;
@@ -42,10 +42,11 @@ export function LocationSettings() {
     [zones, selectedBuildingId],
   );
   const nextZoneSortOrder = Math.max(0, ...buildingZones.map((zone) => zone.sort_order)) + 1;
+  const nextBuildingSortOrder = Math.max(0, ...buildings.map((building) => building.sort_order ?? 0)) + 1;
 
   const chooseBuilding = (building: BuildingOption) => {
     setSelectedBuildingId(building.id);
-    setBuildingDraft({ id: building.id, code: building.code, name: building.name, is_active: building.is_active ?? true });
+    setBuildingDraft({ id: building.id, code: building.code, name: building.name, sort_order: building.sort_order ?? 1, is_active: building.is_active ?? true });
     const nextSortOrder = Math.max(0, ...zones.filter((zone) => zone.building_id === building.id).map((zone) => zone.sort_order)) + 1;
     setZoneDraft({ id: '', code: '', name: '', sort_order: nextSortOrder, is_active: true });
     setError(null);
@@ -58,21 +59,21 @@ export function LocationSettings() {
     setSaving('building');
     setError(null);
     setSuccess(null);
-    const payload = {
-      code: buildingDraft.code.trim(),
-      name: buildingDraft.name.trim(),
-      is_active: buildingDraft.is_active,
-    };
-    const response = buildingDraft.id
-      ? await supabase.from('buildings').update(payload).eq('id', buildingDraft.id).select('id').single()
-      : await supabase.from('buildings').insert(payload).select('id').single();
+    const response = await supabase.rpc('save_building_settings', {
+      p_building_id: buildingDraft.id || null,
+      p_code: buildingDraft.code.trim(),
+      p_name: buildingDraft.name.trim(),
+      p_sort_order: buildingDraft.sort_order,
+      p_is_active: buildingDraft.is_active,
+    });
     if (response.error) {
       setError(response.error.message);
     } else {
       setSuccess(buildingDraft.id ? 'บันทึกข้อมูลตึกแล้ว' : 'เพิ่มตึกแล้ว กรุณาเพิ่มโซนย่อยต่อ');
-      setBuildingDraft((current) => ({ ...current, id: response.data.id }));
-      setSelectedBuildingId(response.data.id);
-      await loadLocations(response.data.id);
+      const buildingId = response.data as string;
+      setBuildingDraft((current) => ({ ...current, id: buildingId }));
+      setSelectedBuildingId(buildingId);
+      await loadLocations(buildingId);
     }
     setSaving(null);
   };
@@ -110,20 +111,21 @@ export function LocationSettings() {
       <section className="panel stack">
         <div className="panel-header">
           <div><p className="eyebrow">ขั้นที่ 1</p><h2>ตั้งค่าตึก</h2></div>
-          <button className="ghost-button" onClick={() => setBuildingDraft({ id: '', code: '', name: '', is_active: true })} type="button">+ ตึกใหม่</button>
+          <button className="ghost-button" onClick={() => setBuildingDraft({ id: '', code: '', name: '', sort_order: nextBuildingSortOrder, is_active: true })} type="button">+ ตึกใหม่</button>
         </div>
         <div className="settings-list">
           {buildings.map((building) => (
             <button className={`round-item ${selectedBuildingId === building.id ? 'round-item--selected' : ''}`} key={building.id} onClick={() => chooseBuilding(building)} type="button">
-              <span>{building.code} · {building.name}</span>
+              <span>{building.sort_order ?? '—'}. {building.code} · {building.name}</span>
               <small>{building.is_active ? 'ใช้งาน' : 'พักใช้งาน'} · {zones.filter((zone) => zone.building_id === building.id).length} โซนย่อย</small>
             </button>
           ))}
         </div>
         <form className="settings-form" onSubmit={saveBuilding}>
-          <div className="field-grid">
+          <div className="field-grid field-grid--three">
             <TextField label="รหัสตึก" required value={buildingDraft.code} onChange={(code) => setBuildingDraft({ ...buildingDraft, code })} />
             <TextField label="ชื่อตึก" required value={buildingDraft.name} onChange={(name) => setBuildingDraft({ ...buildingDraft, name })} />
+            <label>ลำดับ<input min={1} required step={1} type="number" value={buildingDraft.sort_order} onChange={(event) => setBuildingDraft({ ...buildingDraft, sort_order: Math.max(1, Math.floor(Number(event.target.value) || 1)) })} /></label>
           </div>
           <label className="inline-check"><input checked={buildingDraft.is_active} onChange={(event) => setBuildingDraft({ ...buildingDraft, is_active: event.target.checked })} type="checkbox" /> เปิดใช้งานตึก</label>
           <button className="primary-button" disabled={saving === 'building'} type="submit">{saving === 'building' ? 'กำลังบันทึก...' : 'บันทึกตึก'}</button>
