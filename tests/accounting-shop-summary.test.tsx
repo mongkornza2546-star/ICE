@@ -115,9 +115,9 @@ describe('accounting shop summary', () => {
     const user = userEvent.setup();
     render(<AccountingPage demoMode />);
 
-    await user.click(screen.getByRole('button', { name: 'รายการแบบ Excel' }));
+    await user.click(screen.getByRole('button', { name: 'รายละเอียดธุรกรรม' }));
 
-    expect(screen.getByRole('button', { name: 'รายการแบบ Excel' }).getAttribute('aria-current')).toBe('page');
+    expect(screen.getByRole('button', { name: 'รายละเอียดธุรกรรม' }).getAttribute('aria-current')).toBe('page');
     expect(screen.getByPlaceholderText('เลขเอกสาร / อ้างอิง')).toBeTruthy();
     expect(screen.getByRole('columnheader', { name: /ประเภท/ })).toBeTruthy();
   });
@@ -561,7 +561,7 @@ describe('accounting shop summary', () => {
 
     await waitFor(() => expect(screen.getByRole('button', { name: /รายการต้องตรวจสอบ/ }).textContent).toContain('2'));
     expect((screen.getByLabelText('จาก') as HTMLInputElement).value).toBe(initialFromDate);
-    await user.click(screen.getByRole('button', { name: 'รายการแบบ Excel' }));
+    await user.click(screen.getByRole('button', { name: 'รายละเอียดธุรกรรม' }));
     fireEvent.change(screen.getByLabelText('จาก'), { target: { value: nextFromDate } });
 
     await waitFor(() => expect(rpcMock).toHaveBeenCalledWith('get_accounting_review_queue', {
