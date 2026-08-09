@@ -18,7 +18,7 @@ import { printSalesDocument, salesDocumentFromStored, type StoredSalesDocument }
 import { publishDataChange } from '../../lib/dataChange';
 
 const PAD_VALUES = ['0', '1', '2', '3', '4', '5', '+'] as const;
-export type StockTransferMode = 'receive' | 'return';
+export type StockTransferMode = 'receive' | 'return' | 'damage';
 
 function buildImmediateSalePayloadSignature(requestScope: string, payload: {
   roundStopId: string;
@@ -272,14 +272,18 @@ export function useEmployeeDeliveryData({
     }
     pendingCardRecovery.current = {
       ...saved,
-      stockTransferMode: saved.stockTransferMode === 'return' ? 'return' : 'receive',
+      stockTransferMode: saved.stockTransferMode === 'return' || saved.stockTransferMode === 'damage'
+        ? saved.stockTransferMode
+        : 'receive',
       selectedRoundId: selectedRoundStillExists ? saved.selectedRoundId : '',
       selectedIceTypeId: selectedIceTypeStillExists ? saved.selectedIceTypeId : iceTypes[0]?.id ?? '',
     };
     setSelectedBuildingId(saved.selectedBuildingId);
     setSelectedZone(saved.selectedZone);
     setQuery(saved.query);
-    setStockTransferMode(saved.stockTransferMode === 'return' ? 'return' : 'receive');
+    setStockTransferMode(saved.stockTransferMode === 'return' || saved.stockTransferMode === 'damage'
+      ? saved.stockTransferMode
+      : 'receive');
     setSelectedIceTypeId(selectedIceTypeStillExists ? saved.selectedIceTypeId : iceTypes[0]?.id ?? '');
     if (selectedRoundStillExists) setSelectedRoundId(saved.selectedRoundId);
   }, [iceTypes, loadedReferenceServiceDate, loadingReference, recoveryMode, recoveryScope, requestScope, rounds, serviceDate]);
@@ -644,7 +648,7 @@ export function useEmployeeDeliveryData({
   const changeTransferQuantity = (iceTypeId: string, delta: number) => {
     if (transferSubmitting || selectedRound?.status === 'closed') return;
     const available = stockQuantity(
-      stockTransferMode === 'return'
+      stockTransferMode === 'return' || stockTransferMode === 'damage'
         ? stockState?.holding_location.balances
         : stockState?.truck_location.balances,
       iceTypeId,
@@ -674,7 +678,11 @@ export function useEmployeeDeliveryData({
 
   const handleStockTransfer = async () => {
     if (!selectedRound || !stockState || transferSubmitting || transferItems.length === 0) return;
-    const operation = stockTransferMode === 'return' ? 'stock-return' : 'stock-transfer';
+    const operation = stockTransferMode === 'return'
+      ? 'stock-return'
+      : stockTransferMode === 'damage'
+        ? 'stock-damage'
+        : 'stock-transfer';
     const signature = `${requestScope}:${operation}:${JSON.stringify({
       roundId: selectedRound.id,
       items: transferItems,
@@ -687,7 +695,9 @@ export function useEmployeeDeliveryData({
     try {
       const recordStockMovement = stockTransferMode === 'return'
         ? gateway.recordEmployeeStockReturn
-        : gateway.recordEmployeeStockTransfer;
+        : stockTransferMode === 'damage'
+          ? gateway.recordEmployeeStockDamage
+          : gateway.recordEmployeeStockTransfer;
       const nextState = await recordStockMovement({
         roundId: selectedRound.id,
         items: transferItems,
@@ -702,7 +712,9 @@ export function useEmployeeDeliveryData({
       setTransferQuantities(clearedTransferQuantities);
       setSuccess(stockTransferMode === 'return'
         ? `คืนน้ำแข็งขึ้น ${nextState.truck_location.name} แล้ว`
-        : `รับน้ำแข็งเข้า ${nextState.holding_location.name} แล้ว`);
+        : stockTransferMode === 'damage'
+          ? `บันทึกน้ำแข็งละลายจาก ${nextState.holding_location.name} แล้ว`
+          : `เติมน้ำแข็งเข้า ${nextState.holding_location.name} แล้ว`);
     } catch (transferError) {
       if (requestId !== transferRequestId.current || activeStockRoundId.current !== selectedRound.id) return;
       setStockError(employeeErrorMessage(transferError));

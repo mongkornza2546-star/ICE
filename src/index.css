@@ -1077,9 +1077,12 @@ input:disabled, select:disabled, textarea:disabled { background: #f2f5f8; color:
   .factory-order-total > span:first-child { grid-column: 1 / -1; }
   .factory-order-total > span:nth-child(3) { display: none; }
   .factory-order-total > b { font-size: 1.05rem; }
+  .factory-order-bottom-section { flex-direction: column; align-items: stretch; gap: 14px; }
+  .factory-order-note-field { width: 100%; }
+  .factory-order-action-container { width: 100%; align-items: stretch; gap: 8px; }
+  .factory-order-action-row { flex-wrap: wrap; justify-content: space-between; width: 100%; gap: 10px; }
+  .factory-order-action-row .primary-button { flex: 1 1 auto; justify-content: center; }
   .factory-order-feedback { justify-content: flex-start; }
-  .factory-order-action { align-items: stretch; flex-direction: column; gap: 8px; }
-  .factory-order-action .primary-button { width: 100%; }
   .factory-order-success { justify-content: flex-start; }
   .quick-order-buttons button { flex: 1 1 140px; justify-content: center; }
   .quick-order-buttons button { min-height: 44px; }
@@ -2135,7 +2138,7 @@ input:disabled, select:disabled, textarea:disabled { background: #f2f5f8; color:
 .employee-workspace--withdrawal .employee-stock-mode {
   width: fit-content;
   display: grid;
-  grid-template-columns: repeat(2, minmax(120px, 1fr));
+  grid-template-columns: repeat(3, minmax(120px, 1fr));
   gap: 4px;
   padding: 4px;
   border: 1px solid #c9dcf7;
@@ -2425,7 +2428,7 @@ input:disabled, select:disabled, textarea:disabled { background: #f2f5f8; color:
   .employee-workspace--withdrawal .employee-entry-section__heading p { font-size: .65rem; }
   .employee-workspace--withdrawal .employee-stock-mode {
     width: 100%;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
   .employee-workspace--withdrawal .employee-stock-mode button {
     min-height: 38px;

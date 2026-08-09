@@ -209,7 +209,7 @@ export function RoleRouter({
             type="button"
           >
             <Package aria-hidden="true" size={22} weight="duotone" />
-            <span>เบิก / คืน</span>
+            <span>เติม / คืน / ละลาย</span>
           </button>
           <button
             aria-current={courierView === 'pos' ? 'page' : undefined}

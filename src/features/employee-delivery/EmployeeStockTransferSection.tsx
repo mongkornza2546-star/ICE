@@ -41,7 +41,9 @@ export function EmployeeStockTransferSection({
 }) {
   const isCardLayout = variant === 'cards';
   const isReturn = stockTransferMode === 'return';
-  const movementLabel = isReturn ? 'คืนขึ้นรถ' : 'รับเพิ่ม';
+  const isDamage = stockTransferMode === 'damage';
+  const usesHoldingStock = isReturn || isDamage;
+  const movementLabel = isReturn ? 'คืนขึ้นรถ' : isDamage ? 'ละลาย' : 'เติมจากรถ';
   const [previewImage, setPreviewImage] = useState<{ name: string; url: string } | null>(null);
 
   useEffect(() => {
@@ -58,25 +60,33 @@ export function EmployeeStockTransferSection({
         <div className="employee-entry-section__heading">
           <span>1</span>
           <div>
-            <h2 id="employee-stock-step">{isReturn ? 'คืนน้ำแข็งขึ้นรถ' : 'รับน้ำแข็งเข้าจุดถือครอง'}</h2>
+            <h2 id="employee-stock-step">{isReturn ? 'คืนน้ำแข็งขึ้นรถ' : isDamage ? 'บันทึกน้ำแข็งละลาย' : 'เติมน้ำแข็งเข้าจุดถือครอง'}</h2>
             <p>{isReturn
               ? 'คืนของที่เหลือจากจุดถือครองกลับขึ้นรถ'
-              : 'รับจากรถเพิ่มได้หลายครั้ง แต่ละครั้งเป็นรายการโอนใหม่'}</p>
+              : isDamage
+                ? 'ตัดออกจากสต๊อกที่คุณถือเมื่อสินค้าเสียหายหรือละลาย'
+                : 'เติมจากรถเพิ่มได้หลายครั้ง แต่ละครั้งเป็นรายการโอนใหม่'}</p>
           </div>
         </div>
         <div aria-label="เลือกประเภทรายการสต๊อก" className="employee-stock-mode" role="group">
           <button
-            aria-pressed={!isReturn}
+            aria-pressed={stockTransferMode === 'receive'}
             disabled={transferSubmitting}
             onClick={() => changeStockTransferMode('receive')}
             type="button"
-          >เบิกจากรถ</button>
+          >เติมจากรถ</button>
           <button
             aria-pressed={isReturn}
             disabled={transferSubmitting}
             onClick={() => changeStockTransferMode('return')}
             type="button"
           >คืนขึ้นรถ</button>
+          <button
+            aria-pressed={isDamage}
+            disabled={transferSubmitting}
+            onClick={() => changeStockTransferMode('damage')}
+            type="button"
+          >ละลาย</button>
         </div>
         {stockError ? (
           <div className="employee-error employee-error--retry" role="alert">
@@ -94,20 +104,20 @@ export function EmployeeStockTransferSection({
               <div className="employee-stock-route">
                 <Truck aria-hidden="true" size={28} weight="duotone" />
                 <span>
-                  <small>{isReturn ? stockState.holding_location.name : stockState.truck_location.name}</small>
-                  <strong>{isReturn ? stockState.truck_location.name : stockState.holding_location.name}</strong>
+                  <small>{usesHoldingStock ? stockState.holding_location.name : stockState.truck_location.name}</small>
+                  <strong>{isDamage ? 'ตัดออกจากสต๊อก' : isReturn ? stockState.truck_location.name : stockState.holding_location.name}</strong>
                 </span>
                 <CaretRight aria-hidden="true" size={20} weight="bold" />
               </div>
             ) : (
               <div className="employee-stock-route">
-                <span><Truck aria-hidden="true" size={22} />{isReturn ? stockState.holding_location.name : stockState.truck_location.name}</span>
+                <span><Truck aria-hidden="true" size={22} />{usesHoldingStock ? stockState.holding_location.name : stockState.truck_location.name}</span>
                 <CaretRight aria-hidden="true" size={20} />
-                <strong>{isReturn ? stockState.truck_location.name : stockState.holding_location.name}</strong>
+                <strong>{isDamage ? 'ตัดออกจากสต๊อก' : isReturn ? stockState.truck_location.name : stockState.holding_location.name}</strong>
               </div>
             )}
             {isCardLayout ? (
-              <div className="employee-stock-table" role="list" aria-label={isReturn ? 'ยอดก่อนและหลังคืนน้ำแข็ง' : 'ยอดเบิกและยอดควรเหลือ'}>
+              <div className="employee-stock-table" role="list" aria-label={isReturn ? 'ยอดก่อนและหลังคืนน้ำแข็ง' : isDamage ? 'ยอดก่อนและหลังบันทึกน้ำแข็งละลาย' : 'ยอดเติมและยอดควรเหลือ'}>
                 {iceTypes.map((iceType) => {
                   const truckBefore = stockQuantity(stockState.truck_location.balances, iceType.id);
                   const holdingBefore = stockQuantity(stockState.holding_location.balances, iceType.id);
@@ -116,7 +126,7 @@ export function EmployeeStockTransferSection({
                   return (
                     <div className="employee-stock-row" key={iceType.id} role="listitem">
                       <strong><span>{iceType.name}</span> <small>({iceType.unit})</small></strong>
-                      <span className="employee-stock-available"><small>{isReturn ? 'เหลือก่อนคืน' : 'เหลือบนรถ'}</small>{isReturn ? holdingBefore : truckBefore} {iceType.unit}</span>
+                      <span className="employee-stock-available"><small>{usesHoldingStock ? isDamage ? 'เหลือก่อนละลาย' : 'เหลือก่อนคืน' : 'เหลือบนรถ'}</small>{usesHoldingStock ? holdingBefore : truckBefore} {iceType.unit}</span>
                       {iceType.image_url ? (
                         <button
                           aria-label={`ดูรูป ${iceType.name} ขนาดใหญ่`}
@@ -131,7 +141,7 @@ export function EmployeeStockTransferSection({
                         <QuantityStepper
                           disabled={transferSubmitting || selectedRound?.status === 'closed'}
                           iceTypeName={iceType.name}
-                          maxQuantity={isReturn ? holdingBefore : truckBefore}
+                          maxQuantity={usesHoldingStock ? holdingBefore : truckBefore}
                           onChange={(delta) => changeTransferQuantity(iceType.id, delta)}
                           quantity={transferQuantity}
                           purpose={movementLabel}
@@ -144,9 +154,14 @@ export function EmployeeStockTransferSection({
                             <span><small>รถก่อน</small><strong>{truckBefore}</strong> {iceType.unit}</span>
                             <span><small>เหลือหลังคืน</small><strong>{holdingBefore - transferQuantity}</strong> {iceType.unit}</span>
                           </>
+                        ) : isDamage ? (
+                          <>
+                            <span><small>คงเหลือก่อน</small><strong>{holdingBefore}</strong> {iceType.unit}</span>
+                            <span><small>เหลือหลังละลาย</small><strong>{holdingBefore - transferQuantity}</strong> {iceType.unit}</span>
+                          </>
                         ) : (
                           <>
-                            <span><small>เบิกวันนี้</small><strong>{withdrawnToday}</strong> {iceType.unit}</span>
+                            <span><small>เติมวันนี้</small><strong>{withdrawnToday}</strong> {iceType.unit}</span>
                             <span><small>ควรเหลือ</small><strong>{holdingBefore}</strong> {iceType.unit}</span>
                           </>
                         )}
@@ -156,9 +171,9 @@ export function EmployeeStockTransferSection({
                 })}
               </div>
             ) : (
-              <div className="employee-stock-table" role="table" aria-label={isReturn ? 'ยอดก่อนและหลังคืนน้ำแข็ง' : 'ยอดเบิกและยอดควรเหลือ'}>
+              <div className="employee-stock-table" role="table" aria-label={isReturn ? 'ยอดก่อนและหลังคืนน้ำแข็ง' : isDamage ? 'ยอดก่อนและหลังบันทึกน้ำแข็งละลาย' : 'ยอดเติมและยอดควรเหลือ'}>
                 <div className="employee-stock-row employee-stock-row--header" role="row">
-                  <span role="columnheader">ชนิด</span><span role="columnheader">{isReturn ? 'เหลือก่อนคืน' : 'เหลือบนรถ'}</span><span role="columnheader">{movementLabel}</span><span role="columnheader">{isReturn ? 'รถก่อน' : 'เบิกวันนี้'}</span><span role="columnheader">{isReturn ? 'เหลือหลังคืน' : 'ควรเหลือ'}</span>
+                  <span role="columnheader">ชนิด</span><span role="columnheader">{usesHoldingStock ? isDamage ? 'เหลือก่อนละลาย' : 'เหลือก่อนคืน' : 'เหลือบนรถ'}</span><span role="columnheader">{movementLabel}</span><span role="columnheader">{isReturn ? 'รถก่อน' : isDamage ? 'คงเหลือก่อน' : 'เติมวันนี้'}</span><span role="columnheader">{usesHoldingStock ? isDamage ? 'เหลือหลังละลาย' : 'เหลือหลังคืน' : 'ควรเหลือ'}</span>
                 </div>
                 {iceTypes.map((iceType) => {
                   const truckBefore = stockQuantity(stockState.truck_location.balances, iceType.id);
@@ -168,19 +183,19 @@ export function EmployeeStockTransferSection({
                   return (
                     <div className="employee-stock-row" key={iceType.id} role="row">
                       <strong role="cell">{iceType.name}<small>{iceType.unit}</small></strong>
-                      <span data-label={isReturn ? 'เหลือก่อนคืน' : 'เหลือบนรถ'} role="cell">{isReturn ? holdingBefore : truckBefore}</span>
+                      <span data-label={usesHoldingStock ? isDamage ? 'เหลือก่อนละลาย' : 'เหลือก่อนคืน' : 'เหลือบนรถ'} role="cell">{usesHoldingStock ? holdingBefore : truckBefore}</span>
                       <div className="employee-stock-transfer-cell" data-label={movementLabel} role="cell">
                         <QuantityStepper
                           disabled={transferSubmitting || selectedRound?.status === 'closed'}
                           iceTypeName={iceType.name}
-                          maxQuantity={isReturn ? holdingBefore : truckBefore}
+                          maxQuantity={usesHoldingStock ? holdingBefore : truckBefore}
                           onChange={(delta) => changeTransferQuantity(iceType.id, delta)}
                           quantity={transferQuantity}
                           purpose={movementLabel}
                         />
                       </div>
-                      <span data-label={isReturn ? 'รถก่อน' : 'เบิกวันนี้'} role="cell">{isReturn ? truckBefore : withdrawnToday}</span>
-                      <b data-label={isReturn ? 'เหลือหลังคืน' : 'ควรเหลือ'} role="cell">{isReturn ? holdingBefore - transferQuantity : holdingBefore}</b>
+                      <span data-label={isReturn ? 'รถก่อน' : isDamage ? 'คงเหลือก่อน' : 'เติมวันนี้'} role="cell">{isReturn ? truckBefore : isDamage ? holdingBefore : withdrawnToday}</span>
+                      <b data-label={usesHoldingStock ? isDamage ? 'เหลือหลังละลาย' : 'เหลือหลังคืน' : 'ควรเหลือ'} role="cell">{usesHoldingStock ? holdingBefore - transferQuantity : holdingBefore}</b>
                     </div>
                   );
                 })}
@@ -198,14 +213,14 @@ export function EmployeeStockTransferSection({
                   รีเซ็ตทั้งหมด
                 </button>
                 <button
-                  aria-label={isReturn ? 'ยืนยันคืนของ' : 'ยืนยันรับน้ำแข็ง'}
+                  aria-label={isReturn ? 'ยืนยันคืนของ' : isDamage ? 'ยืนยันน้ำแข็งละลาย' : 'ยืนยันเติมน้ำแข็ง'}
                   className="employee-submit employee-stock-submit"
                   disabled={transferSubmitting || transferItems.length === 0 || selectedRound?.status === 'closed'}
                   onClick={() => void handleStockTransfer()}
                   type="button"
                 >
                   <Check aria-hidden="true" size={22} weight="bold" />
-                  {selectedRound?.status === 'closed' ? 'รอบนี้ปิดแล้ว' : transferSubmitting ? 'กำลังบันทึก...' : isReturn ? 'ยืนยันคืนของ' : 'ยืนยันการเบิก'}
+                  {selectedRound?.status === 'closed' ? 'รอบนี้ปิดแล้ว' : transferSubmitting ? 'กำลังบันทึก...' : isReturn ? 'ยืนยันคืนของ' : isDamage ? 'ยืนยันน้ำแข็งละลาย' : 'ยืนยันการเติม'}
                 </button>
               </div>
             ) : (
@@ -215,7 +230,7 @@ export function EmployeeStockTransferSection({
                 onClick={() => void handleStockTransfer()}
                 type="button"
               >
-                {selectedRound?.status === 'closed' ? 'รอบนี้ปิดแล้ว' : transferSubmitting ? 'กำลังบันทึก...' : isReturn ? 'ยืนยันคืนของ' : 'ยืนยันรับน้ำแข็ง'}
+                {selectedRound?.status === 'closed' ? 'รอบนี้ปิดแล้ว' : transferSubmitting ? 'กำลังบันทึก...' : isReturn ? 'ยืนยันคืนของ' : isDamage ? 'ยืนยันน้ำแข็งละลาย' : 'ยืนยันการเติม'}
               </button>
             )}
           </>
