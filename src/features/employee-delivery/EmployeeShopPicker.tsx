@@ -1,5 +1,5 @@
-import React from 'react';
-import { MagnifyingGlass, Buildings, MapPin, Storefront, CaretRight } from '@phosphor-icons/react';
+import React, { useEffect, useState } from 'react';
+import { MagnifyingGlass, Buildings, MapPin, Storefront, CaretRight, X } from '@phosphor-icons/react';
 import type { ShopCard, EmployeeStockState } from '../../types/app';
 import { FilterChips } from './FilterChips';
 import { EmployeeState } from './EmployeeState';
@@ -39,6 +39,27 @@ export function EmployeeShopPicker({
   stockState: EmployeeStockState | null;
   shopButtonRefs: React.MutableRefObject<Map<string, HTMLButtonElement>>;
 }) {
+  const [previewImage, setPreviewImage] = useState<{ name: string; url: string; trigger: HTMLButtonElement } | null>(null);
+
+  useEffect(() => {
+    if (!previewImage) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        const trigger = previewImage.trigger;
+        setPreviewImage(null);
+        window.requestAnimationFrame(() => trigger.focus());
+      }
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [previewImage]);
+
+  const closePreview = () => {
+    const trigger = previewImage?.trigger;
+    setPreviewImage(null);
+    if (trigger) window.requestAnimationFrame(() => trigger.focus());
+  };
+
   return (
     <section className="employee-entry-section employee-task-section" aria-labelledby="employee-shop-step">
       <div className="employee-entry-section__heading">
@@ -97,38 +118,71 @@ export function EmployeeShopPicker({
           </div>
           <div className="employee-shop-grid">
             {filteredCards.map((card) => (
-              <button
+              <article
                 className="employee-shop-tile"
-                disabled={enableAssignedStockFlow && !stockState}
                 key={card.round_stop_id}
-                onClick={() => openCard(card)}
-                ref={(node) => {
-                  if (node) shopButtonRefs.current.set(card.round_stop_id, node);
-                  else shopButtonRefs.current.delete(card.round_stop_id);
-                }}
-                type="button"
               >
-                <span className="employee-shop-tile__visual">
-                  {card.image_url ? (
-                    <img alt="" aria-hidden="true" loading="lazy" src={card.image_url} />
-                  ) : (
+                {card.image_url ? (
+                  <button
+                    aria-label={`ดูรูปร้าน ${card.shop_code} ${card.shop_name}`}
+                    className="employee-shop-tile__image-button"
+                    onClick={(event) => setPreviewImage({
+                      name: `${card.shop_code} · ${card.shop_name}`,
+                      url: card.image_url!,
+                      trigger: event.currentTarget,
+                    })}
+                    type="button"
+                  >
+                    <span className="employee-shop-tile__visual">
+                      <img alt="" aria-hidden="true" loading="lazy" src={card.image_url} />
+                      <span className={`employee-status employee-status--${statusTone(card.stop_status)}`}>
+                        {STATUS_LABELS[card.stop_status]}
+                      </span>
+                    </span>
+                  </button>
+                ) : (
+                  <span className="employee-shop-tile__visual">
                     <span className="employee-shop-tile__placeholder"><Storefront aria-hidden="true" size={34} /></span>
-                  )}
-                  <span className={`employee-status employee-status--${statusTone(card.stop_status)}`}>
-                    {STATUS_LABELS[card.stop_status]}
+                    <span className={`employee-status employee-status--${statusTone(card.stop_status)}`}>
+                      {STATUS_LABELS[card.stop_status]}
+                    </span>
                   </span>
-                </span>
-                <span className="employee-shop-tile__body">
-                  <strong>{card.shop_code}</strong>
-                  <b>{card.shop_name}</b>
-                  <small>{card.building_name} · {card.floor_or_zone}</small>
-                </span>
-                <CaretRight aria-hidden="true" className="employee-shop-tile__arrow" size={20} />
-              </button>
+                )}
+                <button
+                  aria-label={`เลือกร้าน ${card.shop_code} ${card.shop_name}`}
+                  className="employee-shop-tile__select"
+                  disabled={enableAssignedStockFlow && !stockState}
+                  onClick={() => openCard(card)}
+                  ref={(node) => {
+                    if (node) shopButtonRefs.current.set(card.round_stop_id, node);
+                    else shopButtonRefs.current.delete(card.round_stop_id);
+                  }}
+                  type="button"
+                >
+                  <span className="employee-shop-tile__body">
+                    <strong>{card.shop_code}</strong>
+                    <b>{card.shop_name}</b>
+                    <small>{card.building_name} · {card.floor_or_zone}</small>
+                  </span>
+                  <CaretRight aria-hidden="true" className="employee-shop-tile__arrow" size={20} />
+                </button>
+              </article>
             ))}
           </div>
         </section>
       )}
+
+      {previewImage ? <div className="image-preview-backdrop" onMouseDown={(event) => {
+        if (event.target === event.currentTarget) closePreview();
+      }} role="presentation">
+        <section aria-labelledby="employee-shop-image-preview-title" aria-modal="true" className="image-preview-dialog" role="dialog">
+          <div className="image-preview-dialog__header">
+            <h2 id="employee-shop-image-preview-title">รูปร้าน {previewImage.name}</h2>
+            <button aria-label="ปิดรูปภาพ" autoFocus className="image-preview-dialog__close" onClick={closePreview} type="button"><X size={22} weight="bold" /></button>
+          </div>
+          <img alt={`รูปร้าน ${previewImage.name}`} className="image-preview-dialog__image" src={previewImage.url} />
+        </section>
+      </div> : null}
     </section>
   );
 }
