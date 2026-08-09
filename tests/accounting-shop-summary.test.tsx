@@ -35,7 +35,10 @@ const populatedSummary = {
     overdue_amount: 0,
     invoice_count: 2,
     due_date: bangkokDate(),
-    payment_status: 'outstanding',
+    cumulative_outstanding_amount: 750,
+    cumulative_overdue_amount: 400,
+    oldest_outstanding_due_date: bangkokDate(-3),
+    payment_status: 'overdue',
   }],
   total_count: 1,
   totals: {
@@ -44,12 +47,15 @@ const populatedSummary = {
     outstanding_amount: 350,
     overdue_amount: 0,
     outstanding_shop_count: 1,
+    cumulative_outstanding_amount: 750,
+    cumulative_overdue_amount: 400,
+    cumulative_outstanding_shop_count: 1,
     cash_received_in_period: 1_100,
   },
   facets: {
     shops: [{ value: 'shop-1', label: 'S001 · ร้านสมใจ', count: 1 }],
     buildings: [{ value: 'building-1', label: 'อาคาร A', count: 1 }],
-    zones: [{ value: 'zone-current', label: 'ชั้น 9 ปัจจุบัน', count: 1 }],
+    zones: [{ value: 'zone-current', label: 'อาคาร A / ชั้น 9 ปัจจุบัน', count: 1 }],
   },
 };
 
@@ -65,6 +71,11 @@ const purchaseHistory = [{
   allocated_amount: 300,
   outstanding_amount: 200,
   payment_status: 'partial',
+  building_id: 'building-old',
+  building_name: 'อาคารเดิม',
+  historical_zone_name: 'ชั้น 1 ตอนส่ง',
+  current_zone_id: 'zone-current',
+  current_zone_name: 'ชั้น 9 ปัจจุบัน',
   items: [{ ice_type_id: 'ice-1', name: 'น้ำแข็งหลอด', unit: 'ถุง', quantity: 10, unit_price: 50, line_total: 500 }],
   payments: [{ payment_id: 'payment-1', payment_method: 'cash', amount: 300, recorded_at: `${historyServiceDate}T18:00:00+07:00` }],
   adjustments: [],
@@ -89,11 +100,15 @@ describe('accounting shop summary', () => {
 
     const summaryTab = screen.getByRole('button', { name: 'สรุปรายร้าน' });
     expect(summaryTab.getAttribute('aria-current')).toBe('page');
-    expect(screen.getByText('ยอดขายช่วงนี้')).toBeTruthy();
-    expect(screen.getByText('รับแล้วของยอดขายช่วงนี้')).toBeTruthy();
-    expect(screen.getByText('เงินรับจริงช่วงนี้')).toBeTruthy();
+    expect(screen.getByText('ยอดขายช่วงนี้', { selector: 'article span' })).toBeTruthy();
+    expect(screen.getByText('รับแล้วของยอดขายช่วงนี้', { selector: 'article span' })).toBeTruthy();
+    expect(screen.getByText('ค้างสะสมทั้งหมด', { selector: 'article span' })).toBeTruthy();
+    expect(screen.getByText('เกินกำหนดสะสม', { selector: 'article span' })).toBeTruthy();
+    expect(screen.getByText('เงินรับจริงช่วงนี้', { selector: 'article span' })).toBeTruthy();
     expect(screen.getByRole('columnheader', { name: 'ร้าน' })).toBeTruthy();
-    expect(screen.getByRole('columnheader', { name: 'ค้าง' })).toBeTruthy();
+    expect(screen.getByRole('columnheader', { name: 'ค้างช่วงนี้' })).toBeTruthy();
+    expect(screen.getByRole('columnheader', { name: 'ค้างสะสม' })).toBeTruthy();
+    expect(screen.getByRole('columnheader', { name: 'สถานะชำระ' })).toBeTruthy();
   });
 
   it('keeps the raw ledger available as a separate view', async () => {
@@ -105,6 +120,70 @@ describe('accounting shop summary', () => {
     expect(screen.getByRole('button', { name: 'รายการแบบ Excel' }).getAttribute('aria-current')).toBe('page');
     expect(screen.getByPlaceholderText('เลขเอกสาร / อ้างอิง')).toBeTruthy();
     expect(screen.getByRole('columnheader', { name: /ประเภท/ })).toBeTruthy();
+  });
+
+  it('renders an active shop with no period sales and its cumulative old debt', async () => {
+    const oldDebtInvoice = {
+      ...purchaseHistory[0],
+      delivery_event_id: 'delivery-old-debt',
+      charge_id: 'charge-old-debt',
+      charge_number: 'INV-OLD-DEBT',
+      service_date: bangkokDate(-30),
+      recorded_at: `${bangkokDate(-30)}T09:30:00+07:00`,
+      total_amount: 200,
+      allocated_amount: 0,
+      outstanding_amount: 200,
+      payments: [],
+      payment_status: 'unpaid' as const,
+    };
+    const zeroSalesShop = {
+      ...populatedSummary.rows[0],
+      shop_id: 'shop-2',
+      shop_code: 'S002',
+      shop_name: 'ร้านไม่มีรายการวันนี้',
+      payment_term: null,
+      employee_names: null,
+      sales_amount: 0,
+      paid_amount: 0,
+      outstanding_amount: 0,
+      overdue_amount: 0,
+      invoice_count: 0,
+      due_date: null,
+      cumulative_outstanding_amount: 200,
+      cumulative_overdue_amount: 125,
+      oldest_outstanding_due_date: bangkokDate(-10),
+      payment_status: 'overdue',
+    } as const;
+    rpcMock.mockImplementation(async (name: string, args: Record<string, unknown>) => {
+      if (name === 'get_accounting_shop_summary') {
+        return { data: { ...populatedSummary, rows: [populatedSummary.rows[0], zeroSalesShop], total_count: 2 }, error: null };
+      }
+      if (name === 'get_accounting_review_queue') return { data: { rows: [], total_count: 0 }, error: null };
+      if (name === 'get_accounting_shop_invoice_detail') return { data: [oldDebtInvoice], error: null };
+      throw new Error(`Unexpected RPC: ${name}`);
+    });
+
+    const user = userEvent.setup();
+    render(<AccountingPage />);
+
+    const shopButton = await screen.findByRole('button', { name: /S002 · ร้านไม่มีรายการวันนี้/ });
+    const row = shopButton.closest('tr');
+    expect(row).toBeTruthy();
+    const cells = row!.querySelectorAll('td');
+    expect(cells[2].textContent).toMatch(/฿0\.00/);
+    expect(cells[3].textContent).toMatch(/฿0\.00/);
+    expect(cells[4].textContent).toMatch(/฿0\.00/);
+    expect(cells[5].textContent).toMatch(/฿200\.00/);
+    expect(cells[6].textContent).toMatch(/฿125\.00/);
+    expect(cells[7].textContent).toBe('0');
+    expect(within(row as HTMLTableRowElement).getByText('เกินกำหนด')).toBeTruthy();
+    expect(screen.queryByText('ไม่ซื้อ')).toBeNull();
+
+    await user.click(shopButton);
+
+    const detail = await screen.findByRole('dialog', { name: 'รายละเอียดบิลของ S002 · ร้านไม่มีรายการวันนี้' });
+    expect(within(detail).getByText('INV-OLD-DEBT')).toBeTruthy();
+    expect(within(detail).getByText('หนี้ค้างก่อนช่วง')).toBeTruthy();
   });
 
   it('opens invoice-centric detail for the selected shop and summary period', async () => {
@@ -126,7 +205,7 @@ describe('accounting shop summary', () => {
     }));
     const detail = await screen.findByRole('dialog', { name: 'รายละเอียดบิลของ S001 · ร้านสมใจ' });
     expect(detail.getAttribute('aria-modal')).toBe('true');
-    expect(within(detail).getByText(/ช่วงเดียวกับสรุป/)).toBeTruthy();
+    expect(within(detail).getByText(/ช่วงสรุปและบิลค้างนอกช่วง/)).toBeTruthy();
     expect(within(detail).getByText(/ยอดรับแล้วและยอดค้างเป็นยอดปัจจุบัน/)).toBeTruthy();
     expect(within(detail).getByText('INV2608-00001')).toBeTruthy();
     expect(within(detail).getByText(/น้ำแข็งหลอด/)).toBeTruthy();
@@ -338,31 +417,29 @@ describe('accounting shop summary', () => {
     });
   });
 
-  it('loads only invoices in the filtered shop-summary cohort', async () => {
+  it('does not apply current-profile or location filters to invoice history', async () => {
     const cohortInvoice = {
       ...purchaseHistory[0],
       charge_number: 'INV-CREDIT-BUILDING-1',
       payment_term: 'credit',
-      historical_building_id: 'building-1',
+      building_id: 'building-1',
+      building_name: 'อาคารเดิม A',
+      historical_zone_name: 'โซนเดิม 1',
     };
     const outOfCohortInvoice = {
       ...purchaseHistory[0],
       delivery_event_id: 'delivery-other-cohort',
       charge_number: 'INV-IMMEDIATE-BUILDING-2',
       payment_term: 'immediate',
-      historical_building_id: 'building-2',
+      building_id: 'building-2',
+      building_name: 'อาคารเดิม B',
+      historical_zone_name: 'โซนเดิม 2',
     };
-    rpcMock.mockImplementation(async (name: string, args: Record<string, unknown>) => {
+    rpcMock.mockImplementation(async (name: string) => {
       if (name === 'get_accounting_shop_summary') return { data: populatedSummary, error: null };
       if (name === 'get_accounting_review_queue') return { data: { rows: [], total_count: 0 }, error: null };
       if (name === 'get_accounting_shop_invoice_detail') {
-        const filters = args.p_filters as Record<string, unknown>;
-        return {
-          data: filters.building_id === 'building-1' && filters.payment_term === 'credit'
-            ? [cohortInvoice]
-            : [cohortInvoice, outOfCohortInvoice],
-          error: null,
-        };
+        return { data: [cohortInvoice, outOfCohortInvoice], error: null };
       }
       throw new Error(`Unexpected RPC: ${name}`);
     });
@@ -374,6 +451,8 @@ describe('accounting shop summary', () => {
 
     await user.selectOptions(screen.getByRole('combobox', { name: 'อาคาร' }), 'building-1');
     await screen.findByRole('button', { name: /S001 · ร้านสมใจ/ });
+    await user.selectOptions(screen.getByRole('combobox', { name: 'โซน' }), 'zone-current');
+    await screen.findByRole('button', { name: /S001 · ร้านสมใจ/ });
     await user.selectOptions(screen.getByRole('combobox', { name: 'เงื่อนไขชำระ' }), 'credit');
     await user.click(await screen.findByRole('button', { name: /S001 · ร้านสมใจ/ }));
 
@@ -381,12 +460,14 @@ describe('accounting shop summary', () => {
       p_shop_id: 'shop-1',
       p_from_date: fromDate,
       p_to_date: toDate,
-      p_filters: { building_id: 'building-1', zone_id: undefined, payment_term: 'credit' },
+      p_filters: {},
       p_limit: 100,
       p_offset: 0,
     }));
     expect(await screen.findByText('INV-CREDIT-BUILDING-1')).toBeTruthy();
-    expect(screen.queryByText('INV-IMMEDIATE-BUILDING-2')).toBeNull();
+    expect(screen.getByText('INV-IMMEDIATE-BUILDING-2')).toBeTruthy();
+    expect(screen.getByText('อาคารเดิม A / โซนเดิม 1')).toBeTruthy();
+    expect(screen.getByText('อาคารเดิม B / โซนเดิม 2')).toBeTruthy();
   });
 
   it('shows invoice adjustment amounts and corrected item quantities', async () => {
@@ -493,13 +574,13 @@ describe('accounting shop summary', () => {
     expect(screen.getByRole('button', { name: /รายการต้องตรวจสอบ/ }).textContent).toContain('5');
   });
 
-  it('shows the historical zone while keeping the current zone in the filter facet', async () => {
+  it('shows the current shop location in both the row and filter facet', async () => {
     mockSuccessfulShopSummary();
     render(<AccountingPage />);
 
     await screen.findByRole('button', { name: /S001 · ร้านสมใจ/ });
 
-    expect(screen.getByText('อาคาร A / ชั้น 1 ตอนส่ง')).toBeTruthy();
-    expect(screen.getByRole('option', { name: 'ชั้น 9 ปัจจุบัน (1)' })).toBeTruthy();
+    expect(screen.getByText('อาคาร A / ชั้น 9 ปัจจุบัน')).toBeTruthy();
+    expect(screen.getByRole('option', { name: 'อาคาร A / ชั้น 9 ปัจจุบัน (1)' })).toBeTruthy();
   });
 });

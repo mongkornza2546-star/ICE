@@ -3,10 +3,15 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { PGlite } from '@electric-sql/pglite';
 
-const migration = readFileSync(
+const accountingMigration = readFileSync(
   new URL('../supabase/migrations/0143_accounting_shop_summary.sql', import.meta.url),
   'utf8',
 );
+const activeShopsMigration = readFileSync(
+  new URL('../supabase/migrations/0144_accounting_all_active_shops.sql', import.meta.url),
+  'utf8',
+);
+const migration = `${accountingMigration}\n${activeShopsMigration}`;
 
 const USER_ID = '10000000-0000-4000-8000-000000000001';
 const SHOP_ID = '20000000-0000-4000-8000-000000000001';
@@ -38,6 +43,7 @@ async function createDatabase(t, { applyMigration = true } = {}) {
     create type public.payment_term as enum ('immediate', 'end_of_day', 'credit');
     create type public.payment_method as enum ('cash', 'bank_transfer', 'qr');
     create type public.financial_record_status as enum ('active', 'voided');
+    create type public.shop_status as enum ('active', 'inactive');
 
     create function public.is_active_user() returns boolean
     language sql stable as $$ select true $$;
@@ -62,7 +68,13 @@ async function createDatabase(t, { applyMigration = true } = {}) {
       code text not null,
       name text not null,
       building_id uuid not null references public.buildings(id),
-      zone_id uuid not null references public.building_zones(id)
+      zone_id uuid not null references public.building_zones(id),
+      status public.shop_status not null default 'active'
+    );
+    create table public.shop_payment_profiles (
+      shop_id uuid primary key references public.shops(id),
+      allowed_payment_terms public.payment_term[] not null,
+      default_payment_term public.payment_term not null
     );
     create table public.round_stops (
       id uuid primary key,
@@ -171,7 +183,9 @@ async function createDatabase(t, { applyMigration = true } = {}) {
       ('${OLD_ZONE_ID}', '${OLD_BUILDING_ID}', 'Old Zone'),
       ('${CURRENT_ZONE_ID}', '${CURRENT_BUILDING_ID}', 'Current Zone');
     insert into public.shops values
-      ('${SHOP_ID}', 'S001', 'Mixed Shop', '${OLD_BUILDING_ID}', '${OLD_ZONE_ID}');
+      ('${SHOP_ID}', 'S001', 'Mixed Shop', '${OLD_BUILDING_ID}', '${OLD_ZONE_ID}', 'active');
+    insert into public.shop_payment_profiles values
+      ('${SHOP_ID}', array['immediate', 'end_of_day', 'credit']::public.payment_term[], 'immediate');
     insert into public.round_stops values
       ('${STOP_ID}', '${SHOP_ID}', '${OLD_BUILDING_ID}', 'Old Building', 'Old Zone');
   `);
@@ -199,9 +213,108 @@ async function getInvoiceDetail(db, filters = '{}', limit = '100', offset = '0')
   return result.rows[0].detail;
 }
 
-test('payment-term filtering excludes other charge terms before shop aggregation', async (t) => {
+test('active shops without period sales remain visible while inactive shops are excluded', async (t) => {
   const db = await createDatabase(t);
   await db.exec(`
+    insert into public.shops (id, code, name, building_id, zone_id, status) values
+      ('20000000-0000-4000-8000-000000000099', 'S099', 'Inactive Shop',
+        '${OLD_BUILDING_ID}', '${OLD_ZONE_ID}', 'inactive');
+  `);
+
+  const summary = await getSummary(db);
+
+  assert.equal(summary.total_count, 1);
+  assert.equal(summary.rows[0].shop_id, SHOP_ID);
+  assert.equal(summary.rows[0].sales_amount, 0);
+  assert.equal(summary.rows[0].paid_amount, 0);
+  assert.equal(summary.rows[0].outstanding_amount, 0);
+  assert.equal(summary.rows[0].cumulative_outstanding_amount, 0);
+  assert.equal(summary.rows[0].cumulative_overdue_amount, 0);
+  assert.equal(summary.rows[0].invoice_count, 0);
+  assert.equal(summary.rows[0].payment_status, 'paid');
+  assert.equal(summary.rows[0].building_id, OLD_BUILDING_ID);
+  assert.equal(summary.rows[0].current_zone_id, OLD_ZONE_ID);
+  assert.deepEqual(summary.facets.shops.map((facet) => facet.value), [SHOP_ID]);
+});
+
+test('old debt drives cumulative balance and payment status without becoming period sales', async (t) => {
+  const db = await createDatabase(t);
+  await db.exec(`
+    insert into public.delivery_events values
+      ('${OLD_EVENT_ID}', '${STOP_ID}', '${USER_ID}', 'active', '2026-07-01T03:00:00Z');
+    insert into public.delivery_charges values
+      ('${OLD_CHARGE_ID}', '${OLD_EVENT_ID}', '${SHOP_ID}', '2026-07-01',
+        'credit', '2026-07-31', 90, 'active');
+  `);
+
+  const summary = await getSummary(db);
+  const shop = summary.rows[0];
+
+  assert.equal(shop.sales_amount, 0);
+  assert.equal(shop.outstanding_amount, 0);
+  assert.equal(shop.cumulative_outstanding_amount, 90);
+  assert.equal(shop.cumulative_overdue_amount, 90);
+  assert.equal(shop.oldest_outstanding_due_date, '2026-07-31');
+  assert.equal(shop.payment_status, 'overdue');
+  assert.equal(summary.totals.outstanding_amount, 0);
+  assert.equal(summary.totals.cumulative_outstanding_amount, 90);
+  assert.equal(summary.totals.cumulative_overdue_amount, 90);
+  assert.equal(summary.totals.cumulative_outstanding_shop_count, 1);
+
+  const detail = await getInvoiceDetail(db);
+  assert.equal(detail.length, 1);
+  assert.equal(detail[0].charge_id, OLD_CHARGE_ID);
+  assert.equal(detail[0].service_date, '2026-07-01');
+});
+
+test('current payment-term filtering keeps legacy debt from older invoice terms visible', async (t) => {
+  const db = await createDatabase(t);
+  await db.exec(`
+    update public.shop_payment_profiles
+    set allowed_payment_terms = array['immediate']::public.payment_term[],
+      default_payment_term = 'immediate'
+    where shop_id = '${SHOP_ID}';
+    insert into public.delivery_events values
+      ('${OLD_EVENT_ID}', '${STOP_ID}', '${USER_ID}', 'active', '2026-07-01T03:00:00Z');
+    insert into public.delivery_charges values
+      ('${OLD_CHARGE_ID}', '${OLD_EVENT_ID}', '${SHOP_ID}', '2026-07-01',
+        'credit', '2026-07-31', 90, 'active');
+  `);
+
+  const summary = await getSummary(db, '{"payment_term":"immediate"}');
+
+  assert.equal(summary.total_count, 1);
+  assert.equal(summary.rows[0].payment_term, 'immediate');
+  assert.equal(summary.rows[0].cumulative_outstanding_amount, 90);
+  assert.equal(summary.rows[0].cumulative_overdue_amount, 90);
+  assert.equal(summary.rows[0].payment_status, 'overdue');
+});
+
+test('cash received includes later receipts from shops that are no longer active', async (t) => {
+  const db = await createDatabase(t);
+  await db.exec(`
+    insert into public.shops (id, code, name, building_id, zone_id, status) values
+      ('20000000-0000-4000-8000-000000000099', 'S099', 'Moved-out Shop',
+        '${OLD_BUILDING_ID}', '${OLD_ZONE_ID}', 'inactive');
+    insert into public.payments values
+      ('${PAYMENT_ID}', '20000000-0000-4000-8000-000000000099', 100, 'active',
+        '2026-08-01T04:00:00Z');
+  `);
+
+  const summary = await getSummary(db);
+
+  assert.equal(summary.total_count, 1);
+  assert.equal(summary.rows[0].shop_id, SHOP_ID);
+  assert.equal(summary.totals.cash_received_in_period, 100);
+});
+
+test('payment-term filtering selects current-profile shops without trimming invoice history', async (t) => {
+  const db = await createDatabase(t);
+  await db.exec(`
+    update public.shop_payment_profiles
+    set allowed_payment_terms = array['credit']::public.payment_term[],
+      default_payment_term = 'credit'
+    where shop_id = '${SHOP_ID}';
     insert into public.delivery_events values
       ('${IMMEDIATE_EVENT_ID}', '${STOP_ID}', '${USER_ID}', 'active', '2026-08-01T02:00:00Z'),
       ('${CREDIT_EVENT_ID}', '${STOP_ID}', '${USER_ID}', 'active', '2026-08-01T03:00:00Z');
@@ -220,10 +333,10 @@ test('payment-term filtering excludes other charge terms before shop aggregation
 
   assert.equal(summary.total_count, 1);
   assert.equal(summary.rows[0].payment_term, 'credit');
-  assert.equal(summary.rows[0].sales_amount, 200);
-  assert.equal(summary.rows[0].paid_amount, 0);
+  assert.equal(summary.rows[0].sales_amount, 300);
+  assert.equal(summary.rows[0].paid_amount, 100);
   assert.equal(summary.rows[0].outstanding_amount, 200);
-  assert.equal(summary.rows[0].invoice_count, 1);
+  assert.equal(summary.rows[0].invoice_count, 2);
 });
 
 test('receipt-date cash is independent of invoice filters while later receipts still settle period sales', async (t) => {
@@ -234,7 +347,7 @@ test('receipt-date cash is independent of invoice filters while later receipts s
       ('${OLD_EVENT_ID}', '${STOP_ID}', '${USER_ID}', 'active', '2026-07-31T03:00:00Z');
     insert into public.delivery_charges values
       ('${CREDIT_CHARGE_ID}', '${CREDIT_EVENT_ID}', '${SHOP_ID}', '2026-08-01',
-        'credit', '2026-08-31', 200, 'active'),
+        'credit', current_date + 30, 200, 'active'),
       ('${OLD_CHARGE_ID}', '${OLD_EVENT_ID}', '${SHOP_ID}', '2026-07-31',
         'immediate', null, 80, 'active');
     insert into public.payments values
@@ -286,7 +399,7 @@ test('adjusted charges use one effective amount while gross receipt cash remains
   assert.equal(calls.rows[0].count, 1);
 });
 
-test('sales use historical stop buildings while zone filters intentionally use current shop location', async (t) => {
+test('shop rows, sales filters, and facets use the current shop location', async (t) => {
   const db = await createDatabase(t);
   await db.exec(`
     update public.shops
@@ -314,33 +427,33 @@ test('sales use historical stop buildings while zone filters intentionally use c
   assert.equal(allLocations.rows.length, 1);
   assert.equal(allLocations.rows[0].sales_amount, 150);
   assert.equal(allLocations.rows[0].building_id, CURRENT_BUILDING_ID);
-  assert.deepEqual(
-    allLocations.facets.buildings.map((facet) => facet.value).sort(),
-    [CURRENT_BUILDING_ID, OLD_BUILDING_ID].sort(),
-  );
+  assert.deepEqual(allLocations.facets.buildings.map((facet) => facet.value), [CURRENT_BUILDING_ID]);
 
-  assert.equal(oldBuilding.total_count, 1);
-  assert.equal(oldBuilding.rows[0].sales_amount, 100);
-  assert.equal(oldBuilding.rows[0].building_id, OLD_BUILDING_ID);
-  assert.equal(oldBuilding.rows[0].building_name, 'Old Building');
-  assert.equal(oldBuilding.rows[0].current_zone_id, CURRENT_ZONE_ID);
-  assert.equal(oldBuilding.rows[0].current_zone_name, 'Current Zone');
-  assert.equal(oldBuilding.rows[0].historical_zone_name, 'Old Zone');
-  assert.equal('zone_id' in oldBuilding.rows[0], false);
-  assert.equal('zone_name' in oldBuilding.rows[0], false);
-  assert.deepEqual(oldBuilding.facets.zones[0], {
+  assert.equal(oldBuilding.total_count, 0);
+  assert.equal(currentBuilding.total_count, 1);
+  assert.equal(currentBuilding.rows[0].sales_amount, 150);
+  assert.equal(currentBuilding.rows[0].building_name, 'Current Building');
+  assert.equal(currentBuilding.rows[0].current_zone_id, CURRENT_ZONE_ID);
+  assert.equal(currentBuilding.rows[0].current_zone_name, 'Current Zone');
+  assert.equal(currentBuilding.rows[0].historical_zone_name, 'Current Zone');
+  assert.deepEqual(allLocations.facets.zones[0], {
+    value: CURRENT_ZONE_ID,
+    label: 'Current Building / Current Zone',
+    count: 1,
+  });
+  assert.deepEqual(oldBuilding.facets.zones, []);
+  assert.deepEqual(currentBuilding.facets.zones[0], {
     value: CURRENT_ZONE_ID,
     label: 'Current Zone',
     count: 1,
   });
-  assert.equal(currentBuilding.rows[0].sales_amount, 50);
 
   assert.equal(oldCurrentZone.total_count, 0);
   assert.equal(currentZone.total_count, 1);
   assert.equal(currentZone.rows[0].sales_amount, 150);
 });
 
-test('building-filtered cash attributes an old-debt receipt through its immutable snapshot', async (t) => {
+test('building-filtered cash follows the current location of the active shop', async (t) => {
   const db = await createDatabase(t);
   await db.exec(`
     update public.shops
@@ -373,17 +486,17 @@ test('building-filtered cash attributes an old-debt receipt through its immutabl
   );
   const currentBuilding = await getSummary(db, `{"building_id":"${CURRENT_BUILDING_ID}"}`);
 
-  assert.equal(allBuildings.total_count, 0);
+  assert.equal(allBuildings.total_count, 1);
   assert.equal(allBuildings.totals.cash_received_in_period, 100);
   assert.equal(oldBuilding.total_count, 0);
-  assert.equal(oldBuilding.totals.cash_received_in_period, 100);
+  assert.equal(oldBuilding.totals.cash_received_in_period, 0);
   assert.equal(oldBuildingWithInvoiceFilters.total_count, 0);
-  assert.equal(oldBuildingWithInvoiceFilters.totals.cash_received_in_period, 100);
-  assert.equal(currentBuilding.total_count, 0);
-  assert.equal(currentBuilding.totals.cash_received_in_period, 0);
+  assert.equal(oldBuildingWithInvoiceFilters.totals.cash_received_in_period, 0);
+  assert.equal(currentBuilding.total_count, 1);
+  assert.equal(currentBuilding.totals.cash_received_in_period, 100);
 });
 
-test('one immutable receipt split across historical buildings is partitioned without duplication', async (t) => {
+test('a receipt for a moved shop is attributed once to its current building', async (t) => {
   const db = await createDatabase(t);
   await db.exec(`
     update public.shops
@@ -420,12 +533,8 @@ test('one immutable receipt split across historical buildings is partitioned wit
   const currentBuilding = await getSummary(db, `{"building_id":"${CURRENT_BUILDING_ID}"}`);
 
   assert.equal(allBuildings.totals.cash_received_in_period, 100);
-  assert.equal(oldBuilding.totals.cash_received_in_period, 30);
-  assert.equal(currentBuilding.totals.cash_received_in_period, 70);
-  assert.equal(
-    oldBuilding.totals.cash_received_in_period + currentBuilding.totals.cash_received_in_period,
-    allBuildings.totals.cash_received_in_period,
-  );
+  assert.equal(oldBuilding.totals.cash_received_in_period, 0);
+  assert.equal(currentBuilding.totals.cash_received_in_period, 100);
 });
 
 test('invoice detail server-filters the exact term, historical building, and current-zone cohort', async (t) => {
@@ -444,19 +553,17 @@ test('invoice detail server-filters the exact term, historical building, and cur
       ('${IMMEDIATE_CHARGE_ID}', '${IMMEDIATE_EVENT_ID}', '${SHOP_ID}', '2026-08-01',
         'immediate', null, 100, 'active'),
       ('${CREDIT_CHARGE_ID}', '${CREDIT_EVENT_ID}', '${SHOP_ID}', '2026-08-01',
-        'credit', '2026-08-31', 200, 'active'),
+        'credit', current_date + 30, 200, 'active'),
       ('${OLD_CHARGE_ID}', '${OLD_EVENT_ID}', '${SHOP_ID}', '2026-08-01',
-        'credit', '2026-08-31', 300, 'active');
+        'credit', current_date + 30, 300, 'active');
   `);
 
   const detail = await getInvoiceDetail(
     db,
     `{"payment_term":"credit","building_id":"${OLD_BUILDING_ID}","zone_id":"${CURRENT_ZONE_ID}","payment_status":"outstanding"}`,
   );
-  const summary = await getSummary(
-    db,
-    `{"payment_term":"credit","building_id":"${OLD_BUILDING_ID}","zone_id":"${CURRENT_ZONE_ID}","payment_status":"outstanding"}`,
-  );
+  const summary = await getSummary(db,
+    `{"payment_term":"credit","building_id":"${CURRENT_BUILDING_ID}","zone_id":"${CURRENT_ZONE_ID}"}`);
 
   assert.equal(detail.length, 1);
   assert.equal(detail[0].charge_id, CREDIT_CHARGE_ID);
@@ -469,10 +576,8 @@ test('invoice detail server-filters the exact term, historical building, and cur
   assert.equal(detail[0].historical_zone_name, 'Old Zone');
   assert.equal(detail[0].current_zone_id, CURRENT_ZONE_ID);
   assert.equal(detail[0].current_zone_name, 'Current Zone');
-  assert.equal(
-    detail.reduce((sum, invoice) => sum + invoice.total_amount, 0),
-    summary.rows[0].sales_amount,
-  );
+  assert.equal(detail.reduce((sum, invoice) => sum + invoice.total_amount, 0), 200);
+  assert.equal(summary.rows[0].sales_amount, 600);
 
   const allDetail = await getInvoiceDetail(db, '{}', 'null', 'null');
   const secondPageRow = await getInvoiceDetail(db, '{}', '1', '1');
@@ -621,15 +726,29 @@ test('explicit null pagination uses the documented default page', async (t) => {
   `);
 
   const summary = await getSummary(db, '{}', 'null', 'null');
+  const secondPage = await getSummary(db, '{}', '100', '100');
+  const searched = await getSummary(db, '{"shop_search":"P101"}');
+  const selectedShop = await getSummary(db, `{"shop_id":"${SHOP_ID}"}`);
+  const paid = await getSummary(db, '{"payment_status":"paid"}');
+  const overdue = await getSummary(db, '{"payment_status":"overdue"}');
 
-  assert.equal(summary.total_count, 101);
+  assert.equal(summary.total_count, 102);
   assert.equal(summary.rows.length, 100);
+  assert.equal(summary.totals.sales_amount, 101);
   assert.equal(summary.rows[0].shop_code, 'P001');
   assert.equal(summary.rows.at(-1).shop_code, 'P100');
   assert.deepEqual(
     summary.rows.map((row) => row.shop_code),
     summary.rows.map((row) => row.shop_code).toSorted(),
   );
+  assert.deepEqual(secondPage.rows.map((row) => row.shop_code), ['P101', 'S001']);
+  assert.equal(secondPage.total_count, 102);
+  assert.equal(secondPage.totals.sales_amount, 101);
+  assert.deepEqual(searched.rows.map((row) => row.shop_code), ['P101']);
+  assert.deepEqual(selectedShop.rows.map((row) => row.shop_code), ['S001']);
+  assert.equal(paid.total_count, 1);
+  assert.deepEqual(paid.rows.map((row) => row.shop_code), ['S001']);
+  assert.equal(overdue.total_count, 101);
   await assert.rejects(
     getSummary(db, '{}', '0', '0'),
     /invalid accounting shop summary pagination/i,
@@ -662,10 +781,11 @@ test('migration adds an active charge-adjustment lookup index', async (t) => {
 
 test('migration requests a PostgREST schema reload', async (t) => {
   const db = await createDatabase(t, { applyMigration: false });
+  await db.exec(accountingMigration);
   const payloads = [];
   const unlisten = await db.listen('pgrst', (payload) => payloads.push(payload));
 
-  await db.exec(migration);
+  await db.exec(activeShopsMigration);
   await new Promise((resolve) => setImmediate(resolve));
   await unlisten();
 

@@ -75,6 +75,7 @@
 .accounting-shop-detail > header small { display: block; margin-top: 3px; color: #7a6651; font-size: .74rem; }
 .accounting-shop-detail > header button { display: grid; place-items: center; border: 1px solid #d7e0db; border-radius: 8px; background: #fff; padding: 7px; }
 .accounting-shop-detail__state { color: #63766d; padding: 16px 4px; }
+.accounting-shop-detail__carry-forward { display: block; margin-top: 3px; color: #9a5b16; font-size: .68rem; font-weight: 700; }
 .accounting-shop-detail__payments { display: grid; gap: 3px; min-width: 190px; }
 .accounting-shop-detail__items { display: grid; gap: 5px; min-width: 190px; }
 .accounting-shop-detail__items > span { display: grid; gap: 2px; }

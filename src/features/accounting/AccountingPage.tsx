@@ -49,7 +49,12 @@ function emptyShopSummary(): AccountingShopSummaryResponse {
   return {
     rows: [],
     total_count: 0,
-    totals: { sales_amount: 0, paid_amount: 0, outstanding_amount: 0, overdue_amount: 0, outstanding_shop_count: 0, cash_received_in_period: 0 },
+    totals: {
+      sales_amount: 0, paid_amount: 0, outstanding_amount: 0, overdue_amount: 0,
+      outstanding_shop_count: 0, cumulative_outstanding_amount: 0,
+      cumulative_overdue_amount: 0, cumulative_outstanding_shop_count: 0,
+      cash_received_in_period: 0,
+    },
     facets: { shops: [], buildings: [], zones: [] },
   };
 }
@@ -284,7 +289,7 @@ export function AccountingPage({ userRole = 'round_lead', demoMode = false }: { 
           p_shop_id: shop.shop_id,
           p_from_date: fromDate,
           p_to_date: toDate,
-          p_filters: shopFilters,
+          p_filters: {},
           p_limit: PAGE_SIZE,
           p_offset: offset,
         });
@@ -394,9 +399,10 @@ function ShopSummaryPanel({ data, filters, fromDate, onOpenShop, reviewCount, se
     ['ยอดขายช่วงนี้', data.totals.sales_amount, 'money'],
     ['รับแล้วของยอดขายช่วงนี้', data.totals.paid_amount, 'money', 'นับเงินที่จัดสรรเข้าบิลซึ่งขายในช่วงวันที่เลือก'],
     ['ค้างของยอดขายช่วงนี้', data.totals.outstanding_amount, 'money'],
-    ['เกินกำหนด', data.totals.overdue_amount, 'money'],
-    ['เงินรับจริงช่วงนี้', data.totals.cash_received_in_period, 'money', 'นับตามวันที่รับเงินจริง รวมบิลเก่า และไม่เปลี่ยนตามเงื่อนไขหรือสถานะบิล; เมื่อกรองอาคารจะแบ่งตามการจัดสรรในใบเสร็จเดิม'],
-    ['ร้านที่ยังค้าง', data.totals.outstanding_shop_count, 'count'],
+    ['ค้างสะสมทั้งหมด', data.totals.cumulative_outstanding_amount, 'money'],
+    ['เกินกำหนดสะสม', data.totals.cumulative_overdue_amount, 'money'],
+    ['เงินรับจริงช่วงนี้', data.totals.cash_received_in_period, 'money', 'นับตามวันที่รับเงินจริง รวมบิลเก่า และไม่เปลี่ยนตามเงื่อนไขหรือสถานะบิล; ตัวกรองอาคารและโซนใช้ตำแหน่งปัจจุบันของร้าน'],
+    ['ร้านที่ยังค้าง', data.totals.cumulative_outstanding_shop_count, 'count'],
     ['รายการต้องตรวจสอบ', reviewCount, 'count'],
   ];
 
@@ -412,9 +418,9 @@ function ShopSummaryPanel({ data, filters, fromDate, onOpenShop, reviewCount, se
       <select aria-label="โซน" onChange={(event) => updateFilter({ zone_id: event.target.value || undefined })} title="ตัวกรองโซนใช้ตำแหน่งปัจจุบันของร้าน" value={filters.zone_id ?? ''}><option value="">ทุกโซน</option>{data.facets.zones.map((item) => <option key={item.value} value={item.value}>{item.label} ({item.count})</option>)}</select>
       <select aria-label="ร้าน" onChange={(event) => updateFilter({ shop_id: event.target.value || undefined })} value={filters.shop_id ?? ''}><option value="">ทุกร้าน</option>{data.facets.shops.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select>
       <select aria-label="เงื่อนไขชำระ" onChange={(event) => updateFilter({ payment_term: (event.target.value || undefined) as AccountingFilters['payment_term'] })} value={filters.payment_term ?? ''}><option value="">ทุกเงื่อนไขชำระ</option>{Object.entries(paymentTermLabels).filter(([value]) => value !== 'mixed').map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
-      <select aria-label="สถานะชำระ" onChange={(event) => updateFilter({ payment_status: (event.target.value || undefined) as AccountingFilters['payment_status'] })} value={filters.payment_status ?? ''}><option value="">ทุกสถานะ</option>{Object.entries(paymentStatusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
+      <select aria-label="สถานะชำระ" onChange={(event) => updateFilter({ payment_status: (event.target.value || undefined) as AccountingFilters['payment_status'] })} value={filters.payment_status ?? ''}><option value="">ทุกสถานะชำระ</option>{Object.entries(paymentStatusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
     </div>
-    <div className="accounting-table-wrap accounting-table-wrap--ledger"><table className="accounting-table accounting-shop-table"><thead><tr><th>ร้าน</th><th>อาคาร / โซน</th><th>เงื่อนไขชำระ</th><th>ยอดขาย</th><th>รับแล้ว</th><th>ค้าง</th><th>เกินกำหนด</th><th>จำนวนบิล</th><th>ครบกำหนด</th><th>สถานะ</th></tr></thead><tbody>{data.rows.length ? data.rows.map((row) => <tr className={row.payment_status === 'overdue' ? 'accounting-row--issue' : ''} key={row.shop_id} onClick={() => onOpenShop(row)}><th><button className="accounting-link" onClick={(event) => { event.stopPropagation(); onOpenShop(row); }} type="button">{row.shop_code} · {row.shop_name}</button><small>{row.employee_names ?? '—'}</small></th><td>{[row.building_name, row.historical_zone_name].filter(Boolean).join(' / ')}</td><td>{row.payment_term ? paymentTermLabels[row.payment_term] : '—'}</td><td>{money.format(row.sales_amount)}</td><td>{money.format(row.paid_amount)}</td><td>{money.format(row.outstanding_amount)}</td><td>{money.format(row.overdue_amount)}</td><td>{row.invoice_count.toLocaleString('th-TH')}</td><td>{row.due_date ? accountingDate.format(new Date(`${row.due_date}T12:00:00+07:00`)) : '—'}</td><td><span className={`accounting-payment-status accounting-payment-status--${row.payment_status}`}>{paymentStatusLabels[row.payment_status]}</span></td></tr>) : <tr><td colSpan={10}>ไม่พบยอดขายที่ตรงตัวกรองในช่วงนี้</td></tr>}</tbody></table></div>
+    <div className="accounting-table-wrap accounting-table-wrap--ledger"><table className="accounting-table accounting-shop-table"><thead><tr><th>ร้าน</th><th>อาคาร / โซนปัจจุบัน</th><th>เงื่อนไขชำระ</th><th>ยอดขายช่วงนี้</th><th>รับแล้วของยอดช่วงนี้</th><th>ค้างช่วงนี้</th><th>ค้างสะสม</th><th>เกินกำหนดสะสม</th><th>จำนวนบิล</th><th>ครบกำหนดเก่าสุด</th><th>สถานะชำระ</th></tr></thead><tbody>{data.rows.length ? data.rows.map((row) => <tr className={row.payment_status === 'overdue' ? 'accounting-row--issue' : ''} key={row.shop_id} onClick={() => onOpenShop(row)}><th><button className="accounting-link" onClick={(event) => { event.stopPropagation(); onOpenShop(row); }} type="button">{row.shop_code} · {row.shop_name}</button><small>{row.employee_names ?? '—'}</small></th><td>{[row.building_name, row.current_zone_name].filter(Boolean).join(' / ')}</td><td>{row.payment_term ? paymentTermLabels[row.payment_term] : '—'}</td><td>{money.format(row.sales_amount)}</td><td>{money.format(row.paid_amount)}</td><td>{money.format(row.outstanding_amount)}</td><td>{money.format(row.cumulative_outstanding_amount)}</td><td>{money.format(row.cumulative_overdue_amount)}</td><td>{row.invoice_count.toLocaleString('th-TH')}</td><td>{row.oldest_outstanding_due_date ? accountingDate.format(new Date(`${row.oldest_outstanding_due_date}T12:00:00+07:00`)) : '—'}</td><td><span className={`accounting-payment-status accounting-payment-status--${row.payment_status}`}>{paymentStatusLabels[row.payment_status]}</span></td></tr>) : <tr><td colSpan={11}>ไม่พบร้านที่ตรงกับตัวกรอง</td></tr>}</tbody></table></div>
   </div>;
 }
 
@@ -442,17 +448,18 @@ function ShopInvoiceDetail({ entries, error, fromDate, loading, onClose, shop, t
 
   return <section aria-label={`รายละเอียดบิลของ ${shop.shop_code} · ${shop.shop_name}`} aria-modal="true" className="accounting-shop-detail" role="dialog">
     <header>
-      <div><p className="eyebrow">รายละเอียดตามใบส่งของ / ใบแจ้งหนี้</p><h2>{shop.shop_code} · {shop.shop_name}</h2><span>ช่วงเดียวกับสรุป: {accountingDate.format(new Date(`${fromDate}T12:00:00+07:00`))} – {accountingDate.format(new Date(`${toDate}T12:00:00+07:00`))}</span><small>ยอดรับแล้วและยอดค้างเป็นยอดปัจจุบัน จึงรวมการรับชำระหลังช่วงสรุป</small></div>
+      <div><p className="eyebrow">รายละเอียดตามใบส่งของ / ใบแจ้งหนี้</p><h2>{shop.shop_code} · {shop.shop_name}</h2><span>ช่วงสรุปและบิลค้างนอกช่วง: {accountingDate.format(new Date(`${fromDate}T12:00:00+07:00`))} – {accountingDate.format(new Date(`${toDate}T12:00:00+07:00`))}</span><small>ยอดรับแล้วและยอดค้างเป็นยอดปัจจุบัน จึงรวมการรับชำระหลังช่วงสรุป</small></div>
       <button aria-label="ปิดรายละเอียดร้าน" onClick={onClose} type="button"><X size={19} /></button>
     </header>
     {loading ? <p className="accounting-shop-detail__state">กำลังโหลดรายละเอียดบิล...</p>
       : error ? <p className="credit-ar__action-error" role="alert"><WarningCircle size={18} />{error}</p>
-        : <div className="accounting-table-wrap accounting-table-wrap--ledger"><table><thead><tr><th>วันที่</th><th>เอกสาร</th><th>รายการ</th><th>รายการปรับปรุง</th><th>ยอดขาย</th><th>รับแล้ว</th><th>การรับชำระ</th><th>ค้าง</th><th>สถานะ</th></tr></thead><tbody>{entries.length ? entries.map((entry) => {
+        : <div className="accounting-table-wrap accounting-table-wrap--ledger"><table><thead><tr><th>วันที่</th><th>เอกสาร</th><th>อาคาร / โซน ณ เวลาขาย</th><th>รายการ</th><th>รายการปรับปรุง</th><th>ยอดขาย</th><th>รับแล้ว</th><th>การรับชำระ</th><th>ค้าง</th><th>สถานะ</th></tr></thead><tbody>{entries.length ? entries.map((entry) => {
           const status = entry.delivery_status === 'replaced' ? 'ถูกแทนที่แล้ว'
             : entry.delivery_status === 'cancelled' || entry.charge_status === 'voided' ? 'ยกเลิกแล้ว'
               : entry.payment_status ? invoicePaymentStatusLabels[entry.payment_status] : 'ข้อมูลเดิม';
-          return <tr key={entry.delivery_event_id}><td>{accountingDate.format(new Date(`${entry.service_date}T12:00:00+07:00`))}</td><th>{entry.charge_number ?? 'รายการเดิมก่อนใช้ระบบบิล'}</th><td><div className="accounting-shop-detail__items">{entry.items.length ? entry.items.map((item) => <span key={item.ice_type_id}><strong>{item.name} {Number(item.quantity).toLocaleString('th-TH')} {item.unit}</strong></span>) : '—'}</div></td><td><div className="accounting-shop-detail__adjustments">{entry.adjustments.length ? entry.adjustments.map((adjustment) => <span key={adjustment.id}><strong>{adjustment.reason}</strong>{adjustment.items.map((item) => <small key={item.ice_type_id}>{`${item.name} ${Number(item.original_quantity).toLocaleString('th-TH')} ${item.unit} → แก้เป็น ${Number(item.corrected_quantity).toLocaleString('th-TH')} ${item.unit} (เปลี่ยน ${Number(item.quantity_delta).toLocaleString('th-TH')})`}</small>)}<small>ยอดปรับ {money.format(Number(adjustment.amount_delta))}</small><small>ยอดหลังปรับ {adjustment.corrected_total == null ? '—' : money.format(Number(adjustment.corrected_total))}</small></span>) : '—'}</div></td><td>{entry.total_amount == null ? '—' : money.format(Number(entry.total_amount))}</td><td>{money.format(Number(entry.allocated_amount))}</td><td><div className="accounting-shop-detail__payments">{entry.payments.length ? entry.payments.map((payment) => <span key={payment.payment_id}>{paymentMethodLabels[payment.payment_method]} · {money.format(Number(payment.amount))} · {accountingDate.format(new Date(payment.recorded_at))}</span>) : '—'}</div></td><td>{money.format(Number(entry.outstanding_amount))}</td><td>{status}</td></tr>;
-        }) : <tr><td colSpan={9}>ไม่พบบิลของร้านนี้ในช่วงวันที่สรุป</td></tr>}</tbody></table></div>}
+          const outsidePeriodLabel = entry.service_date < fromDate ? 'หนี้ค้างก่อนช่วง' : entry.service_date > toDate ? 'บิลค้างหลังช่วง' : null;
+          return <tr key={entry.delivery_event_id}><td>{accountingDate.format(new Date(`${entry.service_date}T12:00:00+07:00`))}{outsidePeriodLabel ? <small className="accounting-shop-detail__carry-forward">{outsidePeriodLabel}</small> : null}</td><th>{entry.charge_number ?? 'รายการเดิมก่อนใช้ระบบบิล'}</th><td>{[entry.building_name, entry.historical_zone_name].filter(Boolean).join(' / ') || '—'}</td><td><div className="accounting-shop-detail__items">{entry.items.length ? entry.items.map((item) => <span key={item.ice_type_id}><strong>{item.name} {Number(item.quantity).toLocaleString('th-TH')} {item.unit}</strong></span>) : '—'}</div></td><td><div className="accounting-shop-detail__adjustments">{entry.adjustments.length ? entry.adjustments.map((adjustment) => <span key={adjustment.id}><strong>{adjustment.reason}</strong>{adjustment.items.map((item) => <small key={item.ice_type_id}>{`${item.name} ${Number(item.original_quantity).toLocaleString('th-TH')} ${item.unit} → แก้เป็น ${Number(item.corrected_quantity).toLocaleString('th-TH')} ${item.unit} (เปลี่ยน ${Number(item.quantity_delta).toLocaleString('th-TH')})`}</small>)}<small>ยอดปรับ {money.format(Number(adjustment.amount_delta))}</small><small>ยอดหลังปรับ {adjustment.corrected_total == null ? '—' : money.format(Number(adjustment.corrected_total))}</small></span>) : '—'}</div></td><td>{entry.total_amount == null ? '—' : money.format(Number(entry.total_amount))}</td><td>{money.format(Number(entry.allocated_amount))}</td><td><div className="accounting-shop-detail__payments">{entry.payments.length ? entry.payments.map((payment) => <span key={payment.payment_id}>{paymentMethodLabels[payment.payment_method]} · {money.format(Number(payment.amount))} · {accountingDate.format(new Date(payment.recorded_at))}</span>) : '—'}</div></td><td>{money.format(Number(entry.outstanding_amount))}</td><td>{status}</td></tr>;
+        }) : <tr><td colSpan={10}>ไม่พบบิลในช่วงสรุปและไม่มีบิลค้างนอกช่วง</td></tr>}</tbody></table></div>}
   </section>;
 }
 

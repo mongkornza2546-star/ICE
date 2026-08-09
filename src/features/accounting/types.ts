@@ -95,6 +95,9 @@ export type AccountingShopSummaryRow = {
   overdue_amount: number;
   invoice_count: number;
   due_date: string | null;
+  cumulative_outstanding_amount: number;
+  cumulative_overdue_amount: number;
+  oldest_outstanding_due_date: string | null;
   payment_status: 'paid' | 'outstanding' | 'overdue';
 };
 
@@ -107,6 +110,9 @@ export type AccountingShopSummaryResponse = {
     outstanding_amount: number;
     overdue_amount: number;
     outstanding_shop_count: number;
+    cumulative_outstanding_amount: number;
+    cumulative_overdue_amount: number;
+    cumulative_outstanding_shop_count: number;
     cash_received_in_period: number;
   };
   facets: {
@@ -130,6 +136,11 @@ export type AccountingShopInvoiceDetailEntry = {
   allocated_amount: number;
   outstanding_amount: number;
   payment_status: 'unpaid' | 'partial' | 'paid' | 'voided' | null;
+  building_id: string;
+  building_name: string;
+  historical_zone_name: string | null;
+  current_zone_id: string | null;
+  current_zone_name: string | null;
   items: Array<{
     ice_type_id: string;
     name: string;
