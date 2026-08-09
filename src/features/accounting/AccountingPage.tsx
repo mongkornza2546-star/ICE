@@ -10,6 +10,9 @@ import type {
   AccountingFilters,
   AccountingReconciliation,
   AccountingReviewResponse,
+  AccountingShopInvoiceDetailEntry,
+  AccountingShopSummaryResponse,
+  AccountingShopSummaryRow,
   AccountingSort,
   AccountingTab,
   AccountingTransaction,
@@ -21,10 +24,15 @@ const PAGE_SIZE = 100;
 const EXPORT_PAGE_SIZE = 50_000;
 const money = new Intl.NumberFormat('th-TH', { style: 'currency', currency: 'THB' });
 const number = new Intl.NumberFormat('th-TH', { maximumFractionDigits: 1 });
+const accountingDate = new Intl.DateTimeFormat('th-TH', { timeZone: 'Asia/Bangkok' });
 const typeLabels: Record<string, string> = {
   FACTORY: 'รับจากโรงงาน', WITHDRAW: 'เบิกออก', TRANSFER: 'โอน', SALE: 'ขายสด', INV: 'ใบส่งของ',
   REC: 'รับเงิน', ADJ: 'ปรับปรุง', REF: 'คืนเงิน', DAMAGE: 'เสียหาย', RETURN: 'คืนรถ/โรงงาน',
 };
+const paymentTermLabels = { immediate: 'จ่ายทันที', end_of_day: 'เก็บท้ายวัน', credit: 'เครดิต', mixed: 'หลายเงื่อนไข' } as const;
+const paymentStatusLabels = { paid: 'ชำระครบ', outstanding: 'รอชำระ', overdue: 'เกินกำหนด' } as const;
+const invoicePaymentStatusLabels = { paid: 'ชำระแล้ว', partial: 'ชำระบางส่วน', unpaid: 'ค้างชำระ', voided: 'ยกเลิกแล้ว' } as const;
+const paymentMethodLabels = { cash: 'เงินสด', bank_transfer: 'โอนธนาคาร', qr: 'QR' } as const;
 
 function shiftDate(date: string, days: number) {
   const next = new Date(`${date}T12:00:00+07:00`);
@@ -36,6 +44,19 @@ function emptyTransactions(): AccountingTransactionsResponse {
   return { rows: [], total_count: 0, facets: { ice_types: [], shops: [], employees: [], types: [] } };
 }
 
+function emptyShopSummary(): AccountingShopSummaryResponse {
+  return {
+    rows: [],
+    total_count: 0,
+    totals: { sales_amount: 0, paid_amount: 0, outstanding_amount: 0, overdue_amount: 0, outstanding_shop_count: 0, cash_received_in_period: 0 },
+    facets: { shops: [], buildings: [], zones: [] },
+  };
+}
+
+function lastPageIndex(totalCount: number) {
+  return Math.max(0, Math.ceil(totalCount / PAGE_SIZE) - 1);
+}
+
 function SortButton({ column, label, sort, onChange }: { column: string; label: string; sort: AccountingSort; onChange: (sort: AccountingSort) => void }) {
   const active = sort.key === column;
   return <button className="accounting-table__sort" onClick={() => onChange({ key: column, direction: active && sort.direction === 'asc' ? 'desc' : 'asc' })} type="button">
@@ -45,16 +66,23 @@ function SortButton({ column, label, sort, onChange }: { column: string; label: 
 
 export function AccountingPage({ userRole = 'round_lead', demoMode = false }: { userRole?: AppRole; demoMode?: boolean }) {
   const today = toBangkokDateString();
-  const [tab, setTab] = useState<AccountingTab>('reconciliation');
+  const [tab, setTab] = useState<AccountingTab>('shops');
   const [serviceDate, setServiceDate] = useState(today);
   const [fromDate, setFromDate] = useState(shiftDate(today, -6));
   const [toDate, setToDate] = useState(today);
   const [filters, setFilters] = useState<AccountingFilters>({});
+  const [shopFilters, setShopFilters] = useState<AccountingFilters>({});
   const [sort, setSort] = useState<AccountingSort>({ key: 'occurred_at', direction: 'desc' });
   const [page, setPage] = useState(0);
   const [reconciliation, setReconciliation] = useState<AccountingReconciliation | null>(null);
+  const [shopSummary, setShopSummary] = useState<AccountingShopSummaryResponse>(emptyShopSummary);
   const [transactions, setTransactions] = useState<AccountingTransactionsResponse>(emptyTransactions);
   const [reviews, setReviews] = useState<AccountingReviewResponse>({ rows: [], total_count: 0 });
+  const [reviewCount, setReviewCount] = useState<number | null>(null);
+  const [selectedShop, setSelectedShop] = useState<AccountingShopSummaryRow | null>(null);
+  const [shopHistory, setShopHistory] = useState<AccountingShopInvoiceDetailEntry[]>([]);
+  const [shopHistoryLoading, setShopHistoryLoading] = useState(false);
+  const [shopHistoryError, setShopHistoryError] = useState<string | null>(null);
   const [selected, setSelected] = useState<AccountingTransaction | null>(null);
   const [receiptSnapshot, setReceiptSnapshot] = useState<Record<string, unknown> | null>(null);
   const [correctionTargets, setCorrectionTargets] = useState<Array<{ charge_id: string; charge_number: string; delivery_event_id: string }>>([]);
@@ -64,7 +92,9 @@ export function AccountingPage({ userRole = 'round_lead', demoMode = false }: { 
   const [error, setError] = useState<string | null>(null);
   const [refreshToken, setRefreshToken] = useState(0);
   const loadRequestId = useRef(0);
+  const reviewCountRequestId = useRef(0);
   const drawerRequestId = useRef(0);
+  const shopHistoryRequestId = useRef(0);
 
   const validateRange = useCallback(() => {
     const days = Math.round((Date.parse(toDate) - Date.parse(fromDate)) / 86_400_000);
@@ -77,17 +107,42 @@ export function AccountingPage({ userRole = 'round_lead', demoMode = false }: { 
     loadRequestId.current = requestId;
     setLoading(true);
     setError(null);
-    if (tab === 'reconciliation') setReconciliation(null);
+    if (tab === 'shops') {
+      setShopSummary((current) => ({ ...emptyShopSummary(), facets: current.facets }));
+      shopHistoryRequestId.current += 1;
+      setSelectedShop(null);
+      setShopHistory([]);
+      setShopHistoryError(null);
+      setShopHistoryLoading(false);
+    } else if (tab === 'reconciliation') {
+      setReconciliation(null);
+    }
     try {
       if (demoMode) {
         if (loadRequestId.current !== requestId) return;
         setReconciliation({ service_date: serviceDate, aggregate: [], holders: [], financial: { effective_sales: 0, allocated_to_sales: 0, outstanding_collectible: 0, outstanding_credit: 0, cash_received: 0, cash_refunded: 0, net_cash: 0, pending_refunds: 0 } });
+        setShopSummary(emptyShopSummary());
         setTransactions(emptyTransactions());
         setReviews({ rows: [], total_count: 0 });
         return;
       }
       if (!supabase) throw new Error('ยังไม่ได้ตั้งค่า Supabase');
-      if (tab === 'reconciliation') {
+      if (tab === 'shops') {
+        validateRange();
+        const summaryResponse = await supabase.rpc('get_accounting_shop_summary', {
+          p_from_date: fromDate, p_to_date: toDate, p_filters: shopFilters,
+          p_limit: PAGE_SIZE, p_offset: page * PAGE_SIZE,
+        });
+        if (loadRequestId.current !== requestId) return;
+        if (summaryResponse.error) throw summaryResponse.error;
+        const summaryData = summaryResponse.data as unknown as AccountingShopSummaryResponse;
+        const lastPage = lastPageIndex(summaryData.total_count);
+        if (page > lastPage) {
+          setPage(lastPage);
+          return;
+        }
+        setShopSummary(summaryData);
+      } else if (tab === 'reconciliation') {
         const response = await supabase.rpc('get_accounting_reconciliation', { p_service_date: serviceDate });
         if (loadRequestId.current !== requestId) return;
         if (response.error) throw response.error;
@@ -101,7 +156,13 @@ export function AccountingPage({ userRole = 'round_lead', demoMode = false }: { 
           });
           if (loadRequestId.current !== requestId) return;
           if (response.error) throw response.error;
-          setTransactions(response.data as unknown as AccountingTransactionsResponse);
+          const transactionData = response.data as unknown as AccountingTransactionsResponse;
+          const lastPage = lastPageIndex(transactionData.total_count);
+          if (page > lastPage) {
+            setPage(lastPage);
+            return;
+          }
+          setTransactions(transactionData);
         } else {
           const response = await supabase.rpc('get_accounting_review_queue', {
             p_from_date: fromDate, p_to_date: toDate, p_filters: filters,
@@ -109,7 +170,14 @@ export function AccountingPage({ userRole = 'round_lead', demoMode = false }: { 
           });
           if (loadRequestId.current !== requestId) return;
           if (response.error) throw response.error;
-          setReviews(response.data as unknown as AccountingReviewResponse);
+          const reviewData = response.data as unknown as AccountingReviewResponse;
+          const lastPage = lastPageIndex(reviewData.total_count);
+          if (page > lastPage) {
+            setPage(lastPage);
+            return;
+          }
+          setReviews(reviewData);
+          setReviewCount(reviewData.total_count);
         }
       }
     } catch (loadError) {
@@ -117,9 +185,38 @@ export function AccountingPage({ userRole = 'round_lead', demoMode = false }: { 
     } finally {
       if (loadRequestId.current === requestId) setLoading(false);
     }
-  }, [demoMode, filters, fromDate, page, serviceDate, sort, tab, toDate, validateRange]);
+  }, [demoMode, filters, fromDate, page, serviceDate, shopFilters, sort, tab, toDate, validateRange]);
+
+  const loadReviewCount = useCallback(async () => {
+    const requestId = reviewCountRequestId.current + 1;
+    reviewCountRequestId.current = requestId;
+    if (demoMode) {
+      setReviewCount(0);
+      return;
+    }
+    setReviewCount(null);
+    if (!supabase) return;
+    try {
+      validateRange();
+      const response = await supabase.rpc('get_accounting_review_queue', {
+        p_from_date: fromDate, p_to_date: toDate, p_filters: {}, p_limit: 1, p_offset: 0,
+      });
+      if (reviewCountRequestId.current !== requestId || response.error) return;
+      setReviewCount((response.data as unknown as AccountingReviewResponse).total_count);
+    } catch {
+      // The review badge is supplemental; shop-summary errors are handled by load().
+    }
+  }, [demoMode, fromDate, toDate, validateRange]);
 
   useEffect(() => { void load(); }, [load, refreshToken]);
+  useEffect(() => {
+    if (tab === 'review') {
+      reviewCountRequestId.current += 1;
+      return;
+    }
+    void loadReviewCount();
+    return () => { reviewCountRequestId.current += 1; };
+  }, [loadReviewCount, refreshToken, tab]);
   useEffect(() => subscribeToDataChange(['accounting', 'payment', 'receivable', 'refund', 'stock', 'pos'], () => setRefreshToken((value) => value + 1)), []);
 
   const openRow = async (row: AccountingTransaction) => {
@@ -167,9 +264,52 @@ export function AccountingPage({ userRole = 'round_lead', demoMode = false }: { 
     }
   };
 
-  const totalCount = tab === 'transactions' ? transactions.total_count : reviews.total_count;
-  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
+  const totalCount = tab === 'shops' ? shopSummary.total_count : tab === 'transactions' ? transactions.total_count : reviews.total_count;
   const updateFilter = (change: Partial<AccountingFilters>) => { setFilters((current) => ({ ...current, ...change })); setPage(0); };
+  const updateShopFilter = (change: Partial<AccountingFilters>) => { setShopFilters((current) => ({ ...current, ...change })); setPage(0); };
+  const openShopInvoices = async (shop: AccountingShopSummaryRow) => {
+    const requestId = shopHistoryRequestId.current + 1;
+    shopHistoryRequestId.current = requestId;
+    setSelectedShop(shop);
+    setShopHistory([]);
+    setShopHistoryError(null);
+    setShopHistoryLoading(true);
+    try {
+      if (!supabase) throw new Error('ยังไม่ได้ตั้งค่า Supabase');
+      const entries: AccountingShopInvoiceDetailEntry[] = [];
+      let offset = 0;
+      while (true) {
+        const response = await supabase.rpc('get_accounting_shop_invoice_detail', {
+          p_shop_id: shop.shop_id,
+          p_from_date: fromDate,
+          p_to_date: toDate,
+          p_filters: shopFilters,
+          p_limit: PAGE_SIZE,
+          p_offset: offset,
+        });
+        if (shopHistoryRequestId.current !== requestId) return;
+        if (response.error) throw response.error;
+        const nextEntries = (response.data ?? []) as AccountingShopInvoiceDetailEntry[];
+        entries.push(...nextEntries);
+        if (nextEntries.length < PAGE_SIZE) break;
+        offset += nextEntries.length;
+      }
+      if (shopHistoryRequestId.current === requestId) {
+        setShopHistory(entries);
+      }
+    } catch (historyError) {
+      if (shopHistoryRequestId.current === requestId) setShopHistoryError(getErrorMessage(historyError));
+    } finally {
+      if (shopHistoryRequestId.current === requestId) setShopHistoryLoading(false);
+    }
+  };
+  const closeShopInvoices = () => {
+    shopHistoryRequestId.current += 1;
+    setSelectedShop(null);
+    setShopHistory([]);
+    setShopHistoryError(null);
+    setShopHistoryLoading(false);
+  };
 
   return <section className="accounting-page">
     <header className="financial-ops__header accounting-page__header">
@@ -177,9 +317,32 @@ export function AccountingPage({ userRole = 'round_lead', demoMode = false }: { 
       <button disabled={loading} onClick={() => setRefreshToken((value) => value + 1)} type="button"><ArrowClockwise size={18} />รีเฟรช</button>
     </header>
     <nav aria-label="แท็บบัญชี" className="accounting-tabs">
-      {([['reconciliation', 'สรุปเทียบยอด'], ['transactions', 'รายการแบบ Excel'], ['review', 'รายการต้องตรวจสอบ']] as const).map(([value, label]) => <button aria-current={tab === value ? 'page' : undefined} key={value} onClick={() => { setTab(value); setPage(0); }} type="button">{label}{value === 'review' && reviews.total_count ? <span>{reviews.total_count}</span> : null}</button>)}
+      {([['shops', 'สรุปรายร้าน'], ['reconciliation', 'สรุปเทียบยอด'], ['transactions', 'รายการแบบ Excel'], ['review', 'รายการต้องตรวจสอบ']] as const).map(([value, label]) => <button aria-current={tab === value ? 'page' : undefined} key={value} onClick={() => { setTab(value); setPage(0); }} type="button">{label}{value === 'review' && reviewCount ? <span>{reviewCount}</span> : null}</button>)}
     </nav>
-    {tab === 'reconciliation' ? <ReconciliationPanel data={reconciliation} serviceDate={serviceDate} setServiceDate={setServiceDate} /> : <>
+    {tab === 'shops' ? <>
+      <ShopSummaryPanel
+        data={shopSummary}
+        filters={shopFilters}
+        fromDate={fromDate}
+        onOpenShop={(shop) => void openShopInvoices(shop)}
+        reviewCount={reviewCount}
+        setFromDate={(date) => { setFromDate(date); setPage(0); }}
+        setToDate={(date) => { setToDate(date); setPage(0); }}
+        toDate={toDate}
+        today={today}
+        updateFilter={updateShopFilter}
+      />
+      <AccountingPagination page={page} pageSize={PAGE_SIZE} setPage={setPage} totalCount={totalCount} />
+      {selectedShop ? <ShopInvoiceDetail
+        entries={shopHistory}
+        error={shopHistoryError}
+        fromDate={fromDate}
+        loading={shopHistoryLoading}
+        onClose={closeShopInvoices}
+        shop={selectedShop}
+        toDate={toDate}
+      /> : null}
+    </> : tab === 'reconciliation' ? <ReconciliationPanel data={reconciliation} serviceDate={serviceDate} setServiceDate={setServiceDate} /> : <>
       <div className="accounting-filters">
         <label>จาก<input max={toDate} onChange={(event) => { setFromDate(event.target.value); setPage(0); }} type="date" value={fromDate} /></label>
         <label>ถึง<input max={today} min={fromDate} onChange={(event) => { setToDate(event.target.value); setPage(0); }} type="date" value={toDate} /></label>
@@ -194,7 +357,7 @@ export function AccountingPage({ userRole = 'round_lead', demoMode = false }: { 
         {tab === 'transactions' ? <button disabled={exporting || loading} onClick={() => void exportRows()} type="button"><DownloadSimple size={18} />{exporting ? 'กำลังส่งออก...' : 'ส่งออก .xlsx'}</button> : null}
       </div>
       {tab === 'transactions' ? <TransactionsTable onOpen={(row) => void openRow(row)} rows={transactions.rows} setSort={setSort} sort={sort} /> : <ReviewQueue rows={reviews.rows} />}
-      <div className="accounting-pagination"><span>ทั้งหมด {totalCount.toLocaleString('th-TH')} รายการ</span><button disabled={page === 0} onClick={() => setPage((value) => value - 1)} type="button">ก่อนหน้า</button><strong>{page + 1} / {totalPages}</strong><button disabled={page + 1 >= totalPages} onClick={() => setPage((value) => value + 1)} type="button">ถัดไป</button></div>
+      <AccountingPagination page={page} pageSize={PAGE_SIZE} setPage={setPage} totalCount={totalCount} />
     </>}
     {loading ? <p className="accounting-page__loading">กำลังโหลดข้อมูล...</p> : null}
     {error ? <p className="credit-ar__action-error" role="alert"><WarningCircle size={18} />{error}</p> : null}
@@ -206,6 +369,76 @@ export function AccountingPage({ userRole = 'round_lead', demoMode = false }: { 
     }} onCorrect={setCorrectionEventId} receiptSnapshot={receiptSnapshot} row={selected} /> : null}
     {correctionEventId ? <DeliveryCorrectionDialog eventId={correctionEventId} onClose={() => setCorrectionEventId(null)} onSuccess={() => undefined} userRole={userRole} /> : null}
   </section>;
+}
+
+function ShopSummaryPanel({ data, filters, fromDate, onOpenShop, reviewCount, setFromDate, setToDate, toDate, today, updateFilter }: {
+  data: AccountingShopSummaryResponse;
+  filters: AccountingFilters;
+  fromDate: string;
+  onOpenShop: (shop: AccountingShopSummaryRow) => void;
+  reviewCount: number | null;
+  setFromDate: (date: string) => void;
+  setToDate: (date: string) => void;
+  toDate: string;
+  today: string;
+  updateFilter: (change: Partial<AccountingFilters>) => void;
+}) {
+  const cards: Array<[string, number | null, 'money' | 'count', string?]> = [
+    ['ยอดขายช่วงนี้', data.totals.sales_amount, 'money'],
+    ['รับแล้วของยอดขายช่วงนี้', data.totals.paid_amount, 'money', 'นับเงินที่จัดสรรเข้าบิลซึ่งขายในช่วงวันที่เลือก'],
+    ['ค้างของยอดขายช่วงนี้', data.totals.outstanding_amount, 'money'],
+    ['เกินกำหนด', data.totals.overdue_amount, 'money'],
+    ['เงินรับจริงช่วงนี้', data.totals.cash_received_in_period, 'money', 'นับตามวันที่รับเงินจริง รวมบิลเก่า และไม่เปลี่ยนตามเงื่อนไขหรือสถานะบิล; เมื่อกรองอาคารจะแบ่งตามการจัดสรรในใบเสร็จเดิม'],
+    ['ร้านที่ยังค้าง', data.totals.outstanding_shop_count, 'count'],
+    ['รายการต้องตรวจสอบ', reviewCount, 'count'],
+  ];
+
+  return <div className="accounting-shop-summary">
+    <div className="accounting-financial-cards">
+      {cards.map(([label, value, format, title]) => <article key={label} title={title}><span>{label}</span><strong>{value == null ? '—' : format === 'money' ? money.format(value) : value.toLocaleString('th-TH')}</strong></article>)}
+    </div>
+    <div className="accounting-filters">
+      <label>จาก<input max={toDate} onChange={(event) => setFromDate(event.target.value)} type="date" value={fromDate} /></label>
+      <label>ถึง<input max={today} min={fromDate} onChange={(event) => setToDate(event.target.value)} type="date" value={toDate} /></label>
+      <label className="accounting-filters__search"><MagnifyingGlass size={17} /><span className="sr-only">ค้นหาร้าน</span><input onChange={(event) => updateFilter({ shop_search: event.target.value })} placeholder="ชื่อหรือรหัสร้าน" value={filters.shop_search ?? ''} /></label>
+      <select aria-label="อาคาร" onChange={(event) => updateFilter({ building_id: event.target.value || undefined, zone_id: undefined })} value={filters.building_id ?? ''}><option value="">ทุกอาคาร</option>{data.facets.buildings.map((item) => <option key={item.value} value={item.value}>{item.label} ({item.count})</option>)}</select>
+      <select aria-label="โซน" onChange={(event) => updateFilter({ zone_id: event.target.value || undefined })} title="ตัวกรองโซนใช้ตำแหน่งปัจจุบันของร้าน" value={filters.zone_id ?? ''}><option value="">ทุกโซน</option>{data.facets.zones.map((item) => <option key={item.value} value={item.value}>{item.label} ({item.count})</option>)}</select>
+      <select aria-label="ร้าน" onChange={(event) => updateFilter({ shop_id: event.target.value || undefined })} value={filters.shop_id ?? ''}><option value="">ทุกร้าน</option>{data.facets.shops.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select>
+      <select aria-label="เงื่อนไขชำระ" onChange={(event) => updateFilter({ payment_term: (event.target.value || undefined) as AccountingFilters['payment_term'] })} value={filters.payment_term ?? ''}><option value="">ทุกเงื่อนไขชำระ</option>{Object.entries(paymentTermLabels).filter(([value]) => value !== 'mixed').map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
+      <select aria-label="สถานะชำระ" onChange={(event) => updateFilter({ payment_status: (event.target.value || undefined) as AccountingFilters['payment_status'] })} value={filters.payment_status ?? ''}><option value="">ทุกสถานะ</option>{Object.entries(paymentStatusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
+    </div>
+    <div className="accounting-table-wrap accounting-table-wrap--ledger"><table className="accounting-table accounting-shop-table"><thead><tr><th>ร้าน</th><th>อาคาร / โซน</th><th>เงื่อนไขชำระ</th><th>ยอดขาย</th><th>รับแล้ว</th><th>ค้าง</th><th>เกินกำหนด</th><th>จำนวนบิล</th><th>ครบกำหนด</th><th>สถานะ</th></tr></thead><tbody>{data.rows.length ? data.rows.map((row) => <tr className={row.payment_status === 'overdue' ? 'accounting-row--issue' : ''} key={row.shop_id} onClick={() => onOpenShop(row)}><th><button className="accounting-link" onClick={(event) => { event.stopPropagation(); onOpenShop(row); }} type="button">{row.shop_code} · {row.shop_name}</button><small>{row.employee_names ?? '—'}</small></th><td>{[row.building_name, row.historical_zone_name].filter(Boolean).join(' / ')}</td><td>{row.payment_term ? paymentTermLabels[row.payment_term] : '—'}</td><td>{money.format(row.sales_amount)}</td><td>{money.format(row.paid_amount)}</td><td>{money.format(row.outstanding_amount)}</td><td>{money.format(row.overdue_amount)}</td><td>{row.invoice_count.toLocaleString('th-TH')}</td><td>{row.due_date ? accountingDate.format(new Date(`${row.due_date}T12:00:00+07:00`)) : '—'}</td><td><span className={`accounting-payment-status accounting-payment-status--${row.payment_status}`}>{paymentStatusLabels[row.payment_status]}</span></td></tr>) : <tr><td colSpan={10}>ไม่พบยอดขายที่ตรงตัวกรองในช่วงนี้</td></tr>}</tbody></table></div>
+  </div>;
+}
+
+function ShopInvoiceDetail({ entries, error, fromDate, loading, onClose, shop, toDate }: {
+  entries: AccountingShopInvoiceDetailEntry[];
+  error: string | null;
+  fromDate: string;
+  loading: boolean;
+  onClose: () => void;
+  shop: AccountingShopSummaryRow;
+  toDate: string;
+}) {
+  return <section aria-label={`รายละเอียดบิลของ ${shop.shop_code} · ${shop.shop_name}`} className="accounting-shop-detail">
+    <header>
+      <div><p className="eyebrow">รายละเอียดตามใบส่งของ / ใบแจ้งหนี้</p><h2>{shop.shop_code} · {shop.shop_name}</h2><span>ช่วงเดียวกับสรุป: {accountingDate.format(new Date(`${fromDate}T12:00:00+07:00`))} – {accountingDate.format(new Date(`${toDate}T12:00:00+07:00`))}</span><small>ยอดรับแล้วและยอดค้างเป็นยอดปัจจุบัน จึงรวมการรับชำระหลังช่วงสรุป</small></div>
+      <button aria-label="ปิดรายละเอียดร้าน" onClick={onClose} type="button"><X size={19} /></button>
+    </header>
+    {loading ? <p className="accounting-shop-detail__state">กำลังโหลดรายละเอียดบิล...</p>
+      : error ? <p className="credit-ar__action-error" role="alert"><WarningCircle size={18} />{error}</p>
+        : <div className="accounting-table-wrap accounting-table-wrap--ledger"><table><thead><tr><th>วันที่</th><th>เอกสาร</th><th>รายการ</th><th>รายการปรับปรุง</th><th>ยอดขาย</th><th>รับแล้ว</th><th>การรับชำระ</th><th>ค้าง</th><th>สถานะ</th></tr></thead><tbody>{entries.length ? entries.map((entry) => {
+          const status = entry.delivery_status === 'replaced' ? 'ถูกแทนที่แล้ว'
+            : entry.delivery_status === 'cancelled' || entry.charge_status === 'voided' ? 'ยกเลิกแล้ว'
+              : entry.payment_status ? invoicePaymentStatusLabels[entry.payment_status] : 'ข้อมูลเดิม';
+          return <tr key={entry.delivery_event_id}><td>{accountingDate.format(new Date(`${entry.service_date}T12:00:00+07:00`))}</td><th>{entry.charge_number ?? 'รายการเดิมก่อนใช้ระบบบิล'}</th><td><div className="accounting-shop-detail__items">{entry.items.length ? entry.items.map((item) => <span key={item.ice_type_id}><strong>{item.name} {Number(item.quantity).toLocaleString('th-TH')} {item.unit}</strong></span>) : '—'}</div></td><td><div className="accounting-shop-detail__adjustments">{entry.adjustments.length ? entry.adjustments.map((adjustment) => <span key={adjustment.id}><strong>{adjustment.reason}</strong>{adjustment.items.map((item) => <small key={item.ice_type_id}>{`${item.name} ${Number(item.original_quantity).toLocaleString('th-TH')} ${item.unit} → แก้เป็น ${Number(item.corrected_quantity).toLocaleString('th-TH')} ${item.unit} (เปลี่ยน ${Number(item.quantity_delta).toLocaleString('th-TH')})`}</small>)}<small>ยอดปรับ {money.format(Number(adjustment.amount_delta))}</small><small>ยอดหลังปรับ {adjustment.corrected_total == null ? '—' : money.format(Number(adjustment.corrected_total))}</small></span>) : '—'}</div></td><td>{entry.total_amount == null ? '—' : money.format(Number(entry.total_amount))}</td><td>{money.format(Number(entry.allocated_amount))}</td><td><div className="accounting-shop-detail__payments">{entry.payments.length ? entry.payments.map((payment) => <span key={payment.payment_id}>{paymentMethodLabels[payment.payment_method]} · {money.format(Number(payment.amount))} · {accountingDate.format(new Date(payment.recorded_at))}</span>) : '—'}</div></td><td>{money.format(Number(entry.outstanding_amount))}</td><td>{status}</td></tr>;
+        }) : <tr><td colSpan={9}>ไม่พบบิลของร้านนี้ในช่วงวันที่สรุป</td></tr>}</tbody></table></div>}
+  </section>;
+}
+
+function AccountingPagination({ page, pageSize, setPage, totalCount }: { page: number; pageSize: number; setPage: (update: (value: number) => number) => void; totalCount: number }) {
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+  return <div className="accounting-pagination"><span>ทั้งหมด {totalCount.toLocaleString('th-TH')} รายการ</span><button disabled={page === 0} onClick={() => setPage((value) => value - 1)} type="button">ก่อนหน้า</button><strong>{page + 1} / {totalPages}</strong><button disabled={page + 1 >= totalPages} onClick={() => setPage((value) => value + 1)} type="button">ถัดไป</button></div>;
 }
 
 function ReconciliationPanel({ data, serviceDate, setServiceDate }: { data: AccountingReconciliation | null; serviceDate: string; setServiceDate: (date: string) => void }) {

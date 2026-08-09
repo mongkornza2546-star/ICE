@@ -62,6 +62,27 @@
 .accounting-pagination button:disabled { opacity: .45; }
 .accounting-page__loading { position: fixed; right: 28px; bottom: 24px; z-index: 8; border-radius: 999px; background: #183f33; color: white; padding: 10px 15px; box-shadow: 0 8px 24px #143c3026; }
 .accounting-reconciliation { display: grid; gap: 18px; }
+.accounting-shop-summary { display: grid; gap: 18px; }
+.accounting-shop-table th:first-child { min-width: 220px; }
+.accounting-shop-table th:first-child small { display: block; margin-top: 4px; color: #718079; font-weight: 500; }
+.accounting-shop-detail { display: grid; gap: 14px; border: 1px solid #d8e3dd; border-radius: 14px; background: #fff; padding: 16px; }
+.accounting-shop-detail > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.accounting-shop-detail > header h2 { margin: 3px 0; }
+.accounting-shop-detail > header span { color: #63766d; font-size: .8rem; }
+.accounting-shop-detail > header small { display: block; margin-top: 3px; color: #7a6651; font-size: .74rem; }
+.accounting-shop-detail > header button { display: grid; place-items: center; border: 1px solid #d7e0db; border-radius: 8px; background: #fff; padding: 7px; }
+.accounting-shop-detail__state { color: #63766d; padding: 16px 4px; }
+.accounting-shop-detail__payments { display: grid; gap: 3px; min-width: 190px; }
+.accounting-shop-detail__items { display: grid; gap: 5px; min-width: 190px; }
+.accounting-shop-detail__items > span { display: grid; gap: 2px; }
+.accounting-shop-detail__items small { color: #9a5b16; }
+.accounting-shop-detail__adjustments { display: grid; gap: 6px; min-width: 180px; }
+.accounting-shop-detail__adjustments > span { display: grid; gap: 2px; border-left: 3px solid #d98b2b; padding-left: 8px; }
+.accounting-shop-detail__adjustments small { color: #6f776f; }
+.accounting-payment-status { display: inline-flex; border-radius: 999px; padding: 4px 9px; background: #e9efec; color: #486057; font-size: .75rem; font-weight: 800; }
+.accounting-payment-status--paid { background: #e2f3eb; color: #146549; }
+.accounting-payment-status--outstanding { background: #fff1d8; color: #8c5a0c; }
+.accounting-payment-status--overdue { background: #fae8e5; color: #91372f; }
 .accounting-reconciliation__date { justify-self: start; display: grid; gap: 5px; color: #53665e; font-weight: 700; }
 .accounting-reconciliation__date input { min-height: 40px; border: 1px solid #cbd8d1; border-radius: 9px; padding: 7px 10px; }
 .accounting-financial-cards { display: grid; grid-template-columns: repeat(4, minmax(150px, 1fr)); gap: 10px; }

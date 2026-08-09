@@ -1,4 +1,4 @@
-export type AccountingTab = 'reconciliation' | 'transactions' | 'review';
+export type AccountingTab = 'shops' | 'reconciliation' | 'transactions' | 'review';
 
 export type AccountingTransactionType =
   | 'FACTORY'
@@ -14,9 +14,14 @@ export type AccountingTransactionType =
 
 export type AccountingFilters = {
   document?: string;
+  shop_search?: string;
   ice_type_id?: string;
   shop_id?: string;
+  building_id?: string;
+  zone_id?: string;
   employee_id?: string;
+  payment_term?: 'immediate' | 'end_of_day' | 'credit';
+  payment_status?: 'paid' | 'outstanding' | 'overdue';
   types?: AccountingTransactionType[];
   issues_only?: boolean;
 };
@@ -71,6 +76,92 @@ export type AccountingTransactionsResponse = {
     employees: AccountingFacet[];
     types: AccountingFacet[];
   };
+};
+
+export type AccountingShopSummaryRow = {
+  shop_id: string;
+  shop_code: string;
+  shop_name: string;
+  building_id: string;
+  building_name: string;
+  current_zone_id: string | null;
+  current_zone_name: string | null;
+  historical_zone_name: string | null;
+  payment_term: 'immediate' | 'end_of_day' | 'credit' | 'mixed' | null;
+  employee_names: string | null;
+  sales_amount: number;
+  paid_amount: number;
+  outstanding_amount: number;
+  overdue_amount: number;
+  invoice_count: number;
+  due_date: string | null;
+  payment_status: 'paid' | 'outstanding' | 'overdue';
+};
+
+export type AccountingShopSummaryResponse = {
+  rows: AccountingShopSummaryRow[];
+  total_count: number;
+  totals: {
+    sales_amount: number;
+    paid_amount: number;
+    outstanding_amount: number;
+    overdue_amount: number;
+    outstanding_shop_count: number;
+    cash_received_in_period: number;
+  };
+  facets: {
+    shops: AccountingFacet[];
+    buildings: AccountingFacet[];
+    zones: AccountingFacet[];
+  };
+};
+
+export type AccountingShopInvoiceDetailEntry = {
+  delivery_event_id: string;
+  delivery_status?: 'active' | 'replaced' | 'cancelled';
+  charge_id: string | null;
+  charge_number: string | null;
+  charge_status?: 'active' | 'voided' | null;
+  service_date: string;
+  recorded_at: string;
+  recorded_by_name: string;
+  total_amount: number | null;
+  payment_term: 'immediate' | 'end_of_day' | 'credit' | null;
+  allocated_amount: number;
+  outstanding_amount: number;
+  payment_status: 'unpaid' | 'partial' | 'paid' | 'voided' | null;
+  items: Array<{
+    ice_type_id: string;
+    name: string;
+    unit: string;
+    quantity: number;
+    unit_price: number | null;
+    line_total: number | null;
+  }>;
+  payments: Array<{
+    payment_id: string;
+    payment_method: 'cash' | 'bank_transfer' | 'qr';
+    amount: number;
+    recorded_at: string;
+  }>;
+  adjustments: Array<{
+    id: string;
+    scope: string;
+    amount_delta: number;
+    corrected_total: number | null;
+    reason: string;
+    created_at: string;
+    items: Array<{
+      ice_type_id: string;
+      name: string;
+      unit: string;
+      original_quantity: number;
+      corrected_quantity: number;
+      quantity_delta: number;
+      unit_price: number;
+      corrected_line_total: number;
+    }>;
+  }>;
 };
 
 export type ReconciliationLine = {
