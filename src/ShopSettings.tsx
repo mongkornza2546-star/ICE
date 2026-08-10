@@ -86,7 +86,7 @@ export function ShopSettings({
   const [query, setQuery] = useState('');
   const [buildingFilter, setBuildingFilter] = useState('');
   const [zoneFilter, setZoneFilter] = useState('');
-  const [shopFilter] = useState<ActiveFilter>('all');
+  const [shopFilter, setShopFilter] = useState<ActiveFilter>('all');
   const [page, setPage] = useState(0);
   const PAGE_SIZE = 12;
   const [editorOpen, setEditorOpen] = useState(false);
@@ -613,6 +613,7 @@ export function ShopSettings({
 
   if (loading) return <p className="empty-text">กำลังโหลดข้อมูลร้าน...</p>;
 
+  const totalShopCount = shops.length;
   const activeShopCount = readinessReport?.total_active_shops ?? shops.filter((shop) => shop.status === 'active').length;
   const readyShopCount = readinessReport?.shops_ready_count ?? 0;
   const missingProfileCount = readinessReport?.shops_missing_payment_profile ?? 0;
@@ -639,7 +640,7 @@ export function ShopSettings({
       </header>
 
       <section aria-label="สรุปสถานะร้าน" className="shop-summary-grid">
-        <article className="shop-summary-card shop-summary-card--blue"><span className="shop-summary-card__icon"><Storefront size={35} weight="duotone" /></span><div><p>ร้านค้าทั้งหมด</p><strong>{activeShopCount}</strong><small>ร้าน</small><a href="#shop-directory">ดูรายละเอียดทั้งหมด <CaretRight size={14} /></a></div></article>
+        <article className="shop-summary-card shop-summary-card--blue"><span className="shop-summary-card__icon"><Storefront size={35} weight="duotone" /></span><div><p>ร้านค้าทั้งหมด</p><strong>{totalShopCount}</strong><small>ร้าน</small><a href="#shop-directory">ดูรายละเอียดทั้งหมด <CaretRight size={14} /></a></div></article>
         <article className="shop-summary-card shop-summary-card--green"><span className="shop-summary-card__icon"><CheckCircle size={35} weight="duotone" /></span><div><p>พร้อมใช้งาน POS</p><strong>{readinessMetric(readyShopCount)}</strong><small>ร้าน {readinessAvailable && activeShopCount ? `(${Math.round((readyShopCount / activeShopCount) * 100)}%)` : ''}</small><em>พร้อมรับออเดอร์</em></div></article>
         <article className="shop-summary-card shop-summary-card--orange"><span className="shop-summary-card__icon"><CreditCard size={35} weight="duotone" /></span><div><p>ยังไม่มี Payment Profile</p><strong>{readinessMetric(missingProfileCount)}</strong><small>ร้าน {readinessAvailable && activeShopCount ? `(${Math.round((missingProfileCount / activeShopCount) * 100)}%)` : ''}</small><em>ตั้งค่าให้เสร็จเพื่อขายได้</em></div></article>
         <article className="shop-summary-card shop-summary-card--red"><span className="shop-summary-card__icon"><Warning size={35} weight="duotone" /></span><div><p>ยังไม่มีราคากลางน้ำแข็ง</p><strong>{readinessMetric(missingPriceCount)}</strong><small>ร้าน</small><em>ตั้งราคากลางก่อนขาย</em></div></article>
@@ -664,6 +665,7 @@ export function ShopSettings({
           <div className="shop-catalog__filters">
             <select aria-label="กรองตึก" className="shop-filter-button" onChange={(e) => { setBuildingFilter(e.target.value); setZoneFilter(''); }} value={buildingFilter}><option value="">อาคาร: ทั้งหมด</option>{buildings.map((b) => <option key={b.id} value={b.id}>{b.code} · {b.name}</option>)}</select>
             <select aria-label="กรองโซนย่อย" className="shop-filter-button" disabled={!buildingFilter} onChange={(e) => setZoneFilter(e.target.value)} value={zoneFilter}><option value="">โซน: ทั้งหมด</option>{zones.filter((z) => z.building_id === buildingFilter).map((z) => <option key={z.id} value={z.id}>{z.code} · {z.name}</option>)}</select>
+            <select aria-label="กรองสถานะร้าน" className="shop-filter-button" onChange={(e) => setShopFilter(e.target.value as ActiveFilter)} value={shopFilter}><option value="all">สถานะร้าน: ทั้งหมด</option><option value="active">เฉพาะร้านที่ใช้งาน</option><option value="inactive">เฉพาะร้านที่ปิด / พักใช้งาน</option></select>
             <select aria-label="กรองประเภทรายรับ" className="shop-filter-button" disabled={!readinessAvailable} onChange={(e) => setPaymentFilter(e.target.value as 'all' | 'missing')} value={paymentFilter}><option value="all">ประเภทรายรับ: ทั้งหมด</option><option value="missing">ยังไม่มี Payment Profile</option></select>
             <select aria-label="กรองความพร้อม POS" className="shop-filter-button" disabled={!readinessAvailable} onChange={(e) => setPosFilter(e.target.value as 'all' | 'ready' | 'issues')} value={posFilter}><option value="all">สถานะความพร้อม POS: ทั้งหมด</option><option value="ready">พร้อม POS</option><option value="issues">ต้องตั้งค่าเพิ่ม</option></select>
           </div>
