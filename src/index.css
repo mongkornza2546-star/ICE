@@ -531,7 +531,7 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .manager-dashboard__lower { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 14px; align-items: start; }.manager-dashboard__work { min-width: 0; }
 .manager-todo-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 11px; }.manager-todo { min-height: 176px; padding: 10px; border: 1px solid #d2dde8; border-radius: 10px; }.manager-todo > .manager-icon { margin-bottom: 8px; }.manager-todo ul, .manager-aside-card ul { margin: 8px 0 0; padding-left: 17px; color: #405167; font-size: .67rem; line-height: 1.55; }.manager-dashboard__aside { display: grid; gap: 12px; }.manager-aside-card { padding: 13px; border-radius: 11px; }.manager-aside-card--muted { background: #f3f5f7; }.manager-aside-card h2 { font-size: .95rem; }.manager-formula { margin: 7px 0 0; padding: 7px 9px; border-radius: 8px; font-size: .67rem; line-height: 1.45; }.manager-formula--blue { border: 1px solid #b9d6ff; background: #edf5ff; }.manager-formula--green { border: 1px solid #bce7ce; background: #effbf4; }.manager-formula--orange { border: 1px solid #f9d4af; background: #fff5e9; }.manager-formula b { color: #0750a5; }.manager-location-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 5px; margin-top: 9px; }.manager-location-grid span { padding: 4px 7px; border: 1px solid #cfd9e7; border-radius: 6px; color: #155194; background: #fff; font-size: .66rem; text-align: center; }.manager-location-grid span:last-child { grid-column: 1 / -1; }
 
-.reference-settings-page { display: grid; gap: 0; max-width: 1480px; margin: 0 auto; }
+.reference-settings-page { display: grid; gap: 0; min-width: 0; max-width: 1480px; margin: 0 auto; }
 .reference-stats-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 340px)); gap: 14px; }
 .reference-stat-card { min-height: 102px; display: flex; align-items: center; gap: 18px; padding: 22px 24px; border: 1px solid #dbe5f0; border-radius: 16px; background: #fff; box-shadow: 0 10px 30px rgba(25, 59, 107, .07); }
 .reference-stat-card__icon { display: grid; place-items: center; color: #176cff; }
@@ -2770,6 +2770,7 @@ input:disabled, select:disabled, textarea:disabled { background: #f2f5f8; color:
   grid-template-columns: 445px minmax(0, 1fr);
   gap: 15px;
   align-items: start;
+  min-width: 0;
 }
 @media (max-width: 1180px) {
   .ref-split-layout {
@@ -2782,6 +2783,7 @@ input:disabled, select:disabled, textarea:disabled { background: #f2f5f8; color:
   display: flex;
   flex-direction: column;
   gap: 10px;
+  min-width: 0;
   padding: 16px;
   border: 1px solid #dfe7f1;
   border-radius: 15px;
@@ -3068,6 +3070,7 @@ input:disabled, select:disabled, textarea:disabled { background: #f2f5f8; color:
   display: flex;
   flex-direction: column;
   gap: 16px;
+  min-width: 0;
   padding: 20px;
   border: 1px solid #dfe7f1;
   border-radius: 15px;
@@ -3608,6 +3611,7 @@ input:disabled, select:disabled, textarea:disabled { background: #f2f5f8; color:
 }
 
 @media (max-width: 700px) {
+  .admin-shell--reference-settings .admin-content { padding: 14px 12px 24px; }
   .admin-shell--shops .admin-content { padding: 14px 12px 24px; }
   .shop-settings-page { gap: 14px; }
   .shop-page-heading { align-items: stretch; flex-direction: column; padding: 0 4px; }
