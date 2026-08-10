@@ -117,7 +117,7 @@
 .accounting-daily-matrix__period button:disabled { opacity: .4; cursor: default; }
 .accounting-daily-matrix__period strong { min-width: 220px; text-align: center; color: #244b3d; font-size: .84rem; }
 .accounting-daily-matrix__windows button[aria-pressed="true"] { border-color: #4a9a7e; background: #e8f4ef; color: #146549; }
-.accounting-daily-matrix__scroll { max-height: min(70vh, 760px); }
+.accounting-daily-matrix__scroll { height: min(70dvh, 760px); overflow: auto; scrollbar-gutter: stable; }
 .accounting-daily-matrix__table { width: max-content !important; min-width: 100%; }
 .accounting-daily-matrix__table th, .accounting-daily-matrix__table td { height: 48px; padding: 7px 8px; text-align: center; }
 .accounting-daily-matrix__table thead tr:first-child th { top: 0; height: 46px; border-right: 1px solid #ccd9d2; background: #e3eee8; text-align: center; }
