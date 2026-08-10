@@ -177,7 +177,7 @@ export function ShopImageEditor({ shop, onShopSaved }: ShopImageEditorProps) {
             <span>{shop.image_path ? 'เลือกรูปใหม่' : 'เลือกรูป'}</span>
             <input accept="image/jpeg,image/png,image/webp" onChange={chooseShopImageFile} type="file" />
           </label>
-          <p className="reference-inline-note"><Info size={16} weight="fill" />รองรับ JPG, PNG, WEBP ขนาดไม่เกิน 5 MB และจะปรับเป็น WebP ขนาดพอดีการ์ดโดยอัตโนมัติ</p>
+          <p className="reference-inline-note"><Info size={16} weight="fill" />รองรับ JPG, PNG, WEBP ขนาดไม่เกิน 5 MB และจะบันทึกเป็น WebP คุณภาพสูงโดยอัตโนมัติ</p>
           {shopImageError ? <p className="error-text" role="alert">{shopImageError}</p> : null}
           {shopImageSuccess ? <p aria-live="polite" className="success-text">{shopImageSuccess}</p> : null}
           <div className="reference-form__actions">

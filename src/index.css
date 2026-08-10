@@ -93,6 +93,7 @@
 .accounting-page__loading { position: fixed; right: 28px; bottom: 24px; z-index: 8; border-radius: 999px; background: #183f33; color: white; padding: 10px 15px; box-shadow: 0 8px 24px #143c3026; }
 .accounting-reconciliation { display: grid; gap: 18px; }
 .accounting-shop-summary { display: grid; gap: 18px; }
+.accounting-shop-view-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
 .accounting-shop-table th:first-child { min-width: 220px; }
 .accounting-shop-table th:first-child small { display: block; margin-top: 4px; color: #718079; font-weight: 500; }
 .accounting-shop-table .accounting-shop-sequence--missing { color: #a5681d; }
@@ -103,6 +104,50 @@
 .accounting-shop-group button { width: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 7px 12px; border: 0; background: transparent; padding: 11px 13px; color: #244b3d; text-align: left; }
 .accounting-shop-group button strong { margin-right: 6px; }
 .accounting-shop-group button > span:not(:first-child) { border-left: 1px solid #bdd0c6; padding-left: 12px; color: #526b61; font-size: .76rem; font-weight: 700; }
+.accounting-shop-view-switch { justify-self: start; display: inline-flex; gap: 3px; border: 1px solid #cbd8d1; border-radius: 11px; background: #f3f7f5; padding: 3px; }
+.accounting-shop-view-switch button { border: 0; border-radius: 8px; background: transparent; padding: 8px 14px; color: #587067; font: inherit; font-size: .82rem; font-weight: 800; cursor: pointer; }
+.accounting-shop-view-switch button[aria-pressed="true"] { background: #fff; color: #146549; box-shadow: 0 1px 5px #183f331a; }
+.accounting-shop-export { display: inline-flex; align-items: center; gap: 7px; min-height: 40px; border: 1px solid #77aa97; border-radius: 9px; background: #fff; padding: 8px 12px; color: #176d51; font: inherit; font-size: .8rem; font-weight: 800; cursor: pointer; }
+.accounting-shop-export:disabled { opacity: .55; cursor: default; }
+.accounting-daily-matrix { display: grid; gap: 10px; min-width: 0; }
+.accounting-daily-matrix__toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 9px; }
+.accounting-daily-matrix__period, .accounting-daily-matrix__windows { display: inline-flex; align-items: center; gap: 5px; }
+.accounting-daily-matrix__period button, .accounting-daily-matrix__windows button { min-height: 36px; border: 1px solid #cbd8d1; border-radius: 8px; background: #fff; padding: 6px 9px; color: #365048; font: inherit; font-size: .78rem; font-weight: 700; cursor: pointer; }
+.accounting-daily-matrix__period button { display: grid; place-items: center; }
+.accounting-daily-matrix__period button:disabled { opacity: .4; cursor: default; }
+.accounting-daily-matrix__period strong { min-width: 220px; text-align: center; color: #244b3d; font-size: .84rem; }
+.accounting-daily-matrix__windows button[aria-pressed="true"] { border-color: #4a9a7e; background: #e8f4ef; color: #146549; }
+.accounting-daily-matrix__scroll { max-height: min(70vh, 760px); }
+.accounting-daily-matrix__table { width: max-content !important; min-width: 100%; }
+.accounting-daily-matrix__table th, .accounting-daily-matrix__table td { height: 48px; padding: 7px 8px; text-align: center; }
+.accounting-daily-matrix__table thead tr:first-child th { top: 0; height: 46px; border-right: 1px solid #ccd9d2; background: #e3eee8; text-align: center; }
+.accounting-daily-matrix__table thead tr:nth-child(2) th { top: 46px; min-width: 78px; border-right: 1px solid #dfe7e2; background: #f0f5f2; text-align: center; }
+.accounting-daily-matrix__table thead tr:nth-child(2) th:nth-child(n) { max-width: 112px; }
+.accounting-daily-matrix__date { color: #173f32 !important; font-size: .88rem !important; }
+.accounting-daily-matrix__sequence { position: sticky; z-index: 3; left: 0; width: 62px; min-width: 62px; background: #fff; text-align: center !important; }
+.accounting-daily-matrix__shop { position: sticky; z-index: 3; left: 62px; width: 240px; min-width: 240px; background: #fff; text-align: left !important; }
+.accounting-daily-matrix__condition { position: sticky; z-index: 3; left: 302px; width: 126px; min-width: 126px; border-right: 2px solid #aec4b9; background: #fff; text-align: left !important; }
+.accounting-daily-matrix__table thead .accounting-daily-matrix__sequence, .accounting-daily-matrix__table thead .accounting-daily-matrix__shop, .accounting-daily-matrix__table thead .accounting-daily-matrix__condition { z-index: 6; background: #d8e9e1; }
+.accounting-daily-matrix__table tbody tr:hover > .accounting-daily-matrix__sequence, .accounting-daily-matrix__table tbody tr:hover > .accounting-daily-matrix__shop, .accounting-daily-matrix__table tbody tr:hover > .accounting-daily-matrix__condition { background: #f5faf7; }
+.accounting-daily-matrix__table tbody .accounting-row--issue > .accounting-daily-matrix__sequence, .accounting-daily-matrix__table tbody .accounting-row--issue > .accounting-daily-matrix__shop, .accounting-daily-matrix__table tbody .accounting-row--issue > .accounting-daily-matrix__condition { background: #fff4e6; }
+.accounting-daily-matrix__quantity { min-width: 78px; font-size: .9rem !important; font-weight: 800; }
+.accounting-daily-matrix__money { min-width: 112px; }
+.accounting-daily-matrix__received { border-right: 2px solid #b8cbc1; background: #f7fbf9; }
+.accounting-daily-matrix__quantity button, .accounting-daily-matrix__money button { width: 100%; min-height: 32px; display: grid; place-items: center; gap: 1px; border: 0; background: transparent; padding: 0; color: inherit; font: inherit; cursor: pointer; }
+.accounting-daily-matrix__money small { color: #6b776f; font-size: .65rem; font-weight: 700; }
+.accounting-daily-status { display: inline-flex; align-items: center; justify-content: center; border-radius: 999px; padding: 3px 7px; font-size: .66rem; font-style: normal; font-weight: 800; white-space: nowrap; }
+.accounting-daily-status--no_purchase { background: #eef1f0; color: #53665e; }
+.accounting-daily-status--closed_shop { background: #f4e8e7; color: #873f39; }
+.accounting-daily-status--not_recorded { background: #fff1d8; color: #8c5a0c; }
+.accounting-daily-status--not_scheduled { background: #edf0f4; color: #657084; }
+.accounting-daily-status--skipped { background: #f7e8d8; color: #98531b; }
+.accounting-daily-matrix__group th { left: 0 !important; z-index: 5 !important; }
+.accounting-daily-matrix__totals { cursor: default !important; background: #eaf3ee; color: #244b3d; font-weight: 800; }
+.accounting-daily-matrix__totals th { position: sticky; z-index: 3; left: 0; border-right: 2px solid #aec4b9; background: #eaf3ee; text-align: right; }
+.accounting-daily-matrix__note { min-width: 150px; max-width: 190px; white-space: normal !important; color: #6a736e; font-size: .72rem !important; }
+.accounting-daily-matrix__legend { display: flex; flex-wrap: wrap; gap: 8px 14px; color: #66766f; font-size: .72rem; }
+.accounting-daily-matrix__legend span { display: inline-flex; align-items: center; gap: 5px; }
+.accounting-daily-matrix__legend i { width: 11px; height: 11px; padding: 0; }
 .accounting-shop-detail-layer { position: fixed; z-index: 100; inset: 0; display: grid; place-items: center; padding: 24px; }
 .accounting-shop-detail-backdrop { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: #102a225c; backdrop-filter: blur(2px); }
 .accounting-shop-detail { position: relative; z-index: 1; width: min(1400px, 100%); max-height: calc(100dvh - 48px); display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 14px; overflow: hidden; border: 1px solid #d8e3dd; border-radius: 14px; background: #fff; padding: 16px; box-shadow: 0 24px 70px #102a2242; }
@@ -159,6 +204,24 @@
   .accounting-filters > * { flex: 1 1 150px; }
   .accounting-filters > button { margin-left: 0; }
   .accounting-drawer dl { grid-template-columns: 1fr; }
+  .accounting-daily-matrix__toolbar { align-items: stretch; }
+  .accounting-daily-matrix__period, .accounting-daily-matrix__windows { width: 100%; justify-content: center; }
+  .accounting-daily-matrix__period strong { min-width: 0; flex: 1; }
+  .accounting-daily-matrix__shop { width: 190px; min-width: 190px; left: 52px; }
+  .accounting-daily-matrix__sequence { width: 52px; min-width: 52px; }
+  .accounting-daily-matrix__condition { position: static; width: 112px; min-width: 112px; }
+}
+
+@media (min-width: 1500px) {
+  .accounting-daily-matrix__table tbody tr:not(.accounting-daily-matrix__group) > *:nth-last-child(-n+7), .accounting-daily-matrix__table thead tr:first-child > *:nth-last-child(-n+7) { position: sticky; z-index: 4; min-width: 108px; background: #f8fbf9; }
+  .accounting-daily-matrix__table tr > *:nth-last-child(1) { right: 0; }
+  .accounting-daily-matrix__table tr > *:nth-last-child(2) { right: 150px; }
+  .accounting-daily-matrix__table tr > *:nth-last-child(3) { right: 258px; }
+  .accounting-daily-matrix__table tr > *:nth-last-child(4) { right: 366px; }
+  .accounting-daily-matrix__table tr > *:nth-last-child(5) { right: 474px; }
+  .accounting-daily-matrix__table tr > *:nth-last-child(6) { right: 582px; }
+  .accounting-daily-matrix__table tr > *:nth-last-child(7) { right: 690px; border-left: 2px solid #aec4b9; }
+  .accounting-daily-matrix__table thead tr:first-child > *:nth-last-child(-n+7) { z-index: 7; background: #d8e9e1; }
 }
 
 @media (min-width: 761px) and (max-width: 1200px) {

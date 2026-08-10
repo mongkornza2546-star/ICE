@@ -3,11 +3,12 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AccountingPage } from '../src/features/accounting/AccountingPage';
 
-const { rpcMock } = vi.hoisted(() => ({ rpcMock: vi.fn() }));
+const { rpcMock, writeXlsxFileMock } = vi.hoisted(() => ({ rpcMock: vi.fn(), writeXlsxFileMock: vi.fn() }));
 
 vi.mock('../src/lib/supabase', () => ({
   supabase: { rpc: rpcMock },
 }));
+vi.mock('write-excel-file', () => ({ default: writeXlsxFileMock }));
 
 function bangkokDate(daysFromToday = 0) {
   const date = new Date(Date.now() + 7 * 60 * 60 * 1_000);
@@ -78,6 +79,8 @@ const populatedSummary = {
   },
 };
 
+const emptyDailyMatrix = { ice_types: [], rows: [] };
+
 const purchaseHistory = [{
   delivery_event_id: 'delivery-1',
   charge_id: 'charge-1',
@@ -103,17 +106,136 @@ const purchaseHistory = [{
 function mockSuccessfulShopSummary() {
   rpcMock.mockImplementation(async (name: string) => {
     if (name === 'get_accounting_shop_summary') return { data: populatedSummary, error: null };
+    if (name === 'get_accounting_shop_daily_matrix') return { data: emptyDailyMatrix, error: null };
     if (name === 'get_accounting_review_queue') return { data: { rows: [], total_count: 2 }, error: null };
     if (name === 'get_accounting_shop_invoice_detail') return { data: purchaseHistory, error: null };
     throw new Error(`Unexpected RPC: ${name}`);
   });
 }
 
+function completeDailyMatrix(args: Record<string, unknown>, rows = populatedSummary.rows) {
+  const fromDate = String(args.p_from_date);
+  const toDate = String(args.p_to_date);
+  const start = Date.parse(`${fromDate}T00:00:00Z`);
+  const end = Date.parse(`${toDate}T00:00:00Z`);
+  const dates = Array.from(
+    { length: Math.round((end - start) / 86_400_000) + 1 },
+    (_, index) => new Date(start + index * 86_400_000).toISOString().slice(0, 10),
+  );
+  return {
+    ice_types: [],
+    rows: rows.map((shop) => ({
+      shop_id: shop.shop_id,
+      payment_condition: 'เก็บท้ายวัน',
+      days: dates.map((date, index) => ({
+        service_date: date,
+        status: index === 0 && shop.sales_amount > 0 ? 'purchased' : 'not_scheduled',
+        items: [],
+        sales_amount: index === 0 ? shop.sales_amount : 0,
+        cash_received: 0,
+        invoice_count: index === 0 ? shop.invoice_count : 0,
+      })),
+    })),
+  };
+}
+
 beforeEach(() => {
   rpcMock.mockReset();
+  writeXlsxFileMock.mockReset();
+  writeXlsxFileMock.mockResolvedValue(undefined);
 });
 
 describe('accounting shop summary', () => {
+  it('does not render the daily matrix when a date input is empty', async () => {
+    mockSuccessfulShopSummary();
+    render(<AccountingPage />);
+    await screen.findByRole('button', { name: /S001 · ร้านสมใจ/ });
+
+    fireEvent.change(screen.getByLabelText('จาก'), { target: { value: '' } });
+
+    expect((await screen.findByRole('alert')).textContent).toContain('กรุณาเลือกวันที่เริ่มและวันที่สิ้นสุด');
+    expect(screen.getByLabelText('จาก').getAttribute('aria-invalid')).toBe('true');
+    expect(screen.getByLabelText('จาก').getAttribute('aria-describedby')).toBe('accounting-shop-date-error');
+    expect(screen.queryByRole('columnheader', { name: 'ยอดขายรวม' })).toBeNull();
+  });
+
+  it('keeps calendar-month mode selected and navigates by whole months', async () => {
+    const user = userEvent.setup();
+    mockSuccessfulShopSummary();
+    render(<AccountingPage />);
+    await screen.findByRole('button', { name: /S001 · ร้านสมใจ/ });
+
+    const today = bangkokDate();
+    const [year, month] = today.split('-').map(Number);
+    const currentMonthStart = new Date(Date.UTC(year, month - 1, 1)).toISOString().slice(0, 10);
+    const previousMonthStart = new Date(Date.UTC(year, month - 2, 1)).toISOString().slice(0, 10);
+    const previousMonthEnd = new Date(Date.UTC(year, month - 1, 0)).toISOString().slice(0, 10);
+    const monthButton = screen.getByRole('button', { name: 'ทั้งเดือน' });
+
+    await user.click(monthButton);
+    expect((screen.getByLabelText('จาก') as HTMLInputElement).value).toBe(currentMonthStart);
+    expect((screen.getByLabelText('ถึง') as HTMLInputElement).value).toBe(today);
+    expect(monthButton.getAttribute('aria-pressed')).toBe('true');
+
+    await user.click(screen.getByRole('button', { name: 'ช่วงก่อนหน้า' }));
+    expect((screen.getByLabelText('จาก') as HTMLInputElement).value).toBe(previousMonthStart);
+    expect((screen.getByLabelText('ถึง') as HTMLInputElement).value).toBe(previousMonthEnd);
+    expect(monthButton.getAttribute('aria-pressed')).toBe('true');
+
+    await user.click(screen.getByRole('button', { name: 'ช่วงถัดไป' }));
+    expect((screen.getByLabelText('จาก') as HTMLInputElement).value).toBe(currentMonthStart);
+    expect((screen.getByLabelText('ถึง') as HTMLInputElement).value).toBe(today);
+  });
+
+  it('commits shop summary rows only after their daily matrix is ready', async () => {
+    type DailyResponse = { data: typeof emptyDailyMatrix; error: null };
+    let resolveDaily: (response: DailyResponse) => void = () => undefined;
+    const dailyRequest = new Promise<DailyResponse>((resolve) => { resolveDaily = resolve; });
+    rpcMock.mockImplementation(async (name: string) => {
+      if (name === 'get_accounting_shop_summary') return { data: populatedSummary, error: null };
+      if (name === 'get_accounting_shop_daily_matrix') return dailyRequest;
+      if (name === 'get_accounting_review_queue') return { data: { rows: [], total_count: 0 }, error: null };
+      throw new Error(`Unexpected RPC: ${name}`);
+    });
+    render(<AccountingPage />);
+
+    await waitFor(() => expect(rpcMock).toHaveBeenCalledWith('get_accounting_shop_daily_matrix', expect.anything()));
+    expect(screen.queryByRole('button', { name: /S001 · ร้านสมใจ/ })).toBeNull();
+    expect(screen.getByText('กำลังโหลดข้อมูล...')).toBeTruthy();
+
+    await act(async () => {
+      resolveDaily({ data: emptyDailyMatrix, error: null });
+      await dailyRequest;
+    });
+    expect(await screen.findByRole('button', { name: /S001 · ร้านสมใจ/ })).toBeTruthy();
+  });
+
+  it('does not expose summary rows when the daily matrix request fails', async () => {
+    rpcMock.mockImplementation(async (name: string) => {
+      if (name === 'get_accounting_shop_summary') return { data: populatedSummary, error: null };
+      if (name === 'get_accounting_shop_daily_matrix') return { data: null, error: { message: 'โหลดตารางรายวันไม่สำเร็จ' } };
+      if (name === 'get_accounting_review_queue') return { data: { rows: [], total_count: 0 }, error: null };
+      throw new Error(`Unexpected RPC: ${name}`);
+    });
+    render(<AccountingPage />);
+
+    expect((await screen.findByRole('alert')).textContent).toContain('โหลดตารางรายวันไม่สำเร็จ');
+    expect(screen.queryByRole('button', { name: /S001 · ร้านสมใจ/ })).toBeNull();
+    expect(screen.queryAllByText(/1,250\.00/)).toHaveLength(0);
+  });
+
+  it('shows missing daily cells as unavailable instead of zero or not recorded', async () => {
+    mockSuccessfulShopSummary();
+    render(<AccountingPage />);
+    await screen.findByRole('button', { name: /S001 · ร้านสมใจ/ });
+    const toDate = (screen.getByLabelText('ถึง') as HTMLInputElement).value;
+
+    expect(screen.queryByRole('button', { name: `S001 ${toDate} ยอดขาย` })).toBeNull();
+    expect(screen.queryByRole('button', { name: `S001 ${toDate} รับเงินจริง` })).toBeNull();
+    expect(screen.getByLabelText(`S001 ${toDate} ยอดขาย ไม่มีข้อมูล`).textContent).toBe('—');
+    expect(screen.getByLabelText(`S001 ${toDate} รับเงินจริง ไม่มีข้อมูล`).textContent).toBe('—');
+  });
+
   it('opens as the default accounting view with business-level KPIs', async () => {
     render(<AccountingPage demoMode />);
 
@@ -123,11 +245,185 @@ describe('accounting shop summary', () => {
     expect(screen.getByText('รับแล้วของยอดขายช่วงนี้', { selector: 'article span' })).toBeTruthy();
     expect(screen.getByText('ค้างสะสมทั้งหมด', { selector: 'article span' })).toBeTruthy();
     expect(screen.getByText('เกินกำหนดสะสม', { selector: 'article span' })).toBeTruthy();
-    expect(screen.getByText('เงินรับจริงช่วงนี้', { selector: 'article span' })).toBeTruthy();
+    const broadReceipts = screen.getByText('เงินรับจริงทั้งหมดตามร้าน/พื้นที่ช่วงนี้', { selector: 'article span' }).closest('article');
+    expect(broadReceipts?.getAttribute('title')).toMatch(/รวมร้านที่ปิดใช้งาน.*ไม่เปลี่ยนตามตัวกรองเงื่อนไขหรือสถานะชำระ/);
     expect(screen.getByRole('columnheader', { name: 'ร้าน' })).toBeTruthy();
     expect(screen.getByRole('columnheader', { name: 'ค้างช่วงนี้' })).toBeTruthy();
     expect(screen.getByRole('columnheader', { name: 'ค้างสะสม' })).toBeTruthy();
     expect(screen.getByRole('columnheader', { name: 'สถานะชำระ' })).toBeTruthy();
+    expect(screen.getByRole('columnheader', { name: 'รับจริงของร้านที่แสดง' })).toBeTruthy();
+  });
+
+  it('shows daily quantities, keeps statuses and receipts display-only, and opens purchased sales', async () => {
+    rpcMock.mockImplementation(async (name: string, args: Record<string, unknown>) => {
+      if (name === 'get_accounting_shop_summary') return { data: populatedSummary, error: null };
+      if (name === 'get_accounting_shop_daily_matrix') {
+        const fromDate = String(args.p_from_date);
+        const toDate = String(args.p_to_date);
+        const dates: string[] = [];
+        for (let date = fromDate; date <= toDate; date = bangkokDate(Math.round((Date.parse(date) - Date.parse(bangkokDate())) / 86_400_000) + 1)) dates.push(date);
+        return { data: {
+          ice_types: [
+            { ice_type_id: 'ice-mill', code: 'MILL', name: 'โม่', unit: 'ถุง' },
+            { ice_type_id: 'ice-small', code: 'SMALL', name: 'เล็ก', unit: 'ถุง' },
+          ],
+          rows: [{
+            shop_id: 'shop-1', payment_condition: 'เก็บทุกวันศุกร์',
+            days: dates.map((date) => date === toDate ? {
+              service_date: date, status: 'purchased',
+              items: [{ ice_type_id: 'ice-mill', quantity: 4 }, { ice_type_id: 'ice-small', quantity: 2 }],
+              sales_amount: 360, cash_received: 0, invoice_count: 2,
+            } : { service_date: date, status: date === fromDate ? 'recorded_no_sale' : 'not_recorded', items: [], sales_amount: 0, cash_received: 0, invoice_count: 0 }),
+          }],
+        }, error: null };
+      }
+      if (name === 'get_accounting_review_queue') return { data: { rows: [], total_count: 0 }, error: null };
+      if (name === 'get_accounting_shop_invoice_detail') return { data: purchaseHistory, error: null };
+      throw new Error(`Unexpected RPC: ${name}`);
+    });
+    const user = userEvent.setup();
+    render(<AccountingPage />);
+
+    const fromDate = (screen.getByLabelText('จาก') as HTMLInputElement).value;
+    const toDate = (screen.getByLabelText('ถึง') as HTMLInputElement).value;
+    const millCell = await screen.findByRole('button', { name: `S001 ${toDate} โม่` });
+    expect(millCell.textContent).toBe('4');
+    expect(screen.getByRole('button', { name: `S001 ${toDate} เล็ก` }).textContent).toBe('2');
+    expect(screen.getByRole('button', { name: `S001 ${toDate} ยอดขาย` }).textContent).toMatch(/360\.00.*2 บิล/);
+    expect(screen.getByLabelText(`S001 ${toDate} รับเงินจริง`).textContent).toMatch(/0\.00/);
+    expect(screen.queryByRole('button', { name: `S001 ${toDate} รับเงินจริง` })).toBeNull();
+    expect(screen.getByLabelText(`S001 ${fromDate} สถานะ มีบันทึกแต่ไม่มีการขาย`)).toBeTruthy();
+    expect(screen.getAllByText('มีบันทึกแต่ไม่มีการขาย').length).toBeGreaterThan(0);
+    expect(screen.queryByRole('button', { name: `S001 ${fromDate} โม่` })).toBeNull();
+    expect(screen.queryByRole('button', { name: `S001 ${fromDate} ยอดขาย` })).toBeNull();
+    expect(screen.getByText('เก็บทุกวันศุกร์')).toBeTruthy();
+
+    await user.click(screen.getByRole('button', { name: `S001 ${toDate} ยอดขาย` }));
+    await waitFor(() => expect(rpcMock).toHaveBeenCalledWith('get_accounting_shop_invoice_detail', expect.objectContaining({
+      p_shop_id: 'shop-1', p_from_date: toDate, p_to_date: toDate,
+    })));
+  });
+
+  it('labels area headers and subtotals as page-local', async () => {
+    const summaryWithWholeGroup = {
+      ...populatedSummary,
+      groups: [{
+        ...populatedSummary.groups[0],
+        total_shop_count: 101,
+        sales_amount: 99_999,
+        cumulative_outstanding_amount: 88_888,
+      }],
+      total_count: 101,
+    };
+    rpcMock.mockImplementation(async (name: string) => {
+      if (name === 'get_accounting_shop_summary') return { data: summaryWithWholeGroup, error: null };
+      if (name === 'get_accounting_shop_daily_matrix') return { data: emptyDailyMatrix, error: null };
+      if (name === 'get_accounting_review_queue') return { data: { rows: [], total_count: 0 }, error: null };
+      throw new Error(`Unexpected RPC: ${name}`);
+    });
+    render(<AccountingPage />);
+
+    await screen.findByRole('button', { name: /S001 · ร้านสมใจ/ });
+    const groupHeader = screen.getByRole('button', { name: /อาคาร A · ชั้น 9 ปัจจุบัน/ });
+    expect(groupHeader.textContent).toMatch(/หน้านี้ 1 ร้าน/);
+    expect(groupHeader.textContent).toMatch(/ยอดขาย.*1,250\.00/);
+    expect(groupHeader.textContent).not.toMatch(/99,999\.00|88,888\.00/);
+    expect(screen.getByRole('columnheader', { name: /รวมร้านในหน้านี้ อาคาร A · ชั้น 9 ปัจจุบัน/ })).toBeTruthy();
+  });
+
+  it('keeps the server row order without area headers for non-area sorting', async () => {
+    const orderedRows = [
+      { ...populatedSummary.rows[0], shop_id: 'shop-3', shop_code: 'S003', shop_name: 'ร้านสาม' },
+      { ...populatedSummary.rows[0], shop_id: 'shop-1', shop_code: 'S001', shop_name: 'ร้านหนึ่ง', building_id: 'building-2', building_name: 'อาคาร B', current_zone_id: 'zone-b', current_zone_name: 'โซน B' },
+      { ...populatedSummary.rows[0], shop_id: 'shop-2', shop_code: 'S002', shop_name: 'ร้านสอง' },
+    ];
+    rpcMock.mockImplementation(async (name: string) => {
+      if (name === 'get_accounting_shop_summary') return { data: { ...populatedSummary, rows: orderedRows, total_count: 3 }, error: null };
+      if (name === 'get_accounting_shop_daily_matrix') return { data: emptyDailyMatrix, error: null };
+      if (name === 'get_accounting_review_queue') return { data: { rows: [], total_count: 0 }, error: null };
+      throw new Error(`Unexpected RPC: ${name}`);
+    });
+    const user = userEvent.setup();
+    render(<AccountingPage />);
+    await screen.findByRole('button', { name: 'S003 · ร้านสาม' });
+
+    await user.selectOptions(screen.getByRole('combobox', { name: 'เรียงลำดับ' }), 'outstanding');
+    await waitFor(() => expect(rpcMock).toHaveBeenCalledWith('get_accounting_shop_summary', expect.objectContaining({
+      p_filters: { shop_sort: 'outstanding' },
+    })));
+    const shops = await screen.findAllByRole('button', { name: /S00[123] · ร้าน/ });
+    expect(shops.map((shop) => shop.textContent?.replace(/\s/g, ''))).toEqual([
+      'S003·ร้านสาม', 'S001·ร้านหนึ่ง', 'S002·ร้านสอง',
+    ]);
+    expect(screen.queryByRole('button', { name: /อาคาร A · ชั้น 9 ปัจจุบัน/ })).toBeNull();
+  });
+
+  it('exports the current daily range into a summary sheet and area sheets', async () => {
+    const user = userEvent.setup();
+    rpcMock.mockImplementation(async (name: string, args: Record<string, unknown>) => {
+      if (name === 'get_accounting_shop_summary') return { data: populatedSummary, error: null };
+      if (name === 'get_accounting_shop_daily_matrix') return { data: completeDailyMatrix(args), error: null };
+      if (name === 'get_accounting_review_queue') return { data: { rows: [], total_count: 2 }, error: null };
+      throw new Error(`Unexpected RPC: ${name}`);
+    });
+    render(<AccountingPage />);
+    await screen.findByRole('button', { name: /S001 · ร้านสมใจ/ });
+
+    await user.click(screen.getByRole('button', { name: 'ส่งออก Excel' }));
+
+    await waitFor(() => expect(writeXlsxFileMock).toHaveBeenCalledTimes(1));
+    expect(rpcMock).toHaveBeenCalledWith('get_accounting_shop_summary', expect.objectContaining({
+      p_limit: 500, p_offset: 0,
+    }));
+    expect(writeXlsxFileMock.mock.calls[0][1]).toEqual(expect.objectContaining({
+      fileName: expect.stringMatching(/^accounting-daily-/),
+      sheets: ['สรุปทุกพื้นที่', 'อาคาร A-ชั้น 9 ปัจจุบัน'],
+      stickyColumnsCount: 4,
+    }));
+  });
+
+  it('aborts a daily export when summary and matrix sales come from different snapshots', async () => {
+    const user = userEvent.setup();
+    rpcMock.mockImplementation(async (name: string, args: Record<string, unknown>) => {
+      if (name === 'get_accounting_shop_summary') return { data: populatedSummary, error: null };
+      if (name === 'get_accounting_shop_daily_matrix') {
+        const daily = completeDailyMatrix(args);
+        daily.rows[0].days[0].sales_amount -= 1;
+        return { data: daily, error: null };
+      }
+      if (name === 'get_accounting_review_queue') return { data: { rows: [], total_count: 0 }, error: null };
+      throw new Error(`Unexpected RPC: ${name}`);
+    });
+    render(<AccountingPage />);
+    await screen.findByRole('button', { name: /S001 · ร้านสมใจ/ });
+
+    await user.click(screen.getByRole('button', { name: 'ส่งออก Excel' }));
+
+    expect((await screen.findByRole('alert')).textContent).toContain('ข้อมูลเปลี่ยนระหว่างส่งออก กรุณาลองใหม่');
+    expect(writeXlsxFileMock).not.toHaveBeenCalled();
+  });
+
+  it('aborts a daily export when paginated summary rows repeat', async () => {
+    const user = userEvent.setup();
+    rpcMock.mockImplementation(async (name: string, args: Record<string, unknown>) => {
+      if (name === 'get_accounting_shop_summary' && args.p_limit === 500) {
+        return { data: { ...populatedSummary, rows: [populatedSummary.rows[0]], total_count: 2 }, error: null };
+      }
+      if (name === 'get_accounting_shop_summary') return { data: populatedSummary, error: null };
+      if (name === 'get_accounting_shop_daily_matrix') return { data: emptyDailyMatrix, error: null };
+      if (name === 'get_accounting_review_queue') return { data: { rows: [], total_count: 0 }, error: null };
+      throw new Error(`Unexpected RPC: ${name}`);
+    });
+    render(<AccountingPage />);
+    await screen.findByRole('button', { name: /S001 · ร้านสมใจ/ });
+
+    await user.click(screen.getByRole('button', { name: 'ส่งออก Excel' }));
+
+    expect((await screen.findByRole('alert')).textContent).toContain('ข้อมูลเปลี่ยนระหว่างส่งออก กรุณาลองใหม่');
+    expect(rpcMock).toHaveBeenCalledWith('get_accounting_shop_summary', expect.objectContaining({
+      p_limit: 500, p_offset: 1,
+    }));
+    expect(writeXlsxFileMock).not.toHaveBeenCalled();
   });
 
   it('keeps financial documents separate from the stock audit', async () => {
@@ -149,6 +445,7 @@ describe('accounting shop summary', () => {
     render(<AccountingPage />);
 
     const shop = await screen.findByRole('button', { name: /S001 · ร้านสมใจ/ });
+    await user.click(screen.getByRole('button', { name: 'ยอดรวมช่วงวันที่' }));
     expect(screen.getByRole('columnheader', { name: 'อาคาร / โซนประจำร้าน' })).toBeTruthy();
     expect((screen.getByRole('combobox', { name: 'เรียงลำดับ' }) as HTMLSelectElement).value).toBe('area');
     expect(screen.getByText('ลำดับส่ง 3')).toBeTruthy();
@@ -202,6 +499,7 @@ describe('accounting shop summary', () => {
       if (name === 'get_accounting_shop_summary') {
         return { data: { ...populatedSummary, rows: [populatedSummary.rows[0], zeroSalesShop], total_count: 2 }, error: null };
       }
+      if (name === 'get_accounting_shop_daily_matrix') return { data: emptyDailyMatrix, error: null };
       if (name === 'get_accounting_review_queue') return { data: { rows: [], total_count: 0 }, error: null };
       if (name === 'get_accounting_shop_invoice_detail') return { data: [oldDebtInvoice], error: null };
       throw new Error(`Unexpected RPC: ${name}`);
@@ -210,7 +508,9 @@ describe('accounting shop summary', () => {
     const user = userEvent.setup();
     render(<AccountingPage />);
 
-    const shopButton = await screen.findByRole('button', { name: /S002 · ร้านไม่มีรายการวันนี้/ });
+    await screen.findByRole('button', { name: /S002 · ร้านไม่มีรายการวันนี้/ });
+    await user.click(screen.getByRole('button', { name: 'ยอดรวมช่วงวันที่' }));
+    const shopButton = screen.getByRole('button', { name: /S002 · ร้านไม่มีรายการวันนี้/ });
     const row = shopButton.closest('tr');
     expect(row).toBeTruthy();
     const cells = row!.querySelectorAll('td');
@@ -269,6 +569,7 @@ describe('accounting shop summary', () => {
     const recordedAt = '2026-08-03T00:30:00+07:00';
     rpcMock.mockImplementation(async (name: string) => {
       if (name === 'get_accounting_shop_summary') return { data: populatedSummary, error: null };
+      if (name === 'get_accounting_shop_daily_matrix') return { data: emptyDailyMatrix, error: null };
       if (name === 'get_accounting_review_queue') return { data: { rows: [], total_count: 0 }, error: null };
       if (name === 'get_accounting_shop_invoice_detail') {
         return { data: [{ ...purchaseHistory[0], payments: [{ ...purchaseHistory[0].payments[0], recorded_at: recordedAt }] }], error: null };
@@ -293,6 +594,7 @@ describe('accounting shop summary', () => {
   it('keeps a successful shop summary when the review badge fails', async () => {
     rpcMock.mockImplementation(async (name: string) => {
       if (name === 'get_accounting_shop_summary') return { data: populatedSummary, error: null };
+      if (name === 'get_accounting_shop_daily_matrix') return { data: emptyDailyMatrix, error: null };
       if (name === 'get_accounting_review_queue') return { data: null, error: { message: 'โหลดจำนวนตรวจสอบไม่ได้' } };
       throw new Error(`Unexpected RPC: ${name}`);
     });
@@ -314,6 +616,7 @@ describe('accounting shop summary', () => {
           ? { data: populatedSummary, error: null }
           : { data: null, error: { message: 'โหลดสรุปตามตัวกรองไม่สำเร็จ' } };
       }
+      if (name === 'get_accounting_shop_daily_matrix') return { data: emptyDailyMatrix, error: null };
       if (name === 'get_accounting_review_queue') return { data: { rows: [], total_count: 0 }, error: null };
       throw new Error(`Unexpected RPC: ${name}`);
     });
@@ -336,6 +639,7 @@ describe('accounting shop summary', () => {
     };
     rpcMock.mockImplementation(async (name: string) => {
       if (name === 'get_accounting_shop_summary') return { data: pagedSummary, error: null };
+      if (name === 'get_accounting_shop_daily_matrix') return { data: emptyDailyMatrix, error: null };
       if (name === 'get_accounting_review_queue') return { data: { rows: [], total_count: 2 }, error: null };
       throw new Error(`Unexpected RPC: ${name}`);
     });
@@ -343,6 +647,7 @@ describe('accounting shop summary', () => {
     render(<AccountingPage />);
 
     expect(await screen.findByRole('button', { name: /S001 · ร้านสมใจ/ })).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: 'ยอดรวมช่วงวันที่' }));
     const fromDate = (screen.getByLabelText('จาก') as HTMLInputElement).value;
     const toDate = (screen.getByLabelText('ถึง') as HTMLInputElement).value;
     expect(rpcMock).toHaveBeenCalledWith('get_accounting_shop_summary', {
@@ -354,7 +659,7 @@ describe('accounting shop summary', () => {
     });
     expect(screen.getAllByText(/1,250\.00/).length).toBeGreaterThan(0);
     expect(screen.getByText('1 / 2')).toBeTruthy();
-    expect(screen.getByRole('button', { name: /แสดง 1 จาก 101 ร้าน/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /อาคาร A \/ ชั้น 9 ปัจจุบัน.*หน้านี้ 1 ร้าน/ })).toBeTruthy();
 
     await user.selectOptions(screen.getByRole('combobox', { name: 'อาคาร' }), 'building-1');
     await waitFor(() => expect(rpcMock).toHaveBeenCalledWith('get_accounting_shop_summary', {
@@ -397,6 +702,7 @@ describe('accounting shop summary', () => {
         }
         return { data: { ...populatedSummary, total_count: resultsShrank ? 100 : 101 }, error: null };
       }
+      if (name === 'get_accounting_shop_daily_matrix') return { data: emptyDailyMatrix, error: null };
       throw new Error(`Unexpected RPC: ${name}`);
     });
     const user = userEvent.setup();
@@ -415,9 +721,10 @@ describe('accounting shop summary', () => {
     render(<AccountingPage />);
     expect(await screen.findByRole('button', { name: /S001 · ร้านสมใจ/ })).toBeTruthy();
 
-    fireEvent.change(screen.getByLabelText('จาก'), { target: { value: bangkokDate(-40) } });
+    fireEvent.change(screen.getByLabelText('จาก'), { target: { value: '1900-01-01' } });
 
     expect((await screen.findByRole('alert')).textContent).toContain('ดูข้อมูลได้สูงสุด 31 วันต่อครั้ง');
+    expect(screen.queryByRole('columnheader', { name: 'ยอดขายรวม' })).toBeNull();
     expect(screen.queryByRole('button', { name: /S001 · ร้านสมใจ/ })).toBeNull();
     expect(screen.queryAllByText(/1,250\.00/)).toHaveLength(0);
     expect(rpcMock.mock.calls.filter(([name]) => name === 'get_accounting_shop_summary')).toHaveLength(1);
@@ -442,6 +749,7 @@ describe('accounting shop summary', () => {
     }];
     rpcMock.mockImplementation(async (name: string, args: Record<string, unknown>) => {
       if (name === 'get_accounting_shop_summary') return { data: populatedSummary, error: null };
+      if (name === 'get_accounting_shop_daily_matrix') return { data: emptyDailyMatrix, error: null };
       if (name === 'get_accounting_review_queue') return { data: { rows: [], total_count: 0 }, error: null };
       if (name === 'get_accounting_shop_invoice_detail') {
         return { data: args.p_offset === 0 ? firstHistoryPage : secondHistoryPage, error: null };
@@ -486,6 +794,7 @@ describe('accounting shop summary', () => {
     };
     rpcMock.mockImplementation(async (name: string) => {
       if (name === 'get_accounting_shop_summary') return { data: populatedSummary, error: null };
+      if (name === 'get_accounting_shop_daily_matrix') return { data: emptyDailyMatrix, error: null };
       if (name === 'get_accounting_review_queue') return { data: { rows: [], total_count: 0 }, error: null };
       if (name === 'get_accounting_shop_invoice_detail') {
         return { data: [cohortInvoice, outOfCohortInvoice], error: null };
@@ -548,6 +857,7 @@ describe('accounting shop summary', () => {
     };
     rpcMock.mockImplementation(async (name: string) => {
       if (name === 'get_accounting_shop_summary') return { data: populatedSummary, error: null };
+      if (name === 'get_accounting_shop_daily_matrix') return { data: emptyDailyMatrix, error: null };
       if (name === 'get_accounting_review_queue') return { data: { rows: [], total_count: 0 }, error: null };
       if (name === 'get_accounting_shop_invoice_detail') return { data: [adjustedInvoice], error: null };
       throw new Error(`Unexpected RPC: ${name}`);
@@ -572,6 +882,7 @@ describe('accounting shop summary', () => {
     const badgeRequest = new Promise<BadgeResponse>((resolve) => { resolveBadge = resolve; });
     rpcMock.mockImplementation(async (name: string, args: Record<string, unknown>) => {
       if (name === 'get_accounting_shop_summary') return { data: populatedSummary, error: null };
+      if (name === 'get_accounting_shop_daily_matrix') return { data: emptyDailyMatrix, error: null };
       if (name === 'get_accounting_review_queue' && args.p_limit === 1) return badgeRequest;
       if (name === 'get_accounting_review_queue') return { data: { rows: [], total_count: 7 }, error: null };
       throw new Error(`Unexpected RPC: ${name}`);
@@ -597,6 +908,7 @@ describe('accounting shop summary', () => {
     const nextFromDate = bangkokDate(-5);
     rpcMock.mockImplementation(async (name: string, args: Record<string, unknown>) => {
       if (name === 'get_accounting_shop_summary') return { data: populatedSummary, error: null };
+      if (name === 'get_accounting_shop_daily_matrix') return { data: emptyDailyMatrix, error: null };
       if (name === 'get_accounting_transactions') {
         return { data: { rows: [], total_count: 0, facets: { ice_types: [], shops: [], employees: [], types: [] } }, error: null };
       }
@@ -627,10 +939,12 @@ describe('accounting shop summary', () => {
   });
 
   it('shows the current shop location in both the row and filter facet', async () => {
+    const user = userEvent.setup();
     mockSuccessfulShopSummary();
     render(<AccountingPage />);
 
     await screen.findByRole('button', { name: /S001 · ร้านสมใจ/ });
+    await user.click(screen.getByRole('button', { name: 'ยอดรวมช่วงวันที่' }));
 
     expect(screen.getAllByText('อาคาร A / ชั้น 9 ปัจจุบัน').length).toBeGreaterThan(0);
     expect(screen.getByRole('option', { name: 'อาคาร A / ชั้น 9 ปัจจุบัน (1)' })).toBeTruthy();

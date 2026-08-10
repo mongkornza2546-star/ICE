@@ -1,6 +1,6 @@
-export const SHOP_IMAGE_MAX_WIDTH = 800;
-export const SHOP_IMAGE_MAX_HEIGHT = 450;
-const SHOP_IMAGE_WEBP_QUALITY = 0.8;
+export const SHOP_IMAGE_MAX_WIDTH = 1600;
+export const SHOP_IMAGE_MAX_HEIGHT = 1200;
+const SHOP_IMAGE_WEBP_QUALITY = 0.9;
 
 export function fitShopImageWithinBounds(width: number, height: number) {
   const scale = Math.min(1, SHOP_IMAGE_MAX_WIDTH / width, SHOP_IMAGE_MAX_HEIGHT / height);

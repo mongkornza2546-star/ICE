@@ -1,16 +1,19 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowClockwise, DownloadSimple, Funnel, MagnifyingGlass, WarningCircle, X } from '@phosphor-icons/react';
+import { ArrowClockwise, CaretLeft, CaretRight, DownloadSimple, Funnel, MagnifyingGlass, WarningCircle, X } from '@phosphor-icons/react';
 import { DeliveryCorrectionDialog } from '../delivery-corrections/DeliveryCorrectionDialog';
 import { supabase } from '../../lib/supabase';
 import { getErrorMessage } from '../../lib/errorMessage';
 import { subscribeToDataChange } from '../../lib/dataChange';
 import { toBangkokDateString } from '../../lib/serviceDate';
-import { exportAccountingTransactions } from './exportAccounting';
+import { exportAccountingShopDaily, exportAccountingTransactions } from './exportAccounting';
 import type {
   AccountingFilters,
   AccountingReconciliation,
   AccountingReviewResponse,
+  AccountingShopDailyCell,
+  AccountingShopDailyResponse,
+  AccountingShopDailyStatus,
   AccountingShopInvoiceDetailEntry,
   AccountingShopSummaryResponse,
   AccountingShopSummaryGroup,
@@ -25,6 +28,7 @@ import type { AppRole } from '../../types/app';
 
 const PAGE_SIZE = 100;
 const EXPORT_PAGE_SIZE = 50_000;
+const SHOP_EXPORT_PAGE_SIZE = 500;
 const money = new Intl.NumberFormat('th-TH', { style: 'currency', currency: 'THB' });
 const number = new Intl.NumberFormat('th-TH', { maximumFractionDigits: 1 });
 const accountingDate = new Intl.DateTimeFormat('th-TH', { timeZone: 'Asia/Bangkok' });
@@ -37,11 +41,86 @@ const paymentTermLabels = { immediate: 'จ่ายทันที', end_of_day
 const paymentStatusLabels = { paid: 'ชำระครบ', outstanding: 'รอชำระ', overdue: 'เกินกำหนด' } as const;
 const invoicePaymentStatusLabels = { paid: 'ชำระแล้ว', partial: 'ชำระบางส่วน', unpaid: 'ค้างชำระ', voided: 'ยกเลิกแล้ว' } as const;
 const paymentMethodLabels = { cash: 'เงินสด', bank_transfer: 'โอนธนาคาร', qr: 'QR' } as const;
+const DATE_KEY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+const DAY_MS = 86_400_000;
+const SHOP_EXPORT_RETRY_MESSAGE = 'ข้อมูลเปลี่ยนระหว่างส่งออก กรุณาลองใหม่';
+type ShopDateWindow = 1 | 7 | 14 | 'month' | 'custom';
+
+function dateKeyTimestamp(date: string) {
+  if (!DATE_KEY_PATTERN.test(date)) return null;
+  const timestamp = Date.parse(`${date}T00:00:00Z`);
+  if (!Number.isFinite(timestamp) || new Date(timestamp).toISOString().slice(0, 10) !== date) return null;
+  return timestamp;
+}
 
 function shiftDate(date: string, days: number) {
-  const next = new Date(`${date}T12:00:00+07:00`);
-  next.setDate(next.getDate() + days);
-  return toBangkokDateString(next);
+  const timestamp = dateKeyTimestamp(date);
+  if (timestamp == null) throw new Error('รูปแบบวันที่ไม่ถูกต้อง');
+  return new Date(timestamp + days * DAY_MS).toISOString().slice(0, 10);
+}
+
+function getDateRange(fromDate: string, toDate: string) {
+  if (!fromDate || !toDate) return { dates: [] as string[], error: 'กรุณาเลือกวันที่เริ่มและวันที่สิ้นสุด' };
+  const fromTimestamp = dateKeyTimestamp(fromDate);
+  const toTimestamp = dateKeyTimestamp(toDate);
+  if (fromTimestamp == null || toTimestamp == null) return { dates: [] as string[], error: 'รูปแบบวันที่ไม่ถูกต้อง' };
+  const days = Math.round((toTimestamp - fromTimestamp) / DAY_MS);
+  if (days < 0) return { dates: [] as string[], error: 'วันที่เริ่มต้องไม่เกินวันที่สิ้นสุด' };
+  if (days > 30) return { dates: [] as string[], error: 'ดูข้อมูลได้สูงสุด 31 วันต่อครั้ง' };
+  return {
+    dates: Array.from({ length: days + 1 }, (_, index) => new Date(fromTimestamp + index * DAY_MS).toISOString().slice(0, 10)),
+    error: null,
+  };
+}
+
+function accountingAmountInCents(value: unknown) {
+  const amount = Number(value);
+  if (!Number.isFinite(amount)) throw new Error(SHOP_EXPORT_RETRY_MESSAGE);
+  return Math.round(amount * 100);
+}
+
+function validateShopDailyExportPage(
+  shops: AccountingShopSummaryRow[],
+  daily: AccountingShopDailyResponse,
+  dates: string[],
+) {
+  const expectedShopIds = new Set(shops.map((shop) => shop.shop_id));
+  const dailyRows = new Map(daily.rows.map((row) => [row.shop_id, row]));
+  if (expectedShopIds.size !== shops.length || dailyRows.size !== daily.rows.length
+    || dailyRows.size !== expectedShopIds.size
+    || daily.rows.some((row) => !expectedShopIds.has(row.shop_id))) {
+    throw new Error(SHOP_EXPORT_RETRY_MESSAGE);
+  }
+  if (new Set(daily.ice_types.map((iceType) => iceType.ice_type_id)).size !== daily.ice_types.length) {
+    throw new Error(SHOP_EXPORT_RETRY_MESSAGE);
+  }
+
+  const expectedDates = new Set(dates);
+  shops.forEach((shop) => {
+    const dailyRow = dailyRows.get(shop.shop_id);
+    if (!dailyRow) throw new Error(SHOP_EXPORT_RETRY_MESSAGE);
+    const days = new Map(dailyRow.days.map((day) => [day.service_date, day]));
+    if (days.size !== dailyRow.days.length || days.size !== dates.length
+      || dailyRow.days.some((day) => !expectedDates.has(day.service_date))) {
+      throw new Error(SHOP_EXPORT_RETRY_MESSAGE);
+    }
+    const dailySales = dates.reduce((sum, date) => sum + accountingAmountInCents(days.get(date)?.sales_amount), 0);
+    const dailyInvoiceCount = dates.reduce((sum, date) => sum + Number(days.get(date)?.invoice_count), 0);
+    if (dailySales !== accountingAmountInCents(shop.sales_amount)
+      || !Number.isInteger(dailyInvoiceCount) || dailyInvoiceCount !== Number(shop.invoice_count)) {
+      throw new Error(SHOP_EXPORT_RETRY_MESSAGE);
+    }
+  });
+}
+
+function calendarMonthRange(anchorDate: string, today: string, offset = 0) {
+  const safeAnchor = dateKeyTimestamp(anchorDate) != null && anchorDate <= today ? anchorDate : today;
+  const anchor = new Date(`${safeAnchor}T00:00:00Z`);
+  const year = anchor.getUTCFullYear();
+  const month = anchor.getUTCMonth() + offset;
+  const fromDate = new Date(Date.UTC(year, month, 1)).toISOString().slice(0, 10);
+  const monthEnd = new Date(Date.UTC(year, month + 1, 0)).toISOString().slice(0, 10);
+  return { fromDate, toDate: monthEnd > today ? today : monthEnd };
 }
 
 function emptyTransactions(): AccountingTransactionsResponse {
@@ -60,6 +139,10 @@ function emptyShopSummary(): AccountingShopSummaryResponse {
     },
     facets: { shops: [], buildings: [], zones: [] },
   };
+}
+
+function emptyShopDaily(): AccountingShopDailyResponse {
+  return { ice_types: [], rows: [] };
 }
 
 function withFinancialTransactionTypes(filters: AccountingFilters): AccountingFilters {
@@ -83,16 +166,19 @@ export function AccountingPage({ userRole = 'round_lead', demoMode = false }: { 
   const [serviceDate, setServiceDate] = useState(today);
   const [fromDate, setFromDate] = useState(shiftDate(today, -6));
   const [toDate, setToDate] = useState(today);
+  const [shopWindowMode, setShopWindowMode] = useState<ShopDateWindow>(7);
   const [filters, setFilters] = useState<AccountingFilters>({});
   const [shopFilters, setShopFilters] = useState<AccountingFilters>({});
   const [sort, setSort] = useState<AccountingSort>({ key: 'occurred_at', direction: 'desc' });
   const [page, setPage] = useState(0);
   const [reconciliation, setReconciliation] = useState<AccountingReconciliation | null>(null);
   const [shopSummary, setShopSummary] = useState<AccountingShopSummaryResponse>(emptyShopSummary);
+  const [shopDaily, setShopDaily] = useState<AccountingShopDailyResponse>(emptyShopDaily);
   const [transactions, setTransactions] = useState<AccountingTransactionsResponse>(emptyTransactions);
   const [reviews, setReviews] = useState<AccountingReviewResponse>({ rows: [], total_count: 0 });
   const [reviewCount, setReviewCount] = useState<number | null>(null);
   const [selectedShop, setSelectedShop] = useState<AccountingShopSummaryRow | null>(null);
+  const [selectedShopRange, setSelectedShopRange] = useState<{ from: string; to: string } | null>(null);
   const [shopHistory, setShopHistory] = useState<AccountingShopInvoiceDetailEntry[]>([]);
   const [shopHistoryLoading, setShopHistoryLoading] = useState(false);
   const [shopHistoryError, setShopHistoryError] = useState<string | null>(null);
@@ -110,9 +196,8 @@ export function AccountingPage({ userRole = 'round_lead', demoMode = false }: { 
   const shopHistoryRequestId = useRef(0);
 
   const validateRange = useCallback(() => {
-    const days = Math.round((Date.parse(toDate) - Date.parse(fromDate)) / 86_400_000);
-    if (days < 0) throw new Error('วันที่เริ่มต้องไม่เกินวันที่สิ้นสุด');
-    if (days > 30) throw new Error('ดูข้อมูลได้สูงสุด 31 วันต่อครั้ง');
+    const { error: rangeError } = getDateRange(fromDate, toDate);
+    if (rangeError) throw new Error(rangeError);
   }, [fromDate, toDate]);
 
   const load = useCallback(async () => {
@@ -122,6 +207,7 @@ export function AccountingPage({ userRole = 'round_lead', demoMode = false }: { 
     setError(null);
     if (tab === 'shops') {
       setShopSummary((current) => ({ ...emptyShopSummary(), facets: current.facets }));
+      setShopDaily(emptyShopDaily());
       shopHistoryRequestId.current += 1;
       setSelectedShop(null);
       setShopHistory([]);
@@ -135,6 +221,7 @@ export function AccountingPage({ userRole = 'round_lead', demoMode = false }: { 
         if (loadRequestId.current !== requestId) return;
         setReconciliation({ service_date: serviceDate, aggregate: [], holders: [], financial: { effective_sales: 0, allocated_to_sales: 0, outstanding_collectible: 0, outstanding_credit: 0, cash_received: 0, cash_refunded: 0, net_cash: 0, pending_refunds: 0 } });
         setShopSummary(emptyShopSummary());
+        setShopDaily(emptyShopDaily());
         setTransactions(emptyTransactions());
         setReviews({ rows: [], total_count: 0 });
         return;
@@ -154,7 +241,15 @@ export function AccountingPage({ userRole = 'round_lead', demoMode = false }: { 
           setPage(lastPage);
           return;
         }
+        const dailyResponse = await supabase.rpc('get_accounting_shop_daily_matrix', {
+          p_from_date: fromDate,
+          p_to_date: toDate,
+          p_shop_ids: summaryData.rows.map((row) => row.shop_id),
+        });
+        if (loadRequestId.current !== requestId) return;
+        if (dailyResponse.error) throw dailyResponse.error;
         setShopSummary(summaryData);
+        setShopDaily(dailyResponse.data as unknown as AccountingShopDailyResponse);
       } else if (tab === 'reconciliation') {
         const response = await supabase.rpc('get_accounting_reconciliation', { p_service_date: serviceDate });
         if (loadRequestId.current !== requestId) return;
@@ -279,13 +374,77 @@ export function AccountingPage({ userRole = 'round_lead', demoMode = false }: { 
     }
   };
 
+  const exportShopDaily = async () => {
+    setExporting(true);
+    setError(null);
+    try {
+      validateRange();
+      if (!supabase) throw new Error('ยังไม่ได้ตั้งค่า Supabase');
+      const { dates } = getDateRange(fromDate, toDate);
+      const rows: AccountingShopSummaryRow[] = [];
+      const dailyRows: AccountingShopDailyResponse['rows'] = [];
+      const iceTypes = new Map<string, AccountingShopDailyResponse['ice_types'][number]>();
+      const seenShopIds = new Set<string>();
+      let expectedTotalCount: number | null = null;
+      do {
+        const summaryResponse = await supabase.rpc('get_accounting_shop_summary', {
+          p_from_date: fromDate, p_to_date: toDate, p_filters: shopFilters,
+          p_limit: SHOP_EXPORT_PAGE_SIZE, p_offset: rows.length,
+        });
+        if (summaryResponse.error) throw summaryResponse.error;
+        const pageData = summaryResponse.data as unknown as AccountingShopSummaryResponse;
+        if (!Number.isInteger(pageData.total_count) || pageData.total_count < 0) {
+          throw new Error(SHOP_EXPORT_RETRY_MESSAGE);
+        }
+        if (expectedTotalCount == null) expectedTotalCount = pageData.total_count;
+        else if (pageData.total_count !== expectedTotalCount) throw new Error(SHOP_EXPORT_RETRY_MESSAGE);
+        const remaining = expectedTotalCount - rows.length;
+        if (!pageData.rows.length && remaining > 0) throw new Error(SHOP_EXPORT_RETRY_MESSAGE);
+        if (pageData.rows.length > remaining) throw new Error(SHOP_EXPORT_RETRY_MESSAGE);
+        pageData.rows.forEach((row) => {
+          if (seenShopIds.has(row.shop_id)) throw new Error(SHOP_EXPORT_RETRY_MESSAGE);
+          seenShopIds.add(row.shop_id);
+          rows.push(row);
+        });
+      } while (rows.length < (expectedTotalCount ?? 0));
+      if (rows.length !== expectedTotalCount) throw new Error(SHOP_EXPORT_RETRY_MESSAGE);
+
+      for (let offset = 0; offset < rows.length; offset += SHOP_EXPORT_PAGE_SIZE) {
+        const shopPage = rows.slice(offset, offset + SHOP_EXPORT_PAGE_SIZE);
+        const dailyResponse = await supabase.rpc('get_accounting_shop_daily_matrix', {
+          p_from_date: fromDate, p_to_date: toDate,
+          p_shop_ids: shopPage.map((row) => row.shop_id),
+        });
+        if (dailyResponse.error) throw dailyResponse.error;
+        const dailyPage = dailyResponse.data as unknown as AccountingShopDailyResponse;
+        validateShopDailyExportPage(shopPage, dailyPage, dates);
+        dailyPage.ice_types.forEach((iceType) => {
+          const existing = iceTypes.get(iceType.ice_type_id);
+          if (existing && (existing.code !== iceType.code || existing.name !== iceType.name || existing.unit !== iceType.unit)) {
+            throw new Error(SHOP_EXPORT_RETRY_MESSAGE);
+          }
+          iceTypes.set(iceType.ice_type_id, iceType);
+        });
+        const rowsByShop = new Map(dailyPage.rows.map((row) => [row.shop_id, row]));
+        dailyRows.push(...shopPage.map((shop) => rowsByShop.get(shop.shop_id)!));
+      }
+      await exportAccountingShopDaily(rows, { ice_types: [...iceTypes.values()], rows: dailyRows }, fromDate, toDate);
+    } catch (exportError) {
+      setError(getErrorMessage(exportError));
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const totalCount = tab === 'shops' ? shopSummary.total_count : tab === 'transactions' ? transactions.total_count : reviews.total_count;
   const updateFilter = (change: Partial<AccountingFilters>) => { setFilters((current) => ({ ...current, ...change })); setPage(0); };
   const updateShopFilter = (change: Partial<AccountingFilters>) => { setShopFilters((current) => ({ ...current, ...change })); setPage(0); };
-  const openShopInvoices = async (shop: AccountingShopSummaryRow) => {
+  const openShopInvoices = async (shop: AccountingShopSummaryRow, serviceDate?: string) => {
     const requestId = shopHistoryRequestId.current + 1;
     shopHistoryRequestId.current = requestId;
+    const detailRange = serviceDate ? { from: serviceDate, to: serviceDate } : { from: fromDate, to: toDate };
     setSelectedShop(shop);
+    setSelectedShopRange(detailRange);
     setShopHistory([]);
     setShopHistoryError(null);
     setShopHistoryLoading(true);
@@ -296,8 +455,8 @@ export function AccountingPage({ userRole = 'round_lead', demoMode = false }: { 
       while (true) {
         const response = await supabase.rpc('get_accounting_shop_invoice_detail', {
           p_shop_id: shop.shop_id,
-          p_from_date: fromDate,
-          p_to_date: toDate,
+          p_from_date: detailRange.from,
+          p_to_date: detailRange.to,
           p_filters: {},
           p_limit: PAGE_SIZE,
           p_offset: offset,
@@ -321,6 +480,7 @@ export function AccountingPage({ userRole = 'round_lead', demoMode = false }: { 
   const closeShopInvoices = () => {
     shopHistoryRequestId.current += 1;
     setSelectedShop(null);
+    setSelectedShopRange(null);
     setShopHistory([]);
     setShopHistoryError(null);
     setShopHistoryLoading(false);
@@ -336,16 +496,21 @@ export function AccountingPage({ userRole = 'round_lead', demoMode = false }: { 
     </nav>
     {tab === 'shops' ? <>
       <ShopSummaryPanel
+        daily={shopDaily}
         data={shopSummary}
         filters={shopFilters}
         fromDate={fromDate}
-        onOpenShop={(shop) => void openShopInvoices(shop)}
+        exporting={exporting}
+        onExport={() => void exportShopDaily()}
+        onOpenShop={(shop, date) => void openShopInvoices(shop, date)}
         reviewCount={reviewCount}
         setFromDate={(date) => { setFromDate(date); setPage(0); }}
         setToDate={(date) => { setToDate(date); setPage(0); }}
+        setWindowMode={setShopWindowMode}
         toDate={toDate}
         today={today}
         updateFilter={updateShopFilter}
+        windowMode={shopWindowMode}
       />
       <AccountingPagination page={page} pageSize={PAGE_SIZE} setPage={setPage} totalCount={totalCount} />
       {selectedShop ? createPortal(
@@ -354,18 +519,18 @@ export function AccountingPage({ userRole = 'round_lead', demoMode = false }: { 
           <ShopInvoiceDetail
             entries={shopHistory}
             error={shopHistoryError}
-            fromDate={fromDate}
+            fromDate={selectedShopRange?.from ?? fromDate}
             loading={shopHistoryLoading}
             onClose={closeShopInvoices}
             shop={selectedShop}
-            toDate={toDate}
+            toDate={selectedShopRange?.to ?? toDate}
           />
         </div>,
         document.body,
       ) : null}
     </> : tab === 'reconciliation' ? <ReconciliationPanel data={reconciliation} serviceDate={serviceDate} setServiceDate={setServiceDate} /> : <>
       <div className="accounting-filters">
-        <label className="accounting-filters__range"><span>ช่วงเวลา</span><span><input aria-label="จาก" max={toDate} onChange={(event) => { setFromDate(event.target.value); setPage(0); }} type="date" value={fromDate} /><span aria-hidden="true">ถึง</span><input aria-label="ถึง" max={today} min={fromDate} onChange={(event) => { setToDate(event.target.value); setPage(0); }} type="date" value={toDate} /></span></label>
+        <label className="accounting-filters__range"><span>ช่วงเวลา</span><span><input aria-label="จาก" max={toDate} onChange={(event) => { setShopWindowMode('custom'); setFromDate(event.target.value); setPage(0); }} type="date" value={fromDate} /><span aria-hidden="true">ถึง</span><input aria-label="ถึง" max={today} min={fromDate} onChange={(event) => { setShopWindowMode('custom'); setToDate(event.target.value); setPage(0); }} type="date" value={toDate} /></span></label>
         <label className="accounting-filters__search"><span>ค้นหาเอกสาร</span><span className="accounting-filters__input-wrap"><MagnifyingGlass size={17} /><input aria-label="ค้นเอกสาร" onChange={(event) => updateFilter({ document: event.target.value })} placeholder="เลขเอกสาร / อ้างอิง" value={filters.document ?? ''} /></span></label>
         {tab === 'transactions' ? <>
           <label className="accounting-filters__select"><span>ชนิดน้ำแข็ง</span><select aria-label="ชนิดน้ำแข็ง" onChange={(event) => updateFilter({ ice_type_id: event.target.value || undefined })} value={filters.ice_type_id ?? ''}><option value="">ทุกชนิดน้ำแข็ง</option>{transactions.facets.ice_types.map((item) => <option key={item.value} value={item.value}>{item.label} ({item.count})</option>)}</select></label>
@@ -391,37 +556,51 @@ export function AccountingPage({ userRole = 'round_lead', demoMode = false }: { 
   </section>;
 }
 
-function ShopSummaryPanel({ data, filters, fromDate, onOpenShop, reviewCount, setFromDate, setToDate, toDate, today, updateFilter }: {
+function ShopSummaryPanel({ daily, data, exporting, filters, fromDate, onExport, onOpenShop, reviewCount, setFromDate, setToDate, setWindowMode, toDate, today, updateFilter, windowMode }: {
+  daily: AccountingShopDailyResponse;
   data: AccountingShopSummaryResponse;
+  exporting: boolean;
   filters: AccountingFilters;
   fromDate: string;
-  onOpenShop: (shop: AccountingShopSummaryRow) => void;
+  onExport: () => void;
+  onOpenShop: (shop: AccountingShopSummaryRow, serviceDate?: string) => void;
   reviewCount: number | null;
   setFromDate: (date: string) => void;
   setToDate: (date: string) => void;
+  setWindowMode: (mode: ShopDateWindow) => void;
   toDate: string;
   today: string;
   updateFilter: (change: Partial<AccountingFilters>) => void;
+  windowMode: ShopDateWindow;
 }) {
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => new Set());
   const [extraFiltersOpen, setExtraFiltersOpen] = useState(false);
+  const [view, setView] = useState<'daily' | 'totals'>('daily');
+  const rangeError = getDateRange(fromDate, toDate).error;
   const cards: Array<[string, number | null, 'money' | 'count', string?]> = [
     ['ยอดขายช่วงนี้', data.totals.sales_amount, 'money'],
     ['รับแล้วของยอดขายช่วงนี้', data.totals.paid_amount, 'money', 'นับเงินที่จัดสรรเข้าบิลซึ่งขายในช่วงวันที่เลือก'],
     ['ค้างของยอดขายช่วงนี้', data.totals.outstanding_amount, 'money'],
     ['ค้างสะสมทั้งหมด', data.totals.cumulative_outstanding_amount, 'money'],
     ['เกินกำหนดสะสม', data.totals.cumulative_overdue_amount, 'money'],
-    ['เงินรับจริงช่วงนี้', data.totals.cash_received_in_period, 'money', 'นับตามวันที่รับเงินจริง รวมบิลเก่า และไม่เปลี่ยนตามเงื่อนไขหรือสถานะบิล; ตัวกรองอาคารและโซนใช้ตำแหน่งปัจจุบันของร้าน'],
+    ['เงินรับจริงทั้งหมดตามร้าน/พื้นที่ช่วงนี้', data.totals.cash_received_in_period, 'money', 'รวมเงินรับจริงตามวันที่รับของร้านที่ตรงตัวกรองร้านและพื้นที่ รวมร้านที่ปิดใช้งานและบิลเก่า; ไม่เปลี่ยนตามตัวกรองเงื่อนไขหรือสถานะชำระ'],
     ['ร้านที่ยังค้าง', data.totals.cumulative_outstanding_shop_count, 'count'],
     ['รายการต้องตรวจสอบ', reviewCount, 'count'],
   ];
 
   return <div className="accounting-shop-summary">
+    <div className="accounting-shop-view-actions">
+      <div className="accounting-shop-view-switch" role="group" aria-label="มุมมองสรุปรายร้าน">
+        <button aria-pressed={view === 'daily'} onClick={() => setView('daily')} type="button">ตารางรายวัน</button>
+        <button aria-pressed={view === 'totals'} onClick={() => setView('totals')} type="button">ยอดรวมช่วงวันที่</button>
+      </div>
+      <button className="accounting-shop-export" disabled={exporting} onClick={onExport} type="button"><DownloadSimple size={18} />{exporting ? 'กำลังส่งออก...' : 'ส่งออก Excel'}</button>
+    </div>
     <div className="accounting-financial-cards">
       {cards.map(([label, value, format, title]) => <article key={label} title={title}><span>{label}</span><strong>{value == null ? '—' : format === 'money' ? money.format(value) : value.toLocaleString('th-TH')}</strong></article>)}
     </div>
     <div className="accounting-filters accounting-filters--shop-summary">
-      <label className="accounting-filters__range"><span>ช่วงเวลา</span><span><input aria-label="จาก" max={toDate} onChange={(event) => setFromDate(event.target.value)} type="date" value={fromDate} /><span aria-hidden="true">ถึง</span><input aria-label="ถึง" max={today} min={fromDate} onChange={(event) => setToDate(event.target.value)} type="date" value={toDate} /></span></label>
+      <label className="accounting-filters__range"><span>ช่วงเวลา</span><span><input aria-describedby={rangeError ? 'accounting-shop-date-error' : undefined} aria-invalid={rangeError ? true : undefined} aria-label="จาก" max={toDate} onChange={(event) => { setWindowMode('custom'); setFromDate(event.target.value); }} type="date" value={fromDate} /><span aria-hidden="true">ถึง</span><input aria-describedby={rangeError ? 'accounting-shop-date-error' : undefined} aria-invalid={rangeError ? true : undefined} aria-label="ถึง" max={today} min={fromDate} onChange={(event) => { setWindowMode('custom'); setToDate(event.target.value); }} type="date" value={toDate} /></span></label>
       <label className="accounting-filters__search"><span>ร้านค้า</span><span className="accounting-filters__input-wrap"><MagnifyingGlass size={17} /><input aria-label="ค้นหาร้าน" onChange={(event) => updateFilter({ shop_search: event.target.value })} placeholder="ค้นหาร้านค้า" value={filters.shop_search ?? ''} /></span></label>
       <div className="accounting-filters__field"><span>อาคาร / โซน</span><span>
         <select aria-label="อาคาร" onChange={(event) => updateFilter({ building_id: event.target.value || undefined, zone_id: undefined })} value={filters.building_id ?? ''}><option value="">ทุกอาคาร</option>{data.facets.buildings.map((item) => <option key={item.value} value={item.value}>{item.label} ({item.count})</option>)}</select>
@@ -439,7 +618,55 @@ function ShopSummaryPanel({ data, filters, fromDate, onOpenShop, reviewCount, se
         <label><span>เลือกร้านโดยตรง</span><select aria-label="ร้าน" onChange={(event) => updateFilter({ shop_id: event.target.value || undefined })} value={filters.shop_id ?? ''}><option value="">ทุกร้าน</option>{data.facets.shops.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
       </div> : null}
     </div>
-    <ShopSummaryTable
+    {view === 'daily' ? <ShopDailyMatrix
+      collapsedGroups={collapsedGroups}
+      daily={daily}
+      data={data}
+      fromDate={fromDate}
+      grouped={(filters.shop_sort ?? 'area') === 'area'}
+      onOpenShop={onOpenShop}
+      onShiftRange={(direction) => {
+        if (windowMode === 'month') {
+          const nextRange = calendarMonthRange(fromDate, today, direction);
+          setFromDate(nextRange.fromDate);
+          setToDate(nextRange.toDate);
+          return;
+        }
+        const { dates, error: rangeError } = getDateRange(fromDate, toDate);
+        if (rangeError) return;
+        const days = windowMode === 'custom' ? dates.length : windowMode;
+        if (direction < 0) {
+          const nextToDate = shiftDate(fromDate, -1);
+          setFromDate(shiftDate(nextToDate, -(days - 1)));
+          setToDate(nextToDate);
+          return;
+        }
+        const nextFromDate = shiftDate(toDate, 1);
+        if (nextFromDate > today) return;
+        setFromDate(nextFromDate);
+        const nextToDate = shiftDate(nextFromDate, days - 1);
+        setToDate(nextToDate > today ? today : nextToDate);
+      }}
+      onToggleGroup={(key) => setCollapsedGroups((current) => {
+        const next = new Set(current);
+        if (next.has(key)) next.delete(key); else next.add(key);
+        return next;
+      })}
+      setWindow={(mode) => {
+        setWindowMode(mode);
+        if (mode === 'month') {
+          const nextRange = calendarMonthRange(toDate, today);
+          setFromDate(nextRange.fromDate);
+          setToDate(nextRange.toDate);
+        } else {
+          const anchorDate = dateKeyTimestamp(toDate) != null && toDate <= today ? toDate : today;
+          setFromDate(shiftDate(anchorDate, -(mode - 1)));
+          setToDate(anchorDate);
+        }
+      }}
+      toDate={toDate}
+      windowMode={windowMode}
+    /> : <ShopSummaryTable
       collapsedGroups={collapsedGroups}
       data={data}
       grouped={(filters.shop_sort ?? 'area') === 'area'}
@@ -449,7 +676,7 @@ function ShopSummaryPanel({ data, filters, fromDate, onOpenShop, reviewCount, se
         if (next.has(key)) next.delete(key); else next.add(key);
         return next;
       })}
-    />
+    />}
   </div>;
 }
 
@@ -473,6 +700,157 @@ function derivedShopGroup(rows: AccountingShopSummaryRow[]): AccountingShopSumma
   };
 }
 
+const dailyStatusLabels: Record<AccountingShopDailyStatus, string> = {
+  purchased: 'ซื้อแล้ว',
+  recorded_no_sale: 'มีบันทึกแต่ไม่มีการขาย',
+  no_purchase: 'ไม่ซื้อ',
+  closed_shop: 'ปิดร้าน',
+  not_recorded: 'ยังไม่บันทึก',
+  not_scheduled: 'ไม่อยู่ในรอบ',
+  skipped: 'ข้ามร้าน',
+};
+
+const dailyDate = new Intl.DateTimeFormat('th-TH', {
+  day: 'numeric', month: 'short', timeZone: 'Asia/Bangkok', weekday: 'short',
+});
+
+function dayItemQuantity(day: AccountingShopDailyCell | undefined, iceTypeId: string) {
+  return Number(day?.items.find((item) => item.ice_type_id === iceTypeId)?.quantity ?? 0);
+}
+
+function ShopDailyMatrix({ collapsedGroups, daily, data, fromDate, grouped, onOpenShop, onShiftRange, onToggleGroup, setWindow, toDate, windowMode }: {
+  collapsedGroups: Set<string>;
+  daily: AccountingShopDailyResponse;
+  data: AccountingShopSummaryResponse;
+  fromDate: string;
+  grouped: boolean;
+  onOpenShop: (shop: AccountingShopSummaryRow, serviceDate?: string) => void;
+  onShiftRange: (direction: -1 | 1) => void;
+  onToggleGroup: (key: string) => void;
+  setWindow: (days: 1 | 7 | 14 | 'month') => void;
+  toDate: string;
+  windowMode: ShopDateWindow;
+}) {
+  const { dates, error: rangeError } = getDateRange(fromDate, toDate);
+  if (rangeError) return <p className="accounting-daily-matrix__state" id="accounting-shop-date-error">{rangeError}</p>;
+  const dailyRows = new Map(daily.rows.map((row) => [row.shop_id, row]));
+  const groups = new Map<string, AccountingShopSummaryRow[]>();
+  data.rows.forEach((row) => {
+    const key = shopGroupKey(row);
+    groups.set(key, [...(groups.get(key) ?? []), row]);
+  });
+  const dayColumnCount = daily.ice_types.length + 2;
+  const totalColumnCount = 3 + dates.length * dayColumnCount + 7;
+
+  const renderDayCells = (shop: AccountingShopSummaryRow, day: AccountingShopDailyCell | undefined, date: string) => {
+    if (!day) return <Fragment key={date}>
+      {daily.ice_types.map((iceType) => <td className="accounting-daily-matrix__quantity" key={iceType.ice_type_id}><span aria-label={`${shop.shop_code} ${date} ${iceType.name} ไม่มีข้อมูล`}>—</span></td>)}
+      <td className="accounting-daily-matrix__money"><span aria-label={`${shop.shop_code} ${date} ยอดขาย ไม่มีข้อมูล`}>—</span></td>
+      <td className="accounting-daily-matrix__money accounting-daily-matrix__received"><span aria-label={`${shop.shop_code} ${date} รับเงินจริง ไม่มีข้อมูล`}>—</span></td>
+    </Fragment>;
+
+    const interactive = day.status === 'purchased';
+    return <Fragment key={date}>
+      {daily.ice_types.map((iceType, index) => {
+        const quantity = dayItemQuantity(day, iceType.ice_type_id);
+        const content = !interactive && index === 0
+          ? <span className={`accounting-daily-status accounting-daily-status--${day.status}`}>{dailyStatusLabels[day.status]}</span>
+          : quantity ? number.format(quantity) : '—';
+        return <td className="accounting-daily-matrix__quantity" key={iceType.ice_type_id}>
+          {interactive ? <button aria-label={`${shop.shop_code} ${date} ${iceType.name}`} onClick={() => onOpenShop(shop, date)} type="button">{content}</button>
+            : <span aria-label={`${shop.shop_code} ${date} ${index === 0 ? `สถานะ ${dailyStatusLabels[day.status]}` : iceType.name}`}>{content}</span>}
+        </td>;
+      })}
+      <td className="accounting-daily-matrix__money">
+        {interactive ? <button aria-label={`${shop.shop_code} ${date} ยอดขาย`} onClick={() => onOpenShop(shop, date)} type="button"><strong>{money.format(Number(day.sales_amount))}</strong>{day.invoice_count > 1 ? <small>{day.invoice_count} บิล</small> : null}</button>
+          : <span aria-label={`${shop.shop_code} ${date} ยอดขาย สถานะ ${dailyStatusLabels[day.status]}`}><strong>{money.format(Number(day.sales_amount))}</strong>{!daily.ice_types.length ? <span className={`accounting-daily-status accounting-daily-status--${day.status}`}>{dailyStatusLabels[day.status]}</span> : null}</span>}
+      </td>
+      <td className="accounting-daily-matrix__money accounting-daily-matrix__received"><span aria-label={`${shop.shop_code} ${date} รับเงินจริง`}>{money.format(Number(day.cash_received))}</span></td>
+    </Fragment>;
+  };
+
+  const renderShopRow = (shop: AccountingShopSummaryRow) => {
+    const row = dailyRows.get(shop.shop_id);
+    const days = new Map((row?.days ?? []).map((day) => [day.service_date, day]));
+    const dailyComplete = dates.every((date) => days.has(date));
+    const cashReceived = dailyComplete ? dates.reduce((sum, date) => sum + Number(days.get(date)?.cash_received), 0) : null;
+    const note = shop.delivery_sequence == null ? 'ยังไม่ได้กำหนดลำดับส่ง' : shop.historical_zone_name && shop.current_zone_name && shop.historical_zone_name !== shop.current_zone_name ? 'พื้นที่ล่าสุดต่างจากพื้นที่ประจำ' : '—';
+    return <tr className={shop.payment_status === 'overdue' ? 'accounting-row--issue' : ''} key={shop.shop_id}>
+      <td className="accounting-daily-matrix__sequence">{shop.delivery_sequence?.toLocaleString('th-TH') ?? '—'}</td>
+      <th className="accounting-daily-matrix__shop"><button className="accounting-link" onClick={() => onOpenShop(shop)} type="button">{shop.shop_code} · {shop.shop_name}</button></th>
+      <td className="accounting-daily-matrix__condition"><span>{row?.payment_condition ?? (shop.payment_term ? paymentTermLabels[shop.payment_term] : 'ยังไม่ตั้งค่า')}</span></td>
+      {dates.map((date) => renderDayCells(shop, days.get(date), date))}
+      <td><strong>{money.format(shop.sales_amount)}</strong></td><td>{cashReceived == null ? '—' : money.format(cashReceived)}</td><td>{money.format(shop.outstanding_amount)}</td><td>{money.format(shop.cumulative_outstanding_amount)}</td><td>{money.format(shop.cumulative_overdue_amount)}</td><td><span className={`accounting-payment-status accounting-payment-status--${shop.payment_status}`}>{paymentStatusLabels[shop.payment_status]}</span></td><td className="accounting-daily-matrix__note">{note}</td>
+    </tr>;
+  };
+
+  return <div className="accounting-daily-matrix">
+    <div className="accounting-daily-matrix__toolbar">
+      <div className="accounting-daily-matrix__period">
+        <button aria-label="ช่วงก่อนหน้า" onClick={() => onShiftRange(-1)} type="button"><CaretLeft size={18} /></button>
+        <strong aria-live="polite">{accountingDate.format(new Date(`${fromDate}T12:00:00+07:00`))} – {accountingDate.format(new Date(`${toDate}T12:00:00+07:00`))}</strong>
+        <button aria-label="ช่วงถัดไป" disabled={toDate >= toBangkokDateString()} onClick={() => onShiftRange(1)} type="button"><CaretRight size={18} /></button>
+      </div>
+      <div aria-label="จำนวนวันที่แสดง" className="accounting-daily-matrix__windows" role="group">
+        <button aria-pressed={windowMode === 1} onClick={() => setWindow(1)} type="button">1 วัน</button>
+        <button aria-pressed={windowMode === 7} onClick={() => setWindow(7)} type="button">7 วัน</button>
+        <button aria-pressed={windowMode === 14} onClick={() => setWindow(14)} type="button">14 วัน</button>
+        <button aria-pressed={windowMode === 'month'} onClick={() => setWindow('month')} type="button">ทั้งเดือน</button>
+      </div>
+    </div>
+    <div className="accounting-table-wrap accounting-table-wrap--ledger accounting-daily-matrix__scroll"><table className="accounting-table accounting-daily-matrix__table">
+      <thead>
+        <tr><th className="accounting-daily-matrix__sequence" rowSpan={2}>ลำดับ</th><th className="accounting-daily-matrix__shop" rowSpan={2}>ร้าน</th><th className="accounting-daily-matrix__condition" rowSpan={2}>เงื่อนไขชำระ</th>
+          {dates.map((date) => <th className="accounting-daily-matrix__date" colSpan={dayColumnCount} key={date}>{dailyDate.format(new Date(`${date}T12:00:00+07:00`))}</th>)}
+          <th rowSpan={2}>ยอดขายรวม</th><th rowSpan={2}>รับจริงของร้านที่แสดง</th><th rowSpan={2}>ค้างช่วงนี้</th><th rowSpan={2}>ค้างสะสม</th><th rowSpan={2}>เกินกำหนด</th><th rowSpan={2}>สถานะชำระ</th><th rowSpan={2}>หมายเหตุ</th>
+        </tr>
+        <tr>{dates.flatMap((date) => [
+          ...daily.ice_types.map((iceType) => <th key={`${date}:${iceType.ice_type_id}`} title={iceType.name}>{iceType.name}</th>),
+          <th key={`${date}:sales`}>ยอดขาย</th>, <th key={`${date}:cash`}>รับจริงรายร้าน</th>,
+        ])}</tr>
+      </thead>
+      <tbody>
+        {!data.rows.length ? <tr><td colSpan={totalColumnCount}>ไม่พบร้านที่ตรงกับตัวกรอง</td></tr> : !grouped ? data.rows.map(renderShopRow) : [...groups.entries()].map(([key, rows]) => {
+          const group = derivedShopGroup(rows);
+          const collapsed = collapsedGroups.has(key);
+          const groupDailyRows = rows.map((row) => dailyRows.get(row.shop_id)).filter(Boolean);
+          const groupDailyComplete = rows.every((row) => {
+            const dailyRow = dailyRows.get(row.shop_id);
+            return dates.every((date) => dailyRow?.days.some((day) => day.service_date === date));
+          });
+          const groupDayCells = groupDailyRows.flatMap((row) => dates.map((date) => row?.days.find((day) => day.service_date === date)).filter((day): day is AccountingShopDailyCell => Boolean(day)));
+          const groupCash = groupDailyComplete ? groupDayCells.reduce((sum, day) => sum + Number(day.cash_received), 0) : null;
+          const statusCounts = groupDayCells.reduce((counts, day) => {
+            counts[day.status] += 1;
+            return counts;
+          }, { purchased: 0, recorded_no_sale: 0, no_purchase: 0, closed_shop: 0, not_recorded: 0, not_scheduled: 0, skipped: 0 } as Record<AccountingShopDailyStatus, number>);
+          return <Fragment key={key}>
+            <tr className="accounting-shop-group accounting-daily-matrix__group"><th colSpan={totalColumnCount}><button aria-expanded={!collapsed} onClick={() => onToggleGroup(key)} type="button"><span aria-hidden="true">{collapsed ? '▶' : '▼'}</span><strong>{group.building_name} · {group.current_zone_name ?? 'ไม่มีโซน'}</strong><span>หน้านี้ {group.total_shop_count.toLocaleString('th-TH')} ร้าน</span>{groupDailyComplete ? <><span>ซื้อแล้ว {statusCounts.purchased.toLocaleString('th-TH')}</span>{statusCounts.recorded_no_sale ? <span>มีบันทึกแต่ไม่มีการขาย {statusCounts.recorded_no_sale.toLocaleString('th-TH')}</span> : null}<span>ไม่ซื้อ {statusCounts.no_purchase.toLocaleString('th-TH')}</span><span>ยังไม่บันทึก {statusCounts.not_recorded.toLocaleString('th-TH')}</span></> : <span>ข้อมูลรายวันไม่ครบ</span>}<span>ยอดขาย {money.format(group.sales_amount)}</span><span>รับจริงเฉพาะร้านในหน้านี้ {groupCash == null ? '—' : money.format(groupCash)}</span><span>ค้าง {money.format(group.cumulative_outstanding_amount)}</span></button></th></tr>
+            {collapsed ? null : <>
+              {rows.map(renderShopRow)}
+              <tr className="accounting-daily-matrix__totals"><th colSpan={3}>รวมร้านในหน้านี้ {group.building_name} · {group.current_zone_name ?? 'ไม่มีโซน'}</th>
+                {dates.map((date) => {
+                  const dayCells = rows.map((shop) => dailyRows.get(shop.shop_id)?.days.find((day) => day.service_date === date));
+                  const complete = dayCells.every(Boolean);
+                  return <Fragment key={date}>
+                    {daily.ice_types.map((iceType) => <td key={iceType.ice_type_id}>{complete ? number.format(dayCells.reduce((sum, day) => sum + dayItemQuantity(day, iceType.ice_type_id), 0)) : '—'}</td>)}
+                    <td>{complete ? money.format(dayCells.reduce((sum, day) => sum + Number(day?.sales_amount), 0)) : '—'}</td>
+                    <td>{complete ? money.format(dayCells.reduce((sum, day) => sum + Number(day?.cash_received), 0)) : '—'}</td>
+                  </Fragment>;
+                })}
+                <td>{money.format(rows.reduce((sum, shop) => sum + shop.sales_amount, 0))}</td><td>{groupCash == null ? '—' : money.format(groupCash)}</td><td>{money.format(rows.reduce((sum, shop) => sum + shop.outstanding_amount, 0))}</td><td>{money.format(group.cumulative_outstanding_amount)}</td><td>{money.format(rows.reduce((sum, shop) => sum + shop.cumulative_overdue_amount, 0))}</td><td>—</td><td>—</td>
+              </tr>
+            </>}
+          </Fragment>;
+        })}
+      </tbody>
+    </table></div>
+    <div className="accounting-daily-matrix__legend" aria-label="ความหมายสถานะ">
+      {(Object.entries(dailyStatusLabels) as Array<[AccountingShopDailyStatus, string]>).filter(([status]) => status !== 'purchased').map(([status, label]) => <span key={status}><i className={`accounting-daily-status accounting-daily-status--${status}`} />{label}</span>)}
+    </div>
+  </div>;
+}
+
 function ShopSummaryTable({ collapsedGroups, data, grouped, onOpenShop, onToggleGroup }: {
   collapsedGroups: Set<string>;
   data: AccountingShopSummaryResponse;
@@ -485,15 +863,13 @@ function ShopSummaryTable({ collapsedGroups, data, grouped, onOpenShop, onToggle
     const key = shopGroupKey(row);
     groups.set(key, [...(groups.get(key) ?? []), row]);
   });
-  const summaries = new Map((data.groups ?? []).map((group) => [shopGroupKey(group), group]));
-
   return <div className="accounting-table-wrap accounting-table-wrap--ledger"><table className="accounting-table accounting-shop-table"><thead><tr><th>ร้าน</th><th>อาคาร / โซนประจำร้าน</th><th>เงื่อนไขชำระ</th><th>ยอดขายช่วงนี้</th><th>รับแล้วของยอดช่วงนี้</th><th>ค้างช่วงนี้</th><th>ค้างสะสม</th><th>เกินกำหนดสะสม</th><th>จำนวนบิล</th><th>ครบกำหนดเก่าสุด</th><th>สถานะชำระ</th></tr></thead><tbody>
     {!data.rows.length ? <tr><td colSpan={11}>ไม่พบร้านที่ตรงกับตัวกรอง</td></tr>
       : grouped ? [...groups.entries()].map(([key, rows]) => {
-        const group = summaries.get(key) ?? derivedShopGroup(rows);
+        const group = derivedShopGroup(rows);
         const collapsed = collapsedGroups.has(key);
         return <Fragment key={key}>
-          <tr className="accounting-shop-group"><th colSpan={11}><button aria-expanded={!collapsed} onClick={() => onToggleGroup(key)} type="button"><span aria-hidden="true">{collapsed ? '▶' : '▼'}</span><strong>{group.building_name} / {group.current_zone_name ?? 'ไม่มีโซน'}</strong><span>{rows.length < group.total_shop_count ? `แสดง ${rows.length.toLocaleString('th-TH')} จาก ${group.total_shop_count.toLocaleString('th-TH')} ร้าน` : `${group.total_shop_count.toLocaleString('th-TH')} ร้าน`}</span><span>ซื้อ {group.purchased_shop_count.toLocaleString('th-TH')}</span>{group.recorded_no_sale_shop_count ? <span>มีบันทึกแต่ไม่มีการขาย {group.recorded_no_sale_shop_count.toLocaleString('th-TH')}</span> : null}{group.closed_shop_count ? <span>ปิดร้าน {group.closed_shop_count.toLocaleString('th-TH')}</span> : null}<span>ยังไม่มีบันทึก {group.not_recorded_shop_count.toLocaleString('th-TH')}</span><span>ยอด {money.format(group.sales_amount)}</span><span>ค้าง {money.format(group.cumulative_outstanding_amount)}</span></button></th></tr>
+          <tr className="accounting-shop-group"><th colSpan={11}><button aria-expanded={!collapsed} onClick={() => onToggleGroup(key)} type="button"><span aria-hidden="true">{collapsed ? '▶' : '▼'}</span><strong>{group.building_name} / {group.current_zone_name ?? 'ไม่มีโซน'}</strong><span>หน้านี้ {group.total_shop_count.toLocaleString('th-TH')} ร้าน</span><span>ซื้อ {group.purchased_shop_count.toLocaleString('th-TH')}</span>{group.recorded_no_sale_shop_count ? <span>มีบันทึกแต่ไม่มีการขาย {group.recorded_no_sale_shop_count.toLocaleString('th-TH')}</span> : null}{group.closed_shop_count ? <span>ปิดร้าน {group.closed_shop_count.toLocaleString('th-TH')}</span> : null}<span>ยังไม่มีบันทึก {group.not_recorded_shop_count.toLocaleString('th-TH')}</span><span>ยอด {money.format(group.sales_amount)}</span><span>ค้าง {money.format(group.cumulative_outstanding_amount)}</span></button></th></tr>
           {collapsed ? null : rows.map((row) => <ShopSummaryRow key={row.shop_id} onOpenShop={onOpenShop} row={row} />)}
         </Fragment>;
       }) : data.rows.map((row) => <ShopSummaryRow key={row.shop_id} onOpenShop={onOpenShop} row={row} />)}

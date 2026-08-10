@@ -144,6 +144,35 @@ export type AccountingShopSummaryResponse = {
   };
 };
 
+export type AccountingShopDailyStatus =
+  | 'purchased'
+  | 'recorded_no_sale'
+  | 'no_purchase'
+  | 'closed_shop'
+  | 'not_recorded'
+  | 'not_scheduled'
+  | 'skipped';
+
+export type AccountingShopDailyCell = {
+  service_date: string;
+  status: AccountingShopDailyStatus;
+  items: Array<{ ice_type_id: string; quantity: number }>;
+  sales_amount: number;
+  cash_received: number;
+  invoice_count: number;
+};
+
+export type AccountingShopDailyRow = {
+  shop_id: string;
+  payment_condition: string;
+  days: AccountingShopDailyCell[];
+};
+
+export type AccountingShopDailyResponse = {
+  ice_types: Array<{ ice_type_id: string; code: string; name: string; unit: string }>;
+  rows: AccountingShopDailyRow[];
+};
+
 export type AccountingShopInvoiceDetailEntry = {
   delivery_event_id: string;
   delivery_status?: 'active' | 'replaced' | 'cancelled';
