@@ -740,7 +740,7 @@ function ShopDailyMatrix({ collapsedGroups, daily, data, fromDate, grouped, onOp
     groups.set(key, [...(groups.get(key) ?? []), row]);
   });
   const dayColumnCount = daily.ice_types.length + 2;
-  const totalColumnCount = 3 + dates.length * dayColumnCount + 7;
+  const totalColumnCount = 2 + dates.length * dayColumnCount + 7;
 
   const renderDayCells = (shop: AccountingShopSummaryRow, day: AccountingShopDailyCell | undefined, date: string) => {
     if (!day) return <Fragment key={date}>
@@ -778,7 +778,6 @@ function ShopDailyMatrix({ collapsedGroups, daily, data, fromDate, grouped, onOp
     return <tr className={shop.payment_status === 'overdue' ? 'accounting-row--issue' : ''} key={shop.shop_id}>
       <td className="accounting-daily-matrix__sequence">{shop.delivery_sequence?.toLocaleString('th-TH') ?? '—'}</td>
       <th className="accounting-daily-matrix__shop"><button className="accounting-link" onClick={() => onOpenShop(shop)} type="button">{shop.shop_code} · {shop.shop_name}</button></th>
-      <td className="accounting-daily-matrix__condition"><span>{row?.payment_condition ?? (shop.payment_term ? paymentTermLabels[shop.payment_term] : 'ยังไม่ตั้งค่า')}</span></td>
       {dates.map((date) => renderDayCells(shop, days.get(date), date))}
       <td><strong>{money.format(shop.sales_amount)}</strong></td><td>{cashReceived == null ? '—' : money.format(cashReceived)}</td><td>{money.format(shop.outstanding_amount)}</td><td>{money.format(shop.cumulative_outstanding_amount)}</td><td>{money.format(shop.cumulative_overdue_amount)}</td><td><span className={`accounting-payment-status accounting-payment-status--${shop.payment_status}`}>{paymentStatusLabels[shop.payment_status]}</span></td><td className="accounting-daily-matrix__note">{note}</td>
     </tr>;
@@ -800,7 +799,7 @@ function ShopDailyMatrix({ collapsedGroups, daily, data, fromDate, grouped, onOp
     </div>
     <div className="accounting-table-wrap accounting-table-wrap--ledger accounting-daily-matrix__scroll"><table className="accounting-table accounting-daily-matrix__table">
       <thead>
-        <tr><th className="accounting-daily-matrix__sequence" rowSpan={2}>ลำดับ</th><th className="accounting-daily-matrix__shop" rowSpan={2}>ร้าน</th><th className="accounting-daily-matrix__condition" rowSpan={2}>เงื่อนไขชำระ</th>
+        <tr><th className="accounting-daily-matrix__sequence" rowSpan={2}>ลำดับ</th><th className="accounting-daily-matrix__shop" rowSpan={2}>ร้าน</th>
           {dates.map((date) => <th className="accounting-daily-matrix__date" colSpan={dayColumnCount} key={date}>{dailyDate.format(new Date(`${date}T12:00:00+07:00`))}</th>)}
           <th rowSpan={2}>ยอดขายรวม</th><th rowSpan={2}>รับจริงของร้านที่แสดง</th><th rowSpan={2}>ค้างช่วงนี้</th><th rowSpan={2}>ค้างสะสม</th><th rowSpan={2}>เกินกำหนด</th><th rowSpan={2}>สถานะชำระ</th><th rowSpan={2}>หมายเหตุ</th>
         </tr>
@@ -828,7 +827,7 @@ function ShopDailyMatrix({ collapsedGroups, daily, data, fromDate, grouped, onOp
             <tr className="accounting-shop-group accounting-daily-matrix__group"><th colSpan={totalColumnCount}><button aria-expanded={!collapsed} onClick={() => onToggleGroup(key)} type="button"><span aria-hidden="true">{collapsed ? '▶' : '▼'}</span><strong>{group.building_name} · {group.current_zone_name ?? 'ไม่มีโซน'}</strong><span>หน้านี้ {group.total_shop_count.toLocaleString('th-TH')} ร้าน</span>{groupDailyComplete ? <><span>ซื้อแล้ว {statusCounts.purchased.toLocaleString('th-TH')}</span>{statusCounts.recorded_no_sale ? <span>มีบันทึกแต่ไม่มีการขาย {statusCounts.recorded_no_sale.toLocaleString('th-TH')}</span> : null}<span>ไม่ซื้อ {statusCounts.no_purchase.toLocaleString('th-TH')}</span><span>ยังไม่บันทึก {statusCounts.not_recorded.toLocaleString('th-TH')}</span></> : <span>ข้อมูลรายวันไม่ครบ</span>}<span>ยอดขาย {money.format(group.sales_amount)}</span><span>รับจริงเฉพาะร้านในหน้านี้ {groupCash == null ? '—' : money.format(groupCash)}</span><span>ค้าง {money.format(group.cumulative_outstanding_amount)}</span></button></th></tr>
             {collapsed ? null : <>
               {rows.map(renderShopRow)}
-              <tr className="accounting-daily-matrix__totals"><th colSpan={3}>รวมร้านในหน้านี้ {group.building_name} · {group.current_zone_name ?? 'ไม่มีโซน'}</th>
+              <tr className="accounting-daily-matrix__totals"><th colSpan={2}>รวมร้านในหน้านี้ {group.building_name} · {group.current_zone_name ?? 'ไม่มีโซน'}</th>
                 {dates.map((date) => {
                   const dayCells = rows.map((shop) => dailyRows.get(shop.shop_id)?.days.find((day) => day.service_date === date));
                   const complete = dayCells.every(Boolean);

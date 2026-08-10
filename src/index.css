@@ -125,11 +125,10 @@
 .accounting-daily-matrix__table thead tr:nth-child(2) th:nth-child(n) { max-width: 112px; }
 .accounting-daily-matrix__date { color: #173f32 !important; font-size: .88rem !important; }
 .accounting-daily-matrix__sequence { position: sticky; z-index: 3; left: 0; width: 62px; min-width: 62px; background: #fff; text-align: center !important; }
-.accounting-daily-matrix__shop { position: sticky; z-index: 3; left: 62px; width: 240px; min-width: 240px; background: #fff; text-align: left !important; }
-.accounting-daily-matrix__condition { position: sticky; z-index: 3; left: 302px; width: 126px; min-width: 126px; border-right: 2px solid #aec4b9; background: #fff; text-align: left !important; }
-.accounting-daily-matrix__table thead .accounting-daily-matrix__sequence, .accounting-daily-matrix__table thead .accounting-daily-matrix__shop, .accounting-daily-matrix__table thead .accounting-daily-matrix__condition { z-index: 6; background: #d8e9e1; }
-.accounting-daily-matrix__table tbody tr:hover > .accounting-daily-matrix__sequence, .accounting-daily-matrix__table tbody tr:hover > .accounting-daily-matrix__shop, .accounting-daily-matrix__table tbody tr:hover > .accounting-daily-matrix__condition { background: #f5faf7; }
-.accounting-daily-matrix__table tbody .accounting-row--issue > .accounting-daily-matrix__sequence, .accounting-daily-matrix__table tbody .accounting-row--issue > .accounting-daily-matrix__shop, .accounting-daily-matrix__table tbody .accounting-row--issue > .accounting-daily-matrix__condition { background: #fff4e6; }
+.accounting-daily-matrix__shop { position: sticky; z-index: 3; left: 62px; width: 240px; min-width: 240px; border-right: 2px solid #aec4b9; background: #fff; text-align: left !important; }
+.accounting-daily-matrix__table thead .accounting-daily-matrix__sequence, .accounting-daily-matrix__table thead .accounting-daily-matrix__shop { z-index: 6; background: #d8e9e1; }
+.accounting-daily-matrix__table tbody tr:hover > .accounting-daily-matrix__sequence, .accounting-daily-matrix__table tbody tr:hover > .accounting-daily-matrix__shop { background: #f5faf7; }
+.accounting-daily-matrix__table tbody .accounting-row--issue > .accounting-daily-matrix__sequence, .accounting-daily-matrix__table tbody .accounting-row--issue > .accounting-daily-matrix__shop { background: #fff4e6; }
 .accounting-daily-matrix__quantity { min-width: 78px; font-size: .9rem !important; font-weight: 800; }
 .accounting-daily-matrix__money { min-width: 112px; }
 .accounting-daily-matrix__received { border-right: 2px solid #b8cbc1; background: #f7fbf9; }
@@ -209,7 +208,6 @@
   .accounting-daily-matrix__period strong { min-width: 0; flex: 1; }
   .accounting-daily-matrix__shop { width: 190px; min-width: 190px; left: 52px; }
   .accounting-daily-matrix__sequence { width: 52px; min-width: 52px; }
-  .accounting-daily-matrix__condition { position: static; width: 112px; min-width: 112px; }
 }
 
 @media (min-width: 1500px) {

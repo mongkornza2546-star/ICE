@@ -296,7 +296,8 @@ describe('accounting shop summary', () => {
     expect(screen.getAllByText('มีบันทึกแต่ไม่มีการขาย').length).toBeGreaterThan(0);
     expect(screen.queryByRole('button', { name: `S001 ${fromDate} โม่` })).toBeNull();
     expect(screen.queryByRole('button', { name: `S001 ${fromDate} ยอดขาย` })).toBeNull();
-    expect(screen.getByText('เก็บทุกวันศุกร์')).toBeTruthy();
+    expect(screen.queryByRole('columnheader', { name: 'เงื่อนไขชำระ' })).toBeNull();
+    expect(screen.queryByText('เก็บทุกวันศุกร์')).toBeNull();
 
     await user.click(screen.getByRole('button', { name: `S001 ${toDate} ยอดขาย` }));
     await waitFor(() => expect(rpcMock).toHaveBeenCalledWith('get_accounting_shop_invoice_detail', expect.objectContaining({
