@@ -145,6 +145,7 @@ export function EmployeeStockTransferSection({
                           onChange={(delta) => changeTransferQuantity(iceType.id, delta)}
                           quantity={transferQuantity}
                           purpose={movementLabel}
+                          step={0.5}
                           unit={iceType.unit}
                         />
                       </div>
@@ -192,6 +193,7 @@ export function EmployeeStockTransferSection({
                           onChange={(delta) => changeTransferQuantity(iceType.id, delta)}
                           quantity={transferQuantity}
                           purpose={movementLabel}
+                          step={0.5}
                         />
                       </div>
                       <span data-label={isReturn ? 'รถก่อน' : isDamage ? 'คงเหลือก่อน' : 'เติมวันนี้'} role="cell">{isReturn ? truckBefore : isDamage ? holdingBefore : withdrawnToday}</span>

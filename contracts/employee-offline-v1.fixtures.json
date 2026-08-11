@@ -1,0 +1,512 @@
+{
+  "contractVersion": 1,
+  "commands": [
+    {
+      "schemaVersion": 1,
+      "payloadVersion": 1,
+      "commandId": "10000000-0000-4000-8000-000000000101",
+      "idempotencyKey": "20000000-0000-4000-8000-000000000101",
+      "deviceId": "30000000-0000-4000-8000-000000000001",
+      "ownerId": "40000000-0000-4000-8000-000000000001",
+      "serviceDate": "2026-08-11",
+      "sequence": 1,
+      "type": "stock_transfer",
+      "payload": {
+        "roundId": "50000000-0000-4000-8000-000000000001",
+        "items": [{ "iceTypeId": "60000000-0000-4000-8000-000000000001", "quantity": 12 }],
+        "expectedSourceLocationId": "70000000-0000-4000-8000-000000000001",
+        "expectedTargetLocationId": "70000000-0000-4000-8000-000000000002"
+      },
+      "clientRecordedAt": "2026-08-11T01:00:00.000Z",
+      "createdAt": "2026-08-11T01:00:00.100Z",
+      "status": "pending",
+      "attempts": 0,
+      "nextAttemptAt": null,
+      "lastError": null,
+      "serverResult": null,
+      "serverResolutionVersion": 0
+    },
+    {
+      "schemaVersion": 1,
+      "payloadVersion": 1,
+      "commandId": "10000000-0000-4000-8000-000000000102",
+      "idempotencyKey": "20000000-0000-4000-8000-000000000102",
+      "deviceId": "30000000-0000-4000-8000-000000000001",
+      "ownerId": "40000000-0000-4000-8000-000000000001",
+      "serviceDate": "2026-08-11",
+      "sequence": 2,
+      "type": "stock_return",
+      "payload": {
+        "roundId": "50000000-0000-4000-8000-000000000001",
+        "items": [{ "iceTypeId": "60000000-0000-4000-8000-000000000001", "quantity": 2 }],
+        "expectedSourceLocationId": "70000000-0000-4000-8000-000000000002",
+        "expectedTargetLocationId": "70000000-0000-4000-8000-000000000001"
+      },
+      "clientRecordedAt": "2026-08-11T02:00:00.000Z",
+      "createdAt": "2026-08-11T02:00:00.100Z",
+      "status": "pending",
+      "attempts": 0,
+      "nextAttemptAt": null,
+      "lastError": null,
+      "serverResult": null,
+      "serverResolutionVersion": 0
+    },
+    {
+      "schemaVersion": 1,
+      "payloadVersion": 1,
+      "commandId": "10000000-0000-4000-8000-000000000103",
+      "idempotencyKey": "20000000-0000-4000-8000-000000000103",
+      "deviceId": "30000000-0000-4000-8000-000000000001",
+      "ownerId": "40000000-0000-4000-8000-000000000001",
+      "serviceDate": "2026-08-11",
+      "sequence": 3,
+      "type": "stock_damage",
+      "payload": {
+        "roundId": "50000000-0000-4000-8000-000000000001",
+        "items": [{ "iceTypeId": "60000000-0000-4000-8000-000000000001", "quantity": 1 }],
+        "expectedSourceLocationId": "70000000-0000-4000-8000-000000000002",
+        "expectedTargetLocationId": null
+      },
+      "clientRecordedAt": "2026-08-11T03:00:00.000Z",
+      "createdAt": "2026-08-11T03:00:00.100Z",
+      "status": "pending",
+      "attempts": 0,
+      "nextAttemptAt": null,
+      "lastError": null,
+      "serverResult": null,
+      "serverResolutionVersion": 0
+    },
+    {
+      "schemaVersion": 1,
+      "payloadVersion": 1,
+      "commandId": "10000000-0000-4000-8000-000000000104",
+      "idempotencyKey": "20000000-0000-4000-8000-000000000104",
+      "deviceId": "30000000-0000-4000-8000-000000000001",
+      "ownerId": "40000000-0000-4000-8000-000000000001",
+      "serviceDate": "2026-08-11",
+      "sequence": 4,
+      "type": "delivery",
+      "payload": {
+        "roundStopId": "80000000-0000-4000-8000-000000000001",
+        "status": "delivered",
+        "note": null,
+        "items": [{
+          "iceTypeId": "60000000-0000-4000-8000-000000000001",
+          "quantity": 5.5,
+          "expectedUnitPrice": 42.5,
+          "expectedPriceSourceId": "90000000-0000-4000-8000-000000000001"
+        }],
+        "paymentTerm": "credit",
+        "approvalId": null,
+        "expectedTotal": 233.75,
+        "expectedPaymentProfileFingerprint": "a12e720fb8e1ef87f50cd8246a1c93cade68001fa021ddd812b6e980c1310e63"
+      },
+      "clientRecordedAt": "2026-08-11T04:00:00.000Z",
+      "createdAt": "2026-08-11T04:00:00.100Z",
+      "status": "pending",
+      "attempts": 0,
+      "nextAttemptAt": null,
+      "lastError": null,
+      "serverResult": null,
+      "serverResolutionVersion": 0
+    },
+    {
+      "schemaVersion": 1,
+      "payloadVersion": 1,
+      "commandId": "10000000-0000-4000-8000-000000000105",
+      "idempotencyKey": "20000000-0000-4000-8000-000000000105",
+      "deviceId": "30000000-0000-4000-8000-000000000001",
+      "ownerId": "40000000-0000-4000-8000-000000000001",
+      "serviceDate": "2026-08-11",
+      "sequence": 5,
+      "type": "immediate_sale",
+      "payload": {
+        "roundStopId": "80000000-0000-4000-8000-000000000002",
+        "note": "รับเงินสด",
+        "items": [{
+          "iceTypeId": "60000000-0000-4000-8000-000000000002",
+          "quantity": 3.5,
+          "expectedUnitPrice": 30,
+          "expectedPriceSourceId": "90000000-0000-4000-8000-000000000002"
+        }],
+        "paymentMethod": "cash",
+        "receivedAmount": 110,
+        "referenceNumber": null,
+        "evidence": null,
+        "expectedTotal": 105,
+        "expectedPaymentProfileFingerprint": "a12e720fb8e1ef87f50cd8246a1c93cade68001fa021ddd812b6e980c1310e63"
+      },
+      "clientRecordedAt": "2026-08-11T05:00:00.000Z",
+      "createdAt": "2026-08-11T05:00:00.100Z",
+      "status": "pending",
+      "attempts": 0,
+      "nextAttemptAt": null,
+      "lastError": null,
+      "serverResult": null,
+      "serverResolutionVersion": 0
+    },
+    {
+      "schemaVersion": 1,
+      "payloadVersion": 1,
+      "commandId": "10000000-0000-4000-8000-000000000106",
+      "idempotencyKey": "20000000-0000-4000-8000-000000000106",
+      "deviceId": "30000000-0000-4000-8000-000000000001",
+      "ownerId": "40000000-0000-4000-8000-000000000001",
+      "serviceDate": "2026-08-11",
+      "sequence": 6,
+      "type": "collection_payment",
+      "payload": {
+        "collectionRunId": "a0000000-0000-4000-8000-000000000001",
+        "shopId": "b0000000-0000-4000-8000-000000000001",
+        "allocations": [
+          { "chargeId": "c0000000-0000-4000-8000-000000000001", "amount": 120 },
+          { "chargeId": "c0000000-0000-4000-8000-000000000002", "amount": 80.5 }
+        ],
+        "paymentMethod": "bank_transfer",
+        "receivedAmount": 200.5,
+        "referenceNumber": "BANK-001",
+        "evidence": {
+          "evidenceId": "d0000000-0000-4000-8000-000000000001",
+          "remotePath": "40000000-0000-4000-8000-000000000001/20000000-0000-4000-8000-000000000106.pdf",
+          "checksumSha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+        },
+        "expectedOutstandingAmount": 350.75,
+        "expectedPaymentProfileFingerprint": "a12e720fb8e1ef87f50cd8246a1c93cade68001fa021ddd812b6e980c1310e63",
+        "expectedAllocationFingerprint": "09acc9be90fd82c9831c7893bf22fe661331be78d445ec54d1318c66f85faf42"
+      },
+      "clientRecordedAt": "2026-08-11T06:00:00.000Z",
+      "createdAt": "2026-08-11T06:00:00.100Z",
+      "status": "pending",
+      "attempts": 0,
+      "nextAttemptAt": null,
+      "lastError": null,
+      "serverResult": null,
+      "serverResolutionVersion": 0
+    }
+  ],
+  "results": {
+    "stock_transfer": {
+      "round_id": "50000000-0000-4000-8000-000000000001",
+      "service_date": "2026-08-11",
+      "withdrawn_balances": [{
+        "ice_type_id": "60000000-0000-4000-8000-000000000001",
+        "ice_type_name": "Ice A",
+        "unit": "bag",
+        "quantity": 12
+      }],
+      "truck_location": {
+        "id": "70000000-0000-4000-8000-000000000001",
+        "code": "TRUCK",
+        "name": "Truck",
+        "balances": []
+      },
+      "holding_location": {
+        "id": "70000000-0000-4000-8000-000000000002",
+        "code": "HOLDING",
+        "name": "Holding",
+        "balances": []
+      }
+    },
+    "stock_return": {
+      "round_id": "50000000-0000-4000-8000-000000000001",
+      "service_date": "2026-08-11",
+      "withdrawn_balances": [],
+      "truck_location": {
+        "id": "70000000-0000-4000-8000-000000000001",
+        "code": "TRUCK",
+        "name": "Truck",
+        "balances": []
+      },
+      "holding_location": {
+        "id": "70000000-0000-4000-8000-000000000002",
+        "code": "HOLDING",
+        "name": "Holding",
+        "balances": []
+      }
+    },
+    "stock_damage": {
+      "round_id": "50000000-0000-4000-8000-000000000001",
+      "service_date": "2026-08-11",
+      "withdrawn_balances": [],
+      "truck_location": {
+        "id": "70000000-0000-4000-8000-000000000001",
+        "code": "TRUCK",
+        "name": "Truck",
+        "balances": []
+      },
+      "holding_location": {
+        "id": "70000000-0000-4000-8000-000000000002",
+        "code": "HOLDING",
+        "name": "Holding",
+        "balances": []
+      }
+    },
+    "delivery": {
+      "delivery_event_id": "e1000000-0000-4000-8000-000000000001",
+      "round_stop_id": "80000000-0000-4000-8000-000000000001",
+      "charge_id": "e2000000-0000-4000-8000-000000000001",
+      "charge_number": "INV2608-00001",
+      "service_date": "2026-08-11",
+      "total_amount": 233.75,
+      "payment_term": "credit",
+      "payment_status": "unpaid",
+      "due_date": "2026-08-18",
+      "approval_id": null,
+      "print_document": {
+        "document_type": "INV",
+        "document_number": "INV2608-00001",
+        "document_title": "Invoice",
+        "status": "active",
+        "issued_at": "2026-08-11T04:00:01.000Z",
+        "service_date": "2026-08-11",
+        "due_date": "2026-08-18",
+        "shop_code": "SHOP-001",
+        "shop_name": "Shop One",
+        "shop_location": "Building A · Zone 1",
+        "payment_term": "credit",
+        "total_amount": 233.75,
+        "items": [{
+          "ice_type_name": "Ice A",
+          "ice_type_unit": "bag",
+          "quantity": 5.5,
+          "unit_price": 42.5,
+          "line_total": 233.75
+        }],
+        "void_info": null
+      },
+      "items": [{
+        "ice_type_id": "60000000-0000-4000-8000-000000000001",
+        "name": "Ice A",
+        "unit": "bag",
+        "quantity": 5.5,
+        "unit_price": 42.5,
+        "line_total": 233.75,
+        "price_source": "shop_override",
+        "price_source_id": "90000000-0000-4000-8000-000000000001"
+      }]
+    },
+    "immediate_sale": {
+      "delivery": {
+        "delivery_event_id": "e1000000-0000-4000-8000-000000000002",
+        "round_stop_id": "80000000-0000-4000-8000-000000000002",
+        "charge_id": "e2000000-0000-4000-8000-000000000002",
+        "charge_number": null,
+        "service_date": "2026-08-11",
+        "total_amount": 105,
+        "payment_term": "immediate",
+        "payment_status": "paid",
+        "due_date": null,
+        "approval_id": null,
+        "print_document": null,
+        "items": [{
+          "ice_type_id": "60000000-0000-4000-8000-000000000002",
+          "name": "Ice B",
+          "unit": "bag",
+          "quantity": 3.5,
+          "unit_price": 30,
+          "line_total": 105,
+          "price_source": "standard",
+          "price_source_id": "90000000-0000-4000-8000-000000000002"
+        }]
+      },
+      "payment": {
+        "payment_id": "e3000000-0000-4000-8000-000000000001",
+        "receipt_number": "REC2608-00001",
+        "shop_id": "b0000000-0000-4000-8000-000000000002",
+        "payment_method": "cash",
+        "received_amount": 110,
+        "allocated_amount": 105,
+        "change_amount": 5,
+        "status": "active",
+        "recorded_at": "2026-08-11T05:00:01.000Z"
+      },
+      "receipt_number": "REC2608-00001",
+      "print_document": {
+        "document_type": "REC",
+        "document_number": "REC2608-00001",
+        "document_title": "Receipt",
+        "status": "active",
+        "recorded_at": "2026-08-11T05:00:01.000Z",
+        "service_date": "2026-08-11",
+        "shop_code": "SHOP-002",
+        "shop_name": "Shop Two",
+        "shop_location": "Building A · Zone 2",
+        "payment_term": "immediate",
+        "payment_method": "cash",
+        "received_amount": 110,
+        "allocated_amount": 105,
+        "change_amount": 5,
+        "charges": [{
+          "charge_number": null,
+          "payment_term": "immediate",
+          "service_date": "2026-08-11",
+          "location": "Building A · Zone 2",
+          "received_amount": 105,
+          "items": [{
+            "ice_type_name": "Ice B",
+            "ice_type_unit": "bag",
+            "quantity": 3.5,
+            "unit_price": 30,
+            "line_total": 105
+          }]
+        }],
+        "void_info": null
+      }
+    },
+    "collection_payment": {
+      "payment_id": "e3000000-0000-4000-8000-000000000002",
+      "receipt_number": "REC2608-00002",
+      "shop_id": "b0000000-0000-4000-8000-000000000001",
+      "payment_method": "bank_transfer",
+      "received_amount": 200.5,
+      "allocated_amount": 200.5,
+      "change_amount": 0,
+      "status": "active",
+      "recorded_at": "2026-08-11T06:00:01.000Z",
+      "print_document": {
+        "document_type": "REC",
+        "document_number": "REC2608-00002",
+        "document_title": "Receipt",
+        "status": "active",
+        "recorded_at": "2026-08-11T06:00:01.000Z",
+        "service_date": "2026-08-11",
+        "shop_code": "SHOP-001",
+        "shop_name": "Shop One",
+        "shop_location": "Building A · Zone 1",
+        "payment_term": "end_of_day",
+        "payment_method": "bank_transfer",
+        "received_amount": 200.5,
+        "allocated_amount": 200.5,
+        "change_amount": 0,
+        "charges": [
+          {
+            "charge_number": "INV2608-00001",
+            "payment_term": "end_of_day",
+            "service_date": "2026-08-11",
+            "location": "Building A · Zone 1",
+            "received_amount": 120,
+            "items": [{
+              "ice_type_name": "Ice A",
+              "ice_type_unit": "bag",
+              "quantity": 4,
+              "unit_price": 30,
+              "line_total": 120
+            }]
+          },
+          {
+            "charge_number": "INV2608-00002",
+            "payment_term": "end_of_day",
+            "service_date": "2026-08-11",
+            "location": "Building A · Zone 1",
+            "received_amount": 80.5,
+            "items": [{
+              "ice_type_name": "Ice B",
+              "ice_type_unit": "bag",
+              "quantity": 2,
+              "unit_price": 40.25,
+              "line_total": 80.5
+            }]
+          }
+        ],
+        "void_info": null
+      }
+    }
+  },
+  "fingerprints": [
+    {
+      "name": "payment_profile",
+      "input": {
+        "allowed_payment_terms": ["credit", "immediate", "end_of_day"],
+        "default_payment_term": "immediate",
+        "allowed_payment_methods": ["qr", "cash", "bank_transfer"],
+        "default_payment_method": "cash",
+        "cash_reference_required": false,
+        "cash_evidence_required": false,
+        "bank_transfer_reference_required": true,
+        "bank_transfer_evidence_required": true,
+        "qr_reference_required": true,
+        "qr_evidence_required": true,
+        "allow_outstanding": true,
+        "credit_due_rule": "net_days",
+        "credit_days": 7,
+        "credit_collection_weekday": null,
+        "credit_limit": 10000,
+        "credit_exposure": 1250.5,
+        "credit_remaining": 8749.5,
+        "credit_suspended": false
+      },
+      "normalized": {
+        "algorithm": "sha256-canonical-json-v1",
+        "kind": "payment_profile",
+        "value": {
+          "allow_outstanding": true,
+          "allowed_payment_methods": ["bank_transfer", "cash", "qr"],
+          "allowed_payment_terms": ["credit", "end_of_day", "immediate"],
+          "bank_transfer_evidence_required": true,
+          "bank_transfer_reference_required": true,
+          "cash_evidence_required": false,
+          "cash_reference_required": false,
+          "credit_collection_weekday": null,
+          "credit_days": 7,
+          "credit_due_rule": "net_days",
+          "credit_exposure_minor": 125050,
+          "credit_limit_minor": 1000000,
+          "credit_remaining_minor": 874950,
+          "credit_suspended": false,
+          "default_payment_method": "cash",
+          "default_payment_term": "immediate",
+          "qr_evidence_required": true,
+          "qr_reference_required": true
+        }
+      },
+      "canonical": "{\"algorithm\":\"sha256-canonical-json-v1\",\"kind\":\"payment_profile\",\"value\":{\"allow_outstanding\":true,\"allowed_payment_methods\":[\"bank_transfer\",\"cash\",\"qr\"],\"allowed_payment_terms\":[\"credit\",\"end_of_day\",\"immediate\"],\"bank_transfer_evidence_required\":true,\"bank_transfer_reference_required\":true,\"cash_evidence_required\":false,\"cash_reference_required\":false,\"credit_collection_weekday\":null,\"credit_days\":7,\"credit_due_rule\":\"net_days\",\"credit_exposure_minor\":125050,\"credit_limit_minor\":1000000,\"credit_remaining_minor\":874950,\"credit_suspended\":false,\"default_payment_method\":\"cash\",\"default_payment_term\":\"immediate\",\"qr_evidence_required\":true,\"qr_reference_required\":true}}",
+      "sha256": "a12e720fb8e1ef87f50cd8246a1c93cade68001fa021ddd812b6e980c1310e63"
+    },
+    {
+      "name": "delivery_prices",
+      "input": {
+        "items": [
+          { "iceTypeId": "ice-b", "unitPrice": 30, "priceSourceId": "price-b" },
+          { "iceTypeId": "ice-a", "unitPrice": 42.5, "priceSourceId": "price-a" }
+        ],
+        "expectedTotal": 157.5
+      },
+      "normalized": {
+        "algorithm": "sha256-canonical-json-v1",
+        "kind": "delivery_prices",
+        "value": {
+          "expected_total_minor": 15750,
+          "items": [
+            { "ice_type_id": "ice-a", "price_source_id": "price-a", "unit_price_minor": 4250 },
+            { "ice_type_id": "ice-b", "price_source_id": "price-b", "unit_price_minor": 3000 }
+          ]
+        }
+      },
+      "canonical": "{\"algorithm\":\"sha256-canonical-json-v1\",\"kind\":\"delivery_prices\",\"value\":{\"expected_total_minor\":15750,\"items\":[{\"ice_type_id\":\"ice-a\",\"price_source_id\":\"price-a\",\"unit_price_minor\":4250},{\"ice_type_id\":\"ice-b\",\"price_source_id\":\"price-b\",\"unit_price_minor\":3000}]}}",
+      "sha256": "627855631c03511c7d0ca6066e0eb82a9ebdd8b1bd073a394613f6375e38e49a"
+    },
+    {
+      "name": "collection_allocations",
+      "input": {
+        "allocations": [
+          { "chargeId": "charge-b", "amount": 80.5 },
+          { "chargeId": "charge-a", "amount": 120 }
+        ],
+        "outstandingAmount": 350.75
+      },
+      "normalized": {
+        "algorithm": "sha256-canonical-json-v1",
+        "kind": "collection_allocations",
+        "value": {
+          "allocations": [
+            { "amount_minor": 12000, "charge_id": "charge-a" },
+            { "amount_minor": 8050, "charge_id": "charge-b" }
+          ],
+          "outstanding_amount_minor": 35075
+        }
+      },
+      "canonical": "{\"algorithm\":\"sha256-canonical-json-v1\",\"kind\":\"collection_allocations\",\"value\":{\"allocations\":[{\"amount_minor\":12000,\"charge_id\":\"charge-a\"},{\"amount_minor\":8050,\"charge_id\":\"charge-b\"}],\"outstanding_amount_minor\":35075}}",
+      "sha256": "09acc9be90fd82c9831c7893bf22fe661331be78d445ec54d1318c66f85faf42"
+    }
+  ]
+}

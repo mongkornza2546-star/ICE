@@ -3,9 +3,16 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ShopSettings } from '../src/ShopSettings';
 
-const { fromMock, loadPOSReadinessReportMock } = vi.hoisted(() => ({
+const {
+  exportShopDirectoryMock,
+  fromMock,
+  loadPOSReadinessReportMock,
+  loadShopDirectoryExportDataMock,
+} = vi.hoisted(() => ({
+  exportShopDirectoryMock: vi.fn(),
   fromMock: vi.fn(),
   loadPOSReadinessReportMock: vi.fn(),
+  loadShopDirectoryExportDataMock: vi.fn(),
 }));
 
 vi.mock('../src/lib/env', () => ({
@@ -19,6 +26,14 @@ vi.mock('../src/lib/supabase', () => ({
 vi.mock('../src/features/admin-reference-settings/adminReferenceSettingsService', () => ({
   getShopImageSignedUrls: vi.fn().mockResolvedValue({}),
   loadPOSReadinessReport: loadPOSReadinessReportMock,
+}));
+
+vi.mock('../src/features/shop-settings/exportShopDirectory', () => ({
+  exportShopDirectory: exportShopDirectoryMock,
+}));
+
+vi.mock('../src/features/shop-settings/loadShopDirectoryExportData', () => ({
+  loadShopDirectoryExportData: loadShopDirectoryExportDataMock,
 }));
 
 function queryResult(data: unknown[]) {
@@ -63,6 +78,14 @@ describe('ShopSettings shop status summary and filter', () => {
         { shop_id: 'shop-2', shop_code: 'A02', shop_name: 'ร้านเปิดสอง', has_payment_profile: false, missing_special_prices_count: 0, has_issues: true, issue_details: ['ยังไม่มี Payment Profile'] },
       ],
     });
+    loadShopDirectoryExportDataMock.mockResolvedValue({
+      buildings: [{ id: 'building-old', code: 'OLD', name: 'อาคารเดิม' }],
+      zones: [{ id: 'zone-old', building_id: 'building-old', code: 'OLD', name: 'โซนเดิม', sort_order: 1, is_active: false }],
+      paymentProfiles: [],
+      standardPrices: [],
+      shopPrices: [],
+    });
+    exportShopDirectoryMock.mockResolvedValue(undefined);
   });
 
   it('counts inactive shops in the total while keeping POS percentages active-only', async () => {
@@ -75,6 +98,7 @@ describe('ShopSettings shop status summary and filter', () => {
     expect(readyCard).not.toBeNull();
     expect(within(totalCard!).getByText('3')).not.toBeNull();
     expect(within(readyCard!).getByText(/50%/)).not.toBeNull();
+    expect(screen.getByRole('button', { name: 'ส่งออก Excel' })).not.toBeNull();
   });
 
   it('filters the directory by active or inactive shop status', async () => {
@@ -89,5 +113,35 @@ describe('ShopSettings shop status summary and filter', () => {
       expect(screen.queryByRole('button', { name: 'A01 ร้านเปิดหนึ่ง' })).toBeNull();
       expect(screen.queryByRole('button', { name: 'A02 ร้านเปิดสอง' })).toBeNull();
     });
+  });
+
+  it('loads complete live export data before building the workbook', async () => {
+    const user = userEvent.setup();
+    render(<ShopSettings />);
+
+    await user.click(await screen.findByRole('button', { name: 'ส่งออก Excel' }));
+
+    await waitFor(() => expect(exportShopDirectoryMock).toHaveBeenCalledTimes(1));
+    expect(loadShopDirectoryExportDataMock).toHaveBeenCalledWith(
+      expect.objectContaining({ from: fromMock }),
+      expect.arrayContaining([expect.objectContaining({ id: 'shop-1' }), expect.objectContaining({ id: 'shop-3' })]),
+      expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+    );
+    expect(exportShopDirectoryMock).toHaveBeenCalledWith(expect.objectContaining({
+      buildings: [{ id: 'building-old', code: 'OLD', name: 'อาคารเดิม' }],
+      zones: [expect.objectContaining({ id: 'zone-old', is_active: false })],
+    }));
+    expect(await screen.findByText('ส่งออกข้อมูลร้านค้า 3 ร้านแล้ว')).not.toBeNull();
+  });
+
+  it('shows an error and skips the workbook when live export data cannot be completed', async () => {
+    loadShopDirectoryExportDataMock.mockRejectedValueOnce(new Error('ข้อมูลเปลี่ยนระหว่างส่งออก กรุณาลองใหม่'));
+    const user = userEvent.setup();
+    render(<ShopSettings />);
+
+    await user.click(await screen.findByRole('button', { name: 'ส่งออก Excel' }));
+
+    expect((await screen.findByRole('alert')).textContent).toContain('ข้อมูลเปลี่ยนระหว่างส่งออก กรุณาลองใหม่');
+    expect(exportShopDirectoryMock).not.toHaveBeenCalled();
   });
 });

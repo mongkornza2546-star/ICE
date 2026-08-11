@@ -1,3 +1,48 @@
+## 2026-08-11 — Shop directory Excel export
+
+**Comparison Target**
+
+- Source visual truth: `/Users/bhusitt./Desktop/ภาพถ่ายหน้าจอ2569-08-11เวลา 16.16.35.png` (2880 × 1800 px, Safari/macOS capture).
+- Normalized source: [outputs/shop-export-reference-1811x925.png](/Users/bhusitt./Downloads/ส่งน้ำแข็ง/outputs/shop-export-reference-1811x925.png) (1811 × 925 px), cropped to the app-owned content region and downsampled from 2818 × 1439 px.
+- Rendered implementation: [outputs/shop-export-implementation-1811x925.jpg](/Users/bhusitt./Downloads/ส่งน้ำแข็ง/outputs/shop-export-implementation-1811x925.jpg) (1811 × 925 px).
+- Combined comparison evidence: [outputs/shop-export-visual-comparison.jpg](/Users/bhusitt./Downloads/ส่งน้ำแข็ง/outputs/shop-export-visual-comparison.jpg), containing the normalized source and rendered implementation in one comparison input.
+- Viewport and normalization: implementation captured at 1811 × 925 CSS px with DPR 1. The source's Safari/macOS chrome and dock were excluded, then the app region was normalized to the same 1811 × 925 pixel dimensions.
+- State: admin shop directory, default filters, grid view, demo data with eight shops; export action idle.
+- Full-view comparison evidence: sidebar, top bar, heading, action group, summary cards, directory toolbar, four-column shop grid, typography, pale-blue palette and card treatments retain the supplied page design.
+- Focused-region evidence: the header action group remains legible at native resolution in the equal-size comparison; the added `ส่งออก Excel` control uses the same 49 px secondary-button height, icon scale, border, radius and spacing as `นำเข้า Excel`. A separate detail crop was not needed.
+
+**Findings**
+
+- No actionable P0/P1/P2 differences remain.
+- Accepted content difference: the supplied production state shows 157 shops while the local implementation capture uses eight demo shops. This does not change the layout or export behavior.
+- Accepted feature difference: the implementation intentionally adds a fifth action, `ส่งออก Excel`, between `ร้านใหม่` and `นำเข้า Excel`; the action row remains on one line at the comparison viewport.
+
+**Required Fidelity Surfaces**
+
+- Fonts and typography: retained the existing Thai font stack, navy page hierarchy, 700-weight action labels, compact metadata and existing line heights; the new label does not wrap.
+- Spacing and layout rhythm: retained the existing action gap, 49 px control height, 9 px radius and header alignment. Five actions fit without clipping or moving the summary cards.
+- Colors and visual tokens: the new action reuses the white secondary-button background, blue-gray text, muted blue border and existing focus/disabled treatment.
+- Image quality and asset fidelity: logo, sidebar water artwork and shop imagery behavior are unchanged. The export control uses the installed Phosphor `FileXls` icon; no generated or handcrafted asset was introduced.
+- Copy and content: `ส่งออก Excel` clearly distinguishes the new action from `นำเข้า Excel`. The workbook contains building, shop name, zone, shop code, payment condition, current effective price per active ice type and the price source.
+
+**Interaction And Build Checks**
+
+- In-app browser: clicked `ส่งออก Excel`, verified the success message `ส่งออกข้อมูลร้านค้า 8 ร้านแล้ว`, and confirmed the action returned to its enabled idle state.
+- Browser console: no errors.
+- Workbook tests: `tests/shop-directory-export.test.tsx` verifies Thai headers, natural shop/ice ordering, spreadsheet-formula escaping, credit collection wording, shop-price precedence, standard-price fallback and workbook options.
+- Focused UI tests: `tests/shop-directory-export.test.tsx` and `tests/shop-settings-status.test.tsx` passed, 3/3.
+- Full UI suite: 64/64 tests passed across nine files. The Node contract/integration suite also passed.
+- Production build: `npm run build` passed. The existing Vite large-chunk warning remains unchanged.
+
+**Comparison History**
+
+- The supplied page had four header actions and no export path.
+- The implementation added one secondary action using the existing component styling and dynamically builds one workbook row per shop. The first browser comparison found no P0/P1/P2 visual issue, so no visual repair loop was required.
+
+final result: passed
+
+---
+
 ## 2026-08-09 — Accounting shop-summary filter single row
 
 **Comparison Target**

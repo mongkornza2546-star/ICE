@@ -1,6 +1,6 @@
 # แผนรองรับ Offline เต็มรูปแบบสำหรับพนักงาน
 
-สถานะ: แผนพร้อมดำเนินการหลัง Rework รอบ Architecture Review  
+สถานะ: เริ่มดำเนินการแล้ว — Development Step 1 เสร็จเมื่อ 2026-08-11
 ขอบเขต: งานพนักงานทั้งหมดบนเครื่องประจำตัว  
 กลุ่มอุปกรณ์: Android รุ่นเก่าและไม่ทราบรุ่นขั้นต่ำ
 
@@ -119,11 +119,26 @@ type OfflineCommandType =
   | 'immediate_sale'
   | 'collection_payment';
 
+type OfflinePaymentMethodV1 = 'cash' | 'bank_transfer' | 'qr';
+type OfflinePaymentTermV1 = 'immediate' | 'end_of_day' | 'credit';
+type OfflineDeliveryStatusV1 =
+  | 'delivered'
+  | 'full_bin'
+  | 'closed_shop'
+  | 'no_access'
+  | 'issue';
+
 interface ExpectedDeliveryItem {
   iceTypeId: string;
   quantity: number;
   expectedUnitPrice: number;
   expectedPriceSourceId: string;
+}
+
+interface OfflineEvidenceReferenceV1 {
+  evidenceId: string;
+  remotePath: string;
+  checksumSha256: string;
 }
 
 interface StockMovementPayload {
@@ -135,10 +150,10 @@ interface StockMovementPayload {
 
 interface DeliveryPayload {
   roundStopId: string;
-  status: Exclude<ShopRoundStatus, 'pending'>;
+  status: OfflineDeliveryStatusV1;
   note: string | null;
   items: ExpectedDeliveryItem[];
-  paymentTerm: Exclude<PaymentTerm, 'immediate'> | null;
+  paymentTerm: Exclude<OfflinePaymentTermV1, 'immediate'> | null;
   approvalId: string | null;
   expectedTotal: number | null;
   expectedPaymentProfileFingerprint: string | null;
@@ -148,10 +163,10 @@ interface ImmediateSalePayload {
   roundStopId: string;
   note: string | null;
   items: ExpectedDeliveryItem[];
-  paymentMethod: PaymentMethod;
+  paymentMethod: OfflinePaymentMethodV1;
   receivedAmount: number;
   referenceNumber: string | null;
-  evidenceId: string | null;
+  evidence: OfflineEvidenceReferenceV1 | null;
   expectedTotal: number;
   expectedPaymentProfileFingerprint: string;
 }
@@ -160,10 +175,10 @@ interface CollectionPaymentPayload {
   collectionRunId: string;
   shopId: string;
   allocations: Array<{ chargeId: string; amount: number }>;
-  paymentMethod: PaymentMethod;
+  paymentMethod: OfflinePaymentMethodV1;
   receivedAmount: number;
   referenceNumber: string | null;
-  evidenceId: string | null;
+  evidence: OfflineEvidenceReferenceV1 | null;
   expectedOutstandingAmount: number;
   expectedPaymentProfileFingerprint: string;
   expectedAllocationFingerprint: string;
@@ -179,12 +194,12 @@ interface CommandPayloadMap {
 }
 
 interface CommandResultMap {
-  stock_transfer: EmployeeStockState;
-  stock_return: EmployeeStockState;
-  stock_damage: EmployeeStockState;
-  delivery: DeliveryFinancialResult;
-  immediate_sale: ImmediateSaleResult;
-  collection_payment: FinancialPaymentResult;
+  stock_transfer: OfflineEmployeeStockStateV1;
+  stock_return: OfflineEmployeeStockStateV1;
+  stock_damage: OfflineEmployeeStockStateV1;
+  delivery: OfflineDeliveryResultV1;
+  immediate_sale: OfflineImmediateSaleResultV1;
+  collection_payment: OfflineCollectionPaymentResultV1;
 }
 
 type OfflineCommandStatus =
@@ -223,13 +238,13 @@ type OfflineCommand = {
 }[OfflineCommandType];
 ```
 
-ทุก command ต้องเก็บ payload ที่ครบสำหรับ replay และห้ามสร้าง `idempotencyKey` ใหม่เมื่อ retry ทั้ง client และ server ต้อง validate `schemaVersion`, `payloadVersion` และ payload schema เดียวกันด้วย contract fixtures ร่วมกัน
+ทุก command ต้องเก็บ payload ที่ครบสำหรับ replay และห้ามสร้าง `idempotencyKey` ใหม่เมื่อ retry ทั้ง client และ server ต้อง validate `schemaVersion`, `payloadVersion`, payload, sync response และ result schema เดียวกันด้วย contract fixtures ร่วมกัน result DTO ต้องเป็น closed schema ที่ปฏิเสธ field นอก v1 ทุกระดับ และห้ามอ้าง result type จาก app model ที่เปลี่ยนได้โดยตรง
 
-คำสั่งส่งร้านทุกแบบต้องเก็บราคาที่พนักงานเห็นจริงต่อรายการ, `expectedTotal`, price source และ fingerprint ของ payment profile เมื่อ sync adapter พบว่าค่าใดเปลี่ยน ต้องคืน `PRICE_CHANGED` หรือ `PAYMENT_PROFILE_CHANGED` ก่อนเรียก RPC เดิม ห้าม resolve ราคาใหม่แล้ว apply โดยเงียบ ๆ
+คำสั่งส่งร้านทุกแบบต้องเก็บราคาที่พนักงานเห็นจริงต่อรายการ, `expectedTotal`, price source และ fingerprint ของ payment profile ซึ่งรวม `credit_suspended` เพราะกระทบสิทธิ์การส่งแบบเครดิต เมื่อ sync adapter พบว่าค่าใดเปลี่ยน ต้องคืน `PRICE_CHANGED` หรือ `PAYMENT_PROFILE_CHANGED` ก่อนเรียก RPC เดิม ห้าม resolve ราคาใหม่แล้ว apply โดยเงียบ ๆ
 
 ### 4.3 `evidence`
 
-เก็บ Blob หลักฐานโดยผูกกับ `commandId` พร้อมชื่อไฟล์ MIME type ขนาด checksum, deterministic remote path และสถานะ `local`, `uploading`, `uploaded`, `referenced`, `delete_pending`, `deleted` ห้ามลบขณะ command ยังไม่เป็น `applied` หรือ `discard_approved`
+เก็บ Blob หลักฐานโดยผูกกับ `commandId` พร้อมชื่อไฟล์ MIME type ขนาด checksum, deterministic remote path และสถานะ `local`, `uploading`, `uploaded`, `referenced`, `delete_pending`, `deleted` ห้ามลบขณะ command ยังไม่เป็น `applied` หรือ `discard_approved` โดย command การรับเงินต้องเก็บ `remotePath` และ checksum ที่คงที่ไว้ใน payload ตั้งแต่ local transaction แรก เพื่อให้ adapter ส่ง path เข้า business RPC ได้โดยไม่เดานามสกุลไฟล์
 
 ### 4.4 `images`
 
@@ -315,7 +330,7 @@ Bundle ต้องถูกสร้างจาก snapshot เดียวข
 
 ห้ามแทน bundle เดิมจนกว่าข้อมูลใหม่จะดาวน์โหลด ตรวจ schema และเขียน IndexedDB สำเร็จครบทั้งชุด
 
-Fingerprint ทุกค่าต้องสร้างจาก canonical JSON ที่เรียง key/รายการแน่นอน และใช้ algorithm/version ที่ระบุใน contract ห้ามให้ client สร้าง fingerprint ด้วย `JSON.stringify` จาก object ที่ลำดับไม่แน่นอน
+Fingerprint ทุกค่าต้องสร้างจาก canonical JSON ที่เรียง key/รายการแน่นอน และใช้ algorithm/version ที่ระบุใน contract โดย canonical v1 รับเฉพาะตัวเลข JavaScript-safe integer และ object key แบบ ASCII identifier เท่านั้น เพื่อให้ TypeScript/PostgreSQL เรียงและ serialize ตรงกัน ห้ามให้ client สร้าง fingerprint ด้วย `JSON.stringify` จาก object ที่ลำดับไม่แน่นอน
 
 ### 5.1 Fast local read path สำหรับราคาและเงื่อนไขชำระ
 
@@ -363,7 +378,9 @@ sync_employee_collection_payment(p_envelope jsonb, p_payload jsonb) returns json
 
 Adapter ต้อง insert/lock ledger ก่อน แล้วเรียก RPC เดิมภายใน PL/pgSQL exception block ย่อย หาก business precondition ล้มเหลว ให้ rollback เฉพาะ subtransaction ของ business RPC แล้วบันทึก issue/ledger ใน outer transaction เพื่อให้ conflict ไม่หายไปพร้อม exception หาก ledger มีสถานะ `applied` อยู่แล้ว ให้คืน result ที่เก็บไว้ทันทีโดยไม่เรียก business RPC ซ้ำ
 
-ห้ามแปลง error จากข้อความภาษาอังกฤษของ PostgreSQL Shared validators และ RPC เดิมที่ adapter reuse ต้องส่ง stable internal code ผ่าน structured return หรือ exception `DETAIL` ที่เป็น JSON; error ที่ไม่เข้า contract ให้เป็น `SERVER_CONTRACT_ERROR` พร้อม server log และห้ามเดาว่าเป็น conflict จากข้อความ
+Adapter ต้อง normalize raw result จาก business RPC เป็น `CommandResultMap` v1 ที่ระบุชัดเจน และ validate ก่อนเก็บใน ledger/ส่งกลับ client ห้ามส่ง raw JSON ที่อิงกับ app model หรือมี field ที่ไม่อยู่ใน v1 result contract
+
+ห้ามแปลง error จากข้อความภาษาอังกฤษของ PostgreSQL Development Step 2 ต้องแก้ body ของ shared validators และ business RPC เดิมที่ reuse ให้ส่ง stable internal code ผ่าน structured return หรือ exception `DETAIL` ที่เป็น JSON โดยคง signature เดิมเพื่อไม่ทำให้ online callers พัง; error ที่ไม่เข้า contract ให้เป็น `SERVER_CONTRACT_ERROR` พร้อม server log และห้ามเดาว่าเป็น conflict จากข้อความ
 
 สำหรับ `delivery` และ `immediate_sale` adapter ต้อง lock ข้อมูลร้าน/รอบ/ราคา แล้วเปรียบเทียบรายการต่อรายการดังนี้:
 
@@ -418,7 +435,7 @@ interface OfflineSyncError {
 - `payload_version`, `payload_hash`
 - `status`: `received`, `applied`, `conflict`, `retry_requested`, `discard_approved`
 - `result`, `issue_id`
-- `resolution_version` เป็น sequence เพิ่มขึ้นทุกครั้งที่สถานะเปลี่ยน
+- `resolution_version` มาจาก database sequence กลางเดียวของทั้งระบบ และรับค่าใหม่ทุกครั้งที่สถานะที่ client เห็นเปลี่ยน ห้ามเพิ่มแยกต่อ command
 - `created_at`, `updated_at`, `applied_at`
 
 Adapter ต้อง lock ด้วย `command_id`/`idempotency_key` และตรวจ `payload_hash` หาก retry เดิมส่ง payload ต่างจากครั้งแรกให้ conflict ด้วย `IDEMPOTENCY_PAYLOAD_MISMATCH` ห้าม execute ซ้ำ
@@ -502,7 +519,7 @@ get_employee_offline_resolutions(
 ) returns jsonb
 ```
 
-Resolution feed ต้องมี high-water cursor แม้รอบนั้นไม่มี resolution ของเครื่อง เพื่อให้ client เลื่อน cursor ได้โดยไม่ต้องเดาจากรายการ:
+Resolution feed ต้องมี high-water cursor จาก global sequence แม้รอบนั้นไม่มี resolution ของเครื่อง โดยรายการและ high-water mark ต้องอ่านจาก database snapshot เดียวกัน เพื่อให้ client เลื่อน cursor ได้โดยไม่ข้าม transition ที่ commit พร้อมกัน:
 
 ```ts
 interface OfflineResolutionFeed {
@@ -649,7 +666,10 @@ TMP-{YYMMDD}-{deviceSuffix}-{sequence}
 - การ partition ตาม owner/service date
 - การ normalize bundle, atomic active-pointer swap และ lookup `posContexts` ด้วย `roundStopId`
 - codec/validator ของ payload ทุก command และการปฏิเสธ type/payload ที่ไม่ตรงกัน
+- codec/validator ของ applied result และ sync response ทุก command โดยใช้ closed v1 result DTO ที่ไม่อ้าง app model โดยตรง ปฏิเสธ raw field ทุกระดับ และตรวจความสอดคล้องของ receipt/invoice กับ result หลัก
 - canonical fingerprint ของราคา, payment profile และ collection allocations
+- payment profile fingerprint เปลี่ยนเมื่อ `credit_suspended` เปลี่ยน
+- canonical serializer ปฏิเสธ fractional/exponent number, unsafe integer และ non-ASCII object key เหมือนกันทั้ง TypeScript/PostgreSQL
 - UUID fallback
 - Atomic transaction ของ sequence + command + evidence + TMP receipt รวมทั้ง abort เมื่อ quota เต็มหรือเขียน store ใดล้มเหลว
 - การเขียน command สำเร็จก่อนเรียก network และห้ามแสดง success เมื่อ transaction abort
@@ -682,6 +702,7 @@ TMP-{YYMMDD}-{deviceSuffix}-{sequence}
 - `round_lead` และ `admin` ตัดสิน issue ได้ แต่ `courier` ทำไม่ได้
 - การ discard เก็บผู้อนุมัติ เวลา และเหตุผล
 - การตัดสิน issue update issue/command ledger/resolution version ใน transaction เดียวกัน
+- global resolution sequence ไม่ซ้ำกันระหว่าง command และ resolution feed ไม่ข้าม transition เมื่อมีการ update ข้าม device แบบสลับกัน
 - Resolution API คืนเฉพาะ owner/device ของผู้เรียก และ RLS ป้องกัน payload ข้ามรอบ
 
 ### 16.3 Browser/E2E
@@ -737,7 +758,9 @@ TMP-{YYMMDD}-{deviceSuffix}-{sequence}
 
 ## 19. ลำดับการพัฒนา
 
-1. Freeze `CommandPayloadMap`, result contracts, canonical fingerprints, error codes และ contract fixtures ระหว่าง TypeScript/SQL
+แต่ละ Development Step แยกเป็น migration ย่อยที่เรียงลำดับได้ โดย Step 2 ให้แยกอย่างน้อยเป็น schema/shared helpers, typed adapters และ resolution RPCs เพื่อให้ตรวจ transaction boundary และ rollback ได้เป็นส่วน ๆ
+
+1. ✅ Freeze `CommandPayloadMap`, closed result contracts, canonical fingerprints, error codes และ contract fixtures ระหว่าง TypeScript/SQL
 2. เพิ่ม `employee_offline_commands`, `offline_sync_issues`, RLS และ typed sync adapters พร้อม expected-state/idempotency integration tests
 3. เพิ่ม normalized IndexedDB stores, active-bundle pointer และ atomic repository สำหรับ sequence + outbox + evidence + TMP receipt พร้อม migration/abort tests
 4. เพิ่ม employee boot state machine, offline lease, owner isolation, sign-out guard, UUID helper และ capability check

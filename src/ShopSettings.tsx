@@ -10,9 +10,16 @@ import { ShopSpecialPriceEditor } from './features/shop-settings/components/Shop
 import { BulkPaymentSetupModal } from './features/shop-settings/components/BulkPaymentSetupModal';
 import { BulkShopPriceSetupModal } from './features/shop-settings/components/BulkShopPriceSetupModal';
 import { ShopPurchaseHistory } from './features/shop-settings/components/ShopPurchaseHistory';
+import {
+  exportShopDirectory,
+  type DirectoryPriceSetting,
+  type ShopDirectoryPaymentProfile,
+} from './features/shop-settings/exportShopDirectory';
+import { loadShopDirectoryExportData } from './features/shop-settings/loadShopDirectoryExportData';
 import { getShopImageSignedUrls, loadPOSReadinessReport } from './features/admin-reference-settings/adminReferenceSettingsService';
 import { matchesActiveFilter, type ActiveFilter } from './features/admin-reference-settings/referenceEditorFilters';
 import type { POSReadinessReport } from './types/app';
+import { toBangkokDateString } from './lib/serviceDate';
 
 
 const TANK_IMAGE_BUCKET = 'tank-images';
@@ -116,6 +123,9 @@ export function ShopSettings({
   const [paymentFilter, setPaymentFilter] = useState<'all' | 'missing'>('all');
   const [posFilter, setPosFilter] = useState<'all' | 'ready' | 'issues'>('all');
   const [catalogView, setCatalogView] = useState<'grid' | 'list'>('grid');
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+  const [exportSuccess, setExportSuccess] = useState<string | null>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
   const activeEditorTabRef = useRef<HTMLButtonElement>(null);
 
@@ -578,6 +588,69 @@ export function ShopSettings({
     setImporting(false);
   };
 
+  const exportDirectory = async () => {
+    if (shops.length === 0 || exporting) return;
+    setExporting(true);
+    setExportError(null);
+    setExportSuccess(null);
+    const effectiveDate = toBangkokDateString();
+
+    try {
+      let exportBuildings = buildings;
+      let exportZones = zones;
+      let paymentProfiles: ShopDirectoryPaymentProfile[] = [];
+      let standardPrices: DirectoryPriceSetting[] = [];
+      let shopPrices: DirectoryPriceSetting[] = [];
+
+      if (env.isDemoMode) {
+        paymentProfiles = shops.flatMap((shop): ShopDirectoryPaymentProfile[] => (
+          readinessReport?.items.find((item) => item.shop_id === shop.id)?.has_payment_profile === false
+            ? []
+            : [{
+              shop_id: shop.id,
+              allowed_payment_terms: ['immediate'],
+              default_payment_term: 'immediate',
+              credit_due_rule: null,
+              credit_days: null,
+              credit_collection_weekday: null,
+            }]
+        ));
+        standardPrices = iceTypes.map((iceType) => ({
+          ice_type_id: iceType.id,
+          unit_price: 30,
+          valid_from: effectiveDate,
+          valid_to: null,
+          is_active: true,
+        }));
+      } else {
+        const client = supabase;
+        if (!client) throw new Error('ยังไม่ได้ตั้งค่า Supabase สำหรับส่งออกข้อมูลร้านค้า');
+        const exportData = await loadShopDirectoryExportData(client, shops, effectiveDate);
+        exportBuildings = exportData.buildings;
+        exportZones = exportData.zones;
+        paymentProfiles = exportData.paymentProfiles;
+        standardPrices = exportData.standardPrices;
+        shopPrices = exportData.shopPrices;
+      }
+
+      await exportShopDirectory({
+        shops,
+        buildings: exportBuildings,
+        zones: exportZones,
+        iceTypes,
+        paymentProfiles,
+        standardPrices,
+        shopPrices,
+        effectiveDate,
+      });
+      setExportSuccess(`ส่งออกข้อมูลร้านค้า ${shops.length.toLocaleString('th-TH')} ร้านแล้ว`);
+    } catch (exportFailure) {
+      setExportError(exportFailure instanceof Error ? exportFailure.message : 'ส่งออกข้อมูลร้านค้าไม่สำเร็จ');
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const handleSave = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (managementReadOnly || !supabase) return;
@@ -633,11 +706,15 @@ export function ShopSettings({
         </div>
         <div className="shop-page-actions">
           <button className="primary-button shop-page-actions__new" onClick={startNew} type="button"><Plus size={21} weight="regular" />ร้านใหม่</button>
+          <button className="secondary-button" disabled={exporting || shops.length === 0} onClick={() => void exportDirectory()} type="button"><FileXls size={19} />{exporting ? 'กำลังส่งออก...' : 'ส่งออก Excel'}</button>
           <button className="secondary-button" onClick={() => importInputRef.current?.click()} type="button"><UploadSimple size={19} />นำเข้า Excel</button>
           <button className="secondary-button" onClick={() => { if (!managementReadOnly) setBulkPriceModalOpen(true); }} type="button"><SlidersHorizontal size={19} />ตั้งค่าหลายร้าน</button>
           <button className="secondary-button" onClick={() => { if (!managementReadOnly) setBulkModalOpen(true); }} type="button"><Receipt size={19} />ตั้งค่าประเภทการรับเงิน</button>
         </div>
       </header>
+
+      {exportError ? <p className="error-text shop-export-feedback" role="alert">{exportError}</p> : null}
+      {exportSuccess ? <p aria-live="polite" className="success-text shop-export-feedback">{exportSuccess}</p> : null}
 
       <section aria-label="สรุปสถานะร้าน" className="shop-summary-grid">
         <article className="shop-summary-card shop-summary-card--blue"><span className="shop-summary-card__icon"><Storefront size={35} weight="duotone" /></span><div><p>ร้านค้าทั้งหมด</p><strong>{totalShopCount}</strong><small>ร้าน</small><a href="#shop-directory">ดูรายละเอียดทั้งหมด <CaretRight size={14} /></a></div></article>

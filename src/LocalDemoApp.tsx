@@ -479,6 +479,7 @@ function buildDemoGateway(): EmployeeDeliveryGateway & { reset(): void } {
           credit_limit: 1000,
           credit_exposure: 0,
           credit_remaining: 1000,
+          credit_suspended: false,
         },
       };
     },

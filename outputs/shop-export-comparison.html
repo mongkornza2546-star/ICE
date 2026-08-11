@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="th">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Shop export visual comparison</title>
+    <style>
+      * { box-sizing: border-box; }
+      body { margin: 0; background: #e8eef7; color: #17365d; font-family: system-ui, sans-serif; }
+      figure { margin: 0; padding: 16px; }
+      figcaption { margin: 0 0 8px; font-size: 18px; font-weight: 700; }
+      img { display: block; width: 100%; height: auto; border: 1px solid #b8cae2; background: white; }
+      img.header { height: 158px; object-fit: cover; object-position: top; }
+    </style>
+  </head>
+  <body>
+    <figure>
+      <figcaption>Reference</figcaption>
+      <img src="/outputs/shop-export-reference-1811x925.png" alt="Reference shop directory" />
+    </figure>
+    <figure>
+      <figcaption>Implementation</figcaption>
+      <img src="/outputs/shop-export-implementation-1811x925.jpg" alt="Implementation shop directory with export button" />
+    </figure>
+    <figure>
+      <figcaption>Reference — header actions</figcaption>
+      <img class="header" src="/outputs/shop-export-reference-1811x925.png" alt="Reference header actions" />
+    </figure>
+    <figure>
+      <figcaption>Implementation — header actions</figcaption>
+      <img class="header" src="/outputs/shop-export-implementation-1811x925.jpg" alt="Implementation header actions with export button" />
+    </figure>
+  </body>
+</html>

@@ -44,6 +44,7 @@ export interface ShopPaymentProfile {
   credit_limit: number | null;
   credit_exposure: number;
   credit_remaining: number | null;
+  credit_suspended: boolean;
 }
 
 export interface DeliveryPosContext {
