@@ -1723,12 +1723,12 @@ input:disabled, select:disabled, textarea:disabled { background: #f2f5f8; color:
 .financial-ops__title h2 { color: #183655; font-size: 1rem; }
 .financial-ops__title p { color: #71859a; font-size: .68rem; }
 .financial-ops__shop-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
-.financial-ops__shop-card { position: relative; min-width: 0; min-height: 220px; display: grid; grid-template-rows: 120px 1fr; overflow: hidden; padding: 0; border: 1px solid #d8e3ef; border-radius: 15px; color: #1d3552; background: #fff; text-align: left; box-shadow: 0 7px 20px rgba(18,54,97,.055); transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease; }
+.financial-ops__shop-card { position: relative; min-width: 0; min-height: 220px; display: grid; grid-template-rows: 120px minmax(98px, auto); overflow: hidden; padding: 0; border: 1px solid #d8e3ef; border-radius: 15px; color: #1d3552; background: #fff; text-align: left; box-shadow: 0 7px 20px rgba(18,54,97,.055); transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease; }
 .financial-ops__shop-card:hover { border-color: #8cb9ed; box-shadow: 0 12px 28px rgba(17,85,164,.11); transform: translateY(-2px); }
 .financial-ops__shop-card:active { transform: translateY(0); }
-.financial-ops__shop-visual { position: relative; display: block; overflow: hidden; color: #75a7dd; background: #edf3f9; }
+.financial-ops__shop-visual { position: relative; min-width: 0; min-height: 0; display: block; overflow: hidden; color: #75a7dd; background: #edf3f9; }
 .financial-ops__shop-visual > img, .financial-ops__shop-visual > span { width: 100%; height: 100%; }
-.financial-ops__shop-visual > img { display: block; object-fit: cover; }
+.financial-ops__shop-visual > img { position: absolute; inset: 0; display: block; object-fit: cover; }
 .financial-ops__shop-visual > span { display: grid; place-items: center; background: #e8f2fc; }
 .financial-ops__shop-visual > small { position: absolute; top: 8px; right: 8px; padding: 4px 7px; border-radius: 999px; color: #8a5200; background: #fff2c7; box-shadow: 0 3px 10px rgba(24,50,85,.11); font-size: .62rem; font-style: normal; font-weight: 800; }
 .financial-ops__shop-body { min-width: 0; display: grid; align-content: start; gap: 3px; padding: 11px 34px 13px 13px; }

@@ -560,14 +560,14 @@ export function useEmployeeDeliveryData({
     setError('บันทึกสำเร็จแล้ว แต่โหลดรายการร้านล่าสุดไม่สำเร็จ กดลองใหม่เพื่อป้องกันการบันทึกซ้ำ');
   };
 
-  const retryLoad = () => {
+  const retryLoad = useCallback(() => {
     setSuccess(null);
     if (selectedRoundId) {
       void Promise.all([loadCards(selectedRoundId), loadStockState(selectedRoundId)]);
       return;
     }
     setReferenceReloadId((current) => current + 1);
-  };
+  }, [loadCards, loadStockState, selectedRoundId]);
 
   const chooseRound = (roundId: string) => {
     if (anySubmitting) return;

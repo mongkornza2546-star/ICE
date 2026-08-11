@@ -129,7 +129,7 @@ function formatEmployeeServiceDate(serviceDate: string) {
   }).format(new Date(`${serviceDate}T12:00:00+07:00`));
 }
 
-function createSupabaseGateway(): EmployeeDeliveryGateway {
+export function createSupabaseGateway(): EmployeeDeliveryGateway {
   return {
     async loadReferenceData(serviceDate) {
       if (!supabase) throw new Error('ยังไม่ได้ตั้งค่า Supabase');
@@ -151,6 +151,10 @@ function createSupabaseGateway(): EmployeeDeliveryGateway {
     },
     async loadShopCards(roundId) {
       if (!supabase) throw new Error('ยังไม่ได้ตั้งค่า Supabase');
+      const { error: syncError } = await supabase.rpc('sync_daily_round_active_shops', {
+        p_round_id: roundId,
+      });
+      if (syncError) throw syncError;
       const { data, error } = await supabase.rpc('get_round_shop_cards', {
         p_round_id: roundId,
         p_building_id: null,
@@ -336,6 +340,32 @@ export function EmployeeDeliveryWorkspace({
   useEffect(() => subscribeToDataChange(['stock', 'pos'], () => {
     if (!data.anySubmitting) data.retryLoad();
   }), [data.anySubmitting, data.retryLoad]);
+
+  useEffect(() => {
+    const refreshVisibleShops = () => {
+      if (!data.anySubmitting) data.retryLoad();
+    };
+    window.addEventListener('focus', refreshVisibleShops);
+
+    const client = supabase;
+    if (!client) {
+      return () => window.removeEventListener('focus', refreshVisibleShops);
+    }
+
+    const channel = client
+      .channel(`employee-shop-catalog:${requestScope}:${serviceDate}`)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'shops',
+      }, refreshVisibleShops)
+      .subscribe();
+
+    return () => {
+      window.removeEventListener('focus', refreshVisibleShops);
+      void client.removeChannel(channel);
+    };
+  }, [data.anySubmitting, data.retryLoad, requestScope, serviceDate]);
 
   if (data.loadingReference) {
     return <EmployeeState
