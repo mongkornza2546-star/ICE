@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { CalendarBlank, CaretDown, CheckCircle, Printer, WarningCircle } from '@phosphor-icons/react';
 import { supabase } from './lib/supabase';
 import type {
@@ -22,7 +22,7 @@ import { EmployeeDeliveryReview } from './features/employee-delivery/EmployeeDel
 import { useEmployeeDeliveryData } from './features/employee-delivery/useEmployeeDeliveryData';
 import { toBangkokDateString } from './lib/serviceDate';
 import { deletePaymentEvidence, uploadPaymentEvidence } from './lib/paymentEvidence';
-import { withSignedImageUrls } from './lib/signedImageUrls';
+import { SIGNED_IMAGE_URL_CACHE_TTL_MS, withSignedImageUrls } from './lib/signedImageUrls';
 import { subscribeToDataChange } from './lib/dataChange';
 
 export interface EmployeeDeliveryPayload {
@@ -81,7 +81,11 @@ export interface EmployeeStockTransferPayload {
 export interface EmployeeDeliveryGateway {
   loadReferenceData(serviceDate: string): Promise<{ rounds: DeliveryRound[]; iceTypes: IceTypeOption[] }>;
   loadShopCards(roundId: string): Promise<ShopCard[]>;
-  loadDeliveryPosContext?(roundStopId: string): Promise<DeliveryPosContext>;
+  loadDeliveryPosContext?(roundStopId: string, options?: {
+    serviceDate?: string;
+    forceRefresh?: boolean;
+  }): Promise<DeliveryPosContext>;
+  invalidateDeliveryPosContextCache?(roundStopId?: string): void;
   loadEmployeeStockState(roundId: string): Promise<EmployeeStockState>;
   recordEmployeeStockTransfer(payload: EmployeeStockTransferPayload): Promise<EmployeeStockState>;
   recordEmployeeStockReturn(payload: EmployeeStockTransferPayload): Promise<EmployeeStockState>;
@@ -102,15 +106,82 @@ export interface EmployeeDeliveryDraftState {
   submitting: boolean;
 }
 
-async function withSignedIceTypeImages(context: DeliveryPosContext): Promise<DeliveryPosContext> {
-  const client = supabase;
-  if (!client) return context;
+const POS_CONTEXT_FRESH_MS = 5 * 60 * 1000;
+const POS_CONTEXT_CACHE_PREFIX = 'ice-employee-pos-context:v1';
+const SHOP_CARDS_BURST_CACHE_MS = 5 * 1000;
+const FOREGROUND_REFRESH_MIN_MS = 5 * 60 * 1000;
+
+interface CachedPosContext {
+  cachedAt: number;
+  context: DeliveryPosContext;
+}
+
+function posContextCacheKey(serviceDate: string, roundStopId: string) {
+  return `${POS_CONTEXT_CACHE_PREFIX}:${serviceDate}:${roundStopId}`;
+}
+
+function readStoredPosContext(serviceDate: string, roundStopId: string): CachedPosContext | null {
+  try {
+    const raw = window.localStorage.getItem(posContextCacheKey(serviceDate, roundStopId));
+    if (!raw) return null;
+    const cached = JSON.parse(raw) as CachedPosContext;
+    if (cached.context?.round_stop_id !== roundStopId
+      || cached.context?.service_date !== serviceDate
+      || typeof cached.cachedAt !== 'number') {
+      return null;
+    }
+    return cached;
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredPosContext(context: DeliveryPosContext, cachedAt: number) {
+  const cacheableContext: DeliveryPosContext = {
+    ...context,
+    client_cache: undefined,
+    items: context.items.map((item) => ({ ...item, image_url: null })),
+  };
+  try {
+    window.localStorage.setItem(
+      posContextCacheKey(context.service_date, context.round_stop_id),
+      JSON.stringify({ cachedAt, context: cacheableContext } satisfies CachedPosContext),
+    );
+  } catch {
+    // Network data remains usable even when browser storage is unavailable or full.
+  }
+}
+
+function clearStoredPosContexts(roundStopId?: string) {
+  try {
+    for (let index = window.localStorage.length - 1; index >= 0; index -= 1) {
+      const key = window.localStorage.key(index);
+      if (!key?.startsWith(`${POS_CONTEXT_CACHE_PREFIX}:`)) continue;
+      if (!roundStopId || key.endsWith(`:${roundStopId}`)) window.localStorage.removeItem(key);
+    }
+  } catch {
+    // An unavailable cache must not block a server refresh.
+  }
+}
+
+function markPosContextCache(context: DeliveryPosContext, cachedAt: number, stale: boolean) {
   return {
     ...context,
-    items: await withSignedImageUrls(context.items, (imagePaths) => client.storage
-      .from('ice-type-images')
-      .createSignedUrls(imagePaths, 3600)),
+    client_cache: {
+      cached_at: new Date(cachedAt).toISOString(),
+      stale,
+    },
   };
+}
+
+function singleFlight<T>(requests: Map<string, Promise<T>>, key: string, load: () => Promise<T>) {
+  const existing = requests.get(key);
+  if (existing) return existing;
+  const request = load().finally(() => {
+    if (requests.get(key) === request) requests.delete(key);
+  });
+  requests.set(key, request);
+  return request;
 }
 
 async function withSignedIceTypeOptions(iceTypes: IceTypeOption[]): Promise<IceTypeOption[]> {
@@ -118,7 +189,10 @@ async function withSignedIceTypeOptions(iceTypes: IceTypeOption[]): Promise<IceT
   if (!client) return iceTypes;
   return withSignedImageUrls(iceTypes, (imagePaths) => client.storage
     .from('ice-type-images')
-    .createSignedUrls(imagePaths, 3600));
+    .createSignedUrls(imagePaths, 3600), {
+    namespace: 'ice-type-images',
+    ttlMs: SIGNED_IMAGE_URL_CACHE_TTL_MS,
+  });
 }
 
 function formatEmployeeServiceDate(serviceDate: string) {
@@ -130,72 +204,117 @@ function formatEmployeeServiceDate(serviceDate: string) {
 }
 
 export function createSupabaseGateway(): EmployeeDeliveryGateway {
+  const referenceRequests = new Map<string, Promise<{ rounds: DeliveryRound[]; iceTypes: IceTypeOption[] }>>();
+  const shopCardRequests = new Map<string, Promise<ShopCard[]>>();
+  const stockRequests = new Map<string, Promise<EmployeeStockState>>();
+  const posContextRequests = new Map<string, Promise<DeliveryPosContext>>();
+  const posContextMemoryCache = new Map<string, CachedPosContext>();
+  const shopCardBurstCache = new Map<string, { cachedAt: number; cards: ShopCard[] }>();
+
+  const invalidatePosContextCache = (roundStopId?: string) => {
+    for (const key of posContextMemoryCache.keys()) {
+      if (!roundStopId || key.endsWith(`:${roundStopId}`)) posContextMemoryCache.delete(key);
+    }
+    clearStoredPosContexts(roundStopId);
+  };
+
   return {
     async loadReferenceData(serviceDate) {
-      if (!supabase) throw new Error('ยังไม่ได้ตั้งค่า Supabase');
-      const [sessionResponse, iceTypesResponse] = await Promise.all([
-        supabase.rpc('get_employee_active_session', { p_service_date: serviceDate }),
-        supabase
-          .from('ice_types')
-          .select('id, code, name, unit, image_path')
-          .eq('is_active', true)
-          .order('code'),
-      ]);
+      return singleFlight(referenceRequests, serviceDate, async () => {
+        if (!supabase) throw new Error('ยังไม่ได้ตั้งค่า Supabase');
+        const [sessionResponse, iceTypesResponse] = await Promise.all([
+          supabase.rpc('get_employee_active_session', { p_service_date: serviceDate }),
+          supabase
+            .from('ice_types')
+            .select('id, code, name, unit, image_path')
+            .eq('is_active', true)
+            .order('code'),
+        ]);
 
-      if (sessionResponse.error) throw sessionResponse.error;
-      if (iceTypesResponse.error) throw iceTypesResponse.error;
-      return {
-        rounds: (sessionResponse.data?.sessions ?? []) as DeliveryRound[],
-        iceTypes: await withSignedIceTypeOptions((iceTypesResponse.data ?? []) as IceTypeOption[]),
-      };
+        if (sessionResponse.error) throw sessionResponse.error;
+        if (iceTypesResponse.error) throw iceTypesResponse.error;
+        return {
+          rounds: (sessionResponse.data?.sessions ?? []) as DeliveryRound[],
+          iceTypes: await withSignedIceTypeOptions((iceTypesResponse.data ?? []) as IceTypeOption[]),
+        };
+      });
     },
     async loadShopCards(roundId) {
-      if (!supabase) throw new Error('ยังไม่ได้ตั้งค่า Supabase');
-      const { error: syncError } = await supabase.rpc('sync_daily_round_active_shops', {
-        p_round_id: roundId,
-      });
-      if (syncError) throw syncError;
-      const { data, error } = await supabase.rpc('get_round_shop_cards', {
-        p_round_id: roundId,
-        p_building_id: null,
-      });
-      if (error) throw error;
-      const rawCards = (data ?? []) as Array<
-        Omit<ShopCard, 'image_url' | 'today_history'> & { today_history: ShopCardHistoryEntry[] | null }
-      >;
-      const imagePaths = rawCards.map((card) => card.image_path).filter((path): path is string => Boolean(path));
-      const imageMap = new Map<string, string>();
-      if (imagePaths.length > 0) {
-        const { data: signedData, error: imageError } = await supabase.storage
+      const cached = shopCardBurstCache.get(roundId);
+      if (cached && Date.now() - cached.cachedAt < SHOP_CARDS_BURST_CACHE_MS) return cached.cards;
+      return singleFlight(shopCardRequests, roundId, async () => {
+        const client = supabase;
+        if (!client) throw new Error('ยังไม่ได้ตั้งค่า Supabase');
+        const { error: syncError } = await client.rpc('sync_daily_round_active_shops', {
+          p_round_id: roundId,
+        });
+        if (syncError) throw syncError;
+        const { data, error } = await client.rpc('get_round_shop_cards', {
+          p_round_id: roundId,
+          p_building_id: null,
+        });
+        if (error) throw error;
+        const rawCards = (data ?? []) as Array<
+          Omit<ShopCard, 'today_history'> & { today_history: ShopCardHistoryEntry[] | null }
+        >;
+        const cardsWithImages = await withSignedImageUrls(rawCards, (imagePaths) => client.storage
           .from('shop-images')
-          .createSignedUrls(imagePaths, 3600);
-        if (!imageError) {
-          for (const entry of signedData ?? []) {
-            if (entry.path && entry.signedUrl) imageMap.set(entry.path, entry.signedUrl);
-          }
-        }
-      }
-      return rawCards.map((card) => ({
-        ...card,
-        image_url: card.image_path ? imageMap.get(card.image_path) ?? null : null,
-        today_history: Array.isArray(card.today_history) ? card.today_history : [],
-      }));
+          .createSignedUrls(imagePaths, 3600), {
+          namespace: 'shop-images',
+          ttlMs: SIGNED_IMAGE_URL_CACHE_TTL_MS,
+        });
+        const cards: ShopCard[] = cardsWithImages.map((card) => ({
+          ...card,
+          image_url: card.image_url ?? null,
+          today_history: Array.isArray(card.today_history) ? card.today_history : [],
+        }));
+        shopCardBurstCache.set(roundId, { cachedAt: Date.now(), cards });
+        return cards;
+      });
     },
     async loadEmployeeStockState(roundId) {
-      if (!supabase) throw new Error('ยังไม่ได้ตั้งค่า Supabase');
-      const { data, error } = await supabase.rpc('get_employee_stock_state', {
-        p_round_id: roundId,
+      return singleFlight(stockRequests, roundId, async () => {
+        if (!supabase) throw new Error('ยังไม่ได้ตั้งค่า Supabase');
+        const { data, error } = await supabase.rpc('get_employee_stock_state', {
+          p_round_id: roundId,
+        });
+        if (error) throw error;
+        return data as EmployeeStockState;
       });
-      if (error) throw error;
-      return data as EmployeeStockState;
     },
-    async loadDeliveryPosContext(roundStopId) {
-      if (!supabase) throw new Error('ยังไม่ได้ตั้งค่า Supabase');
-      const { data, error } = await supabase.rpc('get_delivery_pos_context', {
-        p_round_stop_id: roundStopId,
+    async loadDeliveryPosContext(roundStopId, options) {
+      const serviceDate = options?.serviceDate ?? '';
+      const key = `${serviceDate}:${roundStopId}`;
+      const stored = serviceDate
+        ? posContextMemoryCache.get(key) ?? readStoredPosContext(serviceDate, roundStopId)
+        : null;
+      if (stored) posContextMemoryCache.set(key, stored);
+      if (!options?.forceRefresh && stored && Date.now() - stored.cachedAt < POS_CONTEXT_FRESH_MS) {
+        return markPosContextCache(stored.context, stored.cachedAt, false);
+      }
+
+      return singleFlight(posContextRequests, key, async () => {
+        try {
+          if (!supabase) throw new Error('ยังไม่ได้ตั้งค่า Supabase');
+          const { data, error } = await supabase.rpc('get_delivery_pos_context', {
+            p_round_stop_id: roundStopId,
+          });
+          if (error) throw error;
+          const context = data as DeliveryPosContext;
+          const cachedAt = Date.now();
+          const cached = { cachedAt, context };
+          const resolvedKey = `${context.service_date}:${roundStopId}`;
+          posContextMemoryCache.set(resolvedKey, cached);
+          writeStoredPosContext(context, cachedAt);
+          return markPosContextCache(context, cachedAt, false);
+        } catch (loadError) {
+          if (stored) return markPosContextCache(stored.context, stored.cachedAt, true);
+          throw loadError;
+        }
       });
-      if (error) throw error;
-      return withSignedIceTypeImages(data as DeliveryPosContext);
+    },
+    invalidateDeliveryPosContextCache(roundStopId) {
+      invalidatePosContextCache(roundStopId);
     },
     async recordEmployeeStockTransfer(payload) {
       if (!supabase) throw new Error('ยังไม่ได้ตั้งค่า Supabase');
@@ -205,6 +324,7 @@ export function createSupabaseGateway(): EmployeeDeliveryGateway {
         p_idempotency_key: payload.idempotencyKey,
       });
       if (error) throw error;
+      invalidatePosContextCache();
       return data as EmployeeStockState;
     },
     async recordEmployeeStockReturn(payload) {
@@ -215,6 +335,7 @@ export function createSupabaseGateway(): EmployeeDeliveryGateway {
         p_idempotency_key: payload.idempotencyKey,
       });
       if (error) throw error;
+      invalidatePosContextCache();
       return data as EmployeeStockState;
     },
     async recordEmployeeStockDamage(payload) {
@@ -225,6 +346,7 @@ export function createSupabaseGateway(): EmployeeDeliveryGateway {
         p_idempotency_key: payload.idempotencyKey,
       });
       if (error) throw error;
+      invalidatePosContextCache();
       return data as EmployeeStockState;
     },
     async recordDelivery(payload) {
@@ -240,6 +362,7 @@ export function createSupabaseGateway(): EmployeeDeliveryGateway {
         p_approval_id: payload.approvalId ?? null,
       });
       if (error) throw error;
+      invalidatePosContextCache(payload.roundStopId);
       return data as DeliveryFinancialResult;
     },
     async recordPayment(payload) {
@@ -257,6 +380,7 @@ export function createSupabaseGateway(): EmployeeDeliveryGateway {
         p_idempotency_key: payload.idempotencyKey,
       });
       if (error) throw error;
+      invalidatePosContextCache();
       return data as FinancialPaymentResult;
     },
     async recordImmediateSale(payload) {
@@ -274,6 +398,7 @@ export function createSupabaseGateway(): EmployeeDeliveryGateway {
         p_idempotency_key: payload.idempotencyKey,
       });
       if (error) throw error;
+      invalidatePosContextCache(payload.roundStopId);
       return data as ImmediateSaleResult;
     },
     async uploadPaymentEvidence(file, idempotencyKey) {
@@ -304,6 +429,7 @@ const productionGateway = createSupabaseGateway();
 export function EmployeeDeliveryWorkspace({
   gateway = productionGateway,
   enableAssignedStockFlow = false,
+  isActive = true,
   onDraftStateChange,
   requestScope = 'default',
   serviceDate = toBangkokDateString(),
@@ -312,6 +438,7 @@ export function EmployeeDeliveryWorkspace({
 }: {
   gateway?: EmployeeDeliveryGateway;
   enableAssignedStockFlow?: boolean;
+  isActive?: boolean;
   onDraftStateChange?: (state: EmployeeDeliveryDraftState) => void;
   requestScope?: string;
   serviceDate?: string;
@@ -324,6 +451,7 @@ export function EmployeeDeliveryWorkspace({
     dirty: false,
     submitting: false,
   });
+  const lastForegroundRefreshAt = useRef(Date.now());
   const data = useEmployeeDeliveryData({
     gateway,
     enableAssignedStockFlow,
@@ -338,18 +466,27 @@ export function EmployeeDeliveryWorkspace({
   }, [deliveryDraftState, onDraftStateChange]);
 
   useEffect(() => subscribeToDataChange(['stock', 'pos'], () => {
-    if (!data.anySubmitting) data.retryLoad();
-  }), [data.anySubmitting, data.retryLoad]);
+    if (!isActive || data.anySubmitting) return;
+    gateway.invalidateDeliveryPosContextCache?.();
+    data.retryLoad();
+  }), [data.anySubmitting, data.retryLoad, gateway, isActive]);
 
   useEffect(() => {
-    const refreshVisibleShops = () => {
+    if (!isActive) return undefined;
+    const refreshOnFocus = () => {
+      const now = Date.now();
+      if (now - lastForegroundRefreshAt.current < FOREGROUND_REFRESH_MIN_MS) return;
+      lastForegroundRefreshAt.current = now;
       if (!data.anySubmitting) data.retryLoad();
     };
-    window.addEventListener('focus', refreshVisibleShops);
+    const refreshFromCatalogChange = () => {
+      if (!data.anySubmitting) data.retryLoad();
+    };
+    window.addEventListener('focus', refreshOnFocus);
 
     const client = supabase;
     if (!client) {
-      return () => window.removeEventListener('focus', refreshVisibleShops);
+      return () => window.removeEventListener('focus', refreshOnFocus);
     }
 
     const channel = client
@@ -358,14 +495,14 @@ export function EmployeeDeliveryWorkspace({
         event: '*',
         schema: 'public',
         table: 'shops',
-      }, refreshVisibleShops)
+      }, refreshFromCatalogChange)
       .subscribe();
 
     return () => {
-      window.removeEventListener('focus', refreshVisibleShops);
+      window.removeEventListener('focus', refreshOnFocus);
       void client.removeChannel(channel);
     };
-  }, [data.anySubmitting, data.retryLoad, requestScope, serviceDate]);
+  }, [data.anySubmitting, data.retryLoad, isActive, requestScope, serviceDate]);
 
   if (data.loadingReference) {
     return <EmployeeState

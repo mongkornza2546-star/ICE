@@ -1,5 +1,44 @@
 {
   "contractVersion": 1,
+  "errorCodes": [
+    "ROUND_CLOSED",
+    "STOCK_DAY_CLOSED",
+    "INSUFFICIENT_STOCK",
+    "PRICE_CHANGED",
+    "OUTSTANDING_CHANGED",
+    "PAYMENT_PROFILE_CHANGED",
+    "APPROVAL_REQUIRED",
+    "APPROVAL_EXPIRED",
+    "ROUND_ASSIGNMENT_CHANGED",
+    "USER_INACTIVE",
+    "COLLECTION_RUN_CLOSED",
+    "IDEMPOTENCY_PAYLOAD_MISMATCH",
+    "INVALID_SCHEMA_VERSION",
+    "INVALID_PAYLOAD_VERSION",
+    "INVALID_PAYLOAD",
+    "DEVICE_MISMATCH",
+    "OWNER_MISMATCH",
+    "SERVICE_DATE_EXPIRED",
+    "SERVER_CONTRACT_ERROR",
+    "NETWORK_ERROR",
+    "SERVER_UNAVAILABLE",
+    "AUTH_REQUIRED",
+    "EVIDENCE_UPLOAD_FAILED"
+  ],
+  "invalidTimestamps": [
+    "0000-01-01T00:00:00Z",
+    "2026-02-30T00:00:00Z",
+    "2026-08-11T24:00:00Z",
+    "2026-08-11T00:00:00+16:00"
+  ],
+  "validTimestampBoundaries": [
+    "0001-01-01T00:00:00Z",
+    "9999-12-31T23:59:59.999999Z",
+    "2026-08-11T00:00:00+15:59",
+    "2026-08-11T00:00:00-15:59"
+  ],
+  "invalidServiceDates": ["0000-01-01", "2026-02-30"],
+  "validServiceDateBoundaries": ["0001-01-01", "9999-12-31"],
   "commands": [
     {
       "schemaVersion": 1,

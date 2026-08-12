@@ -1,6 +1,6 @@
 # แผนรองรับ Offline เต็มรูปแบบสำหรับพนักงาน
 
-สถานะ: เริ่มดำเนินการแล้ว — Development Step 1 เสร็จเมื่อ 2026-08-11
+สถานะ: เริ่มดำเนินการแล้ว — Development Step 2A (ledger schema/shared helpers) เสร็จเมื่อ 2026-08-11
 ขอบเขต: งานพนักงานทั้งหมดบนเครื่องประจำตัว  
 กลุ่มอุปกรณ์: Android รุ่นเก่าและไม่ทราบรุ่นขั้นต่ำ
 
@@ -92,7 +92,7 @@ Client ใช้ outbox และ sync engine ร่วมกัน แต่ฝ
 
 ห้ามเก็บ bundle เป็น JSON ก้อนใหญ่แล้ว parse หรือค้นทั้งก้อนทุกครั้งที่เลือกร้าน ให้แยกข้อมูลตาม access pattern ดังนี้:
 
-- `bundles`: `schemaVersion`, `bundleId`, `ownerId`, `serviceDate`, `generatedAt`, `validUntil`, readiness และ active bundle pointer
+- `bundles`: `schemaVersion`, `bundleId`, `bundleVersion`, `changeCursor`, `contentHash`, `ownerId`, `serviceDate`, `generatedAt`, `validUntil`, readiness, ขนาด payload, เวลาตรวจ/refresh ล่าสุด, `nextAllowedRefreshAt` และ active bundle pointer
 - `profiles`: โปรไฟล์และบทบาทที่ยืนยันล่าสุด keyed by `ownerId + serviceDate + bundleId`
 - `rounds`: รอบที่ได้รับมอบหมาย keyed by `ownerId + serviceDate + bundleId + roundId`
 - `iceTypes`: ชนิดน้ำแข็ง keyed by `ownerId + serviceDate + bundleId + iceTypeId`
@@ -100,7 +100,7 @@ Client ใช้ outbox และ sync engine ร่วมกัน แต่ฝ
 - `posContexts`: ราคา สต๊อก เงื่อนไขชำระ และ expected fingerprints keyed by `ownerId + serviceDate + bundleId + roundStopId`
 - `stockStates`: สต๊อกรถและจุดถือครอง keyed by `ownerId + serviceDate + bundleId + roundId`
 - `collectionQueue`: collection run และร้านเก็บเงิน keyed by `ownerId + serviceDate + bundleId + shopId`
-- `imageManifest`: รายการรูป keyed by `ownerId + serviceDate + bundleId + bucket + path`
+- `imageManifest`: รายการรูปพร้อม `contentVersion`, checksum, MIME type, byte size และ display variant keyed by `ownerId + serviceDate + bundleId + bucket + path + variant`
 
 ตอนเตรียม bundle ใหม่ ให้เขียน records ทั้งหมดภายใต้ `bundleId` ใหม่ใน IndexedDB transaction เดียว ตรวจจำนวน/schema ให้ครบ แล้วสลับ active bundle pointer เป็นขั้นตอนสุดท้าย ห้ามให้ UI อ่าน bundle ที่เขียนค้างครึ่งชุด
 
@@ -248,7 +248,7 @@ type OfflineCommand = {
 
 ### 4.4 `images`
 
-ใช้ `bucket + image_path` เป็น key ไม่ใช้ Signed URL เก็บ Blob, MIME type, ขนาด, `lastAccessedAt` และ `serviceDates` ที่อ้างอิง
+ใช้ `bucket + image_path + contentVersion` เป็น key ไม่ใช้ Signed URL เก็บ Blob, checksum, MIME type, ขนาด, variant, `lastAccessedAt` และ `serviceDates` ที่อ้างอิง โดยมี secondary lookup ของ active version ต่อ `bucket + image_path + variant` เพื่อสลับรูปแบบ atomic และลบรุ่นเก่าภายหลัง
 
 ### 4.5 `receipts`
 
@@ -284,6 +284,9 @@ RPC ต้องทำงานภายใต้สิทธิ์ผู้ใ�
 interface EmployeeOfflineBundleV1 {
   schema_version: 1;
   bundle_id: string;
+  bundle_version: number;
+  change_cursor: number;
+  content_hash: string;
   owner_id: string;
   service_date: string;
   generated_at: string;
@@ -316,19 +319,59 @@ interface EmployeeOfflineBundleV1 {
   images: Array<{
     bucket: 'shop-images' | 'ice-type-images';
     path: string;
+    content_version: string;
+    checksum_sha256: string;
+    mime_type: string;
+    byte_size: number;
+    variant: 'thumbnail' | 'display';
   }>;
 }
 ```
 
-Bundle ต้องถูกสร้างจาก snapshot เดียวของฐานข้อมูลเพื่อลดกรณีสต๊อกกับราคาไม่ตรงกัน การเตรียมอัตโนมัติเริ่มหลังยืนยัน session/profile สำเร็จ และทำใหม่เมื่อ:
+Bundle ต้องถูกสร้างจาก snapshot เดียวของฐานข้อมูลเพื่อลดกรณีสต๊อกกับราคาไม่ตรงกัน โดย `bundle_version` และ `change_cursor` ต้องเพิ่มแบบ monotonic ใน scope `ownerId + serviceDate` และ `content_hash` ต้องคำนวณจาก canonical payload ที่ไม่รวม field เวลา เพื่อให้ payload เดิมได้ hash เดิม
+
+เพิ่ม API สำหรับตรวจและรับเฉพาะการเปลี่ยนแปลง ห้ามใช้ full bundle เป็น refresh path ปกติ:
+
+```sql
+get_employee_offline_bundle_head(
+  p_service_date date,
+  p_known_version bigint
+) returns jsonb
+
+get_employee_offline_bundle_delta(
+  p_service_date date,
+  p_after_cursor bigint
+) returns jsonb
+```
+
+- `head` คืนเพียง `changed`, `bundle_version`, `change_cursor`, `content_hash` และ `generated_at`; ถ้า version เดิมต้องไม่ serialize business records
+- `delta` คืน changed records และ tombstones แยกตาม normalized store พร้อม `from_cursor`, `to_cursor` และ hash ของผลลัพธ์ปลายทาง
+- Head/delta response ต้องเป็น closed versioned contract ที่ระบุ upsert/delete key ของแต่ละ store ชัดเจนและมี contract fixtures ร่วมกัน ห้ามคืน `Record<string, unknown>` ที่ client ต้องเดา schema
+- Server ต้องบันทึก change feed อย่างน้อย 7 วันและสร้าง cursor/change rows ใน transaction เดียวกับ business mutation เพื่อไม่ให้ client พลาดการเปลี่ยนแปลง; cursor ที่เก่ากว่า retention ต้องตอบ typed status `CURSOR_EXPIRED` เพื่อให้ client fallback อย่างควบคุมได้
+- ใช้ full bundle เฉพาะการเตรียมครั้งแรก, เปลี่ยน schema/service date, ไม่มี active bundle, delta cursor หมดอายุ หรือ hash หลัง apply delta ไม่ตรง
+- Full bundle เขียน records ภายใต้ `bundleId` ใหม่แล้วสลับ active pointer เป็นขั้นตอนสุดท้าย ส่วน delta ต้อง update/tombstone records ภายใต้ active `bundleId` เดิมและเลื่อน version/cursor/hash ใน IndexedDB transaction เดียว จึงไม่ต้อง copy records ที่ไม่เปลี่ยน; หาก transaction abort ค่าเดิมต้องอยู่ครบ
+- หากตรวจ schema/cursor/base hash/result hash ไม่ผ่านให้คง bundle เดิม แล้ว fallback full bundle เพียงหนึ่งครั้งผ่าน refresh coordinator
+- Full bundle และ delta ต้องส่งเฉพาะ field ที่ UI/expected-state ใช้จริง ห้ามส่ง audit history, raw evidence metadata หรือ nested relation ที่ไม่ถูกอ่าน
+
+การเตรียมอัตโนมัติเริ่มหลังยืนยัน session/profile สำเร็จ และขอ refresh เมื่อ:
 
 - เข้าสู่ระบบ
-- แอปกลับมา foreground ขณะออนไลน์
+- แอปกลับมา foreground ขณะออนไลน์และเลยเวลาตรวจขั้นต่ำแล้ว
 - service date เปลี่ยน
 - มีการเปลี่ยนรอบ สต๊อก POS หรือ collection ที่เกี่ยวข้อง
-- ซิงก์คิวสำเร็จครบแล้ว
+- ซิงก์คิวสำเร็จครบแล้ว โดยรวม affected domains จากผล sync แล้วขอ delta หนึ่งครั้งหลัง drain คิว ไม่ refresh หลังแต่ละ command
 
 ห้ามแทน bundle เดิมจนกว่าข้อมูลใหม่จะดาวน์โหลด ตรวจ schema และเขียน IndexedDB สำเร็จครบทั้งชุด
+
+ทุก trigger ต้องผ่าน refresh coordinator เดียว keyed by `ownerId + serviceDate`:
+
+- ใช้ single-flight รวมคำขอจาก boot, `online`, foreground, sync completion และ invalidation ที่เกิดซ้อนกันให้เหลือ request เดียว
+- ใช้ Web Locks เมื่อรองรับ และ IndexedDB lease + `BroadcastChannel` fallback เพื่อให้หลาย tab/PWA window มีผู้ดาวน์โหลดเพียงหนึ่ง leader
+- การกลับ foreground ไม่เกินหนึ่ง `head` ต่อ 5 นาที เว้นแต่ service date เปลี่ยนหรือ server sync response ระบุ invalidation ที่ต้องตรวจทันที
+- debounce invalidation 2 วินาทีเพื่อรวม mutation ต่อเนื่อง และห้าม refresh จากการเลือกร้าน/สินค้า การ render หรือ retry ของ React
+- ถ้า timeout/network/server error ให้ใช้ exponential backoff พร้อม jitter ที่ 30 วินาที, 1, 2, 5 และสูงสุด 15 นาที; event ใหม่ห้ามข้าม backoff ยกเว้นผู้ใช้กด “ลองซิงก์อีกครั้ง”
+- เมื่อ request รุ่นใหม่ทำให้ request เก่าไม่จำเป็น ให้ abort request เก่า และตรวจ request generation ก่อน commit เพื่อป้องกัน response เก่าทับข้อมูลใหม่
+- การตรวจพบว่า `content_hash` ไม่เปลี่ยนต้องอัปเดตเฉพาะเวลาเช็กล่าสุด ห้าม rewrite normalized stores หรือ prefetch รูปใหม่
 
 Fingerprint ทุกค่าต้องสร้างจาก canonical JSON ที่เรียง key/รายการแน่นอน และใช้ algorithm/version ที่ระบุใน contract โดย canonical v1 รับเฉพาะตัวเลข JavaScript-safe integer และ object key แบบ ASCII identifier เท่านั้น เพื่อให้ TypeScript/PostgreSQL เรียงและ serialize ตรงกัน ห้ามให้ client สร้าง fingerprint ด้วย `JSON.stringify` จาก object ที่ลำดับไม่แน่นอน
 
@@ -358,6 +401,30 @@ Performance budget บนอุปกรณ์ขั้นต่ำที่ใ�
 - การเลือกร้านที่ business bundle พร้อมต้องสร้าง network requests บน critical path เท่ากับ 0
 
 เก็บ telemetry เฉพาะระยะเวลาและสถานะ cache เช่น `pos_context_source=memory|indexeddb|network_fallback` ห้ามเก็บข้อมูลราคา/ร้านใน performance log
+
+### 5.2 Egress budget และ request policy
+
+แยกงบ `uncached egress` (business API และ Storage cache miss) ออกจาก `cached egress` (Storage cache hit) เพราะ Supabase คิดโควตาแยกกัน ห้ามถือว่ารูปทุก request เป็น cached โดยให้จำแนกจาก cache outcome ที่ตอบกลับ กำหนดค่าต่อ environment ได้แก่ `monthlyUncachedEgressBudgetBytes`, `monthlyCachedEgressBudgetBytes`, จำนวนอุปกรณ์ active ที่วางแผนไว้ และจำนวน service days โดยตั้งงบใช้งานไม่เกิน 80% ของโควตาจริงเพื่อเหลือ headroom สำหรับ admin/API อื่น:
+
+```text
+perDeviceDailyBudget =
+  floor(max(0, monthlyBudgetBytes * 0.80 - fixedPlatformReserveBytes)
+    / plannedActiveDevices
+    / plannedServiceDays)
+```
+
+Budget เป็นระดับ organization และรวมทุก project จึงต้องหัก baseline ของ admin/API/project อื่นผ่าน `fixedPlatformReserveBytes` พร้อม validate ว่า budget, จำนวนเครื่องและจำนวนวันเป็นจำนวนบวก ก่อน pilot ต้องกรอกตัวเลขจริงและยืนยันว่าผลทดสอบ P95 ต่อเครื่องอยู่ภายในงบทั้งสองประเภท ห้ามขยาย rollout หากยังไม่มี baseline หรือผลรวมตามจำนวนเครื่องคาดว่าจะเกิน 80% ของโควตาองค์กร
+
+กติกา request:
+
+- Shop selection, product selection, cart edit, route navigation และ UI re-render ต้องใช้ local data และสร้าง Supabase read request เท่ากับ 0 เมื่อ `business_ready`
+- Unchanged foreground check รับได้เพียง response `head` ขนาดเล็กตาม contract และห้ามตามด้วย full bundle, delta หรือ signed URL
+- บันทึก `request_kind`, response byte estimate, cache outcome, refresh reason และจำนวน full/delta/head/image requests แบบ aggregate ต่อวัน ห้ามบันทึก payload, URL ที่มี token, shop ID หรือราคา
+- ใช้ `Content-Length` เมื่อเชื่อถือได้ มิฉะนั้นใช้ขนาด UTF-8 ของ response body เป็นค่าประมาณ; แยกค่าประมาณออกจากตัวเลข Supabase Dashboard ซึ่งเป็นแหล่งอ้างอิงค่าใช้จริง
+- ส่ง telemetry แบบ batch โดย piggyback กับ sync/refresh response หรือไม่เกินหนึ่งครั้งต่อวัน ห้ามสร้าง polling ใหม่เพื่อเก็บ telemetry
+- ที่ 50%, 75% และ 90% ของงบเดือนให้แจ้งเตือน admin; ตั้งแต่ 75% หยุด image refresh ที่ไม่จำเป็น และตั้งแต่ 90% อนุญาตเฉพาะ business head/delta, command sync และหลักฐานที่ผู้ใช้สร้าง โดยยังคง local workflow ทำงานได้
+- Full bundle fallback มากกว่าหนึ่งครั้งต่อเครื่องต่อ service date, delta hash mismatch, request rate ผิด budget หรือ response โตเกิน contract ต้องสร้าง diagnostic event และหยุด retry loop อัตโนมัติ
+- Dashboard สำหรับ pilot ต้องแสดง egress โดยประมาณต่อวัน/เครื่อง แยก full bundle, delta, resolution, sync, evidence read และรูป พร้อมเทียบค่ารวมกับ Supabase Usage อย่างน้อยวันละครั้ง
 
 ## 6. Typed Sync API, Expected State และ Server Ledger
 
@@ -448,9 +515,10 @@ Adapter ต้อง lock ด้วย `command_id`/`idempotency_key` และ�
 - หลัง local commit ให้คืนการควบคุม UI และย้าย network sync ไป foreground queue ทันที แม้อุปกรณ์ online อยู่
 - Command ของผู้ใช้และ service date เดียวกันซิงก์ตาม `sequence` แบบ FIFO
 - หาก command แรกเป็น conflict ให้หยุด command หลังจากนั้น เพื่อไม่ให้ลำดับสต๊อกและเงินเปลี่ยน
-- ก่อนเริ่มส่ง pending command ทุก cycle ให้ดึง resolution หลัง cursor ล่าสุดและ reconcile local conflict ก่อน
+- ก่อนเริ่มส่ง pending command ให้ดึง resolution หลัง cursor ล่าสุดเฉพาะเมื่อมี local conflict/issue ที่อาจปลด FIFO ตามกติกาหัวข้อ 9; pending queue ปกติห้ามเรียก resolution feed ทุก cycle
 - Retry ชั่วคราวใช้ exponential backoff พร้อม jitter และเพดาน 5 นาที
-- เริ่ม sync เมื่อสร้าง command ขณะออนไลน์, ได้รับ event `online`, แอปกลับ foreground และทุก 30 วินาทีขณะแอปเปิด
+- เริ่ม sync เมื่อสร้าง command ขณะออนไลน์, ได้รับ event `online`, แอปกลับ foreground และ timer 30 วินาทีเฉพาะเมื่อมี `pending`/`retry_wait` ที่ถึงเวลา ขณะ document visible และ online; หากไม่มีงานค้าง timer ต้องไม่สร้าง network request
+- ทุก sync trigger ใช้ single-flight ต่อ owner/device, รวม event ที่ซ้อนกัน และหยุด timer เมื่อ document hidden/offline/auth required/FIFO ติด conflict
 - มีปุ่ม “ลองซิงก์อีกครั้ง” เมื่ออยู่สถานะ error แต่การเตรียม bundle ยังคงเป็นอัตโนมัติ
 - ไม่พึ่ง Background Sync เพราะ Android เก่ารองรับไม่สม่ำเสมอ
 - หากปิดแอประหว่าง sync ให้ command คงอยู่ และเปลี่ยน `syncing` ที่ค้างกลับเป็น `pending` ตอน boot
@@ -501,6 +569,7 @@ Command สถานะ `conflict` ยังต้องอยู่ใน proje
 - `error_code`
 - `error_message`
 - `status`: `open`, `retry_requested`, `discard_approved`, `resolved_applied`
+- `scope_type`: `round`, `collection_run`, `admin_only` โดย scope สองแบบแรกต้องมี FK ที่ตรงกับ payload และ `admin_only` ห้ามมี round/collection scope
 - `created_at`
 - `decided_by`, `decided_at`, `decision_reason`
 
@@ -537,12 +606,15 @@ interface OfflineResolutionFeed {
 กติกา:
 
 - `decide_offline_sync_issue` เรียกได้เฉพาะ `round_lead` ที่มีสิทธิ์ในรอบนั้นและ `admin`
+- Issue แบบ `admin_only` ใช้เมื่อ payload/version ไม่ปลอดภัยพอให้ derive scope และต้องปฏิเสธ `round_lead` ทุกคน
 - `get_employee_offline_resolutions` เรียกได้เฉพาะผู้ใช้ที่ authenticated และคืนเฉพาะ command ของ `auth.uid()` บน device ของตน
 - `retry` ใช้หลังหัวหน้าปรับข้อมูลต้นทางหรือยืนยันว่าลองใหม่ได้
 - `approve_discard` ต้องมีเหตุผลและไม่ลบ issue หรือ command history
 - `decide_offline_sync_issue` ต้อง update issue และ `employee_offline_commands` ใน transaction เดียวกัน พร้อมเพิ่ม `resolution_version`
 - `get_employee_offline_resolutions` คืนรายการตั้งแต่ version หลัง cursor พร้อม `nextCursor` ซึ่งเป็น high-water mark ล่าสุดของ ledger
-- Employee sync engine ต้อง poll resolution ก่อนส่งคิวทุกครั้ง รวมทั้งตอน boot, event `online`, foreground และรอบ 30 วินาที
+- Employee sync engine ตรวจ resolution ตอน boot/`online`/foreground เฉพาะเมื่อเครื่องมี command สถานะ `conflict`, `discard_requested` หรือ issue ที่ยังไม่จบ และตรวจหนึ่งครั้งก่อนส่งคิวเมื่อ resolution อาจปลด FIFO; เครื่องที่ไม่มีสถานะดังกล่าวต้องไม่มี periodic resolution request
+- Poll ทุก 30 วินาทีได้เฉพาะขณะหน้าแอป visible, online และกำลังรอการตัดสินจริง จากนั้น backoff พร้อม jitter เป็น 1, 2 และสูงสุด 5 นาทีเมื่อ cursor ไม่เปลี่ยน; reset เป็น 30 วินาทีเมื่อมี resolution ใหม่หรือผู้ใช้กลับ foreground
+- หยุด poll ทันทีเมื่อ document hidden, offline, sign-out, local issue จบครบ หรือถึง egress guard และใช้ single-flight coordinator ร่วมกันเพื่อไม่ให้ boot/foreground/timer ยิงซ้ำ
 - พนักงานขอยกเลิกได้ แต่เปลี่ยนสถานะจริงไม่ได้จนกว่าจะได้รับอนุมัติ
 - ไม่มีคำสั่ง force-apply หรือแก้จำนวน/ราคา/เงินอัตโนมัติในรุ่นแรก
 - หากเหตุการณ์เกิดขึ้นจริงแต่ไม่สามารถใช้ command เดิมได้ ให้หัวหน้าบันทึกด้วย workflow แก้ไขที่มี audit แล้วอนุมัติ discard command เดิม
@@ -580,8 +652,13 @@ type EmployeeBootState =
 ## 11. รูปภาพและพื้นที่จัดเก็บ
 
 - ดาวน์โหลดรูปตาม image manifest โดย concurrency 1–2 รูป
-- เก็บด้วย `bucket + path`; Signed URL ใช้เพียงดาวน์โหลดและทิ้งหลังสำเร็จ
-- แสดงรูปจาก Blob cache ก่อน แล้ว refresh เบื้องหลังเมื่อออนไลน์
+- เก็บด้วย `bucket + path + contentVersion`; ตรวจ checksum และ byte size ก่อน mark ว่าพร้อม โดย Signed URL ใช้เพียงดาวน์โหลดและทิ้งหลังสำเร็จ
+- ถ้า local record มี `contentVersion + checksum` ตรง manifest ห้ามขอ Signed URL หรือดาวน์โหลดซ้ำ แม้เปิดแอป/กลับ foreground ใหม่
+- รูปเปลี่ยนต้องมากับ bundle delta; แสดง Blob cache เดิมระหว่างดาวน์โหลดรุ่นใหม่ แล้วสลับรุ่นแบบ atomic หลังตรวจ checksum สำเร็จ ห้าม refresh รูปตามเวลาอย่างเดียว
+- ตอนอัปโหลดรูปหน้าร้าน/สินค้า ให้สร้าง display variant ล่วงหน้าเพราะ Free Plan ไม่มี image transformation: thumbnail ด้านยาวไม่เกิน 512 px เป้าหมายไม่เกิน 150 KB และ display ด้านยาวไม่เกิน 1280 px เป้าหมายไม่เกิน 500 KB; หน้า list/POS ใช้ thumbnail เท่านั้น ส่วน display โหลดเมื่อผู้ใช้เปิดดูรูป
+- ถ้าต้นฉบับหรือ variant เกิน byte budget ให้บีบอัดใหม่ก่อน publish manifest และห้ามให้ offline prefetch ดาวน์โหลด original
+- แสดงรูปจาก Blob cache ก่อน และดาวน์โหลดเฉพาะ missing/changed variants เบื้องหลังเมื่อออนไลน์ โดยเรียง business-critical thumbnail ก่อน display variant
+- Failed image download ใช้ exponential backoff + jitter และไม่ retry มากกว่าสามครั้งต่อ session; manual retry ต้องผ่าน single-flight เดิม
 - สร้าง Object URL เฉพาะรูปที่กำลังแสดง และเรียก `URL.revokeObjectURL()` เมื่อพ้นหน้าจอหรือ unmount
 - เก็บรูปเฉพาะที่อ้างอิงโดยงานปัจจุบันและช่วงย้อนหลัง 7 วัน
 - ใช้ `navigator.storage.estimate()` เมื่อตัวเครื่องรองรับ
@@ -649,6 +726,8 @@ TMP-{YYMMDD}-{deviceSuffix}-{sequence}
 - จำนวน conflict
 - เวลาซิงก์สำเร็จล่าสุด
 - พื้นที่ที่ใช้อยู่เมื่อ browser รายงานได้
+- จำนวน head/delta/full/image requests และ egress โดยประมาณของเครื่องในวันนั้น
+- สถานะ egress guard ปกติ/ลดรูปที่ไม่จำเป็น/เฉพาะ business-critical พร้อมคำอธิบายว่าตัวเลขจริงต้องดูจาก Supabase Usage
 
 รายการร้านและประวัติต้องมี badge ต่อรายการ เช่น `รอซิงก์`, `ซิงก์แล้ว`, `ต้องตรวจ` ไม่ใช้เพียง banner ระดับหน้า เพราะพนักงานต้องระบุได้ว่าร้านใดมีปัญหา
 
@@ -665,6 +744,8 @@ TMP-{YYMMDD}-{deviceSuffix}-{sequence}
 - IndexedDB schema creation และ migration
 - การ partition ตาม owner/service date
 - การ normalize bundle, atomic active-pointer swap และ lookup `posContexts` ด้วย `roundStopId`
+- refresh coordinator: single-flight, 5-minute foreground gate, debounce, request generation, abort stale response, backoff และ multi-tab leader lease
+- full bundle → delta → tombstone apply, cursor continuity, content hash verification และ fallback full เพียงหนึ่งครั้ง
 - codec/validator ของ payload ทุก command และการปฏิเสธ type/payload ที่ไม่ตรงกัน
 - codec/validator ของ applied result และ sync response ทุก command โดยใช้ closed v1 result DTO ที่ไม่อ้าง app model โดยตรง ปฏิเสธ raw field ทุกระดับ และตรวจความสอดคล้องของ receipt/invoice กับ result หลัก
 - canonical fingerprint ของราคา, payment profile และ collection allocations
@@ -675,11 +756,13 @@ TMP-{YYMMDD}-{deviceSuffix}-{sequence}
 - การเขียน command สำเร็จก่อนเรียก network และห้ามแสดง success เมื่อ transaction abort
 - การเลือก shop ที่ business bundle พร้อมไม่เรียก `loadDeliveryPosContext` ผ่าน network และคืนราคา/สต๊อก/payment profile จาก local store
 - FIFO, retry backoff และ recovery จาก `syncing` ค้าง
+- sync trigger single-flight, visible/online/pending gate และ timer ที่ไม่ยิง network เมื่อคิวว่าง
 - evidence state machine และ recovery จาก `uploading` ค้าง
-- resolution cursor, `retry_requested`, `discard_approved` และการปลด FIFO
+- resolution cursor, conditional polling, idle backoff, `retry_requested`, `discard_approved` และการปลด FIFO
 - local projection และ replay หลัง bundle refresh
 - rebuild projection หลัง discard command กลางคิว
-- image key normalization, eviction และ Object URL cleanup
+- image key/content version normalization, checksum verification, missing/changed-only download, retry cap, eviction และ Object URL cleanup
+- egress budget calculation, threshold policy และ aggregate telemetry ที่ไม่เก็บ business payload
 - evidence compression/checksum
 - temporary receipt numbering
 - boot state machine: online session, offline lease, expired token, owner mismatch และ lease สิ้นวัน Bangkok
@@ -690,6 +773,9 @@ TMP-{YYMMDD}-{deviceSuffix}-{sequence}
 
 - Bundle ส่งเฉพาะข้อมูลที่ courier มีสิทธิ์เห็น
 - Bundle ส่งราคา/payment profile/collection fingerprints ที่ตรงกับ snapshot เดียวกัน
+- Bundle head ที่ version เดิมคืน `changed=false` โดยไม่ serialize business records และไม่สร้าง delta/full fetch ต่อ
+- Delta คืนเฉพาะ changed records/tombstones ที่ผู้ใช้มีสิทธิ์เห็น, cursor ต่อเนื่อง และผลหลัง apply มี content hash ตรง full snapshot
+- Cursor หมดอายุหรือ delta hash ไม่ตรงทำให้ fallback full ได้หนึ่งครั้งและไม่เกิด retry loop
 - Normalized POS context ทุก `roundStopId` ให้ราคา สต๊อก payment profile และ fingerprints ตรงกับ bundle ต้นทาง
 - ส่ง command เดิมซ้ำได้ผลเดิมและไม่สร้างข้อมูลซ้ำ
 - command ID เดิมแต่ payload hash ต่างกันได้ `IDEMPOTENCY_PAYLOAD_MISMATCH`
@@ -704,6 +790,7 @@ TMP-{YYMMDD}-{deviceSuffix}-{sequence}
 - การตัดสิน issue update issue/command ledger/resolution version ใน transaction เดียวกัน
 - global resolution sequence ไม่ซ้ำกันระหว่าง command และ resolution feed ไม่ข้าม transition เมื่อมีการ update ข้าม device แบบสลับกัน
 - Resolution API คืนเฉพาะ owner/device ของผู้เรียก และ RLS ป้องกัน payload ข้ามรอบ
+- Change feed cursor ถูก commit พร้อม business mutation และ RLS ไม่เปิดเผย change metadata ข้าม owner/service date
 
 ### 16.3 Browser/E2E
 
@@ -712,6 +799,10 @@ TMP-{YYMMDD}-{deviceSuffix}-{sequence}
 - Session owner ใหม่ไม่สามารถเปิด bundle/outbox ของ owner เดิม
 - ทำทุก workflow พนักงานและแนบหลักฐานขณะ offline
 - เตรียม bundle แล้วสลับร้านทั้งรอบโดยราคา/สต๊อก/เงื่อนไขชำระแสดงจาก local cache และไม่มี POS-context request บน critical path
+- สลับร้าน/สินค้าและแก้ตะกร้าอย่างน้อย 100 ครั้งหลัง `business_ready` แล้วจำนวน Supabase read request ไม่เพิ่ม
+- trigger boot/`online`/foreground/sync completion ซ้อนกันแล้วเกิด request เดียว; เปิดสอง tab/PWA window แล้วยังมี downloader leader เดียว
+- กลับ foreground ซ้ำภายใน 5 นาทีและ server version เดิมแล้วไม่มี full/delta/image request; เมื่อครบเวลาเกิดเพียง lightweight head
+- Delta เปลี่ยนร้านเดียวแล้วดาวน์โหลด/เขียนเฉพาะ record และรูป variant ที่เปลี่ยน โดยรูป checksum เดิมไม่มี Signed URL request
 - วัด P95 ของ warm shop selection, cold IndexedDB read และ local command commit บนอุปกรณ์ pilot ให้ผ่าน performance budget
 - จำลอง network latency/timeout แล้วกดบันทึก: UI ต้องตอบหลัง local commit โดยไม่รอ RPC และรายการแสดง badge `รอซิงก์`
 - ทำ collection payment ผ่านเส้นทาง courier จริงใน `RoleRouter`/`FinancialOperations` ไม่ใช้ mock gateway ที่ข้าม path นี้
@@ -720,11 +811,15 @@ TMP-{YYMMDD}-{deviceSuffix}-{sequence}
 - ปิดแอประหว่าง sync แล้วเปิดใหม่ไม่เกิดรายการซ้ำ
 - ปิดแอประหว่าง evidence upload แล้ว resume ด้วย remote path เดิม
 - เครื่องพนักงานสร้าง conflict → เครื่องหัวหน้า retry/discard → เครื่องพนักงานรับ resolution และซิงก์ command ถัดไปได้
+- เปิดแอป visible 30 นาทีโดยไม่มี local conflict/issue แล้วไม่มี resolution poll; เมื่อมี issue ให้ poll ตาม 30 วินาที→1→2→5 นาทีและหยุดเมื่อ hidden/issue จบ
+- เปิดแอป visible 30 นาทีโดยไม่มี pending/retry/conflict แล้วไม่มี periodic Supabase request ใด ๆ
+- จำลอง egress guard ที่ 75% แล้วหยุดรูปที่ไม่จำเป็น และที่ 90% แล้วยังบันทึก local/sync command กับ business delta ได้โดยไม่ดาวน์โหลดรูปเพิ่ม
 - Signed URL หมดอายุแต่รูป cache ยังแสดง
 - Token หมดอายุแล้วคิวหยุดรอ auth โดยไม่สูญหาย
 - พื้นที่ไม่พอและ IndexedDB ถูก browser ล้าง ต้องแจ้งสถานะจริง
 - เปลี่ยนวัน Bangkok แล้วห้ามสร้างงานด้วย bundle เก่า
 - ทดสอบบน Android เก่าจริงอย่างน้อยหนึ่งเครื่องและ Chrome รุ่นที่พนักงานใช้จริง
+- เก็บ response byte estimate ของสถานการณ์ pilot หนึ่งวันเต็ม แยก uncached/cached และยืนยัน P95 ต่อเครื่องรวมตามจำนวนอุปกรณ์แล้วไม่เกิน 80% ของโควตาองค์กร
 
 ## 17. เกณฑ์รับงาน
 
@@ -744,15 +839,22 @@ TMP-{YYMMDD}-{deviceSuffix}-{sequence}
 12. การบันทึก command ที่มีหลักฐาน/ใบรับ TMP เป็น atomic; เมื่อพื้นที่ไม่พอไม่มี partial record และ UI ไม่แจ้งว่าสำเร็จ
 13. เมื่อ `business_ready` การเลือกร้านแสดงราคา สต๊อก และเงื่อนไขชำระจาก memory ภายใน P95 100 ms หรือจาก IndexedDB ภายใน P95 300 ms โดยไม่มี network request บน critical path
 14. Stock/delivery ที่ไม่มี evidence ตอบกลับหลัง local commit ภายใน P95 300 ms และไม่รอ server sync
+15. การเลือกร้าน/สินค้าและแก้ตะกร้าหลัง `business_ready` ไม่มี Supabase read request และ unchanged foreground check ไม่ดาวน์โหลด full bundle, delta หรือรูป
+16. Bundle refresh ใช้ single-flight + multi-tab leader, ใช้ delta เป็นปกติ และ fallback full ไม่เกินหนึ่งครั้งต่อเครื่องต่อ service date เมื่อ cursor/hash ใช้ไม่ได้
+17. รูปที่ `contentVersion + checksum` เดิมไม่ถูกขอ Signed URL หรือดาวน์โหลดซ้ำ และ offline prefetch ไม่ดาวน์โหลด original
+18. เครื่องที่ไม่มี conflict/issue ไม่ poll resolution; เครื่องที่รอตัดสินใช้ backoff และหยุดเมื่อ hidden/offline/issue จบ
+19. Pilot มีตัวเลข egress baseline จริง แยก uncached/cached และ projected monthly usage ที่จำนวนเครื่องเป้าหมายไม่เกิน 80% ของโควตาองค์กร
 
 ## 18. การเปิดใช้งานและ Rollback
 
 - ควบคุมด้วย feature flag ระดับผู้ใช้ทั้ง client และ typed sync adapters เริ่มจาก courier กลุ่มทดลอง ห้ามเชื่อ client flag เพียงอย่างเดียว
 - เปิดทดลองหนึ่งวันงานกับอาคารเดียวก่อน
 - ตรวจเทียบสต๊อก ยอดส่ง ยอดขาย เงินรับ หลักฐาน และเลขใบเสร็จหลังจบวัน
-- เก็บจำนวน command, เวลารอ sync, retry และ conflict code เพื่อประเมินปัญหาจริง
-- ขยายผู้ใช้เมื่อไม่พบข้อมูลสูญหายหรือซ้ำ และ conflict ทุกประเภทมีขั้นตอนแก้ที่ชัดเจน
+- เก็บจำนวน command, เวลารอ sync, retry, conflict code, request count และ response byte estimate แยกตาม request kind เพื่อประเมินปัญหาจริง
+- เทียบ telemetry กับ Supabase Usage ทุกวันระหว่าง pilot และสอบสวนทันทีเมื่อคลาดเคลื่อนเกิน 20%, full bundle fallback เกินหนึ่งครั้งต่อเครื่อง/วัน หรือมี spike สูงกว่า baseline สองเท่า
+- ขยายผู้ใช้เมื่อไม่พบข้อมูลสูญหายหรือซ้ำ, conflict ทุกประเภทมีขั้นตอนแก้ที่ชัดเจน และ projected uncached/cached egress ที่จำนวนเครื่องเป้าหมายไม่เกิน 80% ของโควตาองค์กร
 - เมื่อปิด feature flag ให้หยุดสร้าง offline command ใหม่ แต่ต้องคง sync engine ไว้จนคิวเดิมเป็น `applied` หรือ `discard_approved` ทั้งหมด
+- เมื่อเปลี่ยนเป็น `drain_only` เซิร์ฟเวอร์บันทึก cutoff และ adapter รับเฉพาะ command ที่ `clientRecordedAt <= cutoff`; กติกานี้รองรับคิวจาก client ปกติแต่ไม่ใช่หลักฐานเชิง cryptographic เพราะเวลา command มาจาก client จึงต้องติดตาม abuse/clock skew ระหว่าง pilot
 - Database และ client migration ต้องเป็น additive ก่อน ห้าม deploy รุ่นที่อ่าน outbox รุ่นก่อนหน้าไม่ได้
 - ก่อน rollback client ต้องยืนยันว่าเวอร์ชันปลายทางอ่าน `schemaVersion`/`payloadVersion` ของ command ที่ยังไม่จบได้ ถ้าอ่านไม่ได้ให้คง client/sync adapters รุ่นเดิมไว้จน drain คิวครบ
 
@@ -761,14 +863,17 @@ TMP-{YYMMDD}-{deviceSuffix}-{sequence}
 แต่ละ Development Step แยกเป็น migration ย่อยที่เรียงลำดับได้ โดย Step 2 ให้แยกอย่างน้อยเป็น schema/shared helpers, typed adapters และ resolution RPCs เพื่อให้ตรวจ transaction boundary และ rollback ได้เป็นส่วน ๆ
 
 1. ✅ Freeze `CommandPayloadMap`, closed result contracts, canonical fingerprints, error codes และ contract fixtures ระหว่าง TypeScript/SQL
-2. เพิ่ม `employee_offline_commands`, `offline_sync_issues`, RLS และ typed sync adapters พร้อม expected-state/idempotency integration tests
+2. ⏳ เพิ่ม `employee_offline_commands`, `offline_sync_issues`, RLS และ typed sync adapters พร้อม expected-state/idempotency integration tests
+   - ✅ 2A: ledger/issues schema, explicit authorization scope, append-only decision audit, rollout mode/cutoff helper, atomic global resolution allocator, envelope/error helpers, state guards, RLS และ direct-access revocation
+   - ⬜ 2B: typed adapters ทั้งหก, payload normalization/hash, expected-state checks, structured business errors และ closed result normalization
+   - ⬜ 2C: resolution decision/feed RPCs, scoped authorization, retention policy และ cross-device cursor tests
 3. เพิ่ม normalized IndexedDB stores, active-bundle pointer และ atomic repository สำหรับ sequence + outbox + evidence + TMP receipt พร้อม migration/abort tests
 4. เพิ่ม employee boot state machine, offline lease, owner isolation, sign-out guard, UUID helper และ capability check
-5. เพิ่ม bundle RPC, price/payment/collection fingerprints, automatic preparation, `business_ready`/`images_ready` และ fast local POS read path
-6. เพิ่ม image cache, evidence compression/upload state machine, storage quota และ crash recovery
+5. เพิ่ม full/head/delta bundle RPC, transactional change cursor/tombstones, content hash, price/payment/collection fingerprints, single-flight/multi-tab refresh coordinator, automatic preparation, egress budget telemetry, `business_ready`/`images_ready` และ fast local POS read path
+6. เพิ่ม versioned/checksummed image variants, missing/changed-only image cache, evidence compression/upload state machine, storage quota, retry budget และ crash recovery
 7. แยก courier data gateways สองเส้นทาง: `EmployeeDeliveryWorkspace` สำหรับ stock/POS และ `FinancialOperations` สำหรับ collection เปลี่ยน read เป็น memory/IndexedDB-first และเปลี่ยน write ทั้งคู่ให้จบที่ local outbox commit ก่อน network
 8. เพิ่ม local projection สำหรับสต๊อก ร้าน POS, collection และ rebuild หลัง bundle refresh/discard
-9. เพิ่ม foreground sync engine, resolution polling/cursor, structured statuses และ official receipt reconciliation
+9. เพิ่ม foreground sync engine, conditional resolution polling/cursor พร้อม visibility/backoff/egress guard, structured statuses และ official receipt reconciliation
 10. เพิ่ม manager/admin conflict review, retry/discard authorization และทดสอบ cross-device resolution
 11. เพิ่ม legacy build, courier code splitting และ PWA update safety ที่อ่าน outbox schema ได้
-12. ทำ E2E ทุก workflow ผ่าน route จริง, เก็บ P95 ของ shop selection/local save, ทดสอบ Android จริง และ pilot rollout
+12. ทำ E2E ทุก workflow ผ่าน route จริง, เก็บ P95 ของ shop selection/local save, request count/byte budget, full-vs-delta/image cache hit, ทดสอบ Android จริง และ pilot rollout ภายใต้เกณฑ์ egress 80%

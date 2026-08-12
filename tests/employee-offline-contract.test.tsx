@@ -296,32 +296,36 @@ describe('employee offline v1 command contract', () => {
     );
   });
 
+  it.each(fixtures.invalidTimestamps)('rejects cross-runtime-invalid timestamp %s', (timestamp) => {
+    const command = { ...fixtures.commands[0], clientRecordedAt: timestamp };
+
+    expect(validateOfflineCommand(command).issues).toContain(
+      'clientRecordedAt must be a timestamp',
+    );
+  });
+
+  it.each(fixtures.validTimestampBoundaries)('accepts timestamp boundary %s', (timestamp) => {
+    const command = { ...fixtures.commands[0], clientRecordedAt: timestamp };
+
+    expect(validateOfflineCommand(command)).toEqual({ valid: true, issues: [] });
+  });
+
+  it.each(fixtures.invalidServiceDates)('rejects invalid service date %s', (serviceDate) => {
+    const command = { ...fixtures.commands[0], serviceDate };
+
+    expect(validateOfflineCommand(command).issues).toContain(
+      'serviceDate must be a valid YYYY-MM-DD date',
+    );
+  });
+
+  it.each(fixtures.validServiceDateBoundaries)('accepts service date boundary %s', (serviceDate) => {
+    const command = { ...fixtures.commands[0], serviceDate };
+
+    expect(validateOfflineCommand(command)).toEqual({ valid: true, issues: [] });
+  });
+
   it('freezes the stable sync error vocabulary', () => {
-    expect(OFFLINE_SYNC_ERROR_CODES).toEqual([
-      'ROUND_CLOSED',
-      'STOCK_DAY_CLOSED',
-      'INSUFFICIENT_STOCK',
-      'PRICE_CHANGED',
-      'OUTSTANDING_CHANGED',
-      'PAYMENT_PROFILE_CHANGED',
-      'APPROVAL_REQUIRED',
-      'APPROVAL_EXPIRED',
-      'ROUND_ASSIGNMENT_CHANGED',
-      'USER_INACTIVE',
-      'COLLECTION_RUN_CLOSED',
-      'IDEMPOTENCY_PAYLOAD_MISMATCH',
-      'INVALID_SCHEMA_VERSION',
-      'INVALID_PAYLOAD_VERSION',
-      'INVALID_PAYLOAD',
-      'DEVICE_MISMATCH',
-      'OWNER_MISMATCH',
-      'SERVICE_DATE_EXPIRED',
-      'SERVER_CONTRACT_ERROR',
-      'NETWORK_ERROR',
-      'SERVER_UNAVAILABLE',
-      'AUTH_REQUIRED',
-      'EVIDENCE_UPLOAD_FAILED',
-    ]);
+    expect(OFFLINE_SYNC_ERROR_CODES).toEqual(fixtures.errorCodes);
   });
 });
 

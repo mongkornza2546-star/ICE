@@ -348,7 +348,7 @@ const DELIVERY_STATUSES: readonly OfflineDeliveryStatusV1[] = [
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const SHA256_HEX = /^[0-9a-f]{64}$/;
 const SERVICE_DATE = /^\d{4}-\d{2}-\d{2}$/;
-const ISO_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2})$/;
+const ISO_TIMESTAMP = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,6})?(Z|[+-](\d{2}):(\d{2}))$/;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -381,12 +381,29 @@ function isUuid(value: unknown): value is string {
 function isServiceDate(value: unknown): value is string {
   if (typeof value !== 'string' || !SERVICE_DATE.test(value)) return false;
   const [year, month, day] = value.split('-').map(Number);
-  const date = new Date(Date.UTC(year, month - 1, day));
+  if (year === 0) return false;
+  const date = new Date(0);
+  date.setUTCHours(0, 0, 0, 0);
+  date.setUTCFullYear(year, month - 1, day);
   return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
 }
 
 function isTimestamp(value: unknown): value is string {
-  return typeof value === 'string' && ISO_TIMESTAMP.test(value) && Number.isFinite(Date.parse(value));
+  if (typeof value !== 'string') return false;
+  const match = ISO_TIMESTAMP.exec(value);
+  if (!match) return false;
+
+  const [, year, month, day, hour, minute, second, offset, offsetHour, offsetMinute] = match;
+  if (
+    Number(year) === 0 ||
+    !isServiceDate(`${year}-${month}-${day}`) ||
+    Number(hour) > 23 ||
+    Number(minute) > 59 ||
+    Number(second) > 59 ||
+    (offset !== 'Z' && (Number(offsetHour) > 15 || Number(offsetMinute) > 59))
+  ) return false;
+
+  return Number.isFinite(Date.parse(value));
 }
 
 function minorUnits(value: unknown): number | null {

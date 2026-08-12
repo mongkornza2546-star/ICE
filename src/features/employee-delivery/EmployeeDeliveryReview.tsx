@@ -466,6 +466,11 @@ export function EmployeeDeliveryReview({
       </header>
 
       {loadingPosContext ? <p className="employee-pos-notice">กำลังโหลดราคา สต๊อก และเงื่อนไขชำระ…</p> : null}
+      {posContext?.client_cache?.stale ? (
+        <p className="employee-pos-notice" role="status">
+          ใช้ราคา สต๊อก และเงื่อนไขที่บันทึกไว้ล่าสุด เนื่องจากเครือข่ายยังไม่พร้อม
+        </p>
+      ) : null}
       {posContextError ? <p className="employee-error" role="alert">{posContextError}</p> : null}
 
       <form className="employee-pos-layout" onSubmit={onSubmit}>

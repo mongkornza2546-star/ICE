@@ -20,6 +20,17 @@ import { publishDataChange } from '../../lib/dataChange';
 const PAD_VALUES = ['0', '1', '2', '3', '4', '5', '+'] as const;
 export type StockTransferMode = 'receive' | 'return' | 'damage';
 
+function withKnownIceTypeImages(context: DeliveryPosContext, iceTypes: IceTypeOption[]): DeliveryPosContext {
+  const imageUrls = new Map(iceTypes.map((iceType) => [iceType.id, iceType.image_url ?? null]));
+  return {
+    ...context,
+    items: context.items.map((item) => ({
+      ...item,
+      image_url: imageUrls.get(item.ice_type_id) ?? item.image_url ?? null,
+    })),
+  };
+}
+
 function buildImmediateSalePayloadSignature(requestScope: string, payload: {
   roundStopId: string;
   items: Array<{ ice_type_id: string; quantity: number }>;
@@ -383,7 +394,7 @@ export function useEmployeeDeliveryData({
     .map((iceType) => ({ ice_type_id: iceType.id, quantity: transferQuantities[iceType.id] ?? 0 }))
     .filter((item) => item.quantity > 0), [iceTypes, transferQuantities]);
   
-  const anySubmitting = submitting || transferSubmitting;
+  const anySubmitting = submitting || transferSubmitting || paymentSubmitting || approvalSubmitting;
   const dirty = items.length > 0
     || transferItems.length > 0
     || status !== 'delivered'
@@ -426,6 +437,7 @@ export function useEmployeeDeliveryData({
   }, [cards, query, selectedBuildingId, selectedZone]);
 
   const returnToBrowse = useCallback(() => {
+    posContextRequestId.current += 1;
     setSelectedCardId(null);
     setStatus('delivered');
     setProblemOpen(false);
@@ -433,6 +445,7 @@ export function useEmployeeDeliveryData({
     setEntryError(null);
     setPosContext(null);
     setPosContextError(null);
+    setLoadingPosContext(false);
     setPaymentResult(null);
     setPaymentOpen(false);
     setImmediateSaleRetry(null);
@@ -454,6 +467,7 @@ export function useEmployeeDeliveryData({
     setSelectedCardId(card.round_stop_id);
     setPosContext(null);
     setPosContextError(null);
+    setLoadingPosContext(false);
     setPaymentResult(null);
     setPaymentOpen(false);
     setImmediateSaleRetry(null);
@@ -476,8 +490,9 @@ export function useEmployeeDeliveryData({
     if (loadPosContext) {
       const requestId = ++posContextRequestId.current;
       setLoadingPosContext(true);
-      void loadPosContext(card.round_stop_id).then((context) => {
+      void loadPosContext(card.round_stop_id, { serviceDate }).then((loadedContext) => {
         if (requestId !== posContextRequestId.current) return;
+        const context = withKnownIceTypeImages(loadedContext, iceTypes);
         setPosContext(context);
         setDeliveryQuantities((current) => Object.fromEntries(
           iceTypes.map((iceType) => {
@@ -1035,7 +1050,10 @@ export function useEmployeeDeliveryData({
         releaseImmediateSaleRetry(atomicRetry);
         setImmediateSaleRetry(null);
         try {
-          const refreshedContext = await gateway.loadDeliveryPosContext(selectedCard.round_stop_id);
+          const refreshedContext = withKnownIceTypeImages(await gateway.loadDeliveryPosContext(
+            selectedCard.round_stop_id,
+            { serviceDate, forceRefresh: true },
+          ), iceTypes);
           const refreshedTotal = items.reduce((total, item) => {
             const refreshedItem = refreshedContext.items.find((candidate) => candidate.ice_type_id === item.ice_type_id);
             return total + item.quantity * (refreshedItem?.unit_price ?? 0);

@@ -44,6 +44,7 @@ export function RoleRouter({
   const [activeView, setActiveView] = useState<AdminView>('manager_overview');
   const [financialPage, setFinancialPage] = useState<FinancialPage>('collection');
   const [courierView, setCourierView] = useState<'withdrawal' | 'pos' | 'collection'>('pos');
+  const [courierCollectionVisited, setCourierCollectionVisited] = useState(false);
   const [billingServiceDate, setBillingServiceDate] = useState(() => toBangkokDateString());
   const [currentBangkokDate, setCurrentBangkokDate] = useState(() => toBangkokDateString());
   const [deliveryDraftState, setDeliveryDraftState] = useState({ dirty: false, submitting: false });
@@ -107,6 +108,10 @@ export function RoleRouter({
     }
     writeNavigation(profile.id, { activeView, financialPage, courierView, billingServiceDate });
   }, [activeView, billingServiceDate, courierView, currentBangkokDate, financialPage, profile]);
+
+  useEffect(() => {
+    if (courierView === 'collection') setCourierCollectionVisited(true);
+  }, [courierView]);
 
   useEffect(() => {
     const refreshCurrentDate = () => setCurrentBangkokDate(toBangkokDateString());
@@ -227,6 +232,7 @@ export function RoleRouter({
             disabled={deliveryDraftState.submitting}
             onClick={() => {
               if (courierView !== 'collection' && !confirmLeavingDelivery()) return;
+              setCourierCollectionVisited(true);
               setCourierView('collection');
             }}
             type="button"
@@ -238,14 +244,21 @@ export function RoleRouter({
         <KeepAlive active={courierView !== 'collection'}>
           <EmployeeDeliveryWorkspace
             enableAssignedStockFlow={courierView === 'withdrawal'}
+            isActive={courierView !== 'collection'}
             onDraftStateChange={setDeliveryDraftState}
             requestScope={profile.id}
             viewMode={courierView === 'withdrawal' ? 'withdrawal' : 'pos'}
           />
         </KeepAlive>
-        <KeepAlive active={courierView === 'collection'}>
-          <FinancialOperations currentUserId={profile.id} userRole="courier" />
-        </KeepAlive>
+        {courierCollectionVisited || courierView === 'collection' ? (
+          <KeepAlive active={courierView === 'collection'}>
+            <FinancialOperations
+              currentUserId={profile.id}
+              isActive={courierView === 'collection'}
+              userRole="courier"
+            />
+          </KeepAlive>
+        ) : null}
       </EmployeeLayout>
     );
   }
@@ -361,6 +374,7 @@ export function RoleRouter({
       {visitedViews.has('delivery') && (
         <KeepAlive active={currentView === 'delivery'}>
           <EmployeeDeliveryWorkspace
+            isActive={currentView === 'delivery'}
             onDraftStateChange={setDeliveryDraftState}
             requestScope={profile.id}
             serviceDate={profile.role === 'admin' ? billingServiceDate : undefined}
@@ -370,7 +384,12 @@ export function RoleRouter({
       )}
       {visitedViews.has('financial_operations') && (
         <KeepAlive active={currentView === 'financial_operations'}>
-          <FinancialOperations managerPage={financialPage} onManagerPageChange={setFinancialPage} userRole={profile.role} />
+          <FinancialOperations
+            isActive={currentView === 'financial_operations'}
+            managerPage={financialPage}
+            onManagerPageChange={setFinancialPage}
+            userRole={profile.role}
+          />
         </KeepAlive>
       )}
     </AdminLayout>

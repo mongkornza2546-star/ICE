@@ -1,6 +1,7 @@
 import { act, fireEvent, render, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { EmployeeDeliveryGateway } from '../src/EmployeeDeliveryWorkspace';
+import type { DeliveryPosContext, ShopCard } from '../src/types/app';
 
 const supabaseMock = vi.hoisted(() => {
   const state: { postgresChangeListener: (() => void) | null } = {
@@ -16,16 +17,18 @@ const supabaseMock = vi.hoisted(() => {
   });
   channel.subscribe = vi.fn(() => channel);
 
+  const createSignedUrls = vi.fn();
+
   const client = {
     rpc: vi.fn(),
     storage: {
-      from: vi.fn(() => ({ createSignedUrls: vi.fn() })),
+      from: vi.fn(() => ({ createSignedUrls })),
     },
     channel: vi.fn(() => channel),
     removeChannel: vi.fn(),
   };
 
-  return { channel, client, state };
+  return { channel, client, createSignedUrls, state };
 });
 
 vi.mock('../src/lib/supabase', () => ({ supabase: supabaseMock.client }));
@@ -38,7 +41,56 @@ import {
 beforeEach(() => {
   supabaseMock.state.postgresChangeListener = null;
   supabaseMock.client.rpc.mockReset();
+  supabaseMock.client.storage.from.mockClear();
+  supabaseMock.createSignedUrls.mockReset();
+  window.localStorage.clear();
+  window.sessionStorage.clear();
 });
+
+const posContext: DeliveryPosContext = {
+  round_id: 'round-1',
+  round_stop_id: 'stop-1',
+  service_date: '2026-08-11',
+  shop: {
+    id: 'shop-1',
+    code: 'BB01',
+    name: 'ร้านทดสอบ',
+    building_name: 'อาคาร B',
+    floor_or_zone: '1',
+    image_path: null,
+  },
+  stock_source: { id: 'stock-1', code: 'STOCK', name: 'สต๊อก', kind: 'aggregate' },
+  items: [{
+    ice_type_id: 'ice-1',
+    code: 'ICE',
+    name: 'หลอดเล็ก',
+    unit: 'ถุง',
+    image_path: 'ice/small.jpg',
+    stock_quantity: 10,
+    unit_price: 60,
+    price_source: 'standard',
+    price_source_id: 'price-1',
+  }],
+  payment_profile: null,
+};
+
+const shopCard: ShopCard = {
+  round_stop_id: 'stop-1',
+  shop_id: 'shop-1',
+  shop_code: 'BB01',
+  shop_name: 'ร้านทดสอบ',
+  building_id: 'building-1',
+  building_name: 'อาคาร B',
+  floor_or_zone: '1',
+  sequence_no: 1,
+  image_path: 'shops/bb01.jpg',
+  image_url: null,
+  payment_status: 'unpaid',
+  stop_status: 'pending',
+  stop_note: null,
+  today_history: [],
+  today_totals: {},
+};
 
 describe('employee live shop loading', () => {
   it('synchronizes the round before reading shop cards', async () => {
@@ -68,7 +120,78 @@ describe('employee live shop loading', () => {
     expect(supabaseMock.client.rpc).toHaveBeenCalledTimes(1);
   });
 
-  it('reloads the selected round after a shop change and browser focus', async () => {
+  it('deduplicates POS requests and reuses the current-day cache', async () => {
+    supabaseMock.client.rpc.mockResolvedValue({ data: posContext, error: null });
+    const gateway = createSupabaseGateway();
+
+    const [first, concurrent] = await Promise.all([
+      gateway.loadDeliveryPosContext!('stop-1', { serviceDate: '2026-08-11' }),
+      gateway.loadDeliveryPosContext!('stop-1', { serviceDate: '2026-08-11' }),
+    ]);
+    const cached = await gateway.loadDeliveryPosContext!('stop-1', { serviceDate: '2026-08-11' });
+
+    expect(first.round_stop_id).toBe('stop-1');
+    expect(concurrent.round_stop_id).toBe('stop-1');
+    expect(cached.client_cache?.stale).toBe(false);
+    expect(supabaseMock.client.rpc).toHaveBeenCalledTimes(1);
+    expect(supabaseMock.client.storage.from).not.toHaveBeenCalled();
+  });
+
+  it('falls back to the saved POS context when a refresh fails', async () => {
+    let now = new Date('2026-08-11T01:00:00Z').getTime();
+    const nowSpy = vi.spyOn(Date, 'now').mockImplementation(() => now);
+    supabaseMock.client.rpc
+      .mockResolvedValueOnce({ data: posContext, error: null })
+      .mockResolvedValueOnce({ data: null, error: new Error('network unavailable') });
+    const gateway = createSupabaseGateway();
+
+    await gateway.loadDeliveryPosContext!('stop-1', { serviceDate: '2026-08-11' });
+    now += 6 * 60 * 1000;
+    const fallback = await gateway.loadDeliveryPosContext!('stop-1', { serviceDate: '2026-08-11' });
+
+    expect(fallback.client_cache?.stale).toBe(true);
+    expect(fallback.items[0].unit_price).toBe(60);
+    expect(supabaseMock.client.rpc).toHaveBeenCalledTimes(2);
+    nowSpy.mockRestore();
+  });
+
+  it('keeps signed shop image URLs stable across card refreshes', async () => {
+    let now = new Date('2026-08-11T01:00:00Z').getTime();
+    const nowSpy = vi.spyOn(Date, 'now').mockImplementation(() => now);
+    supabaseMock.client.rpc.mockImplementation(async (name: string) => name === 'get_round_shop_cards'
+      ? { data: [shopCard], error: null }
+      : { data: 1, error: null });
+    supabaseMock.createSignedUrls.mockResolvedValue({
+      data: [{ path: 'shops/bb01.jpg', signedUrl: 'https://example.com/stable-shop-image' }],
+      error: null,
+    });
+    const gateway = createSupabaseGateway();
+
+    const first = await gateway.loadShopCards('round-image-cache');
+    now += 6 * 1000;
+    const refreshed = await gateway.loadShopCards('round-image-cache');
+
+    expect(first[0].image_url).toBe('https://example.com/stable-shop-image');
+    expect(refreshed[0].image_url).toBe(first[0].image_url);
+    expect(supabaseMock.createSignedUrls).toHaveBeenCalledTimes(1);
+    nowSpy.mockRestore();
+  });
+
+  it('keeps shop business data usable when image URL signing fails', async () => {
+    supabaseMock.client.rpc.mockImplementation(async (name: string) => name === 'get_round_shop_cards'
+      ? { data: [{ ...shopCard, image_path: 'shops/signing-failure.jpg' }], error: null }
+      : { data: 1, error: null });
+    supabaseMock.createSignedUrls.mockRejectedValue(new Error('storage unavailable'));
+
+    const cards = await createSupabaseGateway().loadShopCards('round-signing-failure');
+
+    expect(cards[0].shop_name).toBe('ร้านทดสอบ');
+    expect(cards[0].image_url).toBeNull();
+  });
+
+  it('reloads immediately after a shop change but throttles browser focus refreshes', async () => {
+    let now = new Date('2026-08-11T01:00:00Z').getTime();
+    const nowSpy = vi.spyOn(Date, 'now').mockImplementation(() => now);
     const loadShopCards = vi.fn().mockResolvedValue([]);
     const gateway = {
       loadReferenceData: vi.fn().mockResolvedValue({
@@ -103,6 +226,11 @@ describe('employee live shop loading', () => {
     await waitFor(() => expect(loadShopCards).toHaveBeenCalledTimes(2));
 
     fireEvent.focus(window);
+    expect(loadShopCards).toHaveBeenCalledTimes(2);
+
+    now += 5 * 60 * 1000;
+    fireEvent.focus(window);
     await waitFor(() => expect(loadShopCards).toHaveBeenCalledTimes(3));
+    nowSpy.mockRestore();
   });
 });

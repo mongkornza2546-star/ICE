@@ -41,9 +41,10 @@ import {
 } from './features/financial-operations/utils';
 import type { AppRole, CreditDueRule, PaymentMethod } from './types/app';
 import { publishDataChange, subscribeToDataChange } from './lib/dataChange';
+import { SIGNED_IMAGE_URL_CACHE_TTL_MS, withSignedImageUrls } from './lib/signedImageUrls';
 
 const PAYMENT_FIELDS = 'id, receipt_number, received_amount, allocated_amount, change_amount, payment_method, status, recorded_at, recorded_by, void_reason, shops(code,name)';
-const COLLECTION_AUTO_REFRESH_MS = 30_000;
+const COLLECTION_AUTO_REFRESH_MS = 2 * 60_000;
 
 type FinancialOperationsDemoData = {
   serviceDate: string;
@@ -62,12 +63,14 @@ export function FinancialOperations({
   userRole = 'round_lead',
   currentUserId,
   demoData,
+  isActive = true,
   managerPage = 'collection',
   onManagerPageChange,
 }: {
   userRole?: AppRole;
   currentUserId?: string;
   demoData?: FinancialOperationsDemoData;
+  isActive?: boolean;
   managerPage?: 'collection' | 'transactions' | 'credit' | 'refund';
   onManagerPageChange?: (page: 'collection' | 'transactions' | 'credit' | 'refund') => void;
 }) {
@@ -172,6 +175,27 @@ export function FinancialOperations({
     }
     if (!supabase) return;
     setError(null);
+
+    if (!preferredShopId && isManager && (managerPage === 'transactions' || managerPage === 'refund')) return;
+    if (!preferredShopId && isManager && managerPage === 'credit') {
+      const [receivablesResponse, approvalsResponse, dueDateRequestsResponse] = await Promise.all([
+        supabase.rpc('get_credit_receivables', { p_as_of_date: serviceDate }),
+        supabase
+          .from('financial_approval_requests')
+          .select('id, kind, requested_amount, reason, status, requested_at, shops(code,name), users!financial_approval_requests_requested_by_fkey(display_name)')
+          .eq('status', 'pending')
+          .order('requested_at'),
+        supabase.rpc('get_credit_due_date_requests', { p_pending_only: true }),
+      ]);
+      if (receivablesResponse.error) throw receivablesResponse.error;
+      if (approvalsResponse.error) throw approvalsResponse.error;
+      if (dueDateRequestsResponse.error) throw dueDateRequestsResponse.error;
+      setReceivables((receivablesResponse.data ?? []) as Receivable[]);
+      setApprovals((approvalsResponse.data ?? []) as unknown as Approval[]);
+      setDueDateRequests((dueDateRequestsResponse.data ?? []) as DueDateRequest[]);
+      return;
+    }
+
     const runResponse = await supabase
       .from('collection_runs')
       .select('id, opened_at')
@@ -205,6 +229,8 @@ export function FinancialOperations({
       setSelectedShop(null);
     }
 
+    if (!isManager) return;
+
     const paymentDay = bangkokDayUtcRange(serviceDate);
     const todayPaymentsPromise = supabase
       .from('payments')
@@ -213,43 +239,27 @@ export function FinancialOperations({
       .gte('recorded_at', paymentDay.start)
       .lt('recorded_at', paymentDay.end)
       .order('recorded_at', { ascending: false });
-    if (!isManager) {
-      const todayPaymentsResponse = await todayPaymentsPromise;
-      if (todayPaymentsResponse.error) throw todayPaymentsResponse.error;
-      setTodayPayments((todayPaymentsResponse.data ?? []) as unknown as PaymentHistoryItem[]);
-      return;
-    }
-    const [receivablesResponse, approvalsResponse, dueDateRequestsResponse, collectorsResponse, membersResponse, todayPaymentsResponse] = await Promise.all([
-      supabase.rpc('get_credit_receivables', { p_as_of_date: serviceDate }),
-      supabase
-        .from('financial_approval_requests')
-        .select('id, kind, requested_amount, reason, status, requested_at, shops(code,name), users!financial_approval_requests_requested_by_fkey(display_name)')
-        .eq('status', 'pending')
-        .order('requested_at'),
-      supabase.rpc('get_credit_due_date_requests', { p_pending_only: true }),
+    const [collectorsResponse, membersResponse, todayPaymentsResponse] = await Promise.all([
       supabase.rpc('get_collection_collectors'),
       nextRunId
         ? supabase.from('collection_run_members').select('user_id').eq('collection_run_id', nextRunId)
         : Promise.resolve({ data: [], error: null }),
       todayPaymentsPromise,
     ]);
-    if (receivablesResponse.error) throw receivablesResponse.error;
-    if (approvalsResponse.error) throw approvalsResponse.error;
-    if (dueDateRequestsResponse.error) throw dueDateRequestsResponse.error;
     if (collectorsResponse.error) throw collectorsResponse.error;
     if (membersResponse.error) throw membersResponse.error;
     if (todayPaymentsResponse.error) throw todayPaymentsResponse.error;
-    setReceivables((receivablesResponse.data ?? []) as Receivable[]);
-    setApprovals((approvalsResponse.data ?? []) as unknown as Approval[]);
-    setDueDateRequests((dueDateRequestsResponse.data ?? []) as DueDateRequest[]);
     setCollectors((collectorsResponse.data ?? []) as Collector[]);
     setMemberIds((membersResponse.data ?? []).map((member) => member.user_id));
     setTodayPayments((todayPaymentsResponse.data ?? []) as unknown as PaymentHistoryItem[]);
-  }, [demoData, isManager, resetPaymentForm, serviceDate]);
+  }, [demoData, isManager, managerPage, resetPaymentForm, serviceDate]);
 
   const refreshFinancialData = useCallback(async () => {
-    await Promise.all([load(), loadPaymentHistory()]);
-  }, [load, loadPaymentHistory]);
+    await load();
+    if ((isManager && managerPage === 'collection') || (!isManager && employeeView === 'history')) {
+      await loadPaymentHistory();
+    }
+  }, [employeeView, isManager, load, loadPaymentHistory, managerPage]);
 
   const autoRefreshFinancialData = useCallback(() => {
     if (busyRef.current || autoRefreshRunningRef.current) return;
@@ -263,22 +273,29 @@ export function FinancialOperations({
       });
   }, [refreshFinancialData]);
 
-  useEffect(() => subscribeToDataChange(['payment', 'receivable', 'refund'], autoRefreshFinancialData), [autoRefreshFinancialData]);
+  useEffect(() => {
+    if (!isActive) return undefined;
+    return subscribeToDataChange(['payment', 'receivable', 'refund'], autoRefreshFinancialData);
+  }, [autoRefreshFinancialData, isActive]);
 
   useEffect(() => {
+    if (!isActive) return;
     void load().catch((loadError: unknown) => {
       setError(getErrorMessage(loadError));
     });
-  }, [load]);
+  }, [isActive, load]);
 
   useEffect(() => {
+    if (!isActive
+      || (isManager && managerPage !== 'collection')
+      || (!isManager && employeeView !== 'history')) return;
     void loadPaymentHistory().catch((loadError: unknown) => {
       setError(getErrorMessage(loadError));
     });
-  }, [loadPaymentHistory]);
+  }, [employeeView, isActive, isManager, loadPaymentHistory, managerPage]);
 
   useEffect(() => {
-    if (demoData || !isManager || managerPage !== 'collection') return undefined;
+    if (!isActive || demoData || !isManager || managerPage !== 'collection') return undefined;
     const refreshWhenActive = () => {
       if (document.visibilityState !== 'hidden') autoRefreshFinancialData();
     };
@@ -290,7 +307,7 @@ export function FinancialOperations({
       window.removeEventListener('focus', refreshWhenActive);
       document.removeEventListener('visibilitychange', refreshWhenActive);
     };
-  }, [autoRefreshFinancialData, demoData, isManager, managerPage]);
+  }, [autoRefreshFinancialData, demoData, isActive, isManager, managerPage]);
 
   useEffect(() => {
     if (!selectedShop || window.innerWidth >= 1100) return;
@@ -373,7 +390,8 @@ export function FinancialOperations({
   }, [historyReceipt?.payment.id]);
 
   useEffect(() => {
-    if (!supabase?.storage) return;
+    const client = supabase;
+    if (!client?.storage) return;
     const avatarPaths = collectors
       .map((collector) => collector.avatar_path)
       .filter((path): path is string => Boolean(path));
@@ -383,19 +401,21 @@ export function FinancialOperations({
     }
 
     let cancelled = false;
-    void supabase.storage.from(USER_AVATAR_BUCKET).createSignedUrls(avatarPaths, 3600)
-      .then(({ data, error }) => {
+    void withSignedImageUrls(collectors.map((collector) => ({
+      ...collector,
+      image_path: collector.avatar_path,
+      image_url: null as string | null,
+    })), (paths) => client.storage.from(USER_AVATAR_BUCKET).createSignedUrls(paths, 3600), {
+      namespace: USER_AVATAR_BUCKET,
+      ttlMs: SIGNED_IMAGE_URL_CACHE_TTL_MS,
+    })
+      .then((signedCollectors) => {
         if (cancelled) return;
-        if (error) {
-          setCollectorAvatarUrls({});
-          setFailedCollectorAvatars(new Set(avatarPaths));
-          return;
-        }
-        const urls = (data ?? []).reduce<Record<string, string>>((current, image) => {
-          if (image.path && image.signedUrl) current[image.path] = image.signedUrl;
+        const urls = signedCollectors.reduce<Record<string, string>>((current, collector) => {
+          if (collector.avatar_path && collector.image_url) current[collector.avatar_path] = collector.image_url;
           return current;
         }, {});
-        setFailedCollectorAvatars(new Set());
+        setFailedCollectorAvatars(new Set(avatarPaths.filter((path) => !urls[path])));
         setCollectorAvatarUrls(urls);
       })
       .catch(() => {

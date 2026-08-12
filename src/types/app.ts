@@ -67,6 +67,10 @@ export interface DeliveryPosContext {
   };
   items: DeliveryPosItem[];
   payment_profile: ShopPaymentProfile | null;
+  client_cache?: {
+    cached_at: string;
+    stale: boolean;
+  };
 }
 
 export interface DeliveryFinancialResult {

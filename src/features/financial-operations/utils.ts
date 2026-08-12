@@ -1,4 +1,5 @@
 import { supabase } from '../../lib/supabase';
+import { SIGNED_IMAGE_URL_CACHE_TTL_MS, withSignedImageUrls } from '../../lib/signedImageUrls';
 import type {
   PaymentProfile,
   PaymentReceiptSnapshot,
@@ -107,27 +108,12 @@ export function allocateOldestFirst(charges: QueueShop['charges'], amount: numbe
 }
 
 export async function withSignedShopImages(shops: QueueShop[]) {
-  if (!supabase?.storage) return shops;
-  const imagePaths = shops
-    .map((shop) => shop.image_path)
-    .filter((path): path is string => Boolean(path));
-  if (imagePaths.length === 0) return shops;
-
-  try {
-    const { data, error } = await supabase.storage
-      .from(SHOP_IMAGE_BUCKET)
-      .createSignedUrls(imagePaths, 3600);
-    if (error) return shops;
-    const imageUrls = new Map(
-      (data ?? [])
-        .filter((image) => image.path && image.signedUrl)
-        .map((image) => [image.path!, image.signedUrl!]),
-    );
-    return shops.map((shop) => ({
-      ...shop,
-      image_url: shop.image_path ? imageUrls.get(shop.image_path) ?? null : null,
-    }));
-  } catch {
-    return shops;
-  }
+  const client = supabase;
+  if (!client?.storage) return shops;
+  return withSignedImageUrls(shops, (imagePaths) => client.storage
+    .from(SHOP_IMAGE_BUCKET)
+    .createSignedUrls(imagePaths, 3600), {
+    namespace: SHOP_IMAGE_BUCKET,
+    ttlMs: SIGNED_IMAGE_URL_CACHE_TTL_MS,
+  });
 }
