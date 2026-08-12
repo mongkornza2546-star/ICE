@@ -1,20 +1,24 @@
-import { FormEvent, useCallback, useEffect, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { Session } from '@supabase/supabase-js';
 import { env } from './lib/env';
 import { getRecoverableSessionNotice } from './lib/authErrors';
 import { supabase } from './lib/supabase';
+import { clearCachedUserProfile } from './lib/userProfileCache';
 import { RoleRouter } from './RoleRouter';
 
 export function AuthGate() {
   const [session, setSession] = useState<Session | null>(null);
   const [authNotice, setAuthNotice] = useState<string | null>(null);
   const [bootLoading, setBootLoading] = useState(true);
+  const lastSessionUserId = useRef<string | null>(null);
 
   const recoverSession = useCallback(async (message: string | null | undefined) => {
     const notice = getRecoverableSessionNotice(message);
     if (!notice) return false;
 
     setAuthNotice(notice);
+    if (lastSessionUserId.current) clearCachedUserProfile(lastSessionUserId.current);
+    lastSessionUserId.current = null;
     await supabase?.auth.signOut();
     return true;
   }, []);
@@ -36,6 +40,7 @@ export function AuthGate() {
         return;
       }
 
+      lastSessionUserId.current = data.session?.user.id ?? null;
       setSession(data.session ?? null);
       setBootLoading(false);
     });
@@ -45,6 +50,10 @@ export function AuthGate() {
     } = supabase.auth.onAuthStateChange((_event, nextSession) => {
       if (nextSession) {
         setAuthNotice(null);
+        lastSessionUserId.current = nextSession.user.id;
+      } else if (lastSessionUserId.current) {
+        clearCachedUserProfile(lastSessionUserId.current);
+        lastSessionUserId.current = null;
       }
       setSession(nextSession);
       setBootLoading(false);
@@ -83,7 +92,7 @@ export function AuthGate() {
   }
 
   return session ? (
-    <RoleRouter onRecoverableSessionError={recoverSession} session={session} />
+    <RoleRouter key={session.user.id} onRecoverableSessionError={recoverSession} session={session} />
   ) : (
     <div className="app-shell">
       <SignInPanel notice={authNotice} />

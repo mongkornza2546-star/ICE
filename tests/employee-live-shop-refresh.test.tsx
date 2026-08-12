@@ -17,18 +17,20 @@ const supabaseMock = vi.hoisted(() => {
   });
   channel.subscribe = vi.fn(() => channel);
 
-  const createSignedUrls = vi.fn();
+  const getPublicUrl = vi.fn((path: string) => ({
+    data: { publicUrl: `https://example.com/storage/v1/object/public/test/${path}` },
+  }));
 
   const client = {
     rpc: vi.fn(),
     storage: {
-      from: vi.fn(() => ({ createSignedUrls })),
+      from: vi.fn(() => ({ getPublicUrl })),
     },
     channel: vi.fn(() => channel),
     removeChannel: vi.fn(),
   };
 
-  return { channel, client, createSignedUrls, state };
+  return { channel, client, getPublicUrl, state };
 });
 
 vi.mock('../src/lib/supabase', () => ({ supabase: supabaseMock.client }));
@@ -42,7 +44,10 @@ beforeEach(() => {
   supabaseMock.state.postgresChangeListener = null;
   supabaseMock.client.rpc.mockReset();
   supabaseMock.client.storage.from.mockClear();
-  supabaseMock.createSignedUrls.mockReset();
+  supabaseMock.getPublicUrl.mockClear();
+  supabaseMock.getPublicUrl.mockImplementation((path: string) => ({
+    data: { publicUrl: `https://example.com/storage/v1/object/public/test/${path}` },
+  }));
   window.localStorage.clear();
   window.sessionStorage.clear();
 });
@@ -155,33 +160,31 @@ describe('employee live shop loading', () => {
     nowSpy.mockRestore();
   });
 
-  it('keeps signed shop image URLs stable across card refreshes', async () => {
+  it('keeps public shop image URLs stable across card refreshes', async () => {
     let now = new Date('2026-08-11T01:00:00Z').getTime();
     const nowSpy = vi.spyOn(Date, 'now').mockImplementation(() => now);
     supabaseMock.client.rpc.mockImplementation(async (name: string) => name === 'get_round_shop_cards'
       ? { data: [shopCard], error: null }
       : { data: 1, error: null });
-    supabaseMock.createSignedUrls.mockResolvedValue({
-      data: [{ path: 'shops/bb01.jpg', signedUrl: 'https://example.com/stable-shop-image' }],
-      error: null,
-    });
     const gateway = createSupabaseGateway();
 
     const first = await gateway.loadShopCards('round-image-cache');
     now += 6 * 1000;
     const refreshed = await gateway.loadShopCards('round-image-cache');
 
-    expect(first[0].image_url).toBe('https://example.com/stable-shop-image');
+    expect(first[0].image_url).toBe('https://example.com/storage/v1/object/public/test/shops/bb01.jpg');
     expect(refreshed[0].image_url).toBe(first[0].image_url);
-    expect(supabaseMock.createSignedUrls).toHaveBeenCalledTimes(1);
+    expect(supabaseMock.getPublicUrl).toHaveBeenCalledTimes(2);
     nowSpy.mockRestore();
   });
 
-  it('keeps shop business data usable when image URL signing fails', async () => {
+  it('keeps shop business data usable when public image URL resolution fails', async () => {
     supabaseMock.client.rpc.mockImplementation(async (name: string) => name === 'get_round_shop_cards'
       ? { data: [{ ...shopCard, image_path: 'shops/signing-failure.jpg' }], error: null }
       : { data: 1, error: null });
-    supabaseMock.createSignedUrls.mockRejectedValue(new Error('storage unavailable'));
+    supabaseMock.getPublicUrl.mockImplementationOnce(() => {
+      throw new Error('storage unavailable');
+    });
 
     const cards = await createSupabaseGateway().loadShopCards('round-signing-failure');
 

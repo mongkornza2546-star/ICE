@@ -3,7 +3,7 @@ import { ImageSquare, Trash, UploadSimple } from '@phosphor-icons/react';
 import { ALLOWED_ICE_TYPE_IMAGE_TYPES, MAX_ICE_TYPE_IMAGE_SIZE, type IceTypeSetting } from '../types';
 import {
   getErrorMessage,
-  getIceTypeImageSignedUrl,
+  getIceTypeImagePublicUrl,
   uploadIceTypeImage,
   updateIceTypeImagePath,
   removeIceTypeImageFiles,
@@ -59,7 +59,7 @@ export function IceTypeImageEditor({ iceType, onIceTypeSaved, onPendingFileChang
 
     setIceTypePreviewLoading(true);
     setIceTypePreviewUrl(null);
-    getIceTypeImageSignedUrl(imagePath)
+    getIceTypeImagePublicUrl(imagePath)
       .then((url) => {
         if (!cancelled) setIceTypePreviewUrl(url);
       })

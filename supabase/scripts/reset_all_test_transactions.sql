@@ -6,6 +6,7 @@
 --   - การส่งของ ยอดขาย รายการขาย และบิล
 --   - การชำระเงิน รอบเก็บเงิน และคำขออนุมัติ
 --   - การโอน/นับ/ปิดสต๊อก และ audit log ทดสอบ
+--   - คิวคำสั่งออฟไลน์ ปัญหา sync และประวัติการตัดสินใจ
 --
 -- เก็บไว้:
 --   users, shops, buildings, zones, routes, ice_types, prices,
@@ -42,6 +43,12 @@ select 'document counters', count(*) from public.document_counters
 union all
 select 'collection runs', count(*) from public.collection_runs
 union all
+select 'offline commands', count(*) from public.employee_offline_commands
+union all
+select 'offline sync issues', count(*) from public.offline_sync_issues
+union all
+select 'offline sync issue decisions', count(*) from public.offline_sync_issue_decisions
+union all
 select 'credit due-date requests', count(*) from public.credit_due_date_requests
 union all
 select 'collection credit assignments', count(*) from public.collection_run_credit_charges
@@ -74,6 +81,9 @@ $$;
 -- ใช้ TRUNCATE ครั้งเดียวเพื่อรองรับ FK ที่เชื่อมกันแบบ RESTRICT/วนกลับ
 -- ไม่ใช้ CASCADE เพื่อป้องกันไม่ให้ตาราง master/config ถูกล้างตามไป
 truncate table
+  public.offline_sync_issue_decisions,
+  public.offline_sync_issues,
+  public.employee_offline_commands,
   public.delivery_adjustment_items,
   public.delivery_charge_adjustments,
   public.refund_settlements,
@@ -122,6 +132,7 @@ truncate table public.document_counters;
 -- เลขที่ใบเสร็จถูกสร้างจาก sequence แยก จึงต้อง reset เอง
 alter sequence if exists public.payment_receipt_number_seq restart with 1;
 alter sequence if exists public.delivery_charge_number_seq restart with 1;
+alter sequence if exists public.employee_offline_resolution_version_seq restart with 1;
 
 commit;
 
@@ -143,6 +154,9 @@ select
   (select count(*) from public.document_counters) as document_counters,
   (select count(*) from public.credit_due_date_requests) as credit_due_date_requests,
   (select count(*) from public.collection_run_credit_charges) as credit_assignments,
+  (select count(*) from public.employee_offline_commands) as offline_commands,
+  (select count(*) from public.offline_sync_issues) as offline_sync_issues,
+  (select count(*) from public.offline_sync_issue_decisions) as offline_sync_issue_decisions,
   (select count(*) from public.audit_logs) as audit_logs;
 
 -- หมายเหตุ: evidence_path ใน payments ถูกล้างแล้ว แต่ไฟล์หลักฐานใน Supabase Storage

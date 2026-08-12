@@ -8,6 +8,7 @@
     "dev:demo": "VITE_APP_MODE=demo vite",
     "build": "tsc -b && vite build",
     "build:demo": "VITE_APP_MODE=demo tsc -b && vite build",
+    "storage:refresh-catalog-cache": "node scripts/refresh-catalog-image-cache.mjs",
     "test": "node --test tests/*.test.mjs && npm run test:ui",
     "test:ui": "vitest run",
     "preview": "vite preview"

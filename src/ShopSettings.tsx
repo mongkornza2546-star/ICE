@@ -16,7 +16,7 @@ import {
   type ShopDirectoryPaymentProfile,
 } from './features/shop-settings/exportShopDirectory';
 import { loadShopDirectoryExportData } from './features/shop-settings/loadShopDirectoryExportData';
-import { getShopImageSignedUrls, loadPOSReadinessReport } from './features/admin-reference-settings/adminReferenceSettingsService';
+import { getShopImagePublicUrls, loadPOSReadinessReport } from './features/admin-reference-settings/adminReferenceSettingsService';
 import { matchesActiveFilter, type ActiveFilter } from './features/admin-reference-settings/referenceEditorFilters';
 import type { POSReadinessReport } from './types/app';
 import { toBangkokDateString } from './lib/serviceDate';
@@ -24,8 +24,6 @@ import { toBangkokDateString } from './lib/serviceDate';
 
 const TANK_IMAGE_BUCKET = 'tank-images';
 const MAX_TANK_IMAGE_SIZE = 5 * 1024 * 1024;
-const SHOP_IMAGE_URL_REFRESH_MS = 55 * 60 * 1000;
-const SHOP_IMAGE_URL_RETRY_MS = 60 * 1000;
 const SHOP_CODE_COLLATOR = new Intl.Collator('en', { numeric: true, sensitivity: 'base' });
 const TANK_IMAGE_EXTENSIONS: Record<string, string> = {
   'image/jpeg': 'jpg',
@@ -307,7 +305,6 @@ export function ShopSettings({
 
   useEffect(() => {
     let cancelled = false;
-    let refreshTimer: ReturnType<typeof setTimeout> | undefined;
 
     if (visibleShopsWithImages.length === 0) {
       setShopImageUrls({});
@@ -316,10 +313,9 @@ export function ShopSettings({
       return () => { cancelled = true; };
     }
 
-    const refreshImageUrls = async () => {
-      let nextRefreshMs = SHOP_IMAGE_URL_REFRESH_MS;
+    const loadImageUrls = async () => {
       try {
-        const urlsByPath = await getShopImageSignedUrls(visibleShopsWithImages.map((shop) => shop.image_path!));
+        const urlsByPath = await getShopImagePublicUrls(visibleShopsWithImages.map((shop) => shop.image_path!));
         if (!cancelled) {
           setShopImageUrls(Object.fromEntries(
             visibleShopsWithImages.flatMap((shop) => {
@@ -330,18 +326,13 @@ export function ShopSettings({
           setFailedShopImages({});
           setLoadedShopImages({});
         }
-      } catch {
-        nextRefreshMs = SHOP_IMAGE_URL_RETRY_MS;
-      } finally {
-        if (!cancelled) refreshTimer = setTimeout(() => void refreshImageUrls(), nextRefreshMs);
-      }
+      } catch {}
     };
 
-    void refreshImageUrls();
+    void loadImageUrls();
 
     return () => {
       cancelled = true;
-      if (refreshTimer) clearTimeout(refreshTimer);
     };
   }, [visibleShopsWithImages]);
 

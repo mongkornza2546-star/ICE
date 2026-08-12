@@ -1,5 +1,5 @@
 import { supabase } from '../../lib/supabase';
-import { SIGNED_IMAGE_URL_CACHE_TTL_MS, withSignedImageUrls } from '../../lib/signedImageUrls';
+import { withPublicImageUrls } from '../../lib/publicImageUrls';
 import type {
   PaymentProfile,
   PaymentReceiptSnapshot,
@@ -107,13 +107,9 @@ export function allocateOldestFirst(charges: QueueShop['charges'], amount: numbe
   return allocations;
 }
 
-export async function withSignedShopImages(shops: QueueShop[]) {
+export async function withPublicShopImages(shops: QueueShop[]) {
   const client = supabase;
   if (!client?.storage) return shops;
-  return withSignedImageUrls(shops, (imagePaths) => client.storage
-    .from(SHOP_IMAGE_BUCKET)
-    .createSignedUrls(imagePaths, 3600), {
-    namespace: SHOP_IMAGE_BUCKET,
-    ttlMs: SIGNED_IMAGE_URL_CACHE_TTL_MS,
-  });
+  const bucket = client.storage.from(SHOP_IMAGE_BUCKET);
+  return withPublicImageUrls(shops, (path) => bucket.getPublicUrl(path).data.publicUrl);
 }

@@ -88,19 +88,18 @@ export function ManagerStockControl({
       .filter((path): path is string => Boolean(path));
 
     async function loadImageUrls() {
-      const [avatars, iceTypes] = await Promise.all([
-        avatarPaths.length > 0
-          ? supabase!.storage.from(USER_AVATAR_BUCKET).createSignedUrls(avatarPaths, 3600)
-          : Promise.resolve({ data: [], error: null }),
-        iceImagePaths.length > 0
-          ? supabase!.storage.from(ICE_TYPE_IMAGE_BUCKET).createSignedUrls(iceImagePaths, 3600)
-          : Promise.resolve({ data: [], error: null }),
-      ]);
+      const avatars = avatarPaths.length > 0
+        ? await supabase!.storage.from(USER_AVATAR_BUCKET).createSignedUrls(avatarPaths, 3600)
+        : { data: [], error: null };
       if (cancelled) return;
 
       const nextUrls: Record<string, string> = {};
-      for (const image of [...(avatars.data ?? []), ...(iceTypes.data ?? [])]) {
+      for (const image of avatars.data ?? []) {
         if (image.path && image.signedUrl) nextUrls[image.path] = image.signedUrl;
+      }
+      const iceTypeBucket = supabase!.storage.from(ICE_TYPE_IMAGE_BUCKET);
+      for (const path of iceImagePaths) {
+        nextUrls[path] = iceTypeBucket.getPublicUrl(path).data.publicUrl;
       }
       const requestedPaths = [...avatarPaths, ...iceImagePaths];
       setFailedImagePaths(new Set(requestedPaths.filter((path) => !nextUrls[path])));

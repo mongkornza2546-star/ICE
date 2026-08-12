@@ -4,7 +4,7 @@ import { ALLOWED_SHOP_IMAGE_TYPES, MAX_SHOP_IMAGE_SIZE, type ShopImageSetting } 
 import { optimizeShopImage } from '../shopImageOptimizer';
 import {
   getErrorMessage,
-  getShopImageSignedUrl,
+  getShopImagePublicUrl,
   uploadShopImage,
   updateShopImagePath,
   removeShopImageFiles,
@@ -55,7 +55,7 @@ export function ShopImageEditor({ shop, onShopSaved }: ShopImageEditorProps) {
 
     setShopPreviewLoading(true);
     setShopPreviewUrl(null);
-    getShopImageSignedUrl(imagePath)
+    getShopImagePublicUrl(imagePath)
       .then((url) => {
         if (!cancelled) setShopPreviewUrl(url);
       })

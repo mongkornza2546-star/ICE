@@ -24,7 +24,7 @@ vi.mock('../src/lib/supabase', () => ({
 }));
 
 vi.mock('../src/features/admin-reference-settings/adminReferenceSettingsService', () => ({
-  getShopImageSignedUrls: vi.fn().mockResolvedValue({}),
+  getShopImagePublicUrls: vi.fn().mockResolvedValue({}),
   loadPOSReadinessReport: loadPOSReadinessReportMock,
 }));
 

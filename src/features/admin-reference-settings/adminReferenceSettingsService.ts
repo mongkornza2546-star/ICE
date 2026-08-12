@@ -238,31 +238,17 @@ export async function saveIceType(
   return data as IceTypeSetting;
 }
 
-export async function getShopImageSignedUrl(imagePath: string): Promise<string> {
+export async function getShopImagePublicUrl(imagePath: string): Promise<string> {
   const client = supabase;
   if (!client) throw new Error('Supabase client not initialized');
-
-  const { data, error } = await client.storage
-    .from(SHOP_IMAGE_BUCKET)
-    .createSignedUrl(imagePath, 3600);
-
-  if (error) throw new Error(error.message);
-  return data.signedUrl;
+  return client.storage.from(SHOP_IMAGE_BUCKET).getPublicUrl(imagePath).data.publicUrl;
 }
 
-export async function getShopImageSignedUrls(imagePaths: string[]): Promise<Record<string, string>> {
+export async function getShopImagePublicUrls(imagePaths: string[]): Promise<Record<string, string>> {
   const client = supabase;
   if (!client) throw new Error('Supabase client not initialized');
-  if (imagePaths.length === 0) return {};
-
-  const { data, error } = await client.storage
-    .from(SHOP_IMAGE_BUCKET)
-    .createSignedUrls(imagePaths, 3600);
-
-  if (error) throw new Error(error.message);
-  return Object.fromEntries(
-    (data ?? []).flatMap((entry) => entry.path && entry.signedUrl ? [[entry.path, entry.signedUrl]] : []),
-  );
+  const bucket = client.storage.from(SHOP_IMAGE_BUCKET);
+  return Object.fromEntries(imagePaths.map((path) => [path, bucket.getPublicUrl(path).data.publicUrl]));
 }
 
 export async function uploadShopImage(shopId: string, file: File): Promise<string> {
@@ -307,16 +293,10 @@ export async function removeShopImageFiles(paths: string[]): Promise<void> {
   if (error) throw new Error(error.message);
 }
 
-export async function getIceTypeImageSignedUrl(imagePath: string): Promise<string> {
+export async function getIceTypeImagePublicUrl(imagePath: string): Promise<string> {
   const client = supabase;
   if (!client) throw new Error('Supabase client not initialized');
-
-  const { data, error } = await client.storage
-    .from(ICE_TYPE_IMAGE_BUCKET)
-    .createSignedUrl(imagePath, 3600);
-
-  if (error) throw new Error(error.message);
-  return data.signedUrl;
+  return client.storage.from(ICE_TYPE_IMAGE_BUCKET).getPublicUrl(imagePath).data.publicUrl;
 }
 
 export async function uploadIceTypeImage(iceTypeId: string, file: File): Promise<string> {
@@ -329,7 +309,7 @@ export async function uploadIceTypeImage(iceTypeId: string, file: File): Promise
   const { error: uploadError } = await client.storage
     .from(ICE_TYPE_IMAGE_BUCKET)
     .upload(nextPath, file, {
-      cacheControl: '3600',
+      cacheControl: '31536000',
       contentType: file.type || undefined,
       upsert: false,
     });

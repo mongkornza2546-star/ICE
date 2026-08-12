@@ -37,7 +37,7 @@ import {
   methodRequires,
   receiptChargesFromRows,
   receiptFromSnapshot,
-  withSignedShopImages,
+  withPublicShopImages,
 } from './features/financial-operations/utils';
 import type { AppRole, CreditDueRule, PaymentMethod } from './types/app';
 import { publishDataChange, subscribeToDataChange } from './lib/dataChange';
@@ -212,7 +212,7 @@ export function FinancialOperations({
         p_collection_run_id: nextRunId,
       });
       if (queueResponse.error) throw queueResponse.error;
-      const nextQueue = await withSignedShopImages((queueResponse.data ?? []) as QueueShop[]);
+      const nextQueue = await withPublicShopImages((queueResponse.data ?? []) as QueueShop[]);
       const currentShop = selectedShopRef.current;
       const preferredShop = preferredShopId
         ? nextQueue.find((shop) => shop.shop_id === preferredShopId) ?? null

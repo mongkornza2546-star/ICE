@@ -9,7 +9,7 @@ import {
   PauseCircle,
 } from '@phosphor-icons/react';
 import { EMPTY_ICE_TYPE, type IceTypeSetting, type IceTypeDraft } from '../types';
-import { saveIceType, getErrorMessage, uploadIceTypeImage, updateIceTypeImagePath, getIceTypeImageSignedUrl } from '../adminReferenceSettingsService';
+import { saveIceType, getErrorMessage, uploadIceTypeImage, updateIceTypeImagePath, getIceTypeImagePublicUrl } from '../adminReferenceSettingsService';
 import {
   filterLabel,
   matchesActiveFilter,
@@ -50,7 +50,7 @@ function IceTypeThumbnail({ path }: { path?: string | null }) {
       return undefined;
     }
     let cancelled = false;
-    getIceTypeImageSignedUrl(path).then((nextUrl) => {
+    getIceTypeImagePublicUrl(path).then((nextUrl) => {
       if (!cancelled) setUrl(nextUrl);
     }).catch(() => {
       if (!cancelled) setUrl(null);

@@ -16,6 +16,12 @@ import { Coins, Package, Storefront } from '@phosphor-icons/react';
 import type { UserProfile } from './types/app';
 import { toBangkokDateString } from './lib/serviceDate';
 import { clearNavigation, clearRecoveryForOwner, readNavigation, writeNavigation } from './lib/recoveryStorage';
+import {
+  clearCachedUserProfile,
+  readCachedUserProfile,
+  USER_PROFILE_REVALIDATE_MS,
+  writeCachedUserProfile,
+} from './lib/userProfileCache';
 
 /**
  * Wrapper that keeps its children mounted once rendered,
@@ -39,6 +45,9 @@ export function RoleRouter({
   onRecoverableSessionError: (message: string | null | undefined) => Promise<boolean>;
 }) {
   const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [profilePreview, setProfilePreview] = useState<UserProfile | null>(() => (
+    readCachedUserProfile(session.user.id)?.profile ?? null
+  ));
   const [profileLoading, setProfileLoading] = useState(true);
   const [profileError, setProfileError] = useState<string | null>(null);
   const [activeView, setActiveView] = useState<AdminView>('manager_overview');
@@ -56,42 +65,66 @@ export function RoleRouter({
 
   useEffect(() => {
     let cancelled = false;
+    let request: Promise<void> | null = null;
+    const cached = readCachedUserProfile(session.user.id);
+    let hasValidatedProfile = false;
+    let validatedAt = 0;
 
-    const loadProfile = async () => {
+    setProfile(null);
+    setProfilePreview(cached?.profile ?? null);
+    setProfileLoading(true);
+    setProfileError(null);
+
+    const loadProfile = (force = false) => {
+      if (!force && Date.now() - validatedAt < USER_PROFILE_REVALIDATE_MS) return Promise.resolve();
+      if (request) return request;
       if (!supabase) {
-        return;
+        setProfileLoading(false);
+        return Promise.resolve();
       }
 
-      setProfileLoading(true);
-      setProfileError(null);
+      request = (async () => {
+        const { data, error } = await supabase
+          .from('users')
+          .select('id, code, display_name, phone, role, is_active')
+          .eq('id', session.user.id)
+          .maybeSingle();
 
-      const { data, error } = await supabase
-        .from('users')
-        .select('id, code, display_name, phone, role, is_active')
-        .eq('id', session.user.id)
-        .maybeSingle();
-
-      if (cancelled) {
-        return;
-      }
-
-      if (error) {
-        if (await onRecoverableSessionError(error.message)) {
+        if (cancelled) return;
+        if (error) {
+          if (await onRecoverableSessionError(error.message)) {
+            setProfileLoading(false);
+            return;
+          }
+          if (!hasValidatedProfile) setProfileError(error.message);
           setProfileLoading(false);
           return;
         }
-        setProfileError(error.message);
-      } else {
-        setProfile(data as UserProfile | null);
-      }
 
-      setProfileLoading(false);
+        const nextProfile = data as UserProfile | null;
+        validatedAt = Date.now();
+        hasValidatedProfile = Boolean(nextProfile);
+        setProfile(nextProfile);
+        setProfilePreview(nextProfile);
+        setProfileError(null);
+        setProfileLoading(false);
+        if (nextProfile) writeCachedUserProfile(nextProfile, validatedAt);
+        else clearCachedUserProfile(session.user.id);
+      })().finally(() => {
+        request = null;
+      });
+      return request;
     };
 
-    loadProfile();
+    void loadProfile(true);
+    const refreshOnFocus = () => { void loadProfile(); };
+    const refreshInterval = window.setInterval(() => { void loadProfile(); }, USER_PROFILE_REVALIDATE_MS);
+    window.addEventListener('focus', refreshOnFocus);
 
     return () => {
       cancelled = true;
+      window.clearInterval(refreshInterval);
+      window.removeEventListener('focus', refreshOnFocus);
     };
   }, [onRecoverableSessionError, session.user.id]);
 
@@ -155,6 +188,7 @@ export function RoleRouter({
     if (profile) {
       clearNavigation(profile.id);
       clearRecoveryForOwner(profile.id);
+      clearCachedUserProfile(profile.id);
     }
     await supabase?.auth.signOut();
   };
@@ -165,6 +199,7 @@ export function RoleRouter({
         <section className="panel center-panel">
           <p className="eyebrow">กำลังโหลดสิทธิ์</p>
           <h1>ตรวจข้อมูลผู้ใช้ในระบบ</h1>
+          {profilePreview ? <p className="muted">{profilePreview.display_name}</p> : null}
         </section>
       </div>
     );
