@@ -323,7 +323,7 @@ function ReceivableDrawer({
         <section aria-labelledby="credit-cycle-editor-title" className="panel" role="dialog" style={{ maxWidth: 480, width: '90%' }}>
           <div className="panel-header"><h2 id="credit-cycle-editor-title">แก้รอบเก็บเงิน</h2><button aria-label="ปิดตัวแก้รอบเก็บเงิน" className="ghost-button" onClick={cancelCycleEditor} type="button"><X size={20} /></button></div>
           <div className="field-grid">
-            <label>รอบเก็บเงิน<select aria-label="รอบเก็บเงิน" onChange={(event) => setCycleRule(event.target.value as CreditDueRule)} value={cycleRule}><option value="weekly">ทุกสัปดาห์</option><option value="end_of_month">ทุกสิ้นเดือน</option><option value="net_days">หลังส่งสินค้า X วัน</option></select></label>
+            <label>รอบเก็บเงิน<select aria-label="รอบเก็บเงิน" onChange={(event) => setCycleRule(event.target.value as CreditDueRule)} value={cycleRule}><option value="weekly">ทุกสัปดาห์</option><option value="semi_monthly">รอบครึ่งเดือน (วันที่ 1–15 / 16–สิ้นเดือน)</option><option value="end_of_month">ทุกสิ้นเดือน</option><option value="net_days">หลังส่งสินค้า X วัน</option></select></label>
             {cycleRule === 'weekly' ? <label>วันเก็บเงินประจำสัปดาห์<select aria-label="วันเก็บเงินประจำสัปดาห์" onChange={(event) => setCycleWeekday(Number(event.target.value))} value={cycleWeekday}>{CREDIT_COLLECTION_WEEKDAY_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label> : null}
             {cycleRule === 'net_days' ? <label>จำนวนวันหลังส่งสินค้า<input aria-label="จำนวนวันหลังส่งสินค้า" min="1" onChange={(event) => setCycleDays(Number(event.target.value))} type="number" value={cycleDays} /></label> : null}
           </div>

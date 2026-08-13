@@ -29,6 +29,7 @@ const TANK_IMAGE_BUCKET = 'tank-images';
 const MAX_TANK_IMAGE_SIZE = 5 * 1024 * 1024;
 const PAGE_SIZE = 12;
 const ALL_SHOPS_PAGE_SIZE = 500;
+const DIRECTORY_FOCUS_REFRESH_INTERVAL_MS = 60_000;
 const SHOP_FIELDS = 'id, code, name, image_path, building_id, zone_id, floor_or_zone, government_shop_code, contact_name, contact_phone, delivery_sequence, normal_rounds_per_day, access_note, status';
 const DIRECTORY_RETRY_MESSAGE = 'ข้อมูลร้านเปลี่ยนระหว่างโหลด กรุณาลองใหม่';
 const SHOP_CODE_COLLATOR = new Intl.Collator('en', { numeric: true, sensitivity: 'base' });
@@ -146,6 +147,7 @@ export function ShopSettings({
   const shopPageRequestRef = useRef(0);
   const allShopsRequestRef = useRef<Promise<ShopSetting[]> | null>(null);
   const hadDirectoryFiltersRef = useRef(false);
+  const lastDirectoryRefreshAtRef = useRef(Date.now());
   const hasDirectoryFilters = query.trim() !== '' || buildingFilter !== '' || zoneFilter !== '' || shopFilter !== 'all' || paymentFilter !== 'all' || posFilter !== 'all';
 
   const refreshReadiness = useCallback(async () => {
@@ -302,6 +304,7 @@ export function ShopSettings({
       setZones((zonesResponse.data ?? []) as BuildingZoneOption[]);
       setIceTypes((iceTypesResponse.data ?? []) as IceTypeOption[]);
       setFailedPage(null);
+      lastDirectoryRefreshAtRef.current = Date.now();
     }
     setLoading(false);
   }
@@ -310,6 +313,20 @@ export function ShopSettings({
     setAllShops(null);
     await Promise.all([loadSettings(), refreshReadiness()]);
   }
+
+  useEffect(() => {
+    if (!isActive || editorOpen || env.isDemoMode) return undefined;
+
+    const refreshStaleDirectory = () => {
+      const now = Date.now();
+      if (now - lastDirectoryRefreshAtRef.current < DIRECTORY_FOCUS_REFRESH_INTERVAL_MS) return;
+      lastDirectoryRefreshAtRef.current = now;
+      void refreshDirectoryData();
+    };
+
+    window.addEventListener('focus', refreshStaleDirectory);
+    return () => window.removeEventListener('focus', refreshStaleDirectory);
+  }, [editorOpen, isActive, page]);
 
   async function loadShopPage(requestedPage: number) {
     const client = supabase;

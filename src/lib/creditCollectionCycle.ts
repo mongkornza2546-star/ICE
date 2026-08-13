@@ -26,6 +26,7 @@ export function formatCreditCollectionCycle(profile: {
       : null;
     return `รอบเก็บเงิน: ${weekday ? `ทุก${weekday}` : 'ยังไม่ได้กำหนดวัน'}`;
   }
+  if (profile.credit_due_rule === 'semi_monthly') return 'รอบเก็บเงิน: รอบครึ่งเดือน (วันที่ 1–15 / 16–สิ้นเดือน)';
   if (profile.credit_due_rule === 'end_of_month') return 'รอบเก็บเงิน: ทุกสิ้นเดือน';
   if (profile.credit_due_rule === 'net_days') {
     return `รอบเก็บเงิน: หลังส่งสินค้า ${profile.credit_days ?? 0} วัน`;

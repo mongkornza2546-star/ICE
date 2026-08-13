@@ -456,7 +456,7 @@ export interface ShopCard {
   today_totals: Record<string, number>;
 }
 
-export type CreditDueRule = 'net_days' | 'weekly' | 'end_of_month';
+export type CreditDueRule = 'net_days' | 'weekly' | 'semi_monthly' | 'end_of_month';
 
 export interface IceTypePriceSetting {
   id: string;

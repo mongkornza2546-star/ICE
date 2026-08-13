@@ -260,6 +260,7 @@ export function ShopPaymentProfileEditor({ shopId, shopName, onSaved }: ShopPaym
                 value={profile.credit_due_rule ?? 'net_days'}
               >
                 <option value="weekly">ทุกสัปดาห์</option>
+                <option value="semi_monthly">รอบครึ่งเดือน (วันที่ 1–15 / 16–สิ้นเดือน)</option>
                 <option value="end_of_month">ทุกสิ้นเดือน</option>
                 <option value="net_days">หลังส่งสินค้า X วัน</option>
               </select>

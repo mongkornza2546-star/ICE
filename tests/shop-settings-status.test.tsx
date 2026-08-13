@@ -8,6 +8,7 @@ const {
   createSignedUrlsMock,
   exportShopDirectoryMock,
   fromMock,
+  getShopImagePublicUrlsMock,
   loadPOSReadinessReportMock,
   loadShopDirectoryExportDataMock,
   shopRangeMock,
@@ -17,6 +18,7 @@ const {
   createSignedUrlsMock: vi.fn(),
   exportShopDirectoryMock: vi.fn(),
   fromMock: vi.fn(),
+  getShopImagePublicUrlsMock: vi.fn().mockResolvedValue({}),
   loadPOSReadinessReportMock: vi.fn(),
   loadShopDirectoryExportDataMock: vi.fn(),
   shopRangeMock: vi.fn(),
@@ -33,7 +35,7 @@ vi.mock('../src/lib/supabase', () => ({
 
 vi.mock('../src/features/admin-reference-settings/adminReferenceSettingsService', () => ({
   getErrorMessage: (error: unknown) => error instanceof Error ? error.message : String(error),
-  getShopImagePublicUrls: vi.fn().mockResolvedValue({}),
+  getShopImagePublicUrls: getShopImagePublicUrlsMock,
   loadShopIcePrices: vi.fn().mockResolvedValue([]),
   loadShopPaymentProfile: vi.fn().mockResolvedValue(null),
   loadPOSReadinessReport: loadPOSReadinessReportMock,
@@ -283,6 +285,33 @@ describe('ShopSettings shop status summary and filter', () => {
 
     await user.click(screen.getByRole('button', { name: 'ถังเช่าและรูปภาพ' }));
     await waitFor(() => expect(createSignedUrlsMock).toHaveBeenCalledTimes(1));
+  });
+
+  it('refreshes stale shop image paths when the page regains focus', async () => {
+    const now = vi.spyOn(Date, 'now').mockReturnValue(0);
+    const r2Path = 'shops/shop-1/r2/photo.webp';
+    let liveShops = [
+      { id: 'shop-1', code: 'A01', name: 'ร้านเปิดหนึ่ง', image_path: null, building_id: 'building-1', zone_id: 'zone-1', floor_or_zone: 'ชั้น 1', government_shop_code: null, contact_name: null, contact_phone: null, delivery_sequence: 1, normal_rounds_per_day: 1, access_note: null, status: 'active' },
+    ];
+    fromMock.mockImplementation((table: string) => queryResult({
+      shops: liveShops,
+      buildings: [{ id: 'building-1', code: 'A', name: 'อาคาร A' }],
+      building_zones: [{ id: 'zone-1', building_id: 'building-1', code: '1', name: 'ชั้น 1', sort_order: 1, is_active: true }],
+      ice_types: [],
+      shop_rented_tanks: [],
+    }[table] ?? [], table === 'shops'));
+    getShopImagePublicUrlsMock.mockResolvedValue({ [r2Path]: 'https://r2.test/photo.webp' });
+
+    render(<ShopSettings />);
+
+    expect(await screen.findByText('ยังไม่มีรูป')).not.toBeNull();
+    liveShops = [{ ...liveShops[0], image_path: r2Path }];
+    now.mockReturnValue(60_001);
+    window.dispatchEvent(new Event('focus'));
+
+    await waitFor(() => expect(getShopImagePublicUrlsMock).toHaveBeenCalledWith([r2Path]));
+    expect((await screen.findByAltText('รูปภาพร้าน ร้านเปิดหนึ่ง')).getAttribute('src')).toBe('https://r2.test/photo.webp');
+    now.mockRestore();
   });
 
   it('loads complete live export data before building the workbook', async () => {
