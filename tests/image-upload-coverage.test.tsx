@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   getUser: vi.fn(),
+  invoke: vi.fn(),
   optimizeImage: vi.fn(),
   storageFrom: vi.fn(),
   upload: vi.fn(),
@@ -14,6 +15,7 @@ vi.mock('../src/lib/imageOptimizer', () => ({
 vi.mock('../src/lib/supabase', () => ({
   supabase: {
     auth: { getUser: mocks.getUser },
+    functions: { invoke: mocks.invoke },
     storage: { from: mocks.storageFrom },
   },
 }));
@@ -32,27 +34,25 @@ describe('image upload compression coverage', () => {
     optimizedImage = new File(['optimized'], 'source.webp', { type: 'image/webp' });
     mocks.optimizeImage.mockResolvedValue(optimizedImage);
     mocks.upload.mockResolvedValue({ error: null });
+    mocks.invoke.mockResolvedValue({ data: { success: true }, error: null });
     mocks.storageFrom.mockReturnValue({ upload: mocks.upload });
     mocks.getUser.mockResolvedValue({ data: { user: { id: 'user-1' } }, error: null });
   });
 
   it.each([
-    ['shop image', () => uploadShopImage('shop-1', sourceImage), 'shop-images'],
-    ['product image', () => uploadIceTypeImage('ice-1', sourceImage), 'ice-type-images'],
-    ['tank image', () => uploadTankImage('shop-1', sourceImage), 'tank-images'],
-    ['payment evidence image', () => uploadPaymentEvidence(sourceImage, 'request-1'), 'payment-evidence'],
-    ['credit sign-off image', () => uploadDailyCreditAcknowledgementEvidence(sourceImage, 'document-1'), 'credit-signoff-evidence'],
-  ])('optimizes %s to WebP before upload', async (_label, uploadFile, bucket) => {
+    ['shop image', () => uploadShopImage('shop-1', sourceImage)],
+    ['product image', () => uploadIceTypeImage('ice-1', sourceImage)],
+    ['tank image', () => uploadTankImage('shop-1', sourceImage)],
+    ['payment evidence image', () => uploadPaymentEvidence(sourceImage, 'request-1')],
+    ['credit sign-off image', () => uploadDailyCreditAcknowledgementEvidence(sourceImage, 'document-1')],
+  ])('optimizes %s to WebP before upload', async (_label, uploadFile) => {
     const path = await uploadFile();
 
     expect(mocks.optimizeImage).toHaveBeenCalledWith(sourceImage);
-    expect(mocks.storageFrom).toHaveBeenCalledWith(bucket);
-    expect(path).toMatch(/\.webp$/);
-    expect(mocks.upload).toHaveBeenCalledWith(
-      expect.stringMatching(/\.webp$/),
-      optimizedImage,
-      expect.objectContaining({ contentType: 'image/webp' }),
-    );
+    expect(path).toMatch(/\/r2\/.*\.webp$/);
+    expect(mocks.invoke).toHaveBeenCalledWith('r2-storage', {
+      body: expect.any(FormData),
+    });
   });
 
   it('preserves payment evidence PDFs without image compression', async () => {
@@ -61,10 +61,13 @@ describe('image upload compression coverage', () => {
     const path = await uploadPaymentEvidence(pdf, 'request-1');
 
     expect(mocks.optimizeImage).not.toHaveBeenCalled();
-    expect(path).toBe('user-1/request-1.pdf');
+    expect(path).toBe('user-1/r2/request-1.pdf');
+    expect(mocks.invoke).toHaveBeenCalledWith('r2-storage', {
+      body: expect.any(FormData),
+    });
     expect(mocks.upload).toHaveBeenCalledWith(
       path,
-      pdf,
+      expect.any(Blob),
       expect.objectContaining({ contentType: 'application/pdf' }),
     );
   });

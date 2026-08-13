@@ -42,6 +42,7 @@ import {
 import type { AppRole, CreditDueRule, PaymentMethod } from './types/app';
 import { publishDataChange, subscribeToDataChange } from './lib/dataChange';
 import { SIGNED_IMAGE_URL_CACHE_TTL_MS, withSignedImageUrls } from './lib/signedImageUrls';
+import { getHybridObjectUrls } from './lib/r2Storage';
 
 const PAYMENT_FIELDS = 'id, receipt_number, received_amount, allocated_amount, change_amount, payment_method, status, recorded_at, recorded_by, void_reason, shops(code,name)';
 const COLLECTION_AUTO_REFRESH_MS = 2 * 60_000;
@@ -405,7 +406,14 @@ export function FinancialOperations({
       ...collector,
       image_path: collector.avatar_path,
       image_url: null as string | null,
-    })), (paths) => client.storage.from(USER_AVATAR_BUCKET).createSignedUrls(paths, 3600), {
+    })), async (paths) => ({
+      data: await getHybridObjectUrls(USER_AVATAR_BUCKET, paths, async (supabasePaths) => {
+        if (supabasePaths.length === 0) return [];
+        const response = await client.storage.from(USER_AVATAR_BUCKET).createSignedUrls(supabasePaths, 3600);
+        return response.error ? [] : response.data ?? [];
+      }),
+      error: null,
+    }), {
       namespace: USER_AVATAR_BUCKET,
       ttlMs: SIGNED_IMAGE_URL_CACHE_TTL_MS,
     })

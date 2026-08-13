@@ -50,6 +50,27 @@ supabase functions deploy admin-reset-user-password --project-ref <project-id>
 supabase functions deploy nickname-password-sign-in --project-ref <project-id>
 ```
 
+### เชื่อม Cloudflare R2 สำหรับรูปใหม่
+
+สร้าง R2 API token แบบ `Object Read & Write` และจำกัดเฉพาะ bucket `ice-delivery`
+จากนั้นบันทึกค่าต่อไปนี้เป็น Supabase Edge Function secrets (ห้ามใช้ `VITE_`
+และห้ามใส่ค่าเหล่านี้ใน `.env.local` เพราะ frontend จะมองเห็น):
+
+```bash
+supabase secrets set \
+  R2_ACCOUNT_ID=<cloudflare-account-id> \
+  R2_ACCESS_KEY_ID=<r2-access-key-id> \
+  R2_SECRET_ACCESS_KEY=<r2-secret-access-key> \
+  R2_BUCKET_NAME=ice-delivery \
+  --project-ref <supabase-project-ref>
+
+supabase functions deploy r2-storage --project-ref <supabase-project-ref>
+```
+
+ไฟล์ใหม่มี `/r2/` อยู่ใน storage path และถูกอ่านผ่าน signed URL จาก R2 ส่วน
+path เก่าที่ยังไม่มี `/r2/` ยังคงอ่านจาก Supabase Storage จึงย้ายไฟล์เก่าแยกภายหลังได้
+โดยไม่ต้องหยุดระบบ
+
 - รถบรรทุกเป็นคลังสต๊อกกลางเคลื่อนที่ของศูนย์ราชการ
 - จุดปฏิบัติงาน Skywalk, ตึก A, ตึก B, ตึก C, รถเล็ก, พนักงานแต่ละคน และถังสำรองเป็นจุดถือครองสต๊อกย่อย
 - งานหลักที่หัวหน้าต้องทำคือบันทึก “สั่งจากโรงงานเท่าไร”, “จ่ายให้พนักงาน/จุดใดเท่าไร” และ “พนักงานกลับมาคืนหรือเหลือเท่าไร” แยกตามชนิดน้ำแข็ง

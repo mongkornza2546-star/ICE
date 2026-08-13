@@ -21,7 +21,8 @@ import { getShopImagePublicUrls, loadPOSReadinessReport } from './features/admin
 import { matchesActiveFilter, type ActiveFilter } from './features/admin-reference-settings/referenceEditorFilters';
 import type { POSReadinessReport } from './types/app';
 import { toBangkokDateString } from './lib/serviceDate';
-import { uploadTankImage } from './lib/tankImage';
+import { removeTankImage, uploadTankImage } from './lib/tankImage';
+import { getHybridObjectUrls } from './lib/r2Storage';
 
 
 const TANK_IMAGE_BUCKET = 'tank-images';
@@ -425,14 +426,21 @@ export function ShopSettings({
     }
 
     const tanks = (data ?? []) as Omit<ShopRentedTank, 'image_url'>[];
-    const tanksWithUrls = includeImageUrls
-      ? await Promise.all(tanks.map(async (tank) => {
-        const { data: imageData, error: imageError } = await client.storage
-          .from(TANK_IMAGE_BUCKET)
-          .createSignedUrl(tank.image_path, 3600);
-        return { ...tank, image_url: imageError ? null : imageData.signedUrl };
-      }))
-      : tanks.map((tank) => ({ ...tank, image_url: null }));
+    let tankUrls = new Map<string, string>();
+    if (includeImageUrls) {
+      const entries = await getHybridObjectUrls(TANK_IMAGE_BUCKET, tanks.map((tank) => tank.image_path), async (paths) => {
+        if (paths.length === 0) return [];
+        const response = await client.storage.from(TANK_IMAGE_BUCKET).createSignedUrls(paths, 3600);
+        return response.error ? [] : response.data ?? [];
+      }).catch(() => []);
+      tankUrls = new Map(entries.flatMap((entry) => (
+        entry.path && entry.signedUrl ? [[entry.path, entry.signedUrl]] : []
+      )));
+    }
+    const tanksWithUrls = tanks.map((tank) => ({
+      ...tank,
+      image_url: tankUrls.get(tank.image_path) ?? null,
+    }));
     setRentedTanks(tanksWithUrls);
     setTankImagesLoaded(includeImageUrls);
     setRentedTanksLoading(false);
@@ -702,7 +710,7 @@ export function ShopSettings({
         p_image_path: imagePath,
       });
       if (registerError) {
-        await supabase.storage.from(TANK_IMAGE_BUCKET).remove([imagePath]);
+        await removeTankImage(imagePath).catch(() => undefined);
         setTankError(registerError.message);
         return;
       }

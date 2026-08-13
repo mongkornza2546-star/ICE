@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import { optimizeImage } from './imageOptimizer';
+import { removeR2Objects, uploadR2Object } from './r2Storage';
 
 export const MAX_DAILY_CREDIT_EVIDENCE_SIZE = 5 * 1024 * 1024;
 const ACCEPTED_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
@@ -14,10 +15,14 @@ export async function uploadDailyCreditAcknowledgementEvidence(file: File, docum
   if (!userData.user) throw new Error('กรุณาเข้าสู่ระบบใหม่');
 
   const uploadFile = await optimizeImage(file);
-  const path = `${userData.user.id}/${documentId}/${crypto.randomUUID()}.webp`;
-  const { error } = await supabase.storage.from('credit-signoff-evidence').upload(path, uploadFile, {
+  const path = `${userData.user.id}/${documentId}/r2/${crypto.randomUUID()}.webp`;
+  await uploadR2Object('credit-signoff-evidence', path, uploadFile);
+  const { error } = await supabase.storage.from('credit-signoff-evidence').upload(path, new Blob([]), {
     contentType: 'image/webp',
   });
-  if (error) throw error;
+  if (error) {
+    await removeR2Objects('credit-signoff-evidence', [path]).catch(() => undefined);
+    throw error;
+  }
   return path;
 }

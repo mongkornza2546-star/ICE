@@ -14,6 +14,7 @@ import {
   X,
 } from '@phosphor-icons/react';
 import { supabase } from './lib/supabase';
+import { getHybridObjectUrls } from './lib/r2Storage';
 import { publishDataChange } from './lib/dataChange';
 import { useRpcAction } from './hooks/useRpcAction';
 import type {
@@ -88,18 +89,25 @@ export function ManagerStockControl({
       .filter((path): path is string => Boolean(path));
 
     async function loadImageUrls() {
-      const avatars = avatarPaths.length > 0
-        ? await supabase!.storage.from(USER_AVATAR_BUCKET).createSignedUrls(avatarPaths, 3600)
-        : { data: [], error: null };
+      const avatarEntries = avatarPaths.length > 0
+        ? await getHybridObjectUrls(USER_AVATAR_BUCKET, avatarPaths, async (paths) => {
+          if (paths.length === 0) return [];
+          const response = await supabase!.storage.from(USER_AVATAR_BUCKET).createSignedUrls(paths, 3600);
+          return response.error ? [] : response.data ?? [];
+        })
+        : [];
       if (cancelled) return;
 
       const nextUrls: Record<string, string> = {};
-      for (const image of avatars.data ?? []) {
+      for (const image of avatarEntries) {
         if (image.path && image.signedUrl) nextUrls[image.path] = image.signedUrl;
       }
       const iceTypeBucket = supabase!.storage.from(ICE_TYPE_IMAGE_BUCKET);
-      for (const path of iceImagePaths) {
-        nextUrls[path] = iceTypeBucket.getPublicUrl(path).data.publicUrl;
+      const iceTypeEntries = await getHybridObjectUrls(ICE_TYPE_IMAGE_BUCKET, iceImagePaths, async (paths) => (
+        paths.map((path) => ({ path, signedUrl: iceTypeBucket.getPublicUrl(path).data.publicUrl }))
+      ));
+      for (const image of iceTypeEntries) {
+        if (image.path && image.signedUrl) nextUrls[image.path] = image.signedUrl;
       }
       const requestedPaths = [...avatarPaths, ...iceImagePaths];
       setFailedImagePaths(new Set(requestedPaths.filter((path) => !nextUrls[path])));

@@ -1,5 +1,6 @@
 import { supabase } from '../../lib/supabase';
-import { withPublicImageUrls } from '../../lib/publicImageUrls';
+import { withAsyncPublicImageUrls } from '../../lib/publicImageUrls';
+import { getHybridObjectUrls } from '../../lib/r2Storage';
 import type {
   PaymentProfile,
   PaymentReceiptSnapshot,
@@ -111,5 +112,10 @@ export async function withPublicShopImages(shops: QueueShop[]) {
   const client = supabase;
   if (!client?.storage) return shops;
   const bucket = client.storage.from(SHOP_IMAGE_BUCKET);
-  return withPublicImageUrls(shops, (path) => bucket.getPublicUrl(path).data.publicUrl);
+  return withAsyncPublicImageUrls(shops, (paths) => getHybridObjectUrls(
+    SHOP_IMAGE_BUCKET, paths, async (supabasePaths) => supabasePaths.map((path) => ({
+      path,
+      signedUrl: bucket.getPublicUrl(path).data.publicUrl,
+    })),
+  ));
 }

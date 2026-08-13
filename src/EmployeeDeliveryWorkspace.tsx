@@ -22,7 +22,8 @@ import { EmployeeDeliveryReview } from './features/employee-delivery/EmployeeDel
 import { useEmployeeDeliveryData } from './features/employee-delivery/useEmployeeDeliveryData';
 import { toBangkokDateString } from './lib/serviceDate';
 import { deletePaymentEvidence, uploadPaymentEvidence } from './lib/paymentEvidence';
-import { withPublicImageUrls } from './lib/publicImageUrls';
+import { withAsyncPublicImageUrls } from './lib/publicImageUrls';
+import { getHybridObjectUrls } from './lib/r2Storage';
 import { subscribeToDataChange } from './lib/dataChange';
 
 export interface EmployeeDeliveryPayload {
@@ -184,11 +185,16 @@ function singleFlight<T>(requests: Map<string, Promise<T>>, key: string, load: (
   return request;
 }
 
-function withPublicIceTypeOptions(iceTypes: IceTypeOption[]): IceTypeOption[] {
+async function withPublicIceTypeOptions(iceTypes: IceTypeOption[]): Promise<IceTypeOption[]> {
   const client = supabase;
   if (!client) return iceTypes;
   const bucket = client.storage.from('ice-type-images');
-  return withPublicImageUrls(iceTypes, (path) => bucket.getPublicUrl(path).data.publicUrl);
+  return withAsyncPublicImageUrls(iceTypes, (paths) => getHybridObjectUrls(
+    'ice-type-images', paths, async (supabasePaths) => supabasePaths.map((path) => ({
+      path,
+      signedUrl: bucket.getPublicUrl(path).data.publicUrl,
+    })),
+  ));
 }
 
 function formatEmployeeServiceDate(serviceDate: string) {
@@ -231,7 +237,7 @@ export function createSupabaseGateway(): EmployeeDeliveryGateway {
         if (iceTypesResponse.error) throw iceTypesResponse.error;
         return {
           rounds: (sessionResponse.data?.sessions ?? []) as DeliveryRound[],
-          iceTypes: withPublicIceTypeOptions((iceTypesResponse.data ?? []) as IceTypeOption[]),
+          iceTypes: await withPublicIceTypeOptions((iceTypesResponse.data ?? []) as IceTypeOption[]),
         };
       });
     },
@@ -254,9 +260,14 @@ export function createSupabaseGateway(): EmployeeDeliveryGateway {
           Omit<ShopCard, 'today_history'> & { today_history: ShopCardHistoryEntry[] | null }
         >;
         const shopImageBucket = client.storage.from('shop-images');
-        const cardsWithImages = withPublicImageUrls(
+        const cardsWithImages = await withAsyncPublicImageUrls(
           rawCards,
-          (path) => shopImageBucket.getPublicUrl(path).data.publicUrl,
+          (paths) => getHybridObjectUrls(
+            'shop-images', paths, async (supabasePaths) => supabasePaths.map((path) => ({
+              path,
+              signedUrl: shopImageBucket.getPublicUrl(path).data.publicUrl,
+            })),
+          ),
         );
         const cards: ShopCard[] = cardsWithImages.map((card) => ({
           ...card,

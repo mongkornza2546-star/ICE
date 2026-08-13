@@ -1,6 +1,7 @@
 import { Camera, FileText, Printer, WarningCircle } from '@phosphor-icons/react';
 import { useCallback, useEffect, useState } from 'react';
 import { uploadDailyCreditAcknowledgementEvidence } from '../../../lib/dailyCreditAcknowledgementEvidence';
+import { getHybridObjectUrl } from '../../../lib/r2Storage';
 import { printDailyCreditAcknowledgement, type DailyCreditAcknowledgementDocument } from '../../../lib/dailyCreditAcknowledgementPrint';
 import { getErrorMessage } from '../../../lib/errorMessage';
 import { toBangkokDateString } from '../../../lib/serviceDate';
@@ -113,17 +114,21 @@ export function DailyCreditAcknowledgementPanel({ serviceDate }: { serviceDate: 
 
   const viewEvidence = async (item: DailyCreditAcknowledgementSummary) => {
     if (!item.latest_evidence_path || !supabase) return;
+    const client = supabase;
     const evidenceWindow = window.open('', '_blank');
     if (!evidenceWindow) {
       setError('เบราว์เซอร์บล็อกหน้าต่างรูป กรุณาอนุญาตป๊อปอัปแล้วลองใหม่');
       return;
     }
     try {
-      const { data, error: urlError } = await supabase.storage
-        .from('credit-signoff-evidence')
-        .createSignedUrl(item.latest_evidence_path, 3600);
-      if (urlError || !data?.signedUrl) throw urlError ?? new Error('ไม่สามารถเปิดรูปใบเซ็นได้');
-      evidenceWindow.location.href = data.signedUrl;
+      const signedUrl = await getHybridObjectUrl('credit-signoff-evidence', item.latest_evidence_path, async () => {
+        const { data, error: urlError } = await client.storage
+          .from('credit-signoff-evidence')
+          .createSignedUrl(item.latest_evidence_path!, 3600);
+        if (urlError || !data?.signedUrl) throw urlError ?? new Error('ไม่สามารถเปิดรูปใบเซ็นได้');
+        return data.signedUrl;
+      });
+      evidenceWindow.location.href = signedUrl;
     } catch (viewError) {
       evidenceWindow.close();
       setError(getErrorMessage(viewError));

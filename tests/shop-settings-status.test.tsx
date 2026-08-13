@@ -5,6 +5,7 @@ import { ShopSettings } from '../src/ShopSettings';
 
 const {
   createSignedUrlMock,
+  createSignedUrlsMock,
   exportShopDirectoryMock,
   fromMock,
   loadPOSReadinessReportMock,
@@ -13,6 +14,7 @@ const {
   storageFromMock,
 } = vi.hoisted(() => ({
   createSignedUrlMock: vi.fn(),
+  createSignedUrlsMock: vi.fn(),
   exportShopDirectoryMock: vi.fn(),
   fromMock: vi.fn(),
   loadPOSReadinessReportMock: vi.fn(),
@@ -91,7 +93,14 @@ describe('ShopSettings shop status summary and filter', () => {
       shop_rented_tanks: [],
     }[table] ?? [], table === 'shops'));
     createSignedUrlMock.mockResolvedValue({ data: { signedUrl: 'https://example.com/tank.jpg' }, error: null });
-    storageFromMock.mockReturnValue({ createSignedUrl: createSignedUrlMock });
+    createSignedUrlsMock.mockResolvedValue({
+      data: [{ path: 'shop-1/tank.jpg', signedUrl: 'https://example.com/tank.jpg' }],
+      error: null,
+    });
+    storageFromMock.mockReturnValue({
+      createSignedUrl: createSignedUrlMock,
+      createSignedUrls: createSignedUrlsMock,
+    });
 
     loadPOSReadinessReportMock.mockResolvedValue({
       total_active_shops: 2,
@@ -273,7 +282,7 @@ describe('ShopSettings shop status summary and filter', () => {
     expect(createSignedUrlMock).not.toHaveBeenCalled();
 
     await user.click(screen.getByRole('button', { name: 'ถังเช่าและรูปภาพ' }));
-    await waitFor(() => expect(createSignedUrlMock).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(createSignedUrlsMock).toHaveBeenCalledTimes(1));
   });
 
   it('loads complete live export data before building the workbook', async () => {
