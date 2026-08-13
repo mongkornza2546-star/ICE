@@ -4,15 +4,21 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ShopSettings } from '../src/ShopSettings';
 
 const {
+  createSignedUrlMock,
   exportShopDirectoryMock,
   fromMock,
   loadPOSReadinessReportMock,
   loadShopDirectoryExportDataMock,
+  shopRangeMock,
+  storageFromMock,
 } = vi.hoisted(() => ({
+  createSignedUrlMock: vi.fn(),
   exportShopDirectoryMock: vi.fn(),
   fromMock: vi.fn(),
   loadPOSReadinessReportMock: vi.fn(),
   loadShopDirectoryExportDataMock: vi.fn(),
+  shopRangeMock: vi.fn(),
+  storageFromMock: vi.fn(),
 }));
 
 vi.mock('../src/lib/env', () => ({
@@ -20,11 +26,14 @@ vi.mock('../src/lib/env', () => ({
 }));
 
 vi.mock('../src/lib/supabase', () => ({
-  supabase: { from: fromMock },
+  supabase: { from: fromMock, storage: { from: storageFromMock } },
 }));
 
 vi.mock('../src/features/admin-reference-settings/adminReferenceSettingsService', () => ({
+  getErrorMessage: (error: unknown) => error instanceof Error ? error.message : String(error),
   getShopImagePublicUrls: vi.fn().mockResolvedValue({}),
+  loadShopIcePrices: vi.fn().mockResolvedValue([]),
+  loadShopPaymentProfile: vi.fn().mockResolvedValue(null),
   loadPOSReadinessReport: loadPOSReadinessReportMock,
 }));
 
@@ -36,24 +45,38 @@ vi.mock('../src/features/shop-settings/loadShopDirectoryExportData', () => ({
   loadShopDirectoryExportData: loadShopDirectoryExportDataMock,
 }));
 
-function queryResult(data: unknown[]) {
-  const result = Promise.resolve({ data, error: null });
+function queryResult(data: unknown[], trackRange = false, failedRange?: [number, number]) {
+  let requestedRange: [number, number] | null = null;
   const query = {
     select: vi.fn(),
     eq: vi.fn(),
     is: vi.fn(),
+    ilike: vi.fn(),
     order: vi.fn(),
-    then: result.then.bind(result),
+    range: vi.fn((from: number, to: number) => {
+      requestedRange = [from, to];
+      if (trackRange) shopRangeMock(from, to);
+      return query;
+    }),
+    then: (onFulfilled: (value: { data: unknown[] | null; error: { message: string } | null; count: number }) => unknown, onRejected?: (reason: unknown) => unknown) => {
+      if (requestedRange && failedRange && requestedRange[0] === failedRange[0] && requestedRange[1] === failedRange[1]) {
+        return Promise.resolve({ data: null, error: { message: 'โหลดหน้าร้านไม่สำเร็จ' }, count: data.length }).then(onFulfilled, onRejected);
+      }
+      const rows = requestedRange ? data.slice(requestedRange[0], requestedRange[1] + 1) : data;
+      return Promise.resolve({ data: rows, error: null, count: data.length }).then(onFulfilled, onRejected);
+    },
   };
   query.select.mockReturnValue(query);
   query.eq.mockReturnValue(query);
   query.is.mockReturnValue(query);
+  query.ilike.mockReturnValue(query);
   query.order.mockReturnValue(query);
   return query;
 }
 
 describe('ShopSettings shop status summary and filter', () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     const shops = [
       { id: 'shop-1', code: 'A01', name: 'ร้านเปิดหนึ่ง', image_path: null, building_id: 'building-1', zone_id: 'zone-1', floor_or_zone: 'ชั้น 1', government_shop_code: null, contact_name: null, contact_phone: null, delivery_sequence: 1, normal_rounds_per_day: 1, access_note: null, status: 'active' },
       { id: 'shop-2', code: 'A02', name: 'ร้านเปิดสอง', image_path: null, building_id: 'building-1', zone_id: 'zone-1', floor_or_zone: 'ชั้น 1', government_shop_code: null, contact_name: null, contact_phone: null, delivery_sequence: 2, normal_rounds_per_day: 1, access_note: null, status: 'active' },
@@ -66,7 +89,9 @@ describe('ShopSettings shop status summary and filter', () => {
       building_zones: [{ id: 'zone-1', building_id: 'building-1', code: '1', name: 'ชั้น 1', sort_order: 1, is_active: true }],
       ice_types: [],
       shop_rented_tanks: [],
-    }[table] ?? []));
+    }[table] ?? [], table === 'shops'));
+    createSignedUrlMock.mockResolvedValue({ data: { signedUrl: 'https://example.com/tank.jpg' }, error: null });
+    storageFromMock.mockReturnValue({ createSignedUrl: createSignedUrlMock });
 
     loadPOSReadinessReportMock.mockResolvedValue({
       total_active_shops: 2,
@@ -113,6 +138,142 @@ describe('ShopSettings shop status summary and filter', () => {
       expect(screen.queryByRole('button', { name: 'A01 ร้านเปิดหนึ่ง' })).toBeNull();
       expect(screen.queryByRole('button', { name: 'A02 ร้านเปิดสอง' })).toBeNull();
     });
+  });
+
+  it('loads only the current shop page and fetches the next page on demand', async () => {
+    const shops = Array.from({ length: 13 }, (_, index) => ({
+      id: `shop-${index + 1}`,
+      code: `A${String(index + 1).padStart(2, '0')}`,
+      name: `ร้าน ${index + 1}`,
+      image_path: null,
+      building_id: 'building-1',
+      zone_id: 'zone-1',
+      floor_or_zone: 'ชั้น 1',
+      government_shop_code: null,
+      contact_name: null,
+      contact_phone: null,
+      delivery_sequence: index + 1,
+      normal_rounds_per_day: 1,
+      access_note: null,
+      status: 'active',
+    }));
+    fromMock.mockImplementation((table: string) => queryResult({
+      shops,
+      buildings: [{ id: 'building-1', code: 'A', name: 'อาคาร A' }],
+      building_zones: [{ id: 'zone-1', building_id: 'building-1', code: '1', name: 'ชั้น 1', sort_order: 1, is_active: true }],
+      ice_types: [],
+      shop_rented_tanks: [],
+    }[table] ?? [], table === 'shops'));
+
+    const user = userEvent.setup();
+    render(<ShopSettings />);
+
+    expect(await screen.findByRole('button', { name: 'A12 ร้าน 12' })).not.toBeNull();
+    expect(screen.queryByRole('button', { name: 'A13 ร้าน 13' })).toBeNull();
+    expect(shopRangeMock).toHaveBeenCalledWith(0, 11);
+    expect(fromMock.mock.calls.some(([table]) => table === 'shop_rented_tanks')).toBe(false);
+
+    await user.click(screen.getByRole('button', { name: 'ถัดไป ›' }));
+
+    expect(await screen.findByRole('button', { name: 'A13 ร้าน 13' })).not.toBeNull();
+    expect(screen.queryByRole('button', { name: 'A12 ร้าน 12' })).toBeNull();
+    expect(shopRangeMock).toHaveBeenCalledWith(12, 23);
+  });
+
+  it('keeps the committed page and shows a retryable error when the next page fails', async () => {
+    const shops = Array.from({ length: 13 }, (_, index) => ({
+      id: `shop-${index + 1}`,
+      code: `A${String(index + 1).padStart(2, '0')}`,
+      name: `ร้าน ${index + 1}`,
+      image_path: null,
+      building_id: 'building-1',
+      zone_id: 'zone-1',
+      floor_or_zone: 'ชั้น 1',
+      government_shop_code: null,
+      contact_name: null,
+      contact_phone: null,
+      delivery_sequence: index + 1,
+      normal_rounds_per_day: 1,
+      access_note: null,
+      status: 'active',
+    }));
+    fromMock.mockImplementation((table: string) => queryResult({
+      shops,
+      buildings: [{ id: 'building-1', code: 'A', name: 'อาคาร A' }],
+      building_zones: [{ id: 'zone-1', building_id: 'building-1', code: '1', name: 'ชั้น 1', sort_order: 1, is_active: true }],
+      ice_types: [],
+      shop_rented_tanks: [],
+    }[table] ?? [], table === 'shops', table === 'shops' ? [12, 23] : undefined));
+
+    const user = userEvent.setup();
+    render(<ShopSettings />);
+    await screen.findByRole('button', { name: 'A01 ร้าน 1' });
+
+    await user.click(screen.getByRole('button', { name: 'ถัดไป ›' }));
+
+    expect((await screen.findByRole('alert')).textContent).toContain('โหลดหน้าร้านไม่สำเร็จ');
+    expect(screen.getByText('หน้า 1 / 2')).not.toBeNull();
+    expect(screen.getByRole('button', { name: 'A01 ร้าน 1' })).not.toBeNull();
+    expect(screen.queryByRole('button', { name: 'A13 ร้าน 13' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'ลองใหม่' })).not.toBeNull();
+  });
+
+  it('pages the complete directory before exporting', async () => {
+    const shops = Array.from({ length: 501 }, (_, index) => ({
+      id: `shop-${index + 1}`,
+      code: `A${String(index + 1).padStart(3, '0')}`,
+      name: `ร้าน ${index + 1}`,
+      image_path: null,
+      building_id: 'building-1',
+      zone_id: 'zone-1',
+      floor_or_zone: 'ชั้น 1',
+      government_shop_code: null,
+      contact_name: null,
+      contact_phone: null,
+      delivery_sequence: index + 1,
+      normal_rounds_per_day: 1,
+      access_note: null,
+      status: 'active',
+    }));
+    fromMock.mockImplementation((table: string) => queryResult({
+      shops,
+      buildings: [{ id: 'building-1', code: 'A', name: 'อาคาร A' }],
+      building_zones: [{ id: 'zone-1', building_id: 'building-1', code: '1', name: 'ชั้น 1', sort_order: 1, is_active: true }],
+      ice_types: [],
+      shop_rented_tanks: [],
+    }[table] ?? [], table === 'shops'));
+
+    const user = userEvent.setup();
+    render(<ShopSettings />);
+    await user.click(await screen.findByRole('button', { name: 'ส่งออก Excel' }));
+
+    await waitFor(() => expect(exportShopDirectoryMock).toHaveBeenCalledTimes(1));
+    expect(shopRangeMock).toHaveBeenCalledWith(0, 499);
+    expect(shopRangeMock).toHaveBeenCalledWith(500, 999);
+    expect(exportShopDirectoryMock.mock.calls[0][0].shops).toHaveLength(501);
+  });
+
+  it('opens a shop without loading every shop or tank image URLs', async () => {
+    fromMock.mockImplementation((table: string) => queryResult({
+      shops: [
+        { id: 'shop-1', code: 'A01', name: 'ร้านเปิดหนึ่ง', image_path: null, building_id: 'building-1', zone_id: 'zone-1', floor_or_zone: 'ชั้น 1', government_shop_code: null, contact_name: null, contact_phone: null, delivery_sequence: 1, normal_rounds_per_day: 1, access_note: null, status: 'active' },
+      ],
+      buildings: [{ id: 'building-1', code: 'A', name: 'อาคาร A' }],
+      building_zones: [{ id: 'zone-1', building_id: 'building-1', code: '1', name: 'ชั้น 1', sort_order: 1, is_active: true }],
+      ice_types: [],
+      shop_rented_tanks: [{ id: 'tank-1', shop_id: 'shop-1', tank_code: 'T01', image_path: 'shop-1/tank.jpg', rented_at: '2026-08-01' }],
+    }[table] ?? [], table === 'shops'));
+
+    const user = userEvent.setup();
+    render(<ShopSettings />);
+    await user.click(await screen.findByRole('button', { name: 'A01 ร้านเปิดหนึ่ง' }));
+
+    expect(await screen.findByRole('dialog', { name: 'แก้ไข ร้านเปิดหนึ่ง' })).not.toBeNull();
+    expect(fromMock.mock.calls.filter(([table]) => table === 'shops')).toHaveLength(1);
+    expect(createSignedUrlMock).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole('button', { name: 'ถังเช่าและรูปภาพ' }));
+    await waitFor(() => expect(createSignedUrlMock).toHaveBeenCalledTimes(1));
   });
 
   it('loads complete live export data before building the workbook', async () => {

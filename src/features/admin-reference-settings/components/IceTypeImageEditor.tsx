@@ -217,7 +217,7 @@ export function IceTypeImageEditor({ iceType, onIceTypeSaved, onPendingFileChang
             </div>
             <div className="ref-image-meta">
               <span className="ref-image-filename">
-                {iceTypeUploadFile ? iceTypeUploadFile.name : (iceType.image_path ? `${iceType.code.toLowerCase()}-${iceType.name.toLowerCase().replace(/\s+/g, '-')}.jpg` : 'ไม่มีรูปในระบบ')}
+                {iceTypeUploadFile ? iceTypeUploadFile.name : (iceType.image_path ? `${iceType.code.toLowerCase()}-${iceType.name.toLowerCase().replace(/\s+/g, '-')}.webp` : 'ไม่มีรูปในระบบ')}
               </span>
               {iceTypeUploadFile ? (
                 <span className="ref-image-filesize">{(iceTypeUploadFile.size / 1024).toFixed(0)} KB</span>

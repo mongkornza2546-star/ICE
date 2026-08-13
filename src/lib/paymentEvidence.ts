@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { optimizeImage } from './imageOptimizer';
 
 export const MAX_PAYMENT_EVIDENCE_SIZE = 5 * 1024 * 1024;
 
@@ -8,11 +9,12 @@ export async function uploadPaymentEvidence(file: File, idempotencyKey: string) 
   if (userError) throw userError;
   if (!userData.user) throw new Error('กรุณาเข้าสู่ระบบใหม่');
 
-  const extension = file.name.split('.').pop()?.toLowerCase() || 'jpg';
+  const uploadFile = file.type === 'application/pdf' ? file : await optimizeImage(file);
+  const extension = uploadFile.type === 'application/pdf' ? 'pdf' : 'webp';
   const path = `${userData.user.id}/${idempotencyKey}.${extension}`;
-  const { error } = await supabase.storage.from('payment-evidence').upload(path, file, {
+  const { error } = await supabase.storage.from('payment-evidence').upload(path, uploadFile, {
     upsert: true,
-    contentType: file.type,
+    contentType: uploadFile.type,
   });
   if (error) throw error;
   return path;

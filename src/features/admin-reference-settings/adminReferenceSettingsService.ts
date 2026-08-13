@@ -1,6 +1,7 @@
 import { supabase } from '../../lib/supabase';
 import { toBangkokDateString } from '../../lib/serviceDate';
 import { isMissingRpc } from '../../lib/rpc';
+import { optimizeImage } from '../../lib/imageOptimizer';
 import type { UserProfile, AppRole, IceTypePriceSetting, ShopPaymentProfileSetting, ShopIcePriceSetting, POSReadinessReport, ShopReadinessItem } from '../../types/app';
 import {
   USER_FIELDS,
@@ -256,10 +257,11 @@ export async function uploadShopImage(shopId: string, file: File): Promise<strin
   if (!client) throw new Error('Supabase client not initialized');
 
   const nextPath = `shops/${shopId}/${Date.now()}-${crypto.randomUUID()}.webp`;
+  const optimizedImage = await optimizeImage(file);
 
   const { error: uploadError } = await client.storage
     .from(SHOP_IMAGE_BUCKET)
-    .upload(nextPath, file, {
+    .upload(nextPath, optimizedImage, {
       cacheControl: '31536000',
       contentType: 'image/webp',
       upsert: false,
@@ -303,14 +305,14 @@ export async function uploadIceTypeImage(iceTypeId: string, file: File): Promise
   const client = supabase;
   if (!client) throw new Error('Supabase client not initialized');
 
-  const extension = file.name.includes('.') ? file.name.split('.').pop()?.toLowerCase() ?? 'jpg' : 'jpg';
-  const nextPath = `ice_types/${iceTypeId}/${Date.now()}-${crypto.randomUUID()}.${extension}`;
+  const nextPath = `ice_types/${iceTypeId}/${Date.now()}-${crypto.randomUUID()}.webp`;
+  const optimizedImage = await optimizeImage(file);
 
   const { error: uploadError } = await client.storage
     .from(ICE_TYPE_IMAGE_BUCKET)
-    .upload(nextPath, file, {
+    .upload(nextPath, optimizedImage, {
       cacheControl: '31536000',
-      contentType: file.type || undefined,
+      contentType: 'image/webp',
       upsert: false,
     });
 

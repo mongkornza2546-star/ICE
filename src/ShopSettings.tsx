@@ -5,6 +5,7 @@ import { env } from './lib/env';
 import { parseShopImportFile, type ShopImportRow } from './lib/shopImport';
 import type { BuildingOption, BuildingZoneOption, ShopSetting, IceTypeOption } from './types/app';
 import { ShopImageEditor } from './features/admin-reference-settings/components/ShopImageEditor';
+import type { ShopImageSetting } from './features/admin-reference-settings/types';
 import { ShopPaymentProfileEditor } from './features/shop-settings/components/ShopPaymentProfileEditor';
 import { ShopSpecialPriceEditor } from './features/shop-settings/components/ShopSpecialPriceEditor';
 import { BulkPaymentSetupModal } from './features/shop-settings/components/BulkPaymentSetupModal';
@@ -20,10 +21,15 @@ import { getShopImagePublicUrls, loadPOSReadinessReport } from './features/admin
 import { matchesActiveFilter, type ActiveFilter } from './features/admin-reference-settings/referenceEditorFilters';
 import type { POSReadinessReport } from './types/app';
 import { toBangkokDateString } from './lib/serviceDate';
+import { uploadTankImage } from './lib/tankImage';
 
 
 const TANK_IMAGE_BUCKET = 'tank-images';
 const MAX_TANK_IMAGE_SIZE = 5 * 1024 * 1024;
+const PAGE_SIZE = 12;
+const ALL_SHOPS_PAGE_SIZE = 500;
+const SHOP_FIELDS = 'id, code, name, image_path, building_id, zone_id, floor_or_zone, government_shop_code, contact_name, contact_phone, delivery_sequence, normal_rounds_per_day, access_note, status';
+const DIRECTORY_RETRY_MESSAGE = 'ข้อมูลร้านเปลี่ยนระหว่างโหลด กรุณาลองใหม่';
 const SHOP_CODE_COLLATOR = new Intl.Collator('en', { numeric: true, sensitivity: 'base' });
 const TANK_IMAGE_EXTENSIONS: Record<string, string> = {
   'image/jpeg': 'jpg',
@@ -55,6 +61,8 @@ interface ShopRentedTank {
   image_url: string | null;
 }
 
+type StallShop = Pick<ShopSetting, 'id' | 'code' | 'name' | 'government_shop_code' | 'status'>;
+
 const emptyDraft: ShopDraft = {
   id: '',
   code: '',
@@ -82,6 +90,8 @@ export function ShopSettings({
   const managementReadOnly = readOnly || env.isDemoMode;
   const historyOnlyPreview = managementReadOnly && allowReadOnlyPreview;
   const [shops, setShops] = useState<ShopSetting[]>([]);
+  const [allShops, setAllShops] = useState<ShopSetting[] | null>(null);
+  const [totalShopCount, setTotalShopCount] = useState(0);
   const [buildings, setBuildings] = useState<BuildingOption[]>([]);
   const [zones, setZones] = useState<BuildingZoneOption[]>([]);
   const [iceTypes, setIceTypes] = useState<IceTypeOption[]>([]);
@@ -93,10 +103,12 @@ export function ShopSettings({
   const [zoneFilter, setZoneFilter] = useState('');
   const [shopFilter, setShopFilter] = useState<ActiveFilter>('all');
   const [page, setPage] = useState(0);
-  const PAGE_SIZE = 12;
   const [editorOpen, setEditorOpen] = useState(false);
   const [editorTab, setEditorTab] = useState<'basic' | 'assets' | 'payment' | 'prices' | 'history'>('basic');
   const [loading, setLoading] = useState(true);
+  const [pageLoading, setPageLoading] = useState(false);
+  const [directoryError, setDirectoryError] = useState<string | null>(null);
+  const [failedPage, setFailedPage] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -106,6 +118,10 @@ export function ShopSettings({
   const [importError, setImportError] = useState<string | null>(null);
   const [importSuccess, setImportSuccess] = useState<string | null>(null);
   const [rentedTanks, setRentedTanks] = useState<ShopRentedTank[]>([]);
+  const [rentedTanksLoading, setRentedTanksLoading] = useState(false);
+  const [tankImagesLoaded, setTankImagesLoaded] = useState(false);
+  const [editorShop, setEditorShop] = useState<ShopImageSetting | null>(null);
+  const [stallShops, setStallShops] = useState<StallShop[]>([]);
   const [tankCode, setTankCode] = useState('');
   const [tankImageFile, setTankImageFile] = useState<File | null>(null);
   const [tankImagePreviewUrl, setTankImagePreviewUrl] = useState<string | null>(null);
@@ -126,6 +142,10 @@ export function ShopSettings({
   const [exportSuccess, setExportSuccess] = useState<string | null>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
   const activeEditorTabRef = useRef<HTMLButtonElement>(null);
+  const shopPageRequestRef = useRef(0);
+  const allShopsRequestRef = useRef<Promise<ShopSetting[]> | null>(null);
+  const hadDirectoryFiltersRef = useRef(false);
+  const hasDirectoryFilters = query.trim() !== '' || buildingFilter !== '' || zoneFilter !== '' || shopFilter !== 'all' || paymentFilter !== 'all' || posFilter !== 'all';
 
   const refreshReadiness = useCallback(async () => {
     setReadinessStatus('loading');
@@ -198,6 +218,35 @@ export function ShopSettings({
     return () => window.cancelAnimationFrame(animationFrame);
   }, [editorOpen, editorTab]);
 
+  useEffect(() => {
+    let cancelled = false;
+    const normalizedCode = normalizeStallCode(draft.government_shop_code);
+    setStallShops([]);
+    if (!editorOpen || !normalizedCode) return () => { cancelled = true; };
+
+    if (env.isDemoMode) {
+      setStallShops(shops.filter((shop) => normalizeStallCode(shop.government_shop_code) === normalizedCode));
+      return () => { cancelled = true; };
+    }
+
+    const timer = window.setTimeout(async () => {
+      const client = supabase;
+      if (!client) return;
+      const { data, error: loadError } = await client
+        .from('shops')
+        .select('id, code, name, government_shop_code, status')
+        .ilike('government_shop_code', escapeLikePattern(draft.government_shop_code.trim()));
+      if (cancelled) return;
+      if (loadError) setError(loadError.message);
+      else setStallShops((data ?? []) as StallShop[]);
+    }, 250);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [draft.government_shop_code, editorOpen]);
+
   async function loadSettings() {
     if (env.isDemoMode) {
       const demoBuildings = [
@@ -215,6 +264,7 @@ export function ShopSettings({
         const building = demoBuildings[index % demoBuildings.length];
         return { id: `demo-shop-${index + 1}`, code: demoCodes[index], name, image_path: null, building_id: building.id, zone_id: `demo-zone-${building.code.toLowerCase()}`, floor_or_zone: `โซน ${building.code}`, government_shop_code: null, contact_name: null, contact_phone: index === 3 || index === 6 ? null : `08${index + 1}-234-567${index}`, delivery_sequence: Math.floor(index / demoBuildings.length) + 1, normal_rounds_per_day: 1, access_note: null, status: 'active' };
       }));
+      setTotalShopCount(demoShopNames.length);
       setLoading(false);
       return;
     }
@@ -225,60 +275,190 @@ export function ShopSettings({
     }
     setLoading(true);
     setError(null);
+    setDirectoryError(null);
     const [shopsResponse, buildingsResponse, zonesResponse, iceTypesResponse] = await Promise.all([
       supabase
         .from('shops')
-        .select('id, code, name, image_path, building_id, zone_id, floor_or_zone, government_shop_code, contact_name, contact_phone, delivery_sequence, normal_rounds_per_day, access_note, status')
-        .order('code'),
+        .select(SHOP_FIELDS, { count: 'exact' })
+        .order('code')
+        .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1),
       supabase.from('buildings').select('id, code, name').eq('is_active', true).order('code'),
       supabase.from('building_zones').select('id, building_id, code, name, sort_order, is_active').eq('is_active', true).order('sort_order'),
       supabase.from('ice_types').select('id, code, name, unit').eq('is_active', true).order('code'),
     ]);
     const firstError = shopsResponse.error ?? buildingsResponse.error ?? zonesResponse.error ?? iceTypesResponse.error;
     if (firstError) {
-      setError(firstError.message);
+      setDirectoryError(firstError.message);
+    } else if (shopsResponse.count == null || !Number.isInteger(shopsResponse.count) || shopsResponse.count < 0) {
+      setDirectoryError(DIRECTORY_RETRY_MESSAGE);
     } else {
-      setShops((shopsResponse.data ?? []) as ShopSetting[]);
+      const loadedShops = (shopsResponse.data ?? []) as ShopSetting[];
+      const loadedShopCount = shopsResponse.count;
+      setShops(loadedShops);
+      setTotalShopCount(loadedShopCount);
+      setAllShops(loadedShops.length === loadedShopCount ? loadedShops : null);
       setBuildings((buildingsResponse.data ?? []) as BuildingOption[]);
       setZones((zonesResponse.data ?? []) as BuildingZoneOption[]);
       setIceTypes((iceTypesResponse.data ?? []) as IceTypeOption[]);
-      await refreshRentedTanks();
+      setFailedPage(null);
     }
     setLoading(false);
   }
 
   async function refreshDirectoryData() {
+    setAllShops(null);
     await Promise.all([loadSettings(), refreshReadiness()]);
   }
 
+  async function loadShopPage(requestedPage: number) {
+    const client = supabase;
+    if (!client || env.isDemoMode) return false;
 
-  async function refreshRentedTanks() {
+    const requestId = ++shopPageRequestRef.current;
+    setPageLoading(true);
+    setDirectoryError(null);
+    setFailedPage(null);
+    const from = requestedPage * PAGE_SIZE;
+    const { data, error: loadError, count } = await client
+      .from('shops')
+      .select(SHOP_FIELDS, { count: 'exact' })
+      .order('code')
+      .range(from, from + PAGE_SIZE - 1);
+
+    if (requestId !== shopPageRequestRef.current) return false;
+    if (loadError) {
+      setDirectoryError(loadError.message);
+      setFailedPage(requestedPage);
+      setPageLoading(false);
+      return false;
+    }
+    if (count == null || !Number.isInteger(count) || count < 0) {
+      setDirectoryError(DIRECTORY_RETRY_MESSAGE);
+      setFailedPage(requestedPage);
+      setPageLoading(false);
+      return false;
+    }
+
+    const loadedShops = (data ?? []) as ShopSetting[];
+    const loadedShopCount = count;
+    const lastPage = Math.max(0, Math.ceil(loadedShopCount / PAGE_SIZE) - 1);
+    if (requestedPage > lastPage) {
+      return loadShopPage(lastPage);
+    }
+
+    setTotalShopCount(loadedShopCount);
+    setShops(loadedShops);
+    setPage(requestedPage);
+    setPageLoading(false);
+    return true;
+  }
+
+  async function loadCompleteShopDirectory() {
+    const client = supabase;
+    if (!client) throw new Error('ยังไม่ได้ตั้งค่า Supabase สำหรับหน้านี้');
+
+    const loadedShops: ShopSetting[] = [];
+    const seenIds = new Set<string>();
+    let expectedCount: number | null = null;
+
+    do {
+      const { data, error: loadError, count } = await client
+        .from('shops')
+        .select(SHOP_FIELDS, { count: 'exact' })
+        .order('code')
+        .range(loadedShops.length, loadedShops.length + ALL_SHOPS_PAGE_SIZE - 1);
+      if (loadError) throw new Error(loadError.message);
+      if (count == null || !Number.isInteger(count) || count < 0) throw new Error(DIRECTORY_RETRY_MESSAGE);
+      if (expectedCount == null) expectedCount = count;
+      else if (count !== expectedCount) throw new Error(DIRECTORY_RETRY_MESSAGE);
+
+      const pageRows = (data ?? []) as ShopSetting[];
+      if (pageRows.length === 0 && loadedShops.length < expectedCount) throw new Error(DIRECTORY_RETRY_MESSAGE);
+      if (pageRows.length > expectedCount - loadedShops.length) throw new Error(DIRECTORY_RETRY_MESSAGE);
+      pageRows.forEach((shop) => {
+        if (seenIds.has(shop.id)) throw new Error(DIRECTORY_RETRY_MESSAGE);
+        seenIds.add(shop.id);
+        loadedShops.push(shop);
+      });
+    } while (loadedShops.length < (expectedCount ?? 0));
+
+    return loadedShops;
+  }
+
+  async function loadAllShops() {
+    if (allShops) return allShops;
+    if (allShopsRequestRef.current) return allShopsRequestRef.current;
+    if (env.isDemoMode) {
+      setAllShops(shops);
+      return shops;
+    }
+
+    const request = loadCompleteShopDirectory();
+    allShopsRequestRef.current = request;
+    try {
+      const loadedShops = await request;
+      setAllShops(loadedShops);
+      setTotalShopCount(loadedShops.length);
+      return loadedShops;
+    } finally {
+      allShopsRequestRef.current = null;
+    }
+  }
+
+
+  async function refreshRentedTanks(shopId: string, includeImageUrls: boolean) {
     const client = supabase;
     if (!client) return;
 
+    setRentedTanksLoading(true);
     const { data, error: loadError } = await client
       .from('shop_rented_tanks')
       .select('id, shop_id, tank_code, image_path, rented_at')
+      .eq('shop_id', shopId)
       .is('returned_at', null)
       .order('tank_code');
 
     if (loadError) {
       setError(loadError.message);
+      setRentedTanksLoading(false);
       return;
     }
 
-    const tanksWithUrls = await Promise.all(((data ?? []) as Omit<ShopRentedTank, 'image_url'>[]).map(async (tank) => {
-      const { data: imageData, error: imageError } = await client.storage
-        .from(TANK_IMAGE_BUCKET)
-        .createSignedUrl(tank.image_path, 3600);
-      return { ...tank, image_url: imageError ? null : imageData.signedUrl };
-    }));
+    const tanks = (data ?? []) as Omit<ShopRentedTank, 'image_url'>[];
+    const tanksWithUrls = includeImageUrls
+      ? await Promise.all(tanks.map(async (tank) => {
+        const { data: imageData, error: imageError } = await client.storage
+          .from(TANK_IMAGE_BUCKET)
+          .createSignedUrl(tank.image_path, 3600);
+        return { ...tank, image_url: imageError ? null : imageData.signedUrl };
+      }))
+      : tanks.map((tank) => ({ ...tank, image_url: null }));
     setRentedTanks(tanksWithUrls);
+    setTankImagesLoaded(includeImageUrls);
+    setRentedTanksLoading(false);
   }
+
+  useEffect(() => {
+    const hadDirectoryFilters = hadDirectoryFiltersRef.current;
+    hadDirectoryFiltersRef.current = hasDirectoryFilters;
+    if (!isActive) return;
+    if (!hasDirectoryFilters) {
+      if (hadDirectoryFilters) void loadShopPage(0);
+      return;
+    }
+    shopPageRequestRef.current += 1;
+    if (allShops) return;
+    setPageLoading(true);
+    setDirectoryError(null);
+    void loadAllShops()
+      .then(() => setFailedPage(null))
+      .catch((loadError) => setDirectoryError(loadError instanceof Error ? loadError.message : 'โหลดข้อมูลร้านไม่สำเร็จ'))
+      .finally(() => setPageLoading(false));
+  }, [allShops, hasDirectoryFilters, isActive]);
 
   const filteredShops = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase('th');
-    return shops.filter((shop) => {
+    return (allShops ?? shops).filter((shop) => {
       const matchesSearch = !needle || `${shop.code} ${shop.government_shop_code ?? ''} ${shop.name} ${shop.contact_phone ?? ''}`.toLocaleLowerCase('th').includes(needle);
       const matchesBuilding = !buildingFilter || shop.building_id === buildingFilter;
       const matchesZone = !zoneFilter || shop.zone_id === zoneFilter;
@@ -288,15 +468,16 @@ export function ShopSettings({
         || (posFilter === 'ready' ? readiness?.has_issues === false : readiness?.has_issues === true);
       return matchesSearch && matchesActiveFilter(shop.status === 'active', shopFilter) && matchesBuilding && matchesZone && matchesPayment && matchesPos;
     }).sort((left, right) => SHOP_CODE_COLLATOR.compare(left.code, right.code));
-  }, [query, shopFilter, buildingFilter, zoneFilter, paymentFilter, posFilter, readinessReport, readinessStatus, shops]);
+  }, [allShops, query, shopFilter, buildingFilter, zoneFilter, paymentFilter, posFilter, readinessReport, readinessStatus, shops]);
 
   // Reset to page 0 whenever filters change
   useEffect(() => { setPage(0); }, [query, shopFilter, buildingFilter, zoneFilter, paymentFilter, posFilter]);
 
-  const totalPages = Math.max(1, Math.ceil(filteredShops.length / PAGE_SIZE));
+  const filteredShopCount = hasDirectoryFilters ? filteredShops.length : totalShopCount;
+  const totalPages = Math.max(1, Math.ceil(filteredShopCount / PAGE_SIZE));
   const pagedShops = useMemo(
-    () => filteredShops.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE),
-    [filteredShops, page],
+    () => hasDirectoryFilters ? filteredShops.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE) : shops,
+    [filteredShops, hasDirectoryFilters, page, shops],
   );
   const visibleShopsWithImages = useMemo(
     () => pagedShops.filter((shop) => shop.image_path),
@@ -336,8 +517,21 @@ export function ShopSettings({
     };
   }, [visibleShopsWithImages]);
 
-  const selectShop = (shop: ShopSetting) => {
+  const selectShop = async (shop: ShopSetting) => {
     if (managementReadOnly && !allowReadOnlyPreview) return;
+    setPageLoading(true);
+    setRentedTanks([]);
+    setTankImagesLoaded(false);
+    setError(null);
+    try {
+      if (!historyOnlyPreview) await refreshRentedTanks(shop.id, false);
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : 'โหลดข้อมูลร้านไม่สำเร็จ');
+      setPageLoading(false);
+      return;
+    }
+    setPageLoading(false);
+    setEditorShop(shop);
     setDraft({
       id: shop.id,
       code: shop.code,
@@ -352,15 +546,17 @@ export function ShopSettings({
       access_note: shop.access_note ?? '',
       status: shop.status,
     });
-    setError(null);
     setSuccess(null);
     resetTankDraft();
     setEditorTab(allowReadOnlyPreview ? 'history' : 'basic');
     setEditorOpen(true);
   };
 
-  const startNew = () => {
+  const startNew = async () => {
     if (managementReadOnly) return;
+    setRentedTanks([]);
+    setTankImagesLoaded(false);
+    setEditorShop(null);
     setDraft({
       ...emptyDraft,
       building_id: buildings[0]?.id ?? '',
@@ -378,19 +574,45 @@ export function ShopSettings({
     setEditorOpen(false);
   };
 
+  const openBulkSettings = async (kind: 'payment' | 'price') => {
+    if (managementReadOnly) return;
+    setPageLoading(true);
+    try {
+      await loadAllShops();
+      if (kind === 'payment') setBulkModalOpen(true);
+      else setBulkPriceModalOpen(true);
+    } catch (loadError) {
+      setDirectoryError(loadError instanceof Error ? loadError.message : 'โหลดข้อมูลร้านไม่สำเร็จ');
+    } finally {
+      setPageLoading(false);
+    }
+  };
+
+  const openAssetsTab = async () => {
+    setEditorTab('assets');
+    if (!draft.id || tankImagesLoaded || rentedTanksLoading) return;
+    await refreshRentedTanks(draft.id, true);
+  };
+
+  const goToPage = (nextPage: number) => {
+    if (hasDirectoryFilters) setPage(nextPage);
+    else void loadShopPage(nextPage);
+  };
+
+  const retryDirectoryLoad = () => {
+    if (failedPage != null) void loadShopPage(failedPage);
+    else void refreshDirectoryData();
+  };
+
   const activeShopTanks = useMemo(
     () => rentedTanks.filter((tank) => tank.shop_id === draft.id),
     [draft.id, rentedTanks],
-  );
-  const selectedShop = useMemo(
-    () => shops.find((shop) => shop.id === draft.id) ?? null,
-    [draft.id, shops],
   );
   const stallAvailability = useMemo(() => {
     const normalizedCode = normalizeStallCode(draft.government_shop_code);
     if (!normalizedCode) return null;
 
-    const matchingShops = shops
+    const matchingShops = stallShops
       .filter((shop) => normalizeStallCode(shop.government_shop_code) === normalizedCode)
       .sort((left, right) => SHOP_CODE_COLLATOR.compare(left.code, right.code));
     const activeOtherShop = matchingShops.find((shop) => shop.status === 'active' && shop.id !== draft.id);
@@ -417,7 +639,7 @@ export function ShopSettings({
     }
 
     return { kind: 'available' as const, message: 'ว่าง — ใช้งานได้' };
-  }, [draft.government_shop_code, draft.id, shops]);
+  }, [draft.government_shop_code, draft.id, stallShops]);
   const activeStallConflict = draft.status === 'active' && stallAvailability?.kind === 'occupied';
 
   useEffect(() => {
@@ -471,21 +693,8 @@ export function ShopSettings({
     setSavingTank(true);
     setTankError(null);
     setTankSuccess(null);
-    const extension = TANK_IMAGE_EXTENSIONS[tankImageFile.type];
-    const imagePath = `${draft.id}/${crypto.randomUUID()}.${extension}`;
-
     try {
-      const { error: uploadError } = await supabase.storage
-        .from(TANK_IMAGE_BUCKET)
-        .upload(imagePath, tankImageFile, {
-          cacheControl: '3600',
-          contentType: tankImageFile.type,
-          upsert: false,
-        });
-      if (uploadError) {
-        setTankError(uploadError.message);
-        return;
-      }
+      const imagePath = await uploadTankImage(draft.id, tankImageFile);
 
       const { error: registerError } = await supabase.rpc('register_shop_rented_tank', {
         p_shop_id: draft.id,
@@ -501,7 +710,7 @@ export function ShopSettings({
       setTankCode('');
       setTankImageFile(null);
       setTankSuccess(`เพิ่มถัง ${normalizedCode} แล้ว`);
-      await refreshRentedTanks();
+      await refreshRentedTanks(draft.id, true);
     } catch (registerError) {
       setTankError(registerError instanceof Error ? registerError.message : 'เพิ่มข้อมูลถังไม่สำเร็จ');
     } finally {
@@ -519,7 +728,7 @@ export function ShopSettings({
       setTankError(returnError.message);
     } else {
       setTankSuccess(`บันทึกรับคืนถัง ${tank.tank_code} แล้ว`);
-      await refreshRentedTanks();
+      await refreshRentedTanks(draft.id, true);
     }
     setSavingTank(false);
   }
@@ -580,13 +789,14 @@ export function ShopSettings({
   };
 
   const exportDirectory = async () => {
-    if (shops.length === 0 || exporting) return;
+    if (totalShopCount === 0 || exporting) return;
     setExporting(true);
     setExportError(null);
     setExportSuccess(null);
     const effectiveDate = toBangkokDateString();
 
     try {
+      const exportShops = await loadAllShops();
       let exportBuildings = buildings;
       let exportZones = zones;
       let paymentProfiles: ShopDirectoryPaymentProfile[] = [];
@@ -594,7 +804,7 @@ export function ShopSettings({
       let shopPrices: DirectoryPriceSetting[] = [];
 
       if (env.isDemoMode) {
-        paymentProfiles = shops.flatMap((shop): ShopDirectoryPaymentProfile[] => (
+        paymentProfiles = exportShops.flatMap((shop): ShopDirectoryPaymentProfile[] => (
           readinessReport?.items.find((item) => item.shop_id === shop.id)?.has_payment_profile === false
             ? []
             : [{
@@ -616,7 +826,7 @@ export function ShopSettings({
       } else {
         const client = supabase;
         if (!client) throw new Error('ยังไม่ได้ตั้งค่า Supabase สำหรับส่งออกข้อมูลร้านค้า');
-        const exportData = await loadShopDirectoryExportData(client, shops, effectiveDate);
+        const exportData = await loadShopDirectoryExportData(client, exportShops, effectiveDate);
         exportBuildings = exportData.buildings;
         exportZones = exportData.zones;
         paymentProfiles = exportData.paymentProfiles;
@@ -625,7 +835,7 @@ export function ShopSettings({
       }
 
       await exportShopDirectory({
-        shops,
+        shops: exportShops,
         buildings: exportBuildings,
         zones: exportZones,
         iceTypes,
@@ -634,7 +844,7 @@ export function ShopSettings({
         shopPrices,
         effectiveDate,
       });
-      setExportSuccess(`ส่งออกข้อมูลร้านค้า ${shops.length.toLocaleString('th-TH')} ร้านแล้ว`);
+      setExportSuccess(`ส่งออกข้อมูลร้านค้า ${exportShops.length.toLocaleString('th-TH')} ร้านแล้ว`);
     } catch (exportFailure) {
       setExportError(exportFailure instanceof Error ? exportFailure.message : 'ส่งออกข้อมูลร้านค้าไม่สำเร็จ');
     } finally {
@@ -671,13 +881,20 @@ export function ShopSettings({
 
     setSuccess(draft.id ? 'บันทึกการแก้ไขร้านแล้ว' : 'เพิ่มร้านใหม่แล้ว');
     await refreshDirectoryData();
-    setDraft((current) => ({ ...current, id: data as string }));
+    const savedId = data as string;
+    setEditorShop((current) => ({
+      id: savedId,
+      code: draft.code.trim().toLocaleUpperCase('en-US'),
+      name: draft.name.trim(),
+      image_path: current?.image_path ?? null,
+      status: draft.status,
+    }));
+    setDraft((current) => ({ ...current, id: savedId }));
     setSaving(false);
   };
 
   if (loading) return <p className="empty-text">กำลังโหลดข้อมูลร้าน...</p>;
 
-  const totalShopCount = shops.length;
   const activeShopCount = readinessReport?.total_active_shops ?? shops.filter((shop) => shop.status === 'active').length;
   const readyShopCount = readinessReport?.shops_ready_count ?? 0;
   const missingProfileCount = readinessReport?.shops_missing_payment_profile ?? 0;
@@ -696,11 +913,11 @@ export function ShopSettings({
           <p>จัดการร้านค้า สถานะการตั้งค่า POS และข้อมูลสำคัญของร้านค้าในศูนย์ราชการ</p>
         </div>
         <div className="shop-page-actions">
-          <button className="primary-button shop-page-actions__new" onClick={startNew} type="button"><Plus size={21} weight="regular" />ร้านใหม่</button>
-          <button className="secondary-button" disabled={exporting || shops.length === 0} onClick={() => void exportDirectory()} type="button"><FileXls size={19} />{exporting ? 'กำลังส่งออก...' : 'ส่งออก Excel'}</button>
+          <button className="primary-button shop-page-actions__new" onClick={() => void startNew()} type="button"><Plus size={21} weight="regular" />ร้านใหม่</button>
+          <button className="secondary-button" disabled={exporting || totalShopCount === 0} onClick={() => void exportDirectory()} type="button"><FileXls size={19} />{exporting ? 'กำลังส่งออก...' : 'ส่งออก Excel'}</button>
           <button className="secondary-button" onClick={() => importInputRef.current?.click()} type="button"><UploadSimple size={19} />นำเข้า Excel</button>
-          <button className="secondary-button" onClick={() => { if (!managementReadOnly) setBulkPriceModalOpen(true); }} type="button"><SlidersHorizontal size={19} />ตั้งค่าหลายร้าน</button>
-          <button className="secondary-button" onClick={() => { if (!managementReadOnly) setBulkModalOpen(true); }} type="button"><Receipt size={19} />ตั้งค่าประเภทการรับเงิน</button>
+          <button className="secondary-button" onClick={() => void openBulkSettings('price')} type="button"><SlidersHorizontal size={19} />ตั้งค่าหลายร้าน</button>
+          <button className="secondary-button" onClick={() => void openBulkSettings('payment')} type="button"><Receipt size={19} />ตั้งค่าประเภทการรับเงิน</button>
         </div>
       </header>
 
@@ -727,6 +944,13 @@ export function ShopSettings({
         </div>
       ) : null}
 
+      {directoryError ? (
+        <div className="shop-readiness-error" role="alert">
+          <span>ไม่สามารถโหลดข้อมูลร้านได้: {directoryError}</span>
+          <button className="ghost-button" onClick={retryDirectoryLoad} type="button">ลองใหม่</button>
+        </div>
+      ) : null}
+
       <section className="shop-catalog" id="shop-directory">
         <div className="shop-catalog__toolbar">
           <label className="shop-search-field"><MagnifyingGlass aria-hidden="true" size={20} /><input aria-label="ค้นหาร้าน" onChange={(event) => setQuery(event.target.value)} placeholder="ค้นหาด้วยรหัสร้าน / ชื่อร้าน / ศูนย์ / เบอร์โทร" value={query} /></label>
@@ -739,7 +963,9 @@ export function ShopSettings({
           </div>
           <div className="shop-view-switcher" aria-label="รูปแบบการแสดงผล"><button aria-label="แสดงแบบการ์ด" className={catalogView === 'grid' ? 'is-active' : ''} onClick={() => setCatalogView('grid')} type="button"><GridFour size={20} weight="bold" />การ์ด</button><button aria-label="แสดงแบบรายการ" className={catalogView === 'list' ? 'is-active' : ''} onClick={() => setCatalogView('list')} type="button"><ListBullets size={20} weight="bold" />ตาราง</button></div>
         </div>
-        <div className={`shop-card-grid shop-card-grid--${catalogView}`}>
+        <div aria-busy={pageLoading} className={`shop-card-grid shop-card-grid--${catalogView}`}>
+          {pageLoading ? <div className="shop-catalog__empty"><Clock aria-hidden="true" size={32} /><strong>กำลังโหลดร้านในหน้านี้...</strong></div> : null}
+          {!pageLoading ? <>
           {pagedShops.map((shop) => {
             const building = buildings.find((item) => item.id === shop.building_id);
             const zone = zones.find((item) => item.id === shop.zone_id);
@@ -771,12 +997,12 @@ export function ShopSettings({
                 aria-pressed={draft.id === shop.id}
                 className={`shop-directory-card ${draft.id === shop.id ? 'shop-directory-card--selected' : ''}`}
                 key={shop.id}
-                onClick={() => selectShop(shop)}
+                onClick={() => void selectShop(shop)}
                 type="button"
               >
                 <span className="shop-directory-card__visual">
                   {imageUrl && !failedShopImages[shop.id] ? (
-                    <img alt={`รูปภาพร้าน ${shop.name}`} onError={() => setFailedShopImages((current) => ({ ...current, [shop.id]: true }))} onLoad={() => setLoadedShopImages((current) => ({ ...current, [shop.id]: true }))} src={imageUrl} />
+                    <img alt={`รูปภาพร้าน ${shop.name}`} decoding="async" loading="lazy" onError={() => setFailedShopImages((current) => ({ ...current, [shop.id]: true }))} onLoad={() => setLoadedShopImages((current) => ({ ...current, [shop.id]: true }))} src={imageUrl} />
                   ) : null}
                   {!imageLoaded || !imageUrl || failedShopImages[shop.id] ? <><Storefront aria-hidden="true" size={38} weight="duotone" /><small className="shop-directory-card__photo-status">{shop.image_path ? (imageUrl && !failedShopImages[shop.id] ? 'กำลังโหลดรูป...' : 'แสดงรูปไม่ได้') : 'ยังไม่มีรูป'}</small></> : null}
                 </span>
@@ -793,24 +1019,25 @@ export function ShopSettings({
               </button>
             );
           })}
-          {filteredShops.length === 0 ? (
+          {filteredShopCount === 0 ? (
             <div className="shop-catalog__empty"><ImageSquare aria-hidden="true" size={32} weight="duotone" /><strong>ไม่พบร้านที่ค้นหา</strong><span>ลองค้นหาด้วยรหัสร้านหรือชื่อร้านอีกครั้ง</span></div>
           ) : null}
+          </> : null}
         </div>
-        <div className="shop-catalog__footer-row"><span className="shop-catalog__count"><span>พบ {filteredShops.length} ร้าน</span><span> · แสดง {pagedShops.length ? page * PAGE_SIZE + 1 : 0} - {Math.min((page + 1) * PAGE_SIZE, filteredShops.length)}</span></span>
+        <div className="shop-catalog__footer-row"><span className="shop-catalog__count"><span>พบ {filteredShopCount} ร้าน</span><span> · แสดง {pagedShops.length ? page * PAGE_SIZE + 1 : 0} - {Math.min((page + 1) * PAGE_SIZE, filteredShopCount)}</span></span>
         {totalPages > 1 ? (
           <div className="shop-catalog__pagination">
             <button
               className="shop-filter-button"
-              disabled={page === 0}
-              onClick={() => setPage((p) => Math.max(0, p - 1))}
+              disabled={pageLoading || page === 0}
+              onClick={() => goToPage(Math.max(0, page - 1))}
               type="button"
             >‹ ก่อนหน้า</button>
             <span className="shop-catalog__page-info">หน้า {page + 1} / {totalPages}</span>
             <button
               className="shop-filter-button"
-              disabled={page >= totalPages - 1}
-              onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+              disabled={pageLoading || page >= totalPages - 1}
+              onClick={() => goToPage(Math.min(totalPages - 1, page + 1))}
               type="button"
             >ถัดไป ›</button>
           </div>
@@ -854,7 +1081,7 @@ export function ShopSettings({
 
             <nav className="shop-editor-tabs" aria-label="หมวดหมู่การตั้งค่าร้าน">
               <button className={editorTab === 'basic' ? 'is-active' : ''} disabled={historyOnlyPreview} onClick={() => setEditorTab('basic')} ref={editorTab === 'basic' ? activeEditorTabRef : undefined} type="button"><FileText size={21} />ข้อมูลพื้นฐาน</button>
-              <button className={editorTab === 'assets' ? 'is-active' : ''} disabled={historyOnlyPreview} onClick={() => setEditorTab('assets')} ref={editorTab === 'assets' ? activeEditorTabRef : undefined} type="button"><ImageSquare size={21} />ถังเช่าและรูปภาพ</button>
+              <button className={editorTab === 'assets' ? 'is-active' : ''} disabled={historyOnlyPreview} onClick={() => void openAssetsTab()} ref={editorTab === 'assets' ? activeEditorTabRef : undefined} type="button"><ImageSquare size={21} />ถังเช่าและรูปภาพ</button>
               <button className={editorTab === 'payment' ? 'is-active' : ''} disabled={historyOnlyPreview} onClick={() => setEditorTab('payment')} ref={editorTab === 'payment' ? activeEditorTabRef : undefined} type="button"><CreditCard size={21} />การชำระเงิน</button>
               <button className={editorTab === 'prices' ? 'is-active' : ''} disabled={historyOnlyPreview} onClick={() => setEditorTab('prices')} ref={editorTab === 'prices' ? activeEditorTabRef : undefined} type="button"><Tag size={21} />ราคาพิเศษน้ำแข็ง</button>
               <button className={editorTab === 'history' ? 'is-active' : ''} onClick={() => setEditorTab('history')} ref={editorTab === 'history' ? activeEditorTabRef : undefined} type="button"><ClockCounterClockwise size={21} />ประวัติการซื้อ</button>
@@ -900,8 +1127,13 @@ export function ShopSettings({
 
             {!historyOnlyPreview ? <div className="shop-editor-tab-content" hidden={editorTab !== 'assets'}>
               <ShopImageEditor
-                onShopSaved={(savedShop) => setShops((current) => current.map((shop) => shop.id === savedShop.id ? { ...shop, image_path: savedShop.image_path } : shop))}
-                shop={selectedShop}
+                onShopSaved={(savedShop) => {
+                  const updateImagePath = (shop: ShopSetting) => shop.id === savedShop.id ? { ...shop, image_path: savedShop.image_path } : shop;
+                  setShops((current) => current.map(updateImagePath));
+                  setAllShops((current) => current?.map(updateImagePath) ?? null);
+                  setEditorShop(savedShop);
+                }}
+                shop={editorShop}
               />
               <div className="rented-tank-section">
           <div className="panel-header">
@@ -912,6 +1144,8 @@ export function ShopSettings({
           </div>
           {!draft.id ? (
             <p className="muted">บันทึกข้อมูลร้านก่อน แล้วจึงเพิ่มรหัสและรูปถังเช่าแต่ละใบ</p>
+          ) : rentedTanksLoading ? (
+            <p className="muted">กำลังโหลดข้อมูลถังเช่า...</p>
           ) : (
             <>
               <div className="rented-tank-list">
@@ -968,7 +1202,7 @@ export function ShopSettings({
           buildings={buildings}
           onClose={() => setBulkModalOpen(false)}
           onSuccess={() => void refreshDirectoryData()}
-          shops={shops}
+          shops={allShops ?? shops}
           zones={zones}
         />
       ) : null}
@@ -979,7 +1213,7 @@ export function ShopSettings({
           iceTypes={iceTypes}
           onClose={() => setBulkPriceModalOpen(false)}
           onSuccess={() => void refreshDirectoryData()}
-          shops={shops}
+          shops={allShops ?? shops}
           zones={zones}
         />
       ) : null}
@@ -999,6 +1233,10 @@ function TextField({ label, value, required, onChange }: { label: string; value:
 
 function normalizeStallCode(value: string | null | undefined) {
   return value?.trim().toLocaleUpperCase('en-US') ?? '';
+}
+
+function escapeLikePattern(value: string) {
+  return value.replace(/[\\%_]/g, '\\$&');
 }
 
 function EditorStat({ icon, label, value, tone }: { icon: ReactNode; label: string; value: string; tone?: 'active' | 'inactive' }) {
