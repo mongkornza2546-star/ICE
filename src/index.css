@@ -140,7 +140,7 @@
 .accounting-daily-status--not_recorded { background: #fff1d8; color: #8c5a0c; }
 .accounting-daily-status--not_scheduled { background: #edf0f4; color: #657084; }
 .accounting-daily-status--skipped { background: #f7e8d8; color: #98531b; }
-.accounting-daily-matrix__group th { left: 0 !important; z-index: 5 !important; }
+.accounting-daily-matrix__group th { left: 0 !important; }
 .accounting-daily-matrix__totals { cursor: default !important; background: #eaf3ee; color: #244b3d; font-weight: 800; }
 .accounting-daily-matrix__totals th { position: sticky; z-index: 3; left: 0; border-right: 2px solid #aec4b9; background: #eaf3ee; text-align: right; }
 .accounting-daily-matrix__note { min-width: 150px; max-width: 190px; white-space: normal !important; color: #6a736e; font-size: .72rem !important; }
@@ -743,6 +743,7 @@ select.shop-filter-button { min-width: 126px; max-width: 164px; padding-right: 2
 .shop-card-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
 .shop-card-grid--list { grid-template-columns: 1fr; }
 .shop-directory-card { display: grid; grid-template-rows: 116px minmax(0, 1fr) auto; min-height: 339px; overflow: hidden; border-color: #e0e8f1; border-radius: 10px; box-shadow: none; }
+.shop-card-grid--grid .shop-directory-card__visual { height: 116px; }
 .shop-directory-card:hover { border-color: #a9cefa; box-shadow: 0 7px 18px rgba(22, 104, 221, .1); transform: translateY(-1px); }
 .shop-directory-card__body { position: relative; gap: 9px; padding: 12px 14px 9px; }
 .shop-directory-card__heading { display: flex; align-items: center; justify-content: space-between; gap: 7px; }
@@ -1168,6 +1169,7 @@ input:disabled, select:disabled, textarea:disabled { background: #f2f5f8; color:
   .shop-card-grid { grid-template-columns: 1fr; gap: 11px; }
   .shop-directory-card { grid-template-columns: 108px minmax(0, 1fr); grid-template-rows: minmax(118px, auto) auto; }
   .shop-directory-card__visual { grid-row: 1 / -1; }
+  .shop-card-grid--grid .shop-directory-card__visual { height: auto; }
   .shop-directory-card__body { padding: 13px 13px 9px; }
   .shop-directory-card__footer { min-height: 36px; padding: 0 13px; }
   .rented-tank-entry { grid-template-columns: 1fr; align-items: stretch; }
@@ -3337,6 +3339,10 @@ input:disabled, select:disabled, textarea:disabled { background: #f2f5f8; color:
 }
 .ref-dropzone input {
   display: none;
+}
+.ref-avatar-delete-row {
+  display: flex;
+  justify-content: flex-end;
 }
 
 /* Image Editor Layout */

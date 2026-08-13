@@ -4,6 +4,7 @@ import {
   Check,
   FunnelSimple,
   MagnifyingGlass,
+  Trash,
   UploadSimple,
 } from '@phosphor-icons/react';
 import type { UserProfile, AppRole } from '../../../types/app';
@@ -21,6 +22,7 @@ import {
   removeUserAvatarFiles,
   resetUserPassword,
   saveUserWithWorkSiteAssignments,
+  updateUserAvatarPath,
   uploadUserAvatar,
 } from '../adminReferenceSettingsService';
 import {
@@ -119,6 +121,7 @@ export function UserEditor({
   const [userFilter, setUserFilter] = useState<ActiveFilter>('all');
   
   const [savingUser, setSavingUser] = useState(false);
+  const [deletingAvatar, setDeletingAvatar] = useState(false);
   const [resettingPassword, setResettingPassword] = useState(false);
   const [userError, setUserError] = useState<string | null>(null);
   const [userSuccess, setUserSuccess] = useState<string | null>(null);
@@ -187,6 +190,38 @@ export function UserEditor({
     setUserError(null);
   }
 
+  async function removeAvatar() {
+    if (!userDraft) return;
+
+    setUserError(null);
+    setUserSuccess(null);
+    if (!userDraft.avatarPath) {
+      setAvatarFile(null);
+      return;
+    }
+
+    const previousPath = userDraft.avatarPath;
+    setDeletingAvatar(true);
+    try {
+      const savedUser = await updateUserAvatarPath(userDraft.id, null);
+      let removeError = false;
+      try {
+        await removeUserAvatarFiles([previousPath]);
+      } catch {
+        removeError = true;
+      }
+      const savedWorkSiteIds = toUserDraft(savedUser, workSiteAssignments, workSites).workSiteIds;
+      onUserSaved(savedUser, savedWorkSiteIds);
+      setUserDraft((current) => current ? { ...current, avatarPath: null } : current);
+      setAvatarFile(null);
+      setUserSuccess(removeError ? 'ลบรูปพนักงานแล้ว แต่ลบไฟล์เก่าไม่สำเร็จ' : 'ลบรูปพนักงานแล้ว');
+    } catch (error) {
+      setUserError(getErrorMessage(error));
+    } finally {
+      setDeletingAvatar(false);
+    }
+  }
+
   async function saveUser(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!userDraft) return;
@@ -229,8 +264,8 @@ export function UserEditor({
         is_active: isCurrentUser ? original.is_active : userDraft.isActive,
       }, userDraft.role === 'courier' && userDraft.isActive ? userDraft.workSiteIds : []);
 
-      if (avatarFile && userDraft.avatarPath && userDraft.avatarPath !== avatarPath) {
-        await removeUserAvatarFiles([userDraft.avatarPath]).catch(() => {});
+      if (original.avatar_path && original.avatar_path !== avatarPath) {
+        await removeUserAvatarFiles([original.avatar_path]).catch(() => {});
       }
       onUserSaved(saved.user, saved.work_site_ids);
       setUserDraft({
@@ -520,6 +555,20 @@ export function UserEditor({
                 <small>รองรับ JPG, PNG, WEBP ขนาดไม่เกิน 5 MB</small>
                 <input aria-label="รูปพนักงาน" accept="image/jpeg,image/png,image/webp" onChange={chooseAvatarFile} type="file" />
               </label>
+              {avatarFile || userDraft.avatarPath ? (
+                <div className="ref-avatar-delete-row">
+                  <button
+                    aria-label="ลบรูปพนักงาน"
+                    className="ref-delete-btn"
+                    disabled={deletingAvatar}
+                    onClick={() => void removeAvatar()}
+                    type="button"
+                  >
+                    <Trash size={18} />
+                    <span>{deletingAvatar ? 'กำลังลบ...' : 'ลบรูป'}</span>
+                  </button>
+                </div>
+              ) : null}
             </div>
 
             {/* Status Toggle & Warnings */}
@@ -589,7 +638,14 @@ export function UserEditor({
                 className="secondary-button"
                 onClick={() => {
                   const original = users.find((user) => user.id === userDraft.id);
-                  if (original) chooseUser(original);
+                  if (original) {
+                    const currentAvatarPath = userDraft.avatarPath;
+                    chooseUser(original);
+                    setUserDraft({
+                      ...toUserDraft(original, workSiteAssignments, workSites),
+                      avatarPath: currentAvatarPath,
+                    });
+                  }
                 }}
                 type="button"
               >
@@ -598,7 +654,7 @@ export function UserEditor({
               <button
                 aria-label="บันทึกผู้ใช้"
                 className="primary-button"
-                disabled={savingUser}
+                disabled={savingUser || deletingAvatar}
                 form="user-profile-form"
                 type="submit"
               >

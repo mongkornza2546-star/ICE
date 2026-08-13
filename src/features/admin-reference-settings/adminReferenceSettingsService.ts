@@ -160,6 +160,21 @@ export async function resetUserPassword(userId: string, password: string): Promi
   throw new Error(error.message);
 }
 
+export async function updateUserAvatarPath(userId: string, avatarPath: string | null): Promise<UserProfile> {
+  const client = supabase;
+  if (!client) throw new Error('Supabase client not initialized');
+
+  const { data, error } = await client
+    .from('users')
+    .update({ avatar_path: avatarPath })
+    .eq('id', userId)
+    .select(USER_FIELDS)
+    .single();
+
+  if (error) throw new Error(error.message);
+  return data as UserProfile;
+}
+
 export async function getUserAvatarSignedUrl(imagePath: string): Promise<string> {
   const client = supabase;
   if (!client) throw new Error('Supabase client not initialized');
