@@ -814,7 +814,7 @@ function ShopDailyMatrix({ collapsedGroups, daily, data, fromDate, grouped, onOp
       <thead>
         <tr><th className="accounting-daily-matrix__sequence" rowSpan={2}>ลำดับ</th><th className="accounting-daily-matrix__shop" rowSpan={2}>ร้าน</th>
           {dates.map((date) => <th className="accounting-daily-matrix__date" colSpan={dayColumnCount} key={date}>{dailyDate.format(new Date(`${date}T12:00:00+07:00`))}</th>)}
-          <th rowSpan={2}>ยอดขายรวม</th><th rowSpan={2}>รับจริงของร้านที่แสดง</th><th rowSpan={2}>ค้างช่วงนี้</th><th rowSpan={2}>ค้างสะสม</th><th rowSpan={2}>เกินกำหนด</th><th rowSpan={2}>สถานะชำระ</th><th rowSpan={2}>หมายเหตุ</th>
+          <th rowSpan={2}>ยอดขายรวม</th><th rowSpan={2}>รับชำระในช่วงนี้</th><th rowSpan={2}>ค้างวันนี้</th><th rowSpan={2}>ค้างสะสม</th><th rowSpan={2}>เกินกำหนด</th><th rowSpan={2}>สถานะชำระ</th><th rowSpan={2}>หมายเหตุ</th>
         </tr>
         <tr>{dates.flatMap((date) => [
           ...daily.ice_types.map((iceType) => <th key={`${date}:${iceType.ice_type_id}`} title={iceType.name}>{iceType.name}</th>),
@@ -875,7 +875,7 @@ function ShopSummaryTable({ collapsedGroups, data, grouped, onOpenShop, onToggle
     const key = shopGroupKey(row);
     groups.set(key, [...(groups.get(key) ?? []), row]);
   });
-  return <div className="accounting-table-wrap accounting-table-wrap--ledger"><table className="accounting-table accounting-shop-table"><thead><tr><th>ร้าน</th><th>อาคาร / โซนประจำร้าน</th><th>เงื่อนไขชำระ</th><th>ยอดขายช่วงนี้</th><th>รับแล้วของยอดช่วงนี้</th><th>ค้างช่วงนี้</th><th>ค้างสะสม</th><th>เกินกำหนดสะสม</th><th>จำนวนบิล</th><th>ครบกำหนดเก่าสุด</th><th>สถานะชำระ</th></tr></thead><tbody>
+  return <div className="accounting-table-wrap accounting-table-wrap--ledger"><table className="accounting-table accounting-shop-table"><thead><tr><th>ร้าน</th><th>อาคาร / โซนประจำร้าน</th><th>เงื่อนไขชำระ</th><th>ยอดขายช่วงนี้</th><th>รับแล้วของยอดช่วงนี้</th><th>ค้างวันนี้</th><th>ค้างสะสม</th><th>เกินกำหนดสะสม</th><th>จำนวนบิล</th><th>ครบกำหนดเก่าสุด</th><th>สถานะชำระ</th></tr></thead><tbody>
     {!data.rows.length ? <tr><td colSpan={11}>ไม่พบร้านที่ตรงกับตัวกรอง</td></tr>
       : grouped ? [...groups.entries()].map(([key, rows]) => {
         const group = derivedShopGroup(rows);

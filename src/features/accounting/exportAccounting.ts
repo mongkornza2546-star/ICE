@@ -109,7 +109,7 @@ export async function exportAccountingShopDaily(
       ...iceTypes.map((iceType) => `${date} · ${iceType.name}`),
       `${date} · ยอดขาย`, `${date} · รับเงินจริง`,
     ]),
-    'ยอดขายรวม', 'รับเงินจริงรวม', 'ค้างช่วงนี้', 'ค้างสะสม', 'เกินกำหนด', 'สถานะชำระ', 'หมายเหตุ',
+    'ยอดขายรวม', 'รับเงินจริงรวม', 'ค้างวันนี้', 'ค้างสะสม', 'เกินกำหนด', 'สถานะชำระ', 'หมายเหตุ',
   ];
   const paymentStatusLabels = { paid: 'ชำระครบ', outstanding: 'รอชำระ', overdue: 'เกินกำหนด' } as const;
 

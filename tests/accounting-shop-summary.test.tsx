@@ -248,10 +248,10 @@ describe('accounting shop summary', () => {
     const broadReceipts = screen.getByText('เงินรับจริงทั้งหมดตามร้าน/พื้นที่ช่วงนี้', { selector: 'article span' }).closest('article');
     expect(broadReceipts?.getAttribute('title')).toMatch(/รวมร้านที่ปิดใช้งาน.*ไม่เปลี่ยนตามตัวกรองเงื่อนไขหรือสถานะชำระ/);
     expect(screen.getByRole('columnheader', { name: 'ร้าน' })).toBeTruthy();
-    expect(screen.getByRole('columnheader', { name: 'ค้างช่วงนี้' })).toBeTruthy();
+    expect(screen.getByRole('columnheader', { name: 'ค้างวันนี้' })).toBeTruthy();
     expect(screen.getByRole('columnheader', { name: 'ค้างสะสม' })).toBeTruthy();
     expect(screen.getByRole('columnheader', { name: 'สถานะชำระ' })).toBeTruthy();
-    expect(screen.getByRole('columnheader', { name: 'รับจริงของร้านที่แสดง' })).toBeTruthy();
+    expect(screen.getByRole('columnheader', { name: 'รับชำระในช่วงนี้' })).toBeTruthy();
   });
 
   it('switches between zone datasets and returns to all zones', async () => {
