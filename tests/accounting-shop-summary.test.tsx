@@ -251,7 +251,7 @@ describe('accounting shop summary', () => {
     expect(screen.getByRole('columnheader', { name: 'ค้างวันนี้' })).toBeTruthy();
     expect(screen.getByRole('columnheader', { name: 'ค้างสะสม' })).toBeTruthy();
     expect(screen.getByRole('columnheader', { name: 'สถานะชำระ' })).toBeTruthy();
-    expect(screen.getByRole('columnheader', { name: 'รับชำระในช่วงนี้' })).toBeTruthy();
+    expect(screen.queryByRole('columnheader', { name: 'รับชำระในช่วงนี้' })).toBeNull();
   });
 
   it('switches between zone datasets and returns to all zones', async () => {

@@ -753,7 +753,7 @@ function ShopDailyMatrix({ collapsedGroups, daily, data, fromDate, grouped, onOp
     groups.set(key, [...(groups.get(key) ?? []), row]);
   });
   const dayColumnCount = daily.ice_types.length + 2;
-  const totalColumnCount = 2 + dates.length * dayColumnCount + 7;
+  const totalColumnCount = 2 + dates.length * dayColumnCount + 6;
 
   const renderDayCells = (shop: AccountingShopSummaryRow, day: AccountingShopDailyCell | undefined, date: string) => {
     if (!day) return <Fragment key={date}>
@@ -785,14 +785,12 @@ function ShopDailyMatrix({ collapsedGroups, daily, data, fromDate, grouped, onOp
   const renderShopRow = (shop: AccountingShopSummaryRow) => {
     const row = dailyRows.get(shop.shop_id);
     const days = new Map((row?.days ?? []).map((day) => [day.service_date, day]));
-    const dailyComplete = dates.every((date) => days.has(date));
-    const cashReceived = dailyComplete ? dates.reduce((sum, date) => sum + Number(days.get(date)?.cash_received), 0) : null;
     const note = shop.delivery_sequence == null ? 'ยังไม่ได้กำหนดลำดับส่ง' : shop.historical_zone_name && shop.current_zone_name && shop.historical_zone_name !== shop.current_zone_name ? 'พื้นที่ล่าสุดต่างจากพื้นที่ประจำ' : '—';
     return <tr className={shop.payment_status === 'overdue' ? 'accounting-row--issue' : ''} key={shop.shop_id}>
       <td className="accounting-daily-matrix__sequence">{shop.delivery_sequence?.toLocaleString('th-TH') ?? '—'}</td>
       <th className="accounting-daily-matrix__shop"><button className="accounting-link" onClick={() => onOpenShop(shop)} type="button">{shop.shop_code} · {shop.shop_name}</button></th>
       {dates.map((date) => renderDayCells(shop, days.get(date), date))}
-      <td><strong>{money.format(shop.sales_amount)}</strong></td><td>{cashReceived == null ? '—' : money.format(cashReceived)}</td><td>{money.format(shop.outstanding_amount)}</td><td>{money.format(shop.cumulative_outstanding_amount)}</td><td>{money.format(shop.cumulative_overdue_amount)}</td><td><span className={`accounting-payment-status accounting-payment-status--${shop.payment_status}`}>{paymentStatusLabels[shop.payment_status]}</span></td><td className="accounting-daily-matrix__note">{note}</td>
+      <td><strong>{money.format(shop.sales_amount)}</strong></td><td>{money.format(shop.outstanding_amount)}</td><td>{money.format(shop.cumulative_outstanding_amount)}</td><td>{money.format(shop.cumulative_overdue_amount)}</td><td><span className={`accounting-payment-status accounting-payment-status--${shop.payment_status}`}>{paymentStatusLabels[shop.payment_status]}</span></td><td className="accounting-daily-matrix__note">{note}</td>
     </tr>;
   };
 
@@ -814,7 +812,7 @@ function ShopDailyMatrix({ collapsedGroups, daily, data, fromDate, grouped, onOp
       <thead>
         <tr><th className="accounting-daily-matrix__sequence" rowSpan={2}>ลำดับ</th><th className="accounting-daily-matrix__shop" rowSpan={2}>ร้าน</th>
           {dates.map((date) => <th className="accounting-daily-matrix__date" colSpan={dayColumnCount} key={date}>{dailyDate.format(new Date(`${date}T12:00:00+07:00`))}</th>)}
-          <th rowSpan={2}>ยอดขายรวม</th><th rowSpan={2}>รับชำระในช่วงนี้</th><th rowSpan={2}>ค้างวันนี้</th><th rowSpan={2}>ค้างสะสม</th><th rowSpan={2}>เกินกำหนด</th><th rowSpan={2}>สถานะชำระ</th><th rowSpan={2}>หมายเหตุ</th>
+          <th rowSpan={2}>ยอดขายรวม</th><th rowSpan={2}>ค้างวันนี้</th><th rowSpan={2}>ค้างสะสม</th><th rowSpan={2}>เกินกำหนด</th><th rowSpan={2}>สถานะชำระ</th><th rowSpan={2}>หมายเหตุ</th>
         </tr>
         <tr>{dates.flatMap((date) => [
           ...daily.ice_types.map((iceType) => <th key={`${date}:${iceType.ice_type_id}`} title={iceType.name}>{iceType.name}</th>),
@@ -850,7 +848,7 @@ function ShopDailyMatrix({ collapsedGroups, daily, data, fromDate, grouped, onOp
                     <td>{complete ? money.format(dayCells.reduce((sum, day) => sum + Number(day?.cash_received), 0)) : '—'}</td>
                   </Fragment>;
                 })}
-                <td>{money.format(rows.reduce((sum, shop) => sum + shop.sales_amount, 0))}</td><td>{groupCash == null ? '—' : money.format(groupCash)}</td><td>{money.format(rows.reduce((sum, shop) => sum + shop.outstanding_amount, 0))}</td><td>{money.format(group.cumulative_outstanding_amount)}</td><td>{money.format(rows.reduce((sum, shop) => sum + shop.cumulative_overdue_amount, 0))}</td><td>—</td><td>—</td>
+                <td>{money.format(rows.reduce((sum, shop) => sum + shop.sales_amount, 0))}</td><td>{money.format(rows.reduce((sum, shop) => sum + shop.outstanding_amount, 0))}</td><td>{money.format(group.cumulative_outstanding_amount)}</td><td>{money.format(rows.reduce((sum, shop) => sum + shop.cumulative_overdue_amount, 0))}</td><td>—</td><td>—</td>
               </tr>
             </>}
           </Fragment>;
