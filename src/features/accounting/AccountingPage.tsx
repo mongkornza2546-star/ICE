@@ -618,6 +618,19 @@ function ShopSummaryPanel({ daily, data, exporting, filters, fromDate, onExport,
         <label><span>เลือกร้านโดยตรง</span><select aria-label="ร้าน" onChange={(event) => updateFilter({ shop_id: event.target.value || undefined })} value={filters.shop_id ?? ''}><option value="">ทุกร้าน</option>{data.facets.shops.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
       </div> : null}
     </div>
+    {data.facets.zones.length ? <div aria-label="เลือกโซนร้านค้า" className="accounting-zone-tabs" role="group">
+      <button
+        aria-pressed={!filters.zone_id}
+        onClick={() => updateFilter({ zone_id: undefined })}
+        type="button"
+      >ทุกโซน</button>
+      {data.facets.zones.map((zone) => <button
+        aria-pressed={filters.zone_id === zone.value}
+        key={zone.value}
+        onClick={() => updateFilter({ zone_id: zone.value })}
+        type="button"
+      >{zone.label.replace(' / ', ' ')}</button>)}
+    </div> : null}
     {view === 'daily' ? <ShopDailyMatrix
       collapsedGroups={collapsedGroups}
       daily={daily}

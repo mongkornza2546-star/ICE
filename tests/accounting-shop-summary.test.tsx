@@ -254,6 +254,72 @@ describe('accounting shop summary', () => {
     expect(screen.getByRole('columnheader', { name: 'รับจริงของร้านที่แสดง' })).toBeTruthy();
   });
 
+  it('switches between zone datasets and returns to all zones', async () => {
+    const secondShop = {
+      ...populatedSummary.rows[0],
+      shop_id: 'shop-2',
+      shop_code: 'S002',
+      shop_name: 'ร้านโซนสอง',
+      building_id: 'building-2',
+      building_name: 'อาคาร B',
+      current_zone_id: 'zone-2',
+      current_zone_name: 'โซน 2',
+      historical_zone_name: 'โซน 2',
+    };
+    const secondGroup = {
+      ...populatedSummary.groups[0],
+      building_id: 'building-2',
+      building_name: 'อาคาร B',
+      current_zone_id: 'zone-2',
+      current_zone_name: 'โซน 2',
+    };
+    const allZonesSummary = {
+      ...populatedSummary,
+      rows: [populatedSummary.rows[0], secondShop],
+      groups: [populatedSummary.groups[0], secondGroup],
+      total_count: 2,
+      facets: {
+        ...populatedSummary.facets,
+        shops: [...populatedSummary.facets.shops, { value: 'shop-2', label: 'S002 · ร้านโซนสอง', count: 1 }],
+        zones: [...populatedSummary.facets.zones, { value: 'zone-2', label: 'อาคาร B / โซน 2', count: 1 }],
+      },
+    };
+    rpcMock.mockImplementation(async (name: string, args: Record<string, unknown>) => {
+      if (name === 'get_accounting_shop_summary') {
+        const zoneId = (args.p_filters as { zone_id?: string }).zone_id;
+        if (zoneId === 'zone-current') return { data: populatedSummary, error: null };
+        if (zoneId === 'zone-2') return { data: { ...allZonesSummary, rows: [secondShop], groups: [secondGroup], total_count: 1 }, error: null };
+        return { data: allZonesSummary, error: null };
+      }
+      if (name === 'get_accounting_shop_daily_matrix') return { data: emptyDailyMatrix, error: null };
+      if (name === 'get_accounting_review_queue') return { data: { rows: [], total_count: 0 }, error: null };
+      throw new Error(`Unexpected RPC: ${name}`);
+    });
+    const user = userEvent.setup();
+    render(<AccountingPage />);
+    await screen.findByRole('button', { name: /S001 · ร้านสมใจ/ });
+
+    const allZonesButton = screen.getByRole('button', { name: 'ทุกโซน', exact: true });
+    const secondZoneButton = screen.getByRole('button', { name: 'อาคาร B โซน 2', exact: true });
+    expect(allZonesButton.getAttribute('aria-pressed')).toBe('true');
+    expect(secondZoneButton.getAttribute('aria-pressed')).toBe('false');
+
+    await user.click(secondZoneButton);
+
+    await waitFor(() => expect(rpcMock).toHaveBeenCalledWith('get_accounting_shop_summary', expect.objectContaining({
+      p_filters: { zone_id: 'zone-2' },
+    })));
+    expect(secondZoneButton.getAttribute('aria-pressed')).toBe('true');
+    expect(await screen.findByRole('button', { name: /S002 · ร้านโซนสอง/ })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /S001 · ร้านสมใจ/ })).toBeNull();
+    expect(screen.getByRole('button', { name: /อาคาร B · โซน 2.*หน้านี้/ })).toBeTruthy();
+
+    await user.click(allZonesButton);
+
+    expect((await screen.findAllByRole('button', { name: /S00[12] · ร้าน/ }))).toHaveLength(2);
+    expect(allZonesButton.getAttribute('aria-pressed')).toBe('true');
+  });
+
   it('shows daily quantities, keeps statuses and receipts display-only, and opens purchased sales', async () => {
     rpcMock.mockImplementation(async (name: string, args: Record<string, unknown>) => {
       if (name === 'get_accounting_shop_summary') return { data: populatedSummary, error: null };

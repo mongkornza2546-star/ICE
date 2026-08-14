@@ -109,6 +109,11 @@
 .accounting-shop-view-switch button[aria-pressed="true"] { background: #fff; color: #146549; box-shadow: 0 1px 5px #183f331a; }
 .accounting-shop-export { display: inline-flex; align-items: center; gap: 7px; min-height: 40px; border: 1px solid #77aa97; border-radius: 9px; background: #fff; padding: 8px 12px; color: #176d51; font: inherit; font-size: .8rem; font-weight: 800; cursor: pointer; }
 .accounting-shop-export:disabled { opacity: .55; cursor: default; }
+.accounting-zone-tabs { display: flex; overflow-x: auto; border-bottom: 1px solid #bfc8c3; background: #f5f6f5; scrollbar-width: thin; }
+.accounting-zone-tabs button { flex: 0 0 auto; min-width: 176px; min-height: 48px; border: 0; border-right: 1px solid #c9cfcc; background: #f5f6f5; padding: 8px 18px; color: #5b5e5c; font: inherit; font-size: .92rem; font-weight: 700; white-space: nowrap; }
+.accounting-zone-tabs button:first-child { border-left: 1px solid #c9cfcc; }
+.accounting-zone-tabs button:hover { background: #fff; color: #244b3d; }
+.accounting-zone-tabs button[aria-pressed="true"] { position: relative; z-index: 1; border: 1px solid #aeb7b2; border-radius: 0 0 4px 4px; background: #fff; color: #25875c; box-shadow: 0 1px 2px #183f3326; }
 .accounting-daily-matrix { display: grid; gap: 10px; min-width: 0; }
 .accounting-daily-matrix__toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 9px; }
 .accounting-daily-matrix__period, .accounting-daily-matrix__windows { display: inline-flex; align-items: center; gap: 5px; }
