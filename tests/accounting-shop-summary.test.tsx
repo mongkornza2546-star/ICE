@@ -513,10 +513,10 @@ describe('accounting shop summary', () => {
 
     const shop = await screen.findByRole('button', { name: /S001 · ร้านสมใจ/ });
     await user.click(screen.getByRole('button', { name: 'ยอดรวมช่วงวันที่' }));
-    expect(screen.getByRole('columnheader', { name: 'อาคาร / โซนประจำร้าน' })).toBeTruthy();
+    expect(screen.queryByRole('columnheader', { name: 'อาคาร / โซนประจำร้าน' })).toBeNull();
+    expect(screen.queryByRole('columnheader', { name: 'เงื่อนไขชำระ' })).toBeNull();
     expect((screen.getByRole('combobox', { name: 'เรียงลำดับ' }) as HTMLSelectElement).value).toBe('area');
     expect(screen.getByText('ลำดับส่ง 3')).toBeTruthy();
-    expect(screen.getByText('พื้นที่ในรายการล่าสุดต่างจากพื้นที่ประจำร้าน')).toBeTruthy();
 
     const group = screen.getByRole('button', { name: /อาคาร A \/ ชั้น 9 ปัจจุบัน.*1 ร้าน.*ซื้อ 1/ });
     await user.click(group);
@@ -581,12 +581,12 @@ describe('accounting shop summary', () => {
     const row = shopButton.closest('tr');
     expect(row).toBeTruthy();
     const cells = row!.querySelectorAll('td');
+    expect(cells[0].textContent).toMatch(/฿0\.00/);
+    expect(cells[1].textContent).toMatch(/฿0\.00/);
     expect(cells[2].textContent).toMatch(/฿0\.00/);
-    expect(cells[3].textContent).toMatch(/฿0\.00/);
-    expect(cells[4].textContent).toMatch(/฿0\.00/);
-    expect(cells[5].textContent).toMatch(/฿200\.00/);
-    expect(cells[6].textContent).toMatch(/฿125\.00/);
-    expect(cells[7].textContent).toBe('0');
+    expect(cells[3].textContent).toMatch(/฿200\.00/);
+    expect(cells[4].textContent).toMatch(/฿125\.00/);
+    expect(cells[5].textContent).toBe('0');
     expect(within(row as HTMLTableRowElement).getByText('เกินกำหนด')).toBeTruthy();
     expect(screen.queryByText('ไม่ซื้อ')).toBeNull();
 

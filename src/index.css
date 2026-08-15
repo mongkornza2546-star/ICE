@@ -97,7 +97,6 @@
 .accounting-shop-table th:first-child { min-width: 220px; }
 .accounting-shop-table th:first-child small { display: block; margin-top: 4px; color: #718079; font-weight: 500; }
 .accounting-shop-table .accounting-shop-sequence--missing { color: #a5681d; }
-.accounting-shop-moved { display: block; width: fit-content; margin-top: 5px; border-radius: 999px; background: #fff1d8; color: #8c5a0c; padding: 2px 7px; font-size: .68rem; font-weight: 700; }
 .accounting-table tbody .accounting-shop-group { cursor: default; }
 .accounting-table tbody .accounting-shop-group:hover { background: transparent; }
 .accounting-shop-group th { position: sticky; z-index: 1; left: 0; padding: 0; border-bottom-color: #cadbd2; background: #e5f1eb; }
