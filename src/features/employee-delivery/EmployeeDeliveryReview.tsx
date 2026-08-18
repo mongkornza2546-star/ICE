@@ -708,7 +708,7 @@ export function EmployeeDeliveryReview({
         )}
       </form>
 
-      {!problemOpen ? (
+      {!problemOpen && mobileStep === 'items' ? (
         <button
           className="employee-pos-review-toggle"
           disabled={submitting || items.length === 0}
