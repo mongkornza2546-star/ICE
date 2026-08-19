@@ -328,6 +328,61 @@ describe('employee live shop loading', () => {
     expect(loadShopCards).toHaveBeenNthCalledWith(2, 'round-1', { forceRefresh: true });
   });
 
+  it('keeps the existing shop list visible while revalidating after reactivation', async () => {
+    let resolveRefresh!: (cards: ShopCard[]) => void;
+    const refresh = new Promise<ShopCard[]>((resolve) => {
+      resolveRefresh = resolve;
+    });
+    const loadShopCards = vi.fn()
+      .mockResolvedValueOnce([shopCard])
+      .mockReturnValueOnce(refresh);
+    const gateway = {
+      loadReferenceData: vi.fn().mockResolvedValue({
+        rounds: [{
+          id: 'round-1',
+          service_date: '2026-08-11',
+          name: 'งานประจำวัน',
+          round_type: 'daily',
+          status: 'open',
+          opened_at: '2026-08-11T01:00:00Z',
+        }],
+        iceTypes: [{ id: 'ice-1', code: 'ICE', name: 'น้ำแข็ง', unit: 'ถุง' }],
+      }),
+      loadShopCards,
+      loadEmployeeStockState: vi.fn(),
+      recordEmployeeStockTransfer: vi.fn(),
+      recordEmployeeStockReturn: vi.fn(),
+      recordEmployeeStockDamage: vi.fn(),
+      recordDelivery: vi.fn(),
+    } as unknown as EmployeeDeliveryGateway;
+    const view = render(<EmployeeDeliveryWorkspace
+      gateway={gateway}
+      requestScope="employee-reactivation-stale-while-refresh"
+      serviceDate="2026-08-11"
+    />);
+
+    await screen.findByText(shopCard.shop_name);
+    view.rerender(<EmployeeDeliveryWorkspace
+      gateway={gateway}
+      isActive={false}
+      requestScope="employee-reactivation-stale-while-refresh"
+      serviceDate="2026-08-11"
+    />);
+    view.rerender(<EmployeeDeliveryWorkspace
+      gateway={gateway}
+      isActive
+      requestScope="employee-reactivation-stale-while-refresh"
+      serviceDate="2026-08-11"
+    />);
+
+    await waitFor(() => expect(loadShopCards).toHaveBeenCalledTimes(2));
+    expect(screen.getByText(shopCard.shop_name)).toBeTruthy();
+    expect(screen.queryByText('กำลังโหลดร้าน')).toBeNull();
+
+    await act(async () => resolveRefresh([shopCard, newShopCard]));
+    await screen.findByText(newShopCard.shop_name);
+  });
+
   it('queues a catalog refresh received while a stock submission is pending', async () => {
     const user = userEvent.setup();
     let resolveTransfer!: (value: EmployeeStockState) => void;

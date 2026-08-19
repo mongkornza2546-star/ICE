@@ -316,7 +316,8 @@ export function useEmployeeDeliveryData({
       loadedCardsRoundId.current = '';
       setCards([]);
     }
-    setLoadingCards(true);
+    const hasLoadedCardsForRound = loadedCardsRoundId.current === roundId;
+    setLoadingCards(!hasLoadedCardsForRound);
     setError(null);
     try {
       const nextCards = await gateway.loadShopCards(roundId, options);
@@ -327,7 +328,7 @@ export function useEmployeeDeliveryData({
       return true;
     } catch (loadError) {
       if (requestId !== cardsRequestId.current || activeRoundId.current !== roundId) return false;
-      loadedCardsRoundId.current = '';
+      if (!hasLoadedCardsForRound) loadedCardsRoundId.current = '';
       setError(employeeErrorMessage(loadError));
       setLoadingCards(false);
       return false;
