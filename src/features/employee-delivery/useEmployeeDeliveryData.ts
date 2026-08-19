@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import type {
   DeliveryRound,
   DeliveryFinancialResult,
@@ -149,6 +149,7 @@ export function useEmployeeDeliveryData({
   const activeRoundId = useRef('');
   const activeStockRoundId = useRef('');
   const browseScrollY = useRef(0);
+  const browseScrollRestorePending = useRef(false);
   const returnFocusCardId = useRef<string | null>(null);
   const shopButtonRefs = useRef(new Map<string, HTMLButtonElement>());
   const submissionRequestId = useRef(0);
@@ -299,7 +300,7 @@ export function useEmployeeDeliveryData({
     if (selectedRoundStillExists) setSelectedRoundId(saved.selectedRoundId);
   }, [iceTypes, loadedReferenceServiceDate, loadingReference, recoveryMode, recoveryScope, requestScope, rounds, serviceDate]);
 
-  const loadCards = useCallback(async (roundId: string) => {
+  const loadCards = useCallback(async (roundId: string, options?: { forceRefresh?: boolean }) => {
     if (!roundId) {
       cardsRequestId.current += 1;
       activeRoundId.current = '';
@@ -318,7 +319,7 @@ export function useEmployeeDeliveryData({
     setLoadingCards(true);
     setError(null);
     try {
-      const nextCards = await gateway.loadShopCards(roundId);
+      const nextCards = await gateway.loadShopCards(roundId, options);
       if (requestId !== cardsRequestId.current || activeRoundId.current !== roundId) return false;
       loadedCardsRoundId.current = roundId;
       setCards(nextCards);
@@ -436,8 +437,17 @@ export function useEmployeeDeliveryData({
     }).sort((left, right) => compareShopCodes(left.shop_code, right.shop_code));
   }, [cards, query, selectedBuildingId, selectedZone]);
 
+  useLayoutEffect(() => {
+    if (selectedCardId || loadingCards || !browseScrollRestorePending.current) return;
+    browseScrollRestorePending.current = false;
+    const focusId = returnFocusCardId.current;
+    if (focusId) shopButtonRefs.current.get(focusId)?.focus({ preventScroll: true });
+    window.scrollTo({ top: browseScrollY.current, behavior: 'auto' });
+  }, [loadingCards, selectedCardId]);
+
   const returnToBrowse = useCallback(() => {
     posContextRequestId.current += 1;
+    browseScrollRestorePending.current = true;
     setSelectedCardId(null);
     setStatus('delivered');
     setProblemOpen(false);
@@ -450,11 +460,6 @@ export function useEmployeeDeliveryData({
     setPaymentOpen(false);
     setImmediateSaleRetry(null);
     setApprovalId(null);
-    window.requestAnimationFrame(() => {
-      window.scrollTo({ top: browseScrollY.current, behavior: 'auto' });
-      const focusId = returnFocusCardId.current;
-      if (focusId) shopButtonRefs.current.get(focusId)?.focus();
-    });
   }, []);
 
   const openCard = (card: ShopCard, recovery?: EmployeeWorkspaceRecovery) => {
@@ -583,6 +588,15 @@ export function useEmployeeDeliveryData({
     }
     setReferenceReloadId((current) => current + 1);
   }, [loadCards, loadStockState, selectedRoundId]);
+
+  const refreshShopCatalog = useCallback(() => {
+    setSuccess(null);
+    if (selectedRoundId) {
+      void loadCards(selectedRoundId, { forceRefresh: true });
+      return;
+    }
+    setReferenceReloadId((current) => current + 1);
+  }, [loadCards, selectedRoundId]);
 
   const chooseRound = (roundId: string) => {
     if (anySubmitting) return;
@@ -1204,6 +1218,7 @@ export function useEmployeeDeliveryData({
     setPaymentEvidence,
     setApprovalReason,
     retryLoad,
+    refreshShopCatalog,
     printLatestReceipt,
     chooseRound,
     setPadValue,

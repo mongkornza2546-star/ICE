@@ -1,7 +1,8 @@
-import { act, fireEvent, render, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { EmployeeDeliveryGateway } from '../src/EmployeeDeliveryWorkspace';
-import type { DeliveryPosContext, ShopCard } from '../src/types/app';
+import type { DeliveryPosContext, EmployeeStockState, ShopCard } from '../src/types/app';
 
 const supabaseMock = vi.hoisted(() => {
   const state: { postgresChangeListener: (() => void) | null } = {
@@ -97,6 +98,33 @@ const shopCard: ShopCard = {
   today_totals: {},
 };
 
+const newShopCard: ShopCard = {
+  ...shopCard,
+  round_stop_id: 'stop-2',
+  shop_id: 'shop-2',
+  shop_code: 'BB02',
+  shop_name: 'ร้านเพิ่มใหม่',
+  sequence_no: 2,
+};
+
+const stockState: EmployeeStockState = {
+  round_id: 'round-1',
+  service_date: '2026-08-11',
+  withdrawn_balances: [],
+  truck_location: {
+    id: 'truck-1',
+    code: 'TRUCK',
+    name: 'รถหลัก',
+    balances: [{ ice_type_id: 'ice-1', ice_type_name: 'น้ำแข็ง', unit: 'ถุง', quantity: 10 }],
+  },
+  holding_location: {
+    id: 'holding-1',
+    code: 'HOLDING',
+    name: 'จุดถือครอง',
+    balances: [{ ice_type_id: 'ice-1', ice_type_name: 'น้ำแข็ง', unit: 'ถุง', quantity: 0 }],
+  },
+};
+
 describe('employee live shop loading', () => {
   it('synchronizes the round before reading shop cards', async () => {
     supabaseMock.client.rpc
@@ -178,6 +206,21 @@ describe('employee live shop loading', () => {
     nowSpy.mockRestore();
   });
 
+  it('bypasses the shop-card burst cache for a catalog change refresh', async () => {
+    let catalogChanged = false;
+    supabaseMock.client.rpc.mockImplementation(async (name: string) => name === 'get_round_shop_cards'
+      ? { data: catalogChanged ? [shopCard, newShopCard] : [shopCard], error: null }
+      : { data: 1, error: null });
+    const gateway = createSupabaseGateway();
+
+    await gateway.loadShopCards('round-catalog-refresh');
+    catalogChanged = true;
+    const refreshed = await gateway.loadShopCards('round-catalog-refresh', { forceRefresh: true });
+
+    expect(refreshed.map((card) => card.shop_id)).toEqual(['shop-1', 'shop-2']);
+    expect(supabaseMock.client.rpc).toHaveBeenCalledTimes(4);
+  });
+
   it('keeps shop business data usable when public image URL resolution fails', async () => {
     supabaseMock.client.rpc.mockImplementation(async (name: string) => name === 'get_round_shop_cards'
       ? { data: [{ ...shopCard, image_path: 'shops/signing-failure.jpg' }], error: null }
@@ -227,6 +270,7 @@ describe('employee live shop loading', () => {
 
     act(() => supabaseMock.state.postgresChangeListener?.());
     await waitFor(() => expect(loadShopCards).toHaveBeenCalledTimes(2));
+    expect(loadShopCards).toHaveBeenNthCalledWith(2, 'round-1', { forceRefresh: true });
 
     fireEvent.focus(window);
     expect(loadShopCards).toHaveBeenCalledTimes(2);
@@ -235,5 +279,99 @@ describe('employee live shop loading', () => {
     fireEvent.focus(window);
     await waitFor(() => expect(loadShopCards).toHaveBeenCalledTimes(3));
     nowSpy.mockRestore();
+  });
+
+  it('reconciles the shop catalog when an inactive workspace becomes active again', async () => {
+    let catalogCards = [shopCard];
+    const loadShopCards = vi.fn().mockImplementation(async () => catalogCards);
+    const gateway = {
+      loadReferenceData: vi.fn().mockResolvedValue({
+        rounds: [{
+          id: 'round-1',
+          service_date: '2026-08-11',
+          name: 'งานประจำวัน',
+          round_type: 'daily',
+          status: 'open',
+          opened_at: '2026-08-11T01:00:00Z',
+        }],
+        iceTypes: [{ id: 'ice-1', code: 'ICE', name: 'น้ำแข็ง', unit: 'ถุง' }],
+      }),
+      loadShopCards,
+      loadEmployeeStockState: vi.fn(),
+      recordEmployeeStockTransfer: vi.fn(),
+      recordEmployeeStockReturn: vi.fn(),
+      recordEmployeeStockDamage: vi.fn(),
+      recordDelivery: vi.fn(),
+    } as unknown as EmployeeDeliveryGateway;
+    const view = render(<EmployeeDeliveryWorkspace
+      gateway={gateway}
+      requestScope="employee-reactivation"
+      serviceDate="2026-08-11"
+    />);
+
+    await screen.findByText(shopCard.shop_name);
+    view.rerender(<EmployeeDeliveryWorkspace
+      gateway={gateway}
+      isActive={false}
+      requestScope="employee-reactivation"
+      serviceDate="2026-08-11"
+    />);
+    catalogCards = [shopCard, newShopCard];
+    view.rerender(<EmployeeDeliveryWorkspace
+      gateway={gateway}
+      isActive
+      requestScope="employee-reactivation"
+      serviceDate="2026-08-11"
+    />);
+
+    await screen.findByText(newShopCard.shop_name);
+    expect(loadShopCards).toHaveBeenNthCalledWith(2, 'round-1', { forceRefresh: true });
+  });
+
+  it('queues a catalog refresh received while a stock submission is pending', async () => {
+    const user = userEvent.setup();
+    let resolveTransfer!: (value: EmployeeStockState) => void;
+    const transfer = new Promise<EmployeeStockState>((resolve) => {
+      resolveTransfer = resolve;
+    });
+    const loadShopCards = vi.fn().mockResolvedValue([shopCard]);
+    const gateway = {
+      loadReferenceData: vi.fn().mockResolvedValue({
+        rounds: [{
+          id: 'round-1',
+          service_date: '2026-08-11',
+          name: 'งานประจำวัน',
+          round_type: 'daily',
+          status: 'open',
+          opened_at: '2026-08-11T01:00:00Z',
+        }],
+        iceTypes: [{ id: 'ice-1', code: 'ICE', name: 'น้ำแข็ง', unit: 'ถุง' }],
+      }),
+      loadShopCards,
+      loadEmployeeStockState: vi.fn().mockResolvedValue(stockState),
+      recordEmployeeStockTransfer: vi.fn().mockReturnValue(transfer),
+      recordEmployeeStockReturn: vi.fn(),
+      recordEmployeeStockDamage: vi.fn(),
+      recordDelivery: vi.fn(),
+    } as unknown as EmployeeDeliveryGateway;
+
+    render(<EmployeeDeliveryWorkspace
+      enableAssignedStockFlow
+      gateway={gateway}
+      requestScope="employee-submitting"
+      serviceDate="2026-08-11"
+      viewMode="withdrawal"
+    />);
+
+    await user.click(await screen.findByRole('button', { name: 'เพิ่มน้ำแข็งอีกครึ่ง' }));
+    await user.click(screen.getByRole('button', { name: 'ยืนยันเติมน้ำแข็ง' }));
+    await waitFor(() => expect(gateway.recordEmployeeStockTransfer).toHaveBeenCalledTimes(1));
+    act(() => supabaseMock.state.postgresChangeListener?.());
+    expect(loadShopCards).toHaveBeenCalledTimes(1);
+
+    await act(async () => resolveTransfer(stockState));
+
+    await waitFor(() => expect(loadShopCards).toHaveBeenCalledTimes(2));
+    expect(loadShopCards).toHaveBeenNthCalledWith(2, 'round-1', { forceRefresh: true });
   });
 });

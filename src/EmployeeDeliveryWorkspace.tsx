@@ -81,7 +81,7 @@ export interface EmployeeStockTransferPayload {
 
 export interface EmployeeDeliveryGateway {
   loadReferenceData(serviceDate: string): Promise<{ rounds: DeliveryRound[]; iceTypes: IceTypeOption[] }>;
-  loadShopCards(roundId: string): Promise<ShopCard[]>;
+  loadShopCards(roundId: string, options?: { forceRefresh?: boolean }): Promise<ShopCard[]>;
   loadDeliveryPosContext?(roundStopId: string, options?: {
     serviceDate?: string;
     forceRefresh?: boolean;
@@ -241,7 +241,12 @@ export function createSupabaseGateway(): EmployeeDeliveryGateway {
         };
       });
     },
-    async loadShopCards(roundId) {
+    async loadShopCards(roundId, options) {
+      if (options?.forceRefresh) {
+        const inFlight = shopCardRequests.get(roundId);
+        if (inFlight) await inFlight.catch(() => undefined);
+        shopCardBurstCache.delete(roundId);
+      }
       const cached = shopCardBurstCache.get(roundId);
       if (cached && Date.now() - cached.cachedAt < SHOP_CARDS_BURST_CACHE_MS) return cached.cards;
       return singleFlight(shopCardRequests, roundId, async () => {
@@ -458,6 +463,7 @@ export function EmployeeDeliveryWorkspace({
     submitting: false,
   });
   const lastForegroundRefreshAt = useRef(Date.now());
+  const catalogRefreshPending = useRef(false);
   const data = useEmployeeDeliveryData({
     gateway,
     enableAssignedStockFlow,
@@ -466,10 +472,22 @@ export function EmployeeDeliveryWorkspace({
     stockSourceLabel,
     onDraftStateChange: setDeliveryDraftState,
   });
+  const anySubmittingRef = useRef(data.anySubmitting);
+  anySubmittingRef.current = data.anySubmitting;
 
   useEffect(() => {
     onDraftStateChange?.(deliveryDraftState);
   }, [deliveryDraftState, onDraftStateChange]);
+
+  useEffect(() => {
+    if (!isActive) {
+      catalogRefreshPending.current = true;
+      return;
+    }
+    if (data.anySubmitting || !catalogRefreshPending.current) return;
+    catalogRefreshPending.current = false;
+    data.refreshShopCatalog();
+  }, [data.anySubmitting, data.refreshShopCatalog, isActive]);
 
   useEffect(() => subscribeToDataChange(['stock', 'pos'], () => {
     if (!isActive || data.anySubmitting) return;
@@ -486,7 +504,11 @@ export function EmployeeDeliveryWorkspace({
       if (!data.anySubmitting) data.retryLoad();
     };
     const refreshFromCatalogChange = () => {
-      if (!data.anySubmitting) data.retryLoad();
+      if (anySubmittingRef.current) {
+        catalogRefreshPending.current = true;
+        return;
+      }
+      data.refreshShopCatalog();
     };
     window.addEventListener('focus', refreshOnFocus);
 
@@ -508,7 +530,7 @@ export function EmployeeDeliveryWorkspace({
       window.removeEventListener('focus', refreshOnFocus);
       void client.removeChannel(channel);
     };
-  }, [data.anySubmitting, data.retryLoad, isActive, requestScope, serviceDate]);
+  }, [data.refreshShopCatalog, data.retryLoad, isActive, requestScope, serviceDate]);
 
   if (data.loadingReference) {
     return <EmployeeState
