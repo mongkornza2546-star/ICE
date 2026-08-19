@@ -71,6 +71,46 @@ supabase functions deploy r2-storage --project-ref <supabase-project-ref>
 path เก่าที่ยังไม่มี `/r2/` ยังคงอ่านจาก Supabase Storage จึงย้ายไฟล์เก่าแยกภายหลังได้
 โดยไม่ต้องหยุดระบบ
 
+ย้ายรูปร้านและรูปชนิดน้ำแข็งเก่าจาก Supabase Storage ไป R2 ได้ด้วยสคริปต์นี้
+ห้ามพิมพ์ secrets ลงใน command โดยตรงเพราะจะค้างใน shell history ให้สร้างไฟล์นอก repository
+ที่อ่านได้เฉพาะผู้ใช้ (`chmod 600`) โดย `SUPABASE_ADMIN_ACCESS_TOKEN` ต้องเป็น token
+อายุสั้นของแอดมินที่ยังเปิดใช้งาน:
+
+```bash
+mkdir -p ~/.config/ice-delivery ~/.local/state/ice-delivery
+chmod 700 ~/.config/ice-delivery ~/.local/state/ice-delivery
+# สร้าง ~/.config/ice-delivery/catalog-migration.env แล้ว chmod 600 โดยใส่ค่า:
+    # SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_ADMIN_ACCESS_TOKEN,
+# R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET_NAME
+set -a
+source ~/.config/ice-delivery/catalog-migration.env
+set +a
+```
+
+รัน dry run ก่อน คำสั่งนี้ไม่เปลี่ยนข้อมูล:
+
+```bash
+npm run storage:migrate-catalog-images
+```
+
+ตรวจจำนวนรูปแล้วจึงรันย้ายจริง สคริปต์จะตรวจการเปิดรูปผ่าน Edge Function
+และบันทึก manifest ก่อนเปลี่ยน `image_path`:
+
+```bash
+npm run storage:migrate-catalog-images -- \
+  --apply \
+  --manifest ~/.local/state/ice-delivery/catalog-migration.jsonl
+```
+
+หากต้อง rollback สคริปต์จะคืนค่าเฉพาะแถวที่ยังชี้ไปยัง target path ใน manifest:
+
+```bash
+npm run storage:migrate-catalog-images -- \
+  --rollback ~/.local/state/ice-delivery/catalog-migration.jsonl
+```
+
+สคริปต์จะข้าม path ที่ย้ายไป R2 แล้ว และยังคงเก็บไฟล์ต้นฉบับใน Supabase ไว้
+
 - รถบรรทุกเป็นคลังสต๊อกกลางเคลื่อนที่ของศูนย์ราชการ
 - จุดปฏิบัติงาน Skywalk, ตึก A, ตึก B, ตึก C, รถเล็ก, พนักงานแต่ละคน และถังสำรองเป็นจุดถือครองสต๊อกย่อย
 - งานหลักที่หัวหน้าต้องทำคือบันทึก “สั่งจากโรงงานเท่าไร”, “จ่ายให้พนักงาน/จุดใดเท่าไร” และ “พนักงานกลับมาคืนหรือเหลือเท่าไร” แยกตามชนิดน้ำแข็ง

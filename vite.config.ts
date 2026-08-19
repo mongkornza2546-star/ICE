@@ -2,6 +2,9 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 
+export const r2CatalogImagePattern = /^https:\/\/[^/]+\.r2\.cloudflarestorage\.com\/(?:[^/]+\/)?(?:shop-images|ice-type-images)\//;
+export const supabaseCatalogImagePattern = /^https:\/\/[^/]+\/storage\/v1\/object\/public\/(?:shop-images|ice-type-images)\//;
+
 export default defineConfig({
   plugins: [
     react(),
@@ -59,6 +62,33 @@ export default defineConfig({
         cleanupOutdatedCaches: true,
         navigationPreload: true,
         runtimeCaching: [
+          {
+            urlPattern: r2CatalogImagePattern,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'catalog-images',
+              matchOptions: { ignoreSearch: true },
+              cacheableResponse: { statuses: [0, 200] },
+              expiration: {
+                maxEntries: 500,
+                maxAgeSeconds: 60 * 60 * 24 * 365,
+                purgeOnQuotaError: true,
+              },
+            },
+          },
+          {
+            urlPattern: supabaseCatalogImagePattern,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'catalog-images',
+              cacheableResponse: { statuses: [0, 200] },
+              expiration: {
+                maxEntries: 500,
+                maxAgeSeconds: 60 * 60 * 24 * 365,
+                purgeOnQuotaError: true,
+              },
+            },
+          },
           {
             urlPattern: /^https:\/\/fonts\.googleapis\.com\//,
             handler: 'StaleWhileRevalidate',
