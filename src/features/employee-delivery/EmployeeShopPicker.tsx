@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { MagnifyingGlass, Buildings, MapPin, Storefront, CaretRight, UserCircle, X } from '@phosphor-icons/react';
+import { MagnifyingGlass, Buildings, MapPin, Storefront, CaretRight, X } from '@phosphor-icons/react';
 import type { ShopCard, EmployeeStockState } from '../../types/app';
 import { FilterChips } from './FilterChips';
 import { EmployeeState } from './EmployeeState';
@@ -76,20 +76,14 @@ export function EmployeeShopPicker({
         </div>
       </div>
 
-      {casualCustomerEntryVisible && selectedRoundId ? <button
-        aria-label="บันทึกลูกค้าขาจร"
-        className="employee-casual-entry"
-        onClick={openCasualCustomer}
-        ref={casualCustomerButtonRef}
-        type="button"
-      >
-        <span className="employee-casual-entry__icon"><UserCircle aria-hidden="true" size={30} weight="duotone" /></span>
-        <span className="employee-casual-entry__body">
-          <strong>ลูกค้าขาจร</strong>
-          <small>ขายทันทีหรือแจกฟรี โดยไม่ต้องเลือกร้านค้า</small>
-        </span>
-        <CaretRight aria-hidden="true" size={21} weight="bold" />
-      </button> : null}
+      {casualCustomerEntryVisible && selectedRoundId ? <div className="employee-casual-entry">
+        <button
+          aria-label="บันทึกลูกค้าขาจร"
+          onClick={openCasualCustomer}
+          ref={casualCustomerButtonRef}
+          type="button"
+        >ลูกค้าขาจร</button>
+      </div> : null}
 
       <label className="employee-search employee-search--standalone">
         <MagnifyingGlass aria-hidden="true" size={22} />

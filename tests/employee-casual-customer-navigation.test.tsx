@@ -101,12 +101,43 @@ describe('casual-customer POS navigation', () => {
     const heading = screen.getByRole('heading', { level: 1, name: 'ลูกค้าขาจร' });
     expect(document.activeElement).toBe(heading);
     expect(scrollY).toBe(0);
-    expect(await screen.findByRole('heading', { level: 2, name: 'เลือกสินค้า' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { level: 2, name: 'เลือกน้ำแข็ง' })).toBeTruthy();
+    await user.click(document.querySelector('.employee-pos-product-grid button') as HTMLButtonElement);
+    expect(document.querySelector('.employee-pos-quantity strong')?.textContent).toBe('0 ถุง');
 
     await user.click(screen.getByRole('button', { name: 'กลับไปเลือกร้าน' }));
     const restoredButton = await screen.findByRole('button', { name: 'บันทึกลูกค้าขาจร' });
     await waitFor(() => expect(document.activeElement).toBe(restoredButton));
     expect(scrollY).toBe(640);
+  });
+
+  it('keeps keypad quantities in stock-safe half-unit steps and names the selected unit', async () => {
+    const user = userEvent.setup();
+    const gateway = createGateway();
+    vi.mocked(gateway.loadCasualTransactionContext!).mockResolvedValue({
+      round_id: 'round-1',
+      service_date: '2026-08-20',
+      round_status: 'open',
+      stock_closed: false,
+      stock_source: { id: 'holding-1', code: 'HOLD-1', name: 'จุดถือครอง' },
+      items: [{ ice_type_id: 'ice-1', code: 'ICE', name: 'น้ำแข็งก้อน', unit: 'แถว', available_quantity: 9 }],
+      history: [],
+    });
+    render(<EmployeeDeliveryWorkspace casualCustomerEnabled gateway={gateway} serviceDate="2026-08-20" />);
+
+    await user.click(await screen.findByRole('button', { name: 'บันทึกลูกค้าขาจร' }));
+    await user.click(document.querySelector('.employee-pos-product-grid button') as HTMLButtonElement);
+    const halfUnit = screen.getByRole('button', { name: 'เพิ่มครึ่งแถว' });
+    expect(halfUnit.textContent).toBe('½ แถว');
+
+    await user.click(halfUnit);
+    await user.click(screen.getByRole('button', { name: '1', exact: true }));
+    expect(document.querySelector('.employee-pos-quantity strong')?.textContent).toBe('0.5 แถว');
+
+    await user.click(screen.getByRole('button', { name: 'ล้างจำนวน' }));
+    await user.click(screen.getByRole('button', { name: '9', exact: true }));
+    await user.click(screen.getByRole('button', { name: '0', exact: true }));
+    expect(document.querySelector('.employee-pos-quantity strong')?.textContent).toBe('9 แถว');
   });
 
   it('returns to the picker when the service date changes', async () => {
@@ -202,6 +233,9 @@ describe('casual-customer POS navigation', () => {
     render(<EmployeeDeliveryWorkspace casualCustomerEnabled gateway={gateway} serviceDate="2026-08-20" />);
 
     await user.click(await screen.findByRole('button', { name: 'บันทึกลูกค้าขาจร' }));
+    await user.click(document.querySelector('.employee-pos-product-grid button') as HTMLButtonElement);
+    await user.click(screen.getByRole('button', { name: 'เพิ่มครึ่งถุง' }));
+    await user.click(screen.getByRole('button', { name: 'เพิ่มรายการ' }));
     await user.type(await screen.findByLabelText('ยอดขาย (บาท)'), '75');
     await user.type(screen.getByLabelText('รับเงิน (บาท)'), '100');
     await user.click(screen.getByRole('button', { name: 'ยืนยันขายและรับเงิน' }));
@@ -236,6 +270,9 @@ describe('casual-customer POS navigation', () => {
     render(<EmployeeDeliveryWorkspace casualCustomerEnabled gateway={gateway} serviceDate="2026-08-20" />);
 
     await user.click(await screen.findByRole('button', { name: 'บันทึกลูกค้าขาจร' }));
+    await user.click(document.querySelector('.employee-pos-product-grid button') as HTMLButtonElement);
+    await user.click(screen.getByRole('button', { name: 'เพิ่มครึ่งถุง' }));
+    await user.click(screen.getByRole('button', { name: 'เพิ่มรายการ' }));
     await user.type(await screen.findByLabelText('ยอดขาย (บาท)'), '75');
     await user.type(screen.getByLabelText('รับเงิน (บาท)'), '75');
     await user.click(screen.getByRole('button', { name: 'ยืนยันขายและรับเงิน' }));
@@ -356,6 +393,9 @@ describe('casual-customer POS navigation', () => {
     );
 
     await user.click(await screen.findByRole('button', { name: 'บันทึกลูกค้าขาจร' }));
+    await user.click(document.querySelector('.employee-pos-product-grid button') as HTMLButtonElement);
+    await user.click(screen.getByRole('button', { name: 'เพิ่มครึ่งถุง' }));
+    await user.click(screen.getByRole('button', { name: 'เพิ่มรายการ' }));
     await user.type(await screen.findByLabelText('ยอดขาย (บาท)'), '75');
     await user.click(screen.getByRole('button', { name: 'โอนเงิน' }));
     await user.upload(screen.getByLabelText('หลักฐานการชำระ'), proof);
@@ -366,6 +406,9 @@ describe('casual-customer POS navigation', () => {
 
     render(<EmployeeDeliveryWorkspace casualCustomerEnabled gateway={gateway} serviceDate="2026-08-20" />);
     await user.click(await screen.findByRole('button', { name: 'บันทึกลูกค้าขาจร' }));
+    await user.click(document.querySelector('.employee-pos-product-grid button') as HTMLButtonElement);
+    await user.click(screen.getByRole('button', { name: 'เพิ่มครึ่งถุง' }));
+    await user.click(screen.getByRole('button', { name: 'เพิ่มรายการ' }));
     await user.type(await screen.findByLabelText('ยอดขาย (บาท)'), '75');
     await user.click(screen.getByRole('button', { name: 'โอนเงิน' }));
     await user.upload(screen.getByLabelText('หลักฐานการชำระ'), proof);
@@ -384,6 +427,9 @@ describe('casual-customer POS navigation', () => {
     render(<EmployeeDeliveryWorkspace casualCustomerEnabled gateway={gateway} serviceDate="2026-08-20" />);
 
     await user.click(await screen.findByRole('button', { name: 'บันทึกลูกค้าขาจร' }));
+    await user.click(document.querySelector('.employee-pos-product-grid button') as HTMLButtonElement);
+    await user.click(screen.getByRole('button', { name: 'เพิ่มครึ่งถุง' }));
+    await user.click(screen.getByRole('button', { name: 'เพิ่มรายการ' }));
     await user.type(await screen.findByLabelText('ยอดขาย (บาท)'), '75');
     await user.click(screen.getByRole('button', { name: 'โอนเงิน' }));
     await user.upload(screen.getByLabelText('หลักฐานการชำระ'), new File(

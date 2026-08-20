@@ -1,8 +1,10 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowLeft,
+  Backspace,
   CheckCircle,
   Gift,
+  IceCream,
   Money,
   Printer,
   Receipt,
@@ -113,7 +115,8 @@ export function EmployeeCasualCustomerPage({
   const [success, setSuccess] = useState('');
   const [latestReceipt, setLatestReceipt] = useState<StoredSalesDocument | null>(null);
   const [iceTypeId, setIceTypeId] = useState('');
-  const [quantity, setQuantity] = useState(0.5);
+  const [quantity, setQuantity] = useState(0);
+  const [quantityEditorOpen, setQuantityEditorOpen] = useState(false);
   const [kind, setKind] = useState<CasualTransactionKind>('paid');
   const [saleAmount, setSaleAmount] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
@@ -133,7 +136,7 @@ export function EmployeeCasualCustomerPage({
 
   const dirty = Boolean(
     busy || saleAmount || receivedAmount || referenceNumber || evidence || note
-    || quantity !== 0.5 || kind !== 'paid' || voidTarget || voidReason || refundReference || refundEvidence,
+    || quantity !== 0 || kind !== 'paid' || voidTarget || voidReason || refundReference || refundEvidence,
   );
 
   useEffect(() => {
@@ -180,7 +183,7 @@ export function EmployeeCasualCustomerPage({
   const refresh = async () => {
     const next = await loadContext(round.id);
     setContext(next);
-    setIceTypeId((current) => current || next.items.find((item) => Number(item.available_quantity) >= 0.5)?.ice_type_id || '');
+    setIceTypeId((current) => next.items.some((item) => item.ice_type_id === current) ? current : '');
   };
 
   useEffect(() => {
@@ -190,7 +193,7 @@ export function EmployeeCasualCustomerPage({
       .then((next) => {
         if (cancelled) return;
         setContext(next);
-        setIceTypeId(next.items.find((item) => Number(item.available_quantity) >= 0.5)?.ice_type_id ?? '');
+        setIceTypeId('');
       })
       .catch((cause: unknown) => {
         if (!cancelled) setError(cause instanceof Error ? cause.message : 'โหลดข้อมูลลูกค้าขาจรไม่สำเร็จ');
@@ -205,6 +208,7 @@ export function EmployeeCasualCustomerPage({
     () => context?.items.find((item) => item.ice_type_id === iceTypeId) ?? null,
     [context, iceTypeId],
   );
+  const editingItem = selectedItem && quantityEditorOpen;
   const available = Number(selectedItem?.available_quantity ?? 0);
   const sale = Number(saleAmount);
   const received = Number(receivedAmount);
@@ -218,8 +222,14 @@ export function EmployeeCasualCustomerPage({
     && quantity >= 0.5 && quantity <= available && Number.isInteger(quantity * 2)
     && (kind === 'free' || validPaid) && !context?.stock_closed;
 
+  const updateQuantity = (next: number) => {
+    setQuantity(Math.max(0, Math.min(available, Math.round(next * 2) / 2)));
+  };
+
   const resetForm = () => {
-    setQuantity(0.5);
+    setIceTypeId('');
+    setQuantity(0);
+    setQuantityEditorOpen(false);
     setSaleAmount('');
     setReceivedAmount('');
     setReferenceNumber('');
@@ -369,26 +379,64 @@ export function EmployeeCasualCustomerPage({
       </div> : null}
 
       {loading ? <section className="employee-entry-section employee-casual-page__loading">กำลังโหลดสต๊อกและประวัติ...</section> : context ? <>
-        <section className="employee-entry-section employee-casual-form" aria-labelledby="casual-sale-title">
-          <div className="employee-casual-form__title">
-            <span>1</span><div><h2 id="casual-sale-title">เลือกสินค้า</h2><p>รองรับเต็มถุงและครึ่งถุง ตัดสต๊อกทันที</p></div>
-          </div>
-          <div className="employee-casual-form__choices">
-            {context.items.map((item) => <button
-              className={item.ice_type_id === iceTypeId ? 'is-selected' : ''}
-              disabled={Number(item.available_quantity) < 0.5}
-              key={item.ice_type_id}
-              onClick={() => { setIceTypeId(item.ice_type_id); setQuantity(0.5); }}
-              type="button"
-            ><strong>{item.name}</strong><small>เหลือ {Number(item.available_quantity).toLocaleString('th-TH')} {item.unit}</small></button>)}
-          </div>
-          <div className="employee-casual-quantity">
-            <button disabled={quantity <= 0.5} onClick={() => setQuantity((value) => value - 0.5)} type="button">−</button>
-            <label><span>จำนวน</span><strong>{quantity.toLocaleString('th-TH')} {selectedItem?.unit ?? 'ถุง'}</strong></label>
-            <button disabled={quantity + 0.5 > available} onClick={() => setQuantity((value) => value + 0.5)} type="button">+</button>
-          </div>
-          <p className="employee-casual-stock-note">หลังบันทึกจะเหลือ {Math.max(0, available - quantity).toLocaleString('th-TH')} {selectedItem?.unit ?? 'ถุง'}</p>
-        </section>
+        <div className="employee-pos-layout employee-pos-layout--casual">
+          <section className="employee-pos-products" aria-labelledby="casual-sale-title">
+            <div className="employee-pos-heading">
+              <div><p>สินค้า</p><h2 id="casual-sale-title">เลือกน้ำแข็ง</h2></div>
+              <span>ตัดจาก {context.stock_source.name}</span>
+            </div>
+            <div className="employee-pos-product-grid">
+              {context.items.map((item) => {
+                const selected = item.ice_type_id === iceTypeId;
+                return <button
+                  aria-pressed={selected}
+                  className={selected ? 'employee-pos-product--selected' : ''}
+                  disabled={busy || Number(item.available_quantity) < 0.5}
+                  key={item.ice_type_id}
+                  onClick={() => {
+                    if (iceTypeId !== item.ice_type_id) setQuantity(0);
+                    setIceTypeId(item.ice_type_id);
+                    setQuantityEditorOpen(true);
+                  }}
+                  type="button"
+                >
+                  <span className="employee-pos-product-image"><IceCream aria-hidden="true" /></span>
+                  <span className="employee-pos-product-selected">{selected ? <CheckCircle aria-hidden="true" weight="fill" /> : null}</span>
+                  <strong>{item.name}</strong>
+                  <small>{selected ? `${quantity.toLocaleString('th-TH')} ${item.unit}` : 'ยังไม่ระบุจำนวน'}</small>
+                  <b>{selected && quantity > 0 ? quantity.toLocaleString('th-TH') : '—'}</b>
+                  <em>คงเหลือ {Number(item.available_quantity).toLocaleString('th-TH')} {item.unit}</em>
+                </button>;
+              })}
+            </div>
+          </section>
+
+          <section aria-label={editingItem ? 'แป้นใส่จำนวน' : 'เลือกชนิดน้ำแข็ง'} className={`employee-pos-keypad ${editingItem ? '' : 'employee-pos-keypad--empty'}`}>
+            {editingItem ? <>
+              <button aria-label="ปิดแป้นใส่จำนวน" className="employee-pos-keypad-backdrop" onClick={() => setQuantityEditorOpen(false)} type="button" />
+              <div className="employee-pos-quantity">
+                <span>{selectedItem.name}</span>
+                <strong aria-live="polite">{quantity.toLocaleString('th-TH')} {selectedItem.unit}</strong>
+                <small>คงเหลือ {available.toLocaleString('th-TH')} {selectedItem.unit}</small>
+              </div>
+              <div className="employee-keypad">
+                {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((digit) => <button key={digit} onClick={() => {
+                  const next = Number(quantity === 0 ? digit : `${quantity}${digit}`);
+                  updateQuantity(next);
+                }} type="button">{digit}</button>)}
+                <button aria-label="ล้างจำนวน" onClick={() => updateQuantity(0)} type="button">ล้าง</button>
+                <button aria-label={`เพิ่มครึ่ง${selectedItem.unit}`} disabled={quantity + 0.5 > available} onClick={() => updateQuantity(quantity + 0.5)} type="button">½ {selectedItem.unit}</button>
+                <button onClick={() => updateQuantity(quantity * 10)} type="button">0</button>
+                <button aria-label="ลบหนึ่งหลัก" onClick={() => updateQuantity(Number(String(quantity).slice(0, -1) || '0'))} type="button"><Backspace aria-hidden="true" size={24} /></button>
+              </div>
+              <button className="employee-pos-add-item" disabled={quantity === 0} onClick={() => setQuantityEditorOpen(false)} type="button">เพิ่มรายการ</button>
+            </> : <div className="employee-pos-keypad-empty">
+              <IceCream aria-hidden="true" size={34} />
+              <strong>เลือกชนิดน้ำแข็งเพื่อกรอกจำนวน</strong>
+              <span>แตะสินค้า แล้วแป้นตัวเลขจะแสดงที่นี่</span>
+            </div>}
+          </section>
+        </div>
 
         <section className="employee-entry-section employee-casual-form" aria-labelledby="casual-kind-title">
           <div className="employee-casual-form__title"><span>2</span><div><h2 id="casual-kind-title">เลือกประเภท</h2></div></div>
