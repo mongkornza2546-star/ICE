@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { CalendarBlank, CaretDown, CheckCircle, Printer, WarningCircle } from '@phosphor-icons/react';
 import { supabase } from './lib/supabase';
 import type {
@@ -18,6 +18,7 @@ import type {
 import { EmployeeState } from './features/employee-delivery/EmployeeState';
 import { EmployeeStockTransferSection } from './features/employee-delivery/EmployeeStockTransferSection';
 import { EmployeeShopPicker } from './features/employee-delivery/EmployeeShopPicker';
+import { EmployeeCasualCustomerPage } from './features/employee-delivery/EmployeeCasualCustomerPage';
 import { EmployeeDeliveryReview } from './features/employee-delivery/EmployeeDeliveryReview';
 import { useEmployeeDeliveryData } from './features/employee-delivery/useEmployeeDeliveryData';
 import { toBangkokDateString } from './lib/serviceDate';
@@ -438,6 +439,7 @@ export function createSupabaseGateway(): EmployeeDeliveryGateway {
 const productionGateway = createSupabaseGateway();
 
 export function EmployeeDeliveryWorkspace({
+  casualCustomerPreviewEnabled = false,
   gateway = productionGateway,
   enableAssignedStockFlow = false,
   isActive = true,
@@ -447,6 +449,7 @@ export function EmployeeDeliveryWorkspace({
   stockSourceLabel = 'สต๊อกรวมประจำวัน',
   viewMode,
 }: {
+  casualCustomerPreviewEnabled?: boolean;
   gateway?: EmployeeDeliveryGateway;
   enableAssignedStockFlow?: boolean;
   isActive?: boolean;
@@ -462,6 +465,10 @@ export function EmployeeDeliveryWorkspace({
     dirty: false,
     submitting: false,
   });
+  const [casualCustomerOpen, setCasualCustomerOpen] = useState(false);
+  const casualCustomerButtonRef = useRef<HTMLButtonElement>(null);
+  const casualCustomerBrowseScrollY = useRef(0);
+  const casualCustomerReturnFocusPending = useRef(false);
   const lastForegroundRefreshAt = useRef(Date.now());
   const catalogRefreshPending = useRef(false);
   const data = useEmployeeDeliveryData({
@@ -474,6 +481,18 @@ export function EmployeeDeliveryWorkspace({
   });
   const anySubmittingRef = useRef(data.anySubmitting);
   anySubmittingRef.current = data.anySubmitting;
+
+  useEffect(() => {
+    setCasualCustomerOpen(false);
+    casualCustomerReturnFocusPending.current = false;
+  }, [casualCustomerPreviewEnabled, data.selectedRoundId, isActive, requestScope, resolvedViewMode, serviceDate]);
+
+  useLayoutEffect(() => {
+    if (casualCustomerOpen || !casualCustomerReturnFocusPending.current) return;
+    casualCustomerReturnFocusPending.current = false;
+    casualCustomerButtonRef.current?.focus({ preventScroll: true });
+    window.scrollTo({ top: casualCustomerBrowseScrollY.current, behavior: 'auto' });
+  }, [casualCustomerOpen]);
 
   useEffect(() => {
     onDraftStateChange?.(deliveryDraftState);
@@ -601,6 +620,27 @@ export function EmployeeDeliveryWorkspace({
   }
 
   const openRounds = data.rounds.filter((r) => r.status === 'open' && !r.cancelled_at);
+  const casualCustomerAvailable = Boolean(
+    casualCustomerPreviewEnabled
+    && data.selectedRound?.status === 'open'
+    && !data.selectedRound.cancelled_at
+    && resolvedViewMode !== 'withdrawal',
+  );
+
+  if (casualCustomerOpen && casualCustomerAvailable && data.selectedRound) {
+    return (
+      <div className="employee-workspace">
+        <EmployeeCasualCustomerPage
+          onBack={() => {
+            casualCustomerReturnFocusPending.current = true;
+            setCasualCustomerOpen(false);
+          }}
+          round={data.selectedRound}
+          serviceDateLabel={formatEmployeeServiceDate(data.selectedRound.service_date)}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className={`employee-workspace ${resolvedViewMode === 'withdrawal' ? 'employee-workspace--withdrawal' : ''}`}>
@@ -711,6 +751,14 @@ export function EmployeeDeliveryWorkspace({
             zoneOptions={data.zoneOptions}
             loadingCards={data.loadingCards}
             filteredCards={data.filteredCards}
+            casualCustomerButtonRef={casualCustomerButtonRef}
+            casualCustomerEntryVisible={casualCustomerAvailable}
+            openCasualCustomer={() => {
+              if (!casualCustomerAvailable) return;
+              casualCustomerBrowseScrollY.current = window.scrollY;
+              setCasualCustomerOpen(true);
+              window.scrollTo({ top: 0, behavior: 'auto' });
+            }}
             openCard={data.openCard}
             stockState={data.stockState}
             shopButtonRefs={data.shopButtonRefs}

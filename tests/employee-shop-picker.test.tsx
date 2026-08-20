@@ -22,10 +22,11 @@ const shop: ShopCard = {
   today_totals: {},
 };
 
-function renderPicker(openCard = vi.fn()) {
+function renderPicker(openCard = vi.fn(), selectedRoundId = 'round-1') {
   render(<EmployeeShopPicker
+    casualCustomerEntryVisible
     enableAssignedStockFlow={false}
-    selectedRoundId="round-1"
+    selectedRoundId={selectedRoundId}
     query=""
     setQuery={vi.fn()}
     selectedBuildingId=""
@@ -36,6 +37,8 @@ function renderPicker(openCard = vi.fn()) {
     zoneOptions={[]}
     loadingCards={false}
     filteredCards={[shop]}
+    casualCustomerButtonRef={{ current: null }}
+    openCasualCustomer={vi.fn()}
     openCard={openCard}
     stockState={null}
     shopButtonRefs={{ current: new Map<string, HTMLButtonElement>() }}
@@ -63,5 +66,10 @@ describe('employee shop picker image preview', () => {
 
     await user.click(screen.getByRole('button', { name: 'เลือกร้าน BB16 ร้านเล่าซา' }));
     expect(openCard).toHaveBeenCalledWith(shop);
+  });
+
+  it('hides casual customers until a round is selected', () => {
+    renderPicker(vi.fn(), '');
+    expect(screen.queryByRole('button', { name: 'บันทึกลูกค้าขาจร' })).toBeNull();
   });
 });

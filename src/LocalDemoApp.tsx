@@ -846,6 +846,7 @@ export function LocalDemoApp() {
           </div>
         </section>
         <EmployeeDeliveryWorkspace
+          casualCustomerPreviewEnabled
           enableAssignedStockFlow
           gateway={gateway}
           onDraftStateChange={setDraftState}

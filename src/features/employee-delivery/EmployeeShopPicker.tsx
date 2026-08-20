@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { MagnifyingGlass, Buildings, MapPin, Storefront, CaretRight, X } from '@phosphor-icons/react';
+import { MagnifyingGlass, Buildings, MapPin, Storefront, CaretRight, UserCircle, X } from '@phosphor-icons/react';
 import type { ShopCard, EmployeeStockState } from '../../types/app';
 import { FilterChips } from './FilterChips';
 import { EmployeeState } from './EmployeeState';
@@ -7,6 +7,8 @@ import { statusTone } from './utils';
 import { STATUS_LABELS } from './constants';
 
 export function EmployeeShopPicker({
+  casualCustomerButtonRef,
+  casualCustomerEntryVisible,
   enableAssignedStockFlow,
   selectedRoundId,
   query,
@@ -19,10 +21,13 @@ export function EmployeeShopPicker({
   zoneOptions,
   loadingCards,
   filteredCards,
+  openCasualCustomer,
   openCard,
   stockState,
   shopButtonRefs,
 }: {
+  casualCustomerButtonRef: React.RefObject<HTMLButtonElement>;
+  casualCustomerEntryVisible: boolean;
   enableAssignedStockFlow: boolean;
   selectedRoundId: string;
   query: string;
@@ -35,6 +40,7 @@ export function EmployeeShopPicker({
   zoneOptions: string[];
   loadingCards: boolean;
   filteredCards: ShopCard[];
+  openCasualCustomer: () => void;
   openCard: (card: ShopCard) => void;
   stockState: EmployeeStockState | null;
   shopButtonRefs: React.MutableRefObject<Map<string, HTMLButtonElement>>;
@@ -69,6 +75,21 @@ export function EmployeeShopPicker({
           <p>{enableAssignedStockFlow ? 'แตะร้าน แล้วใส่จำนวนที่ส่งแต่ละชนิด' : 'แตะร้านก่อน ระบบจะโหลดสต๊อก ราคา และเงื่อนไขชำระของร้านนั้น'}</p>
         </div>
       </div>
+
+      {casualCustomerEntryVisible && selectedRoundId ? <button
+        aria-label="บันทึกลูกค้าขาจร"
+        className="employee-casual-entry"
+        onClick={openCasualCustomer}
+        ref={casualCustomerButtonRef}
+        type="button"
+      >
+        <span className="employee-casual-entry__icon"><UserCircle aria-hidden="true" size={30} weight="duotone" /></span>
+        <span className="employee-casual-entry__body">
+          <strong>ลูกค้าขาจร</strong>
+          <small>ขายทันทีหรือแจกฟรี โดยไม่ต้องเลือกร้านค้า</small>
+        </span>
+        <CaretRight aria-hidden="true" size={21} weight="bold" />
+      </button> : null}
 
       <label className="employee-search employee-search--standalone">
         <MagnifyingGlass aria-hidden="true" size={22} />
