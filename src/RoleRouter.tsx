@@ -278,6 +278,7 @@ export function RoleRouter({
         </nav>
         <KeepAlive active={courierView !== 'collection'}>
           <EmployeeDeliveryWorkspace
+            casualCustomerEnabled
             enableAssignedStockFlow={courierView === 'withdrawal'}
             isActive={courierView !== 'collection'}
             onDraftStateChange={setDeliveryDraftState}
@@ -409,6 +410,7 @@ export function RoleRouter({
       {visitedViews.has('delivery') && (
         <KeepAlive active={currentView === 'delivery'}>
           <EmployeeDeliveryWorkspace
+            casualCustomerEnabled
             isActive={currentView === 'delivery'}
             onDraftStateChange={setDeliveryDraftState}
             requestScope={profile.id}

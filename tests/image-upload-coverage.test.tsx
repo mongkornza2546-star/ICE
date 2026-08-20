@@ -61,7 +61,7 @@ describe('image upload compression coverage', () => {
     const path = await uploadPaymentEvidence(pdf, 'request-1');
 
     expect(mocks.optimizeImage).not.toHaveBeenCalled();
-    expect(path).toBe('user-1/r2/request-1.pdf');
+    expect(path).toMatch(/^user-1\/r2\/request-1-[a-f0-9]{16}\.pdf$/);
     expect(mocks.invoke).toHaveBeenCalledWith('r2-storage', {
       body: expect.any(FormData),
     });
@@ -70,5 +70,17 @@ describe('image upload compression coverage', () => {
       expect.any(Blob),
       expect.objectContaining({ contentType: 'application/pdf' }),
     );
+  });
+
+  it('rejects oversized payment evidence before uploading', async () => {
+    const oversized = new File([new Uint8Array(5 * 1024 * 1024 + 1)], 'large.pdf', {
+      type: 'application/pdf',
+    });
+
+    await expect(uploadPaymentEvidence(oversized, 'request-1')).rejects.toThrow(
+      'หลักฐานต้องมีขนาดไม่เกิน 5 MB',
+    );
+    expect(mocks.invoke).not.toHaveBeenCalled();
+    expect(mocks.upload).not.toHaveBeenCalled();
   });
 });

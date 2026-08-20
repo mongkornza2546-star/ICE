@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { EmployeeDeliveryGateway } from '../src/EmployeeDeliveryWorkspace';
@@ -51,7 +51,7 @@ function DeliveryHarness({ gateway }: { gateway: EmployeeDeliveryGateway }) {
     serviceDate: '2026-08-19',
   });
 
-  if (data.loadingReference || data.loadingCards) return <div>กำลังโหลด</div>;
+  if (data.loadingReference || data.loadingCards || data.cards.length === 0) return <div>กำลังโหลด</div>;
 
   if (data.selectedCard) {
     return (
@@ -98,8 +98,8 @@ describe('employee delivery browse position', () => {
     });
 
     render(<DeliveryHarness gateway={createGateway()} />);
-    await user.click(await screen.findByRole('button', { name: 'เลือกร้าน BB15' }));
-    await user.click(screen.getByRole('button', { name: 'ใส่จำนวน' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'เลือกร้าน BB15' }));
+    await user.click(await screen.findByRole('button', { name: 'ใส่จำนวน' }));
     await user.click(screen.getByRole('button', { name: 'ยืนยันส่งร้านนี้' }));
 
     await screen.findByRole('button', { name: 'เลือกร้าน BB15' });

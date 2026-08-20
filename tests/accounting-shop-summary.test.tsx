@@ -241,7 +241,7 @@ describe('accounting shop summary', () => {
 
     const summaryTab = screen.getByRole('button', { name: 'สรุปรายร้าน' });
     expect(summaryTab.getAttribute('aria-current')).toBe('page');
-    expect(screen.getByText('ยอดขายช่วงนี้', { selector: 'article span' })).toBeTruthy();
+    expect(screen.getByText('ยอดขายตามร้านช่วงนี้', { selector: 'article span' })).toBeTruthy();
     expect(screen.getByText('รับแล้วของยอดขายช่วงนี้', { selector: 'article span' })).toBeTruthy();
     expect(screen.getByText('ค้างสะสมทั้งหมด', { selector: 'article span' })).toBeTruthy();
     expect(screen.getByText('เกินกำหนดสะสม', { selector: 'article span' })).toBeTruthy();
@@ -991,7 +991,7 @@ describe('accounting shop summary', () => {
     expect((screen.getByLabelText('จาก') as HTMLInputElement).value).toBe(initialFromDate);
     await user.click(screen.getByRole('button', { name: 'เอกสารและการเงิน' }));
     await waitFor(() => expect(rpcMock).toHaveBeenCalledWith('get_accounting_transactions', expect.objectContaining({
-      p_filters: { types: ['SALE', 'INV', 'REC', 'REF', 'ADJ'] },
+      p_filters: { types: ['SALE', 'INV', 'REC', 'FREE', 'REF', 'ADJ'] },
     })));
     fireEvent.change(screen.getByLabelText('จาก'), { target: { value: nextFromDate } });
 

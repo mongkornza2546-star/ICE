@@ -7,6 +7,7 @@ export type AccountingTransactionType =
   | 'SALE'
   | 'INV'
   | 'REC'
+  | 'FREE'
   | 'ADJ'
   | 'REF'
   | 'DAMAGE'
@@ -136,6 +137,11 @@ export type AccountingShopSummaryResponse = {
     cumulative_overdue_amount: number;
     cumulative_outstanding_shop_count: number;
     cash_received_in_period: number;
+    casual_sales_amount?: number;
+    casual_received_amount?: number;
+    casual_refunded_amount?: number;
+    casual_net_cash?: number;
+    casual_free_count?: number;
   };
   facets: {
     shops: AccountingFacet[];
@@ -263,6 +269,9 @@ export type AccountingReconciliation = {
     cash_refunded: number;
     net_cash: number;
     pending_refunds: number;
+    casual_sales?: number;
+    casual_received?: number;
+    casual_refunded?: number;
   };
 };
 

@@ -34,9 +34,9 @@ const number = new Intl.NumberFormat('th-TH', { maximumFractionDigits: 1 });
 const accountingDate = new Intl.DateTimeFormat('th-TH', { timeZone: 'Asia/Bangkok' });
 const typeLabels: Record<string, string> = {
   FACTORY: 'รับจากโรงงาน', WITHDRAW: 'เบิกออก', TRANSFER: 'โอน', SALE: 'ขายสด', INV: 'ใบส่งของ',
-  REC: 'รับเงิน', ADJ: 'ปรับปรุง', REF: 'คืนเงิน', DAMAGE: 'เสียหาย', RETURN: 'คืนรถ/โรงงาน',
+  REC: 'รับเงิน', FREE: 'แจกขาจร', ADJ: 'ปรับปรุง', REF: 'คืนเงิน', DAMAGE: 'เสียหาย', RETURN: 'คืนรถ/โรงงาน',
 };
-const financialTransactionTypes: AccountingTransactionType[] = ['SALE', 'INV', 'REC', 'REF', 'ADJ'];
+const financialTransactionTypes: AccountingTransactionType[] = ['SALE', 'INV', 'REC', 'FREE', 'REF', 'ADJ'];
 const paymentTermLabels = { immediate: 'จ่ายทันที', end_of_day: 'เก็บท้ายวัน', credit: 'เครดิต', mixed: 'หลายเงื่อนไข' } as const;
 const paymentStatusLabels = { paid: 'ชำระครบ', outstanding: 'รอชำระ', overdue: 'เกินกำหนด' } as const;
 const invoicePaymentStatusLabels = { paid: 'ชำระแล้ว', partial: 'ชำระบางส่วน', unpaid: 'ค้างชำระ', voided: 'ยกเลิกแล้ว' } as const;
@@ -334,7 +334,15 @@ export function AccountingPage({ userRole = 'round_lead', demoMode = false }: { 
     setSelected(row);
     setReceiptSnapshot(null);
     setCorrectionTargets([]);
-    if (row.type !== 'REC' || !row.payment_id || demoMode || !supabase) return;
+    if (row.type !== 'REC' || demoMode || !supabase) return;
+    if (row.source_table === 'casual_transactions') {
+      const snapshot = await supabase.rpc('get_casual_receipt_snapshot', { p_transaction_id: row.source_id });
+      if (drawerRequestId.current === requestId && !snapshot.error) {
+        setReceiptSnapshot(snapshot.data as Record<string, unknown>);
+      }
+      return;
+    }
+    if (!row.payment_id) return;
     const [snapshot, targets] = await Promise.allSettled([
       supabase.rpc('get_payment_receipt_snapshot', { p_payment_id: row.payment_id }),
       supabase.rpc('get_payment_correction_targets', { p_payment_id: row.payment_id }),
@@ -578,7 +586,12 @@ function ShopSummaryPanel({ daily, data, exporting, filters, fromDate, onExport,
   const [view, setView] = useState<'daily' | 'totals'>('daily');
   const rangeError = getDateRange(fromDate, toDate).error;
   const cards: Array<[string, number | null, 'money' | 'count', string?]> = [
-    ['ยอดขายช่วงนี้', data.totals.sales_amount, 'money'],
+    ['ยอดขายตามร้านช่วงนี้', data.totals.sales_amount, 'money'],
+    ['ยอดขายลูกค้าขาจร', data.totals.casual_sales_amount ?? 0, 'money', 'แยกจากยอดตามร้านและไม่เปลี่ยนตามตัวกรองร้านหรือพื้นที่'],
+    ['รับเงินลูกค้าขาจร', data.totals.casual_received_amount ?? 0, 'money', 'นับตามวันที่รับเงินจริง เวลา Bangkok'],
+    ['คืนเงินลูกค้าขาจร', data.totals.casual_refunded_amount ?? 0, 'money', 'นับตามวันที่ยืนยันคืนเงินจริง เวลา Bangkok'],
+    ['เงินสุทธิลูกค้าขาจร', data.totals.casual_net_cash ?? 0, 'money'],
+    ['แจกฟรีลูกค้าขาจร', data.totals.casual_free_count ?? 0, 'count', 'แยกจากตัวกรองร้านหรือพื้นที่'],
     ['รับแล้วของยอดขายช่วงนี้', data.totals.paid_amount, 'money', 'นับเงินที่จัดสรรเข้าบิลซึ่งขายในช่วงวันที่เลือก'],
     ['ค้างของยอดขายช่วงนี้', data.totals.outstanding_amount, 'money'],
     ['ค้างสะสมทั้งหมด', data.totals.cumulative_outstanding_amount, 'money'],
@@ -939,7 +952,7 @@ function ReconciliationPanel({ data, serviceDate, setServiceDate }: { data: Acco
   return <div className="accounting-reconciliation">
     <label className="accounting-reconciliation__date">วันที่ธุรกรรม<input onChange={(event) => setServiceDate(event.target.value)} type="date" value={serviceDate} /></label>
     {data ? <><div className="accounting-financial-cards">
-      {[['ยอดขาย effective', cards?.effective_sales], ['จัดสรรเข้าบิลวันนี้', cards?.allocated_to_sales], ['ควรเก็บแล้ว', cards?.outstanding_collectible], ['ลูกหนี้เครดิต', cards?.outstanding_credit], ['รับเงินจริง', cards?.cash_received], ['คืนเงินจริง', cards?.cash_refunded], ['เงินสุทธิ', cards?.net_cash], ['ยอดรอคืน', cards?.pending_refunds]].map(([label, value]) => <article key={label}><span>{label}</span><strong>{money.format(Number(value ?? 0))}</strong></article>)}
+      {[['ยอดขาย effective', cards?.effective_sales], ['ยอดขายขาจร', cards?.casual_sales], ['จัดสรรเข้าบิลวันนี้', cards?.allocated_to_sales], ['ควรเก็บแล้ว', cards?.outstanding_collectible], ['ลูกหนี้เครดิต', cards?.outstanding_credit], ['รับเงินจริง', cards?.cash_received], ['รับเงินจริงขาจร', cards?.casual_received], ['คืนเงินจริง', cards?.cash_refunded], ['คืนเงินจริงขาจร', cards?.casual_refunded], ['เงินสุทธิ', cards?.net_cash], ['ยอดรอคืน', cards?.pending_refunds]].map(([label, value]) => <article key={label}><span>{label}</span><strong>{money.format(Number(value ?? 0))}</strong></article>)}
     </div>
     <ReconciliationTable heading="สต๊อกรวมประจำวัน" rows={data.aggregate} /></> : null}
   </div>;

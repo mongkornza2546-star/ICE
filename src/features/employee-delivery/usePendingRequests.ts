@@ -7,6 +7,7 @@ const PENDING_REQUEST_MAX_AGE_MS = 48 * 60 * 60 * 1000;
 export interface PendingRequestIdentity {
   key: string;
   clientRecordedAt: string;
+  evidencePath?: string | null;
 }
 
 function readPendingRequests(): Record<string, PendingRequestIdentity> {
@@ -34,7 +35,7 @@ export function usePendingRequests() {
     const stored = readPendingRequests()[signature] ?? pendingRequestFallback.get(signature);
     if (stored) return stored;
 
-    const request = {
+    const request: PendingRequestIdentity = {
       key: crypto.randomUUID(),
       clientRecordedAt: new Date().toISOString(),
     };
@@ -51,5 +52,14 @@ export function usePendingRequests() {
     writePendingRequests(requests);
   }, []);
 
-  return { getOrCreatePendingRequest, clearPendingRequest };
+  const setPendingRequestEvidencePath = useCallback((signature: string, key: string, evidencePath: string) => {
+    const requests = readPendingRequests();
+    const request = requests[signature] ?? pendingRequestFallback.get(signature);
+    if (!request || request.key !== key) return;
+    const next = { ...request, evidencePath };
+    pendingRequestFallback.set(signature, next);
+    writePendingRequests({ ...requests, [signature]: next });
+  }, []);
+
+  return { getOrCreatePendingRequest, clearPendingRequest, setPendingRequestEvidencePath };
 }

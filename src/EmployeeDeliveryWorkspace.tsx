@@ -5,6 +5,9 @@ import type {
   DeliveryFinancialResult,
   DeliveryPosContext,
   DeliveryRound,
+  CasualTransactionContext,
+  CasualTransactionKind,
+  CasualTransactionResult,
   EmployeeStockState,
   FinancialPaymentResult,
   ImmediateSaleResult,
@@ -64,6 +67,30 @@ export interface EmployeeImmediateSalePayload {
   idempotencyKey: string;
 }
 
+export interface EmployeeCasualTransactionPayload {
+  roundId: string;
+  iceTypeId: string;
+  quantity: number;
+  transactionKind: CasualTransactionKind;
+  saleAmount: number;
+  paymentMethod: PaymentMethod | null;
+  receivedAmount: number | null;
+  referenceNumber: string | null;
+  evidencePath: string | null;
+  note: string | null;
+  clientRecordedAt: string;
+  idempotencyKey: string;
+}
+
+export interface EmployeeCasualVoidPayload {
+  transactionId: string;
+  reason: string;
+  refundMethod: PaymentMethod | null;
+  referenceNumber: string | null;
+  evidencePath: string | null;
+  idempotencyKey: string;
+}
+
 export interface EmployeeApprovalPayload {
   roundStopId: string;
   kind: 'credit_limit' | 'outstanding_balance';
@@ -95,6 +122,11 @@ export interface EmployeeDeliveryGateway {
   recordDelivery(payload: EmployeeDeliveryPayload): Promise<DeliveryFinancialResult | void>;
   recordPayment?(payload: EmployeePaymentPayload): Promise<FinancialPaymentResult>;
   recordImmediateSale?(payload: EmployeeImmediateSalePayload): Promise<ImmediateSaleResult>;
+  loadCasualTransactionCapability?(): Promise<boolean>;
+  loadCasualTransactionContext?(roundId: string): Promise<CasualTransactionContext>;
+  recordCasualTransaction?(payload: EmployeeCasualTransactionPayload): Promise<CasualTransactionResult>;
+  loadCasualReceiptSnapshot?(transactionId: string): Promise<import('./lib/salesDocumentPrint').StoredSalesDocument>;
+  voidCasualTransaction?(payload: EmployeeCasualVoidPayload): Promise<CasualTransactionResult>;
   uploadPaymentEvidence?(file: File, idempotencyKey: string): Promise<string>;
   deletePaymentEvidence?(path: string, idempotencyKey: string): Promise<void>;
   requestFinancialApproval?(payload: EmployeeApprovalPayload): Promise<{
@@ -413,6 +445,63 @@ export function createSupabaseGateway(): EmployeeDeliveryGateway {
       invalidatePosContextCache(payload.roundStopId);
       return data as ImmediateSaleResult;
     },
+    async loadCasualTransactionCapability() {
+      if (!supabase) return false;
+      const { data, error } = await supabase.rpc('get_casual_transaction_capability');
+      if (error) return false;
+      return Boolean((data as { enabled?: boolean; version?: number } | null)?.enabled
+        && Number((data as { version?: number } | null)?.version) >= 1);
+    },
+    async loadCasualTransactionContext(roundId) {
+      if (!supabase) throw new Error('ยังไม่ได้ตั้งค่า Supabase');
+      const { data, error } = await supabase.rpc('get_casual_transaction_context', {
+        p_round_id: roundId,
+      });
+      if (error) throw error;
+      return data as CasualTransactionContext;
+    },
+    async recordCasualTransaction(payload) {
+      if (!supabase) throw new Error('ยังไม่ได้ตั้งค่า Supabase');
+      const { data, error } = await supabase.rpc('record_casual_transaction', {
+        p_round_id: payload.roundId,
+        p_ice_type_id: payload.iceTypeId,
+        p_quantity: payload.quantity,
+        p_transaction_kind: payload.transactionKind,
+        p_sale_amount: payload.saleAmount,
+        p_payment_method: payload.paymentMethod,
+        p_received_amount: payload.receivedAmount,
+        p_reference_number: payload.referenceNumber,
+        p_evidence_path: payload.evidencePath,
+        p_note: payload.note,
+        p_client_recorded_at: payload.clientRecordedAt,
+        p_idempotency_key: payload.idempotencyKey,
+      });
+      if (error) throw error;
+      invalidatePosContextCache();
+      return data as CasualTransactionResult;
+    },
+    async loadCasualReceiptSnapshot(transactionId) {
+      if (!supabase) throw new Error('ยังไม่ได้ตั้งค่า Supabase');
+      const { data, error } = await supabase.rpc('get_casual_receipt_snapshot', {
+        p_transaction_id: transactionId,
+      });
+      if (error) throw error;
+      return data as import('./lib/salesDocumentPrint').StoredSalesDocument;
+    },
+    async voidCasualTransaction(payload) {
+      if (!supabase) throw new Error('ยังไม่ได้ตั้งค่า Supabase');
+      const { data, error } = await supabase.rpc('void_casual_transaction', {
+        p_transaction_id: payload.transactionId,
+        p_reason: payload.reason,
+        p_refund_method: payload.refundMethod,
+        p_reference_number: payload.referenceNumber,
+        p_evidence_path: payload.evidencePath,
+        p_idempotency_key: payload.idempotencyKey,
+      });
+      if (error) throw error;
+      invalidatePosContextCache();
+      return data as CasualTransactionResult;
+    },
     async uploadPaymentEvidence(file, idempotencyKey) {
       return uploadPaymentEvidence(file, idempotencyKey);
     },
@@ -439,7 +528,7 @@ export function createSupabaseGateway(): EmployeeDeliveryGateway {
 const productionGateway = createSupabaseGateway();
 
 export function EmployeeDeliveryWorkspace({
-  casualCustomerPreviewEnabled = false,
+  casualCustomerEnabled = false,
   gateway = productionGateway,
   enableAssignedStockFlow = false,
   isActive = true,
@@ -449,7 +538,7 @@ export function EmployeeDeliveryWorkspace({
   stockSourceLabel = 'สต๊อกรวมประจำวัน',
   viewMode,
 }: {
-  casualCustomerPreviewEnabled?: boolean;
+  casualCustomerEnabled?: boolean;
   gateway?: EmployeeDeliveryGateway;
   enableAssignedStockFlow?: boolean;
   isActive?: boolean;
@@ -465,6 +554,11 @@ export function EmployeeDeliveryWorkspace({
     dirty: false,
     submitting: false,
   });
+  const [casualDraftState, setCasualDraftState] = useState<EmployeeDeliveryDraftState>({
+    dirty: false,
+    submitting: false,
+  });
+  const [casualCapabilityAvailable, setCasualCapabilityAvailable] = useState(false);
   const [casualCustomerOpen, setCasualCustomerOpen] = useState(false);
   const casualCustomerButtonRef = useRef<HTMLButtonElement>(null);
   const casualCustomerBrowseScrollY = useRef(0);
@@ -484,8 +578,24 @@ export function EmployeeDeliveryWorkspace({
 
   useEffect(() => {
     setCasualCustomerOpen(false);
+    setCasualDraftState({ dirty: false, submitting: false });
     casualCustomerReturnFocusPending.current = false;
-  }, [casualCustomerPreviewEnabled, data.selectedRoundId, isActive, requestScope, resolvedViewMode, serviceDate]);
+  }, [casualCustomerEnabled, data.selectedRoundId, isActive, requestScope, resolvedViewMode, serviceDate]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setCasualCapabilityAvailable(false);
+    if (!casualCustomerEnabled || !gateway.loadCasualTransactionCapability
+      || !data.selectedRoundId || resolvedViewMode === 'withdrawal') return undefined;
+    void gateway.loadCasualTransactionCapability()
+      .then((available) => {
+        if (!cancelled) setCasualCapabilityAvailable(available);
+      })
+      .catch(() => {
+        if (!cancelled) setCasualCapabilityAvailable(false);
+      });
+    return () => { cancelled = true; };
+  }, [casualCustomerEnabled, data.selectedRoundId, gateway, resolvedViewMode]);
 
   useLayoutEffect(() => {
     if (casualCustomerOpen || !casualCustomerReturnFocusPending.current) return;
@@ -495,8 +605,11 @@ export function EmployeeDeliveryWorkspace({
   }, [casualCustomerOpen]);
 
   useEffect(() => {
-    onDraftStateChange?.(deliveryDraftState);
-  }, [deliveryDraftState, onDraftStateChange]);
+    onDraftStateChange?.({
+      dirty: deliveryDraftState.dirty || casualDraftState.dirty,
+      submitting: deliveryDraftState.submitting || casualDraftState.submitting,
+    });
+  }, [casualDraftState, deliveryDraftState, onDraftStateChange]);
 
   useEffect(() => {
     if (!isActive) {
@@ -621,7 +734,14 @@ export function EmployeeDeliveryWorkspace({
 
   const openRounds = data.rounds.filter((r) => r.status === 'open' && !r.cancelled_at);
   const casualCustomerAvailable = Boolean(
-    casualCustomerPreviewEnabled
+    casualCustomerEnabled
+    && casualCapabilityAvailable
+    && gateway.loadCasualTransactionContext
+    && gateway.recordCasualTransaction
+    && gateway.loadCasualReceiptSnapshot
+    && gateway.voidCasualTransaction
+    && gateway.uploadPaymentEvidence
+    && gateway.deletePaymentEvidence
     && data.selectedRound?.status === 'open'
     && !data.selectedRound.cancelled_at
     && resolvedViewMode !== 'withdrawal',
@@ -631,12 +751,19 @@ export function EmployeeDeliveryWorkspace({
     return (
       <div className="employee-workspace">
         <EmployeeCasualCustomerPage
+          deleteEvidence={gateway.deletePaymentEvidence!}
+          loadContext={gateway.loadCasualTransactionContext!}
+          loadReceipt={gateway.loadCasualReceiptSnapshot!}
           onBack={() => {
             casualCustomerReturnFocusPending.current = true;
             setCasualCustomerOpen(false);
           }}
+          onDraftStateChange={setCasualDraftState}
+          recordTransaction={gateway.recordCasualTransaction!}
           round={data.selectedRound}
           serviceDateLabel={formatEmployeeServiceDate(data.selectedRound.service_date)}
+          uploadEvidence={gateway.uploadPaymentEvidence!}
+          voidTransaction={gateway.voidCasualTransaction!}
         />
       </div>
     );

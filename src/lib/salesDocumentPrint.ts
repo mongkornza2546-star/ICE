@@ -24,6 +24,7 @@ export type SalesDocumentPayload = {
   shop: { code: string; name: string; location: string | null };
   paymentTerm: PaymentTerm | null;
   paymentMethod?: PaymentMethod | null;
+  recordedByName?: string | null;
   items: SalesDocumentItem[];
   allocations: SalesDocumentAllocation[];
   totals: { total: number; received: number | null; change: number | null };
@@ -59,6 +60,7 @@ export type StoredSalesDocument = {
   shop_location?: string | null;
   payment_term?: PaymentTerm | null;
   payment_method?: PaymentMethod | null;
+  recorded_by_name?: string | null;
   received_amount?: number | string | null;
   allocated_amount?: number | string | null;
   change_amount?: number | string | null;
@@ -104,6 +106,7 @@ export function salesDocumentFromStored(document: StoredSalesDocument): SalesDoc
     },
     paymentTerm: document.payment_term ?? charges[0]?.payment_term ?? null,
     paymentMethod: document.payment_method ?? null,
+    recordedByName: document.recorded_by_name ?? null,
     items: storedItems.map((item) => ({
       name: item.ice_type_name,
       unit: item.ice_type_unit,
@@ -178,6 +181,7 @@ export function printSalesDocument(
   if (payload.serviceDate) line(`วันที่ส่ง ${payload.serviceDate}`, undefined, 'small');
   if (payload.dueDate) line(`ครบกำหนด ${payload.dueDate}`, undefined, 'small');
   if (payload.paymentMethod) line(`วิธีชำระ ${methodLabels[payload.paymentMethod]}`, undefined, 'small');
+  if (payload.recordedByName) line(`ผู้รับเงิน ${payload.recordedByName}`, undefined, 'small');
 
   const items = printDocument.createElement('section');
   items.className = 'items';

@@ -10,6 +10,8 @@ export type ShopRoundStatus =
 export type ShopPaymentStatus = 'unknown' | 'paid' | 'unpaid';
 export type PaymentTerm = 'immediate' | 'end_of_day' | 'credit';
 export type PaymentMethod = 'cash' | 'bank_transfer' | 'qr';
+export type CasualTransactionKind = 'paid' | 'free';
+export type CasualTransactionStatus = 'active' | 'voided';
 export type FinancialPaymentStatus = 'unpaid' | 'partial' | 'paid';
 export type PriceSource = 'standard' | 'shop_override';
 
@@ -114,6 +116,49 @@ export interface ImmediateSaleResult {
   payment: FinancialPaymentResult;
   receipt_number: string;
   print_document: import('../lib/salesDocumentPrint').StoredSalesDocument;
+}
+
+export interface CasualTransactionItem {
+  ice_type_id: string;
+  code: string;
+  name: string;
+  unit: string;
+  available_quantity: number;
+}
+
+export interface CasualTransactionHistoryItem {
+  id: string;
+  ice_type_id: string;
+  ice_type_name: string;
+  ice_type_unit: string;
+  transaction_kind: CasualTransactionKind;
+  fulfillment_mode: 'measured';
+  quantity: number;
+  sale_amount: number;
+  payment_method: PaymentMethod | null;
+  received_amount: number | null;
+  change_amount: number | null;
+  receipt_number: string | null;
+  note: string | null;
+  recorded_at: string;
+  status: CasualTransactionStatus;
+  voided_at: string | null;
+  void_reason: string | null;
+}
+
+export interface CasualTransactionContext {
+  round_id: string;
+  service_date: string;
+  round_status: DeliveryRoundStatus;
+  stock_closed: boolean;
+  stock_source: { id: string; code: string; name: string };
+  items: CasualTransactionItem[];
+  history: CasualTransactionHistoryItem[];
+}
+
+export interface CasualTransactionResult {
+  transaction: CasualTransactionHistoryItem;
+  receipt: import('../lib/salesDocumentPrint').StoredSalesDocument | null;
 }
 
 export interface UserProfile {
