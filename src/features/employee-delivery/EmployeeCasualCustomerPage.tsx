@@ -136,7 +136,8 @@ export function EmployeeCasualCustomerPage({
 
   const dirty = Boolean(
     busy || saleAmount || receivedAmount || referenceNumber || evidence || note
-    || quantity !== 0 || kind !== 'paid' || voidTarget || voidReason || refundReference || refundEvidence,
+    || Boolean(iceTypeId) || quantity !== 0
+    || voidTarget || voidReason || refundReference || refundEvidence,
   );
 
   useEffect(() => {
@@ -219,7 +220,7 @@ export function EmployeeCasualCustomerPage({
     && (paymentMethod === 'cash' || received === sale)
     && (!needsEvidence || Boolean(evidence));
   const canSubmit = !busy && !loading && Boolean(selectedItem)
-    && quantity >= 0.5 && quantity <= available && Number.isInteger(quantity * 2)
+    && (quantity === 0 || (quantity >= 0.5 && quantity <= available && Number.isInteger(quantity * 2)))
     && (kind === 'free' || validPaid) && !context?.stock_closed;
 
   const updateQuantity = (next: number) => {
@@ -341,7 +342,9 @@ export function EmployeeCasualCustomerPage({
       if (isPaid) {
         setLatestReceipt(await loadReceipt(voidTarget.id).catch(() => null));
       }
-      setSuccess('ยกเลิกรายการและคืนสต๊อกแล้ว');
+      setSuccess(voidTarget.fulfillment_mode === 'measured'
+        ? 'ยกเลิกรายการและคืนสต๊อกแล้ว'
+        : isPaid ? 'ยกเลิกรายการและบันทึกคืนเงินแล้ว' : 'ยกเลิกรายการแล้ว');
       setVoidTarget(null);
       setVoidReason('');
       setRefundReference('');
@@ -391,7 +394,7 @@ export function EmployeeCasualCustomerPage({
                 return <button
                   aria-pressed={selected}
                   className={selected ? 'employee-pos-product--selected' : ''}
-                  disabled={busy || Number(item.available_quantity) < 0.5}
+                  disabled={busy}
                   key={item.ice_type_id}
                   onClick={() => {
                     if (iceTypeId !== item.ice_type_id) setQuantity(0);
@@ -404,7 +407,7 @@ export function EmployeeCasualCustomerPage({
                   <span className="employee-pos-product-selected">{selected ? <CheckCircle aria-hidden="true" weight="fill" /> : null}</span>
                   <strong>{item.name}</strong>
                   <small>{selected ? `${quantity.toLocaleString('th-TH')} ${item.unit}` : 'ยังไม่ระบุจำนวน'}</small>
-                  <b>{selected && quantity > 0 ? quantity.toLocaleString('th-TH') : '—'}</b>
+                  <b>{selected ? quantity.toLocaleString('th-TH') : '—'}</b>
                   <em>คงเหลือ {Number(item.available_quantity).toLocaleString('th-TH')} {item.unit}</em>
                 </button>;
               })}
@@ -429,11 +432,11 @@ export function EmployeeCasualCustomerPage({
                 <button onClick={() => updateQuantity(quantity * 10)} type="button">0</button>
                 <button aria-label="ลบหนึ่งหลัก" onClick={() => updateQuantity(Number(String(quantity).slice(0, -1) || '0'))} type="button"><Backspace aria-hidden="true" size={24} /></button>
               </div>
-              <button className="employee-pos-add-item" disabled={quantity === 0} onClick={() => setQuantityEditorOpen(false)} type="button">เพิ่มรายการ</button>
+              <button className="employee-pos-add-item" onClick={() => setQuantityEditorOpen(false)} type="button">{quantity === 0 ? 'ใช้จำนวน 0' : 'เพิ่มรายการ'}</button>
             </> : <div className="employee-pos-keypad-empty">
               <IceCream aria-hidden="true" size={34} />
-              <strong>เลือกชนิดน้ำแข็งเพื่อกรอกจำนวน</strong>
-              <span>แตะสินค้า แล้วแป้นตัวเลขจะแสดงที่นี่</span>
+              <strong>เลือกชนิดน้ำแข็งเพื่อระบุจำนวน (ถ้ามี)</strong>
+              <span>ไม่กรอกจำนวน ระบบจะบันทึกเป็น 0</span>
             </div>}
           </section>
         </div>
@@ -459,7 +462,7 @@ export function EmployeeCasualCustomerPage({
         <section className="employee-history employee-casual-history" aria-labelledby="casual-history-title">
           <div className="employee-casual-history__heading"><div><Receipt size={22} /><h2 id="casual-history-title">ประวัติวันนี้</h2></div><span>{context.history.length} รายการ</span></div>
           {context.history.length === 0 ? <p className="employee-casual-history__empty">ยังไม่มีรายการขาจรวันนี้</p> : <div className="employee-casual-history__list">{context.history.map((item) => <article className={item.status === 'voided' ? 'is-voided' : ''} key={item.id}>
-            <div><strong>{item.ice_type_name} · {Number(item.quantity).toLocaleString('th-TH')} {item.ice_type_unit}</strong><small>{dateTime.format(new Date(item.recorded_at))} · {item.transaction_kind === 'paid' ? paymentLabels[item.payment_method!] : 'แจกฟรี'}{item.receipt_number ? ` · ${item.receipt_number}` : ''}</small>{item.status === 'voided' ? <em>ยกเลิกแล้ว · {item.void_reason}</em> : null}</div>
+            <div><strong>{item.ice_type_name} · {item.fulfillment_mode === 'loose' ? `0 ${item.ice_type_unit}` : `${Number(item.quantity).toLocaleString('th-TH')} ${item.ice_type_unit}`}</strong><small>{dateTime.format(new Date(item.recorded_at))} · {item.transaction_kind === 'paid' ? paymentLabels[item.payment_method!] : 'แจกฟรี'}{item.receipt_number ? ` · ${item.receipt_number}` : ''}</small>{item.status === 'voided' ? <em>ยกเลิกแล้ว · {item.void_reason}</em> : null}</div>
             <b>{item.transaction_kind === 'paid' ? money.format(Number(item.sale_amount)) : 'ฟรี'}</b>
             <div className="employee-casual-history__actions">{item.receipt_number ? <button onClick={() => { void printReceipt(item.id); }} type="button"><Printer size={16} />พิมพ์</button> : null}{item.status === 'active' && !context.stock_closed ? <button onClick={() => setVoidTarget(item)} type="button">ยกเลิก</button> : null}</div>
           </article>)}</div>}
@@ -469,7 +472,7 @@ export function EmployeeCasualCustomerPage({
       {voidTarget ? <div className="employee-casual-void" role="dialog" aria-modal="true" aria-labelledby="casual-void-title">
         <section>
           <h2 id="casual-void-title">ยกเลิกรายการขาจร</h2>
-          <p>{voidTarget.ice_type_name} {Number(voidTarget.quantity).toLocaleString('th-TH')} {voidTarget.ice_type_unit}{voidTarget.transaction_kind === 'paid' ? ` · คืนเงินเต็มจำนวน ${money.format(Number(voidTarget.sale_amount))}` : ''}</p>
+          <p>{voidTarget.ice_type_name} {voidTarget.fulfillment_mode === 'loose' ? `0 ${voidTarget.ice_type_unit}` : `${Number(voidTarget.quantity).toLocaleString('th-TH')} ${voidTarget.ice_type_unit}`}{voidTarget.transaction_kind === 'paid' ? ` · คืนเงินเต็มจำนวน ${money.format(Number(voidTarget.sale_amount))}` : ''}</p>
           <label><span>เหตุผลการยกเลิก</span><textarea autoFocus onChange={(event) => setVoidReason(event.target.value)} value={voidReason} /></label>
           {voidTarget.transaction_kind === 'paid' ? <>
             <div className="employee-casual-methods">{(['cash', 'bank_transfer', 'qr'] as PaymentMethod[]).map((method) => <button className={refundMethod === method ? 'is-selected' : ''} key={method} onClick={() => setRefundMethod(method)} type="button">คืน{paymentLabels[method]}</button>)}</div>

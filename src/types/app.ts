@@ -132,8 +132,8 @@ export interface CasualTransactionHistoryItem {
   ice_type_name: string;
   ice_type_unit: string;
   transaction_kind: CasualTransactionKind;
-  fulfillment_mode: 'measured';
-  quantity: number;
+  fulfillment_mode: 'measured' | 'loose';
+  quantity: number | null;
   sale_amount: number;
   payment_method: PaymentMethod | null;
   received_amount: number | null;

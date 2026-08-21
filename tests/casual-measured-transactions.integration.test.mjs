@@ -11,6 +11,10 @@ const production = readFileSync(
   new URL('../supabase/migrations/0154_casual_measured_transactions.sql', import.meta.url),
   'utf8',
 );
+const looseTransactions = readFileSync(
+  new URL('../supabase/migrations/0155_casual_loose_transactions.sql', import.meta.url),
+  'utf8',
+);
 
 const USER_ID = '10000000-0000-4000-8000-000000000001';
 const OTHER_USER_ID = '10000000-0000-4000-8000-000000000002';
@@ -205,6 +209,7 @@ async function createDatabase(t, role = 'courier') {
   `);
   await db.exec(foundation);
   await db.exec(production);
+  await db.exec(looseTransactions);
   return db;
 }
 
@@ -260,6 +265,50 @@ test('records an atomic paid casual sale, deducts stock, and replays idempotentl
   assert.equal(balance.rows[0].quantity, '4.5');
   const count = await db.query('select count(*)::integer as count from public.casual_transactions');
   assert.equal(count.rows[0].count, 1);
+});
+
+test('records zero-quantity free and five-baht paid casual scraps without deducting stock', async (t) => {
+  const db = await createDatabase(t);
+  const free = await db.query(`select public.record_casual_loose_transaction(
+    '${ROUND_ID}', '${ICE_ID}', 'free', 0, null, null,
+    null, null, null, now(), '60000000-0000-4000-8000-000000000010'
+  ) as result`);
+  const paid = await db.query(`select public.record_casual_loose_transaction(
+    '${ROUND_ID}', '${ICE_ID}', 'paid', 5, 'cash', 5,
+    null, null, null, now(), '60000000-0000-4000-8000-000000000011'
+  ) as result`);
+
+  assert.equal(free.rows[0].result.transaction.quantity, null);
+  assert.equal(free.rows[0].result.transaction.fulfillment_mode, 'loose');
+  assert.equal(paid.rows[0].result.transaction.quantity, null);
+  assert.equal(paid.rows[0].result.transaction.sale_amount, 5);
+  assert.equal(paid.rows[0].result.transaction.receipt_number, 'REC2608-00001');
+  const ledger = await db.query(`
+    select type, quantity_out
+    from public.accounting_casual_transaction_rows('${SERVICE_DATE}', '${SERVICE_DATE}')
+    where type in ('FREE', 'SALE')
+    order by type
+  `);
+  assert.deepEqual(ledger.rows, [
+    { type: 'FREE', quantity_out: '0' },
+    { type: 'SALE', quantity_out: '0' },
+  ]);
+  const transactions = await db.query(`select public.get_accounting_transactions(
+    '${SERVICE_DATE}', '${SERVICE_DATE}', '{}'::jsonb, '{}'::jsonb, 100, 0
+  ) as result`);
+  assert.deepEqual(
+    transactions.rows[0].result.rows
+      .filter((row) => row.type === 'FREE' || row.type === 'SALE')
+      .map((row) => row.quantity_out),
+    [0, 0],
+  );
+
+  await db.query(`select public.void_casual_transaction(
+    '${paid.rows[0].result.transaction.id}', 'ยกเลิกเศษน้ำแข็ง', 'cash', null, null,
+    '70000000-0000-4000-8000-000000000010'
+  )`);
+  const balance = await db.query(`select public.stock_balance_at('${SERVICE_DATE}', '${HOLDING_ID}', '${ICE_ID}') as quantity`);
+  assert.equal(balance.rows[0].quantity, '5.0');
 });
 
 test('voiding a paid casual sale records the refund and restores stock', async (t) => {
@@ -341,45 +390,51 @@ test('rejects records and voids after the service date is closed', async (t) => 
   assert.equal(row.rows[0].status, 'active');
 });
 
-test('advertises the measured capability and includes casual sales in accounting', async (t) => {
+test('advertises measured and loose capabilities and includes casual sales in accounting', async (t) => {
   const db = await createDatabase(t);
   const capability = await db.query('select public.get_casual_transaction_capability() as result');
   assert.deepEqual(capability.rows[0].result, {
     enabled: true,
-    version: 1,
-    fulfillment_modes: ['measured'],
+    version: 2,
+    fulfillment_modes: ['measured', 'loose'],
   });
 
   await db.query(`select public.record_casual_transaction(
     '${ROUND_ID}', '${ICE_ID}', 0.5, 'paid', 75, 'cash', 100,
     null, null, null, now(), '60000000-0000-4000-8000-000000000005'
   )`);
+  const receiptDate = await db.query(`
+    select (recorded_at at time zone 'Asia/Bangkok')::date::text as value
+    from public.casual_transactions
+    where idempotency_key = '60000000-0000-4000-8000-000000000005'
+  `);
+  const receivedOnServiceDate = receiptDate.rows[0].value === SERVICE_DATE;
   const rows = await db.query(`
     select type, shop_name, employee_name, quantity_out, sales_amount, cash_in
     from public.accounting_casual_transaction_rows('${SERVICE_DATE}', '${SERVICE_DATE}')
     order by type
   `);
   assert.deepEqual(rows.rows, [
-    { type: 'REC', shop_name: 'ลูกค้าขาจร', employee_name: 'พนักงาน', quantity_out: '0', sales_amount: '0', cash_in: '75' },
+    ...(receivedOnServiceDate ? [{ type: 'REC', shop_name: 'ลูกค้าขาจร', employee_name: 'พนักงาน', quantity_out: '0', sales_amount: '0', cash_in: '75' }] : []),
     { type: 'SALE', shop_name: 'ลูกค้าขาจร', employee_name: 'พนักงาน', quantity_out: '0.5', sales_amount: '75', cash_in: '0' },
   ]);
   const reconciliation = await db.query(`select public.get_accounting_reconciliation('${SERVICE_DATE}') as result`);
   assert.equal(reconciliation.rows[0].result.financial.effective_sales, 75);
-  assert.equal(reconciliation.rows[0].result.financial.cash_received, 75);
+  assert.equal(reconciliation.rows[0].result.financial.cash_received, receivedOnServiceDate ? 75 : 0);
   assert.equal(reconciliation.rows[0].result.aggregate[0].sold, 0.5);
   const transactions = await db.query(`select public.get_accounting_transactions(
     '${SERVICE_DATE}', '${SERVICE_DATE}', '{}'::jsonb, '{}'::jsonb, 100, 0
   ) as result`);
-  assert.equal(transactions.rows[0].result.total_count, 2);
-  assert.deepEqual(transactions.rows[0].result.rows.map((row) => row.type).sort(), ['REC', 'SALE']);
+  assert.equal(transactions.rows[0].result.total_count, receivedOnServiceDate ? 2 : 1);
+  assert.deepEqual(transactions.rows[0].result.rows.map((row) => row.type).sort(), receivedOnServiceDate ? ['REC', 'SALE'] : ['SALE']);
   const summary = await db.query(`select public.get_accounting_shop_summary(
     '${SERVICE_DATE}', '${SERVICE_DATE}', '{}'::jsonb, 100, 0
   ) as result`);
   assert.equal(summary.rows[0].result.totals.casual_sales_amount, 75);
   assert.equal(summary.rows[0].result.totals.sales_amount, 0);
-  assert.equal(summary.rows[0].result.totals.casual_received_amount, 75);
+  assert.equal(summary.rows[0].result.totals.casual_received_amount, receivedOnServiceDate ? 75 : 0);
   assert.equal(summary.rows[0].result.totals.casual_refunded_amount, 0);
-  assert.equal(summary.rows[0].result.totals.casual_net_cash, 75);
+  assert.equal(summary.rows[0].result.totals.casual_net_cash, receivedOnServiceDate ? 75 : 0);
 });
 
 test('stores the employee name in the immutable casual receipt snapshot', async (t) => {

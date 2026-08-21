@@ -126,6 +126,22 @@ const stockState: EmployeeStockState = {
 };
 
 describe('employee live shop loading', () => {
+  it('requires the loose-transaction capability before enabling casual customers', async () => {
+    supabaseMock.client.rpc
+      .mockResolvedValueOnce({
+        data: { enabled: true, version: 1, fulfillment_modes: ['measured'] },
+        error: null,
+      })
+      .mockResolvedValueOnce({
+        data: { enabled: true, version: 2, fulfillment_modes: ['measured', 'loose'] },
+        error: null,
+      });
+    const gateway = createSupabaseGateway();
+
+    await expect(gateway.loadCasualTransactionCapability!()).resolves.toBe(false);
+    await expect(gateway.loadCasualTransactionCapability!()).resolves.toBe(true);
+  });
+
   it('synchronizes the round before reading shop cards', async () => {
     supabaseMock.client.rpc
       .mockResolvedValueOnce({ data: 1, error: null })

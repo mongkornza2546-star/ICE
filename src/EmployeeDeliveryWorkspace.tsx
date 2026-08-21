@@ -449,8 +449,15 @@ export function createSupabaseGateway(): EmployeeDeliveryGateway {
       if (!supabase) return false;
       const { data, error } = await supabase.rpc('get_casual_transaction_capability');
       if (error) return false;
-      return Boolean((data as { enabled?: boolean; version?: number } | null)?.enabled
-        && Number((data as { version?: number } | null)?.version) >= 1);
+      const capability = data as {
+        enabled?: boolean;
+        version?: number;
+        fulfillment_modes?: unknown;
+      } | null;
+      return Boolean(capability?.enabled
+        && Number(capability.version) >= 2
+        && Array.isArray(capability.fulfillment_modes)
+        && capability.fulfillment_modes.includes('loose'));
     },
     async loadCasualTransactionContext(roundId) {
       if (!supabase) throw new Error('ยังไม่ได้ตั้งค่า Supabase');
@@ -462,10 +469,13 @@ export function createSupabaseGateway(): EmployeeDeliveryGateway {
     },
     async recordCasualTransaction(payload) {
       if (!supabase) throw new Error('ยังไม่ได้ตั้งค่า Supabase');
-      const { data, error } = await supabase.rpc('record_casual_transaction', {
+      const rpcName = payload.quantity === 0
+        ? 'record_casual_loose_transaction'
+        : 'record_casual_transaction';
+      const { data, error } = await supabase.rpc(rpcName, {
         p_round_id: payload.roundId,
         p_ice_type_id: payload.iceTypeId,
-        p_quantity: payload.quantity,
+        ...(payload.quantity === 0 ? {} : { p_quantity: payload.quantity }),
         p_transaction_kind: payload.transactionKind,
         p_sale_amount: payload.saleAmount,
         p_payment_method: payload.paymentMethod,

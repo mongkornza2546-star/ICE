@@ -1,7 +1,8 @@
 import { Camera, FileText, Printer, WarningCircle } from '@phosphor-icons/react';
 import { useCallback, useEffect, useState } from 'react';
 import { uploadDailyCreditAcknowledgementEvidence } from '../../../lib/dailyCreditAcknowledgementEvidence';
-import { getHybridObjectUrl } from '../../../lib/r2Storage';
+import { withAsyncPublicImageUrls } from '../../../lib/publicImageUrls';
+import { getHybridObjectUrl, getHybridObjectUrls } from '../../../lib/r2Storage';
 import { printDailyCreditAcknowledgement, type DailyCreditAcknowledgementDocument } from '../../../lib/dailyCreditAcknowledgementPrint';
 import { getErrorMessage } from '../../../lib/errorMessage';
 import { toBangkokDateString } from '../../../lib/serviceDate';
@@ -14,6 +15,8 @@ type DailyCreditAcknowledgementSummary = {
   shop_code: string;
   shop_name: string;
   shop_location: string | null;
+  image_path: string | null;
+  image_url?: string | null;
   invoice_count: number;
   total_amount: number;
   latest_delivery_at: string;
@@ -50,7 +53,14 @@ export function DailyCreditAcknowledgementPanel({ serviceDate }: { serviceDate: 
         p_service_date: selectedDate,
       });
       if (loadError) throw loadError;
-      setItems((data ?? []) as DailyCreditAcknowledgementSummary[]);
+      const summaries = (data ?? []) as DailyCreditAcknowledgementSummary[];
+      const shopImageBucket = supabase.storage.from('shop-images');
+      setItems(await withAsyncPublicImageUrls(summaries, (paths) => getHybridObjectUrls(
+        'shop-images', paths, async (supabasePaths) => supabasePaths.map((path) => ({
+          path,
+          signedUrl: shopImageBucket.getPublicUrl(path).data.publicUrl,
+        })),
+      )));
     } catch (loadError) {
       setError(getErrorMessage(loadError));
     } finally {
@@ -149,7 +159,10 @@ export function DailyCreditAcknowledgementPanel({ serviceDate }: { serviceDate: 
         const label = item.is_stale ? 'ยอดเปลี่ยน · พิมพ์ฉบับใหม่' : item.document_id ? `ฉบับที่ ${item.document_version}` : 'ยังไม่ได้สร้างใบ';
         return <article key={item.shop_id}>
           <div className="daily-credit-signoff__summary">
-            <span><strong>{item.shop_code} · {item.shop_name}</strong><small>{item.shop_location ?? '—'} · {item.invoice_count} INV · ส่งล่าสุด {dateTime.format(new Date(item.latest_delivery_at))}</small></span>
+            <div className="daily-credit-signoff__shop">
+              {item.image_url ? <img alt={`รูปร้าน ${item.shop_code} · ${item.shop_name}`} decoding="async" loading="lazy" src={item.image_url} /> : null}
+              <span><strong>{item.shop_code} · {item.shop_name}</strong><small>{item.shop_location ?? '—'} · {item.invoice_count} INV · ส่งล่าสุด {dateTime.format(new Date(item.latest_delivery_at))}</small></span>
+            </div>
             <b>{money.format(Number(item.total_amount))}</b>
           </div>
           {item.open_round_count > 0 ? <p className="daily-credit-signoff__warning"><WarningCircle size={15} />ยังมีรอบส่งเปิดอยู่ ยอดอาจเพิ่มได้</p> : null}

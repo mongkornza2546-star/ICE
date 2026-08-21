@@ -2,6 +2,7 @@ import {
   CaretRight,
   Coins,
   ListNumbers,
+  MagnifyingGlass,
   Storefront,
   UserCircle,
 } from '@phosphor-icons/react';
@@ -42,6 +43,7 @@ export function CollectionRunSection({
 }) {
   const [buildingId, setBuildingId] = useState('');
   const [zoneId, setZoneId] = useState('');
+  const [query, setQuery] = useState('');
   const buildings = useMemo(() => {
     const found = new Map<string, string>();
     queue.forEach((shop) => {
@@ -56,10 +58,15 @@ export function CollectionRunSection({
     });
     return [...found].map(([id, name]) => ({ id, name })).sort((left, right) => left.name.localeCompare(right.name, 'th'));
   }, [buildingId, queue]);
-  const visibleQueue = queue.filter((shop) => (
-    (!buildingId || shop.building_id === buildingId)
-    && (!zoneId || shop.zone_id === zoneId)
-  ));
+  const normalizedQuery = query.trim().toLocaleLowerCase('th-TH');
+  const visibleQueue = queue.filter((shop) => {
+    const matchesQuery = !normalizedQuery
+      || shop.shop_code.toLocaleLowerCase('th-TH').includes(normalizedQuery)
+      || shop.shop_name.toLocaleLowerCase('th-TH').includes(normalizedQuery);
+    return matchesQuery
+      && (!buildingId || shop.building_id === buildingId)
+      && (!zoneId || shop.zone_id === zoneId);
+  });
 
   return (
     <section className="financial-ops__section">
@@ -103,6 +110,16 @@ export function CollectionRunSection({
         ? 'เลือกรายชื่อผู้เก็บเงินเพื่อเปิดรอบ'
         : 'วันนี้ยังไม่มีรอบเก็บเงินที่มอบหมายให้คุณ'}</p> : null}
       {showQueue && runId && queue.length > 0 ? <div className="financial-ops__queue-filters">
+        <label className="financial-ops__queue-search">
+          <MagnifyingGlass aria-hidden="true" size={20} />
+          <input
+            aria-label="ค้นหาร้านค้า"
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="ค้นหารหัสร้าน หรือชื่อร้าน"
+            type="search"
+            value={query}
+          />
+        </label>
         <label>ตึก
           <select aria-label="เลือกตึก" onChange={(event) => { setBuildingId(event.target.value); setZoneId(''); }} value={buildingId}>
             <option value="">ทุกตึก</option>
@@ -116,7 +133,7 @@ export function CollectionRunSection({
           </select>
         </label>
       </div> : null}
-      {showQueue && (runId && queue.length === 0 ? <p className="financial-ops__empty">ไม่มียอดค้างที่ต้องเก็บ</p> : visibleQueue.length === 0 ? <p className="financial-ops__empty">ไม่พบยอดค้างในตึกหรือโซนที่เลือก</p> : (
+      {showQueue && (runId && queue.length === 0 ? <p className="financial-ops__empty">ไม่มียอดค้างที่ต้องเก็บ</p> : visibleQueue.length === 0 ? <p className="financial-ops__empty">{normalizedQuery ? 'ไม่พบร้านค้าที่ค้นหา' : 'ไม่พบยอดค้างในตึกหรือโซนที่เลือก'}</p> : (
         <div className="financial-ops__shop-grid">
           {visibleQueue.map((shop) => (
             <button

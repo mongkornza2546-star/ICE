@@ -82,11 +82,69 @@ const dateTime = new Intl.DateTimeFormat('th-TH', {
   timeZone: 'Asia/Bangkok',
 });
 
+const receiptDateTime = new Intl.DateTimeFormat('en-GB', {
+  day: '2-digit',
+  month: '2-digit',
+  year: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit',
+  hourCycle: 'h23',
+  timeZone: 'Asia/Bangkok',
+});
+
 const methodLabels: Record<PaymentMethod, string> = {
   cash: 'เงินสด',
   bank_transfer: 'โอนเงิน',
   qr: 'QR',
 };
+
+const receiptMethodLabels: Record<PaymentMethod, string> = {
+  cash: 'เงินสด (Cash)',
+  bank_transfer: 'โอนเงิน (Bank Transfer)',
+  qr: 'QR',
+};
+
+const receiptReceivedLabels: Record<PaymentMethod, string> = {
+  cash: 'รับเงินสด (Cash Received)',
+  bank_transfer: 'รับเงินโอน (Bank Transfer Received)',
+  qr: 'รับเงิน QR (QR Received)',
+};
+
+const supplierName = 'Super Ice';
+
+function formatReceiptDateTime(value: string) {
+  return receiptDateTime.format(new Date(value)).replace(',', '');
+}
+
+function formatReceiptDate(value: string) {
+  const dateOnly = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (dateOnly) return `${dateOnly[3]}/${dateOnly[2]}/${dateOnly[1]}`;
+  return receiptDateTime.format(new Date(value)).split(',')[0];
+}
+
+function compactDocumentNumbers(numbers: string[]) {
+  if (numbers.length < 2) return numbers;
+  const first = /^(.*-)([^-]+)$/.exec(numbers[0]);
+  if (!first) return numbers;
+  const rest = numbers.slice(1).map((number) => /^(.*-)([^-]+)$/.exec(number));
+  if (rest.some((number) => number?.[1] !== first[1])) return numbers;
+  return [numbers[0], ...rest.map((number) => number![2])];
+}
+
+function consolidatedReceiptItems(items: SalesDocumentItem[]) {
+  const consolidated = new Map<string, SalesDocumentItem>();
+  for (const item of items) {
+    const key = `${item.name}\u0000${item.unit}`;
+    const current = consolidated.get(key);
+    if (current) {
+      current.quantity += item.quantity;
+      current.lineTotal += item.lineTotal;
+    } else {
+      consolidated.set(key, { ...item });
+    }
+  }
+  return [...consolidated.values()];
+}
 
 export function salesDocumentFromStored(document: StoredSalesDocument): SalesDocumentPayload {
   const charges = document.charges ?? [];
@@ -135,7 +193,7 @@ export function printSalesDocument(
   payload: SalesDocumentPayload,
   existingPrintWindow?: Window | null,
 ) {
-  const heightMm = Math.min(220, Math.max(58, 48 + payload.items.length * 5
+  const heightMm = Math.min(220, Math.max(58, (payload.documentType === 'REC' ? 82 : 48) + payload.items.length * 5
     + payload.allocations.length * 4 + (payload.voidInfo ? 12 : 0)));
   const printWindow = existingPrintWindow
     ?? window.open('', '_blank', `popup,width=360,height=${Math.ceil(heightMm * 3.78)}`);
@@ -157,6 +215,18 @@ export function printSalesDocument(
     .row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 1mm; }
     .total { display: flex; justify-content: space-between; font-size: 9pt; font-weight: 700; }
     .signature { margin-top: 5mm; padding-top: 1mm; border-top: .25mm solid #000; text-align: center; }
+    .receipt-header { border-top: .35mm solid #000; border-bottom: .35mm solid #000; padding: 1mm 0; text-align: center; }
+    .receipt-title { font-size: 9pt; font-weight: 700; text-align: center; }
+    .receipt-customer { border-top: .25mm dashed #000; padding-top: .8mm; }
+    .receipt-items { border-top: .25mm dashed #000; border-bottom: .25mm dashed #000; padding: .8mm 0; }
+    .receipt-items__header, .receipt-items__row { display: grid; grid-template-columns: minmax(0, 1fr) auto 17mm; gap: 1mm; }
+    .receipt-items__header { font-weight: 700; }
+    .receipt-items__quantity, .receipt-items__amount { text-align: right; white-space: nowrap; }
+    .receipt-reference { margin-top: .6mm; font-size: 6.5pt; }
+    .receipt-totals { display: grid; gap: .4mm; }
+    .receipt-total-row { display: flex; justify-content: space-between; gap: 1mm; }
+    .receipt-total-row:first-child { font-size: 9pt; font-weight: 700; }
+    .receipt-signature { border-top: .25mm dashed #000; margin-top: .6mm; padding-top: 5mm; text-align: center; }
     small { font-size: 6.5pt; }
   `;
   printDocument.head.replaceChildren(style);
@@ -168,6 +238,105 @@ export function printSalesDocument(
     if (className) element.className = className;
     root.append(element);
   };
+
+  if (payload.documentType === 'REC') {
+    line(supplierName, 'receipt-header');
+    line('ใบเสร็จรับเงิน / RECEIPT', 'receipt-title');
+    line(`เลขที่เอกสาร: ${payload.documentNumber}`);
+    line(`วันที่ออกเอกสาร: ${formatReceiptDateTime(payload.issuedAt)}`);
+    if (payload.serviceDate) line(`วันที่จัดส่ง: ${formatReceiptDate(payload.serviceDate)}`);
+    if (payload.status === 'voided') {
+      line(`ยกเลิก · ${payload.voidInfo?.reason ?? 'ไม่ระบุเหตุ'}`, 'voided');
+    }
+
+    line('[ข้อมูลลูกค้า / ผู้รับของ]', 'receipt-customer');
+    line(`ลูกค้า: ${payload.shop.code} · ${payload.shop.name}`);
+    line(`สาขา: ${payload.shop.location ?? '—'}`);
+    if (payload.paymentMethod) line(`วิธีชำระ: ${receiptMethodLabels[payload.paymentMethod]}`);
+
+    const itemSection = printDocument.createElement('section');
+    itemSection.className = 'receipt-items';
+    const itemHeader = printDocument.createElement('div');
+    itemHeader.className = 'receipt-items__header';
+    const receiptItems = consolidatedReceiptItems(payload.items);
+    const itemTotal = receiptItems.reduce((total, item) => total + item.lineTotal, 0);
+    const showsAllocationRows = Math.abs(itemTotal - payload.totals.total) >= 0.005;
+    for (const [text, className] of [
+      [showsAllocationRows ? 'รายการรับชำระ' : 'รายการสินค้า', ''],
+      ['จำนวน', 'receipt-items__quantity'],
+      ['รวม(฿)', 'receipt-items__amount'],
+    ]) {
+      const heading = printDocument.createElement('span');
+      heading.textContent = text;
+      heading.className = className;
+      itemHeader.append(heading);
+    }
+    itemSection.append(itemHeader);
+    const itemRows = showsAllocationRows
+      ? payload.allocations.map((allocation) => ({
+        name: allocation.documentNumber ? `รับชำระ ${allocation.documentNumber}` : 'รับชำระ',
+        quantity: '—',
+        amount: allocation.amount,
+      }))
+      : receiptItems.map((item) => ({
+        name: item.name,
+        quantity: `${item.quantity} ${item.unit}`,
+        amount: item.lineTotal,
+      }));
+    for (const item of itemRows) {
+      const row = printDocument.createElement('div');
+      row.className = 'receipt-items__row';
+      const name = printDocument.createElement('span');
+      name.textContent = item.name;
+      const quantity = printDocument.createElement('span');
+      quantity.className = 'receipt-items__quantity';
+      quantity.textContent = item.quantity;
+      const amount = printDocument.createElement('span');
+      amount.className = 'receipt-items__amount';
+      amount.textContent = item.amount.toFixed(2);
+      row.append(name, quantity, amount);
+      itemSection.append(row);
+    }
+    const documentNumbers = compactDocumentNumbers(payload.allocations
+      .flatMap((allocation) => allocation.documentNumber ? [allocation.documentNumber] : []));
+    if (!showsAllocationRows && documentNumbers.length > 0) {
+      const reference = printDocument.createElement('p');
+      reference.className = 'receipt-reference';
+      reference.textContent = `(อ้างอิงใบสั่งซื้อ: ${documentNumbers.join(', ')})`;
+      itemSection.append(reference);
+    }
+    root.append(itemSection);
+
+    const totals = printDocument.createElement('section');
+    totals.className = 'receipt-totals';
+    const totalRows: Array<[string, number]> = [
+      ['ยอดรวมสุทธิ (Total)', payload.totals.total],
+      [payload.paymentMethod ? receiptReceivedLabels[payload.paymentMethod] : 'รับเงิน (Received)', payload.totals.received ?? payload.totals.total],
+      ['เงินทอน (Change)', payload.totals.change ?? 0],
+    ];
+    for (const [label, amount] of totalRows) {
+      const row = printDocument.createElement('div');
+      row.className = 'receipt-total-row';
+      const rowLabel = printDocument.createElement('span');
+      rowLabel.textContent = label;
+      const rowAmount = printDocument.createElement('span');
+      rowAmount.textContent = money.format(amount);
+      row.append(rowLabel, rowAmount);
+      totals.append(row);
+    }
+    root.append(totals);
+    line('ลงชื่อผู้รับของ: ................................  (                              )', 'receipt-signature');
+
+    if (payload.voidInfo) {
+      line(`ยกเลิกเมื่อ ${dateTime.format(new Date(payload.voidInfo.voidedAt))}${payload.voidInfo.voidedBy ? ` · ${payload.voidInfo.voidedBy}` : ''}`, undefined, 'small');
+    }
+    printDocument.body.replaceChildren(root);
+    printWindow.addEventListener('afterprint', () => printWindow.close(), { once: true });
+    printWindow.focus();
+    printWindow.print();
+    return true;
+  }
+
   const heading = printDocument.createElement('h1');
   heading.textContent = payload.title;
   root.append(heading);
@@ -217,7 +386,7 @@ export function printSalesDocument(
   const total = printDocument.createElement('div');
   total.className = 'total';
   const totalLabel = printDocument.createElement('span');
-  totalLabel.textContent = payload.documentType === 'REC' ? 'ยอดชำระ' : 'ยอดรวม';
+  totalLabel.textContent = 'ยอดรวม';
   const totalAmount = printDocument.createElement('span');
   totalAmount.textContent = money.format(payload.totals.total);
   total.append(totalLabel, totalAmount);

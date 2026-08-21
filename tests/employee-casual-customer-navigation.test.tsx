@@ -103,7 +103,7 @@ describe('casual-customer POS navigation', () => {
     expect(scrollY).toBe(0);
     expect(await screen.findByRole('heading', { level: 2, name: 'เลือกน้ำแข็ง' })).toBeTruthy();
     await user.click(document.querySelector('.employee-pos-product-grid button') as HTMLButtonElement);
-    expect(document.querySelector('.employee-pos-quantity strong')?.textContent).toBe('0 ถุง');
+    expect(document.querySelector('.employee-pos-product-grid button small')?.textContent).toBe('0 ถุง');
 
     await user.click(screen.getByRole('button', { name: 'กลับไปเลือกร้าน' }));
     const restoredButton = await screen.findByRole('button', { name: 'บันทึกลูกค้าขาจร' });
@@ -111,7 +111,7 @@ describe('casual-customer POS navigation', () => {
     expect(scrollY).toBe(640);
   });
 
-  it('keeps keypad quantities in stock-safe half-unit steps and names the selected unit', async () => {
+  it('defaults casual items to zero but allows half-unit quantities', async () => {
     const user = userEvent.setup();
     const gateway = createGateway();
     vi.mocked(gateway.loadCasualTransactionContext!).mockResolvedValue({
@@ -127,17 +127,9 @@ describe('casual-customer POS navigation', () => {
 
     await user.click(await screen.findByRole('button', { name: 'บันทึกลูกค้าขาจร' }));
     await user.click(document.querySelector('.employee-pos-product-grid button') as HTMLButtonElement);
-    const halfUnit = screen.getByRole('button', { name: 'เพิ่มครึ่งแถว' });
-    expect(halfUnit.textContent).toBe('½ แถว');
-
-    await user.click(halfUnit);
-    await user.click(screen.getByRole('button', { name: '1', exact: true }));
+    expect(document.querySelector('.employee-pos-product-grid button small')?.textContent).toBe('0 แถว');
+    await user.click(screen.getByRole('button', { name: 'เพิ่มครึ่งแถว' }));
     expect(document.querySelector('.employee-pos-quantity strong')?.textContent).toBe('0.5 แถว');
-
-    await user.click(screen.getByRole('button', { name: 'ล้างจำนวน' }));
-    await user.click(screen.getByRole('button', { name: '9', exact: true }));
-    await user.click(screen.getByRole('button', { name: '0', exact: true }));
-    expect(document.querySelector('.employee-pos-quantity strong')?.textContent).toBe('9 แถว');
   });
 
   it('returns to the picker when the service date changes', async () => {
@@ -205,7 +197,7 @@ describe('casual-customer POS navigation', () => {
     expect(screen.queryByRole('heading', { level: 1, name: 'ลูกค้าขาจร' })).toBeNull();
   });
 
-  it('records a real cash casual sale from the employee form', async () => {
+  it('records a five-baht zero-quantity casual sale from the employee form', async () => {
     const user = userEvent.setup();
     const gateway = createGateway();
     vi.mocked(gateway.recordCasualTransaction!).mockResolvedValue({
@@ -215,12 +207,12 @@ describe('casual-customer POS navigation', () => {
         ice_type_name: 'น้ำแข็ง',
         ice_type_unit: 'ถุง',
         transaction_kind: 'paid',
-        fulfillment_mode: 'measured',
-        quantity: 0.5,
-        sale_amount: 75,
+        fulfillment_mode: 'loose',
+        quantity: null,
+        sale_amount: 5,
         payment_method: 'cash',
-        received_amount: 100,
-        change_amount: 25,
+        received_amount: 5,
+        change_amount: 0,
         receipt_number: 'REC2608-00001',
         note: null,
         recorded_at: '2026-08-20T02:30:00Z',
@@ -234,20 +226,18 @@ describe('casual-customer POS navigation', () => {
 
     await user.click(await screen.findByRole('button', { name: 'บันทึกลูกค้าขาจร' }));
     await user.click(document.querySelector('.employee-pos-product-grid button') as HTMLButtonElement);
-    await user.click(screen.getByRole('button', { name: 'เพิ่มครึ่งถุง' }));
-    await user.click(screen.getByRole('button', { name: 'เพิ่มรายการ' }));
-    await user.type(await screen.findByLabelText('ยอดขาย (บาท)'), '75');
-    await user.type(screen.getByLabelText('รับเงิน (บาท)'), '100');
+    await user.type(await screen.findByLabelText('ยอดขาย (บาท)'), '5');
+    await user.type(screen.getByLabelText('รับเงิน (บาท)'), '5');
     await user.click(screen.getByRole('button', { name: 'ยืนยันขายและรับเงิน' }));
 
     await waitFor(() => expect(gateway.recordCasualTransaction).toHaveBeenCalledWith(expect.objectContaining({
       roundId: 'round-1',
       iceTypeId: 'ice-1',
-      quantity: 0.5,
+      quantity: 0,
       transactionKind: 'paid',
-      saleAmount: 75,
+      saleAmount: 5,
       paymentMethod: 'cash',
-      receivedAmount: 100,
+      receivedAmount: 5,
     })));
     expect(await screen.findByText(/REC2608-00001/)).toBeTruthy();
   });
@@ -271,8 +261,6 @@ describe('casual-customer POS navigation', () => {
 
     await user.click(await screen.findByRole('button', { name: 'บันทึกลูกค้าขาจร' }));
     await user.click(document.querySelector('.employee-pos-product-grid button') as HTMLButtonElement);
-    await user.click(screen.getByRole('button', { name: 'เพิ่มครึ่งถุง' }));
-    await user.click(screen.getByRole('button', { name: 'เพิ่มรายการ' }));
     await user.type(await screen.findByLabelText('ยอดขาย (บาท)'), '75');
     await user.type(screen.getByLabelText('รับเงิน (บาท)'), '75');
     await user.click(screen.getByRole('button', { name: 'ยืนยันขายและรับเงิน' }));
@@ -318,6 +306,37 @@ describe('casual-customer POS navigation', () => {
     const first = vi.mocked(gateway.voidCasualTransaction!).mock.calls[0][0];
     const second = vi.mocked(gateway.voidCasualTransaction!).mock.calls[1][0];
     expect(second.idempotencyKey).toBe(first.idempotencyKey);
+  });
+
+  it('does not claim to restore stock when voiding a loose issue', async () => {
+    const user = userEvent.setup();
+    const gateway = createGateway();
+    const transaction = {
+      id: 'casual-loose-1', ice_type_id: 'ice-1', ice_type_name: 'น้ำแข็ง', ice_type_unit: 'ถุง',
+      transaction_kind: 'free' as const, fulfillment_mode: 'loose' as const, quantity: null,
+      sale_amount: 0, payment_method: null, received_amount: null, change_amount: null,
+      receipt_number: null, note: null, recorded_at: '2026-08-20T02:30:00Z',
+      status: 'active' as const, voided_at: null, void_reason: null,
+    };
+    vi.mocked(gateway.loadCasualTransactionContext!).mockResolvedValue({
+      round_id: 'round-1', service_date: '2026-08-20', round_status: 'open', stock_closed: false,
+      stock_source: { id: 'holding-1', code: 'HOLD-1', name: 'จุดถือครอง' },
+      items: [{ ice_type_id: 'ice-1', code: 'ICE', name: 'น้ำแข็ง', unit: 'ถุง', available_quantity: 9.5 }],
+      history: [transaction],
+    });
+    vi.mocked(gateway.voidCasualTransaction!).mockResolvedValue({
+      transaction: { ...transaction, status: 'voided', voided_at: '2026-08-20T03:00:00Z', void_reason: 'บันทึกผิด' },
+      receipt: null,
+    });
+    render(<EmployeeDeliveryWorkspace casualCustomerEnabled gateway={gateway} serviceDate="2026-08-20" />);
+
+    await user.click(await screen.findByRole('button', { name: 'บันทึกลูกค้าขาจร' }));
+    await user.click(await screen.findByRole('button', { name: 'ยกเลิก' }));
+    await user.type(screen.getByLabelText('เหตุผลการยกเลิก'), 'บันทึกผิด');
+    await user.click(screen.getByRole('button', { name: 'ยืนยันยกเลิก' }));
+
+    expect(await screen.findByText('ยกเลิกรายการแล้ว')).toBeTruthy();
+    expect(screen.queryByText('ยกเลิกรายการและคืนสต๊อกแล้ว')).toBeNull();
   });
 
   it('reloads the voided receipt before offering it for printing', async () => {
@@ -394,8 +413,6 @@ describe('casual-customer POS navigation', () => {
 
     await user.click(await screen.findByRole('button', { name: 'บันทึกลูกค้าขาจร' }));
     await user.click(document.querySelector('.employee-pos-product-grid button') as HTMLButtonElement);
-    await user.click(screen.getByRole('button', { name: 'เพิ่มครึ่งถุง' }));
-    await user.click(screen.getByRole('button', { name: 'เพิ่มรายการ' }));
     await user.type(await screen.findByLabelText('ยอดขาย (บาท)'), '75');
     await user.click(screen.getByRole('button', { name: 'โอนเงิน' }));
     await user.upload(screen.getByLabelText('หลักฐานการชำระ'), proof);
@@ -407,8 +424,6 @@ describe('casual-customer POS navigation', () => {
     render(<EmployeeDeliveryWorkspace casualCustomerEnabled gateway={gateway} serviceDate="2026-08-20" />);
     await user.click(await screen.findByRole('button', { name: 'บันทึกลูกค้าขาจร' }));
     await user.click(document.querySelector('.employee-pos-product-grid button') as HTMLButtonElement);
-    await user.click(screen.getByRole('button', { name: 'เพิ่มครึ่งถุง' }));
-    await user.click(screen.getByRole('button', { name: 'เพิ่มรายการ' }));
     await user.type(await screen.findByLabelText('ยอดขาย (บาท)'), '75');
     await user.click(screen.getByRole('button', { name: 'โอนเงิน' }));
     await user.upload(screen.getByLabelText('หลักฐานการชำระ'), proof);
@@ -428,8 +443,6 @@ describe('casual-customer POS navigation', () => {
 
     await user.click(await screen.findByRole('button', { name: 'บันทึกลูกค้าขาจร' }));
     await user.click(document.querySelector('.employee-pos-product-grid button') as HTMLButtonElement);
-    await user.click(screen.getByRole('button', { name: 'เพิ่มครึ่งถุง' }));
-    await user.click(screen.getByRole('button', { name: 'เพิ่มรายการ' }));
     await user.type(await screen.findByLabelText('ยอดขาย (บาท)'), '75');
     await user.click(screen.getByRole('button', { name: 'โอนเงิน' }));
     await user.upload(screen.getByLabelText('หลักฐานการชำระ'), new File(
