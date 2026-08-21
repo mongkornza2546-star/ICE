@@ -210,8 +210,11 @@
   .accounting-daily-matrix__toolbar { align-items: stretch; }
   .accounting-daily-matrix__period, .accounting-daily-matrix__windows { width: 100%; justify-content: center; }
   .accounting-daily-matrix__period strong { min-width: 0; flex: 1; }
-  .accounting-daily-matrix__shop { width: 190px; min-width: 190px; left: 52px; }
-  .accounting-daily-matrix__sequence { width: 52px; min-width: 52px; }
+  .accounting-daily-matrix__sequence { position: static; left: auto; width: 48px; min-width: 48px; }
+  .accounting-daily-matrix__shop { position: static; left: auto; width: auto; min-width: 190px; border-right: 1px solid #dfe7e2; }
+  .accounting-daily-matrix__table thead .accounting-daily-matrix__sequence,
+  .accounting-daily-matrix__table thead .accounting-daily-matrix__shop { position: sticky; top: 0; left: auto; z-index: 2; }
+  .accounting-daily-matrix__totals th { position: static; left: auto; }
 }
 
 @media (min-width: 1500px) {
@@ -1928,6 +1931,7 @@ input:disabled, select:disabled, textarea:disabled { background: #f2f5f8; color:
 .employee-payment-sheet > form { min-width: 0; gap: 14px; }
 .employee-payment-sheet > form > fieldset { min-width: 0; margin: 0; gap: 14px; }
 .employee-payment-sheet .financial-ops__payment-actions:has(> button:only-child) { grid-template-columns: 1fr; }
+.employee-payment-sheet.financial-ops__payment-card { max-height: none; overflow-y: visible; }
 .financial-ops__payment-complete { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 9px; padding: 14px; border-radius: 12px; color: #176c4e; background: #ecfaf3; }
 .financial-ops__payment-complete > span { display: grid; gap: 2px; }
 .financial-ops__payment-complete small { color: #5b7b6e; font-size: .68rem; }
