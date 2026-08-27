@@ -50,17 +50,7 @@ const queue: QueueShop[] = [
 
 function renderCollectionRun() {
   render(<CollectionRunSection
-    busy={false}
-    collectorAvatarUrls={{}}
-    collectors={[]}
-    failedCollectorAvatars={new Set()}
-    isManager={false}
-    memberIds={[]}
-    onCloseRun={vi.fn()}
-    onCollectorAvatarError={vi.fn()}
-    onSaveRun={vi.fn()}
     onSelectShop={vi.fn()}
-    onToggleCollector={vi.fn()}
     queue={queue}
     runId="run-1"
   />);

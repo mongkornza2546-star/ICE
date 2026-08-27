@@ -72,6 +72,18 @@ describe('image upload compression coverage', () => {
     );
   });
 
+  it('rejects a shop image when the optimized result still exceeds 5 MB', async () => {
+    const oversizedResult = new File(['optimized'], 'source.webp', { type: 'image/webp' });
+    Object.defineProperty(oversizedResult, 'size', { value: 5 * 1024 * 1024 + 1 });
+    mocks.optimizeImage.mockResolvedValue(oversizedResult);
+
+    await expect(uploadShopImage('shop-1', sourceImage)).rejects.toThrow(
+      'รูปหลังบีบอัดต้องมีขนาดไม่เกิน 5 MB',
+    );
+    expect(mocks.invoke).not.toHaveBeenCalled();
+    expect(mocks.upload).not.toHaveBeenCalled();
+  });
+
   it('rejects oversized payment evidence before uploading', async () => {
     const oversized = new File([new Uint8Array(5 * 1024 * 1024 + 1)], 'large.pdf', {
       type: 'application/pdf',

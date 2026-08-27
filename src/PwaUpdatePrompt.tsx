@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { registerSW } from 'virtual:pwa-register';
-import { requestPwaUpdate } from './pwaUpdateSafety';
+import { clearLegacyCatalogImageCache, requestPwaUpdate } from './pwaUpdateSafety';
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -24,6 +24,8 @@ export function PwaUpdatePrompt() {
   const [updateServiceWorker, setUpdateServiceWorker] = useState<(() => Promise<void>) | null>(null);
 
   useEffect(() => {
+    void clearLegacyCatalogImageCache();
+
     const onDraftState = (event: Event) => {
       setHasDraft(Boolean((event as CustomEvent<{ dirty?: boolean }>).detail?.dirty));
     };

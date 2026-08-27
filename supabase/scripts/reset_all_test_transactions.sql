@@ -4,6 +4,7 @@
 -- ล้างข้อมูลทดสอบทั้งหมดของ:
 --   - รอบส่ง / ประวัติส่งน้ำแข็ง / รับน้ำแข็งจากโรงงาน
 --   - การส่งของ ยอดขาย รายการขาย และบิล
+--   - รายการลูกค้าขาจร ใบรับเงิน การยืนยันคืนเงิน และคำขอยกเลิก
 --   - การชำระเงิน รอบเก็บเงิน และคำขออนุมัติ
 --   - การโอน/นับ/ปิดสต๊อก และ audit log ทดสอบ
 --   - คิวคำสั่งออฟไลน์ ปัญหา sync และประวัติการตัดสินใจ
@@ -23,9 +24,21 @@ select 'delivery rounds', count(*) from public.delivery_rounds
 union all
 select 'delivery events / sales', count(*) from public.delivery_events
 union all
+select 'casual transactions', count(*) from public.casual_transactions
+union all
+select 'casual receipt snapshots', count(*) from public.casual_receipt_snapshots
+union all
+select 'casual refund confirmations', count(*) from public.casual_refund_confirmations
+union all
+select 'casual void requests', count(*) from public.casual_void_requests
+union all
 select 'delivery charges / bills', count(*) from public.delivery_charges
 union all
 select 'payments / receipts', count(*) from public.payments
+union all
+select 'cash handovers', count(*) from public.cash_handovers
+union all
+select 'cash handover items', count(*) from public.cash_handover_items
 union all
 select 'payment allocation changes', count(*) from public.payment_allocation_changes
 union all
@@ -92,6 +105,8 @@ truncate table
   public.payment_allocations,
   public.payment_receipt_snapshots,
   public.delivery_charge_document_snapshots,
+  public.cash_handover_items,
+  public.cash_handovers,
   public.payments,
   public.collection_run_members,
   public.collection_run_credit_charges,
@@ -115,6 +130,10 @@ truncate table
   public.delivery_event_revisions,
   public.delivery_items,
   public.delivery_events,
+  public.casual_void_requests,
+  public.casual_receipt_snapshots,
+  public.casual_refund_confirmations,
+  public.casual_transactions,
   public.round_close_ice_summaries,
   public.round_close_summaries,
   public.round_ice_counts,
@@ -142,8 +161,14 @@ select
   (select count(*) from public.stock_movements) as stock_movements,
   (select count(*) from public.delivery_rounds) as delivery_rounds,
   (select count(*) from public.delivery_events) as sales,
+  (select count(*) from public.casual_transactions) as casual_transactions,
+  (select count(*) from public.casual_receipt_snapshots) as casual_receipt_snapshots,
+  (select count(*) from public.casual_refund_confirmations) as casual_refund_confirmations,
+  (select count(*) from public.casual_void_requests) as casual_void_requests,
   (select count(*) from public.delivery_charges) as bills,
   (select count(*) from public.payments) as payments,
+  (select count(*) from public.cash_handovers) as cash_handovers,
+  (select count(*) from public.cash_handover_items) as cash_handover_items,
   (select count(*) from public.payment_allocation_changes) as payment_allocation_changes,
   (select count(*) from public.refund_obligations) as refund_obligations,
   (select count(*) from public.refund_settlements) as refund_settlements,
@@ -159,5 +184,5 @@ select
   (select count(*) from public.offline_sync_issue_decisions) as offline_sync_issue_decisions,
   (select count(*) from public.audit_logs) as audit_logs;
 
--- หมายเหตุ: evidence_path ใน payments ถูกล้างแล้ว แต่ไฟล์หลักฐานใน Supabase Storage
+-- หมายเหตุ: evidence_path ใน payments และ casual transactions ถูกล้างแล้ว แต่ไฟล์หลักฐานใน Supabase Storage
 -- bucket "payment-evidence" ต้องลบผ่าน Storage API/Dashboard เท่านั้น ห้าม DELETE storage.objects ตรงๆ

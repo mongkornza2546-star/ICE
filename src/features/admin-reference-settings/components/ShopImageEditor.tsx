@@ -1,6 +1,6 @@
 import { type ChangeEvent, type FormEvent, useEffect, useState } from 'react';
 import { Info, ImageSquare, Trash, UploadSimple } from '@phosphor-icons/react';
-import { ALLOWED_SHOP_IMAGE_TYPES, MAX_SHOP_IMAGE_SIZE, type ShopImageSetting } from '../types';
+import { ALLOWED_SHOP_IMAGE_TYPES, MAX_SHOP_IMAGE_SOURCE_SIZE, type ShopImageSetting } from '../types';
 import {
   getErrorMessage,
   getShopImagePublicUrl,
@@ -73,10 +73,10 @@ export function ShopImageEditor({ shop, onShopSaved }: ShopImageEditorProps) {
     event.target.value = '';
     if (!file) return;
 
-    if (file.size > MAX_SHOP_IMAGE_SIZE) {
+    if (file.size > MAX_SHOP_IMAGE_SOURCE_SIZE) {
       setShopUploadFile(null);
       setShopImageSuccess(null);
-      setShopImageError('รูปต้องมีขนาดไม่เกิน 5 MB');
+      setShopImageError('รูปต้นฉบับต้องมีขนาดไม่เกิน 25 MB');
       return;
     }
 
@@ -175,7 +175,7 @@ export function ShopImageEditor({ shop, onShopSaved }: ShopImageEditorProps) {
             <span>{shop.image_path ? 'เลือกรูปใหม่' : 'เลือกรูป'}</span>
             <input accept="image/jpeg,image/png,image/webp" onChange={chooseShopImageFile} type="file" />
           </label>
-          <p className="reference-inline-note"><Info size={16} weight="fill" />รองรับ JPG, PNG, WEBP ขนาดไม่เกิน 5 MB และจะย่อเป็น WebP ไม่เกิน 1600 × 1200 px โดยตั้งเป้าขนาดไฟล์ไม่เกิน 400 KB อัตโนมัติ</p>
+          <p className="reference-inline-note"><Info size={16} weight="fill" />รองรับ JPG, PNG, WEBP ไฟล์ต้นฉบับไม่เกิน 25 MB และจะย่อเป็น WebP ไม่เกิน 1600 × 1200 px โดยตั้งเป้าขนาดไฟล์ไม่เกิน 400 KB อัตโนมัติ</p>
           {shopImageError ? <p className="error-text" role="alert">{shopImageError}</p> : null}
           {shopImageSuccess ? <p aria-live="polite" className="success-text">{shopImageSuccess}</p> : null}
           <div className="reference-form__actions">

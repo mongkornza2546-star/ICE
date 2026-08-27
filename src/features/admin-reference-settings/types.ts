@@ -9,6 +9,7 @@ export interface UserDraft {
   phone: string;
   role: AppRole;
   isActive: boolean;
+  canCollectShopPayments: boolean;
   workSiteIds: string[];
 }
 
@@ -85,11 +86,12 @@ export const MAX_ICE_TYPE_IMAGE_SIZE = 5 * 1024 * 1024;
 
 export const ALLOWED_SHOP_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 export const MAX_SHOP_IMAGE_SIZE = 5 * 1024 * 1024;
+export const MAX_SHOP_IMAGE_SOURCE_SIZE = 25 * 1024 * 1024;
 export const SHOP_IMAGE_BUCKET = 'shop-images';
 export const USER_AVATAR_BUCKET = 'user-avatars';
 export const ALLOWED_USER_AVATAR_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 export const MAX_USER_AVATAR_SIZE = 5 * 1024 * 1024;
-export const USER_FIELDS = 'id, code, display_name, nickname, avatar_path, phone, role, is_active';
+export const USER_FIELDS = 'id, code, display_name, nickname, avatar_path, phone, role, is_active, can_collect_shop_payments';
 export const WORK_SITE_FIELDS = 'id, code, name';
 export const EMPLOYEE_WORK_SITE_ASSIGNMENT_FIELDS = 'user_id, stock_location_id';
 export const ICE_TYPE_FIELDS = 'id, code, name, unit, image_path, is_active';

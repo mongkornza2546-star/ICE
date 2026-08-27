@@ -4,7 +4,7 @@ import { ArrowClockwise, CaretLeft, CaretRight, DownloadSimple, Funnel, Magnifyi
 import { DeliveryCorrectionDialog } from '../delivery-corrections/DeliveryCorrectionDialog';
 import { supabase } from '../../lib/supabase';
 import { getErrorMessage } from '../../lib/errorMessage';
-import { subscribeToDataChange } from '../../lib/dataChange';
+import { publishDataChange, subscribeToDataChange } from '../../lib/dataChange';
 import { toBangkokDateString } from '../../lib/serviceDate';
 import { exportAccountingShopDaily, exportAccountingTransactions } from './exportAccounting';
 import type {
@@ -188,6 +188,7 @@ export function AccountingPage({ userRole = 'round_lead', demoMode = false }: { 
   const [correctionEventId, setCorrectionEventId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [resolvingIssueId, setResolvingIssueId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshToken, setRefreshToken] = useState(0);
   const loadRequestId = useRef(0);
@@ -350,6 +351,29 @@ export function AccountingPage({ userRole = 'round_lead', demoMode = false }: { 
     if (drawerRequestId.current !== requestId) return;
     if (snapshot.status === 'fulfilled' && !snapshot.value.error) setReceiptSnapshot(snapshot.value.data as Record<string, unknown>);
     if (targets.status === 'fulfilled' && !targets.value.error) setCorrectionTargets((targets.value.data ?? []) as typeof correctionTargets);
+  };
+
+  const resolveReviewIssue = async (item: AccountingReviewResponse['rows'][number]) => {
+    if (!item.issue_id.startsWith('daily-close-') || demoMode || !supabase || resolvingIssueId) return;
+    const resolutionNote = window.prompt('สรุปการตรวจสอบและการดำเนินการภายนอก')?.trim();
+    if (!resolutionNote) return;
+    const externalReference = window.prompt('เลขอ้างอิงภายนอก (ถ้ามี)')?.trim() || null;
+    setResolvingIssueId(item.issue_id);
+    setError(null);
+    try {
+      const response = await supabase.rpc('resolve_daily_close_reconciliation_issue', {
+        p_issue_id: item.source_id,
+        p_resolution_note: resolutionNote,
+        p_external_reference: externalReference,
+      });
+      if (response.error) throw response.error;
+      publishDataChange(['accounting']);
+      setRefreshToken((value) => value + 1);
+    } catch (resolveError) {
+      setError(getErrorMessage(resolveError));
+    } finally {
+      setResolvingIssueId(null);
+    }
   };
 
   const exportRows = async () => {
@@ -549,7 +573,7 @@ export function AccountingPage({ userRole = 'round_lead', demoMode = false }: { 
         <label className="accounting-filters__checkbox"><input checked={Boolean(filters.issues_only)} onChange={(event) => updateFilter({ issues_only: event.target.checked || undefined })} type="checkbox" /><Funnel size={16} />เฉพาะมีประเด็น</label>
         {tab === 'transactions' ? <button disabled={exporting || loading} onClick={() => void exportRows()} type="button"><DownloadSimple size={18} />{exporting ? 'กำลังส่งออก...' : 'ส่งออก .xlsx'}</button> : null}
       </div>
-      {tab === 'transactions' ? <TransactionsTable onOpen={(row) => void openRow(row)} rows={transactions.rows} setSort={setSort} sort={sort} /> : <ReviewQueue rows={reviews.rows} />}
+      {tab === 'transactions' ? <TransactionsTable onOpen={(row) => void openRow(row)} rows={transactions.rows} setSort={setSort} sort={sort} /> : <ReviewQueue onResolve={(item) => void resolveReviewIssue(item)} resolvingIssueId={resolvingIssueId} rows={reviews.rows} />}
       <AccountingPagination page={page} pageSize={PAGE_SIZE} setPage={setPage} totalCount={totalCount} />
     </>}
     {loading ? <p className="accounting-page__loading">กำลังโหลดข้อมูล...</p> : null}
@@ -766,7 +790,7 @@ function ShopDailyMatrix({ collapsedGroups, daily, data, fromDate, grouped, onOp
     groups.set(key, [...(groups.get(key) ?? []), row]);
   });
   const dayColumnCount = daily.ice_types.length + 2;
-  const totalColumnCount = 2 + dates.length * dayColumnCount + 6;
+  const totalColumnCount = 2 + dates.length * dayColumnCount + 5;
 
   const renderDayCells = (shop: AccountingShopSummaryRow, day: AccountingShopDailyCell | undefined, date: string) => {
     if (!day) return <Fragment key={date}>
@@ -803,7 +827,7 @@ function ShopDailyMatrix({ collapsedGroups, daily, data, fromDate, grouped, onOp
       <td className="accounting-daily-matrix__sequence">{shop.delivery_sequence?.toLocaleString('th-TH') ?? '—'}</td>
       <th className="accounting-daily-matrix__shop"><button className="accounting-link" onClick={() => onOpenShop(shop)} type="button">{shop.shop_code} · {shop.shop_name}</button></th>
       {dates.map((date) => renderDayCells(shop, days.get(date), date))}
-      <td><strong>{money.format(shop.sales_amount)}</strong></td><td>{money.format(shop.outstanding_amount)}</td><td>{money.format(shop.cumulative_outstanding_amount)}</td><td>{money.format(shop.cumulative_overdue_amount)}</td><td><span className={`accounting-payment-status accounting-payment-status--${shop.payment_status}`}>{paymentStatusLabels[shop.payment_status]}</span></td><td className="accounting-daily-matrix__note">{note}</td>
+      <td>{money.format(shop.outstanding_amount)}</td><td>{money.format(shop.cumulative_outstanding_amount)}</td><td>{money.format(shop.cumulative_overdue_amount)}</td><td><span className={`accounting-payment-status accounting-payment-status--${shop.payment_status}`}>{paymentStatusLabels[shop.payment_status]}</span></td><td className="accounting-daily-matrix__note">{note}</td>
     </tr>;
   };
 
@@ -825,7 +849,7 @@ function ShopDailyMatrix({ collapsedGroups, daily, data, fromDate, grouped, onOp
       <thead>
         <tr><th className="accounting-daily-matrix__sequence" rowSpan={2}>ลำดับ</th><th className="accounting-daily-matrix__shop" rowSpan={2}>ร้าน</th>
           {dates.map((date) => <th className="accounting-daily-matrix__date" colSpan={dayColumnCount} key={date}>{dailyDate.format(new Date(`${date}T12:00:00+07:00`))}</th>)}
-          <th rowSpan={2}>ยอดขายรวม</th><th rowSpan={2}>ค้างวันนี้</th><th rowSpan={2}>ค้างสะสม</th><th rowSpan={2}>เกินกำหนด</th><th rowSpan={2}>สถานะชำระ</th><th rowSpan={2}>หมายเหตุ</th>
+          <th rowSpan={2}>ค้างวันนี้</th><th rowSpan={2}>ค้างสะสม</th><th rowSpan={2}>เกินกำหนด</th><th rowSpan={2}>สถานะชำระ</th><th rowSpan={2}>หมายเหตุ</th>
         </tr>
         <tr>{dates.flatMap((date) => [
           ...daily.ice_types.map((iceType) => <th key={`${date}:${iceType.ice_type_id}`} title={iceType.name}>{iceType.name}</th>),
@@ -861,7 +885,7 @@ function ShopDailyMatrix({ collapsedGroups, daily, data, fromDate, grouped, onOp
                     <td>{complete ? money.format(dayCells.reduce((sum, day) => sum + Number(day?.cash_received), 0)) : '—'}</td>
                   </Fragment>;
                 })}
-                <td>{money.format(rows.reduce((sum, shop) => sum + shop.sales_amount, 0))}</td><td>{money.format(rows.reduce((sum, shop) => sum + shop.outstanding_amount, 0))}</td><td>{money.format(group.cumulative_outstanding_amount)}</td><td>{money.format(rows.reduce((sum, shop) => sum + shop.cumulative_overdue_amount, 0))}</td><td>—</td><td>—</td>
+                <td>{money.format(rows.reduce((sum, shop) => sum + shop.outstanding_amount, 0))}</td><td>{money.format(group.cumulative_outstanding_amount)}</td><td>{money.format(rows.reduce((sum, shop) => sum + shop.cumulative_overdue_amount, 0))}</td><td>—</td><td>—</td>
               </tr>
             </>}
           </Fragment>;
@@ -967,8 +991,12 @@ function TransactionsTable({ rows, sort, setSort, onOpen }: { rows: AccountingTr
   return <div className="accounting-table-wrap accounting-table-wrap--ledger"><table className="accounting-table"><thead><tr>{columns.map(([key, label]) => <th key={key}><SortButton column={key} label={label} onChange={setSort} sort={sort} /></th>)}</tr></thead><tbody>{rows.length ? rows.map((row) => <tr className={row.issue_code ? 'accounting-row--issue' : `accounting-row--${row.type.toLowerCase()}`} key={`${row.type}-${row.source_id}-${row.ice_type_id ?? ''}`} onClick={() => onOpen(row)} tabIndex={0}><td>{new Date(row.occurred_at).toLocaleString('th-TH')}</td><td><button className="accounting-link" onClick={(event) => { event.stopPropagation(); onOpen(row); }} type="button">{row.document_number}</button></td><td><span className={`accounting-type accounting-type--${row.type.toLowerCase()}`}>{row.type} · {typeLabels[row.type]}</span></td><td>{row.shop_name ?? '—'}</td><td>{row.holder_name ?? '—'}</td><td>{row.employee_name ?? '—'}</td><td>{row.ice_type_name ?? '—'}</td><td>{row.quantity_in || '—'}</td><td>{row.quantity_out || '—'}</td><td>{row.sales_amount ? money.format(row.sales_amount) : '—'}</td><td>{row.cash_in ? money.format(row.cash_in) : '—'}</td><td>{row.cash_out ? money.format(row.cash_out) : '—'}</td><td>{row.receivable_delta ? money.format(row.receivable_delta) : '—'}</td><td>{row.issue_label ?? row.status}</td><td>{row.can_correct ? 'แก้ไขได้' : 'ดูเท่านั้น'}</td></tr>) : <tr><td colSpan={15}>ไม่พบรายการที่ตรงตัวกรอง</td></tr>}</tbody></table></div>;
 }
 
-function ReviewQueue({ rows }: { rows: AccountingReviewResponse['rows'] }) {
-  return <div className="accounting-review-list">{rows.length ? rows.map((item) => <article key={item.issue_id}><WarningCircle size={22} weight="fill" /><div><span>{item.issue_type} · {item.service_date}</span><h3>{item.title}</h3><p>{item.description}</p><small>{[item.document_number, item.shop_name].filter(Boolean).join(' · ')}</small></div><strong>{item.severity === 'critical' ? 'เร่งด่วน' : 'ตรวจสอบ'}</strong></article>) : <p className="financial-ops__empty">ไม่มีรายการต้องตรวจสอบในช่วงนี้</p>}</div>;
+function ReviewQueue({ onResolve, resolvingIssueId, rows }: {
+  onResolve: (item: AccountingReviewResponse['rows'][number]) => void;
+  resolvingIssueId: string | null;
+  rows: AccountingReviewResponse['rows'];
+}) {
+  return <div className="accounting-review-list">{rows.length ? rows.map((item) => <article key={item.issue_id}><WarningCircle size={22} weight="fill" /><div><span>{item.issue_type} · {item.service_date}</span><h3>{item.title}</h3><p>{item.description}</p><small>{[item.document_number, item.shop_name].filter(Boolean).join(' · ')}</small></div><div className="accounting-review-list__actions"><strong>{item.severity === 'critical' ? 'เร่งด่วน' : 'ตรวจสอบ'}</strong>{item.issue_id.startsWith('daily-close-') ? <button disabled={Boolean(resolvingIssueId)} onClick={() => onResolve(item)} type="button">{resolvingIssueId === item.issue_id ? 'กำลังปิด...' : 'ปิดประเด็น'}</button> : null}</div></article>) : <p className="financial-ops__empty">ไม่มีรายการต้องตรวจสอบในช่วงนี้</p>}</div>;
 }
 
 function TransactionDrawer({ row, receiptSnapshot, correctionTargets, onClose, onCorrect }: { row: AccountingTransaction; receiptSnapshot: Record<string, unknown> | null; correctionTargets: Array<{ charge_id: string; charge_number: string; delivery_event_id: string }>; onClose: () => void; onCorrect: (eventId: string) => void }) {

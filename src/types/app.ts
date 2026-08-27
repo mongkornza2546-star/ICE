@@ -170,6 +170,7 @@ export interface UserProfile {
   phone: string | null;
   role: AppRole;
   is_active: boolean;
+  can_collect_shop_payments: boolean;
 }
 
 export interface DeliveryRound {

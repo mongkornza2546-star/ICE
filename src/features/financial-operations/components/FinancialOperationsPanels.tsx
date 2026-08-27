@@ -32,19 +32,15 @@ export function LegacyManagerFinancialSections({
   dueDateRequests,
   receivables,
   busy,
-  runId,
   onDecide,
   onDecideDueDateRequest,
-  onToggleCreditCollectionAssignment,
 }: {
   approvals: Approval[];
   dueDateRequests: DueDateRequest[];
   receivables: Receivable[];
   busy: boolean;
-  runId: string | null;
   onDecide: (approvalId: string, decision: 'approved' | 'rejected') => void;
   onDecideDueDateRequest: (requestId: string, decision: 'approved' | 'rejected') => void;
-  onToggleCreditCollectionAssignment: (charge: ReceivableCharge, assigned: boolean) => void;
 }) {
   const [activeView, setActiveView] = useState<'overview' | 'requests' | 'customers' | 'aging'>('overview');
   const [shopQuery, setShopQuery] = useState('');
@@ -180,11 +176,7 @@ export function LegacyManagerFinancialSections({
               {filteredCharges.filter((charge) => `${charge.shopCode} ${charge.shopName}`.toLocaleLowerCase().includes(normalizedShopQuery)).map((charge) => <article key={charge.charge_id}>
                 <span><strong>{charge.shopCode} · {charge.charge_number}</strong><small>ครบกำหนด {charge.due_date} · {chargeStatus(charge)}</small></span>
                 <b>{money.format(charge.outstanding_amount)}</b>
-                {charge.payment_status !== 'paid' && charge.due_status !== 'not_due' ? <button
-                  disabled={busy || !runId}
-                  onClick={() => onToggleCreditCollectionAssignment(charge, !charge.assigned_collection_run_id)}
-                  type="button"
-                >{charge.assigned_collection_run_id ? 'ถอนจากรอบเก็บ' : 'มอบหมายให้เก็บ'}</button> : null}
+                {charge.payment_status !== 'paid' && charge.due_status !== 'not_due' ? <span>เข้าเก็บอัตโนมัติ</span> : null}
               </article>)}
             </div>
           </>
@@ -201,7 +193,7 @@ export function LegacyManagerFinancialSections({
           {overdueCharges.map((charge) => <article key={charge.charge_id}>
             <span><strong>{charge.shopCode} · {charge.shopName}</strong><small>{charge.charge_number} · ครบกำหนด {charge.due_date} · เกินกำหนด {charge.days_overdue} วัน</small></span>
             <b>{money.format(charge.outstanding_amount)}</b>
-            <button disabled={busy || !runId} onClick={() => onToggleCreditCollectionAssignment(charge, !charge.assigned_collection_run_id)} type="button">{charge.assigned_collection_run_id ? 'ถอนจากรอบเก็บ' : 'มอบหมายให้เก็บ'}</button>
+            <span>เข้าเก็บอัตโนมัติ</span>
           </article>)}
         </div>}
       </section> : null}

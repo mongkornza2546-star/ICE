@@ -56,6 +56,7 @@ function toUserDraft(
     phone: user.phone ?? '',
     role: user.role,
     isActive: user.is_active,
+    canCollectShopPayments: user.can_collect_shop_payments,
     workSiteIds: workSiteAssignments
       .filter((assignment) => assignment.user_id === user.id)
       .map((assignment) => assignment.stock_location_id)
@@ -262,6 +263,7 @@ export function UserEditor({
         phone: userDraft.phone.trim() || null,
         role: isCurrentUser ? original.role : userDraft.role,
         is_active: isCurrentUser ? original.is_active : userDraft.isActive,
+        can_collect_shop_payments: userDraft.role === 'courier' && userDraft.canCollectShopPayments,
       }, userDraft.role === 'courier' && userDraft.isActive ? userDraft.workSiteIds : []);
 
       if (original.avatar_path && original.avatar_path !== avatarPath) {
@@ -477,6 +479,7 @@ export function UserEditor({
                       setUserDraft({
                         ...userDraft,
                         role,
+                        canCollectShopPayments: role === 'courier' ? userDraft.canCollectShopPayments : false,
                         workSiteIds: role === 'courier' ? userDraft.workSiteIds : [],
                       });
                     }}
@@ -489,6 +492,24 @@ export function UserEditor({
                   </select>
                 </label>
               </div>
+            </div>
+
+            <div className="ref-form-status-row">
+              {userDraft.role === 'courier' ? (
+                <label className="ref-toggle-label">
+                  <input
+                    checked={userDraft.canCollectShopPayments}
+                    onChange={(event) => setUserDraft({
+                      ...userDraft,
+                      canCollectShopPayments: event.target.checked,
+                    })}
+                    type="checkbox"
+                  />
+                  <span>รับเงินร้านค้าได้</span>
+                </label>
+              ) : (
+                <span className="ref-muted-note">หัวหน้ารอบและแอดมินมีสิทธิ์รับเงินร้านค้าตามบทบาท</span>
+              )}
             </div>
 
             {/* Work Sites Section */}

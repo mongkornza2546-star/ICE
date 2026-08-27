@@ -11,6 +11,7 @@ import {
   ICE_TYPE_FIELDS,
   DELIVERY_ROUND_NAME_FIELDS,
   SHOP_FIELDS,
+  MAX_SHOP_IMAGE_SIZE,
   SHOP_IMAGE_BUCKET,
   USER_AVATAR_BUCKET,
   ICE_TYPE_IMAGE_BUCKET,
@@ -117,13 +118,14 @@ export async function saveUserWithWorkSiteAssignments(
     phone: string | null;
     role: AppRole;
     is_active: boolean;
+    can_collect_shop_payments: boolean;
   },
   workSiteIds: string[],
 ): Promise<{ user: UserProfile; work_site_ids: string[] }> {
   const client = supabase;
   if (!client) throw new Error('Supabase client not initialized');
 
-  const { data, error } = await client.rpc('save_user_profile_with_work_site_assignments', {
+  const { data, error } = await client.rpc('save_user_profile_with_work_site_assignments_v2', {
     p_user_id: userId,
     p_display_name: updates.display_name,
     p_nickname: updates.nickname,
@@ -132,6 +134,7 @@ export async function saveUserWithWorkSiteAssignments(
     p_role: updates.role,
     p_is_active: updates.is_active,
     p_work_site_ids: workSiteIds,
+    p_can_collect_shop_payments: updates.can_collect_shop_payments,
   });
 
   if (error) throw new Error(error.message);
@@ -285,6 +288,9 @@ export async function uploadShopImage(shopId: string, file: File): Promise<strin
 
   const nextPath = `shops/${shopId}/r2/${Date.now()}-${crypto.randomUUID()}.webp`;
   const optimizedImage = await optimizeImage(file);
+  if (optimizedImage.size > MAX_SHOP_IMAGE_SIZE) {
+    throw new Error('รูปหลังบีบอัดต้องมีขนาดไม่เกิน 5 MB');
+  }
   return uploadR2Object(SHOP_IMAGE_BUCKET, nextPath, optimizedImage);
 }
 

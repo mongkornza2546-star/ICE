@@ -5,7 +5,8 @@ interface CachedUserProfile {
   validatedAt: number;
 }
 
-const USER_PROFILE_CACHE_PREFIX = 'ice-user-profile:v1';
+const USER_PROFILE_CACHE_PREFIX = 'ice-user-profile:v2';
+const LEGACY_USER_PROFILE_CACHE_PREFIX = 'ice-user-profile:v1';
 const USER_PROFILE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 export const USER_PROFILE_REVALIDATE_MS = 5 * 60 * 1000;
 
@@ -24,13 +25,15 @@ function isUserProfile(value: unknown, userId: string): value is UserProfile {
     && (profile.phone === null || typeof profile.phone === 'string')
     && typeof profile.role === 'string'
     && APP_ROLES.has(profile.role as AppRole)
-    && typeof profile.is_active === 'boolean';
+    && typeof profile.is_active === 'boolean'
+    && typeof profile.can_collect_shop_payments === 'boolean';
 }
 
 export function readCachedUserProfile(userId: string, now = Date.now()): CachedUserProfile | null {
   if (typeof window === 'undefined') return null;
   const key = cacheKey(userId);
   try {
+    window.localStorage.removeItem(`${LEGACY_USER_PROFILE_CACHE_PREFIX}:${userId}`);
     const parsed = JSON.parse(window.localStorage.getItem(key) ?? 'null') as Partial<CachedUserProfile> | null;
     if (!parsed || !isUserProfile(parsed.profile, userId) || typeof parsed.validatedAt !== 'number'
       || !Number.isFinite(parsed.validatedAt) || parsed.validatedAt > now
@@ -58,6 +61,7 @@ export function clearCachedUserProfile(userId: string) {
   if (typeof window === 'undefined') return;
   try {
     window.localStorage.removeItem(cacheKey(userId));
+    window.localStorage.removeItem(`${LEGACY_USER_PROFILE_CACHE_PREFIX}:${userId}`);
   } catch {
     // A disabled cache must not block sign-out or server validation.
   }

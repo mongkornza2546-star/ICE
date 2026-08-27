@@ -992,6 +992,64 @@
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 460px), 1fr));
   gap: 12px;
 }
+.daily-close-cash {
+  display: grid;
+  gap: 12px;
+  padding-top: 18px;
+  border-top: 1px solid #e4eaf1;
+}
+.daily-close-cash__rollout {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid #f0cf91;
+  border-radius: 9px;
+  color: #84540d;
+  background: #fff8e8;
+}
+.daily-close-cash__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+  gap: 12px;
+}
+.daily-close-cash__card {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid #dce6ef;
+  border-radius: 10px;
+  background: #f8fafc;
+}
+.daily-close-cash__card > div:first-child,
+.daily-close-cash__card > div:first-child > span,
+.daily-close-cash__card label {
+  display: grid;
+  gap: 4px;
+}
+.daily-close-cash__card small { color: #66758c; }
+.daily-close-cash__identity {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+}
+.daily-close-cash__expected {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 11px;
+  border-radius: 8px;
+  background: #eaf8f0;
+}
+.daily-close-cash__variance { color: #b4232d; }
+.daily-close-cash__card dl {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+.daily-close-cash__card dl div { display: grid; gap: 3px; }
+.daily-close-cash__card dt { color: #66758c; font-size: .75rem; }
+.daily-close-cash__card dd { margin: 0; font-weight: 800; }
+.daily-close-cash__card p { margin: 0; color: #52657c; }
 .daily-stock-count-card {
   min-width: 0;
   display: grid;

@@ -51,6 +51,7 @@ const profile: UserProfile = {
   phone: null,
   role: 'courier',
   is_active: true,
+  can_collect_shop_payments: false,
 };
 
 describe('AuthGate profile cache cleanup', () => {

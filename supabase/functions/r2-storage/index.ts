@@ -7,6 +7,7 @@ import {
   canUploadR2Object,
   isAllowedR2MimeType,
   R2_NAMESPACES,
+  signedUrlTtlSeconds,
   type R2Namespace,
 } from './policy.ts';
 
@@ -103,7 +104,7 @@ Deno.serve(async (request) => {
     const signedUrl = await getSignedUrl(s3, new GetObjectCommand({
       Bucket: bucket,
       Key: `${namespace}/${path}`,
-    }), { expiresIn: 3600 });
+    }), { expiresIn: signedUrlTtlSeconds(namespace) });
     return json({ signedUrl });
   }
 
@@ -120,7 +121,7 @@ Deno.serve(async (request) => {
       signedUrl: await getSignedUrl(s3, new GetObjectCommand({
         Bucket: bucket,
         Key: `${namespace}/${path}`,
-      }), { expiresIn: 3600 }),
+      }), { expiresIn: signedUrlTtlSeconds(namespace) }),
     })));
     return json({ signedUrls });
   }

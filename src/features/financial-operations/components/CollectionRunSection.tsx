@@ -4,41 +4,20 @@ import {
   ListNumbers,
   MagnifyingGlass,
   Storefront,
-  UserCircle,
 } from '@phosphor-icons/react';
 import { useMemo, useState } from 'react';
-import type { Collector, QueueShop } from '../types';
+import type { QueueShop } from '../types';
 import { money } from '../utils';
 
 export function CollectionRunSection({
-  isManager,
   runId,
-  busy,
-  collectors,
-  collectorAvatarUrls,
-  failedCollectorAvatars,
-  memberIds,
   queue,
   showQueue = true,
-  onCloseRun,
-  onToggleCollector,
-  onCollectorAvatarError,
-  onSaveRun,
   onSelectShop,
 }: {
-  isManager: boolean;
   runId: string | null;
-  busy: boolean;
-  collectors: Collector[];
-  collectorAvatarUrls: Record<string, string>;
-  failedCollectorAvatars: Set<string>;
-  memberIds: string[];
   queue: QueueShop[];
   showQueue?: boolean;
-  onCloseRun: () => void;
-  onToggleCollector: (collectorId: string, checked: boolean) => void;
-  onCollectorAvatarError: (path: string) => void;
-  onSaveRun: () => void;
   onSelectShop: (shop: QueueShop, trigger: HTMLButtonElement) => void;
 }) {
   const [buildingId, setBuildingId] = useState('');
@@ -71,44 +50,9 @@ export function CollectionRunSection({
   return (
     <section className="financial-ops__section">
       <div className="financial-ops__title">
-        <div><Coins /><span><h2>รอบเก็บเงินท้ายวัน</h2><p>รวมยอดค้างเดิมและยอดส่งวันนี้</p></span></div>
-        {isManager && runId ? <button disabled={busy} onClick={onCloseRun} type="button">ปิดรอบ</button> : null}
+        <div><Coins /><span><h2>คิวรับเงินร้านค้า</h2><p>รวมยอดที่ถึงกำหนดและยอดค้างโดยอัตโนมัติ</p></span></div>
       </div>
-      {isManager ? (
-        <fieldset className="financial-ops__collectors">
-          <legend>มอบหมายพนักงานผู้เก็บ</legend>
-          {collectors.map((collector) => (
-            <label className="financial-ops__collector" key={collector.id}>
-              <input
-                checked={memberIds.includes(collector.id)}
-                onChange={(event) => onToggleCollector(collector.id, event.target.checked)}
-                type="checkbox"
-              />
-              <span className="financial-ops__collector-avatar" aria-hidden="true">
-                {collector.avatar_path
-                  && collectorAvatarUrls[collector.avatar_path]
-                  && !failedCollectorAvatars.has(collector.avatar_path) ? (
-                    <img
-                      alt=""
-                      onError={() => onCollectorAvatarError(collector.avatar_path!)}
-                      src={collectorAvatarUrls[collector.avatar_path]}
-                    />
-                  ) : <UserCircle size={32} weight="duotone" />}
-              </span>
-              <span className="financial-ops__collector-identity">
-                <strong>{collector.nickname || collector.display_name}</strong>
-                <small>{collector.code} · {collector.display_name}</small>
-              </span>
-            </label>
-          ))}
-          <button disabled={busy || memberIds.length === 0} onClick={onSaveRun} type="button">
-            {runId ? 'บันทึกผู้เก็บเงิน' : 'เปิดรอบและมอบหมาย'}
-          </button>
-        </fieldset>
-      ) : null}
-      {showQueue && !runId ? <p className="financial-ops__empty">{isManager
-        ? 'เลือกรายชื่อผู้เก็บเงินเพื่อเปิดรอบ'
-        : 'วันนี้ยังไม่มีรอบเก็บเงินที่มอบหมายให้คุณ'}</p> : null}
+      {showQueue && !runId ? <p className="financial-ops__empty">ไม่สามารถเปิดคิวรับเงินของวันนี้ได้</p> : null}
       {showQueue && runId && queue.length > 0 ? <div className="financial-ops__queue-filters">
         <label className="financial-ops__queue-search">
           <MagnifyingGlass aria-hidden="true" size={20} />
@@ -133,7 +77,7 @@ export function CollectionRunSection({
           </select>
         </label>
       </div> : null}
-      {showQueue && (runId && queue.length === 0 ? <p className="financial-ops__empty">ไม่มียอดค้างที่ต้องเก็บ</p> : visibleQueue.length === 0 ? <p className="financial-ops__empty">{normalizedQuery ? 'ไม่พบร้านค้าที่ค้นหา' : 'ไม่พบยอดค้างในตึกหรือโซนที่เลือก'}</p> : (
+      {showQueue && runId && (queue.length === 0 ? <p className="financial-ops__empty">ไม่มียอดค้างที่ต้องเก็บ</p> : visibleQueue.length === 0 ? <p className="financial-ops__empty">{normalizedQuery ? 'ไม่พบร้านค้าที่ค้นหา' : 'ไม่พบยอดค้างในตึกหรือโซนที่เลือก'}</p> : (
         <div className="financial-ops__shop-grid">
           {visibleQueue.map((shop) => (
             <button

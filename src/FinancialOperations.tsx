@@ -8,7 +8,6 @@ import { getErrorMessage } from './lib/errorMessage';
 import { printSalesDocument } from './lib/salesDocumentPrint';
 import { usePendingRequests } from './features/employee-delivery/usePendingRequests';
 import { CollectionRunSection } from './features/financial-operations/components/CollectionRunSection';
-import { CollectionRunManager } from './features/financial-operations/components/CollectionRunManager';
 import { CollectionDesk } from './features/financial-operations/components/CollectionDesk';
 import { ManagerFinancialSections, PaymentHistorySection } from './features/financial-operations/components/FinancialOperationsPanels';
 import { HistoryReceiptModal } from './features/financial-operations/components/HistoryReceiptModal';
@@ -19,7 +18,6 @@ import { DeliveryCorrectionDialog } from './features/delivery-corrections/Delive
 import { AccountingPage } from './features/accounting/AccountingPage';
 import type {
   Approval,
-  Collector,
   DueDateRequest,
   HistoryReceiptDetail,
   PaymentHistoryItem,
@@ -32,7 +30,6 @@ import type {
   ReceiptItemRow,
 } from './features/financial-operations/types';
 import {
-  USER_AVATAR_BUCKET,
   allocateOldestFirst,
   methodRequires,
   receiptChargesFromRows,
@@ -41,8 +38,7 @@ import {
 } from './features/financial-operations/utils';
 import type { AppRole, CreditDueRule, PaymentMethod } from './types/app';
 import { publishDataChange, subscribeToDataChange } from './lib/dataChange';
-import { SIGNED_IMAGE_URL_CACHE_TTL_MS, withSignedImageUrls } from './lib/signedImageUrls';
-import { getHybridObjectUrls } from './lib/r2Storage';
+import { ensureCurrentCollectionContext, invalidateCurrentCollectionContext } from './lib/collectionContext';
 
 const PAYMENT_FIELDS = 'id, receipt_number, received_amount, allocated_amount, change_amount, payment_method, status, recorded_at, recorded_by, void_reason, shops(code,name)';
 const COLLECTION_AUTO_REFRESH_MS = 2 * 60_000;
@@ -54,10 +50,7 @@ type FinancialOperationsDemoData = {
   receivables?: Receivable[];
   approvals?: Approval[];
   dueDateRequests?: DueDateRequest[];
-  collectors?: Collector[];
-  memberIds?: string[];
   runId?: string | null;
-  runOpenedAt?: string | null;
 };
 
 export function FinancialOperations({
@@ -85,17 +78,10 @@ export function FinancialOperations({
     : null;
   const { getOrCreatePendingRequest, clearPendingRequest } = usePendingRequests();
   const [runId, setRunId] = useState<string | null>(initialDemoRunId);
-  const [runOpenedAt, setRunOpenedAt] = useState<string | null>(demoData
-    ? demoData.runOpenedAt === undefined ? `${serviceDate}T01:00:00.000Z` : demoData.runOpenedAt
-    : null);
   const [queue, setQueue] = useState<QueueShop[]>(initialDemoRunId ? demoData?.queue ?? [] : []);
   const [receivables, setReceivables] = useState<Receivable[]>(demoData?.receivables ?? []);
   const [approvals, setApprovals] = useState<Approval[]>(demoData?.approvals ?? []);
   const [dueDateRequests, setDueDateRequests] = useState<DueDateRequest[]>(demoData?.dueDateRequests ?? []);
-  const [collectors, setCollectors] = useState<Collector[]>(demoData?.collectors ?? []);
-  const [collectorAvatarUrls, setCollectorAvatarUrls] = useState<Record<string, string>>({});
-  const [failedCollectorAvatars, setFailedCollectorAvatars] = useState<Set<string>>(() => new Set());
-  const [memberIds, setMemberIds] = useState<string[]>(demoData?.memberIds ?? []);
   const [historyDate, setHistoryDate] = useState(serviceDate);
   const [employeeView, setEmployeeView] = useState<'queue' | 'history' | 'credit_signoff'>('queue');
   const [paymentHistory, setPaymentHistory] = useState<PaymentHistoryItem[]>(() => demoData?.paymentHistory.filter((payment) => (
@@ -167,7 +153,7 @@ export function FinancialOperations({
     if (demoData) {
       if (preferredShopId) {
         const preferredShop = demoData.queue.find((shop) => shop.shop_id === preferredShopId);
-        if (!preferredShop) throw new Error('ไม่พบร้านนี้ในรอบเก็บเงินปัจจุบัน');
+        if (!preferredShop) throw new Error('ไม่พบร้านนี้ในคิวรับเงินล่าสุด');
         setQueue(demoData.queue);
         setSelectedShop(preferredShop);
         if (preferredShop.shop_id !== selectedShopRef.current?.shop_id) resetPaymentForm(preferredShop);
@@ -197,28 +183,23 @@ export function FinancialOperations({
       return;
     }
 
-    const runResponse = await supabase
-      .from('collection_runs')
-      .select('id, opened_at')
-      .eq('service_date', serviceDate)
-      .eq('status', 'open')
-      .maybeSingle();
-    if (runResponse.error) throw runResponse.error;
-
-    const nextRunId = runResponse.data?.id ?? null;
+    const context = await ensureCurrentCollectionContext(serviceDate);
+    const nextRunId = context.collection_run_id;
     setRunId(nextRunId);
-    setRunOpenedAt(runResponse.data?.opened_at ?? null);
     if (nextRunId) {
       const queueResponse = await supabase.rpc('get_collection_run_queue', {
         p_collection_run_id: nextRunId,
       });
-      if (queueResponse.error) throw queueResponse.error;
+      if (queueResponse.error) {
+        invalidateCurrentCollectionContext(true);
+        throw queueResponse.error;
+      }
       const nextQueue = await withPublicShopImages((queueResponse.data ?? []) as QueueShop[]);
       const currentShop = selectedShopRef.current;
       const preferredShop = preferredShopId
         ? nextQueue.find((shop) => shop.shop_id === preferredShopId) ?? null
         : null;
-      if (preferredShopId && !preferredShop) throw new Error('ไม่พบร้านนี้ในรอบเก็บเงินปัจจุบัน');
+      if (preferredShopId && !preferredShop) throw new Error('ไม่พบร้านนี้ในคิวรับเงินล่าสุด');
       const nextSelectedShop = preferredShop ?? (currentShop
         ? nextQueue.find((shop) => shop.shop_id === currentShop.shop_id) ?? null
         : (isManager && window.innerWidth >= 1100 ? nextQueue[0] ?? null : null));
@@ -240,18 +221,8 @@ export function FinancialOperations({
       .gte('recorded_at', paymentDay.start)
       .lt('recorded_at', paymentDay.end)
       .order('recorded_at', { ascending: false });
-    const [collectorsResponse, membersResponse, todayPaymentsResponse] = await Promise.all([
-      supabase.rpc('get_collection_collectors'),
-      nextRunId
-        ? supabase.from('collection_run_members').select('user_id').eq('collection_run_id', nextRunId)
-        : Promise.resolve({ data: [], error: null }),
-      todayPaymentsPromise,
-    ]);
-    if (collectorsResponse.error) throw collectorsResponse.error;
-    if (membersResponse.error) throw membersResponse.error;
+    const todayPaymentsResponse = await todayPaymentsPromise;
     if (todayPaymentsResponse.error) throw todayPaymentsResponse.error;
-    setCollectors((collectorsResponse.data ?? []) as Collector[]);
-    setMemberIds((membersResponse.data ?? []).map((member) => member.user_id));
     setTodayPayments((todayPaymentsResponse.data ?? []) as unknown as PaymentHistoryItem[]);
   }, [demoData, isManager, managerPage, resetPaymentForm, serviceDate]);
 
@@ -390,50 +361,6 @@ export function FinancialOperations({
     };
   }, [historyReceipt?.payment.id]);
 
-  useEffect(() => {
-    const client = supabase;
-    if (!client?.storage) return;
-    const avatarPaths = collectors
-      .map((collector) => collector.avatar_path)
-      .filter((path): path is string => Boolean(path));
-    if (avatarPaths.length === 0) {
-      setCollectorAvatarUrls({});
-      return;
-    }
-
-    let cancelled = false;
-    void withSignedImageUrls(collectors.map((collector) => ({
-      ...collector,
-      image_path: collector.avatar_path,
-      image_url: null as string | null,
-    })), async (paths) => ({
-      data: await getHybridObjectUrls(USER_AVATAR_BUCKET, paths, async (supabasePaths) => {
-        if (supabasePaths.length === 0) return [];
-        const response = await client.storage.from(USER_AVATAR_BUCKET).createSignedUrls(supabasePaths, 3600);
-        return response.error ? [] : response.data ?? [];
-      }),
-      error: null,
-    }), {
-      namespace: USER_AVATAR_BUCKET,
-      ttlMs: SIGNED_IMAGE_URL_CACHE_TTL_MS,
-    })
-      .then((signedCollectors) => {
-        if (cancelled) return;
-        const urls = signedCollectors.reduce<Record<string, string>>((current, collector) => {
-          if (collector.avatar_path && collector.image_url) current[collector.avatar_path] = collector.image_url;
-          return current;
-        }, {});
-        setFailedCollectorAvatars(new Set(avatarPaths.filter((path) => !urls[path])));
-        setCollectorAvatarUrls(urls);
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setCollectorAvatarUrls({});
-        setFailedCollectorAvatars(new Set(avatarPaths));
-      });
-    return () => { cancelled = true; };
-  }, [collectors]);
-
   const runAction = async (action: () => Promise<void>, reload = true) => {
     setBusy(true);
     setError(null);
@@ -449,42 +376,6 @@ export function FinancialOperations({
       setBusy(false);
     }
   };
-
-  const saveRun = (assignedMemberIds = memberIds) => runAction(async () => {
-    if (demoData) {
-      setMemberIds(assignedMemberIds);
-      setRunId('demo-collection-run');
-      setRunOpenedAt(new Date().toISOString());
-      setQueue(demoData.queue);
-      return;
-    }
-    if (!supabase) return;
-    const { error: rpcError } = await supabase.rpc('open_collection_run', {
-      p_service_date: serviceDate,
-      p_member_ids: assignedMemberIds.map((userId) => ({ user_id: userId })),
-    });
-    if (rpcError) throw rpcError;
-    setSuccess(runId ? 'บันทึกผู้เก็บเงินแล้ว' : 'เปิดรอบและมอบหมายผู้เก็บเงินแล้ว');
-  });
-
-  const closeRun = () => runAction(async () => {
-    if (demoData) {
-      setRunId(null);
-      setRunOpenedAt(null);
-      setMemberIds([]);
-      setQueue([]);
-      setSelectedShop(null);
-      setSuccess('ปิดรอบเก็บเงินแล้ว ยอดค้างยังคงอยู่');
-      return;
-    }
-    if (!supabase || !runId) return;
-    const { error: rpcError } = await supabase.rpc('close_collection_run', {
-      p_collection_run_id: runId,
-    });
-    if (rpcError) throw rpcError;
-    setSelectedShop(null);
-    setSuccess('ปิดรอบเก็บเงินแล้ว ยอดค้างยังคงอยู่');
-  });
 
   const chooseShop = (shop: QueueShop, trigger: HTMLButtonElement) => {
     returnFocusRef.current = trigger;
@@ -591,7 +482,10 @@ export function FinancialOperations({
         p_approval_id: null,
         p_idempotency_key: request.key,
       });
-      if (rpcError) throw rpcError;
+      if (rpcError) {
+        invalidateCurrentCollectionContext(true);
+        throw rpcError;
+      }
       if (!data?.payment_id || !data.receipt_number || !data.recorded_at) {
         throw new Error('ระบบไม่ได้ส่งเลขที่หรือเวลาของใบเสร็จกลับมา');
       }
@@ -793,20 +687,6 @@ export function FinancialOperations({
     setSuccess(decision === 'approved' ? 'อนุมัติการเลื่อนกำหนดชำระแล้ว' : 'ไม่อนุมัติการเลื่อนกำหนดชำระแล้ว');
   });
 
-  const toggleCreditCollectionAssignment = (
-    charge: Receivable['charges'][number],
-    assigned: boolean,
-  ) => runAction(async () => {
-    if (!supabase || !runId) return;
-    const { error: rpcError } = await supabase.rpc('set_credit_charge_collection_assignment', {
-      p_collection_run_id: runId,
-      p_charge_id: charge.charge_id,
-      p_assigned: assigned,
-    });
-    if (rpcError) throw rpcError;
-    setSuccess(assigned ? 'มอบหมายบิลเครดิตเข้ารอบเก็บเงินแล้ว' : 'ถอนบิลเครดิตออกจากรอบเก็บเงินแล้ว');
-  });
-
   const updateCreditSettings = async (
     receivable: Receivable,
     changes: {
@@ -916,19 +796,9 @@ export function FinancialOperations({
           </header>
 
           {employeeView === 'queue' ? <CollectionRunSection
-            collectors={collectors}
-            collectorAvatarUrls={collectorAvatarUrls}
-            failedCollectorAvatars={failedCollectorAvatars}
-            isManager={false}
-            memberIds={memberIds}
-            onCloseRun={closeRun}
-            onCollectorAvatarError={(path) => setFailedCollectorAvatars((current) => new Set(current).add(path))}
-            onSaveRun={saveRun}
             onSelectShop={chooseShop}
-            onToggleCollector={() => undefined}
             queue={queue}
             runId={runId}
-            busy={busy}
           /> : employeeView === 'history' ? <PaymentHistorySection
             busy={busy}
             historyDate={historyDate}
@@ -985,18 +855,6 @@ export function FinancialOperations({
         paymentHistory={paymentHistory}
         queue={queue}
         runId={runId}
-        runManagement={<CollectionRunManager
-          busy={busy}
-          collectorAvatarUrls={collectorAvatarUrls}
-          collectors={collectors}
-          failedCollectorAvatars={failedCollectorAvatars}
-          memberIds={memberIds}
-          onCloseRun={() => { void closeRun(); }}
-          onCollectorAvatarError={(path) => setFailedCollectorAvatars((current) => new Set(current).add(path))}
-          onOpenRun={saveRun}
-          openedAt={runOpenedAt}
-          runId={runId}
-        />}
         selectedShop={selectedShop}
         serviceDate={serviceDate}
         todayPayments={todayPayments}
@@ -1013,10 +871,8 @@ export function FinancialOperations({
         onLoadDetail={loadCreditReceivableDetail}
         onOpenCollection={(receivable) => { void openReceivableCollection(receivable).catch((openError: unknown) => setError(getErrorMessage(openError))); }}
         onRefreshReceivables={() => load()}
-        onToggleCreditCollectionAssignment={toggleCreditCollectionAssignment}
         onUpdateCreditSettings={updateCreditSettings}
         receivables={receivables}
-        runId={runId}
         serviceDate={serviceDate}
         userRole={userRole}
       /> : null}

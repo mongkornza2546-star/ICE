@@ -22,6 +22,7 @@ import {
   USER_PROFILE_REVALIDATE_MS,
   writeCachedUserProfile,
 } from './lib/userProfileCache';
+import { COLLECTION_PROFILE_REFRESH_EVENT } from './lib/collectionContext';
 
 /**
  * Wrapper that keeps its children mounted once rendered,
@@ -86,7 +87,7 @@ export function RoleRouter({
       request = (async () => {
         const { data, error } = await supabase
           .from('users')
-          .select('id, code, display_name, phone, role, is_active')
+          .select('id, code, display_name, phone, role, is_active, can_collect_shop_payments')
           .eq('id', session.user.id)
           .maybeSingle();
 
@@ -118,13 +119,16 @@ export function RoleRouter({
 
     void loadProfile(true);
     const refreshOnFocus = () => { void loadProfile(); };
+    const refreshAfterAuthorizationFailure = () => { void loadProfile(true); };
     const refreshInterval = window.setInterval(() => { void loadProfile(); }, USER_PROFILE_REVALIDATE_MS);
     window.addEventListener('focus', refreshOnFocus);
+    window.addEventListener(COLLECTION_PROFILE_REFRESH_EVENT, refreshAfterAuthorizationFailure);
 
     return () => {
       cancelled = true;
       window.clearInterval(refreshInterval);
       window.removeEventListener('focus', refreshOnFocus);
+      window.removeEventListener(COLLECTION_PROFILE_REFRESH_EVENT, refreshAfterAuthorizationFailure);
     };
   }, [onRecoverableSessionError, session.user.id]);
 
@@ -145,6 +149,12 @@ export function RoleRouter({
   useEffect(() => {
     if (courierView === 'collection') setCourierCollectionVisited(true);
   }, [courierView]);
+
+  useEffect(() => {
+    if (profile?.role === 'courier' && !profile.can_collect_shop_payments && courierView === 'collection') {
+      setCourierView('pos');
+    }
+  }, [courierView, profile]);
 
   useEffect(() => {
     const refreshCurrentDate = () => setCurrentBangkokDate(toBangkokDateString());
@@ -262,19 +272,21 @@ export function RoleRouter({
             <Storefront aria-hidden="true" size={22} weight="duotone" />
             <span>POS</span>
           </button>
-          <button
-            aria-current={courierView === 'collection' ? 'page' : undefined}
-            disabled={deliveryDraftState.submitting}
-            onClick={() => {
-              if (courierView !== 'collection' && !confirmLeavingDelivery()) return;
-              setCourierCollectionVisited(true);
-              setCourierView('collection');
-            }}
-            type="button"
-          >
-            <Coins aria-hidden="true" size={22} weight="duotone" />
-            <span>เก็บเงิน</span>
-          </button>
+          {profile.can_collect_shop_payments ? (
+            <button
+              aria-current={courierView === 'collection' ? 'page' : undefined}
+              disabled={deliveryDraftState.submitting}
+              onClick={() => {
+                if (courierView !== 'collection' && !confirmLeavingDelivery()) return;
+                setCourierCollectionVisited(true);
+                setCourierView('collection');
+              }}
+              type="button"
+            >
+              <Coins aria-hidden="true" size={22} weight="duotone" />
+              <span>เก็บเงิน</span>
+            </button>
+          ) : null}
         </nav>
         <KeepAlive active={courierView !== 'collection'}>
           <EmployeeDeliveryWorkspace
@@ -286,7 +298,7 @@ export function RoleRouter({
             viewMode={courierView === 'withdrawal' ? 'withdrawal' : 'pos'}
           />
         </KeepAlive>
-        {courierCollectionVisited || courierView === 'collection' ? (
+        {profile.can_collect_shop_payments && (courierCollectionVisited || courierView === 'collection') ? (
           <KeepAlive active={courierView === 'collection'}>
             <FinancialOperations
               currentUserId={profile.id}
@@ -422,6 +434,7 @@ export function RoleRouter({
       {visitedViews.has('financial_operations') && (
         <KeepAlive active={currentView === 'financial_operations'}>
           <FinancialOperations
+            currentUserId={profile.id}
             isActive={currentView === 'financial_operations'}
             managerPage={financialPage}
             onManagerPageChange={setFinancialPage}

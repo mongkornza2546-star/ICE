@@ -16,6 +16,11 @@ const evidenceNamespaces = new Set<R2Namespace>([
   'payment-evidence', 'credit-signoff-evidence',
 ]);
 const imageMimeTypes = new Set(['image/jpeg', 'image/png', 'image/webp']);
+const catalogNamespaces = new Set<R2Namespace>(['shop-images', 'ice-type-images']);
+
+export function signedUrlTtlSeconds(namespace: R2Namespace) {
+  return catalogNamespaces.has(namespace) ? 7 * 24 * 60 * 60 : 60 * 60;
+}
 
 export function isValidR2Path(path: string) {
   return path.includes('/r2/') && !path.includes('..') && !path.startsWith('/');

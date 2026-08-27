@@ -23,6 +23,27 @@ interface AggregateSummary {
   items: AggregateItem[];
 }
 
+interface DailyCloseEmployee {
+  employee_id: string;
+  employee_name: string;
+  is_active: boolean;
+  expected_cash_amount: number;
+  actual_cash_amount?: number | null;
+  cash_variance_amount?: number | null;
+  cash_reason?: string | null;
+  payment_ids: string[];
+  recorded_at?: string | null;
+}
+
+interface DailyCloseReconciliation {
+  service_date: string;
+  status: 'open' | 'closed';
+  feature_enabled: boolean;
+  enabled_from_service_date?: string | null;
+  stock: AggregateSummary;
+  employees: DailyCloseEmployee[];
+}
+
 interface LegacyRefillHistoryItem {
   id: string;
   status: 'active' | 'cancelled';
@@ -58,8 +79,12 @@ export function DailyAggregateStockClose({
   onPreviewImage?: (image: { name: string; url: string }) => void;
 }) {
   const [summary, setSummary] = useState<AggregateSummary | null>(null);
+  const [employees, setEmployees] = useState<DailyCloseEmployee[]>([]);
+  const [featureEnabled, setFeatureEnabled] = useState(false);
   const [legacyRefills, setLegacyRefills] = useState<LegacyRefillHistoryItem[]>([]);
   const [counts, setCounts] = useState<Record<string, number>>({});
+  const [cashCounts, setCashCounts] = useState<Record<string, number>>({});
+  const [cashReasons, setCashReasons] = useState<Record<string, string>>({});
   const [note, setNote] = useState('');
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -70,18 +95,31 @@ export function DailyAggregateStockClose({
     if (!supabase) return;
     setLoading(true);
     setError(null);
-    const [summaryResponse, legacyRefillsResponse] = await Promise.all([
-      supabase.rpc('get_daily_aggregate_stock_summary', { p_service_date: serviceDate }),
+    const [reconciliationResponse, legacyRefillsResponse] = await Promise.all([
+      supabase.rpc('get_daily_close_reconciliation', { p_service_date: serviceDate }),
       supabase.rpc('get_daily_stock_refill_history', { p_service_date: serviceDate }),
     ]);
-    const loadError = summaryResponse.error ?? legacyRefillsResponse.error;
+    const loadError = reconciliationResponse.error ?? legacyRefillsResponse.error;
     if (loadError) setError(loadError.message);
-    if (summaryResponse.data) {
-      const next = summaryResponse.data as AggregateSummary;
-      setSummary(next);
+    if (reconciliationResponse.data) {
+      const next = reconciliationResponse.data as DailyCloseReconciliation;
+      setSummary(next.stock);
+      setEmployees(next.employees);
+      setFeatureEnabled(next.feature_enabled);
       setCounts(Object.fromEntries(
-        next.items.map((item) => [item.ice_type_id, Number(item.available_quantity)]),
+        next.stock.items.map((item) => [
+          item.ice_type_id,
+          Number(item.actual_quantity ?? item.available_quantity),
+        ]),
       ));
+      setCashCounts(Object.fromEntries(next.employees.map((employee) => [
+        employee.employee_id,
+        Number(employee.actual_cash_amount ?? employee.expected_cash_amount),
+      ])));
+      setCashReasons(Object.fromEntries(next.employees.map((employee) => [
+        employee.employee_id,
+        employee.cash_reason ?? '',
+      ])));
     } else if (!loadError) setError('ไม่พบยอดสต๊อกรวมสำหรับวันที่เลือก');
     setLegacyRefills((legacyRefillsResponse.data ?? []) as LegacyRefillHistoryItem[]);
     setLoading(false);
@@ -95,10 +133,19 @@ export function DailyAggregateStockClose({
     (item) => (counts[item.ice_type_id] ?? 0) !== Number(item.available_quantity),
   ) ?? false, [counts, summary]);
 
+  const hasMissingCashReason = useMemo(() => employees.some((employee) => (
+    (cashCounts[employee.employee_id] ?? 0) !== Number(employee.expected_cash_amount)
+      && !cashReasons[employee.employee_id]?.trim()
+  )), [cashCounts, cashReasons, employees]);
+
   const close = async () => {
     if (!supabase || !summary || submitting) return;
     if (hasVariance && !note.trim()) {
       setError('กรอกหมายเหตุเมื่อยอดนับจริงต่างจากยอดตามระบบ');
+      return;
+    }
+    if (featureEnabled && hasMissingCashReason) {
+      setError('กรอกเหตุผลของพนักงานทุกคนที่ยอดเงินสดไม่ตรง');
       return;
     }
     setSubmitting(true);
@@ -111,23 +158,40 @@ export function DailyAggregateStockClose({
     const signature = JSON.stringify({
       serviceDate,
       items: closeItems,
+      cash: employees.map((employee) => ({
+        employee_id: employee.employee_id,
+        actual_cash_amount: cashCounts[employee.employee_id] ?? 0,
+        reason: cashReasons[employee.employee_id]?.trim() || null,
+      })),
       note: note.trim() || null,
     });
     if (pendingRequest.current?.signature !== signature) {
       pendingRequest.current = { signature, key: crypto.randomUUID() };
     }
     try {
-      const { error: closeError } = await supabase.rpc('close_daily_aggregate_stock', {
-        p_service_date: serviceDate,
-        p_counts: closeItems,
-        p_note: note.trim() || null,
-        p_idempotency_key: pendingRequest.current.key,
-      });
+      const { error: closeError } = featureEnabled
+        ? await supabase.rpc('close_daily_reconciliation_v2', {
+          p_service_date: serviceDate,
+          p_stock_counts: closeItems,
+          p_cash_counts: employees.map((employee) => ({
+            employee_id: employee.employee_id,
+            actual_cash_amount: cashCounts[employee.employee_id] ?? 0,
+            reason: cashReasons[employee.employee_id]?.trim() || null,
+          })),
+          p_stock_note: note.trim() || null,
+          p_idempotency_key: pendingRequest.current.key,
+        })
+        : await supabase.rpc('close_daily_aggregate_stock', {
+          p_service_date: serviceDate,
+          p_counts: closeItems,
+          p_note: note.trim() || null,
+          p_idempotency_key: pendingRequest.current.key,
+        });
       if (closeError) {
         setError(closeError.message);
       } else {
         pendingRequest.current = null;
-        publishDataChange(['accounting', 'stock']);
+        publishDataChange(['accounting', 'payment', 'stock']);
         await load();
         onClosed?.();
       }
@@ -237,6 +301,35 @@ export function DailyAggregateStockClose({
             </div>
           ))}
         </div>
+        {featureEnabled ? (
+          <section aria-labelledby="daily-cash-closed-title" className="daily-close-cash" style={{ marginTop: 18 }}>
+            <div className="panel-header">
+              <div>
+                <p className="eyebrow">Snapshot เงินสดสิ้นวัน</p>
+                <h3 id="daily-cash-closed-title">เงินสดรายพนักงาน</h3>
+              </div>
+            </div>
+            <div className="daily-close-cash__grid">
+              {employees.map((employee) => {
+                const variance = Number(employee.cash_variance_amount ?? 0);
+                return (
+                  <article className="daily-close-cash__card" key={employee.employee_id}>
+                    <div>
+                      <strong>{employee.employee_name}</strong>
+                      {!employee.is_active ? <small>พนักงานที่ยกเลิกแล้ว</small> : null}
+                    </div>
+                    <dl>
+                      <div><dt>ควรส่ง</dt><dd>{formatBaht(employee.expected_cash_amount)}</dd></div>
+                      <div><dt>นับจริง</dt><dd>{formatBaht(employee.actual_cash_amount ?? 0)}</dd></div>
+                      <div><dt>ส่วนต่าง</dt><dd className={variance ? 'daily-close-cash__variance' : ''}>{formatSignedBaht(variance)}</dd></div>
+                    </dl>
+                    {employee.cash_reason ? <p>เหตุผล: {employee.cash_reason}</p> : null}
+                  </article>
+                );
+              })}
+            </div>
+          </section>
+        ) : null}
         {legacyRefillHistory}
       </section>
     );
@@ -304,6 +397,77 @@ export function DailyAggregateStockClose({
           );
         })}
       </div>
+      <section aria-labelledby="daily-cash-count-title" className="daily-close-cash" style={{ marginTop: 22 }}>
+        <div className="panel-header">
+          <div>
+            <p className="eyebrow">ตรวจเงินพร้อมปิดยอด</p>
+            <h3 id="daily-cash-count-title">เงินสดรายพนักงาน</h3>
+          </div>
+          <span className={`status-badge ${featureEnabled ? 'status-badge--success' : 'status-badge--neutral'}`}>
+            {featureEnabled ? 'ใช้งานจริง' : 'Dark launch'}
+          </span>
+        </div>
+        <p className="muted">
+          ยอดที่ควรส่งนับเฉพาะเงินสดที่พนักงานรับจริง ไม่รวมเงินทอน โอน QR รายการ void หรือเงินที่หัวหน้ารับเอง
+        </p>
+        {!featureEnabled ? (
+          <p className="daily-close-cash__rollout" role="status">
+            กำลังเปรียบเทียบยอดกับรายงานเดิม ช่องเงินสดยังไม่ถูกบันทึกจนกว่าจะเปิดใช้ reconciliation
+          </p>
+        ) : null}
+        <div className="daily-close-cash__grid">
+          {employees.map((employee) => {
+            const expected = Number(employee.expected_cash_amount);
+            const actual = cashCounts[employee.employee_id] ?? 0;
+            const variance = actual - expected;
+            return (
+              <article className="daily-close-cash__card" key={employee.employee_id}>
+                <div className="daily-close-cash__identity">
+                  <span>
+                    <strong>{employee.employee_name}</strong>
+                    <small>{employee.payment_ids.length} รายการเงินสด{!employee.is_active ? ' · พนักงานที่ยกเลิกแล้ว' : ''}</small>
+                  </span>
+                  <b className={variance ? 'daily-close-cash__variance' : ''}>{formatSignedBaht(variance)}</b>
+                </div>
+                <div className="daily-close-cash__expected">ควรส่ง <strong>{formatBaht(expected)}</strong></div>
+                <label>
+                  <span>หัวหน้านับจริง</span>
+                  <div className="input-wrapper">
+                    <input
+                      disabled={!featureEnabled}
+                      inputMode="decimal"
+                      min={0}
+                      onChange={(event) => setCashCounts((current) => ({
+                        ...current,
+                        [employee.employee_id]: Math.max(0, Number(event.target.value) || 0),
+                      }))}
+                      step={0.01}
+                      type="number"
+                      value={actual}
+                    />
+                    <small>บาท</small>
+                  </div>
+                </label>
+                {variance !== 0 ? (
+                  <label>
+                    <span>เหตุผลส่วนต่าง *</span>
+                    <input
+                      disabled={!featureEnabled}
+                      onChange={(event) => setCashReasons((current) => ({
+                        ...current,
+                        [employee.employee_id]: event.target.value,
+                      }))}
+                      placeholder="เช่น ลูกค้ายังค้างเงินสด"
+                      type="text"
+                      value={cashReasons[employee.employee_id] ?? ''}
+                    />
+                  </label>
+                ) : null}
+              </article>
+            );
+          })}
+        </div>
+      </section>
       <label style={{ display: 'grid', gap: 6, marginTop: 16 }}>
         หมายเหตุ{hasVariance ? ' *' : ' (ถ้ามี)'}
         <textarea
@@ -316,12 +480,12 @@ export function DailyAggregateStockClose({
       {error ? <p className="error-text" role="alert"><Warning size={18} />{error}</p> : null}
       <button
         className="primary-button"
-        disabled={submitting || (hasVariance && !note.trim())}
+        disabled={submitting || (hasVariance && !note.trim()) || (featureEnabled && hasMissingCashReason)}
         onClick={() => void close()}
         style={{ marginTop: 16 }}
         type="button"
       >
-        {submitting ? 'กำลังปิดสต๊อก...' : 'ปิดสต๊อกและจบงานวันนี้'}
+        {submitting ? 'กำลังปิดยอด...' : featureEnabled ? 'ปิดยอดสต๊อกและเงินสดวันนี้' : 'ปิดสต๊อกและจบงานวันนี้'}
       </button>
       {legacyRefillHistory}
     </section>
@@ -381,4 +545,16 @@ function IceTypeImage({
   ) : (
     <span className="daily-stock-count-card__image">{image}</span>
   );
+}
+
+function formatBaht(value: number) {
+  return `${Number(value).toLocaleString('th-TH', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })} บาท`;
+}
+
+function formatSignedBaht(value: number) {
+  if (value === 0) return 'ตรงยอด';
+  return `${value > 0 ? '+' : ''}${formatBaht(value)}`;
 }

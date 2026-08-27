@@ -13,6 +13,7 @@ const profile: UserProfile = {
   phone: null,
   role: 'courier',
   is_active: true,
+  can_collect_shop_payments: true,
 };
 
 describe('user profile cache', () => {
@@ -27,11 +28,20 @@ describe('user profile cache', () => {
     writeCachedUserProfile(profile, 1_000);
     expect(readCachedUserProfile(profile.id, 24 * 60 * 60 * 1000 + 1_001)).toBeNull();
 
-    window.localStorage.setItem('ice-user-profile:v1:user-2', JSON.stringify({ profile, validatedAt: 2_000 }));
+    window.localStorage.setItem('ice-user-profile:v2:user-2', JSON.stringify({ profile, validatedAt: 2_000 }));
     expect(readCachedUserProfile('user-2', 2_001)).toBeNull();
 
     writeCachedUserProfile(profile, 4_000);
     expect(readCachedUserProfile(profile.id, 3_999)).toBeNull();
+  });
+
+  it('invalidates v1 entries and v2 profiles missing the collection capability', () => {
+    window.localStorage.setItem('ice-user-profile:v1:user-1', JSON.stringify({ profile, validatedAt: 1_000 }));
+    const { can_collect_shop_payments: _omitted, ...legacyProfile } = profile;
+    window.localStorage.setItem('ice-user-profile:v2:user-1', JSON.stringify({ profile: legacyProfile, validatedAt: 1_000 }));
+
+    expect(readCachedUserProfile(profile.id, 2_000)).toBeNull();
+    expect(window.localStorage.getItem('ice-user-profile:v1:user-1')).toBeNull();
   });
 
   it('clears the cached profile on sign-out', () => {

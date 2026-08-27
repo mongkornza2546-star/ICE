@@ -35,9 +35,13 @@ function initials(code: string) {
 }
 
 function dueLabel(shop: QueueShop, serviceDate: string) {
-  const oldest = [...shop.charges].sort((left, right) => left.service_date.localeCompare(right.service_date))[0];
-  if (!oldest || oldest.service_date === serviceDate) return { label: 'วันนี้', tone: 'today' as const };
-  const elapsed = Math.max(1, Math.round((Date.parse(serviceDate) - Date.parse(oldest.service_date)) / 86_400_000));
+  const accountableDate = (charge: QueueShop['charges'][number]) => (
+    charge.payment_term === 'credit' ? charge.due_date ?? charge.service_date : charge.service_date
+  );
+  const oldest = [...shop.charges].sort((left, right) => accountableDate(left).localeCompare(accountableDate(right)))[0];
+  const oldestDate = oldest ? accountableDate(oldest) : null;
+  if (!oldestDate || oldestDate === serviceDate) return { label: 'วันนี้', tone: 'today' as const };
+  const elapsed = Math.max(1, Math.round((Date.parse(serviceDate) - Date.parse(oldestDate)) / 86_400_000));
   return { label: `เกินกำหนด ${elapsed} วัน`, tone: elapsed >= 5 ? 'danger' as const : 'warning' as const };
 }
 
@@ -59,7 +63,6 @@ export function CollectionDesk({
   selectedShop,
   busy,
   runId,
-  runManagement,
   paymentPanel,
   onRefresh,
   onHistoryDateChange,
@@ -77,7 +80,6 @@ export function CollectionDesk({
   selectedShop: QueueShop | null;
   busy: boolean;
   runId: string | null;
-  runManagement: ReactNode;
   paymentPanel: ReactNode;
   onRefresh: () => void;
   onHistoryDateChange: (serviceDate: string) => void;
@@ -185,8 +187,6 @@ export function CollectionDesk({
           </button> : null}
         </div>
       </header>
-
-      {runManagement}
 
       <section className="collection-desk__stats" aria-label="สรุปการเก็บเงิน">
         {stats.map(({ label, value, note, icon: Icon, tone }) => (

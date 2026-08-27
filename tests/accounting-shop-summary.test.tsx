@@ -356,6 +356,7 @@ describe('accounting shop summary', () => {
     expect(millCell.textContent).toBe('4');
     expect(screen.getByRole('button', { name: `S001 ${toDate} เล็ก` }).textContent).toBe('2');
     expect(screen.getByRole('button', { name: `S001 ${toDate} ยอดขาย` }).textContent).toMatch(/360\.00.*2 บิล/);
+    expect(screen.queryByRole('columnheader', { name: 'ยอดขายรวม' })).toBeNull();
     expect(screen.getByLabelText(`S001 ${toDate} รับเงินจริง`).textContent).toMatch(/0\.00/);
     expect(screen.queryByRole('button', { name: `S001 ${toDate} รับเงินจริง` })).toBeNull();
     expect(screen.getByLabelText(`S001 ${fromDate} สถานะ มีบันทึกแต่ไม่มีการขาย`)).toBeTruthy();

@@ -4,6 +4,7 @@ import {
   canSignR2Object,
   canUploadR2Object,
   isAllowedR2MimeType,
+  signedUrlTtlSeconds,
 } from '../supabase/functions/r2-storage/policy';
 
 describe('R2 storage policy', () => {
@@ -34,5 +35,12 @@ describe('R2 storage policy', () => {
     expect(isAllowedR2MimeType('credit-signoff-evidence', 'application/pdf')).toBe(false);
     expect(isAllowedR2MimeType('payment-evidence', 'text/html')).toBe(false);
     expect(isAllowedR2MimeType('user-avatars', 'image/svg+xml')).toBe(false);
+  });
+
+  it('keeps public catalog links alive for a work week without extending private evidence links', () => {
+    expect(signedUrlTtlSeconds('shop-images')).toBe(7 * 24 * 60 * 60);
+    expect(signedUrlTtlSeconds('ice-type-images')).toBe(7 * 24 * 60 * 60);
+    expect(signedUrlTtlSeconds('payment-evidence')).toBe(60 * 60);
+    expect(signedUrlTtlSeconds('credit-signoff-evidence')).toBe(60 * 60);
   });
 });

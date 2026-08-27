@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { HeadObjectCommand, S3Client } from '@aws-sdk/client-s3';
-import { r2CatalogImagePattern, supabaseCatalogImagePattern } from '../vite.config.js';
+import {
+  catalogImageRuntimeCaching,
+  r2CatalogImagePattern,
+  supabaseCatalogImagePattern,
+} from '../vite.config.js';
 
 async function resolveR2RequestUrl() {
   let resolvedUrl = '';
@@ -42,4 +46,26 @@ test('catalog cache patterns also cover path-style R2 and public Supabase URLs',
   assert.equal(supabaseCatalogImagePattern.test(
     'https://project.supabase.co/storage/v1/object/public/shop-images/shops/shop-1/photo.webp',
   ), true);
+});
+
+test('R2 signed catalog URLs bypass runtime cache while stable public images use a fresh cache', () => {
+  assert.deepEqual(catalogImageRuntimeCaching, [
+    {
+      urlPattern: r2CatalogImagePattern,
+      handler: 'NetworkOnly',
+    },
+    {
+      urlPattern: supabaseCatalogImagePattern,
+      handler: 'CacheFirst',
+      options: {
+        cacheName: 'catalog-public-images-v2',
+        cacheableResponse: { statuses: [200] },
+        expiration: {
+          maxEntries: 500,
+          maxAgeSeconds: 60 * 60 * 24 * 365,
+          purgeOnQuotaError: true,
+        },
+      },
+    },
+  ]);
 });

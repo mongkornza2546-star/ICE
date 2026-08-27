@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Session } from '@supabase/supabase-js';
 import type { UserProfile } from '../src/types/app';
 import { USER_PROFILE_REVALIDATE_MS, writeCachedUserProfile } from '../src/lib/userProfileCache';
+import { COLLECTION_PROFILE_REFRESH_EVENT } from '../src/lib/collectionContext';
 
 const supabaseMock = vi.hoisted(() => {
   const maybeSingle = vi.fn();
@@ -63,6 +64,7 @@ const courierProfile: UserProfile = {
   phone: null,
   role: 'courier',
   is_active: true,
+  can_collect_shop_payments: true,
 };
 
 function deferred<T>() {
@@ -110,6 +112,44 @@ describe('RoleRouter profile validation', () => {
     });
 
     expect(screen.getByTestId('employee-layout')).not.toBeNull();
+    expect(supabaseMock.maybeSingle).toHaveBeenCalledTimes(2);
+  });
+
+  it('shows the collection tab only to an opted-in courier', async () => {
+    supabaseMock.maybeSingle.mockResolvedValueOnce({
+      data: { ...courierProfile, can_collect_shop_payments: false },
+      error: null,
+    });
+
+    const { unmount } = render(
+      <RoleRouter onRecoverableSessionError={vi.fn().mockResolvedValue(false)} session={session} />,
+    );
+    expect(await screen.findByTestId('employee-layout')).not.toBeNull();
+    expect(screen.queryByRole('button', { name: 'เก็บเงิน' })).toBeNull();
+    unmount();
+
+    supabaseMock.maybeSingle.mockResolvedValueOnce({ data: courierProfile, error: null });
+    render(<RoleRouter onRecoverableSessionError={vi.fn().mockResolvedValue(false)} session={session} />);
+    expect(await screen.findByRole('button', { name: 'เก็บเงิน' })).not.toBeNull();
+  });
+
+  it('revalidates immediately when collection authorization fails', async () => {
+    supabaseMock.maybeSingle
+      .mockResolvedValueOnce({ data: courierProfile, error: null })
+      .mockResolvedValueOnce({
+        data: { ...courierProfile, can_collect_shop_payments: false },
+        error: null,
+      });
+
+    render(<RoleRouter onRecoverableSessionError={vi.fn().mockResolvedValue(false)} session={session} />);
+    expect(await screen.findByRole('button', { name: 'เก็บเงิน' })).not.toBeNull();
+
+    await act(async () => {
+      window.dispatchEvent(new Event(COLLECTION_PROFILE_REFRESH_EVENT));
+      await Promise.resolve();
+    });
+
+    expect(screen.queryByRole('button', { name: 'เก็บเงิน' })).toBeNull();
     expect(supabaseMock.maybeSingle).toHaveBeenCalledTimes(2);
   });
 });

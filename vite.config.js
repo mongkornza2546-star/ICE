@@ -1,8 +1,36 @@
+var __spreadArray = (this && this.__spreadArray) || function (to, from, pack) {
+    if (pack || arguments.length === 2) for (var i = 0, l = from.length, ar; i < l; i++) {
+        if (ar || !(i in from)) {
+            if (!ar) ar = Array.prototype.slice.call(from, 0, i);
+            ar[i] = from[i];
+        }
+    }
+    return to.concat(ar || Array.prototype.slice.call(from));
+};
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 export var r2CatalogImagePattern = /^https:\/\/[^/]+\.r2\.cloudflarestorage\.com\/(?:[^/]+\/)?(?:shop-images|ice-type-images)\//;
 export var supabaseCatalogImagePattern = /^https:\/\/[^/]+\/storage\/v1\/object\/public\/(?:shop-images|ice-type-images)\//;
+export var catalogImageRuntimeCaching = [
+    {
+        urlPattern: r2CatalogImagePattern,
+        handler: 'NetworkOnly',
+    },
+    {
+        urlPattern: supabaseCatalogImagePattern,
+        handler: 'CacheFirst',
+        options: {
+            cacheName: 'catalog-public-images-v2',
+            cacheableResponse: { statuses: [200] },
+            expiration: {
+                maxEntries: 500,
+                maxAgeSeconds: 60 * 60 * 24 * 365,
+                purgeOnQuotaError: true,
+            },
+        },
+    },
+];
 export default defineConfig({
     plugins: [
         react(),
@@ -59,34 +87,7 @@ export default defineConfig({
                 navigateFallback: '/index.html',
                 cleanupOutdatedCaches: true,
                 navigationPreload: true,
-                runtimeCaching: [
-                    {
-                        urlPattern: r2CatalogImagePattern,
-                        handler: 'CacheFirst',
-                        options: {
-                            cacheName: 'catalog-images',
-                            matchOptions: { ignoreSearch: true },
-                            cacheableResponse: { statuses: [0, 200] },
-                            expiration: {
-                                maxEntries: 500,
-                                maxAgeSeconds: 60 * 60 * 24 * 365,
-                                purgeOnQuotaError: true,
-                            },
-                        },
-                    },
-                    {
-                        urlPattern: supabaseCatalogImagePattern,
-                        handler: 'CacheFirst',
-                        options: {
-                            cacheName: 'catalog-images',
-                            cacheableResponse: { statuses: [0, 200] },
-                            expiration: {
-                                maxEntries: 500,
-                                maxAgeSeconds: 60 * 60 * 24 * 365,
-                                purgeOnQuotaError: true,
-                            },
-                        },
-                    },
+                runtimeCaching: __spreadArray(__spreadArray([], catalogImageRuntimeCaching, true), [
                     {
                         urlPattern: /^https:\/\/fonts\.googleapis\.com\//,
                         handler: 'StaleWhileRevalidate',
@@ -104,7 +105,7 @@ export default defineConfig({
                             expiration: { maxEntries: 12, maxAgeSeconds: 60 * 60 * 24 * 365 },
                         },
                     },
-                ],
+                ], false),
             },
         }),
     ],
