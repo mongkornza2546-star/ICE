@@ -1,3 +1,6 @@
+import { isAndroidApp, printThermalImage } from './thermalPrinter';
+import { renderDailyCreditRaster } from './thermalReceiptRaster';
+
 export type DailyCreditAcknowledgementItem = {
   ice_type_name: string;
   ice_type_unit: string;
@@ -161,5 +164,16 @@ export function printDailyCreditAcknowledgement(
   printWindow.addEventListener('afterprint', () => printWindow.close(), { once: true });
   printWindow.focus();
   printWindow.print();
+  return true;
+}
+
+export async function printDailyCreditAcknowledgementForCurrentPlatform(
+  payload: DailyCreditAcknowledgementDocument,
+  existingPrintWindow?: Window | null,
+) {
+  if (!isAndroidApp()) return printDailyCreditAcknowledgement(payload, existingPrintWindow);
+  existingPrintWindow?.close();
+  const imageBase64 = await renderDailyCreditRaster(payload);
+  await printThermalImage(imageBase64);
   return true;
 }

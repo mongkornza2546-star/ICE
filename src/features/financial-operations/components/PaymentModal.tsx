@@ -21,6 +21,7 @@ export function PaymentModal({
   selectedShop,
   serviceDate,
   busy,
+  canRecordPayment = true,
   method,
   amount,
   reference,
@@ -48,6 +49,7 @@ export function PaymentModal({
   selectedShop: QueueShop;
   serviceDate: string;
   busy: boolean;
+  canRecordPayment?: boolean;
   method: PaymentMethod;
   amount: string;
   reference: string;
@@ -123,6 +125,10 @@ export function PaymentModal({
               <strong>{money.format(selectedShop.outstanding_amount)}</strong>
             </section>
 
+            {!canRecordPayment ? (
+              <p className="employee-error" role="status">ดูข้อมูลได้ แต่ยังไม่ได้รับสิทธิ์บันทึกรับเงิน</p>
+            ) : null}
+
             <section className="financial-ops__charge-list" aria-label="รายละเอียดบิลและรายการที่สั่ง">
               <strong><ListNumbers aria-hidden="true" size={18} /> รายละเอียดบิลและรายการที่สั่ง</strong>
               {selectedShop.charges.map((charge) => {
@@ -174,7 +180,7 @@ export function PaymentModal({
                     {charge.payment_term === 'credit' ? (
                       <button
                         className="financial-ops__due-date-request"
-                        disabled={busy}
+                        disabled={busy || !canRecordPayment}
                         onClick={() => onRequestDueDate(charge)}
                         type="button"
                       >ขอเลื่อนกำหนด{charge.due_date ? ` · ${formatServiceDate(charge.due_date)}` : ''}</button>
@@ -195,6 +201,7 @@ export function PaymentModal({
                     <button
                       aria-pressed={method === allowedMethod}
                       className={method === allowedMethod ? 'is-selected' : ''}
+                      disabled={!canRecordPayment}
                       key={allowedMethod}
                       onClick={() => onPaymentMethodChange(allowedMethod)}
                       type="button"
@@ -213,6 +220,7 @@ export function PaymentModal({
                 <span className="financial-ops__currency" aria-hidden="true">฿</span>
                 <input
                   aria-label="ยอดรับเงินจริง"
+                  disabled={!canRecordPayment}
                   inputMode="decimal"
                   min="0.01"
                   onChange={(event) => onAmountChange(event.target.value)}
@@ -240,7 +248,7 @@ export function PaymentModal({
             {method === 'cash' ? (
               <div className="financial-ops__quick-amounts" aria-label="เลือกยอดรับเงินด่วน">
                 {[100, 200, 500, 1000].map((value) => (
-                  <button key={value} onClick={() => onAmountChange(value.toFixed(2))} type="button">
+                  <button disabled={!canRecordPayment} key={value} onClick={() => onAmountChange(value.toFixed(2))} type="button">
                     {value.toLocaleString('th-TH')}
                   </button>
                 ))}
@@ -258,6 +266,7 @@ export function PaymentModal({
                 <input
                   accept="image/jpeg,image/png,image/webp,application/pdf"
                   aria-label="หลักฐานการชำระ"
+                  disabled={!canRecordPayment}
                   onChange={(event) => onEvidenceChange(event.target.files?.[0] ?? null)}
                   required={evidenceRequired}
                   type="file"
@@ -275,6 +284,7 @@ export function PaymentModal({
               <span>หมายเหตุ <small>(ไม่บังคับ)</small></span>
               <input
                 aria-label="หมายเหตุ"
+                disabled={!canRecordPayment}
                 onChange={(event) => onReferenceChange(event.target.value)}
                 placeholder="เช่น ลูกค้าจ่ายแบงก์ใหญ่"
                 value={reference}
@@ -283,7 +293,7 @@ export function PaymentModal({
 
             <footer className="financial-ops__payment-actions">
               <button disabled={busy} onClick={onClose} type="button">ยกเลิก</button>
-              <button disabled={busy || !paymentReady} onClick={onRecordPayment} type="button">
+              <button disabled={busy || !canRecordPayment || !paymentReady} onClick={onRecordPayment} type="button">
                 <FloppyDisk aria-hidden="true" size={21} weight="regular" />
                 {busy ? 'กำลังบันทึก...' : 'บันทึกรับเงินทันที'}
               </button>

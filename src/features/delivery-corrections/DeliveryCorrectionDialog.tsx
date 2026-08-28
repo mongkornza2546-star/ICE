@@ -3,8 +3,9 @@ import { Printer, WarningCircle, X } from '@phosphor-icons/react';
 import { supabase } from '../../lib/supabase';
 import { getErrorMessage } from '../../lib/errorMessage';
 import type { AppRole } from '../../types/app';
-import { printSalesDocument, salesDocumentFromStored, type StoredSalesDocument } from '../../lib/salesDocumentPrint';
+import { printSalesDocumentForCurrentPlatform, salesDocumentFromStored, type StoredSalesDocument } from '../../lib/salesDocumentPrint';
 import { publishDataChange } from '../../lib/dataChange';
+import { isAndroidApp } from '../../lib/thermalPrinter';
 
 type CorrectionItem = {
   ice_type_id: string;
@@ -148,8 +149,9 @@ export function DeliveryCorrectionDialog({
 
   const printDeliveryDocument = async () => {
     if (!context?.charge_id) return;
-    const printWindow = window.open('', '_blank', 'popup,width=360,height=680');
-    if (!printWindow) {
+    const nativeAndroid = isAndroidApp();
+    const printWindow = nativeAndroid ? null : window.open('', '_blank', 'popup,width=360,height=680');
+    if (!nativeAndroid && !printWindow) {
       setError('เบราว์เซอร์บล็อกหน้าต่างพิมพ์ กรุณาอนุญาตป๊อปอัปแล้วลองใหม่');
       return;
     }
@@ -161,9 +163,9 @@ export function DeliveryCorrectionDialog({
         p_charge_id: context.charge_id,
       });
       if (printError) throw printError;
-      printSalesDocument(salesDocumentFromStored(data as StoredSalesDocument), printWindow);
+      await printSalesDocumentForCurrentPlatform(salesDocumentFromStored(data as StoredSalesDocument), printWindow);
     } catch (printError) {
-      printWindow.close();
+      printWindow?.close();
       setError(getErrorMessage(printError));
     } finally {
       setSubmitting(false);

@@ -1,4 +1,4 @@
-import { act, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Session } from '@supabase/supabase-js';
@@ -39,7 +39,11 @@ vi.mock('../src/LocationManagementSettings', () => ({ LocationManagementSettings
 vi.mock('../src/ShopSettings', () => ({ ShopSettings: () => null }));
 vi.mock('../src/RoundWorkspace', () => ({ RoundWorkspace: () => null }));
 vi.mock('../src/ManagerStockAudit', () => ({ ManagerStockAudit: () => null }));
-vi.mock('../src/FinancialOperations', () => ({ FinancialOperations: () => null }));
+vi.mock('../src/FinancialOperations', () => ({
+  FinancialOperations: ({ canCollectShopPayments }: { canCollectShopPayments?: boolean }) => (
+    <div data-can-collect={String(canCollectShopPayments)} data-testid="financial-operations" />
+  ),
+}));
 
 import { RoleRouter } from '../src/RoleRouter';
 
@@ -115,7 +119,7 @@ describe('RoleRouter profile validation', () => {
     expect(supabaseMock.maybeSingle).toHaveBeenCalledTimes(2);
   });
 
-  it('shows the collection tab only to an opted-in courier', async () => {
+  it('keeps the collection tab visible but read-only for a courier without collection capability', async () => {
     supabaseMock.maybeSingle.mockResolvedValueOnce({
       data: { ...courierProfile, can_collect_shop_payments: false },
       error: null,
@@ -125,7 +129,9 @@ describe('RoleRouter profile validation', () => {
       <RoleRouter onRecoverableSessionError={vi.fn().mockResolvedValue(false)} session={session} />,
     );
     expect(await screen.findByTestId('employee-layout')).not.toBeNull();
-    expect(screen.queryByRole('button', { name: 'เก็บเงิน' })).toBeNull();
+    const collectionTab = screen.getByRole('button', { name: 'เก็บเงิน' });
+    fireEvent.click(collectionTab);
+    expect((await screen.findByTestId('financial-operations')).getAttribute('data-can-collect')).toBe('false');
     unmount();
 
     supabaseMock.maybeSingle.mockResolvedValueOnce({ data: courierProfile, error: null });
@@ -133,7 +139,7 @@ describe('RoleRouter profile validation', () => {
     expect(await screen.findByRole('button', { name: 'เก็บเงิน' })).not.toBeNull();
   });
 
-  it('revalidates immediately when collection authorization fails', async () => {
+  it('keeps the collection page open and makes it read-only when authorization is withdrawn', async () => {
     supabaseMock.maybeSingle
       .mockResolvedValueOnce({ data: courierProfile, error: null })
       .mockResolvedValueOnce({
@@ -142,14 +148,16 @@ describe('RoleRouter profile validation', () => {
       });
 
     render(<RoleRouter onRecoverableSessionError={vi.fn().mockResolvedValue(false)} session={session} />);
-    expect(await screen.findByRole('button', { name: 'เก็บเงิน' })).not.toBeNull();
+    fireEvent.click(await screen.findByRole('button', { name: 'เก็บเงิน' }));
+    expect((await screen.findByTestId('financial-operations')).getAttribute('data-can-collect')).toBe('true');
 
     await act(async () => {
       window.dispatchEvent(new Event(COLLECTION_PROFILE_REFRESH_EVENT));
       await Promise.resolve();
     });
 
-    expect(screen.queryByRole('button', { name: 'เก็บเงิน' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'เก็บเงิน' }).getAttribute('aria-current')).toBe('page');
+    expect(screen.getByTestId('financial-operations').getAttribute('data-can-collect')).toBe('false');
     expect(supabaseMock.maybeSingle).toHaveBeenCalledTimes(2);
   });
 });

@@ -3,6 +3,10 @@ export const LEGACY_CATALOG_IMAGE_CACHE = 'catalog-images';
 
 type CacheDeletion = Pick<CacheStorage, 'delete'>;
 
+export function shouldUsePwaExperience(isNativePlatform: boolean) {
+  return !isNativePlatform;
+}
+
 export async function clearLegacyCatalogImageCache(
   cacheStorage: CacheDeletion | undefined = typeof window === 'undefined' ? undefined : window.caches,
 ) {

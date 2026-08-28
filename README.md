@@ -292,6 +292,22 @@ npm run storage:migrate-catalog-images -- \
 
 ส่วนที่ยังเป็น Phase 3.5 คือการตั้งราคาและเครดิตรายร้าน สรุปยอด รับชำระ และพิมพ์เอกสารตาม [แผนพัฒนา](docs/development-phases.md) ส่วน migrations จนถึง `0015_employee_assigned_stock_flow.sql` ยังต้อง apply และทดสอบกับ Supabase project จริงก่อนเปิดใช้หน้างาน
 
+## แอป Android และเครื่องพิมพ์ Bluetooth
+
+แอป Capacitor ใช้ Package ID `com.superice.delivery` และรองรับ Android 7 (API 24) ขึ้นไป เมื่อเปิดจาก Android จะมีปุ่มตั้งค่าเครื่องพิมพ์ที่มุมขวาล่าง
+
+1. เปิด Android Bluetooth และจับคู่กับ `583-02` โดยใช้ PIN `0000`
+2. เปิดแอป กดปุ่มเครื่องพิมพ์ แล้วเลือก `583-02`
+3. กด “ทดสอบพิมพ์” เพื่อตรวจ Bluetooth, ESC/POS และตัวอักษรไทย
+
+สร้าง debug APK ด้วย Node 22, JDK 21 และ Android SDK API 36:
+
+```bash
+npm run android:apk
+```
+
+ไฟล์จะถูกคัดลอกไปที่ `outputs/android/ice-delivery-debug.apk` สำหรับแจกใช้งานจริงให้ออก release keystore ที่เก็บสำรองอย่างปลอดภัย และเพิ่ม `versionCode` ทุกครั้งที่อัปเดต
+
 ## เอกสารหลัก
 
 - [ข้อกำหนดผลิตภัณฑ์](docs/requirements.md)

@@ -14,7 +14,7 @@ import type { EmployeeDeliveryGateway, EmployeeDeliveryDraftState } from '../../
 import { usePendingRequests, type PendingRequestIdentity } from './usePendingRequests';
 import { compareShopCodes, normalizeSearch, stockQuantity, employeeErrorMessage } from './utils';
 import { clearRecovery, readRecovery, writeRecovery } from '../../lib/recoveryStorage';
-import { printSalesDocument, salesDocumentFromStored, type StoredSalesDocument } from '../../lib/salesDocumentPrint';
+import { printSalesDocumentForCurrentPlatform, salesDocumentFromStored, type StoredSalesDocument } from '../../lib/salesDocumentPrint';
 import { publishDataChange } from '../../lib/dataChange';
 
 const PAD_VALUES = ['0', '1', '2', '3', '4', '5', '+'] as const;
@@ -1148,10 +1148,14 @@ export function useEmployeeDeliveryData({
       && immediateSaleRetry.payloadSignature === currentImmediateSalePayloadSignature,
   );
   const latestReceiptAvailable = Boolean(latestReceipt);
-  const printLatestReceipt = () => {
+  const printLatestReceipt = async () => {
     if (!latestReceipt) return;
-    const printed = printSalesDocument(salesDocumentFromStored(latestReceipt));
-    if (!printed) setError('เบราว์เซอร์บล็อกหน้าต่างพิมพ์ กรุณาอนุญาตป๊อปอัปแล้วลองใหม่');
+    try {
+      const printed = await printSalesDocumentForCurrentPlatform(salesDocumentFromStored(latestReceipt));
+      if (!printed) setError('เบราว์เซอร์บล็อกหน้าต่างพิมพ์ กรุณาอนุญาตป๊อปอัปแล้วลองใหม่');
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'พิมพ์ใบเสร็จไม่สำเร็จ');
+    }
   };
 
   return {

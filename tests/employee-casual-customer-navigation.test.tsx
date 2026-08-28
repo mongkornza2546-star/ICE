@@ -387,6 +387,62 @@ describe('casual-customer POS navigation', () => {
     expect(document.querySelector('.employee-success__print')).toBeTruthy();
   });
 
+  it('opens the browser print window before loading a historical receipt', async () => {
+    const user = userEvent.setup();
+    const gateway = createGateway();
+    const transaction = {
+      id: 'casual-1', ice_type_id: 'ice-1', ice_type_name: 'น้ำแข็ง', ice_type_unit: 'ถุง',
+      transaction_kind: 'paid' as const, fulfillment_mode: 'measured' as const, quantity: 0.5,
+      sale_amount: 75, payment_method: 'cash' as const, received_amount: 75, change_amount: 0,
+      receipt_number: 'REC2608-00001', note: null, recorded_at: '2026-08-20T02:30:00Z',
+      status: 'active' as const, voided_at: null, void_reason: null,
+    };
+    vi.mocked(gateway.loadCasualTransactionContext!).mockResolvedValue({
+      round_id: 'round-1', service_date: '2026-08-20', round_status: 'open', stock_closed: false,
+      stock_source: { id: 'holding-1', code: 'HOLD-1', name: 'จุดถือครอง' },
+      items: [{ ice_type_id: 'ice-1', code: 'ICE', name: 'น้ำแข็ง', unit: 'ถุง', available_quantity: 9.5 }],
+      history: [transaction],
+    });
+    let resolveReceipt!: (value: Awaited<ReturnType<NonNullable<EmployeeDeliveryGateway['loadCasualReceiptSnapshot']>>>) => void;
+    vi.mocked(gateway.loadCasualReceiptSnapshot!).mockImplementation(() => new Promise((resolve) => {
+      resolveReceipt = resolve;
+    }));
+    const printDocument = document.implementation.createHTMLDocument();
+    const printWindow = {
+      document: printDocument,
+      addEventListener: vi.fn(),
+      close: vi.fn(),
+      focus: vi.fn(),
+      print: vi.fn(),
+    } as unknown as Window;
+    const open = vi.spyOn(window, 'open').mockReturnValue(printWindow);
+    render(<EmployeeDeliveryWorkspace casualCustomerEnabled gateway={gateway} serviceDate="2026-08-20" />);
+
+    await user.click(await screen.findByRole('button', { name: 'บันทึกลูกค้าขาจร' }));
+    await user.click(await screen.findByRole('button', { name: 'พิมพ์' }));
+
+    expect(open).toHaveBeenCalledOnce();
+    expect(gateway.loadCasualReceiptSnapshot).toHaveBeenCalledWith('casual-1');
+    expect(printWindow.print).not.toHaveBeenCalled();
+
+    resolveReceipt({
+      document_type: 'REC',
+      document_number: 'REC2608-00001',
+      document_title: 'ใบรับเงิน',
+      status: 'active',
+      shop_code: 'WALK-IN',
+      shop_name: 'ลูกค้าขาจร',
+      payment_method: 'cash',
+      received_amount: 75,
+      allocated_amount: 75,
+      change_amount: 0,
+      total_amount: 75,
+      items: [],
+      charges: [],
+    });
+    await waitFor(() => expect(printWindow.print).toHaveBeenCalledOnce());
+  });
+
   it('reuses uploaded transfer evidence after remounting an ambiguous request', async () => {
     const user = userEvent.setup();
     const gateway = createGateway();

@@ -33,7 +33,7 @@
 - ผู้รับเงินมาจาก `auth.uid()` และบันทึกใน `payments.recorded_by` เท่านั้น ฝั่ง client ห้ามส่ง `employee_id` เพื่อระบุผู้รับเงิน
 - เก็บ `payments.recorded_role` จาก server-side `current_app_role()` เป็น immutable snapshot พร้อม `recorded_by` เพื่อแยกเงินที่รับในบทบาท courier ออกจากเงินที่ manager รับเอง แม้บทบาทของผู้ใช้จะเปลี่ยนภายหลัง
 - courier อ่านประวัติและใบเสร็จเฉพาะรายการที่ `recorded_by = auth.uid()`; manager อ่านได้ทั้งหมด
-- การถอนสิทธิ์ courier มีผลกับ ensure, queue, record และ void collection payment ทันทีที่ server; ยังอ่านใบเสร็จเดิมของตนได้แต่แก้หรือยกเลิกไม่ได้
+- การถอนสิทธิ์ courier มีผลกับ record, void collection payment และการขอเลื่อนกำหนดทันทีที่ server; ยัง ensure context, อ่านคิวและใบเสร็จเดิมของตนได้แต่แก้หรือยกเลิกไม่ได้
 - เงินสดที่ต้องส่งมอบในเฟส 2 คือ `allocated_amount` ของ active cash payment ไม่ใช่ `received_amount` เพราะ `received_amount` รวมเงินทอน
 - การส่งมอบเงินยึด payment แต่ละรายการเป็นหน่วยความถูกต้อง ไม่ใช้ช่วงเวลาอย่างเดียว; payment หนึ่งรายการอยู่ใน handover ที่ยัง active ได้เพียงหนึ่งรายการ
 
@@ -62,7 +62,7 @@
 
 เพิ่ม `ensure_daily_collection_context(p_service_date date)` แบบ `security definer` และ idempotent:
 
-1. ตรวจ `public.can_collect_shop_payments()` ก่อนอ่านหรือสร้าง context
+1. ตรวจ `public.is_active_user()` ก่อนอ่านหรือสร้าง context; สิทธิ์ write ตรวจแยกใน RPC ที่เกิด mutation
 2. บังคับ `p_service_date` เท่ากับวันปัจจุบันตาม `Asia/Bangkok`; ปฏิเสธอดีตและอนาคต
 3. ใช้ exclusive transaction advisory lock ด้วย key `collection-run:<service_date>`
 4. หลังได้ lock ให้ตรวจซ้ำว่าไม่มี `daily_aggregate_stock_closures` ของวันนั้น
@@ -88,7 +88,7 @@
 
 ### 4. Queue, payment, receipt และ void authorization
 
-1. ปรับ `get_collection_run_queue` ให้ตรวจ `public.can_collect_shop_payments()` และ open current-day context แทน `is_collection_run_member`
+1. ปรับ `get_collection_run_queue` ให้ active courier อ่าน open current-day context ได้โดยไม่ต้องมี `can_collect_shop_payments`; write RPC ยังตรวจ capability แยกต่างหาก
 2. ปรับ `is_charge_collectible_in_run`:
    - active `immediate` และ `end_of_day` ที่ยังมียอดค้างเข้าคิว
    - active `credit` เข้าคิวเมื่อ `due_date <= run.service_date`
@@ -114,8 +114,8 @@
 
 ### 6. Frontend
 
-1. RoleRouter แสดงแท็บ “เก็บเงิน” ให้ courier เมื่อ `can_collect_shop_payments` เป็น `true`; manager ใช้หน้าการเงินได้ตามบทบาทเดิม
-2. ถ้า profile refresh พบว่าถูกถอนสิทธิ์ขณะอยู่หน้าเก็บเงิน ให้เปลี่ยนกลับ POS และไม่ mount `FinancialOperations`
+1. RoleRouter แสดงแท็บ “เก็บเงิน” ให้ courier ทุกคน; `can_collect_shop_payments = false` ยังดูคิวและรายละเอียดได้ แต่ UI รับเงินเป็น read-only รวมถึงไม่สามารถขอเลื่อนกำหนดชำระ; manager ใช้หน้าการเงินได้ตามบทบาทเดิม
+2. ถ้า profile refresh พบว่าถูกถอนสิทธิ์ขณะอยู่หน้าเก็บเงิน ให้คงหน้าเดิมและเปลี่ยน action รับเงิน/ยกเลิกรับเงิน/ขอเลื่อนกำหนดเป็น read-only ทันที
 3. server บังคับสิทธิ์ทันที; UI อัปเดตตาม profile revalidation เดิมทุก 5 นาที/เมื่อ focus หรือทันทีเมื่อ collection RPC คืน permission error แล้วสั่ง refresh profile
 4. หน้าแอดมินแสดง checkbox “รับเงินร้านค้าได้” เมื่อแก้ courier; หัวหน้า/แอดมินแสดงข้อความอ่านอย่างเดียวว่ามีสิทธิ์ตามบทบาท
 5. สร้าง `ensureCurrentCollectionContext(serviceDate)` เป็น client data boundary เดียว โดย cache เฉพาะ ID ของวันที่กำลังใช้ และ invalidate เมื่อวันเปลี่ยน, close, permission error หรือ stale-context error
@@ -245,9 +245,9 @@
 
 #### สิทธิ์และ compatibility
 
-- active admin/round lead ผ่าน helper โดยไม่อ่านค่าสิทธิ์รายคน
-- active courier ที่เปิดสิทธิ์ผ่าน; courier ที่ปิดสิทธิ์และทุกบทบาทที่ inactive ไม่ผ่าน
-- migration ให้ courier เดิมทุกคนเป็น `false`
+- active admin/round lead ผ่าน write helper โดยไม่อ่านค่าสิทธิ์รายคน
+- active courier ทุกคนอ่าน current queue ได้; เฉพาะ courier ที่เปิดสิทธิ์เท่านั้นที่ผ่าน write helper; ทุกบทบาทที่ inactive ไม่ผ่านทั้ง read และ write
+- migration ให้ courier เดิมทุกคนเป็น `false` สำหรับการบันทึกรับเงิน แต่ยังเปิดดูหน้าและคิวเก็บเงินได้
 - v2 save RPC บันทึกสิทธิ์พร้อมโปรไฟล์แบบ atomic; compatibility wrapper เก็บค่าเดิมถูกต้อง
 - direct `users` update และ RPC ชั้นล่างไม่สามารถทำให้ non-courier คง capability เป็น `true`; เปลี่ยน courier ออกจากบทบาทแล้วค่าถูกล้างใน transaction เดียวกัน
 - profile cache v1 ถูก invalidate และ cache v2 ที่ขาด capability ไม่ผ่าน validator
@@ -319,7 +319,7 @@
 1. รัน preflight และ deploy migration หลัง daily close หรือก่อนมี collection payment ของวันใหม่; ออก migration สิทธิ์/helper/context/authorization/lock พร้อม database integration tests
 2. deploy frontend ที่ใช้ profile cache v2, admin permission editor และ automatic context UI
 3. ยืนยันว่า client เก่าไม่สามารถข้ามสิทธิ์, เปิด context วันอื่น หรือปิด shared context ก่อน daily close
-4. เปิดสิทธิ์ให้ courier ที่ได้รับมอบหมายหลัง admin ตรวจรายชื่อ; ไม่ bulk-enable
+4. เปิดสิทธิ์บันทึกรับเงินให้ courier ที่ได้รับมอบหมายหลัง admin ตรวจรายชื่อ; courier ที่ยังไม่เปิดสิทธิ์ยังเข้าดูหน้าและคิวได้
 5. ออกเฟส 2 แบบ dark launch: deploy schema และ read-only validation query/summary ที่รับ candidate day boundary แต่ยังไม่ตั้ง live cutover หรือเปิด submit/review UI; เปรียบเทียบยอดแยก `recorded_by` + `recorded_role` กับ dashboard อย่างน้อยหนึ่งวันเต็ม
 6. เมื่อ dark-launch delta เป็นศูนย์ ให้ปิดยอดก่อนเฟส 2 ด้วยกระบวนการเดิมหลัง daily close, ตั้ง `cash_handover_cutover_at` เป็นเวลาเริ่มวัน Bangkok ถัดไป และบันทึกค่า/audit ใน migration/config
 7. เปิด submit/review UI เมื่อเฟส 1 ผ่านเกณฑ์ยอมรับ, dark-launch delta เป็นศูนย์ และ concurrency/offboarding tests ผ่าน

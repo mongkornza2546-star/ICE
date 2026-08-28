@@ -219,16 +219,19 @@ RPC publish ต้อง lock job และตรวจทั้งหมดใ�
 
 เพิ่ม `sync_daily_round_destinations(round_id)` และให้ client รุ่นใหม่เรียกแทน `sync_daily_round_active_shops`
 
+ก่อนเรียก sync ต้องแก้ membership discovery loop ของพนักงานที่เพิ่ง active หลังเปิดรอบแล้ว: `get_employee_active_session` ต้อง idempotently เพิ่มเฉพาะ `auth.uid()` ที่เป็น active `courier`/`round_lead`/`admin` เข้าเป็นสมาชิกของ open daily round ใน service date ที่กำลังค้นหา ก่อน filter session ตาม membership. การ bootstrap นี้ไม่รับ `round_id` จาก client และไม่ให้สิทธิ์กับ role อื่น ส่วน destination sync ยังคง refresh active roster ทั้งชุดเพื่อให้ `delivery_round_members` ครบสำหรับ reader/return queue อื่น
+
 RPC ต้อง:
 
 1. ใช้ global lock order ในหัวข้อ 6.3; migration ต้องแก้ sync, delivery, close-round และ daily-close เดิมให้ใช้ order เดียวกันก่อนเปิด event writes
-2. ยืนยันว่าเป็น daily round ที่เปิดอยู่
+2. ยืนยันว่า caller เป็น active user และเป็น admin/round lead หรือสมาชิกของรอบ จากนั้นยืนยันว่าเป็น daily round ที่เปิดอยู่
 3. sync active courier/round lead/admin ที่เพิ่มภายหลังเข้า `delivery_round_members`
 4. insert ร้าน `regular` ที่ active เป็น regular stops
-5. insert participation ของ published event ที่ครอบคลุม service date เป็น event stops
-6. ไม่แก้ snapshot ของ stop ที่มีอยู่
-7. เปลี่ยน `is_operational = false` เมื่อ event/participation ถูกยกเลิกหรือไม่ควรรับงานใหม่
-8. ไม่ลบ stop ที่มี delivery, movement, charge หรือ audit history
+5. อ่าน `event_stops_enabled` ที่ database boundary; เมื่อ flag เป็น `false` ห้าม insert/reactivate/deactivate event stop แม้ caller เรียก RPC โดยตรง แต่ regular/member sync ยังทำงานได้
+6. เมื่อ flag เป็น `true` ให้ insert participation ของ published event ที่ครอบคลุม service date เป็น event stops
+7. ไม่แก้ snapshot หรือ destination identity ของ stop ที่มีอยู่; migration เดียวกันต้องเพิ่ม `BEFORE UPDATE` trigger บังคับ immutability ของ `round_id`, `shop_id`, `destination_kind`, `event_participation_id`, shop/location snapshots และ event snapshots โดยยังอนุญาต workflow fields เช่น `sequence_no`, `status`, `note`, `is_operational`, `updated_by`, `updated_at`
+8. เปลี่ยนเฉพาะ `is_operational = false` เมื่อ event/participation ถูกยกเลิกหรือไม่ควรรับงานใหม่ และ re-activate ได้เฉพาะ participation เดิมที่กลับมา eligible ตาม lifecycle ที่อนุญาต โดยห้ามเขียน snapshot ใหม่
+9. ไม่ลบ stop ที่มีอยู่ ไม่ว่า stop นั้นจะมี delivery, movement, charge หรือ audit history แล้วหรือยัง
 
 RPC บันทึก event ice delivery และ tank handoff ต้อง lock round/job/participation ตามลำดับและตรวจสถานะซ้ำภายใน transaction; ห้ามเชื่อ client card หรือ `is_operational` เพียงอย่างเดียว
 
@@ -599,9 +602,11 @@ v2 เพิ่ม:
 - ร้านเดียวร่วมสอง event พร้อมกันโดย booth/history/totals ไม่ปะปน
 - ยกเลิก event หลัง sync แล้ว stop เดิมยังอยู่เพื่อ audit แต่ submit ใหม่ถูกปฏิเสธ
 - card search ครบ code/name/booth/zone/contact/phone
-- courier ที่ถูกเพิ่มหลังเปิด daily round เห็น event หลัง sync membership
+- courier ที่ถูกเพิ่มหลังเปิด daily round ค้นพบ round ได้จาก `get_employee_active_session` ก่อนมี `round_id` และเห็น event หลัง destination sync; role อื่น bootstrap membership เองไม่ได้
 - client รุ่นเก่าเรียก sync/cards/POS context/record delivery แล้วไม่เห็นและไม่สามารถเขียน event stop
 - legacy sync ยังทำงานหลังเปลี่ยนเป็น partial unique โดยไม่เกิด `ON CONFLICT` inference error
+- เมื่อ `event_stops_enabled = false` การเรียก destination sync โดยตรงยัง sync member/regular stop ได้ แต่ไม่ insert/reactivate/deactivate event stop; เมื่อเปิด flag จึงเริ่ม event mutation
+- direct UPDATE ที่แก้ destination identity หรือ snapshot ของ stop ถูก trigger ปฏิเสธ แต่ update `is_operational`/status/note/sequence ยังทำได้
 
 ### 12.2 ราคาและการเงิน
 
@@ -628,6 +633,7 @@ v2 เพิ่ม:
 - handoff แข่งกับ cancellation หรือ rents-tank toggle ไม่สร้าง charge ผิด state
 - handoff แข่งกับ close-round และ daily-close ไม่ commit หลังรอบ/stock ปิดและไม่ deadlock
 - sync แข่งกับ close-round/daily-close ใช้ service-date → round order เดียวกันและจบได้ทั้งสอง commit orders
+- sync แข่งกับ event/participation cancellation แล้ว recheck หลัง lock: ห้ามสร้าง operational stop จาก state เก่า และ stop เดิมต้องถูกปิดในการ sync ครั้งที่เห็น cancellation
 - payment แข่งกับ tank correction ไม่ over-allocate, ไม่สร้าง refund ซ้ำ และไม่ deadlock
 - correction handoff/return, double correction และ correction-of-reversal ถูกตรวจครบ
 - direct UPDATE/DELETE movement/evidence/charge history ถูกปฏิเสธ
@@ -663,7 +669,7 @@ v2 เพิ่ม:
 - direct insert tank charge ที่ไม่มี valid source/detail และ direct insert event payment ที่ allocation context ไม่ตรงถูกปฏิเสธเมื่อ commit
 - charge-number, receipt requirement และ snapshot triggers รองรับ nullable `delivery_event_id` โดยไม่คืน null document หรือทำให้ tank charge rollback
 - `npm test` และ `npm run build` ผ่าน
-- migration integration tests ใช้สอง connection สำหรับ race และ lock-order cases
+- migration concurrency tests ใช้ PostgreSQL จริงอย่างน้อยสอง connection (ไม่ใช้ regex/PGlite แทน) ตั้ง `lock_timeout` และทดสอบทั้งสอง commit orders สำหรับ sync vs close-round, sync vs daily-close และ sync vs event/participation cancellation
 - realtime refresh ไม่เปลี่ยน draft ระหว่าง submit
 - Phase 2 เพิ่ม offline v2 fixtures, replay, FIFO, conflict และ evidence recovery tests
 
@@ -675,34 +681,37 @@ v2 เพิ่ม:
 2. กำหนด global lock order แล้ว refactor sync, regular delivery, close-round และ daily-close พร้อม two-connection tests ก่อนเพิ่ม event writer
 3. เพิ่ม destination columns/backfill/partial unique และติดตั้ง compatibility fence ทั้ง read/write รวมการแก้ legacy `ON CONFLICT`
 4. เพิ่ม event schema, lifecycle, immutable config snapshots, capability RPC และ publish readiness
-5. เพิ่ม event cards/search แบบ read-only สำหรับ existing regular shops; เปิด feature flag ภายในให้ตรวจ snapshot/history separation
-6. เพิ่ม event-aware ice delivery, payment context, collection grouping, REC/INV builders และ accounting projection สำหรับ ice-only
-7. pilot หนึ่ง event/หนึ่งวัน/ร้านเดิมเท่านั้น ตรวจ stock, charge, INV, REC, accounting reconciliation, old-client isolation และ rollback
+5. เพิ่ม event cards/search แบบ read-only สำหรับ existing regular shops; เปิดเฉพาะ read flag ภายในให้ตรวจ snapshot/history separation
+6. แก้ late-member discovery ที่ session resolver, เพิ่ม `sync_daily_round_destinations`, server-side stop flag gate, immutable stop trigger และ real-PostgreSQL concurrency tests; เปิดเฉพาะ `event_stops_enabled` หลัง old-client isolation และ rollback checks ผ่าน
+7. เพิ่ม event-aware ice delivery, payment context, collection grouping, REC/INV builders และ accounting projection สำหรับ ice-only
+8. pilot หนึ่ง event/หนึ่งวัน/ร้านเดิมเท่านั้น ตรวจ stock, charge, INV, REC, accounting reconciliation, old-client isolation และ rollback
 
 ### Slice B — Event-only customer และ import
 
-8. เพิ่ม `customer_kind`, conditional location constraints และแก้ shop/location/stock triggers กับ regular-only readers ใน migration เดียวกัน
-9. เพิ่ม event-only save/search และ Excel preview/import แบบ all-or-nothing
-10. pilot event-only customers โดยยังไม่เปิด tank; ตรวจว่าไม่เข้ารอบ/หน้าร้านประจำแต่ปรากฏใน financial reports
+9. เพิ่ม `customer_kind`, conditional location constraints และแก้ shop/location/stock triggers กับ regular-only readers ใน migration เดียวกัน
+10. เพิ่ม event-only save/search และ Excel preview/import แบบ all-or-nothing
+11. pilot event-only customers โดยยังไม่เปิด tank; ตรวจว่าไม่เข้ารอบ/หน้าร้านประจำแต่ปรากฏใน financial reports
 
 ### Slice C — Tank rental
 
-11. ขยาย canonical charge header และ normalized line/effective-adjustment projections พร้อม dual-read verification
-12. เพิ่ม tank ledger, upload intents/evidence, authorization predicate, global-lock integration และ correction ที่ replacement ไม่มี billing effect
-13. ปรับ collection, document triggers/snapshots, refund, manager reports, accounting และ export ให้รองรับ rental-only/mixed
-14. เปิด tank feature flag ใน event ทดสอบหนึ่งงาน ตรวจ return หลัง event/round/stock close, orphan cleanup และ paid correction ก่อนขยาย
+12. ขยาย canonical charge header และ normalized line/effective-adjustment projections พร้อม dual-read verification
+13. เพิ่ม tank ledger, upload intents/evidence, authorization predicate, global-lock integration และ correction ที่ replacement ไม่มี billing effect
+14. ปรับ collection, document triggers/snapshots, refund, manager reports, accounting และ export ให้รองรับ rental-only/mixed
+15. เปิด tank feature flag ใน event ทดสอบหนึ่งงาน ตรวจ return หลัง event/round/stock close, orphan cleanup และ paid correction ก่อนขยาย
 
 ### Slice D — Scale และ offline
 
-15. เปิดหลาย event พร้อมกันหลัง cross-event isolation และ payment-context tests ผ่าน
-16. ทำ Employee Offline Contract v2 หลังระบบ offline หลักพร้อมและ v1 pending commands drain ได้ตามเดิม
+16. เปิดหลาย event พร้อมกันหลัง cross-event isolation และ payment-context tests ผ่าน
+17. ทำ Employee Offline Contract v2 หลังระบบ offline หลักพร้อมและ v1 pending commands drain ได้ตามเดิม
 
 ทุก migration เป็น additive ก่อน client cutover, คง RPC signature เดิมระหว่าง compatibility และห้าม drop/rename table หรือ field เดิมจนผ่านหนึ่ง verified release พร้อม rollback exercise
 
 release gate ทุก slice:
 
 - migration integration, unit/UI tests และ `npm run build` ผ่าน
-- old client contract tests ผ่านก่อนเปิด feature flag
+- old client contract tests และ direct-RPC test ที่ยืนยัน server-side feature gate ผ่านก่อนเปิด feature flag
+- late-member bootstrap test ยืนยันว่าพนักงานค้นพบรอบได้ก่อนมี `round_id` โดยไม่เปิดสิทธิ์ให้ role อื่นหรือ service date อื่น
+- stop snapshot immutability ถูกบังคับด้วย database trigger ไม่ใช่เพียง convention ใน sync RPC
 - reconciliation ระหว่าง source rows, effective charges, allocations, documents และ accounting ได้ศูนย์ต่าง
 - rollback exercise ไม่ทำให้ event stop โผล่ใน regular client และไม่ทำให้ charge/payment history หาย
 - metrics/alerts แยก event vs regular: RPC error code, idempotency mismatch, orphan upload intent, negative-balance rejection, document snapshot failure และ reconciliation delta

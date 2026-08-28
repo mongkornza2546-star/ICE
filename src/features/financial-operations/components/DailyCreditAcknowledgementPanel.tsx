@@ -3,7 +3,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { uploadDailyCreditAcknowledgementEvidence } from '../../../lib/dailyCreditAcknowledgementEvidence';
 import { withAsyncPublicImageUrls } from '../../../lib/publicImageUrls';
 import { getHybridObjectUrl, getHybridObjectUrls } from '../../../lib/r2Storage';
-import { printDailyCreditAcknowledgement, type DailyCreditAcknowledgementDocument } from '../../../lib/dailyCreditAcknowledgementPrint';
+import { printDailyCreditAcknowledgementForCurrentPlatform, type DailyCreditAcknowledgementDocument } from '../../../lib/dailyCreditAcknowledgementPrint';
+import { isAndroidApp } from '../../../lib/thermalPrinter';
 import { getErrorMessage } from '../../../lib/errorMessage';
 import { toBangkokDateString } from '../../../lib/serviceDate';
 import { supabase } from '../../../lib/supabase';
@@ -72,8 +73,9 @@ export function DailyCreditAcknowledgementPanel({ serviceDate }: { serviceDate: 
   useEffect(() => subscribeToDataChange(['receivable'], () => { void load(); }), [load]);
 
   const print = async (item: DailyCreditAcknowledgementSummary) => {
-    const printWindow = window.open('', '_blank', 'popup,width=360,height=680');
-    if (!printWindow) {
+    const nativeAndroid = isAndroidApp();
+    const printWindow = nativeAndroid ? null : window.open('', '_blank', 'popup,width=360,height=680');
+    if (!nativeAndroid && !printWindow) {
       setError('เบราว์เซอร์บล็อกหน้าต่างพิมพ์ กรุณาอนุญาตป๊อปอัปแล้วลองใหม่');
       return;
     }
@@ -86,12 +88,12 @@ export function DailyCreditAcknowledgementPanel({ serviceDate }: { serviceDate: 
         p_service_date: selectedDate,
       });
       if (printError) throw printError;
-      if (!printDailyCreditAcknowledgement(data as DailyCreditAcknowledgementDocument, printWindow)) {
+      if (!await printDailyCreditAcknowledgementForCurrentPlatform(data as DailyCreditAcknowledgementDocument, printWindow)) {
         throw new Error('ไม่สามารถเปิดหน้าต่างพิมพ์ได้');
       }
       await load();
     } catch (printError) {
-      printWindow.close();
+      printWindow?.close();
       setError(getErrorMessage(printError));
     } finally {
       setBusyShopId(null);

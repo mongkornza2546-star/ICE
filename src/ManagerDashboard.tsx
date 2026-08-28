@@ -258,6 +258,11 @@ export function ManagerDashboard({
     cancelled: 'ยกเลิกแล้ว',
   };
   const lowStockTotals = stockTotals.filter((stock) => stock.quantity <= 0).length;
+  const deliveredDestinationCount = deliverySummary.regularShopCount
+    + deliverySummary.eventParticipationCount;
+  const deliveryBreakdown = deliverySummary.eventParticipationCount > 0
+    ? `${formatQuantity(deliverySummary.regularShopCount)} ร้านประจำ · ${formatQuantity(deliverySummary.eventParticipationCount)} จุดอีเวนต์ · ${formatQuantity(deliverySummary.activeDeliveryCount)} รายการส่ง`
+    : `${formatQuantity(deliverySummary.activeDeliveryCount)} รายการส่ง`;
   const alertItems = [
     ...(lowStockTotals > 0 ? [{ tone: 'danger' as const, title: 'สต๊อกไม่เพียงพอ', detail: `พบสินค้า ${lowStockTotals} ชนิดที่สต๊อกหมด`, count: `${lowStockTotals} รายการ`, icon: WarningCircle, view: 'stock_operations' as const }] : []),
     ...(problems.length > 0 ? [{ tone: 'warning' as const, title: 'มีปัญหาหน้างานที่ต้องติดตาม', detail: problems[0].shop_name, count: `${problems.length} รายการ`, icon: User, view: 'delivery' as const }] : []),
@@ -297,7 +302,7 @@ export function ManagerDashboard({
       <section className="dashboard-overview-grid" aria-label="ตัวเลขสรุปวันนี้">
         <OverviewCard icon={Truck} label="สต๊อกคงเหลือ" value={totalStock.value} unit={totalStock.unit} detail="ยอดรวมประจำวันหลังหักยอดขาย" tone="blue" />
         <OverviewCard icon={CurrencyDollar} label="ยอดขายสุทธิ" value={formatCurrency(salesSummary.netSalesValue)} detail="ยอดขายที่บันทึกแล้ววันนี้" tone="green" />
-        <OverviewCard icon={Storefront} label="ส่งร้านแล้ว" value={formatQuantity(deliverySummary.actualShopCount)} unit="ร้าน" detail={`${formatQuantity(deliverySummary.activeDeliveryCount)} รายการส่ง`} tone="sky" />
+        <OverviewCard icon={Storefront} label="ส่งจุดหมายแล้ว" value={formatQuantity(deliveredDestinationCount)} unit="จุด" detail={deliveryBreakdown} tone="sky" />
         <OverviewCard
           detail={!hasStartedWork ? 'ยังไม่เริ่มงานวันนี้' : pendingCount ? 'รอตรวจนับใหม่ก่อนปิดวัน' : 'ตรวจนับครบแล้ว'}
           icon={ClipboardText}

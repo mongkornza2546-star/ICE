@@ -158,6 +158,8 @@ export function ManagerRoundControl({
   }
 
   const canCancel = cancellationState?.can_cancel === true;
+  const regularCounts = summary.destination_counts?.regular ?? summary.stop_counts;
+  const eventCounts = summary.destination_counts?.event;
 
   return (
     <>
@@ -181,11 +183,20 @@ export function ManagerRoundControl({
 
       <form className="manager-control" onSubmit={handleClose}>
         <div className="metric-grid">
-          <Metric label="ร้านทั้งหมด" value={summary.stop_counts.total} />
-          <Metric label="มีรายการส่ง" value={summary.stop_counts.delivered} tone="success" />
-          <Metric label="ยังไม่มีรายการ" value={summary.stop_counts.pending} />
-          <Metric label="มีปัญหา" value={summary.stop_counts.problem} tone="danger" />
+          <Metric label="ร้านประจำทั้งหมด" value={regularCounts.total} />
+          <Metric label="ส่งร้านประจำแล้ว" value={regularCounts.delivered} tone="success" />
+          <Metric label="ร้านประจำที่ยังไม่ส่ง" value={regularCounts.pending} />
+          <Metric label="ร้านประจำที่มีปัญหา" value={regularCounts.problem} tone="danger" />
         </div>
+
+        {eventCounts?.total ? (
+          <div className="metric-grid" aria-label="สรุปจุดส่งอีเวนต์">
+            <Metric label="จุดอีเวนต์ทั้งหมด" value={eventCounts.total} />
+            <Metric label="ส่งจุดอีเวนต์แล้ว" value={eventCounts.delivered} tone="success" />
+            <Metric label="จุดอีเวนต์ที่ยังไม่ส่ง" value={eventCounts.pending} />
+            <Metric label="จุดอีเวนต์ที่มีปัญหา" value={eventCounts.problem} tone="danger" />
+          </div>
+        ) : null}
 
         <div className="reconciliation-list">
           {summary.ice_counts.map((item) => (

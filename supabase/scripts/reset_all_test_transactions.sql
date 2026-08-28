@@ -6,6 +6,7 @@
 --   - การส่งของ ยอดขาย รายการขาย และบิล
 --   - รายการลูกค้าขาจร ใบรับเงิน การยืนยันคืนเงิน และคำขอยกเลิก
 --   - การชำระเงิน รอบเก็บเงิน และคำขออนุมัติ
+--   - การปิดยอดรายวัน ยอดเงินสดพนักงาน และรายการส่วนต่าง
 --   - การโอน/นับ/ปิดสต๊อก และ audit log ทดสอบ
 --   - คิวคำสั่งออฟไลน์ ปัญหา sync และประวัติการตัดสินใจ
 --
@@ -36,9 +37,13 @@ select 'delivery charges / bills', count(*) from public.delivery_charges
 union all
 select 'payments / receipts', count(*) from public.payments
 union all
-select 'cash handovers', count(*) from public.cash_handovers
+select 'daily close requests', count(*) from public.daily_close_reconciliation_requests
 union all
-select 'cash handover items', count(*) from public.cash_handover_items
+select 'daily close employee snapshots', count(*) from public.daily_close_employee_snapshots
+union all
+select 'daily close payment items', count(*) from public.daily_close_payment_items
+union all
+select 'daily close reconciliation issues', count(*) from public.daily_close_reconciliation_issues
 union all
 select 'payment allocation changes', count(*) from public.payment_allocation_changes
 union all
@@ -105,8 +110,10 @@ truncate table
   public.payment_allocations,
   public.payment_receipt_snapshots,
   public.delivery_charge_document_snapshots,
-  public.cash_handover_items,
-  public.cash_handovers,
+  public.daily_close_reconciliation_issues,
+  public.daily_close_payment_items,
+  public.daily_close_employee_snapshots,
+  public.daily_close_reconciliation_requests,
   public.payments,
   public.collection_run_members,
   public.collection_run_credit_charges,
@@ -167,8 +174,10 @@ select
   (select count(*) from public.casual_void_requests) as casual_void_requests,
   (select count(*) from public.delivery_charges) as bills,
   (select count(*) from public.payments) as payments,
-  (select count(*) from public.cash_handovers) as cash_handovers,
-  (select count(*) from public.cash_handover_items) as cash_handover_items,
+  (select count(*) from public.daily_close_reconciliation_requests) as daily_close_requests,
+  (select count(*) from public.daily_close_employee_snapshots) as daily_close_employee_snapshots,
+  (select count(*) from public.daily_close_payment_items) as daily_close_payment_items,
+  (select count(*) from public.daily_close_reconciliation_issues) as daily_close_reconciliation_issues,
   (select count(*) from public.payment_allocation_changes) as payment_allocation_changes,
   (select count(*) from public.refund_obligations) as refund_obligations,
   (select count(*) from public.refund_settlements) as refund_settlements,

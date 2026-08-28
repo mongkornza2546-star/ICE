@@ -1,5 +1,38 @@
 @import "./stock-layout.css";
-@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;500;600;700&display=swap');
+
+@font-face {
+  font-family: 'Noto Sans Thai';
+  src: url('/fonts/NotoSansThai-Variable.ttf') format('truetype');
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+}
+
+.thermal-printer-fab { position: fixed; right: 16px; bottom: max(16px, env(safe-area-inset-bottom)); z-index: 70; display: inline-flex; align-items: center; gap: 7px; min-height: 44px; border: 1px solid #c8d6e7; border-radius: 999px; background: #fff; padding: 8px 13px; color: #34536f; box-shadow: 0 8px 24px #123b6329; font: inherit; font-size: .75rem; font-weight: 800; }
+.thermal-printer-fab--ready { border-color: #79c9a3; color: #08744b; background: #f1fcf7; }
+.thermal-printer-layer { position: fixed; z-index: 200; inset: 0; display: grid; place-items: center; padding: 18px; }
+.thermal-printer-backdrop { position: absolute; inset: 0; width: 100%; border: 0; background: #0b213d80; }
+.thermal-printer-dialog { position: relative; z-index: 1; width: min(480px, 100%); max-height: calc(100dvh - 36px); overflow-y: auto; border: 1px solid #d9e2ed; border-radius: 18px; background: #fff; padding: 18px; box-shadow: 0 24px 70px #102a2259; }
+.thermal-printer-dialog > header { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 11px; align-items: start; }
+.thermal-printer-dialog > header > span { display: grid; place-items: center; width: 42px; height: 42px; border-radius: 12px; color: #176cff; background: #eaf3ff; }
+.thermal-printer-dialog h2 { margin: 0; color: #173758; font-size: 1.08rem; }
+.thermal-printer-dialog header p { margin: 3px 0 0; color: #697b8e; font-size: .74rem; line-height: 1.45; }
+.thermal-printer-close { display: grid; place-items: center; border: 0; background: transparent; padding: 5px; color: #65778a; }
+.thermal-printer-message { display: flex; align-items: flex-start; gap: 7px; margin-top: 14px; border-radius: 10px; padding: 10px 11px; font-size: .78rem; line-height: 1.45; }
+.thermal-printer-message--error { color: #a33138; background: #fff0f1; }
+.thermal-printer-message--success { color: #08744b; background: #effbf5; }
+.thermal-printer-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 15px; }
+.thermal-printer-actions button, .thermal-printer-dialog footer button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 40px; border: 1px solid #cbd8e7; border-radius: 10px; background: #fff; padding: 8px 11px; color: #254b70; font: inherit; font-size: .76rem; font-weight: 800; }
+.thermal-printer-list { display: grid; gap: 8px; margin-top: 14px; }
+.thermal-printer-list > p { margin: 0; border: 1px dashed #cbd8e7; border-radius: 11px; padding: 18px; color: #718295; font-size: .78rem; text-align: center; }
+.thermal-printer-list > button { width: 100%; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; align-items: center; border: 1px solid #d7e1ec; border-radius: 12px; background: #fff; padding: 11px 12px; color: #32516f; text-align: left; }
+.thermal-printer-list > button > span { min-width: 0; display: grid; gap: 2px; }
+.thermal-printer-list strong { overflow: hidden; font-size: .84rem; text-overflow: ellipsis; white-space: nowrap; }
+.thermal-printer-list small { color: #77889a; font-size: .68rem; }
+.thermal-printer-list .thermal-printer-device--active { border-color: #4cba86; color: #08744b; background: #f1fcf7; }
+.thermal-printer-dialog footer { display: flex; justify-content: flex-end; margin-top: 16px; padding-top: 14px; border-top: 1px solid #e2e9f1; }
+.thermal-printer-dialog footer button { border-color: #1675d1; color: #fff; background: #1675d1; }
+.thermal-printer-dialog button:disabled { cursor: not-allowed; opacity: .55; }
 
 :root {
   font-family: 'Noto Sans Thai', Tahoma, system-ui, sans-serif;

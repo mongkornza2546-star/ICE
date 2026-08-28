@@ -20,7 +20,8 @@ import type {
   PaymentMethod,
 } from '../../types/app';
 import type { StoredSalesDocument } from '../../lib/salesDocumentPrint';
-import { printSalesDocument, salesDocumentFromStored } from '../../lib/salesDocumentPrint';
+import { printSalesDocumentForCurrentPlatform, salesDocumentFromStored } from '../../lib/salesDocumentPrint';
+import { isAndroidApp } from '../../lib/thermalPrinter';
 import { publishDataChange } from '../../lib/dataChange';
 import { MAX_PAYMENT_EVIDENCE_SIZE } from '../../lib/paymentEvidence';
 import { usePendingRequests } from './usePendingRequests';
@@ -294,12 +295,20 @@ export function EmployeeCasualCustomerPage({
   };
 
   const printReceipt = async (transactionId?: string) => {
+    const nativeAndroid = isAndroidApp();
+    const printWindow = nativeAndroid ? null : window.open('', '_blank', 'popup,width=360,height=680');
+    if (!nativeAndroid && !printWindow) {
+      setError('เบราว์เซอร์บล็อกหน้าต่างพิมพ์ กรุณาอนุญาต pop-up แล้วลองใหม่');
+      return;
+    }
     try {
       const document = transactionId ? await loadReceipt(transactionId) : latestReceipt;
-      if (!document || !printSalesDocument(salesDocumentFromStored(document))) {
+      if (!document || !await printSalesDocumentForCurrentPlatform(salesDocumentFromStored(document), printWindow)) {
+        printWindow?.close();
         setError('เบราว์เซอร์บล็อกหน้าต่างพิมพ์ กรุณาอนุญาต pop-up แล้วลองใหม่');
       }
     } catch (cause) {
+      printWindow?.close();
       setError(cause instanceof Error ? cause.message : 'เปิดใบรับเงินไม่สำเร็จ');
     }
   };

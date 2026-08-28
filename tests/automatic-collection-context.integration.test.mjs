@@ -7,6 +7,10 @@ const migration = readFileSync(
   new URL('../supabase/migrations/0159_automatic_collection_context_authorization.sql', import.meta.url),
   'utf8',
 );
+const readAccessMigration = readFileSync(
+  new URL('../supabase/migrations/0164_restore_courier_collection_default_access.sql', import.meta.url),
+  'utf8',
+);
 const today = new Intl.DateTimeFormat('en-CA', {
   timeZone: 'Asia/Bangkok', year: 'numeric', month: '2-digit', day: '2-digit',
 }).format(new Date());
@@ -53,8 +57,10 @@ async function createDatabase() {
       actor_id uuid, entity_type text, entity_id uuid, action text, after_value jsonb
     );
     create table public.delivery_charges (
-      id uuid primary key, status text not null, payment_term text not null, due_date date
+      id uuid primary key, shop_id uuid not null, charge_number text, service_date date not null,
+      status text not null, payment_term text not null, due_date date, original_amount numeric not null
     );
+    create table public.shops (id uuid primary key, code text not null, name text not null);
     create table public.payments (
       id uuid primary key, shop_id uuid not null, collection_run_id uuid,
       status text not null default 'active', recorded_by uuid not null
@@ -69,7 +75,24 @@ async function createDatabase() {
     create function public.is_charge_collectible_in_run(uuid, uuid) returns boolean language sql as $$ select false $$;
     create function public.open_collection_run(date, jsonb) returns jsonb language sql as $$ select '{}'::jsonb $$;
     create function public.get_collection_run_queue(uuid) returns jsonb language sql as $$
-      select jsonb_build_object('called', true)
+      select coalesce(jsonb_agg(jsonb_build_object(
+        'shop_id', shop.id,
+        'shop_code', shop.code,
+        'shop_name', shop.name,
+        'outstanding_amount', charge.original_amount,
+        'charge_count', 1,
+        'charges', jsonb_build_array(jsonb_build_object(
+          'charge_id', charge.id,
+          'charge_number', charge.charge_number,
+          'service_date', charge.service_date,
+          'payment_term', charge.payment_term,
+          'due_date', charge.due_date,
+          'outstanding_amount', charge.original_amount
+        ))
+      ) order by shop.code), '[]'::jsonb)
+      from public.delivery_charges charge
+      join public.shops shop on shop.id = charge.shop_id
+      where charge.status = 'active'
     $$;
     create function public.get_today_collection_run_queue(uuid) returns jsonb language sql as $$
       select jsonb_build_object('called', true)
@@ -93,6 +116,10 @@ async function createDatabase() {
     create function public.void_payment(uuid, text) returns jsonb language sql as $$
       select jsonb_build_object('called', true)
     $$;
+    create function public.request_credit_due_date_change(uuid, date, text)
+    returns jsonb language sql as $$
+      select jsonb_build_object('called', true)
+    $$;
     create function public.close_daily_aggregate_stock(date, jsonb, text, uuid)
     returns jsonb language sql as $$ select jsonb_build_object('closed', true) $$;
     create function public.close_collection_run(uuid) returns jsonb language sql as $$ select '{}'::jsonb $$;
@@ -108,25 +135,61 @@ async function createDatabase() {
       ('00000000-0000-0000-0000-000000000001', 'courier', true, false),
       ('00000000-0000-0000-0000-000000000002', 'courier', true, true),
       ('00000000-0000-0000-0000-000000000003', 'admin', true, false);
+    insert into public.shops values (
+      '10000000-0000-0000-0000-000000000001', 'S001', 'ร้านทดสอบ'
+    );
+    insert into public.delivery_charges values (
+      '40000000-0000-0000-0000-000000000001',
+      '10000000-0000-0000-0000-000000000001',
+      'INV001', date '${today}', 'active', 'credit', date '${today}', 120
+    );
   `);
   await db.exec(migration);
+  await db.exec(readAccessMigration);
   return db;
 }
 
-test('ensure is current-day, capability-gated, idempotent, and member-free', async (t) => {
+test('couriers without payment capability can view the current queue', async (t) => {
   const db = await createDatabase();
   t.after(() => db.close());
   await db.exec("set app.test_user_id = '00000000-0000-0000-0000-000000000001'");
-  await assert.rejects(db.query(`select public.ensure_daily_collection_context('${today}')`), /cannot collect/i);
-
-  await db.exec("update public.users set can_collect_shop_payments = true where id = '00000000-0000-0000-0000-000000000001'");
   const first = await db.query(`select public.ensure_daily_collection_context('${today}') as context`);
   const second = await db.query(`select public.ensure_daily_collection_context('${today}') as context`);
   assert.equal(first.rows[0].context.collection_run_id, second.rows[0].context.collection_run_id);
+  const queue = (await db.query(
+    `select public.get_collection_run_queue('${first.rows[0].context.collection_run_id}') as queue`,
+  )).rows[0].queue;
+  assert.equal(queue.length, 1);
+  assert.deepEqual(queue[0], {
+    shop_id: '10000000-0000-0000-0000-000000000001',
+    shop_code: 'S001',
+    shop_name: 'ร้านทดสอบ',
+    outstanding_amount: 120,
+    charge_count: 1,
+    charges: [{
+      charge_id: '40000000-0000-0000-0000-000000000001',
+      charge_number: 'INV001',
+      service_date: today,
+      payment_term: 'credit',
+      due_date: today,
+      outstanding_amount: 120,
+    }],
+  });
+  assert.equal(
+    (await db.query(`select public.is_collection_run_member('${first.rows[0].context.collection_run_id}') as visible`)).rows[0].visible,
+    true,
+  );
+  assert.equal((await db.query('select public.can_collect_shop_payments() as allowed')).rows[0].allowed, false);
   assert.equal((await db.query('select count(*)::int as count from public.collection_runs')).rows[0].count, 1);
   assert.equal((await db.query("select count(*)::int as count from public.audit_logs where action = 'auto_opened'")).rows[0].count, 1);
   assert.equal((await db.query('select count(*)::int as count from public.collection_run_members')).rows[0].count, 0);
   await assert.rejects(db.query(`select public.ensure_daily_collection_context(date '${today}' - 1)`), /current Bangkok business date/i);
+
+  await db.exec("update public.users set is_active = false where id = '00000000-0000-0000-0000-000000000001'");
+  await assert.rejects(
+    db.query(`select public.get_collection_run_queue('${first.rows[0].context.collection_run_id}')`),
+    /active user is required/i,
+  );
 });
 
 test('collection payment authorization is enforced again after the financial locks', async (t) => {
@@ -143,15 +206,57 @@ test('collection payment authorization is enforced again after the financial loc
   await assert.rejects(db.query(`select public.record_payment(${args})`), /cannot collect/i);
 });
 
+test('read-only couriers cannot void collection payments or request due-date changes', async (t) => {
+  const db = await createDatabase();
+  t.after(() => db.close());
+  await db.exec("set app.test_user_id = '00000000-0000-0000-0000-000000000002'");
+  const context = (await db.query(`select public.ensure_daily_collection_context('${today}') as context`)).rows[0].context;
+  await db.exec(`insert into public.payments (
+    id, shop_id, collection_run_id, status, recorded_by
+  ) values (
+    '30000000-0000-0000-0000-000000000002',
+    '10000000-0000-0000-0000-000000000001',
+    '${context.collection_run_id}', 'active',
+    '00000000-0000-0000-0000-000000000002'
+  )`);
+  assert.equal(
+    (await db.query("select public.void_payment('30000000-0000-0000-0000-000000000002', 'mistake') as result")).rows[0].result.called,
+    true,
+  );
+  assert.equal(
+    (await db.query(`select public.request_credit_due_date_change(
+      '40000000-0000-0000-0000-000000000001', date '${today}' + 1, 'customer request'
+    ) as result`)).rows[0].result.called,
+    true,
+  );
+  await db.exec("update public.users set can_collect_shop_payments = false where id = '00000000-0000-0000-0000-000000000002'");
+
+  await assert.rejects(
+    db.query("select public.void_payment('30000000-0000-0000-0000-000000000002', 'mistake')"),
+    /cannot collect/i,
+  );
+  await assert.rejects(
+    db.query(`select public.request_credit_due_date_change(
+      '40000000-0000-0000-0000-000000000001', date '${today}' + 1, 'customer request'
+    )`),
+    /cannot collect/i,
+  );
+  assert.equal(
+    (await db.query("select status from public.payments where id = '30000000-0000-0000-0000-000000000002'")).rows[0].status,
+    'active',
+  );
+});
+
 test('manager queue access rejects legacy open contexts outside the current Bangkok date', async (t) => {
   const db = await createDatabase();
   t.after(() => db.close());
   await db.exec("set app.test_user_id = '00000000-0000-0000-0000-000000000003'");
   const current = (await db.query(`select public.ensure_daily_collection_context('${today}') as context`)).rows[0].context;
-  assert.equal(
-    (await db.query(`select public.get_collection_run_queue('${current.collection_run_id}') as queue`)).rows[0].queue.called,
-    true,
-  );
+  const queue = (await db.query(
+    `select public.get_collection_run_queue('${current.collection_run_id}') as queue`,
+  )).rows[0].queue;
+  assert.equal(queue.length, 1);
+  assert.equal(queue[0].shop_code, 'S001');
 
   const future = (await db.query(`insert into public.collection_runs (service_date, opened_by)
     values (date '${today}' + 1, '00000000-0000-0000-0000-000000000003') returning id`)).rows[0].id;

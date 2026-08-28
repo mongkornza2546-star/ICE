@@ -5,7 +5,8 @@ import { supabase } from './lib/supabase';
 import { bangkokDayUtcRange, toBangkokDateString } from './lib/serviceDate';
 import { MAX_PAYMENT_EVIDENCE_SIZE, uploadPaymentEvidence } from './lib/paymentEvidence';
 import { getErrorMessage } from './lib/errorMessage';
-import { printSalesDocument } from './lib/salesDocumentPrint';
+import { printSalesDocumentForCurrentPlatform } from './lib/salesDocumentPrint';
+import { isAndroidApp } from './lib/thermalPrinter';
 import { usePendingRequests } from './features/employee-delivery/usePendingRequests';
 import { CollectionRunSection } from './features/financial-operations/components/CollectionRunSection';
 import { CollectionDesk } from './features/financial-operations/components/CollectionDesk';
@@ -55,6 +56,7 @@ type FinancialOperationsDemoData = {
 
 export function FinancialOperations({
   userRole = 'round_lead',
+  canCollectShopPayments = true,
   currentUserId,
   demoData,
   isActive = true,
@@ -62,6 +64,7 @@ export function FinancialOperations({
   onManagerPageChange,
 }: {
   userRole?: AppRole;
+  canCollectShopPayments?: boolean;
   currentUserId?: string;
   demoData?: FinancialOperationsDemoData;
   isActive?: boolean;
@@ -405,7 +408,8 @@ export function FinancialOperations({
     ? method === 'bank_transfer' || methodRequires(selectedShop.payment_profile, method, 'evidence')
     : false;
   const paymentReady = Boolean(
-    selectedShop
+    canCollectShopPayments
+    && selectedShop
     && Number.isFinite(receivedAmount)
     && receivedAmount > 0
     && (method === 'cash' || receivedAmount <= selectedShop.outstanding_amount)
@@ -454,7 +458,7 @@ export function FinancialOperations({
 
   const recordPayment = () => {
     return runAction(async () => {
-      if (!supabase || !runId || !selectedShop || !paymentReady) return;
+      if (!canCollectShopPayments || !supabase || !runId || !selectedShop || !paymentReady) return;
       const signature = `collection-payment:${JSON.stringify({
         runId,
         shopId: selectedShop.shop_id,
@@ -528,8 +532,8 @@ export function FinancialOperations({
     setSelectedShop(null);
   };
 
-  const printReceipt = (targetReceipt: PaymentReceipt, existingPrintWindow?: Window) => {
-    const printed = printSalesDocument({
+  const printReceipt = async (targetReceipt: PaymentReceipt, existingPrintWindow?: Window | null) => {
+    const printed = await printSalesDocumentForCurrentPlatform({
       documentType: 'REC',
       documentNumber: targetReceipt.receiptNumber,
       title: targetReceipt.title ?? 'ใบเสร็จรับเงิน',
@@ -567,17 +571,18 @@ export function FinancialOperations({
   };
 
   const printStoredReceipt = (paymentId: string) => {
-    const printWindow = window.open('', '_blank', 'popup,width=360,height=680');
-    if (!printWindow) {
+    const nativeAndroid = isAndroidApp();
+    const printWindow = nativeAndroid ? null : window.open('', '_blank', 'popup,width=360,height=680');
+    if (!nativeAndroid && !printWindow) {
       setError('เบราว์เซอร์บล็อกหน้าต่างพิมพ์ กรุณาอนุญาตป๊อปอัปแล้วลองใหม่');
       return;
     }
     void runAction(async () => {
       try {
         const receiptSnapshot = await getReceiptSnapshot(paymentId);
-        printReceipt(receiptSnapshot, printWindow);
+        await printReceipt(receiptSnapshot, printWindow);
       } catch (printError) {
-        printWindow.close();
+        printWindow?.close();
         throw printError;
       }
     }, false);
@@ -644,6 +649,7 @@ export function FinancialOperations({
   });
 
   const voidPayment = (payment: PaymentHistoryItem) => {
+    if (!isManager && !canCollectShopPayments) return Promise.resolve(false);
     const reason = window.prompt(`เหตุผลที่ยกเลิกรับเงินจาก ${payment.shops?.name ?? 'ร้านค้า'}`)?.trim();
     if (!reason) return Promise.resolve(false);
     return runAction(async () => {
@@ -803,7 +809,7 @@ export function FinancialOperations({
             busy={busy}
             historyDate={historyDate}
             isManager={false}
-            currentUserId={currentUserId}
+            currentUserId={canCollectShopPayments ? currentUserId : undefined}
             onHistoryDateChange={changeHistoryDate}
             onOpenReceipt={openHistoryReceipt}
             onPrintReceipt={printHistoryReceipt}
@@ -828,6 +834,7 @@ export function FinancialOperations({
           allocatedAmount={allocatedAmount}
           amount={amount}
           busy={busy}
+          canRecordPayment={canCollectShopPayments}
           changeAmount={changeAmount}
           closeButtonRef={closeButtonRef}
           dialogRef={dialogRef}
@@ -884,6 +891,7 @@ export function FinancialOperations({
           allocatedAmount={allocatedAmount}
           amount={amount}
           busy={busy}
+          canRecordPayment={canCollectShopPayments}
           changeAmount={changeAmount}
           closeButtonRef={closeButtonRef}
           dialogRef={dialogRef}
@@ -920,7 +928,7 @@ export function FinancialOperations({
           onPrint={() => printHistoryReceipt(historyReceipt.payment)}
           onCorrect={isManager ? openHistoryChargeCorrection : undefined}
           onVoid={historyReceipt.payment.status === 'active'
-            && (isManager || (Boolean(currentUserId) && historyReceipt.payment.recorded_by === currentUserId)) ? () => {
+            && (isManager || (canCollectShopPayments && Boolean(currentUserId) && historyReceipt.payment.recorded_by === currentUserId)) ? () => {
             void voidPayment(historyReceipt.payment).then((voided) => {
               if (voided) setHistoryReceipt(null);
             });

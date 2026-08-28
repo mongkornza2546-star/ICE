@@ -151,12 +151,6 @@ export function RoleRouter({
   }, [courierView]);
 
   useEffect(() => {
-    if (profile?.role === 'courier' && !profile.can_collect_shop_payments && courierView === 'collection') {
-      setCourierView('pos');
-    }
-  }, [courierView, profile]);
-
-  useEffect(() => {
     const refreshCurrentDate = () => setCurrentBangkokDate(toBangkokDateString());
     const intervalId = window.setInterval(refreshCurrentDate, 60_000);
     window.addEventListener('focus', refreshCurrentDate);
@@ -272,21 +266,19 @@ export function RoleRouter({
             <Storefront aria-hidden="true" size={22} weight="duotone" />
             <span>POS</span>
           </button>
-          {profile.can_collect_shop_payments ? (
-            <button
-              aria-current={courierView === 'collection' ? 'page' : undefined}
-              disabled={deliveryDraftState.submitting}
-              onClick={() => {
-                if (courierView !== 'collection' && !confirmLeavingDelivery()) return;
-                setCourierCollectionVisited(true);
-                setCourierView('collection');
-              }}
-              type="button"
-            >
-              <Coins aria-hidden="true" size={22} weight="duotone" />
-              <span>เก็บเงิน</span>
-            </button>
-          ) : null}
+          <button
+            aria-current={courierView === 'collection' ? 'page' : undefined}
+            disabled={deliveryDraftState.submitting}
+            onClick={() => {
+              if (courierView !== 'collection' && !confirmLeavingDelivery()) return;
+              setCourierCollectionVisited(true);
+              setCourierView('collection');
+            }}
+            type="button"
+          >
+            <Coins aria-hidden="true" size={22} weight="duotone" />
+            <span>เก็บเงิน</span>
+          </button>
         </nav>
         <KeepAlive active={courierView !== 'collection'}>
           <EmployeeDeliveryWorkspace
@@ -298,9 +290,10 @@ export function RoleRouter({
             viewMode={courierView === 'withdrawal' ? 'withdrawal' : 'pos'}
           />
         </KeepAlive>
-        {profile.can_collect_shop_payments && (courierCollectionVisited || courierView === 'collection') ? (
+        {courierCollectionVisited || courierView === 'collection' ? (
           <KeepAlive active={courierView === 'collection'}>
             <FinancialOperations
+              canCollectShopPayments={profile.can_collect_shop_payments}
               currentUserId={profile.id}
               isActive={courierView === 'collection'}
               userRole="courier"

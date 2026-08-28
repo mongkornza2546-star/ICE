@@ -228,6 +228,20 @@ export interface RoundControlSummary {
     pending: number;
     problem: number;
   };
+  destination_counts: {
+    regular: {
+      total: number;
+      delivered: number;
+      pending: number;
+      problem: number;
+    };
+    event: {
+      total: number;
+      delivered: number;
+      pending: number;
+      problem: number;
+    };
+  };
   ice_counts: RoundControlIceCount[];
 }
 
@@ -604,6 +618,12 @@ export interface DailyWorkDeliverySummary {
   activeDeliveryCount: number;
   actualShopCount: number;
   problemCount: number;
+  regularDeliveryCount: number;
+  regularShopCount: number;
+  regularProblemCount: number;
+  eventDeliveryCount: number;
+  eventParticipationCount: number;
+  eventProblemCount: number;
 }
 
 export interface DailyWorkIceTypeSale {
