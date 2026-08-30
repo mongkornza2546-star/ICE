@@ -245,6 +245,29 @@ export function createSupabaseGateway(): EmployeeDeliveryGateway {
   const posContextRequests = new Map<string, Promise<DeliveryPosContext>>();
   const posContextMemoryCache = new Map<string, CachedPosContext>();
   const shopCardBurstCache = new Map<string, { cachedAt: number; cards: ShopCard[] }>();
+  let destinationSyncCapabilityRequest: Promise<boolean> | null = null;
+
+  const supportsDestinationSync = async () => {
+    if (!destinationSyncCapabilityRequest) {
+      destinationSyncCapabilityRequest = (async (): Promise<boolean | null> => {
+        try {
+          if (!supabase) return false;
+          const { data, error } = await supabase.rpc('get_event_delivery_capability');
+          if (error) return null;
+          return Number((data as { schema_version?: unknown } | null)?.schema_version) >= 3;
+        } catch {
+          return null;
+        }
+      })().then((supported) => {
+        if (supported === null) {
+          destinationSyncCapabilityRequest = null;
+          return false;
+        }
+        return supported;
+      });
+    }
+    return destinationSyncCapabilityRequest;
+  };
 
   const invalidatePosContextCache = (roundStopId?: string) => {
     for (const key of posContextMemoryCache.keys()) {
@@ -285,7 +308,10 @@ export function createSupabaseGateway(): EmployeeDeliveryGateway {
       return singleFlight(shopCardRequests, roundId, async () => {
         const client = supabase;
         if (!client) throw new Error('ยังไม่ได้ตั้งค่า Supabase');
-        const { error: syncError } = await client.rpc('sync_daily_round_active_shops', {
+        const syncRpc = await supportsDestinationSync()
+          ? 'sync_daily_round_destinations'
+          : 'sync_daily_round_active_shops';
+        const { error: syncError } = await client.rpc(syncRpc, {
           p_round_id: roundId,
         });
         if (syncError) throw syncError;

@@ -142,8 +142,9 @@ describe('employee live shop loading', () => {
     await expect(gateway.loadCasualTransactionCapability!()).resolves.toBe(true);
   });
 
-  it('synchronizes the round before reading shop cards', async () => {
+  it('uses destination sync on schema version 3 before reading shop cards', async () => {
     supabaseMock.client.rpc
+      .mockResolvedValueOnce({ data: { schema_version: 3 }, error: null })
       .mockResolvedValueOnce({ data: 1, error: null })
       .mockResolvedValueOnce({ data: [], error: null });
 
@@ -151,22 +152,78 @@ describe('employee live shop loading', () => {
 
     expect(supabaseMock.client.rpc).toHaveBeenNthCalledWith(
       1,
-      'sync_daily_round_active_shops',
-      { p_round_id: 'round-1' },
+      'get_event_delivery_capability',
     );
     expect(supabaseMock.client.rpc).toHaveBeenNthCalledWith(
       2,
+      'sync_daily_round_destinations',
+      { p_round_id: 'round-1' },
+    );
+    expect(supabaseMock.client.rpc).toHaveBeenNthCalledWith(
+      3,
       'get_round_shop_cards',
       { p_round_id: 'round-1', p_building_id: null },
     );
   });
 
+  it('falls back to legacy sync on schema version 2', async () => {
+    supabaseMock.client.rpc
+      .mockResolvedValueOnce({ data: { schema_version: 2 }, error: null })
+      .mockResolvedValueOnce({ data: 1, error: null })
+      .mockResolvedValueOnce({ data: [], error: null });
+
+    await expect(createSupabaseGateway().loadShopCards('round-1')).resolves.toEqual([]);
+
+    expect(supabaseMock.client.rpc).toHaveBeenNthCalledWith(
+      2,
+      'sync_daily_round_active_shops',
+      { p_round_id: 'round-1' },
+    );
+    expect(supabaseMock.client.rpc).toHaveBeenNthCalledWith(
+      3,
+      'get_round_shop_cards',
+      { p_round_id: 'round-1', p_building_id: null },
+    );
+  });
+
+  it('retries destination capability after a transient capability error', async () => {
+    const capabilityError = new Error('capability unavailable');
+    supabaseMock.client.rpc
+      .mockResolvedValueOnce({ data: null, error: capabilityError })
+      .mockResolvedValueOnce({ data: 1, error: null })
+      .mockResolvedValueOnce({ data: [], error: null })
+      .mockResolvedValueOnce({ data: { schema_version: 3 }, error: null })
+      .mockResolvedValueOnce({ data: 1, error: null })
+      .mockResolvedValueOnce({ data: [], error: null });
+
+    const gateway = createSupabaseGateway();
+    await expect(gateway.loadShopCards('round-1')).resolves.toEqual([]);
+    await expect(gateway.loadShopCards('round-2')).resolves.toEqual([]);
+
+    expect(supabaseMock.client.rpc).toHaveBeenNthCalledWith(
+      2,
+      'sync_daily_round_active_shops',
+      { p_round_id: 'round-1' },
+    );
+    expect(supabaseMock.client.rpc).toHaveBeenNthCalledWith(
+      4,
+      'get_event_delivery_capability',
+    );
+    expect(supabaseMock.client.rpc).toHaveBeenNthCalledWith(
+      5,
+      'sync_daily_round_destinations',
+      { p_round_id: 'round-2' },
+    );
+  });
+
   it('does not read stale cards when synchronization fails', async () => {
     const syncError = new Error('sync failed');
-    supabaseMock.client.rpc.mockResolvedValueOnce({ data: null, error: syncError });
+    supabaseMock.client.rpc
+      .mockResolvedValueOnce({ data: { schema_version: 3 }, error: null })
+      .mockResolvedValueOnce({ data: null, error: syncError });
 
     await expect(createSupabaseGateway().loadShopCards('round-1')).rejects.toBe(syncError);
-    expect(supabaseMock.client.rpc).toHaveBeenCalledTimes(1);
+    expect(supabaseMock.client.rpc).toHaveBeenCalledTimes(2);
   });
 
   it('deduplicates POS requests and reuses the current-day cache', async () => {
@@ -234,7 +291,7 @@ describe('employee live shop loading', () => {
     const refreshed = await gateway.loadShopCards('round-catalog-refresh', { forceRefresh: true });
 
     expect(refreshed.map((card) => card.shop_id)).toEqual(['shop-1', 'shop-2']);
-    expect(supabaseMock.client.rpc).toHaveBeenCalledTimes(4);
+    expect(supabaseMock.client.rpc).toHaveBeenCalledTimes(5);
   });
 
   it('keeps shop business data usable when public image URL resolution fails', async () => {
