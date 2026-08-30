@@ -35,6 +35,12 @@ function renderPicker(openCard = vi.fn(), selectedRoundId = 'round-1') {
     selectedZone=""
     setSelectedZone={vi.fn()}
     zoneOptions={[]}
+    destinationKind="regular"
+    setDestinationKind={vi.fn()}
+    selectedEventJobId=""
+    setSelectedEventJobId={vi.fn()}
+    eventOptions={[]}
+    eventCardsError={null}
     loadingCards={false}
     filteredCards={[shop]}
     casualCustomerButtonRef={{ current: null }}
@@ -70,6 +76,56 @@ describe('employee shop picker image preview', () => {
 
   it('hides casual customers until a round is selected', () => {
     renderPicker(vi.fn(), '');
-    expect(screen.queryByRole('button', { name: 'บันทึกลูกค้าขาจร' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'ลูกค้าขาจร' })).toBeNull();
+  });
+
+  it('shows an event booth number without exposing the unfinished POS path', async () => {
+    const user = userEvent.setup();
+    const openCard = vi.fn();
+    render(<EmployeeShopPicker
+      casualCustomerEntryVisible={false}
+      enableAssignedStockFlow={false}
+      selectedRoundId="round-1"
+      query=""
+      setQuery={vi.fn()}
+      selectedBuildingId=""
+      setSelectedBuildingId={vi.fn()}
+      buildingOptions={[]}
+      selectedZone=""
+      setSelectedZone={vi.fn()}
+      zoneOptions={[]}
+      destinationKind="event"
+      setDestinationKind={vi.fn()}
+      selectedEventJobId="event-1"
+      setSelectedEventJobId={vi.fn()}
+      eventOptions={[{ id: 'event-1', name: 'งานทดสอบ' }]}
+      eventCardsError={null}
+      loadingCards={false}
+      filteredCards={[{
+        ...shop,
+        destination_kind: 'event',
+        event_job_id: 'event-1',
+        event_name: 'งานทดสอบ',
+        event_location: 'ฮอลล์ A',
+        booth_number: 'B-17',
+        event_zone: 'อาหาร',
+        image_url: 'https://example.com/should-not-render.jpg',
+        event_delivery_enabled: false,
+        is_operational: true,
+      }]}
+      casualCustomerButtonRef={{ current: null }}
+      openCasualCustomer={vi.fn()}
+      openCard={openCard}
+      stockState={null}
+      shopButtonRefs={{ current: new Map<string, HTMLButtonElement>() }}
+    />);
+
+    expect(screen.getByText('B-17')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /ดูรูปร้าน/ })).toBeNull();
+    expect(screen.getByText('งานทดสอบ · ฮอลล์ A · โซน อาหาร')).toBeTruthy();
+    const eventCardButton = screen.getByRole('button', { name: 'เลือกร้าน BB16 ร้านเล่าซา' });
+    expect(eventCardButton.hasAttribute('disabled')).toBe(true);
+    await user.click(eventCardButton);
+    expect(openCard).not.toHaveBeenCalled();
   });
 });

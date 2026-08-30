@@ -166,6 +166,126 @@ describe('employee live shop loading', () => {
     );
   });
 
+  it('loads event destinations and maps the booth without a shop image', async () => {
+    supabaseMock.client.rpc
+      .mockResolvedValueOnce({
+        data: {
+          schema_version: 4,
+          event_reads_enabled: true,
+          event_stops_enabled: true,
+          event_ice_delivery_enabled: true,
+        },
+        error: null,
+      })
+      .mockResolvedValueOnce({ data: 1, error: null })
+      .mockResolvedValueOnce({ data: [], error: null })
+      .mockResolvedValueOnce({
+        data: {
+          cards: [{
+            event_participation_id: 'participation-1',
+            event_job_id: 'event-1',
+            round_stop_id: 'event-stop-1',
+            event_name: 'งานอาหารเย็น',
+            location: 'ฮอลล์ A',
+            shop_id: 'shop-1',
+            shop_code: 'BB01',
+            shop_name: 'ร้านทดสอบ',
+            booth_number: 'B-17',
+            event_zone: 'อาหาร',
+            landmark: 'ข้างเวที',
+            contact_name: 'สมชาย',
+            contact_phone: '0800000000',
+            is_operational: true,
+            stop_status: 'issue',
+            stop_note: 'เข้าถึงบูธไม่ได้',
+            today_history: [],
+            today_totals: [],
+          }],
+        },
+        error: null,
+      });
+
+    const cards = await createSupabaseGateway().loadShopCards('round-1');
+
+    expect(cards).toMatchObject([{
+      destination_kind: 'event',
+      round_stop_id: 'event-stop-1',
+      booth_number: 'B-17',
+      event_name: 'งานอาหารเย็น',
+      image_path: null,
+      image_url: null,
+      stop_status: 'issue',
+      stop_note: 'เข้าถึงบูธไม่ได้',
+      event_delivery_enabled: false,
+    }]);
+    expect(supabaseMock.client.rpc).toHaveBeenNthCalledWith(
+      4,
+      'get_event_delivery_cards',
+      { p_round_id: 'round-1', p_event_job_id: null, p_search: null },
+    );
+    expect(supabaseMock.getPublicUrl).not.toHaveBeenCalled();
+  });
+
+  it('keeps regular cards usable when the event read fails', async () => {
+    const eventReadError = new Error('event cards unavailable');
+    supabaseMock.client.rpc
+      .mockResolvedValueOnce({
+        data: { schema_version: 4, event_reads_enabled: true, event_stops_enabled: true },
+        error: null,
+      })
+      .mockResolvedValueOnce({ data: 1, error: null })
+      .mockResolvedValueOnce({ data: [shopCard], error: null })
+      .mockResolvedValueOnce({ data: null, error: eventReadError });
+
+    const gateway = createSupabaseGateway();
+    const cards = await gateway.loadShopCards('round-1');
+
+    expect(cards).toHaveLength(1);
+    expect(cards[0]).toMatchObject({ destination_kind: 'regular', shop_id: 'shop-1' });
+    expect(gateway.getEventCardsLoadError?.('round-1')).toBe('event cards unavailable');
+  });
+
+  it('refreshes event capability during a forced catalog refresh', async () => {
+    supabaseMock.client.rpc
+      .mockResolvedValueOnce({ data: { schema_version: 3, event_reads_enabled: true, event_stops_enabled: false }, error: null })
+      .mockResolvedValueOnce({ data: 1, error: null })
+      .mockResolvedValueOnce({ data: [], error: null })
+      .mockResolvedValueOnce({ data: { schema_version: 4, event_reads_enabled: true, event_stops_enabled: true }, error: null })
+      .mockResolvedValueOnce({ data: 1, error: null })
+      .mockResolvedValueOnce({ data: [], error: null })
+      .mockResolvedValueOnce({ data: { cards: [] }, error: null });
+
+    const gateway = createSupabaseGateway();
+    await gateway.loadShopCards('round-1');
+    await gateway.loadShopCards('round-1', { forceRefresh: true });
+
+    expect(supabaseMock.client.rpc.mock.calls.filter(([name]) => name === 'get_event_delivery_capability')).toHaveLength(2);
+    expect(supabaseMock.client.rpc).toHaveBeenLastCalledWith(
+      'get_event_delivery_cards',
+      { p_round_id: 'round-1', p_event_job_id: null, p_search: null },
+    );
+  });
+
+  it('refreshes event capability after the capability cache expires', async () => {
+    let now = new Date('2026-08-11T01:00:00Z').getTime();
+    const nowSpy = vi.spyOn(Date, 'now').mockImplementation(() => now);
+    supabaseMock.client.rpc
+      .mockResolvedValueOnce({ data: { schema_version: 3 }, error: null })
+      .mockResolvedValueOnce({ data: 1, error: null })
+      .mockResolvedValueOnce({ data: [], error: null })
+      .mockResolvedValueOnce({ data: { schema_version: 3 }, error: null })
+      .mockResolvedValueOnce({ data: 1, error: null })
+      .mockResolvedValueOnce({ data: [], error: null });
+
+    const gateway = createSupabaseGateway();
+    await gateway.loadShopCards('round-1');
+    now += 60 * 1000 + 1;
+    await gateway.loadShopCards('round-2');
+
+    expect(supabaseMock.client.rpc.mock.calls.filter(([name]) => name === 'get_event_delivery_capability')).toHaveLength(2);
+    nowSpy.mockRestore();
+  });
+
   it('falls back to legacy sync on schema version 2', async () => {
     supabaseMock.client.rpc
       .mockResolvedValueOnce({ data: { schema_version: 2 }, error: null })
@@ -291,7 +411,7 @@ describe('employee live shop loading', () => {
     const refreshed = await gateway.loadShopCards('round-catalog-refresh', { forceRefresh: true });
 
     expect(refreshed.map((card) => card.shop_id)).toEqual(['shop-1', 'shop-2']);
-    expect(supabaseMock.client.rpc).toHaveBeenCalledTimes(5);
+    expect(supabaseMock.client.rpc).toHaveBeenCalledTimes(6);
   });
 
   it('keeps shop business data usable when public image URL resolution fails', async () => {

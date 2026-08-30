@@ -7,6 +7,10 @@ const migration = readFileSync(
   new URL('../supabase/migrations/0165_event_read_models_and_destination_counts.sql', import.meta.url),
   'utf8',
 );
+const presentationMigration = readFileSync(
+  new URL('../supabase/migrations/0168_event_card_presentation_contract.sql', import.meta.url),
+  'utf8',
+);
 const roundCancellationMigration = readFileSync(
   new URL('../supabase/migrations/0027_cancel_delivery_round.sql', import.meta.url),
   'utf8',
@@ -23,6 +27,14 @@ test('event read slice leaves every event writer capability disabled', () => {
   assert.doesNotMatch(migration, /event_ice_delivery_enabled\s*=\s*true/);
   assert.doesNotMatch(migration, /event_tank_rental_enabled\s*=\s*true/);
   assert.doesNotMatch(migration, /create or replace function public\.sync_daily_round_destinations/);
+});
+
+test('event card presentation exposes real stop state without enabling writers', () => {
+  assert.match(presentationMigration, /'stop_status'/);
+  assert.match(presentationMigration, /'stop_note'/);
+  assert.match(presentationMigration, /greatest\(schema_version, 4\)/);
+  assert.match(presentationMigration, /event_ice_delivery_enabled = false/);
+  assert.match(presentationMigration, /event_tank_rental_enabled = false/);
 });
 
 test('round and daily cancellation contracts include event activity but not tank balances', () => {
@@ -82,7 +94,8 @@ test('destination counts and event cards preserve regular/event separation', asy
       event_job_name_snapshot text, event_location_snapshot text,
       event_booth_snapshot text, event_zone_snapshot text,
       event_landmark_snapshot text, event_contact_name_snapshot text,
-      event_contact_phone_snapshot text, is_operational boolean not null default true
+      event_contact_phone_snapshot text, is_operational boolean not null default true,
+      note text
     );
     create table public.round_close_summaries (
       round_id uuid primary key,
@@ -162,6 +175,14 @@ test('destination counts and event cards preserve regular/event separation', asy
   `.replace(/^ {4}/gm, ''));
 
   await db.exec(migration);
+  await db.exec(`
+    create function public.sync_daily_round_destinations(uuid)
+    returns integer language sql as $$ select 0 $$;
+    update public.event_delivery_feature_settings
+    set schema_version = 3,
+        event_stops_enabled = true;
+  `);
+  await db.exec(presentationMigration);
 
   const ids = {
     user: '10000000-0000-4000-8000-000000000001',
@@ -205,18 +226,18 @@ test('destination counts and event cards preserve regular/event separation', asy
     insert into public.round_stops values
       (
         '${ids.regularStop}', '${ids.round}', '${ids.regularShop}', 'regular', null,
-        'delivered', 'R001', 'Regular snapshot', null, null, null, null, null, null, null, true
+        'delivered', 'R001', 'Regular snapshot', null, null, null, null, null, null, null, true, null
       ),
       (
         '${ids.eventStop}', '${ids.round}', '${ids.eventShop}', 'event', '${ids.participation}',
         'pending', 'E001', 'Event snapshot', 'Frozen Expo', 'Frozen Hall',
         'Frozen booth', 'Frozen zone', 'Frozen landmark', 'Frozen contact',
-        '0800000000', true
+        '0800000000', true, null
       ),
       (
         '${ids.problemEventStop}', '${ids.round}', '${ids.regularShop}', 'event', '${ids.secondParticipation}',
         'issue', 'R001', 'Second event snapshot', 'Frozen Expo', 'Frozen Hall',
-        'B02', 'South', null, null, null, true
+        'B02', 'South', null, null, null, true, 'Cannot access booth'
       );
     insert into public.ice_types values ('${ids.ice}', 'ICE', 'Tube ice', 'bag');
     insert into public.delivery_events values
@@ -281,8 +302,19 @@ test('destination counts and event cards preserve regular/event separation', asy
   assert.equal(cards.rows[0].value.cards.length, 1);
   assert.equal(cards.rows[0].value.cards[0].event_name, 'Frozen Expo');
   assert.equal(cards.rows[0].value.cards[0].booth_number, 'Frozen booth');
+  assert.equal(cards.rows[0].value.cards[0].stop_status, 'pending');
+  assert.equal(cards.rows[0].value.cards[0].stop_note, null);
   assert.equal(cards.rows[0].value.cards[0].today_history.length, 1);
   assert.equal(cards.rows[0].value.cards[0].today_totals[0].quantity, 3);
+
+  const problemCards = await db.query(`
+    select public.get_event_delivery_cards(
+      '${ids.round}', '${ids.eventJob}', 'B02'
+    ) as value
+  `);
+  assert.equal(problemCards.rows[0].value.cards.length, 1);
+  assert.equal(problemCards.rows[0].value.cards[0].stop_status, 'issue');
+  assert.equal(problemCards.rows[0].value.cards[0].stop_note, 'Cannot access booth');
 
   await db.exec(`create or replace function public.is_round_member(uuid) returns boolean language sql stable as $$ select false $$`);
   await assert.rejects(
@@ -291,9 +323,9 @@ test('destination counts and event cards preserve regular/event separation', asy
   );
 
   const capability = await db.query(`select public.get_event_delivery_capability() as value`);
-  assert.equal(capability.rows[0].value.schema_version, 2);
+  assert.equal(capability.rows[0].value.schema_version, 4);
   assert.equal(capability.rows[0].value.event_reads_enabled, true);
-  assert.equal(capability.rows[0].value.event_stops_enabled, false);
+  assert.equal(capability.rows[0].value.event_stops_enabled, true);
   assert.equal(capability.rows[0].value.event_ice_delivery_enabled, false);
   assert.equal(capability.rows[0].value.event_tank_rental_enabled, false);
 });

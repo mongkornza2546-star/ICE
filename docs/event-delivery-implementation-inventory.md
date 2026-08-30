@@ -2,7 +2,7 @@
 
 สถานะ implementation: compatibility + core round-writer lock refactor + event lifecycle + event cards + destination sync เสร็จแล้ว; activation migration พร้อม แต่ event ice/tank writers ยังปิด
 
-สถานะ deployment ที่ยืนยันล่าสุด: ใช้ถึง `0165`; ต้อง apply `0166` → deploy schema-v3 fallback-capable client → apply `0167` ก่อน event stops จึงจะเปิด
+สถานะ deployment ที่ยืนยันล่าสุด: ใช้ถึง `0165`; ต้อง apply `0166` → deploy fallback-capable client → apply `0167` → `0168`; client จะเริ่มโหลด event cards เมื่อ presentation contract เป็น schema version 4 แล้ว
 
 เอกสารนี้เป็น inventory ตาม Slice A ข้อ 1 ของแผนหลัก เพื่อระบุ code owner และ contract ที่ต้องคงไว้ก่อนเปิด event write
 
@@ -19,7 +19,7 @@
 | `round_stops` columns, partial unique, destination CHECK | `supabase/migrations/0157_event_destination_compatibility_fence.sql` | stop เดิม backfill เป็น `regular`; event ต้องมี participation; event insert ผ่าน destination sync เท่านั้น | fenced; activation pending |
 | `round_stops` destination/snapshot immutability | `0166_event_destination_sync_dark_launch.sql` | database `BEFORE UPDATE` trigger reject การเปลี่ยน destination identity และ shop/event snapshots ของ stop เดิม โดยยังอนุญาต workflow fields | enforced before activation |
 | `event_jobs`, config versions, `event_participations`, lifecycle RPCs | `supabase/migrations/0163_event_lifecycle_foundation.sql` | ต้องผ่าน structural preflight ของ `0157` ก่อน; round lead/admin จัดการ metadata, participation, publish/cancel; admin จัดการ settlement config; cancellation lock job → participation; publish ตรวจ 2–50 ร้าน ข้อมูลติดต่อ ราคากลาง และ snapshot policy แบบ immutable | lifecycle complete; ice/tank flags off |
-| `get_event_delivery_capability`, `get_event_delivery_cards` และ event feature settings | `0163_event_lifecycle_foundation.sql` → `0165_event_read_models_and_destination_counts.sql` → `0166`/`0167` | schema version 3 รองรับ destination sync; event cards ใช้ stop snapshot เมื่อมีและแยก today history ตาม participation/date; `0167` เปิดเฉพาะ event-stop flag ส่วน ice/tank ยังปิด | implementation ready; deployment pending |
+| `get_event_delivery_capability`, `get_event_delivery_cards` และ event feature settings | `0163_event_lifecycle_foundation.sql` → `0165_event_read_models_and_destination_counts.sql` → `0166`/`0167` → `0168_event_card_presentation_contract.sql` | schema version 3 รองรับ destination sync; schema version 4 เพิ่ม `stop_status`/`stop_note` จริงให้ event cards; history แยกตาม participation/date; ice/tank ยังปิด | implementation ready; deployment pending |
 | `round_stops` RLS, `is_round_member`, `is_delivery_event_visible` | `supabase/migrations/0001_phase_1_foundation.sql` | สมาชิกในรอบอ่าน row ได้; direct insert/update ไม่มี policy; destination sync ตรวจ active caller + admin/lead หรือ membership และ recheck lifecycle หลัง lock | stop authorization complete; delivery authorization next |
 | `sync_daily_round_active_shops` | `0147_live_daily_round_shops.sql` → `0157_event_destination_compatibility_fence.sql` | เพิ่มเฉพาะ `regular`, ใช้ partial `ON CONFLICT`, lock service date → round | fenced now |
 | `get_employee_active_session`, late-member bootstrap | `0042_daily_work_session_architecture.sql` → `0166_event_destination_sync_dark_launch.sql` | ใช้ service-date advisory lock → daily round row ก่อนเพิ่มเฉพาะ active caller role courier/round lead/admin แบบ idempotent แล้วจึง filter session; ไม่รับ round id จาก client | complete; close race tested |
@@ -45,7 +45,7 @@
 | casual transaction stock projections | `0153_casual_transaction_foundation.sql`–`0155_casual_loose_transactions.sql` | event ice ต้องรวมใน available stock เหมือน delivery อื่น; casual RPC ไม่รับ event participation | shared ledger regression |
 | `ensure_building_stock_location`, `assign_shop_stock_location`, `sync_shop_location_from_zone` | `0007`, `0016`, shop triggers | branch ตาม `customer_kind`; ห้ามสร้าง building stock location ให้ event-only | Slice B, migration เดียวกับ nullable location |
 | `save_shop`, `import_shop_catalog`, `deactivate_shop` | `0006`, `0099`, `0135` | save/import ใช้ customer-kind-aware module; deactivate block เมื่อ event tank ค้าง | Slice B / Slice C |
-| Employee regular client | `src/EmployeeDeliveryWorkspace.tsx` | schema version 3 ใช้ destination sync; schema version 2/error fallback ไป legacy sync; regular cards/POS ยังไม่เห็น event destination | rollout-safe caller; legacy reads fenced |
+| Employee destination client | `src/EmployeeDeliveryWorkspace.tsx`, `src/features/employee-delivery/EmployeeShopPicker.tsx` | schema version 3 ใช้ destination sync; โหลด event cards เมื่อ schema version 4 และ fail-soft แยกจาก regular; capability refresh เมื่อ force refresh/หมด TTL; event card ใช้เลขบูธแทนรูปร้าน และ client guard ปิด POS แม้ server flag เปิดจนกว่า event writer จะ deploy | rollout-safe event browse ready; event POS pending |
 | Manager legacy correction client | `src/ManagerDeliveryAdjustments.tsx` | ใช้ legacy manager list/revision ต่อและไม่เห็นหรือแก้ event delivery | fenced now |
 | Offline v1 contract and ledger | `0148_employee_offline_contract_v1.sql`, `0149_employee_offline_ledger_schema.sql`, `src/offline/contracts.ts` | ไม่เปลี่ยน command/signature/fingerprint; replay ที่รู้ event UUID ต้องถูก database fence ปฏิเสธ | fenced now; event offline เป็น v2 |
 
@@ -59,9 +59,10 @@
 - `get_employee_active_session` ปิด late-member discovery race ด้วย service-date → round lock ก่อน bootstrap membership
 - `sync_daily_round_destinations` refresh roster/regular stops เสมอ และ mutate event stops เฉพาะเมื่อ server flag เปิด โดย lock union ของ eligible และ existing-stop lifecycle rows ตาม UUID
 - `round_stops` บังคับ destination identity และ snapshot immutability ด้วย `BEFORE UPDATE` trigger; cancellation/date ineligibility เปลี่ยนเฉพาะ `is_operational`
-- schema version 3 และ client caller rollout แบบ fallback พร้อมแล้ว; `0167` เปิดเฉพาะ event-stop flag ส่วน event ice/tank ยังปิด
+- schema version 3 รองรับ destination sync; schema version 4 ให้ event card status/note จริง; client rollout แบบ fallback และ event read fail-soft พร้อมแล้ว โดย event ice/tank ยังปิด
+- employee destination picker แยกเมนูร้านประจำ/อีเว้น, เลือกงานและโซนได้, ค้นบูธ/ผู้ติดต่อได้ และแสดงเลขบูธแทนรูปร้านโดยไม่โหลด shop image ของ event card
 - round control, round close snapshot และ daily dashboard แยกจำนวนร้านประจำกับ event participation โดยคง aggregate field เดิมเพื่อ compatibility
-- `get_event_delivery_cards` เปิด read-only สำหรับสมาชิก daily round, ค้นหาแบบ normalize และใช้ `event_participation_id + service_date` แยก history/total; schema version 3 รองรับ destination sync และ `0167` จึงเปิด stops โดย ice/tank ยังปิด
+- `get_event_delivery_cards` เปิด read-only สำหรับสมาชิก daily round, ค้นหาแบบ normalize, ใช้ `event_participation_id + service_date` แยก history/total และส่ง `stop_status`/`stop_note` จริงใน schema version 4; ice/tank ยังปิด
 - cancellation contract ยืนยันว่า event delivery/non-pending stop เป็น blocker ผ่าน ledger เดิม ส่วน pending event stop และถังค้างไม่ขวางการยกเลิกรอบ/วัน
 - PostgreSQL จริงสอง connection โหลด function definitions จาก migration owners โดยตรงและครอบคลุม late-member bootstrap, sync vs round close/daily close, cancellation และ participation date expansion ทั้งสอง commit orders
 

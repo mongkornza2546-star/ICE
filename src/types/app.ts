@@ -499,6 +499,7 @@ export interface ShopCardHistoryEntry {
 }
 
 export interface ShopCard {
+  destination_kind?: 'regular' | 'event';
   round_stop_id: string;
   shop_id: string;
   shop_code: string;
@@ -514,6 +515,17 @@ export interface ShopCard {
   stop_note: string | null;
   today_history: ShopCardHistoryEntry[];
   today_totals: Record<string, number>;
+  event_job_id?: string;
+  event_participation_id?: string;
+  event_name?: string;
+  event_location?: string;
+  booth_number?: string | null;
+  event_zone?: string | null;
+  landmark?: string | null;
+  contact_name?: string | null;
+  contact_phone?: string | null;
+  is_operational?: boolean;
+  event_delivery_enabled?: boolean;
 }
 
 export type CreditDueRule = 'net_days' | 'weekly' | 'semi_monthly' | 'end_of_month';

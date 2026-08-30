@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { MagnifyingGlass, Buildings, MapPin, Storefront, CaretRight, X } from '@phosphor-icons/react';
+import { MagnifyingGlass, Buildings, MapPin, Storefront, CaretRight, WarningCircle, X } from '@phosphor-icons/react';
 import type { ShopCard, EmployeeStockState } from '../../types/app';
 import { FilterChips } from './FilterChips';
 import { EmployeeState } from './EmployeeState';
@@ -19,7 +19,13 @@ export function EmployeeShopPicker({
   selectedZone,
   setSelectedZone,
   zoneOptions,
+  destinationKind,
+  setDestinationKind,
+  selectedEventJobId,
+  setSelectedEventJobId,
+  eventOptions,
   loadingCards,
+  eventCardsError,
   filteredCards,
   openCasualCustomer,
   openCard,
@@ -38,7 +44,13 @@ export function EmployeeShopPicker({
   selectedZone: string;
   setSelectedZone: (zone: string) => void;
   zoneOptions: string[];
+  destinationKind: 'regular' | 'event';
+  setDestinationKind: (kind: 'regular' | 'event') => void;
+  selectedEventJobId: string;
+  setSelectedEventJobId: (id: string) => void;
+  eventOptions: Array<{ id: string; name: string }>;
   loadingCards: boolean;
+  eventCardsError: string | null;
   filteredCards: ShopCard[];
   openCasualCustomer: () => void;
   openCard: (card: ShopCard) => void;
@@ -76,14 +88,11 @@ export function EmployeeShopPicker({
         </div>
       </div>
 
-      {casualCustomerEntryVisible && selectedRoundId ? <div className="employee-casual-entry">
-        <button
-          aria-label="บันทึกลูกค้าขาจร"
-          onClick={openCasualCustomer}
-          ref={casualCustomerButtonRef}
-          type="button"
-        >ลูกค้าขาจร</button>
-      </div> : null}
+      {selectedRoundId ? <nav aria-label="ประเภทจุดส่ง" className={`employee-destination-tabs${casualCustomerEntryVisible ? '' : ' employee-destination-tabs--two'}`}>
+        <button aria-pressed={destinationKind === 'regular'} onClick={() => setDestinationKind('regular')} type="button">ร้านประจำ</button>
+        <button aria-pressed={destinationKind === 'event'} onClick={() => setDestinationKind('event')} type="button">อีเว้น</button>
+        {casualCustomerEntryVisible ? <button aria-label="บันทึกลูกค้าขาจร" onClick={openCasualCustomer} ref={casualCustomerButtonRef} type="button">ลูกค้าขาจร</button> : null}
+      </nav> : null}
 
       <label className="employee-search employee-search--standalone">
         <MagnifyingGlass aria-hidden="true" size={22} />
@@ -91,7 +100,7 @@ export function EmployeeShopPicker({
         <input
           disabled={!selectedRoundId}
           onChange={(event) => setQuery(event.target.value)}
-          placeholder="ค้นรหัสหรือชื่อร้าน"
+          placeholder={destinationKind === 'event' ? 'ค้นชื่อร้าน เลขบูธ โซน หรือเบอร์โทร' : 'ค้นรหัสหรือชื่อร้าน'}
           type="search"
           value={query}
         />
@@ -99,7 +108,7 @@ export function EmployeeShopPicker({
 
       {selectedRoundId ? (
         <>
-          <FilterChips
+          {destinationKind === 'regular' ? <FilterChips
             icon={<Buildings aria-hidden="true" size={19} />}
             label="ตึก"
             onChange={(value) => {
@@ -108,7 +117,16 @@ export function EmployeeShopPicker({
             }}
             options={[{ value: '', label: 'ทุกตึก' }, ...buildingOptions.map((item) => ({ value: item.id, label: item.name }))]}
             value={selectedBuildingId}
-          />
+          /> : <FilterChips
+            icon={<Storefront aria-hidden="true" size={19} />}
+            label="งาน"
+            onChange={(value) => {
+              setSelectedEventJobId(value);
+              setSelectedZone('');
+            }}
+            options={[{ value: '', label: 'ทุกงาน' }, ...eventOptions.map((item) => ({ value: item.id, label: item.name }))]}
+            value={selectedEventJobId}
+          />}
           <FilterChips
             icon={<MapPin aria-hidden="true" size={19} />}
             label="โซน"
@@ -119,16 +137,23 @@ export function EmployeeShopPicker({
         </>
       ) : null}
 
+      {destinationKind === 'event' && eventCardsError ? (
+        <div className="employee-error" role="alert">
+          <WarningCircle aria-hidden="true" size={22} weight="fill" />
+          <span>โหลดร้านอีเว้นไม่สำเร็จ: {eventCardsError}</span>
+        </div>
+      ) : null}
+
       {!selectedRoundId ? (
         <EmployeeState title="เลือกรอบส่งก่อน" detail="หากมีหลายรอบ ต้องเลือกรอบที่กำลังทำงาน" />
       ) : loadingCards ? (
         <EmployeeState title="กำลังโหลดร้าน" detail="รอสักครู่" />
       ) : filteredCards.length === 0 ? (
-        <EmployeeState title="ไม่พบร้าน" detail="ลองเปลี่ยนตึก โซน หรือคำค้นหา" />
+        <EmployeeState title={destinationKind === 'event' ? 'ไม่พบร้านในอีเว้น' : 'ไม่พบร้าน'} detail={destinationKind === 'event' ? 'ลองเปลี่ยนงาน โซน หรือคำค้นหา' : 'ลองเปลี่ยนตึก โซน หรือคำค้นหา'} />
       ) : (
         <section aria-label={`ร้านที่พบ ${filteredCards.length} ร้าน`} className="employee-shop-section">
           <div className="employee-shop-section__heading">
-            <h2>ร้านที่เลือกได้</h2>
+            <h2>{destinationKind === 'event' ? 'ร้านในอีเว้น' : 'ร้านที่เลือกได้'}</h2>
             <span>{filteredCards.length} ร้าน</span>
           </div>
           <div className="employee-shop-grid">
@@ -137,7 +162,14 @@ export function EmployeeShopPicker({
                 className="employee-shop-tile"
                 key={card.round_stop_id}
               >
-                {card.image_url ? (
+                {card.destination_kind === 'event' ? (
+                  <span className="employee-shop-tile__visual employee-shop-tile__visual--booth">
+                    <span className="employee-shop-tile__booth"><small>บูธ</small><strong>{card.booth_number || 'ไม่ระบุ'}</strong></span>
+                    <span className={`employee-status employee-status--${statusTone(card.stop_status)}`}>
+                      {STATUS_LABELS[card.stop_status]}
+                    </span>
+                  </span>
+                ) : card.image_url ? (
                   <button
                     aria-label={`ดูรูปร้าน ${card.shop_code} ${card.shop_name}`}
                     className="employee-shop-tile__image-button"
@@ -166,7 +198,8 @@ export function EmployeeShopPicker({
                 <button
                   aria-label={`เลือกร้าน ${card.shop_code} ${card.shop_name}`}
                   className="employee-shop-tile__select"
-                  disabled={enableAssignedStockFlow && !stockState}
+                  disabled={(enableAssignedStockFlow && !stockState)
+                    || (card.destination_kind === 'event' && (!card.event_delivery_enabled || !card.is_operational))}
                   onClick={() => openCard(card)}
                   ref={(node) => {
                     if (node) shopButtonRefs.current.set(card.round_stop_id, node);
@@ -177,7 +210,12 @@ export function EmployeeShopPicker({
                   <span className="employee-shop-tile__body">
                     <strong>{card.shop_code}</strong>
                     <b>{card.shop_name}</b>
-                    <small>{card.building_name} · {card.floor_or_zone}</small>
+                    <small>{card.destination_kind === 'event'
+                      ? `${card.event_name} · ${card.event_location}${card.event_zone ? ` · โซน ${card.event_zone}` : ''}`
+                      : `${card.building_name} · ${card.floor_or_zone}`}</small>
+                    {card.destination_kind === 'event' && !card.event_delivery_enabled
+                      ? <span>ยังไม่เปิดบันทึกส่งน้ำแข็ง</span>
+                      : null}
                   </span>
                   <CaretRight aria-hidden="true" className="employee-shop-tile__arrow" size={20} />
                 </button>

@@ -145,6 +145,7 @@ function createCard(
   overrides: Partial<ShopCard> = {},
 ): ShopCard {
   return {
+    destination_kind: 'regular',
     round_stop_id: `${roundId}-${code}`,
     shop_id: `shop-${code}`,
     shop_code: code,
@@ -216,6 +217,29 @@ const demoCardsByRound: Record<string, ShopCard[]> = {
       },
     ),
     createCard('demo-round-morning', 'CC01', 'ร้านข้าวมันไก่', 'building-c', 'ตึก C', 'ชั้น 1', 4),
+    createCard(
+      'demo-round-morning',
+      'EV01',
+      'ครัวบ้านสวน',
+      'event-food-fair',
+      'เทศกาลอาหารเย็น',
+      'โซนอาหาร',
+      5,
+      {
+        destination_kind: 'event',
+        event_job_id: 'event-food-fair',
+        event_participation_id: 'participation-food-fair-01',
+        event_name: 'เทศกาลอาหารเย็น',
+        event_location: 'ฮอลล์ A ศูนย์ประชุม',
+        booth_number: 'B-17',
+        event_zone: 'อาหาร',
+        landmark: 'ข้างเวทีหลัก',
+        contact_name: 'คุณสมชาย',
+        contact_phone: '080-000-0000',
+        is_operational: true,
+        event_delivery_enabled: false,
+      },
+    ),
   ],
   'demo-round-afternoon': [
     createCard('demo-round-afternoon', 'AA03', 'น้ำสมุนไพรยายนา', 'building-a', 'ตึก A', 'โซน 2', 1),

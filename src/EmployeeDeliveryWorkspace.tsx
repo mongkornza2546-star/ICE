@@ -29,6 +29,7 @@ import { deletePaymentEvidence, uploadPaymentEvidence } from './lib/paymentEvide
 import { withAsyncPublicImageUrls } from './lib/publicImageUrls';
 import { getHybridObjectUrls } from './lib/r2Storage';
 import { subscribeToDataChange } from './lib/dataChange';
+import { getErrorMessage } from './lib/errorMessage';
 
 export interface EmployeeDeliveryPayload {
   roundStopId: string;
@@ -110,6 +111,7 @@ export interface EmployeeStockTransferPayload {
 export interface EmployeeDeliveryGateway {
   loadReferenceData(serviceDate: string): Promise<{ rounds: DeliveryRound[]; iceTypes: IceTypeOption[] }>;
   loadShopCards(roundId: string, options?: { forceRefresh?: boolean }): Promise<ShopCard[]>;
+  getEventCardsLoadError?(roundId: string): string | null;
   loadDeliveryPosContext?(roundStopId: string, options?: {
     serviceDate?: string;
     forceRefresh?: boolean;
@@ -140,10 +142,46 @@ export interface EmployeeDeliveryDraftState {
   submitting: boolean;
 }
 
+interface EventDeliveryCapability {
+  schema_version?: number;
+  event_reads_enabled?: boolean;
+  event_stops_enabled?: boolean;
+  event_ice_delivery_enabled?: boolean;
+}
+
+interface EventDeliveryCardDto {
+  event_participation_id: string;
+  event_job_id: string;
+  round_stop_id: string | null;
+  event_name: string;
+  location: string;
+  shop_id: string;
+  shop_code: string;
+  shop_name: string;
+  booth_number: string | null;
+  event_zone: string | null;
+  landmark: string | null;
+  contact_name: string | null;
+  contact_phone: string | null;
+  is_operational: boolean;
+  stop_status: ShopRoundStatus;
+  stop_note: string | null;
+  today_history: Array<{
+    delivery_event_id: string;
+    recorded_at: string;
+    note: string | null;
+    items: Array<{ ice_type_id: string; quantity: number }>;
+  }>;
+  today_totals: Array<{ ice_type_id: string; quantity: number }>;
+}
+
 const POS_CONTEXT_FRESH_MS = 5 * 60 * 1000;
 const POS_CONTEXT_CACHE_PREFIX = 'ice-employee-pos-context:v1';
 const SHOP_CARDS_BURST_CACHE_MS = 5 * 1000;
 const FOREGROUND_REFRESH_MIN_MS = 5 * 60 * 1000;
+const EVENT_CAPABILITY_CACHE_MS = 60 * 1000;
+// Keep this false until a dedicated event POS context and writer are deployed.
+const EVENT_ICE_WRITER_CLIENT_ENABLED = false;
 
 interface CachedPosContext {
   cachedAt: number;
@@ -245,25 +283,35 @@ export function createSupabaseGateway(): EmployeeDeliveryGateway {
   const posContextRequests = new Map<string, Promise<DeliveryPosContext>>();
   const posContextMemoryCache = new Map<string, CachedPosContext>();
   const shopCardBurstCache = new Map<string, { cachedAt: number; cards: ShopCard[] }>();
-  let destinationSyncCapabilityRequest: Promise<boolean> | null = null;
+  const eventCardLoadErrors = new Map<string, string>();
+  let destinationSyncCapabilityRequest: Promise<EventDeliveryCapability | null> | null = null;
+  let eventCapabilityCachedAt: number | null = null;
 
-  const supportsDestinationSync = async () => {
+  const loadEventCapability = async () => {
+    if (destinationSyncCapabilityRequest
+      && eventCapabilityCachedAt !== null
+      && Date.now() - eventCapabilityCachedAt >= EVENT_CAPABILITY_CACHE_MS) {
+      destinationSyncCapabilityRequest = null;
+      eventCapabilityCachedAt = null;
+    }
     if (!destinationSyncCapabilityRequest) {
-      destinationSyncCapabilityRequest = (async (): Promise<boolean | null> => {
+      destinationSyncCapabilityRequest = (async (): Promise<EventDeliveryCapability | null> => {
         try {
-          if (!supabase) return false;
+          if (!supabase) return null;
           const { data, error } = await supabase.rpc('get_event_delivery_capability');
           if (error) return null;
-          return Number((data as { schema_version?: unknown } | null)?.schema_version) >= 3;
+          return (data ?? null) as EventDeliveryCapability | null;
         } catch {
           return null;
         }
-      })().then((supported) => {
-        if (supported === null) {
+      })().then((capability) => {
+        if (capability === null) {
           destinationSyncCapabilityRequest = null;
-          return false;
+          eventCapabilityCachedAt = null;
+        } else {
+          eventCapabilityCachedAt = Date.now();
         }
-        return supported;
+        return capability;
       });
     }
     return destinationSyncCapabilityRequest;
@@ -302,25 +350,52 @@ export function createSupabaseGateway(): EmployeeDeliveryGateway {
         const inFlight = shopCardRequests.get(roundId);
         if (inFlight) await inFlight.catch(() => undefined);
         shopCardBurstCache.delete(roundId);
+        destinationSyncCapabilityRequest = null;
+        eventCapabilityCachedAt = null;
+        eventCardLoadErrors.delete(roundId);
       }
       const cached = shopCardBurstCache.get(roundId);
       if (cached && Date.now() - cached.cachedAt < SHOP_CARDS_BURST_CACHE_MS) return cached.cards;
       return singleFlight(shopCardRequests, roundId, async () => {
         const client = supabase;
         if (!client) throw new Error('ยังไม่ได้ตั้งค่า Supabase');
-        const syncRpc = await supportsDestinationSync()
+        const eventCapability = await loadEventCapability();
+        const syncRpc = Number(eventCapability?.schema_version) >= 3
           ? 'sync_daily_round_destinations'
           : 'sync_daily_round_active_shops';
         const { error: syncError } = await client.rpc(syncRpc, {
           p_round_id: roundId,
         });
         if (syncError) throw syncError;
-        const { data, error } = await client.rpc('get_round_shop_cards', {
-          p_round_id: roundId,
-          p_building_id: null,
-        });
-        if (error) throw error;
-        const rawCards = (data ?? []) as Array<
+        const shouldLoadEventCards = Boolean(
+          Number(eventCapability?.schema_version) >= 4
+            && eventCapability?.event_reads_enabled
+            && eventCapability.event_stops_enabled,
+        );
+        if (!shouldLoadEventCards) eventCardLoadErrors.delete(roundId);
+        const [regularResponse, eventResponse] = await Promise.all([
+          client.rpc('get_round_shop_cards', {
+            p_round_id: roundId,
+            p_building_id: null,
+          }),
+          shouldLoadEventCards
+            ? Promise.resolve(client.rpc('get_event_delivery_cards', {
+              p_round_id: roundId,
+              p_event_job_id: null,
+              p_search: null,
+            })).catch((error: unknown) => ({ data: null, error }))
+            : Promise.resolve({ data: null, error: null }),
+        ]);
+        if (regularResponse.error) throw regularResponse.error;
+        if (eventResponse.error) {
+          eventCardLoadErrors.set(
+            roundId,
+            getErrorMessage(eventResponse.error, 'โหลดร้านอีเว้นไม่สำเร็จ'),
+          );
+        } else {
+          eventCardLoadErrors.delete(roundId);
+        }
+        const rawCards = (regularResponse.data ?? []) as Array<
           Omit<ShopCard, 'today_history'> & { today_history: ShopCardHistoryEntry[] | null }
         >;
         const shopImageBucket = client.storage.from('shop-images');
@@ -335,12 +410,57 @@ export function createSupabaseGateway(): EmployeeDeliveryGateway {
         );
         const cards: ShopCard[] = cardsWithImages.map((card) => ({
           ...card,
+          destination_kind: 'regular',
           image_url: card.image_url ?? null,
           today_history: Array.isArray(card.today_history) ? card.today_history : [],
         }));
-        shopCardBurstCache.set(roundId, { cachedAt: Date.now(), cards });
-        return cards;
+        const eventCards = (((eventResponse.data as { cards?: EventDeliveryCardDto[] } | null)?.cards) ?? [])
+          .filter((card) => Boolean(card.round_stop_id))
+          .map((card, index): ShopCard => ({
+            destination_kind: 'event',
+            round_stop_id: card.round_stop_id!,
+            shop_id: card.shop_id,
+            shop_code: card.shop_code,
+            shop_name: card.shop_name,
+            building_id: card.event_job_id,
+            building_name: card.event_name,
+            floor_or_zone: card.event_zone ?? card.location,
+            sequence_no: index + 1,
+            image_path: null,
+            image_url: null,
+            payment_status: 'unknown',
+            stop_status: card.stop_status,
+            stop_note: card.stop_note,
+            today_history: card.today_history.map((entry) => ({
+              event_id: entry.delivery_event_id,
+              recorded_at: entry.recorded_at,
+              round_name: card.event_name,
+              recorded_by: '—',
+              stop_status: 'delivered',
+              note: entry.note,
+              items: Object.fromEntries(entry.items.map((item) => [item.ice_type_id, item.quantity])),
+            })),
+            today_totals: Object.fromEntries(card.today_totals.map((item) => [item.ice_type_id, item.quantity])),
+            event_job_id: card.event_job_id,
+            event_participation_id: card.event_participation_id,
+            event_name: card.event_name,
+            event_location: card.location,
+            booth_number: card.booth_number,
+            event_zone: card.event_zone,
+            landmark: card.landmark,
+            contact_name: card.contact_name,
+            contact_phone: card.contact_phone,
+            is_operational: card.is_operational,
+            event_delivery_enabled: EVENT_ICE_WRITER_CLIENT_ENABLED
+              && Boolean(eventCapability?.event_ice_delivery_enabled),
+          }));
+        const destinationCards = [...cards, ...eventCards];
+        shopCardBurstCache.set(roundId, { cachedAt: Date.now(), cards: destinationCards });
+        return destinationCards;
       });
+    },
+    getEventCardsLoadError(roundId) {
+      return eventCardLoadErrors.get(roundId) ?? null;
     },
     async loadEmployeeStockState(roundId) {
       return singleFlight(stockRequests, roundId, async () => {
@@ -912,7 +1032,13 @@ export function EmployeeDeliveryWorkspace({
             selectedZone={data.selectedZone}
             setSelectedZone={data.setSelectedZone}
             zoneOptions={data.zoneOptions}
+            destinationKind={data.destinationKind}
+            setDestinationKind={data.setDestinationKind}
+            selectedEventJobId={data.selectedEventJobId}
+            setSelectedEventJobId={data.setSelectedEventJobId}
+            eventOptions={data.eventOptions}
             loadingCards={data.loadingCards}
+            eventCardsError={data.eventCardsError}
             filteredCards={data.filteredCards}
             casualCustomerButtonRef={casualCustomerButtonRef}
             casualCustomerEntryVisible={casualCustomerAvailable}

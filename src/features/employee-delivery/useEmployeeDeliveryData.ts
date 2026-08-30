@@ -99,6 +99,8 @@ export function useEmployeeDeliveryData({
   const [selectedRoundId, setSelectedRoundId] = useState('');
   const [selectedBuildingId, setSelectedBuildingId] = useState('');
   const [selectedZone, setSelectedZone] = useState('');
+  const [destinationKind, setDestinationKindState] = useState<'regular' | 'event'>('regular');
+  const [selectedEventJobId, setSelectedEventJobId] = useState('');
   const [query, setQuery] = useState('');
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
   const [selectedIceTypeId, setSelectedIceTypeId] = useState('');
@@ -131,6 +133,7 @@ export function useEmployeeDeliveryData({
   const [loadingReference, setLoadingReference] = useState(true);
   const [loadedReferenceServiceDate, setLoadedReferenceServiceDate] = useState<string | null>(null);
   const [loadingCards, setLoadingCards] = useState(false);
+  const [eventCardsError, setEventCardsError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccessMessage] = useState<string | null>(null);
   const [latestReceipt, setLatestReceipt] = useState<StoredSalesDocument | null>(null);
@@ -306,6 +309,7 @@ export function useEmployeeDeliveryData({
       activeRoundId.current = '';
       loadedCardsRoundId.current = '';
       setCards([]);
+      setEventCardsError(null);
       setLoadingCards(false);
       return false;
     }
@@ -315,6 +319,7 @@ export function useEmployeeDeliveryData({
     if (roundChanged) {
       loadedCardsRoundId.current = '';
       setCards([]);
+      setEventCardsError(null);
     }
     const hasLoadedCardsForRound = loadedCardsRoundId.current === roundId;
     setLoadingCards(!hasLoadedCardsForRound);
@@ -324,6 +329,7 @@ export function useEmployeeDeliveryData({
       if (requestId !== cardsRequestId.current || activeRoundId.current !== roundId) return false;
       loadedCardsRoundId.current = roundId;
       setCards(nextCards);
+      setEventCardsError(gateway.getEventCardsLoadError?.(roundId) ?? null);
       setLoadingCards(false);
       return true;
     } catch (loadError) {
@@ -376,6 +382,8 @@ export function useEmployeeDeliveryData({
     setApprovalReason('');
     setSelectedBuildingId('');
     setSelectedZone('');
+    setDestinationKindState('regular');
+    setSelectedEventJobId('');
     setDeliveryQuantities(Object.fromEntries(iceTypes.map((iceType) => [iceType.id, 0])));
     setTransferQuantities(Object.fromEntries(iceTypes.map((iceType) => [iceType.id, 0])));
     setStatus('delivered');
@@ -413,30 +421,65 @@ export function useEmployeeDeliveryData({
 
   const buildingOptions = useMemo(() => {
     const options = new Map<string, string>();
-    for (const card of cards) options.set(card.building_id, card.building_name);
+    for (const card of cards) {
+      if ((card.destination_kind ?? 'regular') === 'regular') {
+        options.set(card.building_id, card.building_name);
+      }
+    }
+    return Array.from(options, ([id, name]) => ({ id, name }));
+  }, [cards]);
+
+  const eventOptions = useMemo(() => {
+    const options = new Map<string, string>();
+    for (const card of cards) {
+      if (card.destination_kind === 'event' && card.event_job_id && card.event_name) {
+        options.set(card.event_job_id, card.event_name);
+      }
+    }
     return Array.from(options, ([id, name]) => ({ id, name }));
   }, [cards]);
   
   const zoneOptions = useMemo(() => Array.from(new Set(
     cards
-      .filter((card) => !selectedBuildingId || card.building_id === selectedBuildingId)
-      .map((card) => card.floor_or_zone),
-  )), [cards, selectedBuildingId]);
+      .filter((card) => (card.destination_kind ?? 'regular') === destinationKind)
+      .filter((card) => destinationKind === 'event'
+        ? !selectedEventJobId || card.event_job_id === selectedEventJobId
+        : !selectedBuildingId || card.building_id === selectedBuildingId)
+      .map((card) => destinationKind === 'event' ? card.event_zone ?? '' : card.floor_or_zone)
+      .filter(Boolean),
+  )), [cards, destinationKind, selectedBuildingId, selectedEventJobId]);
   
   const filteredCards = useMemo(() => {
     const normalizedQuery = normalizeSearch(query);
     return cards.filter((card) => {
-      if (selectedBuildingId && card.building_id !== selectedBuildingId) return false;
-      if (selectedZone && card.floor_or_zone !== selectedZone) return false;
+      if ((card.destination_kind ?? 'regular') !== destinationKind) return false;
+      if (destinationKind === 'regular' && selectedBuildingId && card.building_id !== selectedBuildingId) return false;
+      if (destinationKind === 'event' && selectedEventJobId && card.event_job_id !== selectedEventJobId) return false;
+      if (selectedZone && (destinationKind === 'event' ? card.event_zone : card.floor_or_zone) !== selectedZone) return false;
       if (!normalizedQuery) return true;
       return normalizeSearch([
         card.shop_code,
         card.shop_name,
         card.building_name,
         card.floor_or_zone,
+        card.booth_number,
+        card.landmark,
+        card.contact_name,
+        card.contact_phone,
       ].join(' ')).includes(normalizedQuery);
-    }).sort((left, right) => compareShopCodes(left.shop_code, right.shop_code));
-  }, [cards, query, selectedBuildingId, selectedZone]);
+    }).sort((left, right) => destinationKind === 'event'
+      ? (left.booth_number ?? '').localeCompare(right.booth_number ?? '', 'th', { numeric: true })
+        || compareShopCodes(left.shop_code, right.shop_code)
+      : compareShopCodes(left.shop_code, right.shop_code));
+  }, [cards, destinationKind, query, selectedBuildingId, selectedEventJobId, selectedZone]);
+
+  const setDestinationKind = (kind: 'regular' | 'event') => {
+    setDestinationKindState(kind);
+    setSelectedBuildingId('');
+    setSelectedEventJobId('');
+    setSelectedZone('');
+    setQuery('');
+  };
 
   useLayoutEffect(() => {
     if (selectedCardId || loadingCards || !browseScrollRestorePending.current) return;
@@ -465,6 +508,8 @@ export function useEmployeeDeliveryData({
 
   const openCard = (card: ShopCard, recovery?: EmployeeWorkspaceRecovery) => {
     if (enableAssignedStockFlow && !stockState) return;
+    if (card.destination_kind === 'event'
+      && (!card.event_delivery_enabled || !card.is_operational)) return;
     browseScrollY.current = window.scrollY;
     returnFocusCardId.current = card.round_stop_id;
     setSuccess(null);
@@ -1165,6 +1210,8 @@ export function useEmployeeDeliveryData({
     selectedRoundId,
     selectedBuildingId,
     selectedZone,
+    destinationKind,
+    selectedEventJobId,
     query,
     selectedCardId,
     selectedIceTypeId,
@@ -1196,6 +1243,7 @@ export function useEmployeeDeliveryData({
     stockError,
     loadingReference,
     loadingCards,
+    eventCardsError,
     error,
     success,
     latestReceiptAvailable,
@@ -1205,6 +1253,7 @@ export function useEmployeeDeliveryData({
     transferItems,
     anySubmitting,
     buildingOptions,
+    eventOptions,
     zoneOptions,
     filteredCards,
     shopButtonRefs,
@@ -1213,6 +1262,8 @@ export function useEmployeeDeliveryData({
     // Actions
     setSelectedBuildingId,
     setSelectedZone,
+    setDestinationKind,
+    setSelectedEventJobId,
     setQuery,
     setSelectedIceTypeId,
     setNote,
