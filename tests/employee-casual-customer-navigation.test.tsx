@@ -227,7 +227,9 @@ describe('casual-customer POS navigation', () => {
     await user.click(await screen.findByRole('button', { name: 'บันทึกลูกค้าขาจร' }));
     await user.click(document.querySelector('.employee-pos-product-grid button') as HTMLButtonElement);
     await user.type(await screen.findByLabelText('ยอดขาย (บาท)'), '5');
-    await user.type(screen.getByLabelText('รับเงิน (บาท)'), '5');
+    expect(screen.queryByLabelText('รับเงิน (บาท)')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'QR' })).toBeNull();
+    expect((screen.getByRole('button', { name: 'ยืนยันขายและรับเงิน' }) as HTMLButtonElement).disabled).toBe(false);
     await user.click(screen.getByRole('button', { name: 'ยืนยันขายและรับเงิน' }));
 
     await waitFor(() => expect(gateway.recordCasualTransaction).toHaveBeenCalledWith(expect.objectContaining({
@@ -262,7 +264,6 @@ describe('casual-customer POS navigation', () => {
     await user.click(await screen.findByRole('button', { name: 'บันทึกลูกค้าขาจร' }));
     await user.click(document.querySelector('.employee-pos-product-grid button') as HTMLButtonElement);
     await user.type(await screen.findByLabelText('ยอดขาย (บาท)'), '75');
-    await user.type(screen.getByLabelText('รับเงิน (บาท)'), '75');
     await user.click(screen.getByRole('button', { name: 'ยืนยันขายและรับเงิน' }));
     expect(await screen.findByText('ขาดการเชื่อมต่อหลังบันทึก')).toBeTruthy();
 

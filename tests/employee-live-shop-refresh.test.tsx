@@ -198,7 +198,13 @@ describe('employee live shop loading', () => {
             is_operational: true,
             stop_status: 'issue',
             stop_note: 'เข้าถึงบูธไม่ได้',
-            today_history: [],
+            today_history: [{
+              delivery_event_id: 'delivery-issue-1',
+              recorded_at: '2026-08-11T01:00:00Z',
+              stop_status: 'no_access',
+              note: 'เข้าบูธไม่ได้',
+              items: [],
+            }],
             today_totals: [],
           }],
         },
@@ -217,6 +223,12 @@ describe('employee live shop loading', () => {
       stop_status: 'issue',
       stop_note: 'เข้าถึงบูธไม่ได้',
       event_delivery_enabled: false,
+      today_history: [{
+        event_id: 'delivery-issue-1',
+        stop_status: 'no_access',
+        note: 'เข้าบูธไม่ได้',
+        items: {},
+      }],
     }]);
     expect(supabaseMock.client.rpc).toHaveBeenNthCalledWith(
       4,
@@ -224,6 +236,143 @@ describe('employee live shop loading', () => {
       { p_round_id: 'round-1', p_event_job_id: null, p_search: null },
     );
     expect(supabaseMock.getPublicUrl).not.toHaveBeenCalled();
+  });
+
+  it('enables schema-v6 event stops and routes POS reads and writes to event RPCs', async () => {
+    const eventContext = {
+      ...posContext,
+      round_stop_id: 'event-stop-1',
+      payment_profile: {
+        allowed_payment_terms: ['end_of_day'],
+        default_payment_term: 'end_of_day',
+      },
+    } as DeliveryPosContext;
+    const deliveryResult = {
+      delivery_event_id: 'delivery-1',
+      round_stop_id: 'event-stop-1',
+      charge_id: 'charge-1',
+      service_date: '2026-08-11',
+      total_amount: 60,
+      payment_term: 'end_of_day',
+      payment_status: 'unpaid',
+      due_date: null,
+      approval_id: null,
+    };
+    supabaseMock.client.rpc
+      .mockResolvedValueOnce({
+        data: {
+          schema_version: 6,
+          event_reads_enabled: true,
+          event_stops_enabled: true,
+          event_ice_delivery_enabled: true,
+        },
+        error: null,
+      })
+      .mockResolvedValueOnce({ data: 1, error: null })
+      .mockResolvedValueOnce({ data: [], error: null })
+      .mockResolvedValueOnce({
+        data: {
+          cards: [{
+            event_participation_id: 'participation-1',
+            event_job_id: 'event-1',
+            round_stop_id: 'event-stop-1',
+            event_name: 'งานอาหารเย็น',
+            location: 'ฮอลล์ A',
+            shop_id: 'shop-1',
+            shop_code: 'BB01',
+            shop_name: 'ร้านทดสอบ',
+            booth_number: 'B-17',
+            event_zone: 'อาหาร',
+            landmark: null,
+            contact_name: null,
+            contact_phone: null,
+            is_operational: true,
+            stop_status: 'pending',
+            stop_note: null,
+            today_history: [],
+            today_totals: [],
+          }],
+        },
+        error: null,
+      })
+      .mockResolvedValueOnce({ data: eventContext, error: null })
+      .mockResolvedValueOnce({ data: deliveryResult, error: null });
+
+    const gateway = createSupabaseGateway();
+    const cards = await gateway.loadShopCards('round-1');
+    await gateway.loadDeliveryPosContext!('event-stop-1', {
+      destinationKind: 'event',
+      serviceDate: '2026-08-11',
+    });
+    await gateway.recordDelivery({
+      destinationKind: 'event',
+      roundStopId: 'event-stop-1',
+      items: [{ ice_type_id: 'ice-1', quantity: 1 }],
+      status: 'delivered',
+      note: null,
+      clientRecordedAt: '2026-08-11T01:00:00Z',
+      idempotencyKey: 'request-1',
+      paymentTerm: 'end_of_day',
+    });
+
+    expect(cards[0].event_delivery_enabled).toBe(true);
+    expect(supabaseMock.client.rpc).toHaveBeenNthCalledWith(
+      5,
+      'get_event_delivery_pos_context',
+      { p_round_stop_id: 'event-stop-1' },
+    );
+    expect(supabaseMock.client.rpc).toHaveBeenNthCalledWith(
+      6,
+      'record_event_ice_delivery',
+      {
+        p_round_stop_id: 'event-stop-1',
+        p_items: [{ ice_type_id: 'ice-1', quantity: 1 }],
+        p_stop_status: 'delivered',
+        p_note: null,
+        p_client_recorded_at: '2026-08-11T01:00:00Z',
+        p_idempotency_key: 'request-1',
+      },
+    );
+  });
+
+  it('routes event POS reads and writes explicitly without loading cards first', async () => {
+    supabaseMock.client.rpc
+      .mockResolvedValueOnce({ data: posContext, error: null })
+      .mockResolvedValueOnce({ data: { delivery_event_id: 'delivery-1' }, error: null });
+    const gateway = createSupabaseGateway();
+
+    await gateway.loadDeliveryPosContext!('event-stop-1', {
+      destinationKind: 'event',
+      serviceDate: '2026-08-11',
+    });
+    await gateway.recordDelivery({
+      destinationKind: 'event',
+      roundStopId: 'event-stop-1',
+      items: [],
+      status: 'no_access',
+      note: 'เข้าบูธไม่ได้',
+      clientRecordedAt: '2026-08-11T01:00:00Z',
+      idempotencyKey: 'request-1',
+      paymentTerm: null,
+    });
+
+    expect(supabaseMock.client.rpc).toHaveBeenNthCalledWith(
+      1,
+      'get_event_delivery_pos_context',
+      { p_round_stop_id: 'event-stop-1' },
+    );
+    expect(supabaseMock.client.rpc).toHaveBeenNthCalledWith(
+      2,
+      'record_event_ice_delivery',
+      {
+        p_round_stop_id: 'event-stop-1',
+        p_items: [],
+        p_stop_status: 'no_access',
+        p_note: 'เข้าบูธไม่ได้',
+        p_client_recorded_at: '2026-08-11T01:00:00Z',
+        p_idempotency_key: 'request-1',
+      },
+    );
   });
 
   it('keeps regular cards usable when the event read fails', async () => {
@@ -351,10 +500,13 @@ describe('employee live shop loading', () => {
     const gateway = createSupabaseGateway();
 
     const [first, concurrent] = await Promise.all([
-      gateway.loadDeliveryPosContext!('stop-1', { serviceDate: '2026-08-11' }),
-      gateway.loadDeliveryPosContext!('stop-1', { serviceDate: '2026-08-11' }),
+      gateway.loadDeliveryPosContext!('stop-1', { destinationKind: 'regular', serviceDate: '2026-08-11' }),
+      gateway.loadDeliveryPosContext!('stop-1', { destinationKind: 'regular', serviceDate: '2026-08-11' }),
     ]);
-    const cached = await gateway.loadDeliveryPosContext!('stop-1', { serviceDate: '2026-08-11' });
+    const cached = await gateway.loadDeliveryPosContext!('stop-1', {
+      destinationKind: 'regular',
+      serviceDate: '2026-08-11',
+    });
 
     expect(first.round_stop_id).toBe('stop-1');
     expect(concurrent.round_stop_id).toBe('stop-1');
@@ -371,9 +523,12 @@ describe('employee live shop loading', () => {
       .mockResolvedValueOnce({ data: null, error: new Error('network unavailable') });
     const gateway = createSupabaseGateway();
 
-    await gateway.loadDeliveryPosContext!('stop-1', { serviceDate: '2026-08-11' });
+    await gateway.loadDeliveryPosContext!('stop-1', { destinationKind: 'regular', serviceDate: '2026-08-11' });
     now += 6 * 60 * 1000;
-    const fallback = await gateway.loadDeliveryPosContext!('stop-1', { serviceDate: '2026-08-11' });
+    const fallback = await gateway.loadDeliveryPosContext!('stop-1', {
+      destinationKind: 'regular',
+      serviceDate: '2026-08-11',
+    });
 
     expect(fallback.client_cache?.stale).toBe(true);
     expect(fallback.items[0].unit_price).toBe(60);

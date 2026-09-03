@@ -1,8 +1,9 @@
 export const IMAGE_MAX_WIDTH = 1600;
 export const IMAGE_MAX_HEIGHT = 1200;
-export const IMAGE_TARGET_SIZE = 400 * 1024;
-export const IMAGE_INITIAL_QUALITY = 82;
-export const IMAGE_MIN_QUALITY = 75;
+export const IMAGE_TARGET_SIZE = 1024 * 1024;
+export const IMAGE_MAX_SIZE = 5 * 1024 * 1024;
+export const IMAGE_INITIAL_QUALITY = 92;
+export const IMAGE_MIN_QUALITY = 82;
 
 export function fitImageWithinBounds(width: number, height: number) {
   const scale = Math.min(1, IMAGE_MAX_WIDTH / width, IMAGE_MAX_HEIGHT / height);
@@ -29,7 +30,10 @@ export async function compressImageCanvas(canvas: HTMLCanvasElement): Promise<Bl
     if (latestBlob.size <= IMAGE_TARGET_SIZE) return latestBlob;
   }
 
-  return latestBlob!;
+  if (!latestBlob || latestBlob.size > IMAGE_MAX_SIZE) {
+    throw new Error('รูปหลังบีบอัดต้องมีขนาดไม่เกิน 5 MB');
+  }
+  return latestBlob;
 }
 
 export async function optimizeImage(file: File): Promise<File> {

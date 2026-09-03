@@ -48,11 +48,20 @@ test('catalog cache patterns also cover path-style R2 and public Supabase URLs',
   ), true);
 });
 
-test('R2 signed catalog URLs bypass runtime cache while stable public images use a fresh cache', () => {
+test('R2 signed and stable public catalog URLs use bounded runtime caches', () => {
   assert.deepEqual(catalogImageRuntimeCaching, [
     {
       urlPattern: r2CatalogImagePattern,
-      handler: 'NetworkOnly',
+      handler: 'CacheFirst',
+      options: {
+        cacheName: 'catalog-r2-images-v2',
+        cacheableResponse: { statuses: [0, 200] },
+        expiration: {
+          maxEntries: 500,
+          maxAgeSeconds: 60 * 60 * 24 * 30,
+          purgeOnQuotaError: true,
+        },
+      },
     },
     {
       urlPattern: supabaseCatalogImagePattern,

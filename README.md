@@ -111,6 +111,32 @@ npm run storage:migrate-catalog-images -- \
 
 สคริปต์จะข้าม path ที่ย้ายไป R2 แล้ว และยังคงเก็บไฟล์ต้นฉบับใน Supabase ไว้
 
+หากรูปที่ย้ายไป R2 เป็นไฟล์ต้นฉบับขนาดใหญ่ ให้ตรวจผลการย่อแบบ dry run ก่อน:
+
+```bash
+npm run storage:reoptimize-catalog-images -- \
+  --source-manifest ~/.local/state/ice-delivery/catalog-migration-2026-08-19.jsonl
+```
+
+เครื่องมือนี้ใช้ไฟล์ต้นฉบับที่ยังเก็บใน Supabase ย่อเป็น WebP คุณภาพสูงไม่เกิน
+1600 × 1200 px ตั้งเป้าขนาด 1 MB และบังคับเพดานไม่เกิน 5 MB ต่อรูป จากนั้นจึงรันจริงโดยใช้
+environment variables ชุดเดียวกับการย้ายรูปเดิม:
+
+```bash
+npm run storage:reoptimize-catalog-images -- \
+  --source-manifest ~/.local/state/ice-delivery/catalog-migration-2026-08-19.jsonl \
+  --apply \
+  --manifest ~/.local/state/ice-delivery/catalog-reoptimization.jsonl
+```
+
+ไฟล์ manifest ปลายทางต้องเป็นไฟล์ใหม่ สคริปต์จะดาวน์โหลดและ decode ไฟล์ที่อัปโหลดผ่าน Edge Function จนครบก่อนเปลี่ยน
+`image_path` และไม่ลบไฟล์ R2 เดิม หากต้องย้อนกลับให้ใช้:
+
+```bash
+npm run storage:reoptimize-catalog-images -- \
+  --rollback ~/.local/state/ice-delivery/catalog-reoptimization.jsonl
+```
+
 - รถบรรทุกเป็นคลังสต๊อกกลางเคลื่อนที่ของศูนย์ราชการ
 - จุดปฏิบัติงาน Skywalk, ตึก A, ตึก B, ตึก C, รถเล็ก, พนักงานแต่ละคน และถังสำรองเป็นจุดถือครองสต๊อกย่อย
 - งานหลักที่หัวหน้าต้องทำคือบันทึก “สั่งจากโรงงานเท่าไร”, “จ่ายให้พนักงาน/จุดใดเท่าไร” และ “พนักงานกลับมาคืนหรือเหลือเท่าไร” แยกตามชนิดน้ำแข็ง

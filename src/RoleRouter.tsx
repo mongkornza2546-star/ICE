@@ -12,6 +12,7 @@ import { ShopSettings } from './ShopSettings';
 import { RoundWorkspace } from './RoundWorkspace';
 import { ManagerStockAudit } from './ManagerStockAudit';
 import { FinancialOperations } from './FinancialOperations';
+import { EventManagementPage } from './EventManagementPage';
 import { Coins, Package, Storefront } from '@phosphor-icons/react';
 import type { UserProfile } from './types/app';
 import { toBangkokDateString } from './lib/serviceDate';
@@ -320,6 +321,7 @@ export function RoleRouter({
     ? profile.role === 'admin'
       ? [
           'manager_overview',
+          'events',
           'factory_order',
           'delivery',
           'financial_operations',
@@ -331,6 +333,7 @@ export function RoleRouter({
         ]
       : [
           'manager_overview',
+          'events',
           'factory_order',
           'delivery',
           'financial_operations',
@@ -378,6 +381,14 @@ export function RoleRouter({
           <ManagerDashboard
             isActive={currentView === 'manager_overview'}
             onNavigate={setActiveView}
+            profileRole={profile.role === 'admin' ? 'admin' : 'round_lead'}
+          />
+        </KeepAlive>
+      )}
+      {visitedViews.has('events') && (
+        <KeepAlive active={currentView === 'events'}>
+          <EventManagementPage
+            isActive={currentView === 'events'}
             profileRole={profile.role === 'admin' ? 'admin' : 'round_lead'}
           />
         </KeepAlive>

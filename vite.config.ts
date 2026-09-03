@@ -8,7 +8,16 @@ export const supabaseCatalogImagePattern = /^https:\/\/[^/]+\/storage\/v1\/objec
 export const catalogImageRuntimeCaching = [
   {
     urlPattern: r2CatalogImagePattern,
-    handler: 'NetworkOnly',
+    handler: 'CacheFirst',
+    options: {
+      cacheName: 'catalog-r2-images-v2',
+      cacheableResponse: { statuses: [0, 200] },
+      expiration: {
+        maxEntries: 500,
+        maxAgeSeconds: 60 * 60 * 24 * 30,
+        purgeOnQuotaError: true,
+      },
+    },
   },
   {
     urlPattern: supabaseCatalogImagePattern,

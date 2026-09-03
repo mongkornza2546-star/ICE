@@ -1,0 +1,272 @@
+import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { EventManagementPage } from '../src/EventManagementPage';
+import type {
+  EventManagementDetail,
+  EventManagementGateway,
+  EventOverview,
+} from '../src/features/event-management/types';
+
+const event: EventOverview = {
+  id: 'event-1',
+  name: 'งานอาหารเมืองทอง',
+  organizer_name: 'ผู้จัดงาน',
+  contact_name: 'คุณแอน',
+  contact_phone: '0811111111',
+  location: 'ฮอลล์ A',
+  start_date: '2026-09-10',
+  end_date: '2026-09-12',
+  timezone: 'Asia/Bangkok',
+  notes: null,
+  status: 'draft',
+  current_config_version_id: 'config-1',
+  created_at: '2026-09-01T00:00:00Z',
+  updated_at: '2026-09-01T00:00:00Z',
+  published_at: null,
+  cancelled_at: null,
+  cancellation_reason: null,
+  active_participation_count: 2,
+  has_configuration: true,
+};
+
+function detail(ready = true): EventManagementDetail {
+  return {
+    event,
+    configuration: {
+      id: 'config-1',
+      event_job_id: event.id,
+      version_no: 1,
+      tank_rental_unit_price: 100,
+      payment_term: 'end_of_day',
+      allowed_payment_methods: ['cash'],
+      default_payment_method: 'cash',
+      cash_reference_required: false,
+      cash_evidence_required: false,
+      bank_transfer_reference_required: true,
+      bank_transfer_evidence_required: false,
+      qr_reference_required: true,
+      qr_evidence_required: false,
+    },
+    participations: [
+      {
+        id: 'participation-1',
+        event_job_id: event.id,
+        shop_id: 'shop-1',
+        booth_number: 'A01',
+        event_zone: 'อาหาร',
+        landmark: null,
+        contact_name: null,
+        contact_phone: null,
+        start_date: event.start_date,
+        end_date: event.end_date,
+        rents_tank_from_us: false,
+        status: 'active',
+        cancellation_reason: null,
+        shop_code: 'S01',
+        shop_name: 'ร้านหนึ่ง',
+        shop_status: 'active',
+        shop_contact_name: 'คุณหนึ่ง',
+        shop_contact_phone: '0800000001',
+      },
+      {
+        id: 'participation-2',
+        event_job_id: event.id,
+        shop_id: 'shop-2',
+        booth_number: 'A02',
+        event_zone: 'อาหาร',
+        landmark: null,
+        contact_name: null,
+        contact_phone: null,
+        start_date: event.start_date,
+        end_date: event.end_date,
+        rents_tank_from_us: false,
+        status: 'active',
+        cancellation_reason: null,
+        shop_code: 'S02',
+        shop_name: 'ร้านสอง',
+        shop_status: 'active',
+        shop_contact_name: 'คุณสอง',
+        shop_contact_phone: '0800000002',
+      },
+    ],
+    readiness: {
+      is_ready: ready,
+      checks: [
+        { code: 'draft_status', ok: true, message: 'งานอยู่ในสถานะฉบับร่าง' },
+        { code: 'settlement_configuration', ok: true, message: 'ตั้งค่านโยบายการชำระเงินแล้ว' },
+        { code: 'participation_count', ok: true, message: 'จำนวนร้านอยู่ในช่วงที่เผยแพร่ได้', actual: 2 },
+        { code: 'participation_details', ok: true, message: 'ข้อมูลร้านและผู้ติดต่อครบ', items: [] },
+        { code: 'standard_price_coverage', ok: ready, message: ready ? 'ราคากลางครอบคลุมทุกวันของงาน' : 'ราคากลางยังไม่ครอบคลุมทุกวันของงาน', items: ready ? [] : [{ ice_type_id: 'ice-1', ice_type_code: 'ICE', ice_type_name: 'น้ำแข็งหลอด', missing_ranges: [{ start_date: '2026-09-10', end_date: '2026-09-12' }] }] },
+      ],
+    },
+  };
+}
+
+function gateway(detailValue = detail()): EventManagementGateway {
+  return {
+    loadCapability: vi.fn().mockResolvedValue({ schema_version: 5, lifecycle_enabled: true }),
+    loadOverview: vi.fn().mockResolvedValue([event]),
+    loadDetail: vi.fn().mockResolvedValue(detailValue),
+    loadActiveShops: vi.fn().mockResolvedValue([
+      { id: 'shop-3', code: 'S03', name: 'ร้านสาม', contact_name: 'คุณสาม', contact_phone: '0800000003', status: 'active' },
+    ]),
+    saveMetadata: vi.fn().mockResolvedValue(event),
+    saveEvent: vi.fn().mockResolvedValue({ event_job: event, configuration: detailValue.configuration! }),
+    saveParticipation: vi.fn().mockResolvedValue(detailValue.participations[0]),
+    publishEvent: vi.fn().mockResolvedValue({ ...event, status: 'published' }),
+    cancelEvent: vi.fn().mockResolvedValue({ ...event, status: 'cancelled' }),
+    cancelParticipation: vi.fn().mockResolvedValue({ ...detailValue.participations[0], status: 'cancelled' }),
+  };
+}
+
+describe('EventManagementPage', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('shows actionable readiness and blocks publish until every check passes', async () => {
+    const blockedGateway = gateway(detail(false));
+    render(<EventManagementPage gateway={blockedGateway} profileRole="admin" />);
+
+    expect(await screen.findByText('ราคากลางยังไม่ครอบคลุมทุกวันของงาน')).not.toBeNull();
+    expect(screen.getByText(/ICE น้ำแข็งหลอด/)).not.toBeNull();
+    expect(screen.getByRole('button', { name: 'Publish' }).hasAttribute('disabled')).toBe(true);
+  });
+
+  it('publishes a ready draft after confirmation', async () => {
+    const readyGateway = gateway();
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const user = userEvent.setup();
+    render(<EventManagementPage gateway={readyGateway} profileRole="round_lead" />);
+
+    await user.click(await screen.findByRole('button', { name: 'Publish' }));
+
+    expect(readyGateway.publishEvent).toHaveBeenCalledWith('event-1');
+    expect(await screen.findByText('เผยแพร่งานอีเวนต์แล้ว')).not.toBeNull();
+  });
+
+  it('uses the admin RPC payload when creating an event with settlement configuration', async () => {
+    const adminGateway = gateway();
+    const user = userEvent.setup();
+    render(<EventManagementPage gateway={adminGateway} profileRole="admin" />);
+
+    await user.click(await screen.findByRole('button', { name: 'สร้างงาน' }));
+    await user.type(screen.getByLabelText('ชื่องาน *'), 'งานใหม่');
+    await user.type(screen.getByLabelText('ผู้จัดงาน *'), 'ผู้จัดใหม่');
+    await user.type(screen.getByLabelText('สถานที่ *'), 'ฮอลล์ B');
+    await user.type(screen.getByLabelText('ผู้ติดต่อหลัก *'), 'คุณบี');
+    await user.type(screen.getByLabelText('เบอร์โทร *'), '0899999999');
+    await user.click(screen.getByLabelText('เงินสด'));
+    await user.selectOptions(screen.getByLabelText('วิธีรับเงินเริ่มต้น *'), 'cash');
+    await user.click(screen.getByRole('button', { name: 'บันทึกงาน' }));
+
+    await waitFor(() => expect(adminGateway.saveEvent).toHaveBeenCalledWith(expect.objectContaining({
+      event_job_id: null,
+      name: 'งานใหม่',
+      tank_rental_unit_price: 100,
+      allowed_payment_methods: ['cash'],
+      default_payment_method: 'cash',
+    })));
+    expect(adminGateway.saveMetadata).not.toHaveBeenCalled();
+  });
+
+  it('uses metadata-only RPC for round leads and explains the admin configuration gate', async () => {
+    const leadGateway = gateway();
+    const user = userEvent.setup();
+    render(<EventManagementPage gateway={leadGateway} profileRole="round_lead" />);
+
+    await user.click(await screen.findByRole('button', { name: 'สร้างงาน' }));
+    expect(screen.getByText('การตั้งค่าการชำระเงินเป็นสิทธิ์แอดมิน')).not.toBeNull();
+    await user.type(screen.getByLabelText('ชื่องาน *'), 'งานหัวหน้ารอบ');
+    await user.type(screen.getByLabelText('ผู้จัดงาน *'), 'ผู้จัด');
+    await user.type(screen.getByLabelText('สถานที่ *'), 'ฮอลล์ C');
+    await user.type(screen.getByLabelText('ผู้ติดต่อหลัก *'), 'คุณซี');
+    await user.type(screen.getByLabelText('เบอร์โทร *'), '0888888888');
+    await user.click(screen.getByRole('button', { name: 'บันทึกงาน' }));
+
+    await waitFor(() => expect(leadGateway.saveMetadata).toHaveBeenCalledWith(expect.objectContaining({
+      event_job_id: null,
+      name: 'งานหัวหน้ารอบ',
+    })));
+    expect(leadGateway.saveEvent).not.toHaveBeenCalled();
+  });
+
+  it('adds an existing active shop with event dates and no tank rental', async () => {
+    const shopGateway = gateway();
+    const user = userEvent.setup();
+    render(<EventManagementPage gateway={shopGateway} profileRole="round_lead" />);
+
+    await user.click(await screen.findByRole('button', { name: 'เพิ่มร้าน' }));
+    await user.click(await screen.findByRole('button', { name: /S03.*ร้านสาม/ }));
+    await user.type(screen.getByLabelText('เลขบูธ'), 'B03');
+    await user.click(screen.getByRole('button', { name: 'บันทึกร้าน' }));
+
+    await waitFor(() => expect(shopGateway.saveParticipation).toHaveBeenCalledWith({
+      participation_id: null,
+      event_job_id: 'event-1',
+      shop_id: 'shop-3',
+      booth_number: 'B03',
+      event_zone: '',
+      landmark: '',
+      contact_name: '',
+      contact_phone: '',
+      start_date: '2026-09-10',
+      end_date: '2026-09-12',
+      rents_tank_from_us: false,
+    }));
+  });
+
+  it('preserves the hidden tank-rental flag when editing a participation', async () => {
+    const tankDetail = detail();
+    tankDetail.participations[0].rents_tank_from_us = true;
+    const editGateway = gateway(tankDetail);
+    const user = userEvent.setup();
+    render(<EventManagementPage gateway={editGateway} profileRole="round_lead" />);
+
+    await user.click(await screen.findByRole('button', { name: 'แก้ไข S01 ร้านหนึ่ง' }));
+    await user.click(screen.getByRole('button', { name: 'บันทึกร้าน' }));
+
+    await waitFor(() => expect(editGateway.saveParticipation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        participation_id: 'participation-1',
+        rents_tank_from_us: true,
+      }),
+    ));
+  });
+
+  it('does not offer a cancelled participation shop for re-adding', async () => {
+    const cancelledDetail = detail();
+    cancelledDetail.participations[0] = {
+      ...cancelledDetail.participations[0],
+      status: 'cancelled',
+      cancellation_reason: 'ถอนตัว',
+    };
+    const cancelledGateway = gateway(cancelledDetail);
+    vi.mocked(cancelledGateway.loadActiveShops).mockResolvedValue([
+      { id: 'shop-1', code: 'S01', name: 'ร้านหนึ่ง', contact_name: 'คุณหนึ่ง', contact_phone: '0800000001', status: 'active' },
+      { id: 'shop-3', code: 'S03', name: 'ร้านสาม', contact_name: 'คุณสาม', contact_phone: '0800000003', status: 'active' },
+    ]);
+    const user = userEvent.setup();
+    render(<EventManagementPage gateway={cancelledGateway} profileRole="round_lead" />);
+
+    await user.click(await screen.findByRole('button', { name: 'เพิ่มร้าน' }));
+
+    expect(await screen.findByRole('button', { name: /S03.*ร้านสาม/ })).not.toBeNull();
+    expect(screen.queryByRole('button', { name: /S01.*ร้านหนึ่ง/ })).toBeNull();
+  });
+
+  it('requires a reason before cancelling an event', async () => {
+    const cancelGateway = gateway();
+    const user = userEvent.setup();
+    render(<EventManagementPage gateway={cancelGateway} profileRole="admin" />);
+
+    await user.click(await screen.findByRole('button', { name: 'ยกเลิกงาน' }));
+    const submit = screen.getByRole('button', { name: 'ยืนยันยกเลิก' });
+    expect(submit.hasAttribute('disabled')).toBe(true);
+    await user.type(screen.getByLabelText('เหตุผลในการยกเลิก *'), 'สถานที่ปิด');
+    await user.click(submit);
+
+    await waitFor(() => expect(cancelGateway.cancelEvent).toHaveBeenCalledWith('event-1', 'สถานที่ปิด'));
+  });
+});

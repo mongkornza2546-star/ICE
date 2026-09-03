@@ -204,19 +204,27 @@ export async function updateCatalogImagePath({ client, table, id, expectedPath, 
   return updatedRows?.length === 1;
 }
 
-export async function createManifestRecorder(manifestPath) {
+export async function createManifestRecorder(manifestPath, { exclusive = false } = {}) {
   const resolvedPath = resolve(manifestPath);
   await mkdir(dirname(resolvedPath), { recursive: true });
-  const handle = await open(resolvedPath, 'a', 0o600);
+  const handle = await open(resolvedPath, exclusive ? 'ax' : 'a', 0o600);
   await chmod(resolvedPath, 0o600);
+  let writes = Promise.resolve();
   return {
     path: resolvedPath,
-    async record(entry) {
-      await handle.appendFile(`${JSON.stringify({ ...entry, recordedAt: new Date().toISOString() })}\n`);
-      await handle.sync();
+    record(entry) {
+      writes = writes.then(async () => {
+        await handle.appendFile(`${JSON.stringify({ ...entry, recordedAt: new Date().toISOString() })}\n`);
+        await handle.sync();
+      });
+      return writes;
     },
     async close() {
-      await handle.close();
+      try {
+        await writes;
+      } finally {
+        await handle.close();
+      }
     },
   };
 }

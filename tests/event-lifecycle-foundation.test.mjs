@@ -7,6 +7,10 @@ const migration = readFileSync(
   new URL('../supabase/migrations/0163_event_lifecycle_foundation.sql', import.meta.url),
   'utf8',
 );
+const managementMigration = readFileSync(
+  new URL('../supabase/migrations/0169_event_management_read_model.sql', import.meta.url),
+  'utf8',
+);
 
 test('event lifecycle foundation keeps operational capabilities dark', () => {
   assert.match(migration, /create table public\.event_jobs/);
@@ -26,6 +30,17 @@ test('event lifecycle foundation keeps operational capabilities dark', () => {
     cancelParticipation,
     /from public\.event_jobs job[\s\S]+for update;[\s\S]+from public\.event_participations[\s\S]+for update;/,
   );
+});
+
+test('event management exposes readiness through one shared publish contract', () => {
+  assert.match(managementMigration, /create or replace function public\.event_publish_readiness/);
+  assert.match(managementMigration, /create or replace function public\.get_event_management_overview/);
+  assert.match(managementMigration, /create or replace function public\.get_event_management_detail/);
+  const publishDefinition = managementMigration.slice(
+    managementMigration.indexOf('create or replace function public.publish_event_job'),
+    managementMigration.indexOf("revoke all on function public.event_publish_readiness"),
+  );
+  assert.match(publishDefinition, /public\.event_publish_readiness\(v_job\.id\)/);
 });
 
 test('event lifecycle fails fast when the destination compatibility fence is missing', async (t) => {
@@ -142,10 +157,11 @@ test('event lifecycle publishes only ready events and freezes settlement snapsho
   `);
 
   await db.exec(migration);
+  await db.exec(managementMigration);
 
   const capability = await db.query(`select public.get_event_delivery_capability() as value`);
   assert.deepEqual(capability.rows[0].value, {
-    schema_version: 1,
+    schema_version: 5,
     lifecycle_enabled: true,
     event_stops_enabled: false,
     event_ice_delivery_enabled: false,
@@ -201,6 +217,15 @@ test('event lifecycle publishes only ready events and freezes settlement snapsho
   const firstConfigId = created.rows[0].value.configuration.id;
   assert.deepEqual(created.rows[0].value.configuration.allowed_payment_methods, ['cash', 'qr']);
 
+  const initialDetail = await db.query(`
+    select public.get_event_management_detail('${eventJobId}'::uuid) as value
+  `);
+  assert.equal(initialDetail.rows[0].value.readiness.is_ready, false);
+  assert.equal(
+    initialDetail.rows[0].value.readiness.checks.find((check) => check.code === 'participation_count').actual,
+    0,
+  );
+
   const addParticipation = (shopId, booth) => db.query(`
     select public.save_event_participation(
       null, '${eventJobId}'::uuid, '${shopId}'::uuid,
@@ -230,6 +255,15 @@ test('event lifecycle publishes only ready events and freezes settlement snapsho
   );
 
   await addParticipation('20000000-0000-4000-8000-000000000002', 'A2');
+  const missingPriceDetail = await db.query(`
+    select public.get_event_management_detail('${eventJobId}'::uuid) as value
+  `);
+  assert.equal(missingPriceDetail.rows[0].value.readiness.is_ready, false);
+  assert.deepEqual(
+    missingPriceDetail.rows[0].value.readiness.checks
+      .find((check) => check.code === 'standard_price_coverage').items[0].missing_ranges,
+    [{ start_date: '2026-08-30', end_date: '2026-08-31' }],
+  );
   await assert.rejects(
     db.query(`select public.publish_event_job('${eventJobId}'::uuid)`),
     /Standard prices must cover every active ice type and event service date/,
@@ -243,10 +277,32 @@ test('event lifecycle publishes only ready events and freezes settlement snapsho
       date '2026-08-30', date '2026-08-31', true
     )
   `);
+  const readyDetail = await db.query(`
+    select public.get_event_management_detail('${eventJobId}'::uuid) as value
+  `);
+  assert.equal(readyDetail.rows[0].value.readiness.is_ready, true);
+  assert.equal(readyDetail.rows[0].value.participations.length, 2);
+
+  const overview = await db.query(`select public.get_event_management_overview() as value`);
+  assert.equal(
+    overview.rows[0].value.events.find((event) => event.id === eventJobId).active_participation_count,
+    2,
+  );
   const published = await db.query(
     `select (public.publish_event_job('${eventJobId}'::uuid)).status as status`,
   );
   assert.equal(published.rows[0].status, 'published');
+  const publishedDetail = await db.query(`
+    select public.get_event_management_detail('${eventJobId}'::uuid) as value
+  `);
+  assert.deepEqual(publishedDetail.rows[0].value.readiness, {
+    is_ready: false,
+    checks: [{
+      code: 'draft_status',
+      ok: false,
+      message: 'เผยแพร่ได้เฉพาะงานฉบับร่าง',
+    }],
+  });
 
   const initialSnapshots = await db.query(`
     select config_version_id, tank_rental_unit_price_snapshot,

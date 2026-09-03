@@ -26,12 +26,18 @@ import { EmployeeDeliveryReview } from './features/employee-delivery/EmployeeDel
 import { useEmployeeDeliveryData } from './features/employee-delivery/useEmployeeDeliveryData';
 import { toBangkokDateString } from './lib/serviceDate';
 import { deletePaymentEvidence, uploadPaymentEvidence } from './lib/paymentEvidence';
-import { withAsyncPublicImageUrls } from './lib/publicImageUrls';
-import { getHybridObjectUrls } from './lib/r2Storage';
+import { withAsyncPublicImageUrls, withPublicImageUrls } from './lib/publicImageUrls';
+import {
+  getHybridObjectUrls,
+  getR2ObjectUrls,
+  isR2Path,
+  refreshR2CatalogObjectUrl,
+} from './lib/r2Storage';
 import { subscribeToDataChange } from './lib/dataChange';
 import { getErrorMessage } from './lib/errorMessage';
 
 export interface EmployeeDeliveryPayload {
+  destinationKind: NonNullable<ShopCard['destination_kind']>;
   roundStopId: string;
   items: Array<{ ice_type_id: string; quantity: number }>;
   status: Exclude<ShopRoundStatus, 'pending'>;
@@ -109,10 +115,15 @@ export interface EmployeeStockTransferPayload {
 }
 
 export interface EmployeeDeliveryGateway {
+  supportsProgressiveShopCardLoading?: boolean;
   loadReferenceData(serviceDate: string): Promise<{ rounds: DeliveryRound[]; iceTypes: IceTypeOption[] }>;
-  loadShopCards(roundId: string, options?: { forceRefresh?: boolean }): Promise<ShopCard[]>;
+  loadShopCards(roundId: string, options?: {
+    forceRefresh?: boolean;
+    onBaseCards?: (cards: ShopCard[]) => void;
+  }): Promise<ShopCard[]>;
   getEventCardsLoadError?(roundId: string): string | null;
-  loadDeliveryPosContext?(roundStopId: string, options?: {
+  loadDeliveryPosContext?(roundStopId: string, options: {
+    destinationKind: NonNullable<ShopCard['destination_kind']>;
     serviceDate?: string;
     forceRefresh?: boolean;
   }): Promise<DeliveryPosContext>;
@@ -169,6 +180,7 @@ interface EventDeliveryCardDto {
   today_history: Array<{
     delivery_event_id: string;
     recorded_at: string;
+    stop_status: Exclude<ShopRoundStatus, 'pending'>;
     note: string | null;
     items: Array<{ ice_type_id: string; quantity: number }>;
   }>;
@@ -180,8 +192,6 @@ const POS_CONTEXT_CACHE_PREFIX = 'ice-employee-pos-context:v1';
 const SHOP_CARDS_BURST_CACHE_MS = 5 * 1000;
 const FOREGROUND_REFRESH_MIN_MS = 5 * 60 * 1000;
 const EVENT_CAPABILITY_CACHE_MS = 60 * 1000;
-// Keep this false until a dedicated event POS context and writer are deployed.
-const EVENT_ICE_WRITER_CLIENT_ENABLED = false;
 
 interface CachedPosContext {
   cachedAt: number;
@@ -325,6 +335,7 @@ export function createSupabaseGateway(): EmployeeDeliveryGateway {
   };
 
   return {
+    supportsProgressiveShopCardLoading: true,
     async loadReferenceData(serviceDate) {
       return singleFlight(referenceRequests, serviceDate, async () => {
         if (!supabase) throw new Error('ยังไม่ได้ตั้งค่า Supabase');
@@ -399,16 +410,10 @@ export function createSupabaseGateway(): EmployeeDeliveryGateway {
           Omit<ShopCard, 'today_history'> & { today_history: ShopCardHistoryEntry[] | null }
         >;
         const shopImageBucket = client.storage.from('shop-images');
-        const cardsWithImages = await withAsyncPublicImageUrls(
-          rawCards,
-          (paths) => getHybridObjectUrls(
-            'shop-images', paths, async (supabasePaths) => supabasePaths.map((path) => ({
-              path,
-              signedUrl: shopImageBucket.getPublicUrl(path).data.publicUrl,
-            })),
-          ),
-        );
-        const cards: ShopCard[] = cardsWithImages.map((card) => ({
+        const cardsWithBaseUrls = withPublicImageUrls(rawCards, (path) => (
+          isR2Path(path) ? null : shopImageBucket.getPublicUrl(path).data.publicUrl
+        ));
+        const baseCards: ShopCard[] = cardsWithBaseUrls.map((card) => ({
           ...card,
           destination_kind: 'regular',
           image_url: card.image_url ?? null,
@@ -436,7 +441,7 @@ export function createSupabaseGateway(): EmployeeDeliveryGateway {
               recorded_at: entry.recorded_at,
               round_name: card.event_name,
               recorded_by: '—',
-              stop_status: 'delivered',
+              stop_status: entry.stop_status,
               note: entry.note,
               items: Object.fromEntries(entry.items.map((item) => [item.ice_type_id, item.quantity])),
             })),
@@ -451,9 +456,14 @@ export function createSupabaseGateway(): EmployeeDeliveryGateway {
             contact_name: card.contact_name,
             contact_phone: card.contact_phone,
             is_operational: card.is_operational,
-            event_delivery_enabled: EVENT_ICE_WRITER_CLIENT_ENABLED
+            event_delivery_enabled: Number(eventCapability?.schema_version) >= 6
               && Boolean(eventCapability?.event_ice_delivery_enabled),
           }));
+        options?.onBaseCards?.([...baseCards, ...eventCards]);
+        const cards = await withAsyncPublicImageUrls(
+          baseCards,
+          (paths) => getR2ObjectUrls('shop-images', paths.filter(isR2Path)),
+        );
         const destinationCards = [...cards, ...eventCards];
         shopCardBurstCache.set(roundId, { cachedAt: Date.now(), cards: destinationCards });
         return destinationCards;
@@ -486,7 +496,10 @@ export function createSupabaseGateway(): EmployeeDeliveryGateway {
       return singleFlight(posContextRequests, key, async () => {
         try {
           if (!supabase) throw new Error('ยังไม่ได้ตั้งค่า Supabase');
-          const { data, error } = await supabase.rpc('get_delivery_pos_context', {
+          const { data, error } = await supabase.rpc(
+            options.destinationKind === 'event'
+              ? 'get_event_delivery_pos_context'
+              : 'get_delivery_pos_context', {
             p_round_stop_id: roundStopId,
           });
           if (error) throw error;
@@ -541,15 +554,19 @@ export function createSupabaseGateway(): EmployeeDeliveryGateway {
     },
     async recordDelivery(payload) {
       if (!supabase) throw new Error('ยังไม่ได้ตั้งค่า Supabase');
-      const { data, error } = await supabase.rpc('record_delivery', {
+      const isEventStop = payload.destinationKind === 'event';
+      const { data, error } = await supabase.rpc(
+        isEventStop ? 'record_event_ice_delivery' : 'record_delivery', {
         p_round_stop_id: payload.roundStopId,
         p_items: payload.items,
         p_stop_status: payload.status,
         p_note: payload.note,
         p_client_recorded_at: payload.clientRecordedAt,
         p_idempotency_key: payload.idempotencyKey,
-        p_payment_term: payload.paymentTerm,
-        p_approval_id: payload.approvalId ?? null,
+        ...(isEventStop ? {} : {
+          p_payment_term: payload.paymentTerm,
+          p_approval_id: payload.approvalId ?? null,
+        }),
       });
       if (error) throw error;
       invalidatePosContextCache(payload.roundStopId);
@@ -1040,6 +1057,12 @@ export function EmployeeDeliveryWorkspace({
             loadingCards={data.loadingCards}
             eventCardsError={data.eventCardsError}
             filteredCards={data.filteredCards}
+            refreshShopImageUrl={(card) => {
+              if (!card.image_path || !isR2Path(card.image_path)) {
+                return Promise.resolve(card.image_url ?? null);
+              }
+              return refreshR2CatalogObjectUrl('shop-images', card.image_path);
+            }}
             casualCustomerButtonRef={casualCustomerButtonRef}
             casualCustomerEntryVisible={casualCustomerAvailable}
             openCasualCustomer={() => {

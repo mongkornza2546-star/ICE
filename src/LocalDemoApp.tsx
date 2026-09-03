@@ -630,6 +630,7 @@ function buildDemoGateway(): EmployeeDeliveryGateway & { reset(): void } {
     },
     async recordImmediateSale(payload) {
       const delivery = await this.recordDelivery({
+        destinationKind: 'regular',
         roundStopId: payload.roundStopId,
         items: payload.items,
         status: 'delivered',

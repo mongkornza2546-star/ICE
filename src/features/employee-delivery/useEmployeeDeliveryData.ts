@@ -325,7 +325,18 @@ export function useEmployeeDeliveryData({
     setLoadingCards(!hasLoadedCardsForRound);
     setError(null);
     try {
-      const nextCards = await gateway.loadShopCards(roundId, options);
+      const nextCards = await gateway.loadShopCards(
+        roundId,
+        gateway.supportsProgressiveShopCardLoading ? {
+          ...options,
+          onBaseCards: (baseCards) => {
+            if (requestId !== cardsRequestId.current || activeRoundId.current !== roundId) return;
+            loadedCardsRoundId.current = roundId;
+            setCards(baseCards);
+            setLoadingCards(false);
+          },
+        } : options,
+      );
       if (requestId !== cardsRequestId.current || activeRoundId.current !== roundId) return false;
       loadedCardsRoundId.current = roundId;
       setCards(nextCards);
@@ -541,7 +552,10 @@ export function useEmployeeDeliveryData({
     if (loadPosContext) {
       const requestId = ++posContextRequestId.current;
       setLoadingPosContext(true);
-      void loadPosContext(card.round_stop_id, { serviceDate }).then((loadedContext) => {
+      void loadPosContext(card.round_stop_id, {
+        destinationKind: card.destination_kind ?? 'regular',
+        serviceDate,
+      }).then((loadedContext) => {
         if (requestId !== posContextRequestId.current) return;
         const context = withKnownIceTypeImages(loadedContext, iceTypes);
         setPosContext(context);
@@ -896,6 +910,7 @@ export function useEmployeeDeliveryData({
     setEntryError(null);
     try {
       const result = await gateway.recordDelivery({
+        destinationKind: selectedCard.destination_kind ?? 'regular',
         roundStopId: selectedCard.round_stop_id,
         items: isDelivery ? items : [],
         status,
@@ -1112,7 +1127,11 @@ export function useEmployeeDeliveryData({
         try {
           const refreshedContext = withKnownIceTypeImages(await gateway.loadDeliveryPosContext(
             selectedCard.round_stop_id,
-            { serviceDate, forceRefresh: true },
+            {
+              destinationKind: selectedCard.destination_kind ?? 'regular',
+              serviceDate,
+              forceRefresh: true,
+            },
           ), iceTypes);
           const refreshedTotal = items.reduce((total, item) => {
             const refreshedItem = refreshedContext.items.find((candidate) => candidate.ice_type_id === item.ice_type_id);

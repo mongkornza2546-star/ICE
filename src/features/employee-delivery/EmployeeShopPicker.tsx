@@ -1,10 +1,88 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { MagnifyingGlass, Buildings, MapPin, Storefront, CaretRight, WarningCircle, X } from '@phosphor-icons/react';
 import type { ShopCard, EmployeeStockState } from '../../types/app';
 import { FilterChips } from './FilterChips';
 import { EmployeeState } from './EmployeeState';
 import { statusTone } from './utils';
 import { STATUS_LABELS } from './constants';
+
+function RegularShopVisual({
+  card,
+  onPreview,
+  refreshImageUrl,
+}: {
+  card: ShopCard;
+  onPreview: (event: React.MouseEvent<HTMLButtonElement>, imageUrl: string) => void;
+  refreshImageUrl: (card: ShopCard) => Promise<string | null>;
+}) {
+  const [imageUrl, setImageUrl] = useState(card.image_url);
+  const [loadAttempt, setLoadAttempt] = useState(0);
+  const [imageFailed, setImageFailed] = useState(false);
+  const retryRequestId = useRef(0);
+
+  useEffect(() => {
+    retryRequestId.current += 1;
+    setImageUrl(card.image_url);
+    setLoadAttempt(0);
+    setImageFailed(false);
+  }, [card.image_url]);
+
+  const retryImage = async () => {
+    if (loadAttempt > 0) {
+      setImageFailed(true);
+      return;
+    }
+    const requestId = ++retryRequestId.current;
+    setImageUrl(null);
+    try {
+      const refreshedUrl = await refreshImageUrl(card);
+      if (retryRequestId.current !== requestId) return;
+      if (!refreshedUrl) {
+        setImageFailed(true);
+        return;
+      }
+      setLoadAttempt(1);
+      setImageUrl(refreshedUrl);
+    } catch {
+      if (retryRequestId.current === requestId) setImageFailed(true);
+    }
+  };
+
+  if (!imageUrl || imageFailed) {
+    return (
+      <span className="employee-shop-tile__visual">
+        <span className="employee-shop-tile__placeholder"><Storefront aria-hidden="true" size={34} /></span>
+        <span className={`employee-status employee-status--${statusTone(card.stop_status)}`}>
+          {STATUS_LABELS[card.stop_status]}
+        </span>
+      </span>
+    );
+  }
+
+  return (
+    <button
+      aria-label={`ดูรูปร้าน ${card.shop_code} ${card.shop_name}`}
+      className="employee-shop-tile__image-button"
+      onClick={(event) => onPreview(event, imageUrl)}
+      type="button"
+    >
+      <span className="employee-shop-tile__visual">
+        <img
+          alt=""
+          aria-hidden="true"
+          decoding="async"
+          key={`${imageUrl}:${loadAttempt}`}
+          loading="lazy"
+          onError={() => void retryImage()}
+          src={imageUrl}
+        />
+        <span className={`employee-status employee-status--${statusTone(card.stop_status)}`}>
+          {STATUS_LABELS[card.stop_status]}
+        </span>
+      </span>
+    </button>
+  );
+}
 
 export function EmployeeShopPicker({
   casualCustomerButtonRef,
@@ -27,6 +105,7 @@ export function EmployeeShopPicker({
   loadingCards,
   eventCardsError,
   filteredCards,
+  refreshShopImageUrl,
   openCasualCustomer,
   openCard,
   stockState,
@@ -52,6 +131,7 @@ export function EmployeeShopPicker({
   loadingCards: boolean;
   eventCardsError: string | null;
   filteredCards: ShopCard[];
+  refreshShopImageUrl: (card: ShopCard) => Promise<string | null>;
   openCasualCustomer: () => void;
   openCard: (card: ShopCard) => void;
   stockState: EmployeeStockState | null;
@@ -169,31 +249,16 @@ export function EmployeeShopPicker({
                       {STATUS_LABELS[card.stop_status]}
                     </span>
                   </span>
-                ) : card.image_url ? (
-                  <button
-                    aria-label={`ดูรูปร้าน ${card.shop_code} ${card.shop_name}`}
-                    className="employee-shop-tile__image-button"
-                    onClick={(event) => setPreviewImage({
+                ) : (
+                  <RegularShopVisual
+                    card={card}
+                    onPreview={(event, imageUrl) => setPreviewImage({
                       name: `${card.shop_code} · ${card.shop_name}`,
-                      url: card.image_url!,
+                      url: imageUrl,
                       trigger: event.currentTarget,
                     })}
-                    type="button"
-                  >
-                    <span className="employee-shop-tile__visual">
-                      <img alt="" aria-hidden="true" loading="lazy" src={card.image_url} />
-                      <span className={`employee-status employee-status--${statusTone(card.stop_status)}`}>
-                        {STATUS_LABELS[card.stop_status]}
-                      </span>
-                    </span>
-                  </button>
-                ) : (
-                  <span className="employee-shop-tile__visual">
-                    <span className="employee-shop-tile__placeholder"><Storefront aria-hidden="true" size={34} /></span>
-                    <span className={`employee-status employee-status--${statusTone(card.stop_status)}`}>
-                      {STATUS_LABELS[card.stop_status]}
-                    </span>
-                  </span>
+                    refreshImageUrl={refreshShopImageUrl}
+                  />
                 )}
                 <button
                   aria-label={`เลือกร้าน ${card.shop_code} ${card.shop_name}`}

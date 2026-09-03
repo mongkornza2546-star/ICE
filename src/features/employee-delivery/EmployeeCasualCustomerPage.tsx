@@ -121,7 +121,6 @@ export function EmployeeCasualCustomerPage({
   const [kind, setKind] = useState<CasualTransactionKind>('paid');
   const [saleAmount, setSaleAmount] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
-  const [receivedAmount, setReceivedAmount] = useState('');
   const [referenceNumber, setReferenceNumber] = useState('');
   const [evidence, setEvidence] = useState<File | null>(null);
   const [note, setNote] = useState('');
@@ -136,7 +135,7 @@ export function EmployeeCasualCustomerPage({
   }, []);
 
   const dirty = Boolean(
-    busy || saleAmount || receivedAmount || referenceNumber || evidence || note
+    busy || saleAmount || referenceNumber || evidence || note
     || Boolean(iceTypeId) || quantity !== 0
     || voidTarget || voidReason || refundReference || refundEvidence,
   );
@@ -213,12 +212,9 @@ export function EmployeeCasualCustomerPage({
   const editingItem = selectedItem && quantityEditorOpen;
   const available = Number(selectedItem?.available_quantity ?? 0);
   const sale = Number(saleAmount);
-  const received = Number(receivedAmount);
   const needsEvidence = kind === 'paid' && paymentMethod !== 'cash';
   const validPaid = kind === 'paid'
     && Number.isInteger(sale) && sale > 0
-    && Number.isInteger(received) && received >= sale
-    && (paymentMethod === 'cash' || received === sale)
     && (!needsEvidence || Boolean(evidence));
   const canSubmit = !busy && !loading && Boolean(selectedItem)
     && (quantity === 0 || (quantity >= 0.5 && quantity <= available && Number.isInteger(quantity * 2)))
@@ -233,7 +229,6 @@ export function EmployeeCasualCustomerPage({
     setQuantity(0);
     setQuantityEditorOpen(false);
     setSaleAmount('');
-    setReceivedAmount('');
     setReferenceNumber('');
     setEvidence(null);
     setNote('');
@@ -244,7 +239,7 @@ export function EmployeeCasualCustomerPage({
     const signature = `casual-record:${JSON.stringify({
       roundId: round.id, iceTypeId, quantity, kind, sale: kind === 'paid' ? sale : 0,
       paymentMethod: kind === 'paid' ? paymentMethod : null,
-      received: kind === 'paid' ? received : null,
+      received: kind === 'paid' ? sale : null,
       referenceNumber: kind === 'paid' ? referenceNumber.trim() || null : null,
       note: note.trim() || null,
       evidence: needsEvidence ? fileIdentity(evidence) : null,
@@ -268,7 +263,7 @@ export function EmployeeCasualCustomerPage({
         transactionKind: kind,
         saleAmount: kind === 'paid' ? sale : 0,
         paymentMethod: kind === 'paid' ? paymentMethod : null,
-        receivedAmount: kind === 'paid' ? received : null,
+        receivedAmount: kind === 'paid' ? sale : null,
         referenceNumber: kind === 'paid' ? referenceNumber.trim() || null : null,
         evidencePath,
         note: note.trim() || null,
@@ -457,10 +452,8 @@ export function EmployeeCasualCustomerPage({
             <button className={kind === 'free' ? 'is-selected' : ''} onClick={() => setKind('free')} type="button"><Gift size={24} /><strong>แจกฟรี</strong></button>
           </div>
           {kind === 'paid' ? <div className="employee-casual-payment">
-            <label><span>ยอดขาย (บาท)</span><input inputMode="numeric" min="1" onChange={(event) => { setSaleAmount(event.target.value); if (paymentMethod !== 'cash') setReceivedAmount(event.target.value); }} step="1" type="number" value={saleAmount} /></label>
-            <div className="employee-casual-methods">{(['cash', 'bank_transfer', 'qr'] as PaymentMethod[]).map((method) => <button className={paymentMethod === method ? 'is-selected' : ''} key={method} onClick={() => { setPaymentMethod(method); if (method !== 'cash' && saleAmount) setReceivedAmount(saleAmount); }} type="button">{paymentLabels[method]}</button>)}</div>
-            <label><span>รับเงิน (บาท)</span><input inputMode="numeric" min={sale || 0} onChange={(event) => setReceivedAmount(event.target.value)} readOnly={paymentMethod !== 'cash'} step="1" type="number" value={receivedAmount} /></label>
-            {paymentMethod === 'cash' && received >= sale && sale > 0 ? <p className="employee-casual-change">เงินทอน <strong>{money.format(received - sale)}</strong></p> : null}
+            <label><span>ยอดขาย (บาท)</span><input inputMode="numeric" min="1" onChange={(event) => setSaleAmount(event.target.value)} step="1" type="number" value={saleAmount} /></label>
+            <div className="employee-casual-methods">{(['cash', 'bank_transfer'] as PaymentMethod[]).map((method) => <button className={paymentMethod === method ? 'is-selected' : ''} key={method} onClick={() => setPaymentMethod(method)} type="button">{paymentLabels[method]}</button>)}</div>
             <label><span>เลขอ้างอิง (ไม่บังคับ)</span><input onChange={(event) => setReferenceNumber(event.target.value)} type="text" value={referenceNumber} /></label>
             {needsEvidence ? <label><span>หลักฐานการชำระ</span><input accept="image/*,application/pdf" onChange={(event) => selectEvidence(event.target.files?.[0] ?? null, setEvidence)} type="file" /></label> : null}
           </div> : null}
@@ -484,7 +477,7 @@ export function EmployeeCasualCustomerPage({
           <p>{voidTarget.ice_type_name} {voidTarget.fulfillment_mode === 'loose' ? `0 ${voidTarget.ice_type_unit}` : `${Number(voidTarget.quantity).toLocaleString('th-TH')} ${voidTarget.ice_type_unit}`}{voidTarget.transaction_kind === 'paid' ? ` · คืนเงินเต็มจำนวน ${money.format(Number(voidTarget.sale_amount))}` : ''}</p>
           <label><span>เหตุผลการยกเลิก</span><textarea autoFocus onChange={(event) => setVoidReason(event.target.value)} value={voidReason} /></label>
           {voidTarget.transaction_kind === 'paid' ? <>
-            <div className="employee-casual-methods">{(['cash', 'bank_transfer', 'qr'] as PaymentMethod[]).map((method) => <button className={refundMethod === method ? 'is-selected' : ''} key={method} onClick={() => setRefundMethod(method)} type="button">คืน{paymentLabels[method]}</button>)}</div>
+            <div className="employee-casual-methods">{(['cash', 'bank_transfer'] as PaymentMethod[]).map((method) => <button className={refundMethod === method ? 'is-selected' : ''} key={method} onClick={() => setRefundMethod(method)} type="button">คืน{paymentLabels[method]}</button>)}</div>
             <label><span>เลขอ้างอิงการคืน (ไม่บังคับ)</span><input onChange={(event) => setRefundReference(event.target.value)} value={refundReference} /></label>
             {refundMethod !== 'cash' ? <label><span>หลักฐานการคืนเงิน</span><input accept="image/*,application/pdf" onChange={(event) => selectEvidence(event.target.files?.[0] ?? null, setRefundEvidence)} type="file" /></label> : null}
           </> : null}

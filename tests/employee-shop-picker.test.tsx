@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { EmployeeShopPicker } from '../src/features/employee-delivery/EmployeeShopPicker';
@@ -43,6 +43,7 @@ function renderPicker(openCard = vi.fn(), selectedRoundId = 'round-1') {
     eventCardsError={null}
     loadingCards={false}
     filteredCards={[shop]}
+    refreshShopImageUrl={vi.fn().mockResolvedValue(shop.image_url)}
     casualCustomerButtonRef={{ current: null }}
     openCasualCustomer={vi.fn()}
     openCard={openCard}
@@ -72,6 +73,52 @@ describe('employee shop picker image preview', () => {
 
     await user.click(screen.getByRole('button', { name: 'เลือกร้าน BB16 ร้านเล่าซา' }));
     expect(openCard).toHaveBeenCalledWith(shop);
+  });
+
+  it('gets a fresh URL after an image failure and then shows the storefront fallback', async () => {
+    const refreshShopImageUrl = vi.fn().mockResolvedValue('https://example.com/bb16-refreshed.jpg');
+    const { container } = render(<EmployeeShopPicker
+      casualCustomerEntryVisible
+      enableAssignedStockFlow={false}
+      selectedRoundId="round-1"
+      query=""
+      setQuery={vi.fn()}
+      selectedBuildingId=""
+      setSelectedBuildingId={vi.fn()}
+      buildingOptions={[]}
+      selectedZone=""
+      setSelectedZone={vi.fn()}
+      zoneOptions={[]}
+      destinationKind="regular"
+      setDestinationKind={vi.fn()}
+      selectedEventJobId=""
+      setSelectedEventJobId={vi.fn()}
+      eventOptions={[]}
+      eventCardsError={null}
+      loadingCards={false}
+      filteredCards={[shop]}
+      refreshShopImageUrl={refreshShopImageUrl}
+      casualCustomerButtonRef={{ current: null }}
+      openCasualCustomer={vi.fn()}
+      openCard={vi.fn()}
+      stockState={null}
+      shopButtonRefs={{ current: new Map<string, HTMLButtonElement>() }}
+    />);
+    const firstImage = container.querySelector<HTMLImageElement>('.employee-shop-tile__visual img');
+    expect(firstImage).toBeTruthy();
+
+    fireEvent.error(firstImage!);
+    await waitFor(() => {
+      expect(container.querySelector<HTMLImageElement>('.employee-shop-tile__visual img')?.src)
+        .toBe('https://example.com/bb16-refreshed.jpg');
+    });
+    const retriedImage = container.querySelector<HTMLImageElement>('.employee-shop-tile__visual img')!;
+    expect(refreshShopImageUrl).toHaveBeenCalledOnce();
+
+    fireEvent.error(retriedImage);
+    expect(container.querySelector('.employee-shop-tile__visual img')).toBeNull();
+    expect(container.querySelector('.employee-shop-tile__placeholder')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'เลือกร้าน BB16 ร้านเล่าซา' })).toBeTruthy();
   });
 
   it('hides casual customers until a round is selected', () => {
@@ -113,6 +160,7 @@ describe('employee shop picker image preview', () => {
         event_delivery_enabled: false,
         is_operational: true,
       }]}
+      refreshShopImageUrl={vi.fn().mockResolvedValue(null)}
       casualCustomerButtonRef={{ current: null }}
       openCasualCustomer={vi.fn()}
       openCard={openCard}
