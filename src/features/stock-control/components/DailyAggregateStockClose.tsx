@@ -82,23 +82,27 @@ export function DailyAggregateStockClose({
   const [employees, setEmployees] = useState<DailyCloseEmployee[]>([]);
   const [featureEnabled, setFeatureEnabled] = useState(false);
   const [legacyRefills, setLegacyRefills] = useState<LegacyRefillHistoryItem[]>([]);
-  const [counts, setCounts] = useState<Record<string, number>>({});
-  const [cashCounts, setCashCounts] = useState<Record<string, number>>({});
+  const [counts, setCounts] = useState<Record<string, string>>({});
+  const [cashCounts, setCashCounts] = useState<Record<string, string>>({});
   const [cashReasons, setCashReasons] = useState<Record<string, string>>({});
   const [note, setNote] = useState('');
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const loadRequest = useRef(0);
   const pendingRequest = useRef<{ signature: string; key: string } | null>(null);
 
   const load = useCallback(async () => {
     if (!supabase) return;
+    const request = ++loadRequest.current;
     setLoading(true);
     setError(null);
+    setSummary(null);
     const [reconciliationResponse, legacyRefillsResponse] = await Promise.all([
       supabase.rpc('get_daily_close_reconciliation', { p_service_date: serviceDate }),
       supabase.rpc('get_daily_stock_refill_history', { p_service_date: serviceDate }),
     ]);
+    if (request !== loadRequest.current) return;
     const loadError = reconciliationResponse.error ?? legacyRefillsResponse.error;
     if (loadError) setError(loadError.message);
     if (reconciliationResponse.data) {
@@ -109,12 +113,12 @@ export function DailyAggregateStockClose({
       setCounts(Object.fromEntries(
         next.stock.items.map((item) => [
           item.ice_type_id,
-          Number(item.actual_quantity ?? item.available_quantity),
+          item.actual_quantity == null ? '' : String(item.actual_quantity),
         ]),
       ));
       setCashCounts(Object.fromEntries(next.employees.map((employee) => [
         employee.employee_id,
-        Number(employee.actual_cash_amount ?? employee.expected_cash_amount),
+        employee.actual_cash_amount == null ? '' : String(employee.actual_cash_amount),
       ])));
       setCashReasons(Object.fromEntries(next.employees.map((employee) => [
         employee.employee_id,
@@ -126,20 +130,30 @@ export function DailyAggregateStockClose({
   }, [serviceDate]);
 
   useEffect(() => {
+    setNote('');
+    pendingRequest.current = null;
     void load();
+    return () => { loadRequest.current += 1; };
   }, [load]);
 
+  const hasMissingCounts = !summary?.items.length || summary.items.some((item) => !isValidCount(counts[item.ice_type_id], 0.5))
+    || (featureEnabled && employees.some((employee) => !isValidCount(cashCounts[employee.employee_id], 0.01)));
+
   const hasVariance = useMemo(() => summary?.items.some(
-    (item) => (counts[item.ice_type_id] ?? 0) !== Number(item.available_quantity),
+    (item) => isValidCount(counts[item.ice_type_id], 0.5) && Number(counts[item.ice_type_id]) !== Number(item.available_quantity),
   ) ?? false, [counts, summary]);
 
   const hasMissingCashReason = useMemo(() => employees.some((employee) => (
-    (cashCounts[employee.employee_id] ?? 0) !== Number(employee.expected_cash_amount)
+    isValidCount(cashCounts[employee.employee_id], 0.01) && Number(cashCounts[employee.employee_id]) !== Number(employee.expected_cash_amount)
       && !cashReasons[employee.employee_id]?.trim()
   )), [cashCounts, cashReasons, employees]);
 
   const close = async () => {
     if (!supabase || !summary || submitting) return;
+    if (hasMissingCounts) {
+      setError('กรอกยอดนับจริงให้ครบทุกช่อง รวมถึงยอดที่เป็นศูนย์');
+      return;
+    }
     if (hasVariance && !note.trim()) {
       setError('กรอกหมายเหตุเมื่อยอดนับจริงต่างจากยอดตามระบบ');
       return;
@@ -152,7 +166,7 @@ export function DailyAggregateStockClose({
     setError(null);
     const closeItems = summary.items.map((item) => ({
         ice_type_id: item.ice_type_id,
-        actual_quantity: counts[item.ice_type_id] ?? 0,
+        actual_quantity: Number(counts[item.ice_type_id]),
         note: hasVariance ? note.trim() || 'ส่วนต่างยังไม่ทราบสาเหตุ' : null,
       }));
     const signature = JSON.stringify({
@@ -160,7 +174,7 @@ export function DailyAggregateStockClose({
       items: closeItems,
       cash: employees.map((employee) => ({
         employee_id: employee.employee_id,
-        actual_cash_amount: cashCounts[employee.employee_id] ?? 0,
+        actual_cash_amount: Number(cashCounts[employee.employee_id]),
         reason: cashReasons[employee.employee_id]?.trim() || null,
       })),
       note: note.trim() || null,
@@ -175,7 +189,7 @@ export function DailyAggregateStockClose({
           p_stock_counts: closeItems,
           p_cash_counts: employees.map((employee) => ({
             employee_id: employee.employee_id,
-            actual_cash_amount: cashCounts[employee.employee_id] ?? 0,
+            actual_cash_amount: Number(cashCounts[employee.employee_id]),
             reason: cashReasons[employee.employee_id]?.trim() || null,
           })),
           p_stock_note: note.trim() || null,
@@ -349,8 +363,9 @@ export function DailyAggregateStockClose({
       </p>
       <div className="daily-stock-count-grid" style={{ marginTop: 16 }}>
         {summary.items.map((item) => {
-          const actual = counts[item.ice_type_id] ?? 0;
-          const variance = actual - Number(item.available_quantity);
+          const actual = counts[item.ice_type_id] ?? '';
+          const counted = isValidCount(actual, 0.5);
+          const variance = counted ? Number(actual) - Number(item.available_quantity) : 0;
           return (
             <article className="daily-stock-count-card" key={item.ice_type_id}>
               <div className="daily-stock-count-card__identity">
@@ -366,7 +381,7 @@ export function DailyAggregateStockClose({
                   <strong>{item.name}</strong>
                   <small>
                     ตามระบบ {item.available_quantity} {item.unit}
-                    {variance ? ` · ต่าง ${variance > 0 ? '+' : ''}${variance}` : ' · ตรง'}
+                    {!counted ? ' · ยังไม่กรอกยอดนับ' : variance ? ` · ต่าง ${variance > 0 ? '+' : ''}${variance}` : ' · ตรง'}
                   </small>
                   <small>
                     สั่ง {item.ordered_quantity ?? 0}
@@ -380,11 +395,12 @@ export function DailyAggregateStockClose({
                 <span>นับจริง</span>
                 <div className="input-wrapper">
                   <input
+                    disabled={submitting}
                     inputMode="decimal"
                     min={0}
                     onChange={(event) => setCounts((current) => ({
                       ...current,
-                      [item.ice_type_id]: Math.max(0, Number(event.target.value) || 0),
+                      [item.ice_type_id]: event.target.value,
                     }))}
                     step={0.5}
                     type="number"
@@ -418,8 +434,9 @@ export function DailyAggregateStockClose({
         <div className="daily-close-cash__grid">
           {employees.map((employee) => {
             const expected = Number(employee.expected_cash_amount);
-            const actual = cashCounts[employee.employee_id] ?? 0;
-            const variance = actual - expected;
+            const actual = cashCounts[employee.employee_id] ?? '';
+            const counted = isValidCount(actual, 0.01);
+            const variance = counted ? Number(actual) - expected : 0;
             return (
               <article className="daily-close-cash__card" key={employee.employee_id}>
                 <div className="daily-close-cash__identity">
@@ -427,19 +444,19 @@ export function DailyAggregateStockClose({
                     <strong>{employee.employee_name}</strong>
                     <small>{employee.payment_ids.length} รายการเงินสด{!employee.is_active ? ' · พนักงานที่ยกเลิกแล้ว' : ''}</small>
                   </span>
-                  <b className={variance ? 'daily-close-cash__variance' : ''}>{formatSignedBaht(variance)}</b>
+                  <b className={variance ? 'daily-close-cash__variance' : ''}>{counted ? formatSignedBaht(variance) : 'ยังไม่กรอกยอดนับ'}</b>
                 </div>
                 <div className="daily-close-cash__expected">ควรส่ง <strong>{formatBaht(expected)}</strong></div>
                 <label>
                   <span>หัวหน้านับจริง</span>
                   <div className="input-wrapper">
                     <input
-                      disabled={!featureEnabled}
+                      disabled={!featureEnabled || submitting}
                       inputMode="decimal"
                       min={0}
                       onChange={(event) => setCashCounts((current) => ({
                         ...current,
-                        [employee.employee_id]: Math.max(0, Number(event.target.value) || 0),
+                        [employee.employee_id]: event.target.value,
                       }))}
                       step={0.01}
                       type="number"
@@ -452,7 +469,7 @@ export function DailyAggregateStockClose({
                   <label>
                     <span>เหตุผลส่วนต่าง *</span>
                     <input
-                      disabled={!featureEnabled}
+                      disabled={!featureEnabled || submitting}
                       onChange={(event) => setCashReasons((current) => ({
                         ...current,
                         [employee.employee_id]: event.target.value,
@@ -471,16 +488,18 @@ export function DailyAggregateStockClose({
       <label style={{ display: 'grid', gap: 6, marginTop: 16 }}>
         หมายเหตุ{hasVariance ? ' *' : ' (ถ้ามี)'}
         <textarea
+          disabled={submitting}
           onChange={(event) => setNote(event.target.value)}
           placeholder={hasVariance ? 'เช่น ส่วนต่างยังไม่ทราบสาเหตุ' : ''}
           rows={2}
           value={note}
         />
       </label>
+      {hasMissingCounts ? <p className="muted">กรอกยอดนับจริงให้ครบทุกช่อง รวมถึงยอดที่เป็นศูนย์ ก่อนปิดยอด</p> : null}
       {error ? <p className="error-text" role="alert"><Warning size={18} />{error}</p> : null}
       <button
         className="primary-button"
-        disabled={submitting || (hasVariance && !note.trim()) || (featureEnabled && hasMissingCashReason)}
+        disabled={submitting || hasMissingCounts || (hasVariance && !note.trim()) || (featureEnabled && hasMissingCashReason)}
         onClick={() => void close()}
         style={{ marginTop: 16 }}
         type="button"
@@ -557,4 +576,11 @@ function formatBaht(value: number) {
 function formatSignedBaht(value: number) {
   if (value === 0) return 'ตรงยอด';
   return `${value > 0 ? '+' : ''}${formatBaht(value)}`;
+}
+
+function isValidCount(value: string | undefined, step: number) {
+  if (value == null || value.trim() === '') return false;
+  const amount = Number(value);
+  return Number.isFinite(amount) && amount >= 0
+    && Math.abs(amount / step - Math.round(amount / step)) < 0.000001;
 }

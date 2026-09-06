@@ -590,43 +590,27 @@ export async function bulkSaveShopIcePrices(
   return Number(data);
 }
 
+export interface BulkShopPaymentPatch {
+  terms: Pick<ShopPaymentProfileSetting,
+    'allowed_payment_terms' | 'default_payment_term' | 'allow_outstanding'
+    | 'credit_due_rule' | 'credit_days' | 'credit_collection_weekday' | 'credit_limit'> | null;
+  methods: Pick<ShopPaymentProfileSetting, 'allowed_payment_methods' | 'default_payment_method'> | null;
+}
+
 export async function bulkSaveShopPaymentProfiles(
   shopIds: string[],
-  templateProfile: Omit<ShopPaymentProfileSetting, 'shop_id' | 'id'>
+  patch: BulkShopPaymentPatch,
 ): Promise<number> {
   const client = supabase;
   if (!client) throw new Error('Supabase client not initialized');
   if (shopIds.length === 0) return 0;
-
-  const { data: authData } = await client.auth.getUser();
-  if (!authData?.user) throw new Error('ไม่พบบัญชีผู้ใช้');
-
-  const rows = shopIds.map((shop_id) => ({
-    shop_id,
-    allowed_payment_terms: templateProfile.allowed_payment_terms,
-    default_payment_term: templateProfile.default_payment_term,
-    allowed_payment_methods: templateProfile.allowed_payment_methods,
-    default_payment_method: templateProfile.default_payment_method,
-    cash_reference_required: templateProfile.cash_reference_required,
-    cash_evidence_required: templateProfile.cash_evidence_required,
-    bank_transfer_reference_required: templateProfile.bank_transfer_reference_required,
-    bank_transfer_evidence_required: templateProfile.bank_transfer_evidence_required,
-    qr_reference_required: templateProfile.qr_reference_required,
-    qr_evidence_required: templateProfile.qr_evidence_required,
-    allow_outstanding: templateProfile.allow_outstanding,
-    credit_due_rule: templateProfile.credit_due_rule,
-    credit_days: templateProfile.credit_days,
-    credit_collection_weekday: templateProfile.credit_collection_weekday,
-    credit_limit: templateProfile.credit_limit,
-    created_by: authData.user.id,
-  }));
-
-  const { error } = await client
-    .from('shop_payment_profiles')
-    .upsert(rows, { onConflict: 'shop_id' });
-
+  const { data, error } = await client.rpc('bulk_update_shop_payment_profiles', {
+    p_shop_ids: shopIds,
+    p_terms: patch.terms,
+    p_methods: patch.methods,
+  });
   if (error) throw new Error(error.message);
-  return shopIds.length;
+  return Number(data);
 }
 
 export async function loadPOSReadinessReport(serviceDate = toBangkokDateString()): Promise<POSReadinessReport> {

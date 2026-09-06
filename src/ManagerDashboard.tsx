@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { Icon } from '@phosphor-icons/react';
 import {
+  ArrowClockwise,
   CaretRight,
   CheckCircle,
   ClipboardText,
@@ -17,6 +18,7 @@ import {
   XCircle,
 } from '@phosphor-icons/react';
 import { subscribeToDataChange } from './lib/dataChange';
+import { useBangkokServiceDate } from './hooks/useBangkokServiceDate';
 import { supabase } from './lib/supabase';
 import type {
   DailyWorkDashboard,
@@ -53,12 +55,6 @@ const QUICK_ACTIONS: Array<{
   { view: 'stock_operations', label: 'โอนย้ายสต๊อก', description: 'โอนย้ายและจัดการสต๊อก', icon: ClipboardText, tone: 'sky' },
   { view: 'stock_operations', label: 'ตรวจนับสิ้นวัน', description: 'ตรวจนับและสรุปยอดสิ้นวัน', icon: CheckCircle, tone: 'purple' },
 ];
-
-function todayIsoDate() {
-  const now = new Date();
-  const offset = now.getTimezoneOffset();
-  return new Date(now.getTime() - offset * 60_000).toISOString().slice(0, 10);
-}
 
 function formatServiceDate(value: string) {
   return new Intl.DateTimeFormat('th-TH', {
@@ -116,6 +112,9 @@ export function ManagerDashboard({
   demoStockSummary?: StockControlSummary;
   demoAggregateStockSummary?: DailyAggregateStockSummary;
 }) {
+  const currentServiceDate = useBangkokServiceDate();
+  const [loadedAt, setLoadedAt] = useState<Date | null>(null);
+  const loadInFlight = useRef(false);
   const [dashboard, setDashboard] = useState<DailyWorkDashboard | null>(null);
   const [stockSummary, setStockSummary] = useState<StockControlSummary | null>(null);
   const [aggregateStockSummary, setAggregateStockSummary] = useState<DailyAggregateStockSummary | null>(null);
@@ -138,6 +137,7 @@ export function ManagerDashboard({
       setStockSummary(demoStockSummary);
       setAggregateStockSummary(demoAggregateStockSummary);
       setError(null);
+      setLoadedAt(new Date());
       setLoading(false);
       return undefined;
     }
@@ -151,11 +151,12 @@ export function ManagerDashboard({
     const client = supabase;
 
     async function loadDashboardData() {
+      loadInFlight.current = true;
       setLoading(true);
       setError(null);
 
       try {
-        const serviceDate = todayIsoDate();
+        const serviceDate = currentServiceDate;
         const [dashRes, stockRes, aggregateRes] = await Promise.all([
           client.rpc('get_daily_work_dashboard', { p_service_date: serviceDate }),
           client.rpc('get_stock_control_summary', { p_service_date: serviceDate }),
@@ -170,6 +171,7 @@ export function ManagerDashboard({
         setDashboard(dashRes.data as DailyWorkDashboard);
         setStockSummary(stockRes.data as StockControlSummary);
         setAggregateStockSummary(aggregateRes.data as DailyAggregateStockSummary);
+        setLoadedAt(new Date());
         setLoading(false);
       } catch (loadError) {
         if (currentRequest !== requestId.current) return;
@@ -177,18 +179,38 @@ export function ManagerDashboard({
         setAggregateStockSummary(null);
         setError(loadError instanceof Error ? loadError.message : 'โหลดข้อมูลงานวันนี้ไม่สำเร็จ');
         setLoading(false);
+      } finally {
+        if (currentRequest === requestId.current) loadInFlight.current = false;
       }
     }
 
     void loadDashboardData();
     return () => {
       requestId.current += 1;
+      loadInFlight.current = false;
     };
-  }, [isActive, reloadKey, demoAggregateStockSummary, demoDashboard, demoStockSummary]);
+  }, [isActive, reloadKey, currentServiceDate, demoAggregateStockSummary, demoDashboard, demoStockSummary]);
 
   useEffect(() => subscribeToDataChange(['stock', 'pos'], () => {
     if (isActive) setReloadKey((key) => key + 1);
   }), [isActive]);
+
+  useEffect(() => {
+    if (!isActive || demoDashboard) return;
+    const refresh = () => {
+      if (document.visibilityState !== 'hidden' && !loadInFlight.current) setReloadKey((key) => key + 1);
+    };
+    const interval = window.setInterval(refresh, 30_000);
+    window.addEventListener('focus', refresh);
+    window.addEventListener('online', refresh);
+    document.addEventListener('visibilitychange', refresh);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener('focus', refresh);
+      window.removeEventListener('online', refresh);
+      document.removeEventListener('visibilitychange', refresh);
+    };
+  }, [isActive, demoDashboard]);
 
   const handleCancelSession = async () => {
     if (!cancelReason.trim()) {
@@ -200,7 +222,7 @@ export function ManagerDashboard({
     setCancelSubmitting(true);
     setCancelError(null);
     try {
-      const serviceDate = dashboard?.session.service_date ?? todayIsoDate();
+      const serviceDate = dashboard?.session.service_date ?? currentServiceDate;
       const { error: rpcError } = await supabase.rpc('cancel_daily_work_session', {
         p_service_date: serviceDate,
         p_reason: cancelReason.trim(),
@@ -217,9 +239,9 @@ export function ManagerDashboard({
     }
   };
 
-  const serviceDate = dashboard?.session.service_date ?? todayIsoDate();
+  const serviceDate = dashboard?.session.service_date ?? currentServiceDate;
 
-  if (loading) {
+  if (loading && (!dashboard || dashboard.session.service_date !== currentServiceDate)) {
     return <DashboardState title="ภาพรวมงานวันนี้" detail={formatServiceDate(serviceDate)} message="กำลังโหลดข้อมูลงานวันนี้..." />;
   }
 
@@ -239,25 +261,23 @@ export function ManagerDashboard({
     );
   }
 
-  const { session, deliverySummary, salesSummary, readiness, cancellationState, problems } = dashboard;
+  const { session, deliverySummary, salesSummary, cancellationState, problems } = dashboard;
   const locations = (stockSummary?.locations ?? []).filter((location) => location.holds_inventory === true);
   const stockTotals = aggregateStockSummary.items.map((item) => ({
     unit: item.unit,
     quantity: Number(item.available_quantity),
   }));
   const totalStock = summarizeQuantity(stockTotals);
-  const hasStartedWork = session.status !== 'not_started';
-  const pendingCount = hasStartedWork
-    ? readiness.filter((item) => item.status !== 'current').length
-    : 0;
-  const completedCount = readiness.filter((item) => item.status === 'current').length;
+  const hasStartedWork = session.status !== 'not_started' && session.status !== 'cancelled';
+  const aggregateClosed = aggregateStockSummary.status === 'closed';
+  const stockClosePending = hasStartedWork && !aggregateClosed;
   const statusLabel: Record<string, string> = {
     not_started: 'ยังไม่เริ่มงาน',
     in_progress: 'กำลังทำงาน',
     completed: 'ปิดงานแล้ว',
     cancelled: 'ยกเลิกแล้ว',
   };
-  const lowStockTotals = stockTotals.filter((stock) => stock.quantity <= 0).length;
+  const lowStockTotals = stockClosePending ? stockTotals.filter((stock) => stock.quantity <= 0).length : 0;
   const deliveredDestinationCount = deliverySummary.regularShopCount
     + deliverySummary.eventParticipationCount;
   const deliveryBreakdown = deliverySummary.eventParticipationCount > 0
@@ -266,7 +286,7 @@ export function ManagerDashboard({
   const alertItems = [
     ...(lowStockTotals > 0 ? [{ tone: 'danger' as const, title: 'สต๊อกไม่เพียงพอ', detail: `พบสินค้า ${lowStockTotals} ชนิดที่สต๊อกหมด`, count: `${lowStockTotals} รายการ`, icon: WarningCircle, view: 'stock_operations' as const }] : []),
     ...(problems.length > 0 ? [{ tone: 'warning' as const, title: 'มีปัญหาหน้างานที่ต้องติดตาม', detail: problems[0].shop_name, count: `${problems.length} รายการ`, icon: User, view: 'delivery' as const }] : []),
-    ...(pendingCount > 0 ? [{ tone: 'amber' as const, title: 'มีจุดถือครองที่ต้องตรวจนับ', detail: `ตรวจนับปัจจุบันแล้ว ${completedCount} จาก ${readiness.length || 0} จุด`, count: `${pendingCount} จุด`, icon: ClipboardText, view: 'stock_operations' as const }] : []),
+    ...(stockClosePending ? [{ tone: 'amber' as const, title: 'รอตรวจนับและปิดยอดรวมสิ้นวัน', detail: 'นับน้ำแข็งรวมจากรถและทุกจุดก่อนปิดยอด', count: 'รอปิดยอด', icon: ClipboardText, view: 'stock_operations' as const }] : []),
   ];
 
   return (
@@ -274,9 +294,13 @@ export function ManagerDashboard({
       <DashboardHeading
         title="ภาพรวมงานวันนี้"
         detail={formatServiceDate(serviceDate)}
-        status={statusLabel[session.status] ?? session.status}
+        status={aggregateClosed ? 'ปิดงานแล้ว' : statusLabel[session.status] ?? session.status}
         statusTone={session.status}
       >
+        <div className="dashboard-refresh" style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          {loadedAt ? <small className="muted">อัปเดตล่าสุด {new Intl.DateTimeFormat('th-TH', { timeZone: 'Asia/Bangkok', hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(loadedAt)} น.</small> : null}
+          <button className="secondary-button" disabled={loading} onClick={() => setReloadKey((key) => key + 1)} type="button"><ArrowClockwise size={18} />{loading ? 'กำลังอัปเดต...' : 'รีเฟรช'}</button>
+        </div>
         {profileRole === 'admin' && session.status === 'in_progress' ? (
           <div className="dashboard-more-menu">
             <button aria-expanded={showCancelMenu} aria-label="ตัวเลือกเพิ่มเติม" className="dashboard-more-menu__button" onClick={() => setShowCancelMenu((open) => !open)} type="button">
@@ -304,12 +328,11 @@ export function ManagerDashboard({
         <OverviewCard icon={CurrencyDollar} label="ยอดขายสุทธิ" value={formatCurrency(salesSummary.netSalesValue)} detail="ยอดขายที่บันทึกแล้ววันนี้" tone="green" />
         <OverviewCard icon={Storefront} label="ส่งจุดหมายแล้ว" value={formatQuantity(deliveredDestinationCount)} unit="จุด" detail={deliveryBreakdown} tone="sky" />
         <OverviewCard
-          detail={!hasStartedWork ? 'ยังไม่เริ่มงานวันนี้' : pendingCount ? 'รอตรวจนับใหม่ก่อนปิดวัน' : 'ตรวจนับครบแล้ว'}
+          detail={aggregateClosed ? 'ปิดยอดรวมแล้ว' : hasStartedWork ? 'ตรวจนับยอดรวมจากรถและทุกจุด' : 'ยังไม่เริ่มงานวันนี้'}
           icon={ClipboardText}
-          label="เหลือตรวจนับ"
+          label="ปิดยอดสิ้นวัน"
           tone="orange"
-          unit="จุด"
-          value={formatQuantity(pendingCount)}
+          value={aggregateClosed ? 'ปิดแล้ว' : hasStartedWork ? 'รอปิด' : 'ยังไม่เริ่ม'}
         />
       </section>
 
@@ -328,7 +351,7 @@ export function ManagerDashboard({
                   label={location.name}
                   value={quantity.value}
                   unit={quantity.unit}
-                  state={hasStock ? 'พร้อมใช้งาน' : 'รอตรวจนับ'}
+                  state={hasStock ? 'พร้อมใช้งาน' : 'ไม่มีสต๊อก'}
                   muted={!hasStock}
                 />
               );

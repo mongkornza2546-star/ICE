@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { X } from '@phosphor-icons/react';
-import type { ShopSetting, BuildingOption, BuildingZoneOption, PaymentTerm, PaymentMethod, CreditDueRule, ShopPaymentProfileSetting } from '../../../types/app';
+import type { ShopSetting, BuildingOption, BuildingZoneOption, PaymentTerm, PaymentMethod, CreditDueRule } from '../../../types/app';
 import { bulkSaveShopPaymentProfiles, getErrorMessage } from '../../admin-reference-settings/adminReferenceSettingsService';
 import { CREDIT_COLLECTION_WEEKDAY_OPTIONS, formatCreditCollectionCycle } from '../../../lib/creditCollectionCycle';
 
@@ -28,6 +28,9 @@ export function BulkPaymentSetupModal({ shops, buildings, zones, onClose, onSucc
   const [creditCollectionWeekday, setCreditCollectionWeekday] = useState(5);
   const [creditLimit, setCreditLimit] = useState<number | null>(null);
 
+  const [changeTerms, setChangeTerms] = useState(true);
+  const [changeMethods, setChangeMethods] = useState(false);
+  const [reviewing, setReviewing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -82,36 +85,33 @@ export function BulkPaymentSetupModal({ shops, buildings, zones, onClose, onSucc
   }
 
   async function handleApply() {
+    if (saving || !reviewing || (!changeTerms && !changeMethods)) return;
     if (selectedShopIds.length === 0) {
-      setError('กรุณาเลือกเลือกร้านค้าอย่างน้อย 1 ร้าน');
+      setError('กรุณาเลือกร้านค้าอย่างน้อย 1 ร้าน');
       return;
     }
 
     setSaving(true);
     setError(null);
 
-    const template: Omit<ShopPaymentProfileSetting, 'shop_id' | 'id'> = {
-      allowed_payment_terms: allowedPaymentTerms,
-      default_payment_term: defaultPaymentTerm,
-      allowed_payment_methods: allowedPaymentMethods,
-      default_payment_method: defaultPaymentMethod,
-      cash_reference_required: false,
-      cash_evidence_required: false,
-      bank_transfer_reference_required: false,
-      bank_transfer_evidence_required: true,
-      qr_reference_required: true,
-      qr_evidence_required: false,
-      allow_outstanding: allowedPaymentTerms.includes('credit') ? true : allowOutstanding,
-      credit_due_rule: allowedPaymentTerms.includes('credit') ? creditDueRule : null,
-      credit_days: allowedPaymentTerms.includes('credit') && creditDueRule === 'net_days' ? creditDays : null,
-      credit_collection_weekday: allowedPaymentTerms.includes('credit') && creditDueRule === 'weekly'
-        ? creditCollectionWeekday
-        : null,
-      credit_limit: allowedPaymentTerms.includes('credit') ? creditLimit : null,
+    const patch = {
+      terms: changeTerms ? {
+        allowed_payment_terms: allowedPaymentTerms,
+        default_payment_term: defaultPaymentTerm,
+        allow_outstanding: allowedPaymentTerms.includes('credit') ? true : allowOutstanding,
+        credit_due_rule: allowedPaymentTerms.includes('credit') ? creditDueRule : null,
+        credit_days: allowedPaymentTerms.includes('credit') && creditDueRule === 'net_days' ? creditDays : null,
+        credit_collection_weekday: allowedPaymentTerms.includes('credit') && creditDueRule === 'weekly' ? creditCollectionWeekday : null,
+        credit_limit: allowedPaymentTerms.includes('credit') ? creditLimit : null,
+      } : null,
+      methods: changeMethods ? {
+        allowed_payment_methods: allowedPaymentMethods,
+        default_payment_method: defaultPaymentMethod,
+      } : null,
     };
 
     try {
-      await bulkSaveShopPaymentProfiles(selectedShopIds, template);
+      await bulkSaveShopPaymentProfiles(selectedShopIds, patch);
       onSuccess();
       onClose();
     } catch (err) {
@@ -122,18 +122,19 @@ export function BulkPaymentSetupModal({ shops, buildings, zones, onClose, onSucc
   }
 
   return (
-    <div className="modal-backdrop" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <section className="panel" style={{ maxWidth: '640px', width: '90%', maxHeight: '90vh', overflowY: 'auto' }}>
+    <div className="modal-backdrop" onMouseDown={(e) => { if (e.target === e.currentTarget && !saving) onClose(); }}>
+      <section role="dialog" aria-modal="true" aria-label="ตั้งค่าชำระเงินหลายร้าน" className="panel" style={{ maxWidth: '640px', width: '90%', maxHeight: '90vh', overflowY: 'auto' }}>
         <div className="panel-header">
           <div>
             <p className="eyebrow">จัดการหลายร้านค้า</p>
             <h2>กำหนดโปรไฟล์ชำระเงินแบบกลุ่ม (Bulk Setup)</h2>
           </div>
-          <button className="ghost-button" onClick={onClose} type="button">
+          <button aria-label="ปิดหน้าต่าง" disabled={saving} className="ghost-button" onClick={onClose} type="button">
             <X size={20} />
           </button>
         </div>
 
+        <fieldset disabled={saving || reviewing} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
         <div className="field-grid" style={{ marginBottom: '1rem' }}>
           <label>
             กรองตามอาคาร
@@ -178,7 +179,10 @@ export function BulkPaymentSetupModal({ shops, buildings, zones, onClose, onSucc
         </div>
 
         <div style={{ background: 'var(--panel-bg, #f9f9f9)', padding: '1rem', borderRadius: '8px', marginBottom: '1rem' }}>
-          <h4>โปรไฟล์การชำระเงินที่ต้องการใช้ร่วมกัน</h4>
+          <h4>เลือกข้อมูลที่ต้องการเปลี่ยน</h4>
+          <label className="inline-check"><input type="checkbox" checked={changeTerms} onChange={(event) => setChangeTerms(event.target.checked)} />เปลี่ยนรูปแบบชำระเงินและเครดิต</label>
+          <label className="inline-check"><input type="checkbox" checked={changeMethods} onChange={(event) => setChangeMethods(event.target.checked)} />เปลี่ยนช่องทางการเงิน</label>
+          <p className="muted">คงเงื่อนไขหลักฐานและเลขอ้างอิงเดิมของแต่ละร้านไว้ ร้านที่ยังไม่เคยตั้งค่าต้องเลือกทั้งสองกลุ่ม</p>
 
           <div className="field-grid" style={{ marginTop: '0.5rem' }}>
             <div>
@@ -186,6 +190,7 @@ export function BulkPaymentSetupModal({ shops, buildings, zones, onClose, onSucc
               <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginTop: '0.25rem' }}>
                 <label className="inline-check">
                   <input
+                    disabled={!changeTerms}
                     checked={allowedPaymentTerms.includes('immediate')}
                     onChange={() => togglePaymentTerm('immediate')}
                     type="checkbox"
@@ -194,6 +199,7 @@ export function BulkPaymentSetupModal({ shops, buildings, zones, onClose, onSucc
                 </label>
                 <label className="inline-check">
                   <input
+                    disabled={!changeTerms}
                     checked={allowedPaymentTerms.includes('end_of_day')}
                     onChange={() => togglePaymentTerm('end_of_day')}
                     type="checkbox"
@@ -202,6 +208,7 @@ export function BulkPaymentSetupModal({ shops, buildings, zones, onClose, onSucc
                 </label>
                 <label className="inline-check">
                   <input
+                    disabled={!changeTerms}
                     checked={allowedPaymentTerms.includes('credit')}
                     onChange={() => togglePaymentTerm('credit')}
                     type="checkbox"
@@ -213,7 +220,7 @@ export function BulkPaymentSetupModal({ shops, buildings, zones, onClose, onSucc
 
             <label>
               รูปแบบเริ่มต้น
-              <select onChange={(e) => setDefaultPaymentTerm(e.target.value as PaymentTerm)} value={defaultPaymentTerm}>
+              <select disabled={!changeTerms} onChange={(e) => setDefaultPaymentTerm(e.target.value as PaymentTerm)} value={defaultPaymentTerm}>
                 {allowedPaymentTerms.map((term) => (
                   <option key={term} value={term}>
                     {term === 'immediate' ? 'จ่ายทันที' : term === 'end_of_day' ? 'เก็บท้ายวัน' : 'เครดิต'}
@@ -227,6 +234,7 @@ export function BulkPaymentSetupModal({ shops, buildings, zones, onClose, onSucc
               <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginTop: '0.25rem' }}>
                 <label className="inline-check">
                   <input
+                    disabled={!changeMethods}
                     checked={allowedPaymentMethods.includes('cash')}
                     onChange={() => togglePaymentMethod('cash')}
                     type="checkbox"
@@ -235,6 +243,7 @@ export function BulkPaymentSetupModal({ shops, buildings, zones, onClose, onSucc
                 </label>
                 <label className="inline-check">
                   <input
+                    disabled={!changeMethods}
                     checked={allowedPaymentMethods.includes('bank_transfer')}
                     onChange={() => togglePaymentMethod('bank_transfer')}
                     type="checkbox"
@@ -243,6 +252,7 @@ export function BulkPaymentSetupModal({ shops, buildings, zones, onClose, onSucc
                 </label>
                 <label className="inline-check">
                   <input
+                    disabled={!changeMethods}
                     checked={allowedPaymentMethods.includes('qr')}
                     onChange={() => togglePaymentMethod('qr')}
                     type="checkbox"
@@ -254,7 +264,7 @@ export function BulkPaymentSetupModal({ shops, buildings, zones, onClose, onSucc
 
             <label>
               ช่องทางเริ่มต้น
-              <select onChange={(e) => setDefaultPaymentMethod(e.target.value as PaymentMethod)} value={defaultPaymentMethod}>
+              <select disabled={!changeMethods} onChange={(e) => setDefaultPaymentMethod(e.target.value as PaymentMethod)} value={defaultPaymentMethod}>
                 {allowedPaymentMethods.map((method) => (
                   <option key={method} value={method}>
                     {method === 'cash' ? 'เงินสด' : method === 'bank_transfer' ? 'โอน' : 'QR'}
@@ -268,7 +278,7 @@ export function BulkPaymentSetupModal({ shops, buildings, zones, onClose, onSucc
             <div className="field-grid" style={{ marginTop: '1rem' }}>
               <label>
                 รอบเก็บเงิน
-                <select onChange={(e) => setCreditDueRule(e.target.value as CreditDueRule)} value={creditDueRule}>
+                <select disabled={!changeTerms} onChange={(e) => setCreditDueRule(e.target.value as CreditDueRule)} value={creditDueRule}>
                   <option value="weekly">ทุกสัปดาห์</option>
                   <option value="semi_monthly">รอบครึ่งเดือน (วันที่ 1–15 / 16–สิ้นเดือน)</option>
                   <option value="end_of_month">ทุกสิ้นเดือน</option>
@@ -278,13 +288,13 @@ export function BulkPaymentSetupModal({ shops, buildings, zones, onClose, onSucc
               {creditDueRule === 'net_days' ? (
                 <label>
                   จำนวนวันหลังส่งสินค้า
-                  <input min="1" onChange={(e) => setCreditDays(Number(e.target.value) || 1)} type="number" value={creditDays} />
+                  <input disabled={!changeTerms} min="1" onChange={(e) => setCreditDays(Number(e.target.value) || 1)} type="number" value={creditDays} />
                 </label>
               ) : null}
               {creditDueRule === 'weekly' ? (
                 <label>
                   วันเก็บเงินประจำสัปดาห์
-                  <select onChange={(e) => setCreditCollectionWeekday(Number(e.target.value))} value={creditCollectionWeekday}>
+                  <select disabled={!changeTerms} onChange={(e) => setCreditCollectionWeekday(Number(e.target.value))} value={creditCollectionWeekday}>
                     {CREDIT_COLLECTION_WEEKDAY_OPTIONS.map((option) => (
                       <option key={option.value} value={option.value}>{option.label}</option>
                     ))}
@@ -298,26 +308,45 @@ export function BulkPaymentSetupModal({ shops, buildings, zones, onClose, onSucc
               })}</p>
               <label>
                 วงเงินเครดิต (เว้นว่างหากไม่จำกัด)
-                <input min="0" onChange={(e) => setCreditLimit(e.target.value ? Number(e.target.value) : null)} type="number" value={creditLimit ?? ''} />
+                <input disabled={!changeTerms} min="0" onChange={(e) => setCreditLimit(e.target.value ? Number(e.target.value) : null)} type="number" value={creditLimit ?? ''} />
               </label>
             </div>
           ) : (
             <label className="inline-check" style={{ marginTop: '1rem' }}>
-              <input checked={allowOutstanding} onChange={(e) => setAllowOutstanding(e.target.checked)} type="checkbox" />
+              <input disabled={!changeTerms} checked={allowOutstanding} onChange={(e) => setAllowOutstanding(e.target.checked)} type="checkbox" />
               อนุญาตยอดค้างชำระ
             </label>
           )}
         </div>
 
+        </fieldset>
+        {reviewing ? (
+          <section aria-label="สรุปก่อนบันทึก" style={{ margin: '1rem 0' }}>
+            <h3>สรุปก่อนบันทึก</h3>
+            <p>ร้านที่จะเปลี่ยน: {shops.filter((shop) => selectedShopIds.includes(shop.id)).map((shop) => `${shop.code} · ${shop.name}`).join(', ')}</p>
+            {changeTerms ? <p>รูปแบบชำระเงิน: {allowedPaymentTerms.map(termLabel).join(', ')} · เริ่มต้น {termLabel(defaultPaymentTerm)} · อนุญาตยอดค้าง {allowedPaymentTerms.includes('credit') || allowOutstanding ? 'ใช่' : 'ไม่'}
+              {allowedPaymentTerms.includes('credit') ? ` · ${formatCreditCollectionCycle({ credit_due_rule: creditDueRule, credit_days: creditDays, credit_collection_weekday: creditCollectionWeekday })} · วงเงิน ${creditLimit == null ? 'ไม่จำกัด' : `${creditLimit} บาท`}` : ''}
+            </p> : <p>รูปแบบชำระเงินและเครดิต: คงค่าเดิม</p>}
+            {changeMethods ? <p>ช่องทางการเงิน: {allowedPaymentMethods.map(methodLabel).join(', ')} · เริ่มต้น {methodLabel(defaultPaymentMethod)}</p> : <p>ช่องทางการเงิน: คงค่าเดิม</p>}
+          </section>
+        ) : null}
         {error ? <p className="error-text" role="alert">{error}</p> : null}
 
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
-          <button className="secondary-button" onClick={onClose} type="button">ยกเลิก</button>
-          <button className="primary-button" disabled={saving || selectedShopIds.length === 0} onClick={() => void handleApply()} type="button">
-            {saving ? 'กำลังตั้งค่า...' : `ยืนยันตั้งค่า ${selectedShopIds.length} ร้าน`}
+          <button disabled={saving} className="secondary-button" onClick={reviewing ? () => setReviewing(false) : onClose} type="button">{reviewing ? 'กลับไปแก้ไข' : 'ยกเลิก'}</button>
+          <button className="primary-button" disabled={saving || selectedShopIds.length === 0 || (!changeTerms && !changeMethods)} onClick={() => reviewing ? void handleApply() : setReviewing(true)} type="button">
+            {saving ? 'กำลังตั้งค่า...' : reviewing ? `ยืนยันตั้งค่า ${selectedShopIds.length} ร้าน` : `ตรวจสอบการเปลี่ยนแปลง ${selectedShopIds.length} ร้าน`}
           </button>
         </div>
       </section>
     </div>
   );
+}
+
+function termLabel(term: PaymentTerm) {
+  return term === 'immediate' ? 'จ่ายทันที' : term === 'end_of_day' ? 'เก็บท้ายวัน' : 'เครดิต';
+}
+
+function methodLabel(method: PaymentMethod) {
+  return method === 'cash' ? 'เงินสด' : method === 'bank_transfer' ? 'โอน' : 'QR';
 }

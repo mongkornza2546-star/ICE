@@ -1,13 +1,13 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo } from 'react';
 import { ManagerRoundControl } from './ManagerRoundControl';
 import { ManagerStockControl } from './ManagerStockControl';
 import { useReferenceData } from './hooks/useReferenceData';
 import { subscribeToDataChange } from './lib/dataChange';
+import { useBangkokServiceDate } from './hooks/useBangkokServiceDate';
+import { toBangkokDateString } from './lib/serviceDate';
 
 export function todayIsoDate() {
-  const now = new Date();
-  const offset = now.getTimezoneOffset();
-  return new Date(now.getTime() - offset * 60_000).toISOString().slice(0, 10);
+  return toBangkokDateString();
 }
 
 export function RoundWorkspace({ isActive }: { isActive: boolean }) {
@@ -20,13 +20,13 @@ export function RoundWorkspace({ isActive }: { isActive: boolean }) {
     loadReferenceData,
   } = useReferenceData(false);
 
-  const [stockServiceDate] = useState(todayIsoDate());
+  const stockServiceDate = useBangkokServiceDate();
 
 
   useEffect(() => {
     if (!isActive) return;
     void loadReferenceData();
-  }, [isActive, loadReferenceData]);
+  }, [isActive, loadReferenceData, stockServiceDate]);
 
   useEffect(() => subscribeToDataChange(['stock'], () => { if (isActive) void loadReferenceData(); }), [isActive, loadReferenceData]);
 
@@ -64,6 +64,7 @@ export function RoundWorkspace({ isActive }: { isActive: boolean }) {
         </section>
       ) : null}
       <section className="stack stack--wide">
+        <p className="muted" role="status">วันที่ทำรายการสต๊อก {stockServiceDate} (เวลาไทย)</p>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             {legacyOpenRounds.length > 0 ? (
               <section className="panel">
@@ -96,7 +97,7 @@ export function RoundWorkspace({ isActive }: { isActive: boolean }) {
                 />
               </section>
             ) : null}
-            <ManagerStockControl operationRound={stockRound?.status === 'open' ? stockRound : null} round={stockRound} serviceDate={stockServiceDate} />
+            <ManagerStockControl key={stockServiceDate} operationRound={stockRound?.status === 'open' ? stockRound : null} round={stockRound} serviceDate={stockServiceDate} />
         </div>
       </section>
     </div>

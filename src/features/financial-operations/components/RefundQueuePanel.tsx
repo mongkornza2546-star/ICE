@@ -47,8 +47,11 @@ export function RefundQueuePanel() {
   const [showAll, setShowAll] = useState(false);
   const [loading, setLoading] = useState(true);
   const [settlingId, setSettlingId] = useState<string | null>(null);
-  const [method, setMethod] = useState<PaymentMethod>('cash');
-  const [reference, setReference] = useState('');
+  const [drafts, setDrafts] = useState<Record<string, { method: PaymentMethod; reference: string }>>({});
+  const getDraft = (id: string) => drafts[id] ?? { method: 'cash' as PaymentMethod, reference: '' };
+  const updateDraft = (id: string, patch: Partial<{ method: PaymentMethod; reference: string }>) => {
+    setDrafts((current) => ({ ...current, [id]: { ...(current[id] ?? { method: 'cash', reference: '' }), ...patch } }));
+  };
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const settlementKeys = useRef(new Map<string, string>());
@@ -80,6 +83,8 @@ export function RefundQueuePanel() {
     .reduce((total, item) => total + Number(item.amount), 0), [items]);
 
   const settle = async (item: RefundQueueItem) => {
+    if (settlingId) return;
+    const { method, reference } = getDraft(item.id);
     if (method !== 'cash' && !reference.trim()) {
       setError('กรุณาระบุเลขอ้างอิงสำหรับการคืนเงินที่ไม่ใช่เงินสด');
       return;
@@ -103,7 +108,8 @@ export function RefundQueuePanel() {
       if (settleError) throw settleError;
       publishDataChange(['accounting', 'refund', 'payment']);
       setSuccess(`บันทึกคืนเงิน ${item.charge_number} แล้ว`);
-      setReference('');
+      setDrafts((current) => { const next = { ...current }; delete next[item.id]; return next; });
+      settlementKeys.current.delete(item.id);
       await load();
     } catch (settleError) {
       setError(getErrorMessage(settleError));
@@ -131,8 +137,8 @@ export function RefundQueuePanel() {
         <div><small>{item.shop_code}</small><h3>{item.shop_name}</h3>{item.destination_kind === 'event' ? <small>{[item.event_name, item.event_location, item.event_zone, item.event_booth && `บูธ ${item.event_booth}`].filter(Boolean).join(' · ')}</small> : null}<span>{item.charge_number} · ใบรับเงิน {item.receipt_number}</span><p>{item.reason}</p></div>
         <strong>{money.format(Number(item.amount))}</strong>
         {item.status === 'pending' ? <div className="refund-queue__actions">
-          <select aria-label="วิธีคืนเงิน" onChange={(event) => setMethod(event.target.value as PaymentMethod)} value={method}><option value="cash">เงินสด</option><option value="bank_transfer">โอนเงิน</option><option value="qr">QR</option></select>
-          <input aria-label="เลขอ้างอิงการคืนเงิน" onChange={(event) => setReference(event.target.value)} placeholder="เลขอ้างอิง" value={reference} />
+          <select aria-label="วิธีคืนเงิน" disabled={Boolean(settlingId)} onChange={(event) => updateDraft(item.id, { method: event.target.value as PaymentMethod })} value={getDraft(item.id).method}><option value="cash">เงินสด</option><option value="bank_transfer">โอนเงิน</option><option value="qr">QR</option></select>
+          <input aria-label="เลขอ้างอิงการคืนเงิน" disabled={Boolean(settlingId)} onChange={(event) => updateDraft(item.id, { reference: event.target.value })} placeholder="เลขอ้างอิง" value={getDraft(item.id).reference} />
           <button className="primary-button" disabled={Boolean(settlingId)} onClick={() => void settle(item)} type="button"><Coins size={16} />{settlingId === item.id ? 'กำลังบันทึก...' : 'บันทึกคืนเงิน'}</button>
         </div> : <small>คืนแล้วด้วย {item.settlement ? paymentMethodLabel(item.settlement.refund_method) : '—'}{item.settlement ? ` · ${receiptDateTime.format(new Date(item.settlement.settled_at))} · ${item.settlement.settled_by}` : ''}</small>}
       </article>)}
