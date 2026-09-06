@@ -55,7 +55,7 @@ const posContext: DeliveryPosContext = {
     price_source_id: 'price-1',
   }],
   payment_profile: {
-    allowed_payment_terms: ['end_of_day'],
+    allowed_payment_terms: ['immediate', 'end_of_day'],
     default_payment_term: 'end_of_day',
     allowed_payment_methods: ['cash'],
     default_payment_method: 'cash',
@@ -76,17 +76,18 @@ const posContext: DeliveryPosContext = {
   },
 };
 
-function renderReview() {
+function renderReview(canCollectImmediatePayment = true) {
   render(<EmployeeDeliveryReview
     round={round}
     shopCard={shopCard}
     atomicImmediateSale={false}
+    canCollectImmediatePayment={canCollectImmediatePayment}
     assignedStockState={null}
     deliveryQuantities={{ 'ice-1': 2 }}
     posContext={posContext}
     posContextError={null}
     loadingPosContext={false}
-    paymentTerm="end_of_day"
+    paymentTerm="immediate"
     paymentResult={null}
     paymentOpen={false}
     paymentMethod="cash"
@@ -130,6 +131,14 @@ function renderReview() {
 }
 
 describe('employee delivery review navigation', () => {
+  it('describes the delivery-first collection choices from the employee perspective', () => {
+    renderReview();
+
+    expect(screen.getByRole('button', { name: 'ส่งและรับชำระ' })).not.toBeNull();
+    expect(screen.getByRole('button', { name: 'ส่งอย่างเดียว' })).not.toBeNull();
+    expect(screen.getByText('หลังยืนยัน ระบบจะเปิดหน้ารับชำระของลูกค้ารายนี้')).not.toBeNull();
+  });
+
   it('removes the review toggle after entering the confirmation step', async () => {
     const user = userEvent.setup();
     renderReview();
@@ -138,5 +147,13 @@ describe('employee delivery review navigation', () => {
 
     expect(screen.queryByRole('button', { name: 'ตรวจรายการ (1)' })).toBeNull();
     expect(screen.getByRole('button', { name: 'กลับไปแก้รายการ' })).toBeTruthy();
+  });
+
+  it('does not offer send-and-collect to a courier without collection permission', () => {
+    renderReview(false);
+
+    expect(screen.getByRole('button', { name: 'ส่งและรับชำระ' }).hasAttribute('disabled')).toBe(true);
+    expect(screen.getByRole('button', { name: 'ยืนยันส่งร้านนี้' }).hasAttribute('disabled')).toBe(true);
+    expect(screen.getByText('บัญชีนี้ยังไม่ได้รับสิทธิ์รับชำระเงิน')).not.toBeNull();
   });
 });

@@ -14,6 +14,7 @@ import type {
   IceTypeOption,
   PaymentMethod,
   PaymentTerm,
+  CollectionFocusRequest,
   ShopCard,
   ShopCardHistoryEntry,
   ShopRoundStatus,
@@ -175,6 +176,7 @@ interface EventDeliveryCardDto {
   contact_name: string | null;
   contact_phone: string | null;
   is_operational: boolean;
+  event_delivery_enabled?: boolean;
   stop_status: ShopRoundStatus;
   stop_note: string | null;
   today_history: Array<{
@@ -456,8 +458,8 @@ export function createSupabaseGateway(): EmployeeDeliveryGateway {
             contact_name: card.contact_name,
             contact_phone: card.contact_phone,
             is_operational: card.is_operational,
-            event_delivery_enabled: Number(eventCapability?.schema_version) >= 6
-              && Boolean(eventCapability?.event_ice_delivery_enabled),
+            event_delivery_enabled: Number(eventCapability?.schema_version) >= 7
+              && Boolean(card.event_delivery_enabled),
           }));
         options?.onBaseCards?.([...baseCards, ...eventCards]);
         const cards = await withAsyncPublicImageUrls(
@@ -701,21 +703,25 @@ export function createSupabaseGateway(): EmployeeDeliveryGateway {
 const productionGateway = createSupabaseGateway();
 
 export function EmployeeDeliveryWorkspace({
+  canCollectShopPayments = true,
   casualCustomerEnabled = false,
   gateway = productionGateway,
   enableAssignedStockFlow = false,
   isActive = true,
   onDraftStateChange,
+  onOpenCollection,
   requestScope = 'default',
   serviceDate = toBangkokDateString(),
   stockSourceLabel = 'สต๊อกรวมประจำวัน',
   viewMode,
 }: {
+  canCollectShopPayments?: boolean;
   casualCustomerEnabled?: boolean;
   gateway?: EmployeeDeliveryGateway;
   enableAssignedStockFlow?: boolean;
   isActive?: boolean;
   onDraftStateChange?: (state: EmployeeDeliveryDraftState) => void;
+  onOpenCollection?: (request: CollectionFocusRequest) => void;
   requestScope?: string;
   serviceDate?: string;
   stockSourceLabel?: string;
@@ -739,12 +745,14 @@ export function EmployeeDeliveryWorkspace({
   const lastForegroundRefreshAt = useRef(Date.now());
   const catalogRefreshPending = useRef(false);
   const data = useEmployeeDeliveryData({
+    canCollectShopPayments,
     gateway,
     enableAssignedStockFlow,
     requestScope,
     serviceDate,
     stockSourceLabel,
     onDraftStateChange: setDeliveryDraftState,
+    onOpenCollection,
   });
   const anySubmittingRef = useRef(data.anySubmitting);
   anySubmittingRef.current = data.anySubmitting;
@@ -853,7 +861,8 @@ export function EmployeeDeliveryWorkspace({
       <div className="employee-workspace">
         <EmployeeDeliveryReview
         assignedStockState={enableAssignedStockFlow ? data.stockState : null}
-        atomicImmediateSale={Boolean(gateway.recordImmediateSale)}
+        atomicImmediateSale={Boolean(gateway.recordImmediateSale) && !onOpenCollection}
+        canCollectImmediatePayment={!onOpenCollection || canCollectShopPayments}
         deliveryQuantities={data.deliveryQuantities}
         posContext={data.posContext}
         posContextError={data.posContextError}

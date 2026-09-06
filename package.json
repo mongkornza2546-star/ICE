@@ -16,7 +16,8 @@
     "test": "node --test tests/*.test.mjs && npm run test:ui",
     "test:postgres-concurrency": "node tests/financial-concurrency.postgres.mjs",
     "test:postgres-event-concurrency": "node tests/event-destination-sync.postgres.mjs",
-    "test:release": "node --test tests/*.test.mjs && npx vitest run --maxWorkers=1 --no-file-parallelism && npm run test:postgres-concurrency && npm run test:postgres-event-concurrency && npm run build",
+    "test:postgres-event-financial": "node tests/event-financial-foundation.postgres.mjs",
+    "test:release": "node --test tests/*.test.mjs && npx vitest run --maxWorkers=1 --no-file-parallelism && npm run test:postgres-concurrency && npm run test:postgres-event-concurrency && npm run test:postgres-event-financial && npm run build",
     "test:ui": "vitest run",
     "preview": "vite preview"
   },

@@ -41,7 +41,9 @@ export function CollectionRunSection({
   const visibleQueue = queue.filter((shop) => {
     const matchesQuery = !normalizedQuery
       || shop.shop_code.toLocaleLowerCase('th-TH').includes(normalizedQuery)
-      || shop.shop_name.toLocaleLowerCase('th-TH').includes(normalizedQuery);
+      || shop.shop_name.toLocaleLowerCase('th-TH').includes(normalizedQuery)
+      || (shop.event_name ?? '').toLocaleLowerCase('th-TH').includes(normalizedQuery)
+      || (shop.event_booth ?? '').toLocaleLowerCase('th-TH').includes(normalizedQuery);
     return matchesQuery
       && (!buildingId || shop.building_id === buildingId)
       && (!zoneId || shop.zone_id === zoneId);
@@ -83,7 +85,7 @@ export function CollectionRunSection({
             <button
               aria-label={`${shop.shop_code} · ${shop.shop_name} ค้าง ${money.format(shop.outstanding_amount)}`}
               className="financial-ops__shop-card"
-              key={shop.shop_id}
+              key={shop.queue_key ?? `regular:${shop.shop_id}`}
               onClick={(event) => onSelectShop(shop, event.currentTarget)}
               type="button"
             >
@@ -98,6 +100,7 @@ export function CollectionRunSection({
               <span className="financial-ops__shop-body">
                 <strong>{shop.shop_code}</strong>
                 <b>{shop.shop_name}</b>
+                {shop.destination_kind === 'event' ? <small>{shop.event_name} · บูธ {shop.event_booth ?? '—'}</small> : null}
                 <small><ListNumbers aria-hidden="true" size={15} /> {shop.charge_count} รายการค้าง</small>
                 <em>{money.format(shop.outstanding_amount)}</em>
               </span>

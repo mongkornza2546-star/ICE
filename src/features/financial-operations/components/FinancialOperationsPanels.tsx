@@ -258,6 +258,7 @@ export function PaymentHistorySection({
               >
                 <span>
                   <strong>{payment.shops?.code ?? '—'} · {payment.shops?.name ?? 'ไม่พบร้าน'}</strong>
+                  {payment.destination_kind === 'event' ? <small>{[payment.event_name, payment.event_location, payment.event_zone, payment.event_booth && `บูธ ${payment.event_booth}`].filter(Boolean).join(' · ')}</small> : null}
                   <small>{payment.receipt_number} · {paymentMethodLabel(payment.payment_method)} · {receiptDateTime.format(new Date(payment.recorded_at))}{payment.status === 'voided' ? ` · ยกเลิก: ${payment.void_reason ?? '—'}` : ''}</small>
                 </span>
                 <span className="financial-ops__history-open-label">ดูบิล <CaretRight aria-hidden="true" size={19} /></span>

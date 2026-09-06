@@ -15,6 +15,11 @@ export type CasualTransactionStatus = 'active' | 'voided';
 export type FinancialPaymentStatus = 'unpaid' | 'partial' | 'paid';
 export type PriceSource = 'standard' | 'shop_override';
 
+export interface CollectionFocusRequest {
+  queueKey: string;
+  chargeId: string;
+}
+
 export interface DeliveryPosItem {
   ice_type_id: string;
   code: string;

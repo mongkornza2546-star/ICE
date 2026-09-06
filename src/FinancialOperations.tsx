@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { CheckCircle, ClockCounterClockwise, FileText, ListBullets, WarningCircle } from '@phosphor-icons/react';
 import { supabase } from './lib/supabase';
-import { bangkokDayUtcRange, toBangkokDateString } from './lib/serviceDate';
+import { toBangkokDateString } from './lib/serviceDate';
 import { MAX_PAYMENT_EVIDENCE_SIZE, uploadPaymentEvidence } from './lib/paymentEvidence';
 import { getErrorMessage } from './lib/errorMessage';
 import { printSalesDocumentForCurrentPlatform } from './lib/salesDocumentPrint';
@@ -28,21 +28,53 @@ import type {
   QueueShop,
   Receivable,
   ReceivableDetail,
-  ReceiptItemRow,
 } from './features/financial-operations/types';
 import {
   allocateOldestFirst,
   methodRequires,
-  receiptChargesFromRows,
   receiptFromSnapshot,
   withPublicShopImages,
 } from './features/financial-operations/utils';
-import type { AppRole, CreditDueRule, PaymentMethod } from './types/app';
+import type { AppRole, CollectionFocusRequest, CreditDueRule, PaymentMethod } from './types/app';
 import { publishDataChange, subscribeToDataChange } from './lib/dataChange';
 import { ensureCurrentCollectionContext, invalidateCurrentCollectionContext } from './lib/collectionContext';
 
-const PAYMENT_FIELDS = 'id, receipt_number, received_amount, allocated_amount, change_amount, payment_method, status, recorded_at, recorded_by, void_reason, shops(code,name)';
 const COLLECTION_AUTO_REFRESH_MS = 2 * 60_000;
+
+function queueIdentity(shop: QueueShop) {
+  return shop.queue_key ?? `regular:${shop.shop_id}`;
+}
+
+type PaymentHistoryPage = {
+  items?: PaymentHistoryItem[];
+  next_cursor?: { recorded_at: string; id: string } | null;
+};
+
+async function fetchAllPaymentHistory(serviceDate: string) {
+  if (!supabase) return [];
+  const items: PaymentHistoryItem[] = [];
+  const seenCursors = new Set<string>();
+  let cursor: PaymentHistoryPage['next_cursor'] = null;
+  do {
+    const response = await supabase.rpc('get_payment_history', {
+      p_from_date: serviceDate,
+      p_to_date: serviceDate,
+      p_page_size: 100,
+      p_before_recorded_at: cursor?.recorded_at ?? null,
+      p_before_id: cursor?.id ?? null,
+    });
+    if (response.error) throw response.error;
+    const page = response.data as PaymentHistoryPage | null;
+    items.push(...(page?.items ?? []));
+    cursor = page?.next_cursor ?? null;
+    if (cursor) {
+      const cursorKey = `${cursor.recorded_at}:${cursor.id}`;
+      if (seenCursors.has(cursorKey)) throw new Error('เซิร์ฟเวอร์ส่งตัวชี้หน้าประวัติรับเงินซ้ำ');
+      seenCursors.add(cursorKey);
+    }
+  } while (cursor);
+  return items;
+}
 
 type FinancialOperationsDemoData = {
   serviceDate: string;
@@ -62,6 +94,8 @@ export function FinancialOperations({
   isActive = true,
   managerPage = 'collection',
   onManagerPageChange,
+  focusRequest,
+  onFocusedCollectionClose,
 }: {
   userRole?: AppRole;
   canCollectShopPayments?: boolean;
@@ -70,6 +104,8 @@ export function FinancialOperations({
   isActive?: boolean;
   managerPage?: 'collection' | 'transactions' | 'credit' | 'refund';
   onManagerPageChange?: (page: 'collection' | 'transactions' | 'credit' | 'refund') => void;
+  focusRequest?: CollectionFocusRequest | null;
+  onFocusedCollectionClose?: (paymentRecorded: boolean) => void;
 }) {
   const serviceDate = demoData?.serviceDate ?? toBangkokDateString();
   const isManager = userRole === 'admin' || userRole === 'round_lead';
@@ -117,6 +153,7 @@ export function FinancialOperations({
   const selectedShopRef = useRef<QueueShop | null>(selectedShop);
   const busyRef = useRef(busy);
   const receiptRef = useRef<PaymentReceipt | null>(receipt);
+  const handledFocusChargeIdRef = useRef<string | null>(null);
   busyRef.current = busy;
   receiptRef.current = receipt;
   selectedShopRef.current = selectedShop;
@@ -140,34 +177,30 @@ export function FinancialOperations({
       return;
     }
     if (!supabase) return;
-    const historyDay = bangkokDayUtcRange(historyDate);
-    const historyResponse = await supabase
-      .from('payments')
-      .select(PAYMENT_FIELDS)
-      .gte('recorded_at', historyDay.start)
-      .lt('recorded_at', historyDay.end)
-      .order('recorded_at', { ascending: false });
+    const historyItems = await fetchAllPaymentHistory(historyDate);
     if (requestId !== historyRequestRef.current) return;
-    if (historyResponse.error) throw historyResponse.error;
-    setPaymentHistory((historyResponse.data ?? []) as unknown as PaymentHistoryItem[]);
+    setPaymentHistory(historyItems);
   }, [demoData, historyDate]);
 
-  const load = useCallback(async (preferredShopId?: string) => {
+  const load = useCallback(async (preferredQueueKey?: string, preferredChargeId?: string) => {
     if (demoData) {
-      if (preferredShopId) {
-        const preferredShop = demoData.queue.find((shop) => shop.shop_id === preferredShopId);
+      if (preferredQueueKey) {
+        const preferredShop = demoData.queue.find((shop) => queueIdentity(shop) === preferredQueueKey);
         if (!preferredShop) throw new Error('ไม่พบร้านนี้ในคิวรับเงินล่าสุด');
+        if (preferredChargeId && !preferredShop.charges.some((charge) => charge.charge_id === preferredChargeId)) {
+          throw new Error('ไม่พบยอดส่งรอบล่าสุดในคิวรับเงิน');
+        }
         setQueue(demoData.queue);
         setSelectedShop(preferredShop);
-        if (preferredShop.shop_id !== selectedShopRef.current?.shop_id) resetPaymentForm(preferredShop);
+        resetPaymentForm(preferredShop);
       }
       return;
     }
     if (!supabase) return;
     setError(null);
 
-    if (!preferredShopId && isManager && (managerPage === 'transactions' || managerPage === 'refund')) return;
-    if (!preferredShopId && isManager && managerPage === 'credit') {
+    if (!preferredQueueKey && isManager && (managerPage === 'transactions' || managerPage === 'refund')) return;
+    if (!preferredQueueKey && isManager && managerPage === 'credit') {
       const [receivablesResponse, approvalsResponse, dueDateRequestsResponse] = await Promise.all([
         supabase.rpc('get_credit_receivables', { p_as_of_date: serviceDate }),
         supabase
@@ -199,16 +232,23 @@ export function FinancialOperations({
       }
       const nextQueue = await withPublicShopImages((queueResponse.data ?? []) as QueueShop[]);
       const currentShop = selectedShopRef.current;
-      const preferredShop = preferredShopId
-        ? nextQueue.find((shop) => shop.shop_id === preferredShopId) ?? null
+      const preferredShop = preferredQueueKey
+        ? nextQueue.find((shop) => queueIdentity(shop) === preferredQueueKey) ?? null
         : null;
-      if (preferredShopId && !preferredShop) throw new Error('ไม่พบร้านนี้ในคิวรับเงินล่าสุด');
+      if (preferredQueueKey && !preferredShop) throw new Error('ไม่พบร้านนี้ในคิวรับเงินล่าสุด');
+      if (preferredChargeId && preferredShop
+        && !preferredShop.charges.some((charge) => charge.charge_id === preferredChargeId)) {
+        throw new Error('ไม่พบยอดส่งรอบล่าสุดในคิวรับเงิน');
+      }
       const nextSelectedShop = preferredShop ?? (currentShop
-        ? nextQueue.find((shop) => shop.shop_id === currentShop.shop_id) ?? null
+        ? nextQueue.find((shop) => queueIdentity(shop) === queueIdentity(currentShop)) ?? null
         : (isManager && window.innerWidth >= 1100 ? nextQueue[0] ?? null : null));
       setQueue(nextQueue);
       setSelectedShop(nextSelectedShop);
-      if (nextSelectedShop && nextSelectedShop.shop_id !== currentShop?.shop_id) resetPaymentForm(nextSelectedShop);
+      if (nextSelectedShop && (preferredShop
+        || queueIdentity(nextSelectedShop) !== (currentShop && queueIdentity(currentShop)))) {
+        resetPaymentForm(nextSelectedShop);
+      }
     } else {
       setQueue([]);
       setSelectedShop(null);
@@ -216,25 +256,25 @@ export function FinancialOperations({
 
     if (!isManager) return;
 
-    const paymentDay = bangkokDayUtcRange(serviceDate);
-    const todayPaymentsPromise = supabase
-      .from('payments')
-      .select(PAYMENT_FIELDS)
-      .eq('status', 'active')
-      .gte('recorded_at', paymentDay.start)
-      .lt('recorded_at', paymentDay.end)
-      .order('recorded_at', { ascending: false });
-    const todayPaymentsResponse = await todayPaymentsPromise;
-    if (todayPaymentsResponse.error) throw todayPaymentsResponse.error;
-    setTodayPayments((todayPaymentsResponse.data ?? []) as unknown as PaymentHistoryItem[]);
+    const todayHistory = await fetchAllPaymentHistory(serviceDate);
+    setTodayPayments(todayHistory.filter((payment) => payment.status === 'active'));
   }, [demoData, isManager, managerPage, resetPaymentForm, serviceDate]);
 
+  const loadPendingFocus = useCallback(async () => {
+    const pendingFocus = focusRequest?.chargeId !== handledFocusChargeIdRef.current
+      ? focusRequest
+      : null;
+    if (pendingFocus) setEmployeeView('queue');
+    await load(pendingFocus?.queueKey, pendingFocus?.chargeId);
+    if (pendingFocus) handledFocusChargeIdRef.current = pendingFocus.chargeId;
+  }, [focusRequest, load]);
+
   const refreshFinancialData = useCallback(async () => {
-    await load();
+    await loadPendingFocus();
     if ((isManager && managerPage === 'collection') || (!isManager && employeeView === 'history')) {
       await loadPaymentHistory();
     }
-  }, [employeeView, isManager, load, loadPaymentHistory, managerPage]);
+  }, [employeeView, isManager, loadPaymentHistory, loadPendingFocus, managerPage]);
 
   const autoRefreshFinancialData = useCallback(() => {
     if (busyRef.current || autoRefreshRunningRef.current) return;
@@ -248,6 +288,22 @@ export function FinancialOperations({
       });
   }, [refreshFinancialData]);
 
+  const closePayment = useCallback(() => {
+    const currentShop = selectedShopRef.current;
+    const closingFocusedCollection = Boolean(
+      focusRequest && currentShop && focusRequest.queueKey === queueIdentity(currentShop),
+    );
+    const paymentRecorded = Boolean(receiptRef.current);
+    if (receiptRef.current) {
+      void refreshFinancialData().catch((loadError: unknown) => {
+        setError(getErrorMessage(loadError));
+      });
+    }
+    setReceipt(null);
+    setSelectedShop(null);
+    if (closingFocusedCollection) onFocusedCollectionClose?.(paymentRecorded);
+  }, [focusRequest, onFocusedCollectionClose, refreshFinancialData]);
+
   useEffect(() => {
     if (!isActive) return undefined;
     return subscribeToDataChange(['payment', 'receivable', 'refund'], autoRefreshFinancialData);
@@ -255,10 +311,10 @@ export function FinancialOperations({
 
   useEffect(() => {
     if (!isActive) return;
-    void load().catch((loadError: unknown) => {
+    void loadPendingFocus().catch((loadError: unknown) => {
       setError(getErrorMessage(loadError));
     });
-  }, [isActive, load]);
+  }, [isActive, loadPendingFocus]);
 
   useEffect(() => {
     if (!isActive
@@ -285,18 +341,12 @@ export function FinancialOperations({
   }, [autoRefreshFinancialData, demoData, isActive, isManager, managerPage]);
 
   useEffect(() => {
-    if (!selectedShop || window.innerWidth >= 1100) return;
+    if (!selectedShop || (isManager && window.innerWidth >= 1100)) return;
     const page = pageRef.current;
     const previousOverflow = document.body.style.overflow;
     const closeOnKeydown = (event: KeyboardEvent) => {
       if (event.key === 'Escape' && !busyRef.current) {
-        if (receiptRef.current) {
-          void refreshFinancialData().catch((loadError: unknown) => {
-            setError(getErrorMessage(loadError));
-          });
-        }
-        setReceipt(null);
-        setSelectedShop(null);
+        closePayment();
         return;
       }
       if (event.key !== 'Tab') return;
@@ -325,7 +375,7 @@ export function FinancialOperations({
       window.removeEventListener('keydown', closeOnKeydown);
       returnFocusRef.current?.focus();
     };
-  }, [selectedShop?.shop_id, refreshFinancialData]);
+  }, [closePayment, isManager, selectedShop ? queueIdentity(selectedShop) : null]);
 
   useEffect(() => {
     if (!historyReceipt) return;
@@ -405,7 +455,7 @@ export function FinancialOperations({
     ? Math.min(Number.isFinite(receivedAmount) ? receivedAmount : 0, Number(selectedShop.outstanding_amount))
     : 0;
   const evidenceRequired = selectedShop
-    ? method === 'bank_transfer' || methodRequires(selectedShop.payment_profile, method, 'evidence')
+    ? methodRequires(selectedShop.payment_profile, method, 'evidence')
     : false;
   const paymentReady = Boolean(
     canCollectShopPayments
@@ -427,12 +477,8 @@ export function FinancialOperations({
     : 0;
 
   const getReceiptCharges = async (paymentId: string) => {
-    if (!supabase) return [];
-    const { data, error: rpcError } = await supabase.rpc('get_payment_receipt_items', {
-      p_payment_id: paymentId,
-    });
-    if (rpcError) throw rpcError;
-    return receiptChargesFromRows((data ?? []) as ReceiptItemRow[]);
+    const snapshot = await getReceiptSnapshot(paymentId);
+    return snapshot.charges;
   };
 
   const getReceiptSnapshot = async (paymentId: string) => {
@@ -461,7 +507,7 @@ export function FinancialOperations({
       if (!canCollectShopPayments || !supabase || !runId || !selectedShop || !paymentReady) return;
       const signature = `collection-payment:${JSON.stringify({
         runId,
-        shopId: selectedShop.shop_id,
+        queueKey: queueIdentity(selectedShop),
         allocations,
         method,
         receivedAmount,
@@ -474,7 +520,20 @@ export function FinancialOperations({
       })}`;
       const request = getOrCreatePendingRequest(signature);
       const evidencePath = evidence ? await uploadPaymentEvidence(evidence, request.key) : null;
-      const { data, error: rpcError } = await supabase.rpc('record_payment', {
+      const paymentArgs = selectedShop.destination_kind === 'event' ? {
+        p_expected_settlement_context_id: selectedShop.event_settlement_context_id,
+        p_expected_participation_id: selectedShop.event_participation_id,
+        p_expected_service_date: selectedShop.settlement_service_date,
+        p_expected_policy_fingerprint: selectedShop.settlement_policy_fingerprint,
+        p_allocations: allocations,
+        p_payment_method: method,
+        p_received_amount: receivedAmount,
+        p_reference_number: reference.trim() || null,
+        p_evidence_path: evidencePath,
+        p_collection_run_id: runId,
+        p_expected_outstanding_amount: selectedShop.outstanding_amount,
+        p_idempotency_key: request.key,
+      } : {
         p_shop_id: selectedShop.shop_id,
         p_allocations: allocations,
         p_payment_method: method,
@@ -485,7 +544,11 @@ export function FinancialOperations({
         p_expected_outstanding_amount: selectedShop.outstanding_amount,
         p_approval_id: null,
         p_idempotency_key: request.key,
-      });
+      };
+      const paymentRpc = selectedShop.destination_kind === 'event'
+        ? 'record_event_payment'
+        : 'record_payment';
+      const { data, error: rpcError } = await supabase.rpc(paymentRpc, paymentArgs);
       if (rpcError) {
         invalidateCurrentCollectionContext(true);
         throw rpcError;
@@ -520,16 +583,6 @@ export function FinancialOperations({
     }
     setEvidence(file);
     setEvidenceError(null);
-  };
-
-  const closePayment = () => {
-    if (receiptRef.current) {
-      void refreshFinancialData().catch((loadError: unknown) => {
-        setError(getErrorMessage(loadError));
-      });
-    }
-    setReceipt(null);
-    setSelectedShop(null);
   };
 
   const printReceipt = async (targetReceipt: PaymentReceipt, existingPrintWindow?: Window | null) => {
@@ -746,7 +799,7 @@ export function FinancialOperations({
   }, [demoData, serviceDate]);
 
   const openReceivableCollection = async (receivable: Receivable) => {
-    await load(receivable.shop_id);
+    await load(`regular:${receivable.shop_id}`);
     onManagerPageChange?.('collection');
   };
 
@@ -841,6 +894,7 @@ export function FinancialOperations({
           evidence={evidence}
           evidenceError={evidenceError}
           evidenceRequired={evidenceRequired}
+          focusedChargeId={focusRequest?.queueKey === queueIdentity(selectedShop) ? focusRequest.chargeId : null}
           method={method}
           onAmountChange={setAmount}
           onClose={closePayment}
@@ -898,6 +952,7 @@ export function FinancialOperations({
           evidence={evidence}
           evidenceError={evidenceError}
           evidenceRequired={evidenceRequired}
+          focusedChargeId={focusRequest?.queueKey === queueIdentity(selectedShop) ? focusRequest.chargeId : null}
           method={method}
           onAmountChange={setAmount}
           onClose={closePayment}

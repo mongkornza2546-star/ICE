@@ -1935,6 +1935,12 @@ input:disabled, select:disabled, textarea:disabled { background: #f2f5f8; color:
 .financial-ops__amount-due { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 16px; border: 1px solid #cfe1f1; border-radius: 12px; color: #3c5974; background: #f4f9fe; }
 .financial-ops__amount-due span { font-size: .82rem; font-weight: 800; }
 .financial-ops__amount-due strong { color: #076bd3; font-size: 1.4rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.financial-ops__payment-breakdown { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); overflow: hidden; border: 1px solid #d8e6f2; border-radius: 10px; background: #fff; }
+.financial-ops__payment-breakdown > span { display: grid; gap: 4px; min-width: 0; padding: 10px 12px; text-align: center; }
+.financial-ops__payment-breakdown > span + span { border-left: 1px dashed #c7ddec; }
+.financial-ops__payment-breakdown small { color: #5e7890; font-size: .72rem; font-weight: 700; }
+.financial-ops__payment-breakdown b, .financial-ops__payment-breakdown strong { overflow: hidden; color: #18395d; font-size: 1rem; font-variant-numeric: tabular-nums; text-overflow: ellipsis; white-space: nowrap; }
+.financial-ops__payment-breakdown strong { color: #076bd3; }
 .financial-ops__payment-methods { display: grid; gap: 7px; }
 .financial-ops__payment-methods h3, .financial-ops__payment > label > span:first-child { margin: 0; color: #294867; font-size: .79rem; font-weight: 800; }
 .financial-ops__payment-methods > div { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }

@@ -30,6 +30,16 @@ export type QueueCharge = {
 };
 
 export type QueueShop = {
+  queue_key?: string;
+  destination_kind?: 'regular' | 'event';
+  event_settlement_context_id?: string | null;
+  event_participation_id?: string | null;
+  settlement_service_date?: string | null;
+  settlement_policy_fingerprint?: string | null;
+  event_name?: string | null;
+  event_location?: string | null;
+  event_zone?: string | null;
+  event_booth?: string | null;
   shop_id: string;
   shop_code: string;
   shop_name: string;
@@ -176,6 +186,14 @@ export type PaymentHistoryItem = {
   recorded_at: string;
   recorded_by?: string | null;
   void_reason: string | null;
+  destination_kind?: 'regular' | 'event';
+  event_settlement_context_id?: string | null;
+  event_participation_id?: string | null;
+  settlement_service_date?: string | null;
+  event_name?: string | null;
+  event_location?: string | null;
+  event_zone?: string | null;
+  event_booth?: string | null;
   shops: { code: string; name: string } | null;
 };
 
@@ -200,6 +218,10 @@ export type PaymentCorrectionTarget = {
   payment_allocated_amount: number;
   allocated_amount: number;
   effective_amount: number;
+  destination_kind?: 'regular' | 'event';
+  event_settlement_context_id?: string | null;
+  event_participation_id?: string | null;
+  settlement_service_date?: string | null;
 };
 
 export type PaymentReceipt = {

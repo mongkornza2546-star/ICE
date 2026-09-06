@@ -19,6 +19,7 @@ import { formatServiceDate, money, paymentMethodLabel } from '../utils';
 export function PaymentModal({
   presentation = 'modal',
   selectedShop,
+  focusedChargeId,
   serviceDate,
   busy,
   canRecordPayment = true,
@@ -47,6 +48,7 @@ export function PaymentModal({
 }: {
   presentation?: 'modal' | 'panel';
   selectedShop: QueueShop;
+  focusedChargeId?: string | null;
   serviceDate: string;
   busy: boolean;
   canRecordPayment?: boolean;
@@ -75,6 +77,12 @@ export function PaymentModal({
 }) {
   const isPanel = presentation === 'panel';
   const [expandedChargeId, setExpandedChargeId] = useState<string | null>(null);
+  const focusedCharge = focusedChargeId
+    ? selectedShop.charges.find((charge) => charge.charge_id === focusedChargeId) ?? null
+    : null;
+  const priorOutstandingAmount = focusedCharge
+    ? Math.max(Number(selectedShop.outstanding_amount) - Number(focusedCharge.outstanding_amount), 0)
+    : 0;
   return (
     <div
       aria-label={`รับเงิน ${selectedShop.shop_name}`}
@@ -99,6 +107,12 @@ export function PaymentModal({
             <small>{selectedShop.shop_code}</small>
             <h2>{isPanel ? `${selectedShop.shop_code} · ${selectedShop.shop_name}` : 'บันทึกรับชำระเงิน'}</h2>
             <b>{selectedShop.shop_name}</b>
+            {selectedShop.destination_kind === 'event' ? <small>{[
+              selectedShop.event_name,
+              selectedShop.event_location,
+              selectedShop.event_zone,
+              selectedShop.event_booth && `บูธ ${selectedShop.event_booth}`,
+            ].filter(Boolean).join(' · ')}</small> : null}
           </span>
           <button
             aria-label="ปิดหน้ารับเงิน"
@@ -124,6 +138,14 @@ export function PaymentModal({
               <span>ยอดที่ต้องชำระ</span>
               <strong>{money.format(selectedShop.outstanding_amount)}</strong>
             </section>
+
+            {focusedCharge ? (
+              <section className="financial-ops__payment-breakdown" aria-label="สรุปยอดหลังส่งรอบล่าสุด">
+                <span><small>ยอดค้างก่อนหน้า</small><b>{money.format(priorOutstandingAmount)}</b></span>
+                <span><small>ยอดส่งรอบล่าสุด</small><b>{money.format(focusedCharge.outstanding_amount)}</b></span>
+                <span><small>ยอดรับชำระทั้งหมด</small><strong>{money.format(selectedShop.outstanding_amount)}</strong></span>
+              </section>
+            ) : null}
 
             {!canRecordPayment ? (
               <p className="employee-error" role="status">ดูข้อมูลได้ แต่ยังไม่ได้รับสิทธิ์บันทึกรับเงิน</p>

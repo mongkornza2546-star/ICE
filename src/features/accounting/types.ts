@@ -198,6 +198,13 @@ export type AccountingShopInvoiceDetailEntry = {
   historical_zone_name: string | null;
   current_zone_id: string | null;
   current_zone_name: string | null;
+  destination_kind?: 'regular' | 'event';
+  event_settlement_context_id?: string | null;
+  event_participation_id?: string | null;
+  event_name?: string | null;
+  event_location?: string | null;
+  event_zone?: string | null;
+  event_booth?: string | null;
   items: Array<{
     ice_type_id: string;
     name: string;

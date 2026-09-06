@@ -190,14 +190,20 @@ try {
   if (started.status !== 0) throw new Error(started.stderr);
 
   let ready = false;
-  for (let attempt = 0; attempt < 30; attempt += 1) {
-    if (docker(['exec', container, 'pg_isready', '-U', 'postgres']).status === 0) {
+  for (let attempt = 0; attempt < 60; attempt += 1) {
+    if (docker([
+      'exec', container, 'psql', '-U', 'postgres', '-Atc', 'select 1',
+    ]).status === 0) {
       ready = true;
       break;
     }
     await new Promise((resolve) => setTimeout(resolve, 250));
   }
   assert.equal(ready, true, 'PostgreSQL container did not become ready');
+  await new Promise((resolve) => setTimeout(resolve, 1_000));
+  assert.equal(docker([
+    'exec', container, 'psql', '-U', 'postgres', '-Atc', 'select 1',
+  ]).status, 0, 'PostgreSQL container did not remain ready');
 
   psql(foundation);
   psql(readFileSync(new URL('../supabase/migrations/0159_automatic_collection_context_authorization.sql', import.meta.url), 'utf8'));

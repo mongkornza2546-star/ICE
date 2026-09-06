@@ -238,7 +238,7 @@ describe('employee live shop loading', () => {
     expect(supabaseMock.getPublicUrl).not.toHaveBeenCalled();
   });
 
-  it('enables schema-v6 event stops and routes POS reads and writes to event RPCs', async () => {
+  it('uses schema-v7 per-card eligibility and routes POS reads and writes to event RPCs', async () => {
     const eventContext = {
       ...posContext,
       round_stop_id: 'event-stop-1',
@@ -261,7 +261,7 @@ describe('employee live shop loading', () => {
     supabaseMock.client.rpc
       .mockResolvedValueOnce({
         data: {
-          schema_version: 6,
+          schema_version: 7,
           event_reads_enabled: true,
           event_stops_enabled: true,
           event_ice_delivery_enabled: true,
@@ -287,6 +287,7 @@ describe('employee live shop loading', () => {
             contact_name: null,
             contact_phone: null,
             is_operational: true,
+            event_delivery_enabled: true,
             stop_status: 'pending',
             stop_note: null,
             today_history: [],

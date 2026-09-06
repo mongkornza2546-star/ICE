@@ -14,7 +14,7 @@ import { ManagerStockAudit } from './ManagerStockAudit';
 import { FinancialOperations } from './FinancialOperations';
 import { EventManagementPage } from './EventManagementPage';
 import { Coins, Package, Storefront } from '@phosphor-icons/react';
-import type { UserProfile } from './types/app';
+import type { CollectionFocusRequest, UserProfile } from './types/app';
 import { toBangkokDateString } from './lib/serviceDate';
 import { clearNavigation, clearRecoveryForOwner, readNavigation, writeNavigation } from './lib/recoveryStorage';
 import {
@@ -55,6 +55,7 @@ export function RoleRouter({
   const [activeView, setActiveView] = useState<AdminView>('manager_overview');
   const [financialPage, setFinancialPage] = useState<FinancialPage>('collection');
   const [courierView, setCourierView] = useState<'withdrawal' | 'pos' | 'collection'>('pos');
+  const [courierCollectionFocus, setCourierCollectionFocus] = useState<CollectionFocusRequest | null>(null);
   const [courierCollectionVisited, setCourierCollectionVisited] = useState(false);
   const [billingServiceDate, setBillingServiceDate] = useState(() => toBangkokDateString());
   const [currentBangkokDate, setCurrentBangkokDate] = useState(() => toBangkokDateString());
@@ -249,6 +250,7 @@ export function RoleRouter({
             aria-current={courierView === 'withdrawal' ? 'page' : undefined}
             onClick={() => {
               if (courierView !== 'withdrawal' && !confirmLeavingDelivery()) return;
+              setCourierCollectionFocus(null);
               setCourierView('withdrawal');
             }}
             type="button"
@@ -260,6 +262,7 @@ export function RoleRouter({
             aria-current={courierView === 'pos' ? 'page' : undefined}
             onClick={() => {
               if (courierView !== 'pos' && !confirmLeavingDelivery()) return;
+              setCourierCollectionFocus(null);
               setCourierView('pos');
             }}
             type="button"
@@ -272,6 +275,7 @@ export function RoleRouter({
             disabled={deliveryDraftState.submitting}
             onClick={() => {
               if (courierView !== 'collection' && !confirmLeavingDelivery()) return;
+              setCourierCollectionFocus(null);
               setCourierCollectionVisited(true);
               setCourierView('collection');
             }}
@@ -284,9 +288,15 @@ export function RoleRouter({
         <KeepAlive active={courierView !== 'collection'}>
           <EmployeeDeliveryWorkspace
             casualCustomerEnabled
+            canCollectShopPayments={profile.can_collect_shop_payments}
             enableAssignedStockFlow={courierView === 'withdrawal'}
             isActive={courierView !== 'collection'}
             onDraftStateChange={setDeliveryDraftState}
+            onOpenCollection={(request) => {
+              setCourierCollectionFocus(request);
+              setCourierCollectionVisited(true);
+              setCourierView('collection');
+            }}
             requestScope={profile.id}
             viewMode={courierView === 'withdrawal' ? 'withdrawal' : 'pos'}
           />
@@ -296,7 +306,12 @@ export function RoleRouter({
             <FinancialOperations
               canCollectShopPayments={profile.can_collect_shop_payments}
               currentUserId={profile.id}
+              focusRequest={courierCollectionFocus}
               isActive={courierView === 'collection'}
+              onFocusedCollectionClose={() => {
+                setCourierCollectionFocus(null);
+                setCourierView('pos');
+              }}
               userRole="courier"
             />
           </KeepAlive>

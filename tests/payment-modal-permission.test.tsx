@@ -80,4 +80,87 @@ describe('PaymentModal collection capability', () => {
     fireEvent.click(recordButton);
     expect(onRecordPayment).not.toHaveBeenCalled();
   });
+
+  it('separates the latest delivery from the prior balance when opened from POS', () => {
+    render(<PaymentModal
+      allocatedAmount={150}
+      amount="150.00"
+      busy={false}
+      changeAmount={0}
+      closeButtonRef={createRef<HTMLButtonElement>()}
+      dialogRef={createRef<HTMLDivElement>()}
+      evidence={null}
+      evidenceError={null}
+      evidenceRequired={false}
+      focusedChargeId="charge-latest"
+      method="cash"
+      onAmountChange={vi.fn()}
+      onClose={vi.fn()}
+      onEvidenceChange={vi.fn()}
+      onPaymentMethodChange={vi.fn()}
+      onPrintReceipt={vi.fn()}
+      onRecordPayment={vi.fn()}
+      onReferenceChange={vi.fn()}
+      onRequestDueDate={vi.fn()}
+      paymentReady
+      receipt={null}
+      reference=""
+      remainingAmount={0}
+      selectedShop={{
+        ...selectedShop,
+        outstanding_amount: 150,
+        charge_count: 2,
+        charges: [
+          { ...selectedShop.charges[0], charge_id: 'charge-prior', outstanding_amount: 120 },
+          {
+            ...selectedShop.charges[0],
+            charge_id: 'charge-latest',
+            charge_number: 'INV002',
+            original_amount: 30,
+            outstanding_amount: 30,
+          },
+        ],
+      }}
+      serviceDate="2026-08-27"
+    />);
+
+    const summary = screen.getByRole('region', { name: 'สรุปยอดหลังส่งรอบล่าสุด' });
+    expect(summary.textContent).toContain('ยอดค้างก่อนหน้า฿120.00');
+    expect(summary.textContent).toContain('ยอดส่งรอบล่าสุด฿30.00');
+    expect(summary.textContent).toContain('ยอดรับชำระทั้งหมด฿150.00');
+  });
+
+  it('shows zero prior balance when the latest delivery is the only unpaid charge', () => {
+    render(<PaymentModal
+      allocatedAmount={120}
+      amount="120.00"
+      busy={false}
+      changeAmount={0}
+      closeButtonRef={createRef<HTMLButtonElement>()}
+      dialogRef={createRef<HTMLDivElement>()}
+      evidence={null}
+      evidenceError={null}
+      evidenceRequired={false}
+      focusedChargeId="charge-1"
+      method="cash"
+      onAmountChange={vi.fn()}
+      onClose={vi.fn()}
+      onEvidenceChange={vi.fn()}
+      onPaymentMethodChange={vi.fn()}
+      onPrintReceipt={vi.fn()}
+      onRecordPayment={vi.fn()}
+      onReferenceChange={vi.fn()}
+      onRequestDueDate={vi.fn()}
+      paymentReady
+      receipt={null}
+      reference=""
+      remainingAmount={0}
+      selectedShop={selectedShop}
+      serviceDate="2026-08-27"
+    />);
+
+    const summary = screen.getByRole('region', { name: 'สรุปยอดหลังส่งรอบล่าสุด' });
+    expect(summary.textContent).toContain('ยอดค้างก่อนหน้า฿0.00');
+    expect(summary.textContent).toContain('ยอดส่งรอบล่าสุด฿120.00');
+  });
 });

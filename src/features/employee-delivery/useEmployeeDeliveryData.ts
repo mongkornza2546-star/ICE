@@ -3,6 +3,7 @@ import type {
   DeliveryRound,
   DeliveryFinancialResult,
   DeliveryPosContext,
+  CollectionFocusRequest,
   EmployeeStockState,
   IceTypeOption,
   PaymentMethod,
@@ -75,19 +76,23 @@ interface ImmediateSaleRetry extends PendingRequestIdentity {
 }
 
 export function useEmployeeDeliveryData({
+  canCollectShopPayments = true,
   gateway,
   enableAssignedStockFlow = false,
   requestScope = 'default',
   serviceDate,
   stockSourceLabel = 'สต๊อกรวมประจำวัน',
   onDraftStateChange,
+  onOpenCollection,
 }: {
+  canCollectShopPayments?: boolean;
   gateway: EmployeeDeliveryGateway;
   enableAssignedStockFlow?: boolean;
   requestScope?: string;
   serviceDate: string;
   stockSourceLabel?: string;
   onDraftStateChange?: (state: EmployeeDeliveryDraftState) => void;
+  onOpenCollection?: (request: CollectionFocusRequest) => void;
 }) {
   const { getOrCreatePendingRequest, clearPendingRequest } = usePendingRequests();
   const recoveryMode = enableAssignedStockFlow ? 'withdrawal' : 'pos';
@@ -539,12 +544,12 @@ export function useEmployeeDeliveryData({
       setProblemOpen(recovery.problemOpen);
       setNote(recovery.note);
       setPaymentTerm(recovery.paymentTerm);
-      setPaymentResult(recovery.paymentResult);
-      setPaymentOpen(recovery.paymentOpen && Boolean(recovery.paymentResult));
+      setPaymentResult(onOpenCollection ? null : recovery.paymentResult);
+      setPaymentOpen(!onOpenCollection && recovery.paymentOpen && Boolean(recovery.paymentResult));
       setPaymentMethod(recovery.paymentMethod);
       setPaymentAmount(recovery.paymentAmount);
       setPaymentReference(recovery.paymentReference);
-      setImmediateSaleRetry(recovery.immediateSaleRetry ?? null);
+      setImmediateSaleRetry(onOpenCollection ? null : recovery.immediateSaleRetry ?? null);
       setApprovalId(recovery.approvalId);
       setApprovalReason(recovery.approvalReason);
     }
@@ -566,8 +571,17 @@ export function useEmployeeDeliveryData({
             return [iceType.id, Math.min(intended, available)];
           }),
         ));
+        const requestedPaymentTerm = recovery?.paymentTerm
+          ?? context.payment_profile?.default_payment_term
+          ?? 'immediate';
+        const resolvedPaymentTerm = onOpenCollection
+          && !canCollectShopPayments
+          && requestedPaymentTerm === 'immediate'
+          ? context.payment_profile?.allowed_payment_terms.find((term) => term !== 'immediate')
+            ?? requestedPaymentTerm
+          : requestedPaymentTerm;
+        setPaymentTerm(resolvedPaymentTerm);
         if (!recovery) {
-          setPaymentTerm(context.payment_profile?.default_payment_term ?? 'immediate');
           setPaymentMethod(context.payment_profile?.default_payment_method ?? 'cash');
         }
         setPaymentEvidence(null);
@@ -851,7 +865,11 @@ export function useEmployeeDeliveryData({
         return;
       }
     }
-    if (isDelivery && paymentTerm === 'immediate' && gateway.recordImmediateSale) {
+    if (isDelivery && paymentTerm === 'immediate' && onOpenCollection && !canCollectShopPayments) {
+      setEntryError('บัญชีนี้ยังไม่ได้รับสิทธิ์รับชำระเงิน กรุณาเลือกส่งอย่างเดียวหรือเครดิต');
+      return;
+    }
+    if (isDelivery && paymentTerm === 'immediate' && gateway.recordImmediateSale && !onOpenCollection) {
       const totalAmount = items.reduce((total, item) => {
         const contextItem = posContext?.items.find((candidate) => candidate.ice_type_id === item.ice_type_id);
         return total + item.quantity * (contextItem?.unit_price ?? 0);
@@ -923,6 +941,18 @@ export function useEmployeeDeliveryData({
       publishDataChange(['accounting', 'stock', 'pos', 'receivable']);
       if (requestId !== submissionRequestId.current) return;
       if (result && isDelivery && result.payment_term === 'immediate' && result.charge_id) {
+        if (onOpenCollection) {
+          clearRecovery(requestScope, serviceDate, recoveryMode);
+          clearPendingRequest(signature, request.key);
+          await handleRecorded(true, result);
+          if (requestId !== submissionRequestId.current) return;
+          setSubmitting(false);
+          onOpenCollection({
+            queueKey: `regular:${selectedCard.shop_id}`,
+            chargeId: result.charge_id,
+          });
+          return;
+        }
         const nextPaymentAmount = String(result.total_amount ?? '');
         persistRecoveryNow({
           paymentResult: result,

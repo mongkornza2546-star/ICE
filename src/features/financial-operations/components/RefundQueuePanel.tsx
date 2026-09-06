@@ -17,6 +17,11 @@ type RefundQueueItem = {
   reason: string;
   created_at: string;
   age_days: number;
+  destination_kind?: 'regular' | 'event';
+  event_name?: string | null;
+  event_location?: string | null;
+  event_zone?: string | null;
+  event_booth?: string | null;
   settlement: null | {
     refund_method: PaymentMethod;
     reference_number: string | null;
@@ -123,7 +128,7 @@ export function RefundQueuePanel() {
     {error ? <p className="credit-ar__action-error" role="alert"><WarningCircle size={18} />{error}</p> : null}
     {loading ? <p className="financial-ops__empty">กำลังโหลดคิวคืนเงิน...</p> : items.length === 0 ? <p className="financial-ops__empty">ไม่มียอดรอคืน</p> : <div className="refund-queue__list">
       {items.map((item) => <article key={item.id}>
-        <div><small>{item.shop_code}</small><h3>{item.shop_name}</h3><span>{item.charge_number} · ใบรับเงิน {item.receipt_number}</span><p>{item.reason}</p></div>
+        <div><small>{item.shop_code}</small><h3>{item.shop_name}</h3>{item.destination_kind === 'event' ? <small>{[item.event_name, item.event_location, item.event_zone, item.event_booth && `บูธ ${item.event_booth}`].filter(Boolean).join(' · ')}</small> : null}<span>{item.charge_number} · ใบรับเงิน {item.receipt_number}</span><p>{item.reason}</p></div>
         <strong>{money.format(Number(item.amount))}</strong>
         {item.status === 'pending' ? <div className="refund-queue__actions">
           <select aria-label="วิธีคืนเงิน" onChange={(event) => setMethod(event.target.value as PaymentMethod)} value={method}><option value="cash">เงินสด</option><option value="bank_transfer">โอนเงิน</option><option value="qr">QR</option></select>

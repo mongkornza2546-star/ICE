@@ -7,6 +7,14 @@ const migration = readFileSync(
   new URL('../supabase/migrations/0170_event_ice_delivery_pos.sql', import.meta.url),
   'utf8',
 );
+const financialDraft = readFileSync(
+  new URL('../supabase/migrations/0171_event_ice_delivery_financial_closeout.sql', import.meta.url),
+  'utf8',
+);
+const financialFoundation = financialDraft.slice(
+  0,
+  financialDraft.indexOf('alter table public.payments\n  add column operation_kind'),
+);
 
 function definition(name, nextMarker) {
   const start = migration.indexOf(`create or replace function public.${name}`);
@@ -16,7 +24,7 @@ function definition(name, nextMarker) {
   return migration.slice(start, end);
 }
 
-async function createEventPosDatabase() {
+async function createEventPosDatabase({ applyFinancialDraft = false } = {}) {
   const db = new PGlite();
   await db.exec(`
     create schema auth;
@@ -63,6 +71,8 @@ async function createEventPosDatabase() {
     create function public.is_delivery_event_visible(uuid) returns boolean language sql stable
       as $$ select true $$;
 
+    create table public.users (id uuid primary key);
+
     create table public.event_delivery_feature_settings (
       singleton boolean primary key,
       schema_version integer not null,
@@ -97,9 +107,15 @@ async function createEventPosDatabase() {
       start_date date not null,
       end_date date not null
     );
+    create table public.event_job_config_versions (
+      id uuid primary key,
+      event_job_id uuid not null references public.event_jobs(id),
+      policy_fingerprint text not null
+    );
     create table public.event_participations (
       id uuid primary key,
       event_job_id uuid not null references public.event_jobs(id),
+      shop_id uuid not null references public.shops(id),
       status public.event_participation_status not null,
       start_date date not null,
       end_date date not null,
@@ -112,7 +128,8 @@ async function createEventPosDatabase() {
       bank_transfer_reference_required_snapshot boolean,
       bank_transfer_evidence_required_snapshot boolean,
       qr_reference_required_snapshot boolean,
-      qr_evidence_required_snapshot boolean
+      qr_evidence_required_snapshot boolean,
+      settlement_policy_fingerprint text
     );
     create table public.round_stops (
       id uuid primary key,
@@ -188,6 +205,14 @@ async function createEventPosDatabase() {
       charge_id uuid primary key,
       document_data jsonb not null
     );
+    create table public.payments (id uuid primary key);
+    create table public.payment_allocations (
+      payment_id uuid not null references public.payments(id),
+      charge_id uuid not null references public.delivery_charges(id)
+    );
+    create table public.payment_receipt_snapshots (
+      payment_id uuid primary key references public.payments(id)
+    );
     create table public.daily_aggregate_stock_closures (service_date date primary key);
     create table public.audit_logs (
       entity_type text not null,
@@ -226,6 +251,7 @@ async function createEventPosDatabase() {
     $$;
   `);
   await db.exec(migration);
+  if (applyFinancialDraft) await db.exec(financialFoundation);
   return db;
 }
 
@@ -238,6 +264,7 @@ test('event migration executes context and writer contracts end to end', async (
     holding: '40000000-0000-4000-8000-000000000001',
     shopStock: '40000000-0000-4000-8000-000000000002',
     job: '50000000-0000-4000-8000-000000000001',
+    config: '51000000-0000-4000-8000-000000000001',
     participation: '60000000-0000-4000-8000-000000000001',
     stop: '70000000-0000-4000-8000-000000000001',
     ice: '80000000-0000-4000-8000-000000000001',
@@ -256,16 +283,28 @@ test('event migration executes context and writer contracts end to end', async (
 
   await db.exec(`
     update public.event_delivery_feature_settings set event_ice_delivery_enabled = true;
+    insert into public.users values (auth.uid());
     insert into public.stock_locations values
       ('${ids.holding}', 'HOLDING', 'Courier holding', 'team', auth.uid(), true),
       ('${ids.shopStock}', 'SHOP', 'Shop stock', 'shop', null, true);
     insert into public.shops values ('${ids.shop}', null, '${ids.shopStock}');
     insert into public.delivery_rounds values ('${ids.round}', 'open', current_date);
     insert into public.event_jobs values ('${ids.job}', 'published', current_date, current_date);
-    insert into public.event_participations values (
-      '${ids.participation}', '${ids.job}', 'active', current_date, current_date,
-      gen_random_uuid(), 'end_of_day', array['cash']::public.payment_method[], 'cash',
-      false, false, true, false, true, false
+    insert into public.event_job_config_versions values (
+      '${ids.config}', '${ids.job}', 'policy-v1'
+    );
+    insert into public.event_participations (
+      id, event_job_id, shop_id, status, start_date, end_date,
+      config_version_id, payment_term_snapshot, allowed_payment_methods_snapshot,
+      default_payment_method_snapshot, cash_reference_required_snapshot,
+      cash_evidence_required_snapshot, bank_transfer_reference_required_snapshot,
+      bank_transfer_evidence_required_snapshot, qr_reference_required_snapshot,
+      qr_evidence_required_snapshot, settlement_policy_fingerprint
+    ) values (
+      '${ids.participation}', '${ids.job}', '${ids.shop}', 'active',
+      current_date, current_date, '${ids.config}', 'end_of_day',
+      array['cash']::public.payment_method[], 'cash',
+      false, false, true, false, true, false, 'policy-v1'
     );
     insert into public.round_stops values (
       '${ids.stop}', '${ids.round}', '${ids.shop}', 'event', '${ids.participation}',
@@ -371,6 +410,74 @@ test('event migration executes context and writer contracts end to end', async (
     authenticated_can_write: true,
     anon_can_write: false,
   });
+});
+
+test('0171 draft fails closed around the actual 0170 event writer', async (t) => {
+  const db = await createEventPosDatabase({ applyFinancialDraft: true });
+  t.after(() => db.close());
+  const ids = {
+    round: '21000000-0000-4000-8000-000000000001',
+    shop: '31000000-0000-4000-8000-000000000001',
+    holding: '41000000-0000-4000-8000-000000000001',
+    shopStock: '41000000-0000-4000-8000-000000000002',
+    job: '51000000-0000-4000-8000-000000000002',
+    config: '51000000-0000-4000-8000-000000000003',
+    participation: '61000000-0000-4000-8000-000000000001',
+    stop: '71000000-0000-4000-8000-000000000001',
+    ice: '81000000-0000-4000-8000-000000000001',
+    request: '91000000-0000-4000-8000-000000000001',
+  };
+
+  await db.exec(`
+    update public.event_delivery_feature_settings set event_ice_delivery_enabled = true;
+    insert into public.users values (auth.uid());
+    insert into public.stock_locations values
+      ('${ids.holding}', 'HOLDING', 'Courier holding', 'team', auth.uid(), true),
+      ('${ids.shopStock}', 'SHOP', 'Shop stock', 'shop', null, true);
+    insert into public.shops values ('${ids.shop}', null, '${ids.shopStock}');
+    insert into public.delivery_rounds values ('${ids.round}', 'open', current_date);
+    insert into public.event_jobs values ('${ids.job}', 'published', current_date, current_date);
+    insert into public.event_job_config_versions values (
+      '${ids.config}', '${ids.job}', 'policy-v1'
+    );
+    insert into public.event_participations (
+      id, event_job_id, shop_id, status, start_date, end_date,
+      config_version_id, payment_term_snapshot, allowed_payment_methods_snapshot,
+      default_payment_method_snapshot, cash_reference_required_snapshot,
+      cash_evidence_required_snapshot, bank_transfer_reference_required_snapshot,
+      bank_transfer_evidence_required_snapshot, qr_reference_required_snapshot,
+      qr_evidence_required_snapshot, settlement_policy_fingerprint
+    ) values (
+      '${ids.participation}', '${ids.job}', '${ids.shop}', 'active',
+      current_date, current_date, '${ids.config}', 'end_of_day',
+      array['cash']::public.payment_method[], 'cash',
+      false, false, true, false, true, false, 'policy-v1'
+    );
+    insert into public.round_stops values (
+      '${ids.stop}', '${ids.round}', '${ids.shop}', 'event', '${ids.participation}',
+      'E2', 'Event shop', null, null, 'Expo', 'Hall', 'Zone B', 'B2',
+      true, 'pending', null, auth.uid(), now()
+    );
+    insert into public.ice_types values ('${ids.ice}', 'ICE', 'Ice', 'bag', null, true);
+    insert into public.ice_type_prices values (
+      gen_random_uuid(), '${ids.ice}', 25, current_date, null, true
+    );
+  `);
+
+  await assert.rejects(
+    db.query(`select public.record_event_ice_delivery(
+      '${ids.stop}',
+      '[{"ice_type_id":"${ids.ice}","quantity":2}]'::jsonb,
+      'delivered', null, now(), '${ids.request}'
+    )`),
+    /require an event settlement context/,
+  );
+  const writes = await db.query(`
+    select
+      (select count(*)::integer from public.delivery_events) as event_count,
+      (select count(*)::integer from public.delivery_charges) as charge_count
+  `);
+  assert.deepEqual(writes.rows[0], { event_count: 0, charge_count: 0 });
 });
 
 test('event POS context exposes daily stock, standard prices, and frozen event terms', () => {

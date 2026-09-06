@@ -31,8 +31,8 @@ import { PROBLEM_STATUSES, STATUS_LABELS } from './constants';
 import { DeliveryCorrectionDialog } from '../delivery-corrections/DeliveryCorrectionDialog';
 
 const TERM_LABELS: Record<PaymentTerm, string> = {
-  immediate: 'จ่ายทันที',
-  end_of_day: 'เก็บท้ายวัน',
+  immediate: 'ส่งและรับชำระ',
+  end_of_day: 'ส่งอย่างเดียว',
   credit: 'เครดิต',
 };
 
@@ -52,6 +52,7 @@ export function EmployeeDeliveryReview({
   round,
   shopCard,
   atomicImmediateSale,
+  canCollectImmediatePayment,
   assignedStockState,
   deliveryQuantities,
   posContext,
@@ -101,6 +102,7 @@ export function EmployeeDeliveryReview({
   round: DeliveryRound;
   shopCard: ShopCard;
   atomicImmediateSale: boolean;
+  canCollectImmediatePayment: boolean;
   assignedStockState: EmployeeStockState | null;
   deliveryQuantities: Record<string, number>;
   posContext: DeliveryPosContext | null;
@@ -185,6 +187,7 @@ export function EmployeeDeliveryReview({
         && !posContextError
         && posContext?.payment_profile
         && !missingPrice
+        && (paymentTerm !== 'immediate' || canCollectImmediatePayment)
         && (!exceedsCredit || Boolean(approvalId))
       )
     ));
@@ -633,6 +636,7 @@ export function EmployeeDeliveryReview({
                   {posContext.payment_profile.allowed_payment_terms.map((term) => (
                     <button
                       aria-pressed={paymentTerm === term}
+                      disabled={term === 'immediate' && !canCollectImmediatePayment}
                       key={term}
                       onClick={() => onPaymentTermChange(term)}
                       type="button"
@@ -646,6 +650,10 @@ export function EmployeeDeliveryReview({
                         ? 'ไม่จำกัด'
                         : money.format(posContext.payment_profile.credit_remaining)} · {formatCreditCollectionCycle(posContext.payment_profile)}
                     </small>
+                  ) : paymentTerm === 'immediate' && !canCollectImmediatePayment ? (
+                    <small>บัญชีนี้ยังไม่ได้รับสิทธิ์รับชำระเงิน</small>
+                  ) : paymentTerm === 'immediate' ? (
+                    <small>หลังยืนยัน ระบบจะเปิดหน้ารับชำระของลูกค้ารายนี้</small>
                   ) : null}
                 </fieldset>
               ) : financialContextRequired && !loadingPosContext ? (

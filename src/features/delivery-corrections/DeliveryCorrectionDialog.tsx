@@ -17,6 +17,7 @@ type CorrectionItem = {
 };
 
 type CorrectionContext = {
+  destination_kind?: 'regular' | 'event';
   delivery_event_id: string;
   round_stop_id: string;
   charge_id: string;
@@ -99,9 +100,16 @@ export function DeliveryCorrectionDialog({
       setError(null);
       try {
         if (!supabase) throw new Error('ยังไม่ได้ตั้งค่า Supabase');
-        const { data, error: loadError } = await supabase.rpc('get_delivery_correction_context', {
+        const routeResponse = await supabase.rpc('get_delivery_correction_route', {
           p_event_id: eventId,
         });
+        if (routeResponse.error) throw routeResponse.error;
+        const destinationKind = (routeResponse.data as { destination_kind?: 'regular' | 'event' } | null)
+          ?.destination_kind ?? 'regular';
+        const contextRpc = destinationKind === 'event'
+          ? 'get_event_delivery_correction_context'
+          : 'get_delivery_correction_context';
+        const { data, error: loadError } = await supabase.rpc(contextRpc, { p_event_id: eventId });
         if (loadError) throw loadError;
         if (!active) return;
         const next = data as CorrectionContext;
@@ -181,7 +189,10 @@ export function DeliveryCorrectionDialog({
         setPreview(localClosedPreview());
       } else {
         if (!supabase) throw new Error('ยังไม่ได้ตั้งค่า Supabase');
-        const { data, error: previewError } = await supabase.rpc('preview_delivery_correction', {
+        const previewRpc = context.destination_kind === 'event'
+          ? 'preview_event_delivery_correction'
+          : 'preview_delivery_correction';
+        const { data, error: previewError } = await supabase.rpc(previewRpc, {
           p_event_id: eventId,
           p_action: 'correct',
           p_items: items,
@@ -242,7 +253,13 @@ export function DeliveryCorrectionDialog({
     setError(null);
     try {
       if (!supabase) throw new Error('ยังไม่ได้ตั้งค่า Supabase');
-      const rpc = isClosed ? 'create_closed_delivery_adjustment' : 'apply_open_delivery_correction';
+      const rpc = isClosed
+        ? context.destination_kind === 'event'
+          ? 'create_closed_event_delivery_adjustment'
+          : 'create_closed_delivery_adjustment'
+        : context.destination_kind === 'event'
+          ? 'apply_open_event_delivery_correction'
+          : 'apply_open_delivery_correction';
       const args = isClosed ? {
         p_event_id: eventId,
         p_items: items,
@@ -282,7 +299,10 @@ export function DeliveryCorrectionDialog({
     setError(null);
     try {
       if (!supabase) throw new Error('ยังไม่ได้ตั้งค่า Supabase');
-      const { error: saveError } = await supabase.rpc('apply_open_delivery_correction', {
+      const correctionRpc = context.destination_kind === 'event'
+        ? 'apply_open_event_delivery_correction'
+        : 'apply_open_delivery_correction';
+      const { error: saveError } = await supabase.rpc(correctionRpc, {
         p_event_id: eventId,
         p_action: 'cancel',
         p_items: [],
@@ -323,7 +343,7 @@ export function DeliveryCorrectionDialog({
         {isClosed ? <p className="delivery-correction-dialog__notice"><WarningCircle size={18} />รอบหรือวันนี้ปิดแล้ว ระบบจะเก็บเป็นเอกสารปรับปรุงโดยไม่แก้รายการเดิม</p> : null}
         {immediateSale ? <p className="delivery-correction-dialog__notice"><WarningCircle size={18} />{Number(context.allocated_amount) > 0
           ? 'ขายสดแก้ไขในบิลเดิมไม่ได้ ให้ยกเลิก REC ก่อน แล้วจึงยกเลิกรายการส่งและบันทึกขายใหม่'
-          : 'REC ถูกยกเลิกแล้ว ให้ยกเลิกรายการส่งนี้ก่อนบันทึกขายใหม่'}</p> : null}
+          : 'รายการนี้ไม่มียอดรับชำระที่ยังใช้งานอยู่ ให้ยกเลิกรายการส่งก่อนบันทึกขายใหม่'}</p> : null}
         <div className="field-grid field-grid--three">
           {(context.ice_types ?? context.items).map((ice) => <label key={ice.ice_type_id}>{ice.name} ({ice.unit})<input disabled={!editable || submitting} min="0" onChange={(event) => { setQuantities((current) => ({ ...current, [ice.ice_type_id]: Math.max(0, Math.round((Number(event.target.value) || 0) * 2) / 2) })); setPreview(null); setApprovalId(null); setApprovalStatus(null); }} step="0.5" type="number" value={quantities[ice.ice_type_id] ?? 0} /></label>)}
         </div>
