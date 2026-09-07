@@ -60,6 +60,7 @@ export interface EventParticipation {
   cancellation_reason: string | null;
   shop_code: string;
   shop_name: string;
+  shop_event_job_id?: string | null;
   shop_status: 'active' | 'inactive';
   shop_contact_name: string | null;
   shop_contact_phone: string | null;
@@ -126,6 +127,7 @@ export interface EventConfigurationInput extends EventMetadataInput {
 }
 
 export interface EventParticipationInput {
+  shop_name?: string;
   participation_id: string | null;
   event_job_id: string;
   shop_id: string;
@@ -139,7 +141,24 @@ export interface EventParticipationInput {
   rents_tank_from_us: boolean;
 }
 
+export interface EventNewShopInput {
+  name: string;
+  booth_number: string;
+  event_zone: string;
+  landmark: string;
+  contact_name: string;
+  contact_phone: string;
+  start_date: string;
+  end_date: string;
+}
+
+export interface EventNewShopsResult {
+  created_count: number;
+  skipped_count: number;
+}
+
 export interface EventManagementGateway {
+  createEventShops(eventJobId: string, requestId: string, rows: EventNewShopInput[]): Promise<EventNewShopsResult>;
   loadCapability(): Promise<EventDeliveryCapability>;
   loadOverview(): Promise<EventOverview[]>;
   loadDetail(eventJobId: string): Promise<EventManagementDetail>;

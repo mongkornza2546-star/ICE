@@ -12,7 +12,7 @@ export interface RecoveryEnvelope<T> {
 
 export interface PersistedNavigation {
   activeView?: string;
-  financialPage?: 'collection' | 'transactions' | 'credit' | 'refund';
+  financialPage?: 'collection' | 'transactions' | 'credit';
   courierView?: 'withdrawal' | 'pos' | 'collection';
   billingServiceDate?: string;
 }

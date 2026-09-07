@@ -618,7 +618,7 @@ export async function loadPOSReadinessReport(serviceDate = toBangkokDateString()
   if (!client) throw new Error('Supabase client not initialized');
 
   const [shopsRes, profilesRes, iceTypesRes, midPricesRes, specialPricesRes] = await Promise.all([
-    client.from('shops').select('id, code, name, buildings(name), building_zones(name)').eq('status', 'active').order('code'),
+    client.from('shops').select('id, code, name, buildings(name), building_zones(name)').eq('status', 'active').is('event_job_id', null).order('code'),
     client.from('shop_payment_profiles').select('shop_id'),
     client.from('ice_types').select('id, code, name').eq('is_active', true),
     client.from('ice_type_prices').select('ice_type_id, valid_from, valid_to').eq('is_active', true),

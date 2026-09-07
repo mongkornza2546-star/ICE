@@ -2246,22 +2246,10 @@ input:disabled, select:disabled, textarea:disabled { background: #f2f5f8; color:
 .delivery-correction-dialog__preview strong { color: #075e54; }
 .delivery-correction-dialog__stock-impact { display: grid; gap: 5px; padding: 12px; border-radius: 10px; background: #eef8f5; color: #285f55; }
 
-.refund-queue { display: grid; gap: 16px; }
-.refund-queue__filter { display: flex; align-items: center; gap: 8px; width: fit-content; }
-.refund-queue__list { display: grid; gap: 12px; }
-.refund-queue__list > article { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(250px, .7fr); align-items: center; gap: 18px; padding: 18px; border: 1px solid #dce6ef; border-radius: 14px; background: #fff; }
-.refund-queue__list h3 { margin: 2px 0; }
-.refund-queue__list p { margin: 6px 0 0; color: #63758a; }
-.refund-queue__actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.refund-queue__actions .primary-button { grid-column: 1 / -1; justify-content: center; }
-
 @media (max-width: 700px) {
   .delivery-correction-dialog { max-height: 100dvh; border-radius: 18px 18px 0 0; }
   .delivery-correction-dialog__summary,
   .delivery-correction-dialog__preview { grid-template-columns: 1fr; }
-  .refund-queue__list > article { grid-template-columns: 1fr; }
-  .refund-queue__actions { grid-template-columns: 1fr; }
-  .refund-queue__actions .primary-button { grid-column: auto; }
 }
 
 @media (max-width: 900px) {
@@ -4033,3 +4021,13 @@ input:disabled, select:disabled, textarea:disabled { background: #f2f5f8; color:
   .event-detail__actions button:first-child { grid-column: 1 / -1; }
   .event-config-summary dl { grid-template-columns: 1fr; }
 }
+
+/* Event quick entry: keep suggestions and optional settings compact. */
+.event-shop-input { display: flex; gap: 6px; }
+.event-shop-input > button { flex: 0 0 42px; border: 1px solid #cad8e3; border-radius: 8px; background: #fff; color: #315878; font-size: 1.1rem; }
+.event-shop-picker > small, .event-bulk-entry p { margin: 0; color: #62798c; font-size: .68rem; line-height: 1.6; }
+.event-bulk-entry { display: grid; gap: 8px; }
+.event-payment-settings > summary { cursor: pointer; color: #315878; font-size: .75rem; font-weight: 800; padding: 8px 0; }
+.event-modal .event-check-grid label, .event-modal .event-payment-rule label { display: flex; flex-direction: row; }
+.event-modal input[type="date"] { box-sizing: border-box; max-width: 100%; }
+.event-settings-hint { margin: 0; color: #62798c; font-size: .68rem; line-height: 1.6; }

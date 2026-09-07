@@ -13,7 +13,6 @@ import { CollectionDesk } from './features/financial-operations/components/Colle
 import { ManagerFinancialSections, PaymentHistorySection } from './features/financial-operations/components/FinancialOperationsPanels';
 import { HistoryReceiptModal } from './features/financial-operations/components/HistoryReceiptModal';
 import { PaymentModal } from './features/financial-operations/components/PaymentModal';
-import { RefundQueuePanel } from './features/financial-operations/components/RefundQueuePanel';
 import { DailyCreditAcknowledgementPanel } from './features/financial-operations/components/DailyCreditAcknowledgementPanel';
 import { DeliveryCorrectionDialog } from './features/delivery-corrections/DeliveryCorrectionDialog';
 import { AccountingPage } from './features/accounting/AccountingPage';
@@ -102,8 +101,8 @@ export function FinancialOperations({
   currentUserId?: string;
   demoData?: FinancialOperationsDemoData;
   isActive?: boolean;
-  managerPage?: 'collection' | 'transactions' | 'credit' | 'refund';
-  onManagerPageChange?: (page: 'collection' | 'transactions' | 'credit' | 'refund') => void;
+  managerPage?: 'collection' | 'transactions' | 'credit';
+  onManagerPageChange?: (page: 'collection' | 'transactions' | 'credit') => void;
   focusRequest?: CollectionFocusRequest | null;
   onFocusedCollectionClose?: (paymentRecorded: boolean) => void;
 }) {
@@ -199,7 +198,7 @@ export function FinancialOperations({
     if (!supabase) return;
     setError(null);
 
-    if (!preferredQueueKey && isManager && (managerPage === 'transactions' || managerPage === 'refund')) return;
+    if (!preferredQueueKey && isManager && managerPage === 'transactions') return;
     if (!preferredQueueKey && isManager && managerPage === 'credit') {
       const [receivablesResponse, approvalsResponse, dueDateRequestsResponse] = await Promise.all([
         supabase.rpc('get_credit_receivables', { p_as_of_date: serviceDate }),
@@ -937,8 +936,6 @@ export function FinancialOperations({
         serviceDate={serviceDate}
         userRole={userRole}
       /> : null}
-
-      {isManager && managerPage === 'refund' ? <RefundQueuePanel /> : null}
 
       {selectedShop && (!isManager || managerPage === 'collection') && (!isManager || window.innerWidth < 1100) ? createPortal(
         <PaymentModal

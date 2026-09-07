@@ -12,6 +12,7 @@ import {
   WarningCircle,
   X,
 } from '@phosphor-icons/react';
+import { parseBoothRanges } from './features/event-management/boothRanges';
 import { toBangkokDateString } from './lib/serviceDate';
 import type { PaymentMethod } from './types/app';
 import { eventManagementGateway } from './features/event-management/eventManagementGateway';
@@ -53,6 +54,7 @@ interface EventDraft {
 interface ParticipationDraft {
   id: string | null;
   shopId: string;
+  shopName: string | null;
   boothNumber: string;
   eventZone: string;
   landmark: string;
@@ -105,13 +107,13 @@ function emptyEventDraft(): EventDraft {
     endDate: today,
     notes: '',
     tankRentalUnitPrice: '100',
-    allowedPaymentMethods: [],
-    defaultPaymentMethod: '',
+    allowedPaymentMethods: ['cash', 'bank_transfer', 'qr'],
+    defaultPaymentMethod: 'cash',
     cashReferenceRequired: false,
     cashEvidenceRequired: false,
-    bankTransferReferenceRequired: true,
+    bankTransferReferenceRequired: false,
     bankTransferEvidenceRequired: false,
-    qrReferenceRequired: true,
+    qrReferenceRequired: false,
     qrEvidenceRequired: false,
   };
 }
@@ -144,6 +146,7 @@ function participationDraftFrom(event: EventJob, participation?: EventParticipat
   return {
     id: participation?.id ?? null,
     shopId: participation?.shop_id ?? '',
+    shopName: participation?.shop_event_job_id === event.id ? participation.shop_name : null,
     boothNumber: participation?.booth_number ?? '',
     eventZone: participation?.event_zone ?? '',
     landmark: participation?.landmark ?? '',
@@ -210,6 +213,11 @@ export function EventManagementPage({
   const [participationDraft, setParticipationDraft] = useState<ParticipationDraft | null>(null);
   const [shops, setShops] = useState<EventShopOption[] | null>(null);
   const [shopQuery, setShopQuery] = useState('');
+  const [shopSuggestionsOpen, setShopSuggestionsOpen] = useState(false);
+  const [participationMode, setParticipationMode] = useState<'single' | 'bulk'>('single');
+  const [boothRanges, setBoothRanges] = useState('');
+  const [creationRequestId, setCreationRequestId] = useState('');
+  const parsedBooths = useMemo(() => parseBoothRanges(boothRanges), [boothRanges]);
   const [shopLoading, setShopLoading] = useState(false);
   const [cancelTarget, setCancelTarget] = useState<CancelTarget | null>(null);
   const [cancelReason, setCancelReason] = useState('');
@@ -217,6 +225,8 @@ export function EventManagementPage({
   const [success, setSuccess] = useState<string | null>(null);
   const [busyAction, setBusyAction] = useState<BusyAction>(null);
   const loadRequest = useRef(0);
+  const shopSuggestionsRef = useRef<HTMLDivElement>(null);
+  const shopNameRef = useRef<HTMLInputElement>(null);
 
   const loadPage = useCallback(async (preferredId?: string | null) => {
     if (!isActive) return;
@@ -312,6 +322,10 @@ export function EventManagementPage({
     if (!detail) return;
     setActionError(null);
     setShopQuery('');
+    setShopSuggestionsOpen(false);
+    setParticipationMode('single');
+    setBoothRanges('');
+    setCreationRequestId(crypto.randomUUID());
     setParticipationDraft(participationDraftFrom(detail.event, participation));
     if (!participation && !shops) {
       setShopLoading(true);
@@ -346,24 +360,13 @@ export function EventManagementPage({
     formEvent.preventDefault();
     if (!eventDraft) return;
     setActionError(null);
-    if (!eventDraft.name.trim() || !eventDraft.organizerName.trim() || !eventDraft.contactName.trim()
-      || !eventDraft.contactPhone.trim() || !eventDraft.location.trim()) {
-      setActionError('กรอกชื่องาน ผู้จัด ผู้ติดต่อ เบอร์โทร และสถานที่ให้ครบ');
-      return;
-    }
     if (!eventDraft.startDate || !eventDraft.endDate || eventDraft.endDate < eventDraft.startDate) {
       setActionError('ช่วงวันที่จัดงานไม่ถูกต้อง');
       return;
     }
-    if (profileRole === 'admin' && (
-      Number(eventDraft.tankRentalUnitPrice) <= 0
-      || eventDraft.allowedPaymentMethods.length === 0
-      || !eventDraft.defaultPaymentMethod
-      || !eventDraft.allowedPaymentMethods.includes(eventDraft.defaultPaymentMethod)
-    )) {
-      setActionError('กำหนดค่า config และเลือกวิธีรับเงินเริ่มต้นให้ครบ');
-      return;
-    }
+    const methods = eventDraft.allowedPaymentMethods.length ? eventDraft.allowedPaymentMethods : ['cash' as const];
+    const defaultMethod = eventDraft.defaultPaymentMethod && methods.includes(eventDraft.defaultPaymentMethod)
+      ? eventDraft.defaultPaymentMethod : methods[0];
 
     setBusyAction('event');
     try {
@@ -381,9 +384,9 @@ export function EventManagementPage({
       const saved = profileRole === 'admin'
         ? (await gateway.saveEvent({
             ...metadata,
-            tank_rental_unit_price: Number(eventDraft.tankRentalUnitPrice),
-            allowed_payment_methods: eventDraft.allowedPaymentMethods,
-            default_payment_method: eventDraft.defaultPaymentMethod as PaymentMethod,
+            tank_rental_unit_price: Number(eventDraft.tankRentalUnitPrice || 100),
+            allowed_payment_methods: methods,
+            default_payment_method: defaultMethod,
             cash_reference_required: eventDraft.cashReferenceRequired,
             cash_evidence_required: eventDraft.cashEvidenceRequired,
             bank_transfer_reference_required: eventDraft.bankTransferReferenceRequired,
@@ -406,8 +409,12 @@ export function EventManagementPage({
     formEvent.preventDefault();
     if (!participationDraft || !detail) return;
     setActionError(null);
-    if (!participationDraft.shopId) {
-      setActionError('เลือกร้านที่เข้าร่วมงาน');
+    if (participationDraft.shopName !== null && !participationDraft.shopName.trim()) {
+      setActionError('กรอกชื่อร้าน');
+      return;
+    }
+    if (participationMode === 'bulk' && (parsedBooths.error || !parsedBooths.booths.length)) {
+      setActionError(parsedBooths.error || 'ใส่ช่วงรหัสบูธ เช่น A1-250');
       return;
     }
     if (!participationDraft.startDate || !participationDraft.endDate
@@ -420,8 +427,9 @@ export function EventManagementPage({
 
     setBusyAction('participation');
     try {
-      await gateway.saveParticipation({
+      const input = {
         participation_id: participationDraft.id,
+        ...(participationDraft.shopName !== null ? { shop_name: participationDraft.shopName.trim() } : {}),
         event_job_id: detail.event.id,
         shop_id: participationDraft.shopId,
         booth_number: participationDraft.boothNumber.trim(),
@@ -432,9 +440,26 @@ export function EventManagementPage({
         start_date: participationDraft.startDate,
         end_date: participationDraft.endDate,
         rents_tank_from_us: participationDraft.rentsTankFromUs,
-      });
+      };
+      let message = participationDraft.id ? 'อัปเดตร้านในงานแล้ว' : 'เพิ่มร้านในงานแล้ว';
+      if (participationDraft.id || (participationMode === 'single' && participationDraft.shopId)) {
+        await gateway.saveParticipation(input);
+      } else {
+        const booths = participationMode === 'bulk' ? parsedBooths.booths : [input.booth_number];
+        const result = await gateway.createEventShops(detail.event.id, creationRequestId, booths.map((booth) => ({
+          name: participationMode === 'bulk' ? '' : shopQuery.trim(),
+          booth_number: booth,
+          event_zone: input.event_zone,
+          landmark: input.landmark,
+          contact_name: input.contact_name,
+          contact_phone: input.contact_phone,
+          start_date: input.start_date,
+          end_date: input.end_date,
+        })));
+        message = `เพิ่ม ${result.created_count} ร้านแล้ว${result.skipped_count ? ` · ข้ามบูธที่มีอยู่แล้ว ${result.skipped_count} ร้าน` : ''}`;
+      }
       setParticipationDraft(null);
-      setSuccess(participationDraft.id ? 'อัปเดตร้านในงานแล้ว' : 'เพิ่มร้านในงานแล้ว');
+      setSuccess(message);
       await loadPage(detail.event.id);
     } catch (saveError) {
       setActionError(saveError instanceof Error ? saveError.message : 'บันทึกร้านไม่สำเร็จ');
@@ -559,13 +584,13 @@ export function EventManagementPage({
             <header><div><p className="eyebrow">{eventDraft.id ? 'แก้ไขฉบับร่าง' : 'งานใหม่'}</p><h2 id="event-editor-title">{eventDraft.id ? 'แก้ข้อมูลงานอีเวนต์' : 'สร้างงานอีเวนต์'}</h2></div><button aria-label="ปิด" disabled={busyAction === 'event'} onClick={closeEventEditor} type="button"><X size={20} /></button></header>
             <div className="event-modal__body">
               <fieldset><legend>ข้อมูลงาน</legend><div className="event-form-grid">
-                <label className="event-field event-field--wide"><span>ชื่องาน *</span><input autoFocus onChange={(event) => setEventDraft({ ...eventDraft, name: event.target.value })} value={eventDraft.name} /></label>
-                <label><span>ผู้จัดงาน *</span><input onChange={(event) => setEventDraft({ ...eventDraft, organizerName: event.target.value })} value={eventDraft.organizerName} /></label>
-                <label><span>สถานที่ *</span><input onChange={(event) => setEventDraft({ ...eventDraft, location: event.target.value })} value={eventDraft.location} /></label>
-                <label><span>ผู้ติดต่อหลัก *</span><input onChange={(event) => setEventDraft({ ...eventDraft, contactName: event.target.value })} value={eventDraft.contactName} /></label>
-                <label><span>เบอร์โทร *</span><input inputMode="tel" onChange={(event) => setEventDraft({ ...eventDraft, contactPhone: event.target.value })} value={eventDraft.contactPhone} /></label>
-                <label><span>วันเริ่ม *</span><input onChange={(event) => setEventDraft({ ...eventDraft, startDate: event.target.value })} type="date" value={eventDraft.startDate} /></label>
-                <label><span>วันสิ้นสุด *</span><input min={eventDraft.startDate} onChange={(event) => setEventDraft({ ...eventDraft, endDate: event.target.value })} type="date" value={eventDraft.endDate} /></label>
+                <label className="event-field event-field--wide"><span>ชื่องาน</span><input autoFocus onChange={(event) => setEventDraft({ ...eventDraft, name: event.target.value })} value={eventDraft.name} /></label>
+                <label><span>ผู้จัดงาน</span><input onChange={(event) => setEventDraft({ ...eventDraft, organizerName: event.target.value })} value={eventDraft.organizerName} /></label>
+                <label><span>สถานที่</span><input onChange={(event) => setEventDraft({ ...eventDraft, location: event.target.value })} value={eventDraft.location} /></label>
+                <label><span>ผู้ติดต่อหลัก</span><input onChange={(event) => setEventDraft({ ...eventDraft, contactName: event.target.value })} value={eventDraft.contactName} /></label>
+                <label><span>เบอร์โทร</span><input inputMode="tel" onChange={(event) => setEventDraft({ ...eventDraft, contactPhone: event.target.value })} value={eventDraft.contactPhone} /></label>
+                <label><span>วันเริ่ม *</span><input onChange={(event) => setEventDraft({ ...eventDraft, startDate: event.target.value })} type="date" required value={eventDraft.startDate} /></label>
+                <label><span>วันสิ้นสุด *</span><input min={eventDraft.startDate} onChange={(event) => setEventDraft({ ...eventDraft, endDate: event.target.value })} type="date" required value={eventDraft.endDate} /></label>
                 <label className="event-field event-field--wide"><span>หมายเหตุ</span><textarea onChange={(event) => setEventDraft({ ...eventDraft, notes: event.target.value })} rows={3} value={eventDraft.notes} /></label>
               </div></fieldset>
 
@@ -583,25 +608,59 @@ export function EventManagementPage({
           <form className="event-modal event-modal--participant" onSubmit={(event) => void saveParticipation(event)}>
             <header><div><p className="eyebrow">ร้านที่เข้าร่วม</p><h2 id="participation-editor-title">{participationDraft.id ? 'แก้รายละเอียดร้าน' : 'เพิ่มร้านในงาน'}</h2></div><button aria-label="ปิด" disabled={busyAction === 'participation'} onClick={closeParticipationEditor} type="button"><X size={20} /></button></header>
             <div className="event-modal__body">
-              {participationDraft.id ? <div className="event-selected-shop"><Storefront size={21} /><div><strong>{detail.participations.find((item) => item.id === participationDraft.id)?.shop_code} {detail.participations.find((item) => item.id === participationDraft.id)?.shop_name}</strong><small>{detail.event.status === 'published' ? 'เปลี่ยนร้านหลัง publish ไม่ได้' : 'ร้านที่เลือกไว้'}</small></div></div> : <div className="event-shop-picker">
-                <label className="event-search"><MagnifyingGlass size={18} /><span className="sr-only">ค้นหาร้าน</span><input onChange={(event) => setShopQuery(event.target.value)} placeholder="ค้นหารหัสหรือชื่อร้าน" value={shopQuery} /></label>
-                <div className="event-shop-results">
-                  {shopLoading ? <p><CircleNotch className="event-spin" size={18} />กำลังโหลดร้าน</p> : availableShops.map((shop) => <button aria-pressed={participationDraft.shopId === shop.id} key={shop.id} onClick={() => setParticipationDraft({ ...participationDraft, shopId: shop.id })} type="button"><span><strong>{shop.code}</strong>{shop.name}</span><small>{shop.contact_name || shop.contact_phone ? [shop.contact_name, shop.contact_phone].filter(Boolean).join(' · ') : 'ยังไม่มีข้อมูลติดต่อร้าน'}</small></button>)}
-                  {!shopLoading && availableShops.length === 0 ? <p>ไม่พบร้าน active ที่เพิ่มได้</p> : null}
+              {participationDraft.id && participationDraft.shopName !== null ? <label><span>ชื่อร้าน</span><input required onChange={(event) => setParticipationDraft({ ...participationDraft, shopName: event.target.value })} value={participationDraft.shopName} /></label> : participationDraft.id ? <div className="event-selected-shop"><Storefront size={21} /><div><strong>{detail.participations.find((item) => item.id === participationDraft.id)?.shop_code} {detail.participations.find((item) => item.id === participationDraft.id)?.shop_name}</strong><small>{detail.event.status === 'published' ? 'เปลี่ยนร้านหลัง publish ไม่ได้' : 'ร้านที่เลือกไว้'}</small></div></div> : <>
+                <div className="event-filter-tabs" role="group" aria-label="วิธีเพิ่มร้าน">
+                  <button aria-pressed={participationMode === 'single'} onClick={() => setParticipationMode('single')} type="button">เพิ่มทีละร้าน</button>
+                  <button aria-pressed={participationMode === 'bulk'} onClick={() => setParticipationMode('bulk')} type="button">เพิ่มหลายร้าน</button>
                 </div>
-              </div>}
+                {participationMode === 'bulk' ? <div className="event-bulk-entry">
+                  <label><span>ช่วงรหัสบูธ</span><textarea onChange={(event) => setBoothRanges(event.target.value)} placeholder={'A1-250\nF1-40\nT1-10'} rows={4} value={boothRanges} /></label>
+                  <p>ใส่หลายช่วงโดยขึ้นบรรทัดใหม่ เช่น A1-250, F1-40, T1-10 รวม 300 ร้าน</p>
+                  {parsedBooths.error ? <p role="alert" className="event-form-error">{parsedBooths.error}</p> : <p role="status">{parsedBooths.booths.length} ร้าน · ใช้รหัสบูธเป็นชื่อร้าน และข้ามบูธที่มีอยู่แล้วในตึก/โซนเดียวกัน</p>}
+                </div> : <div className="event-shop-picker" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setShopSuggestionsOpen(false); }}>
+                  <label htmlFor="event-shop-name">ชื่อร้าน</label><div className="event-shop-input">
+                    <input id="event-shop-name" ref={shopNameRef} onKeyDown={(event) => {
+                      if (event.key === 'ArrowDown') {
+                        event.preventDefault();
+                        setShopSuggestionsOpen(true);
+                        requestAnimationFrame(() => shopSuggestionsRef.current?.querySelector<HTMLButtonElement>('[role="option"]')?.focus());
+                      } else if (event.key === 'Escape' && shopSuggestionsOpen) {
+                        event.stopPropagation();
+                        setShopSuggestionsOpen(false);
+                      }
+                    }} aria-autocomplete="list" aria-controls="event-shop-suggestions" aria-expanded={shopSuggestionsOpen} autoComplete="off" onChange={(event) => { setShopQuery(event.target.value); setParticipationDraft({ ...participationDraft, shopId: '' }); setShopSuggestionsOpen(Boolean(event.target.value.trim())); }} placeholder="พิมพ์ชื่อร้านใหม่ หรือค้นหาร้านประจำ" role="combobox" value={shopQuery} />
+                    <button aria-label="เลือกร้านประจำ" aria-expanded={shopSuggestionsOpen} onClick={() => setShopSuggestionsOpen(!shopSuggestionsOpen)} type="button">⌄</button>
+                  </div>
+                  {shopSuggestionsOpen ? <div ref={shopSuggestionsRef} onKeyDown={(event) => {
+                    if (event.key === 'Escape') {
+                      event.stopPropagation();
+                      setShopSuggestionsOpen(false);
+                      shopNameRef.current?.focus();
+                    } else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+                      event.preventDefault();
+                      const options = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="option"]'));
+                      const index = options.indexOf(document.activeElement as HTMLButtonElement);
+                      options[(index + (event.key === 'ArrowDown' ? 1 : options.length - 1)) % options.length]?.focus();
+                    }
+                  }} className="event-shop-results" id="event-shop-suggestions" role="listbox" aria-label="ร้านประจำ">
+                    {shopLoading ? <p>กำลังโหลดร้าน</p> : availableShops.map((shop) => <button role="option" aria-selected={participationDraft.shopId === shop.id} key={shop.id} onClick={() => { setParticipationDraft({ ...participationDraft, shopId: shop.id }); setShopQuery(shop.name); setShopSuggestionsOpen(false); shopNameRef.current?.focus(); }} type="button"><span><strong>{shop.code}</strong>{shop.name}</span></button>)}
+                    {!shopLoading && availableShops.length === 0 ? <p>ไม่พบร้านประจำ ใช้ชื่อที่พิมพ์สร้างร้านใหม่ได้</p> : null}
+                  </div> : null}
+                  <small>{participationDraft.shopId ? 'เลือกร้านประจำแล้ว' : 'สร้างร้านใหม่ในงานนี้ · เว้นชื่อว่างเพื่อใช้รหัสบูธหรือชื่ออัตโนมัติ'}</small>
+                </div>}
+              </>}
               <fieldset><legend>รายละเอียดในงาน</legend><div className="event-form-grid">
-                <label><span>เลขบูธ</span><input onChange={(event) => setParticipationDraft({ ...participationDraft, boothNumber: event.target.value })} value={participationDraft.boothNumber} /></label>
-                <label><span>โซน</span><input onChange={(event) => setParticipationDraft({ ...participationDraft, eventZone: event.target.value })} value={participationDraft.eventZone} /></label>
+                {participationMode === 'single' ? <label><span>เลขบูธ</span><input onChange={(event) => setParticipationDraft({ ...participationDraft, boothNumber: event.target.value })} value={participationDraft.boothNumber} /></label> : null}
+                <label><span>ตึก / โซน</span><input onChange={(event) => setParticipationDraft({ ...participationDraft, eventZone: event.target.value })} value={participationDraft.eventZone} /></label>
                 <label className="event-field event-field--wide"><span>จุดสังเกต</span><input onChange={(event) => setParticipationDraft({ ...participationDraft, landmark: event.target.value })} value={participationDraft.landmark} /></label>
                 <label><span>ผู้ติดต่อเฉพาะงาน</span><input onChange={(event) => setParticipationDraft({ ...participationDraft, contactName: event.target.value })} placeholder="เว้นว่างเพื่อใช้ข้อมูลร้าน" value={participationDraft.contactName} /></label>
                 <label><span>เบอร์โทรเฉพาะงาน</span><input inputMode="tel" onChange={(event) => setParticipationDraft({ ...participationDraft, contactPhone: event.target.value })} placeholder="เว้นว่างเพื่อใช้ข้อมูลร้าน" value={participationDraft.contactPhone} /></label>
-                <label><span>วันเริ่มขาย *</span><input min={detail.event.start_date} max={detail.event.end_date} onChange={(event) => setParticipationDraft({ ...participationDraft, startDate: event.target.value })} type="date" value={participationDraft.startDate} /></label>
-                <label><span>วันสุดท้าย *</span><input min={participationDraft.startDate} max={detail.event.end_date} onChange={(event) => setParticipationDraft({ ...participationDraft, endDate: event.target.value })} type="date" value={participationDraft.endDate} /></label>
+                <label><span>วันเริ่มขาย *</span><input min={detail.event.start_date} max={detail.event.end_date} onChange={(event) => setParticipationDraft({ ...participationDraft, startDate: event.target.value })} type="date" required value={participationDraft.startDate} /></label>
+                <label><span>วันสุดท้าย *</span><input min={participationDraft.startDate} max={detail.event.end_date} onChange={(event) => setParticipationDraft({ ...participationDraft, endDate: event.target.value })} type="date" required value={participationDraft.endDate} /></label>
               </div></fieldset>
               {actionError ? <p className="event-form-error" role="alert"><WarningCircle size={17} />{actionError}</p> : null}
             </div>
-            <footer><button className="secondary-button" disabled={busyAction === 'participation'} onClick={closeParticipationEditor} type="button">ยกเลิก</button><button className="primary-button" disabled={busyAction === 'participation'} type="submit">{busyAction === 'participation' ? 'กำลังบันทึก...' : 'บันทึกร้าน'}</button></footer>
+            <footer><button className="secondary-button" disabled={busyAction === 'participation'} onClick={closeParticipationEditor} type="button">ยกเลิก</button><button className="primary-button" disabled={busyAction === 'participation'} type="submit">{busyAction === 'participation' ? 'กำลังบันทึก...' : participationMode === 'bulk' ? `สร้าง ${parsedBooths.booths.length} ร้าน` : 'บันทึกร้าน'}</button></footer>
           </form>
         </div>
       ) : null}
@@ -633,17 +692,17 @@ function EventConfigurationFields({ draft, onChange }: { draft: EventDraft; onCh
     });
   };
   return (
-    <fieldset><legend>นโยบายการชำระเงิน · เฉพาะแอดมิน</legend><div className="event-form-grid">
-      <label><span>ค่าเช่าถังใน config (บาท) *</span><input min="0.01" onChange={(event) => onChange({ ...draft, tankRentalUnitPrice: event.target.value })} step="0.01" type="number" value={draft.tankRentalUnitPrice} /></label>
+    <details className="event-payment-settings"><summary>ตั้งค่าการชำระเงิน (ไม่จำเป็นต้องกรอก)</summary><fieldset><legend>นโยบายการชำระเงิน · เฉพาะแอดมิน</legend><p className="event-settings-hint">เว้นค่าเช่าถังว่างเพื่อใช้ 100 บาท · หากไม่เลือกวิธีรับเงิน ระบบจะใช้เงินสด</p><div className="event-form-grid">
+      <label><span>ค่าเช่าถัง (บาท)</span><input min="0.01" onChange={(event) => onChange({ ...draft, tankRentalUnitPrice: event.target.value })} step="0.01" type="number" value={draft.tankRentalUnitPrice} /></label>
       <label><span>เงื่อนไขชำระ</span><input disabled value="สิ้นวัน (end_of_day)" /></label>
-      <div className="event-field event-field--wide"><span>วิธีรับเงินที่อนุญาต *</span><div className="event-check-grid">{PAYMENT_METHODS.map((method) => <label key={method.value}><input checked={draft.allowedPaymentMethods.includes(method.value)} onChange={() => toggleMethod(method.value)} type="checkbox" />{method.label}</label>)}</div></div>
-      <label className="event-field event-field--wide"><span>วิธีรับเงินเริ่มต้น *</span><select onChange={(event) => onChange({ ...draft, defaultPaymentMethod: event.target.value as PaymentMethod | '' })} value={draft.defaultPaymentMethod}><option value="">เลือกวิธีเริ่มต้น</option>{draft.allowedPaymentMethods.map((method) => <option key={method} value={method}>{paymentLabel(method)}</option>)}</select></label>
+      <div className="event-field event-field--wide"><span>วิธีรับเงินที่อนุญาต</span><div className="event-check-grid">{PAYMENT_METHODS.map((method) => <label key={method.value}><input checked={draft.allowedPaymentMethods.includes(method.value)} onChange={() => toggleMethod(method.value)} type="checkbox" />{method.label}</label>)}</div></div>
+      <label className="event-field event-field--wide"><span>วิธีรับเงินเริ่มต้น</span><select onChange={(event) => onChange({ ...draft, defaultPaymentMethod: event.target.value as PaymentMethod | '' })} value={draft.defaultPaymentMethod}><option value="">เลือกวิธีเริ่มต้น</option>{draft.allowedPaymentMethods.map((method) => <option key={method} value={method}>{paymentLabel(method)}</option>)}</select></label>
       {draft.allowedPaymentMethods.map((method) => {
         const referenceKey = PAYMENT_RULE_KEYS[method].reference;
         const evidenceKey = PAYMENT_RULE_KEYS[method].evidence;
         return <div className="event-payment-rule event-field--wide" key={method}><strong>{paymentLabel(method)}</strong><label><input checked={draft[referenceKey]} onChange={(event) => onChange({ ...draft, [referenceKey]: event.target.checked })} type="checkbox" />ต้องมีเลขอ้างอิง</label><label><input checked={draft[evidenceKey]} onChange={(event) => onChange({ ...draft, [evidenceKey]: event.target.checked })} type="checkbox" />ต้องมีหลักฐาน</label></div>;
       })}
-    </div></fieldset>
+    </div></fieldset></details>
   );
 }
 
@@ -670,6 +729,10 @@ function EventDetail({
 }) {
   const { event, configuration, participations, readiness } = detail;
   const status = displayStatus(event);
+  const sortedParticipations = [...participations].sort((a, b) => (
+    (a.event_zone ?? '').localeCompare(b.event_zone ?? '', 'th', { numeric: true })
+    || (a.booth_number ?? a.shop_code).localeCompare(b.booth_number ?? b.shop_code, 'th', { numeric: true })
+  ));
   const activeParticipations = participations.filter((participation) => participation.status === 'active');
   return (
     <div className="event-detail__content">
@@ -701,11 +764,11 @@ function EventDetail({
       </section>
 
       <section className="event-participations">
-        <header><div><h3>ร้านที่เข้าร่วม</h3><p>{activeParticipations.length} ร้านที่ใช้งาน</p></div>{event.status !== 'cancelled' && activeParticipations.length < 50 ? <button className="secondary-button" onClick={onAddParticipation} type="button"><Plus size={16} />เพิ่มร้าน</button> : null}</header>
+        <header><div><h3>ร้านที่เข้าร่วม</h3><p>{activeParticipations.length} ร้านที่ใช้งาน</p></div>{event.status !== 'cancelled' ? <button className="secondary-button" onClick={onAddParticipation} type="button"><Plus size={16} />เพิ่มร้าน</button> : null}</header>
         <div className="event-participation-list">
-          {participations.map((participation) => <article className={participation.status === 'cancelled' ? 'is-cancelled' : ''} key={participation.id}>
+          {sortedParticipations.map((participation) => <article className={participation.status === 'cancelled' ? 'is-cancelled' : ''} key={participation.id}>
             <span className="event-participation-icon"><Storefront size={21} /></span>
-            <div><strong>{participation.shop_code} · {participation.shop_name}</strong><small>{[participation.booth_number && `บูธ ${participation.booth_number}`, participation.event_zone, participation.landmark].filter(Boolean).join(' · ') || 'ยังไม่ระบุบูธ/โซน'}</small><small>{formatDate(participation.start_date)}–{formatDate(participation.end_date)} · {participation.contact_name || participation.shop_contact_name || 'ไม่มีผู้ติดต่อ'} {participation.contact_phone || participation.shop_contact_phone || ''}</small>{participation.status === 'cancelled' ? <em>ยกเลิก: {participation.cancellation_reason}</em> : null}</div>
+            <div><strong>{participation.shop_event_job_id ? '' : `${participation.shop_code} · `}{participation.shop_name}</strong><small>{[participation.booth_number && `บูธ ${participation.booth_number}`, participation.event_zone, participation.landmark].filter(Boolean).join(' · ') || 'ยังไม่ระบุบูธ/โซน'}</small><small>{formatDate(participation.start_date)}–{formatDate(participation.end_date)} · {participation.contact_name || participation.shop_contact_name || 'ไม่มีผู้ติดต่อ'} {participation.contact_phone || participation.shop_contact_phone || ''}</small>{participation.status === 'cancelled' ? <em>ยกเลิก: {participation.cancellation_reason}</em> : null}</div>
             {participation.status === 'active' && event.status !== 'cancelled' ? <div><button aria-label={`แก้ไข ${participation.shop_code} ${participation.shop_name}`} onClick={() => onEditParticipation(participation)} type="button"><PencilSimple size={16} /></button><button aria-label={`ยกเลิก ${participation.shop_code} ${participation.shop_name}`} onClick={() => onCancelParticipation(participation)} type="button"><X size={16} /></button></div> : null}
           </article>)}
           {participations.length === 0 ? <div className="event-participation-empty"><Storefront size={26} /><p>ยังไม่มีร้านในงานนี้</p><button onClick={onAddParticipation} type="button">เพิ่มร้านแรก</button></div> : null}

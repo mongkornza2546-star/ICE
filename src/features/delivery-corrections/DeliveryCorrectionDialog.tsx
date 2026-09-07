@@ -62,10 +62,10 @@ function correctionConfirmation(preview: CorrectionPreview, isClosed: boolean) {
   const newAmount = money.format(Number(preview.new_amount));
   const allocated = money.format(Number(preview.allocated_amount));
   const effect = Number(preview.refund_amount) > 0
-    ? `จะสร้างรายการรอคืนเงิน ${money.format(Number(preview.refund_amount))}`
+    ? `ยอดรับชำระจะเกินยอดบิล ${money.format(Number(preview.refund_amount))}`
     : Number(preview.outstanding_amount) > 0
       ? `ร้านจะมียอดค้างเพิ่ม ${money.format(Number(preview.outstanding_amount))}`
-      : 'บิลจะชำระครบและไม่มีรายการคืนเงิน';
+      : 'บิลจะชำระครบ';
   return `${isClosed ? 'ยอดปรับปรุง' : 'บิลใหม่'} ${newAmount} เงินที่รับและจัดสรรแล้ว ${allocated}\nหลังยืนยัน ${effect} ใบเสร็จเดิมยังคงอยู่`;
 }
 
@@ -292,7 +292,7 @@ export function DeliveryCorrectionDialog({
   const cancelBill = async () => {
     if (!context || !context.can_cancel || !reason.trim()) return setError('กรุณาระบุเหตุผลก่อนยกเลิกบิล');
     const cancellationEffect = Number(context.allocated_amount) > 0
-      ? `หลังยืนยันจะสร้างรายการรอคืนเงิน ${money.format(Number(context.allocated_amount))} ใบเสร็จเดิมยังคงอยู่`
+      ? `หลังยืนยันบิลส่งของจะถูกยกเลิก ใบเสร็จเดิมยอด ${money.format(Number(context.allocated_amount))} ยังคงอยู่`
       : 'หลังยืนยันบิลส่งของจะถูกยกเลิก โดยไม่ยกเลิกรับเงินอัตโนมัติ';
     if (!window.confirm(`ยืนยันยกเลิกบิล ${context.charge_number ?? ''} หรือไม่\n${cancellationEffect}`)) return;
     setSubmitting(true);
@@ -316,7 +316,7 @@ export function DeliveryCorrectionDialog({
       publishDataChange(['accounting', 'payment', 'receivable', 'refund', 'stock', 'pos']);
       await Promise.allSettled([Promise.resolve(onSuccess(context.payment_term === 'immediate'
         ? 'ยกเลิกรายการขายสดแล้ว สามารถบันทึกขายใหม่ได้'
-        : 'ยกเลิกบิลแล้ว ยอดที่รับชำระจะเข้าคิวคืนเงิน'))]);
+        : 'ยกเลิกบิลแล้ว'))]);
       onClose();
     } catch (saveError) {
       setError(getErrorMessage(saveError));
@@ -352,7 +352,7 @@ export function DeliveryCorrectionDialog({
         {preview ? <div className="delivery-correction-dialog__preview">
           <span><small>ยอดใหม่</small><strong>{money.format(Number(preview.new_amount))}</strong></span>
           <span><small>ยอดค้างใหม่</small><strong>{money.format(Number(preview.outstanding_amount))}</strong></span>
-          <span><small>ต้องคืนเงิน</small><strong>{money.format(Number(preview.refund_amount))}</strong></span>
+          <span><small>ยอดรับเกิน</small><strong>{money.format(Number(preview.refund_amount))}</strong></span>
         </div> : null}
         {preview?.approval_required ? <div className="employee-approval-request">
           <strong>{approvalStatus === 'approved' ? 'อนุมัติวงเงินแล้ว' : approvalStatus === 'pending' ? 'ส่งคำขอแล้ว รออนุมัติ' : 'ยอดใหม่เกินวงเงินเครดิต'}</strong>

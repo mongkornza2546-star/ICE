@@ -8,6 +8,7 @@ import type {
   EventManagementDetail,
   EventManagementGateway,
   EventMetadataInput,
+  EventNewShopsResult,
   EventOverview,
   EventParticipation,
   EventParticipationInput,
@@ -53,6 +54,7 @@ export const eventManagementGateway: EventManagementGateway = {
         .from('shops')
         .select('id, code, name, contact_name, contact_phone, status')
         .eq('status', 'active')
+        .is('event_job_id', null)
         .order('code')
         .range(offset, offset + SHOP_PAGE_SIZE - 1);
       if (error) throw new Error(getErrorMessage(error));
@@ -100,7 +102,8 @@ export const eventManagementGateway: EventManagementGateway = {
   },
 
   async saveParticipation(input: EventParticipationInput) {
-    return rpc<EventParticipation>('save_event_participation', {
+    return rpc<EventParticipation>(input.shop_name !== undefined ? 'save_event_participation_with_shop_name' : 'save_event_participation', {
+      ...(input.shop_name !== undefined ? { p_shop_name: input.shop_name } : {}),
       p_participation_id: input.participation_id,
       p_event_job_id: input.event_job_id,
       p_shop_id: input.shop_id,
@@ -112,6 +115,14 @@ export const eventManagementGateway: EventManagementGateway = {
       p_start_date: input.start_date,
       p_end_date: input.end_date,
       p_rents_tank_from_us: input.rents_tank_from_us,
+    });
+  },
+
+  async createEventShops(eventJobId, requestId, rows) {
+    return rpc<EventNewShopsResult>('create_event_shops', {
+      p_event_job_id: eventJobId,
+      p_request_id: requestId,
+      p_rows: rows,
     });
   },
 
