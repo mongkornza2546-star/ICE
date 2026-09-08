@@ -72,7 +72,7 @@ async function fetchAllPaymentHistory(serviceDate: string) {
       seenCursors.add(cursorKey);
     }
   } while (cursor);
-  return items;
+  return withPublicShopImages(items);
 }
 
 type FinancialOperationsDemoData = {
@@ -858,6 +858,7 @@ export function FinancialOperations({
             queue={queue}
             runId={runId}
           /> : employeeView === 'history' ? <PaymentHistorySection
+            key={historyDate}
             busy={busy}
             historyDate={historyDate}
             isManager={false}

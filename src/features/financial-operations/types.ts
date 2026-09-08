@@ -194,6 +194,13 @@ export type PaymentHistoryItem = {
   event_location?: string | null;
   event_zone?: string | null;
   event_booth?: string | null;
+  shop_id?: string | null;
+  image_path?: string | null;
+  image_url?: string | null;
+  building_id?: string | null;
+  building_name?: string | null;
+  zone_id?: string | null;
+  zone_name?: string | null;
   shops: { code: string; name: string } | null;
 };
 

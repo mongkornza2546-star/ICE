@@ -1,5 +1,18 @@
-import { CalendarBlank, CaretRight, ChartBar, Coins, CreditCard, FileText, Printer, UsersThree, WarningCircle, type Icon } from '@phosphor-icons/react';
-import { useMemo, useState, type CSSProperties } from 'react';
+import {
+  CalendarBlank,
+  CaretRight,
+  ChartBar,
+  Coins,
+  CreditCard,
+  FileText,
+  MagnifyingGlass,
+  Printer,
+  Storefront,
+  UsersThree,
+  WarningCircle,
+  type Icon,
+} from '@phosphor-icons/react';
+import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { shiftServiceDate } from '../../../lib/serviceDate';
 import type { Approval, DueDateRequest, PaymentHistoryItem, Receivable, ReceivableCharge } from '../types';
 import { money, paymentMethodLabel, receiptDateTime } from '../utils';
@@ -226,6 +239,88 @@ export function PaymentHistorySection({
   onPrintReceipt: (payment: PaymentHistoryItem) => void;
   onVoidPayment: (payment: PaymentHistoryItem) => void;
 }) {
+  const [buildingId, setBuildingId] = useState('');
+  const [zoneId, setZoneId] = useState('');
+  const [query, setQuery] = useState('');
+
+  const buildings = useMemo(() => {
+    const found = new Map<string, string>();
+    paymentHistory.forEach((payment) => {
+      if (payment.destination_kind !== 'event' && payment.building_id && payment.building_name) {
+        found.set(payment.building_id, payment.building_name);
+      }
+    });
+    return [...found]
+      .map(([id, name]) => ({ id, name }))
+      .sort((left, right) => left.name.localeCompare(right.name, 'th'));
+  }, [paymentHistory]);
+
+  const effectiveBuildingId = buildings.some((b) => b.id === buildingId) ? buildingId : '';
+
+  const zones = useMemo(() => {
+    const found = new Map<string, string>();
+    if (!effectiveBuildingId) return [];
+    paymentHistory.forEach((payment) => {
+      if (
+        payment.destination_kind !== 'event'
+        && payment.building_id === effectiveBuildingId
+        && payment.zone_id
+        && payment.zone_name
+      ) {
+        found.set(payment.zone_id, payment.zone_name);
+      }
+    });
+    return [...found]
+      .map(([id, name]) => ({ id, name }))
+      .sort((left, right) => left.name.localeCompare(right.name, 'th'));
+  }, [effectiveBuildingId, paymentHistory]);
+
+  const effectiveZoneId = effectiveBuildingId && zones.some((z) => z.id === zoneId) ? zoneId : '';
+
+  useEffect(() => {
+    if (buildingId && !buildings.some((building) => building.id === buildingId)) {
+      setBuildingId('');
+      setZoneId('');
+    }
+  }, [buildingId, buildings]);
+
+  useEffect(() => {
+    if (zoneId && (!effectiveBuildingId || !zones.some((zone) => zone.id === zoneId))) {
+      setZoneId('');
+    }
+  }, [effectiveBuildingId, zoneId, zones]);
+
+  const normalizedQuery = query.trim().toLocaleLowerCase('th-TH');
+  const visiblePayments = useMemo(() => {
+    return paymentHistory.filter((payment) => {
+      const matchesQuery = !normalizedQuery
+        || (payment.shops?.code ?? '').toLocaleLowerCase('th-TH').includes(normalizedQuery)
+        || (payment.shops?.name ?? '').toLocaleLowerCase('th-TH').includes(normalizedQuery)
+        || payment.receipt_number.toLocaleLowerCase('th-TH').includes(normalizedQuery)
+        || (payment.event_name ?? '').toLocaleLowerCase('th-TH').includes(normalizedQuery)
+        || (payment.event_location ?? '').toLocaleLowerCase('th-TH').includes(normalizedQuery)
+        || (payment.event_zone ?? '').toLocaleLowerCase('th-TH').includes(normalizedQuery)
+        || (payment.event_booth ?? '').toLocaleLowerCase('th-TH').includes(normalizedQuery);
+
+      if (!matchesQuery) return false;
+
+      if (!effectiveBuildingId) {
+        return true;
+      }
+      if (payment.destination_kind === 'event') {
+        return false;
+      }
+      const matchesBuilding = payment.building_id === effectiveBuildingId;
+      const matchesZone = !effectiveZoneId || payment.zone_id === effectiveZoneId;
+      return matchesBuilding && matchesZone;
+    });
+  }, [effectiveBuildingId, effectiveZoneId, normalizedQuery, paymentHistory]);
+
+  const handleBuildingChange = (nextBuildingId: string) => {
+    setBuildingId(nextBuildingId);
+    setZoneId('');
+  };
+
   return (
     <section className="financial-ops__section">
       <SectionTitle
@@ -246,9 +341,40 @@ export function PaymentHistorySection({
         /></label>
         <button disabled={historyDate >= serviceDate} onClick={() => onHistoryDateChange(shiftServiceDate(historyDate, 1))} type="button">วันถัดไป ›</button>
       </div>
-      {paymentHistory.length === 0 ? <p className="financial-ops__empty">ไม่มีรายการรับเงินในวันที่เลือก</p> : (
+      {paymentHistory.length > 0 ? (
+        <div className="financial-ops__queue-filters">
+          <label className="financial-ops__queue-search">
+            <MagnifyingGlass aria-hidden="true" size={20} />
+            <input
+              aria-label="ค้นหาร้านค้าหรือบิล"
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="ค้นหารหัสร้าน ชื่อร้าน หรือเลขที่ใบเสร็จ"
+              type="search"
+              value={query}
+            />
+          </label>
+          <label>ตึก
+            <select aria-label="เลือกตึก" onChange={(event) => handleBuildingChange(event.target.value)} value={effectiveBuildingId}>
+              <option value="">ทุกตึก</option>
+              {buildings.map((building) => <option key={building.id} value={building.id}>{building.name}</option>)}
+            </select>
+          </label>
+          <label>โซน
+            <select aria-label="เลือกโซน" disabled={!effectiveBuildingId} onChange={(event) => setZoneId(event.target.value)} value={effectiveZoneId}>
+              <option value="">ทุกโซน</option>
+              {zones.map((zone) => <option key={zone.id} value={zone.id}>{zone.name}</option>)}
+            </select>
+          </label>
+          <p className="financial-ops__filter-note">ตัวกรองตึก/โซนใช้กับร้านประจำ · ค้นหางานอีเวนต์ได้จากช่องค้นหา</p>
+        </div>
+      ) : null}
+      {paymentHistory.length === 0 ? (
+        <p className="financial-ops__empty">ไม่มีรายการรับเงินในวันที่เลือก</p>
+      ) : visiblePayments.length === 0 ? (
+        <p className="financial-ops__empty">ไม่พบรายการตามตัวกรอง</p>
+      ) : (
         <div className="financial-ops__list">
-          {paymentHistory.map((payment) => (
+          {visiblePayments.map((payment) => (
             <article className="financial-ops__history-item" key={payment.id}>
               <button
                 aria-label={`ดูบิล ${payment.receipt_number} ของ ${payment.shops?.name ?? 'ร้านค้า'}`}
@@ -256,9 +382,22 @@ export function PaymentHistorySection({
                 onClick={(event) => onOpenReceipt(payment, event.currentTarget)}
                 type="button"
               >
-                <span>
+                <span className="financial-ops__history-visual">
+                  {payment.image_url ? (
+                    <img alt="" aria-hidden="true" loading="lazy" src={payment.image_url} />
+                  ) : (
+                    <span><Storefront aria-hidden="true" size={28} weight="duotone" /></span>
+                  )}
+                </span>
+                <span className="financial-ops__history-info">
                   <strong>{payment.shops?.code ?? '—'} · {payment.shops?.name ?? 'ไม่พบร้าน'}</strong>
-                  {payment.destination_kind === 'event' ? <small>{[payment.event_name, payment.event_location, payment.event_zone, payment.event_booth && `บูธ ${payment.event_booth}`].filter(Boolean).join(' · ')}</small> : null}
+                  {payment.destination_kind === 'event' ? (
+                    <small>{[payment.event_name, payment.event_location, payment.event_zone, payment.event_booth && `บูธ ${payment.event_booth}`].filter(Boolean).join(' · ')}</small>
+                  ) : (
+                    (payment.building_name || payment.zone_name) ? (
+                      <small>{[payment.building_name, payment.zone_name].filter(Boolean).join(' · ')}</small>
+                    ) : null
+                  )}
                   <small>{payment.receipt_number} · {paymentMethodLabel(payment.payment_method)} · {receiptDateTime.format(new Date(payment.recorded_at))}{payment.status === 'voided' ? ` · ยกเลิก: ${payment.void_reason ?? '—'}` : ''}</small>
                 </span>
                 <span className="financial-ops__history-open-label">ดูบิล <CaretRight aria-hidden="true" size={19} /></span>

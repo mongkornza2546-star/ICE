@@ -1,5 +1,5 @@
 import { supabase } from '../../lib/supabase';
-import { withAsyncPublicImageUrls } from '../../lib/publicImageUrls';
+import { withAsyncPublicImageUrls, type PublicImagePathItem } from '../../lib/publicImageUrls';
 import { getHybridObjectUrls } from '../../lib/r2Storage';
 import type {
   PaymentProfile,
@@ -108,11 +108,11 @@ export function allocateOldestFirst(charges: QueueShop['charges'], amount: numbe
   return allocations;
 }
 
-export async function withPublicShopImages(shops: QueueShop[]) {
+export async function withPublicShopImages<T extends PublicImagePathItem>(items: T[]): Promise<T[]> {
   const client = supabase;
-  if (!client?.storage) return shops;
+  if (!client?.storage) return items;
   const bucket = client.storage.from(SHOP_IMAGE_BUCKET);
-  return withAsyncPublicImageUrls(shops, (paths) => getHybridObjectUrls(
+  return withAsyncPublicImageUrls(items, (paths) => getHybridObjectUrls(
     SHOP_IMAGE_BUCKET, paths, async (supabasePaths) => supabasePaths.map((path) => ({
       path,
       signedUrl: bucket.getPublicUrl(path).data.publicUrl,

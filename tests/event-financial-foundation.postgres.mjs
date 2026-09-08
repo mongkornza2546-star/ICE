@@ -175,7 +175,7 @@ try {
 
   const migrationDirectory = new URL('../supabase/migrations/', import.meta.url);
   const migrations = readdirSync(migrationDirectory)
-    .filter((name) => /^\d{4}_.+\.sql$/.test(name) && name <= '0173_allow_deferred_immediate_collection.sql')
+    .filter((name) => /^\d{4}_.+\.sql$/.test(name) && name <= '0182_payment_history_shop_image_and_location.sql')
     .sort();
   for (const migrationName of migrations) {
     try {
@@ -195,7 +195,7 @@ try {
       'authenticated', 'public.resolve_delivery_price(uuid,uuid,date)', 'execute'
     )
   `), 'f');
-  console.log('Migrations through 0173 apply cleanly and event delivery remains dark on PostgreSQL 16');
+  console.log('Migrations through 0182 apply cleanly and event delivery remains dark on PostgreSQL 16');
 
   const smokeOutput = psql(`
     set request.jwt.claim.sub = '10000000-0000-4000-8000-000000000001';
@@ -512,8 +512,8 @@ try {
         (clock_timestamp() at time zone 'Asia/Bangkok')::date,
         1, null, null
       );
-      if v_history -> 'items' -> 0 ->> 'destination_kind' <> 'event'
-        or v_history -> 'items' -> 0 ->> 'event_name' <> 'Pilot event' then
+      if v_history -> 'items' -> 0 ->> 'destination_kind' is distinct from 'event'
+        or v_history -> 'items' -> 0 ->> 'event_name' is distinct from 'Pilot event' then
         raise exception 'event payment history projection mismatch: %', v_history;
       end if;
 
@@ -593,6 +593,245 @@ try {
   `);
   assert.equal(smokeOutput.split('\n').at(-1), 'event:true:2:event:1');
   console.log('Event pilot, intake correction, v2 payment, integrity, documents, and accounting smoke check passed');
+
+  // Verify get_payment_history RPC contract with migration 0182 (shop images, locations, pagination, visibility)
+  psql(`
+    set request.jwt.claim.sub = '10000000-0000-4000-8000-000000000001';
+
+    -- Update existing event shop with an image path
+    update public.shops
+    set image_path = 'shops/event-shop.webp'
+    where id = '30000000-0000-4000-8000-000000000001';
+
+    -- Insert regular shop with building, zone, and image
+    set session_replication_role = replica;
+    insert into public.shops (
+      id, code, name, building_id, floor_or_zone, zone_id,
+      contact_name, contact_phone, stock_location_id, image_path
+    ) values (
+      '30000000-0000-4000-8000-000000000002', 'REG01', 'Regular Shop 1',
+      '20000000-0000-4000-8000-000000000001', 'Event hall',
+      '21000000-0000-4000-8000-000000000001', 'Contact 2', '0812345678',
+      '22000000-0000-4000-8000-000000000001', 'shops/reg-shop-1.webp'
+    );
+
+    -- Insert regular shop with building but unjoined zone (dangling zone_id) and NULL image
+    insert into public.shops (
+      id, code, name, building_id, floor_or_zone, zone_id,
+      contact_name, contact_phone, stock_location_id, image_path
+    ) values (
+      '30000000-0000-4000-8000-000000000003', 'REG02', 'Regular Shop 2',
+      '20000000-0000-4000-8000-000000000001', 'Hallway',
+      '21000000-0000-4000-8000-000000000099', 'Contact 3', '0812345679',
+      '22000000-0000-4000-8000-000000000001', null
+    );
+
+    -- Insert 3 payments on today's date:
+    -- Two with identical timestamps to test pagination ordering stability
+    do $$
+    declare
+      v_now timestamptz := clock_timestamp();
+    begin
+      -- Payment 2: Active regular payment for shop 2 (building, zone, image)
+      insert into public.payments (
+        id, shop_id, payment_method, received_amount, allocated_amount,
+        change_amount, status, recorded_at, recorded_by, receipt_number,
+        operation_kind, idempotency_key, request_fingerprint, recorded_role
+      ) values (
+        '90000000-0000-4000-8000-000000000002',
+        '30000000-0000-4000-8000-000000000002',
+        'cash', 150, 150, 0, 'active',
+        v_now,
+        '10000000-0000-4000-8000-000000000001',
+        'RC-REG-01',
+        'regular',
+        '90000000-0000-4000-8000-000000000002',
+        'test-fingerprint-2',
+        'admin'
+      );
+
+      -- Payment 3: Active regular payment for shop 3 (building, null zone, null image) with EQUAL recorded_at
+      insert into public.payments (
+        id, shop_id, payment_method, received_amount, allocated_amount,
+        change_amount, status, recorded_at, recorded_by, receipt_number,
+        operation_kind, idempotency_key, request_fingerprint, recorded_role
+      ) values (
+        '90000000-0000-4000-8000-000000000003',
+        '30000000-0000-4000-8000-000000000003',
+        'cash', 200, 200, 0, 'active',
+        v_now,
+        '10000000-0000-4000-8000-000000000001',
+        'RC-REG-02',
+        'regular',
+        '90000000-0000-4000-8000-000000000003',
+        'test-fingerprint-3',
+        'admin'
+      );
+
+      -- Payment 4: Voided regular payment for shop 2
+      insert into public.payments (
+        id, shop_id, payment_method, received_amount, allocated_amount,
+        change_amount, status, recorded_at, recorded_by, receipt_number,
+        operation_kind, void_reason, voided_at, voided_by, idempotency_key, request_fingerprint, recorded_role
+      ) values (
+        '90000000-0000-4000-8000-000000000004',
+        '30000000-0000-4000-8000-000000000002',
+        'bank_transfer', 75, 75, 0, 'voided',
+        v_now - interval '5 seconds',
+        '10000000-0000-4000-8000-000000000001',
+        'RC-REG-03',
+        'regular',
+        'Customer requested void', v_now, '10000000-0000-4000-8000-000000000001',
+        '90000000-0000-4000-8000-000000000004',
+        'test-fingerprint-4',
+        'admin'
+      );
+    end $$;
+    set session_replication_role = origin;
+
+    -- Verify complete get_payment_history behavior
+    do $$
+    declare
+      v_today date := (clock_timestamp() at time zone 'Asia/Bangkok')::date;
+      v_full jsonb;
+      v_p1 jsonb;
+      v_p2 jsonb;
+      v_reg1 jsonb;
+      v_reg2 jsonb;
+      v_event jsonb;
+      v_voided jsonb;
+      v_cursor_time timestamptz;
+      v_cursor_id uuid;
+      v_ids uuid[];
+    begin
+      -- 1. Full page fetch (all 4 payments: 1 event + 2 active regular + 1 voided regular)
+      v_full := public.get_payment_history(v_today, v_today, 50, null, null);
+
+      if jsonb_array_length(v_full -> 'items') <> 4 then
+        raise exception 'Expected 4 history items, got: %', jsonb_array_length(v_full -> 'items');
+      end if;
+
+      -- Check range_summary top-level contract
+      if (v_full #>> '{range_summary,visible_payment_count}')::int <> 4
+        or (v_full #>> '{range_summary,active_payment_count}')::int <> 3
+        or (v_full #>> '{range_summary,active_allocated_amount}')::numeric <> 400
+        or (v_full #>> '{range_summary,active_cash_amount}')::numeric <> 400
+        or (v_full #>> '{range_summary,active_non_cash_amount}')::numeric <> 0 then
+        raise exception 'range_summary mismatch: %', v_full -> 'range_summary';
+      end if;
+
+      -- Find items
+      select item into v_reg1 from jsonb_array_elements(v_full -> 'items') item
+      where item ->> 'id' = '90000000-0000-4000-8000-000000000002';
+
+      select item into v_reg2 from jsonb_array_elements(v_full -> 'items') item
+      where item ->> 'id' = '90000000-0000-4000-8000-000000000003';
+
+      select item into v_event from jsonb_array_elements(v_full -> 'items') item
+      where item ->> 'destination_kind' = 'event'
+        and item ->> 'event_name' = 'Pilot event';
+
+      select item into v_voided from jsonb_array_elements(v_full -> 'items') item
+      where item ->> 'id' = '90000000-0000-4000-8000-000000000004';
+
+      -- Verify regular payment with building, zone, and image
+      if v_reg1 ->> 'shop_id' is distinct from '30000000-0000-4000-8000-000000000002'
+        or v_reg1 ->> 'image_path' is distinct from 'shops/reg-shop-1.webp'
+        or v_reg1 ->> 'building_id' is distinct from '20000000-0000-4000-8000-000000000001'
+        or v_reg1 ->> 'building_name' is distinct from 'Event building'
+        or v_reg1 ->> 'zone_id' is distinct from '21000000-0000-4000-8000-000000000001'
+        or v_reg1 ->> 'zone_name' is distinct from 'Event hall'
+        or v_reg1 #>> '{shops,code}' is distinct from 'REG01'
+        or v_reg1 #>> '{shops,name}' is distinct from 'Regular Shop 1'
+        or v_reg1 ->> 'status' is distinct from 'active' then
+        raise exception 'regular payment 1 projection mismatch: %', v_reg1;
+      end if;
+
+      -- Verify regular payment with dangling zone (null zone_name) and null image
+      if v_reg2 ->> 'shop_id' is distinct from '30000000-0000-4000-8000-000000000003'
+        or v_reg2 -> 'image_path' is distinct from 'null'::jsonb
+        or v_reg2 ->> 'building_id' is distinct from '20000000-0000-4000-8000-000000000001'
+        or v_reg2 ->> 'building_name' is distinct from 'Event building'
+        or v_reg2 ->> 'zone_id' is distinct from '21000000-0000-4000-8000-000000000099'
+        or v_reg2 -> 'zone_name' is distinct from 'null'::jsonb
+        or v_reg2 #>> '{shops,code}' is distinct from 'REG02'
+        or v_reg2 #>> '{shops,name}' is distinct from 'Regular Shop 2' then
+        raise exception 'regular payment 2 projection mismatch: %', v_reg2;
+      end if;
+
+      -- Verify event payment has null building_id/zone_id, snapshot text as building/zone names, and shop image
+      if v_event ->> 'destination_kind' is distinct from 'event'
+        or v_event -> 'building_id' is distinct from 'null'::jsonb
+        or v_event -> 'zone_id' is distinct from 'null'::jsonb
+        or v_event ->> 'building_name' is distinct from 'Hall A'
+        or v_event ->> 'zone_name' is distinct from 'Food'
+        or v_event ->> 'event_name' is distinct from 'Pilot event'
+        or v_event ->> 'event_location' is distinct from 'Hall A'
+        or v_event ->> 'event_zone' is distinct from 'Food'
+        or v_event ->> 'event_booth' is distinct from 'A1'
+        or v_event ->> 'image_path' is distinct from 'shops/event-shop.webp'
+        or v_event ->> 'shop_id' is distinct from '30000000-0000-4000-8000-000000000001' then
+        raise exception 'event payment projection mismatch: %', v_event;
+      end if;
+
+      -- Verify voided payment retains status and void_reason
+      if v_voided ->> 'status' is distinct from 'voided'
+        or v_voided ->> 'void_reason' is distinct from 'Customer requested void' then
+        raise exception 'voided payment projection mismatch: %', v_voided;
+      end if;
+
+      -- 2. Pagination test across equal timestamps (page_size = 2)
+      v_p1 := public.get_payment_history(v_today, v_today, 2, null, null);
+      if jsonb_array_length(v_p1 -> 'items') <> 2 then
+        raise exception 'Expected 2 items on page 1, got: %', jsonb_array_length(v_p1 -> 'items');
+      end if;
+      if v_p1 -> 'next_cursor' is null then
+        raise exception 'Page 1 missing next_cursor';
+      end if;
+
+      v_cursor_time := (v_p1 #>> '{next_cursor,recorded_at}')::timestamptz;
+      v_cursor_id := (v_p1 #>> '{next_cursor,id}')::uuid;
+
+      v_p2 := public.get_payment_history(v_today, v_today, 2, v_cursor_time, v_cursor_id);
+      if jsonb_array_length(v_p2 -> 'items') <> 2 then
+        raise exception 'Expected 2 items on page 2, got: %', jsonb_array_length(v_p2 -> 'items');
+      end if;
+
+      -- Check range_summary stays constant across pages
+      if v_p1 -> 'range_summary' <> v_p2 -> 'range_summary'
+        or v_p1 -> 'range_summary' <> v_full -> 'range_summary' then
+        raise exception 'range_summary differed across pages: % vs %', v_p1 -> 'range_summary', v_p2 -> 'range_summary';
+      end if;
+
+      -- Verify no duplicate or missing IDs across pages
+      select array_agg((item ->> 'id')::uuid) into v_ids
+      from (
+        select jsonb_array_elements(v_p1 -> 'items') as item
+        union all
+        select jsonb_array_elements(v_p2 -> 'items') as item
+      ) combined;
+
+      if array_length(v_ids, 1) <> 4 or array_length(array(select distinct unnest(v_ids)), 1) <> 4 then
+        raise exception 'Pagination produced duplicates or missing items across equal timestamps: %', v_ids;
+      end if;
+    end $$;
+
+    -- 3. Visibility test for unassigned courier
+    set request.jwt.claim.sub = '10000000-0000-4000-8000-000000000002';
+    do $$
+    declare
+      v_today date := (clock_timestamp() at time zone 'Asia/Bangkok')::date;
+      v_courier_history jsonb;
+    begin
+      v_courier_history := public.get_payment_history(v_today, v_today, 50, null, null);
+      if jsonb_array_length(v_courier_history -> 'items') <> 0
+        or (v_courier_history #>> '{range_summary,visible_payment_count}')::int <> 0 then
+        raise exception 'Unassigned courier unexpectedly saw payment history: %', v_courier_history;
+      end if;
+    end $$;
+    set request.jwt.claim.sub = '10000000-0000-4000-8000-000000000001';
+  `);
+  console.log('Payment history shop image, location, pagination, and visibility contract verified on PostgreSQL 16');
 } finally {
   docker(['rm', '-f', container]);
 }

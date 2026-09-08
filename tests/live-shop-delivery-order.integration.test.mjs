@@ -54,10 +54,27 @@ test('open daily cards use current zone delivery order while preserving snapshot
   const cards = async () => (await db.query(`select shop_code, sequence_no from public.get_round_shop_cards('${id(1)}')`)).rows;
   assert.deepEqual((await cards()).map((card) => card.shop_code), ['BB43', 'BB75', 'BB76', 'BB01']);
   await db.exec(migration);
+  await db.exec(readMigration('0181_live_shop_code_numeric_order.sql'));
   assert.deepEqual((await cards()).map((card) => card.shop_code), ['BB75', 'BB43', 'BB76', 'BB01']);
   await db.exec(`update public.shops set delivery_sequence = 3 where code = 'BB75'`);
   assert.deepEqual((await cards()).map((card) => card.shop_code), ['BB43', 'BB75', 'BB76', 'BB01']);
   await db.exec(`update public.shops set delivery_sequence = 1 where code = 'BB75'`);
+  // Reproduce the POS fallback when no delivery order has been configured.
+  await db.exec(`update public.shops set code = case code
+    when 'BB43' then 'BB5' when 'BB75' then 'BB57' when 'BB76' then 'BB6' else code end,
+    delivery_sequence = null where zone_id = '${id(3)}';
+    update public.round_stops stop set shop_code_snapshot = shop.code
+    from public.shops shop where shop.id = stop.shop_id;`);
+  assert.deepEqual((await cards()).map((card) => card.shop_code), ['BB5', 'BB6', 'BB57', 'BB01']);
+  // Equal configured orders use the same numeric fallback.
+  await db.exec(`update public.shops set delivery_sequence = 2 where zone_id = '${id(3)}'`);
+  assert.deepEqual((await cards()).map((card) => card.shop_code), ['BB5', 'BB6', 'BB57', 'BB01']);
+  await db.exec(`update public.shops set delivery_sequence = 1 where code = 'BB57'`);
+  assert.deepEqual((await cards()).map((card) => card.shop_code), ['BB57', 'BB5', 'BB6', 'BB01']);
+  await db.exec(`update public.shops set code = case code
+    when 'BB5' then 'BB43' when 'BB57' then 'BB75' when 'BB6' then 'BB76' else code end;
+    update public.round_stops stop set shop_code_snapshot = shop.code
+    from public.shops shop where shop.id = stop.shop_id;`);
   for (const update of ["status = 'closed'", "status = 'open', round_type = 'special'", "round_type = 'daily', cancelled_at = now()"]) {
     await db.exec(`update public.delivery_rounds set ${update}`);
     assert.deepEqual((await cards()).map((card) => card.shop_code), ['BB43', 'BB75', 'BB76', 'BB01']);
