@@ -212,6 +212,8 @@
 .accounting-financial-cards article { display: grid; gap: 7px; border: 1px solid #dde7e1; border-radius: 13px; background: #fff; padding: 15px; }
 .accounting-financial-cards span { color: #63766d; font-size: .8rem; }
 .accounting-financial-cards strong { color: #173f32; font-size: 1.15rem; }
+.accounting-daily-matrix__casual > td, .accounting-daily-matrix__casual > th { background: #eef7ff; }
+.accounting-daily-matrix__casual small { display: block; margin-top: 4px; color: #536b83; font-weight: 400; white-space: normal; min-width: 120px; }
 .accounting-reconciliation__table { display: grid; gap: 10px; }
 .accounting-reconciliation__table h3, .accounting-reconciliation h2 { margin: 0; }
 .accounting-review-list { display: grid; gap: 10px; }

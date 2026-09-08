@@ -386,6 +386,13 @@ export function EmployeeCasualCustomerPage({
       </div> : null}
 
       {loading ? <section className="employee-entry-section employee-casual-page__loading">กำลังโหลดสต๊อกและประวัติ...</section> : context ? <>
+        {context.loose_stock?.length ? <section className="employee-entry-section" aria-label="ยอดแบ่งขายสะสม">
+          <h2>ยอดแบ่งขายสะสมวันนี้</h2>
+          {context.loose_stock.map((item) => {
+            const ice = context.items.find((ice) => ice.ice_type_id === item.ice_type_id);
+            return <p key={item.ice_type_id}>{ice?.name} · สะสม {money.format(item.sales_amount)} · นับออก {item.quantity} {ice?.unit} · เศษ {money.format(item.remainder_amount)} / {money.format(item.unit_price)} ต่อ{ice?.unit}</p>;
+          })}
+        </section> : null}
         <div className="employee-pos-layout employee-pos-layout--casual">
           <section className="employee-pos-products" aria-labelledby="casual-sale-title">
             <div className="employee-pos-heading">
@@ -440,7 +447,7 @@ export function EmployeeCasualCustomerPage({
             </> : <div className="employee-pos-keypad-empty">
               <IceCream aria-hidden="true" size={34} />
               <strong>เลือกชนิดน้ำแข็งเพื่อระบุจำนวน (ถ้ามี)</strong>
-              <span>ไม่กรอกจำนวน ระบบจะบันทึกเป็น 0</span>
+              <span>ไม่กรอกจำนวน ยอดขายจะสะสมตามชนิดน้ำแข็ง เมื่อครบราคากลางจะนับออก 1 ถุง แจกฟรีต้องระบุจำนวนเพื่อหักสต๊อก</span>
             </div>}
           </section>
         </div>
@@ -464,7 +471,7 @@ export function EmployeeCasualCustomerPage({
         <section className="employee-history employee-casual-history" aria-labelledby="casual-history-title">
           <div className="employee-casual-history__heading"><div><Receipt size={22} /><h2 id="casual-history-title">ประวัติวันนี้</h2></div><span>{context.history.length} รายการ</span></div>
           {context.history.length === 0 ? <p className="employee-casual-history__empty">ยังไม่มีรายการขาจรวันนี้</p> : <div className="employee-casual-history__list">{context.history.map((item) => <article className={item.status === 'voided' ? 'is-voided' : ''} key={item.id}>
-            <div><strong>{item.ice_type_name} · {item.fulfillment_mode === 'loose' ? `0 ${item.ice_type_unit}` : `${Number(item.quantity).toLocaleString('th-TH')} ${item.ice_type_unit}`}</strong><small>{dateTime.format(new Date(item.recorded_at))} · {item.transaction_kind === 'paid' ? paymentLabels[item.payment_method!] : 'แจกฟรี'}{item.receipt_number ? ` · ${item.receipt_number}` : ''}</small>{item.status === 'voided' ? <em>ยกเลิกแล้ว · {item.void_reason}</em> : null}</div>
+            <div><strong>{item.ice_type_name} · {item.fulfillment_mode === 'loose' ? item.transaction_kind === 'paid' ? 'แบ่งขายสะสมตามยอดเงิน' : 'แจกไม่ระบุจำนวน' : `${Number(item.quantity).toLocaleString('th-TH')} ${item.ice_type_unit}`}</strong><small>{dateTime.format(new Date(item.recorded_at))} · {item.transaction_kind === 'paid' ? paymentLabels[item.payment_method!] : 'แจกฟรี'}{item.receipt_number ? ` · ${item.receipt_number}` : ''}</small>{item.status === 'voided' ? <em>ยกเลิกแล้ว · {item.void_reason}</em> : null}</div>
             <b>{item.transaction_kind === 'paid' ? money.format(Number(item.sale_amount)) : 'ฟรี'}</b>
             <div className="employee-casual-history__actions">{item.receipt_number ? <button onClick={() => { void printReceipt(item.id); }} type="button"><Printer size={16} />พิมพ์</button> : null}{item.status === 'active' && !context.stock_closed ? <button onClick={() => setVoidTarget(item)} type="button">ยกเลิก</button> : null}</div>
           </article>)}</div>}
@@ -474,7 +481,7 @@ export function EmployeeCasualCustomerPage({
       {voidTarget ? <div className="employee-casual-void" role="dialog" aria-modal="true" aria-labelledby="casual-void-title">
         <section>
           <h2 id="casual-void-title">ยกเลิกรายการขาจร</h2>
-          <p>{voidTarget.ice_type_name} {voidTarget.fulfillment_mode === 'loose' ? `0 ${voidTarget.ice_type_unit}` : `${Number(voidTarget.quantity).toLocaleString('th-TH')} ${voidTarget.ice_type_unit}`}{voidTarget.transaction_kind === 'paid' ? ` · คืนเงินเต็มจำนวน ${money.format(Number(voidTarget.sale_amount))}` : ''}</p>
+          <p>{voidTarget.ice_type_name} {voidTarget.fulfillment_mode === 'loose' ? 'ไม่ระบุจำนวน · คำนวณยอดสะสมใหม่หลังยกเลิก' : `${Number(voidTarget.quantity).toLocaleString('th-TH')} ${voidTarget.ice_type_unit}`}{voidTarget.transaction_kind === 'paid' ? ` · คืนเงินเต็มจำนวน ${money.format(Number(voidTarget.sale_amount))}` : ''}</p>
           <label><span>เหตุผลการยกเลิก</span><textarea autoFocus onChange={(event) => setVoidReason(event.target.value)} value={voidReason} /></label>
           {voidTarget.transaction_kind === 'paid' ? <>
             <div className="employee-casual-methods">{(['cash', 'bank_transfer'] as PaymentMethod[]).map((method) => <button className={refundMethod === method ? 'is-selected' : ''} key={method} onClick={() => setRefundMethod(method)} type="button">คืน{paymentLabels[method]}</button>)}</div>

@@ -415,6 +415,7 @@ export function AccountingPage({ userRole = 'round_lead', demoMode = false }: { 
       const { dates } = getDateRange(fromDate, toDate);
       const rows: AccountingShopSummaryRow[] = [];
       const dailyRows: AccountingShopDailyResponse['rows'] = [];
+      let casualDays: AccountingShopDailyResponse['casual_days'];
       const iceTypes = new Map<string, AccountingShopDailyResponse['ice_types'][number]>();
       const seenShopIds = new Set<string>();
       let expectedTotalCount: number | null = null;
@@ -441,7 +442,7 @@ export function AccountingPage({ userRole = 'round_lead', demoMode = false }: { 
       } while (rows.length < (expectedTotalCount ?? 0));
       if (rows.length !== expectedTotalCount) throw new Error(SHOP_EXPORT_RETRY_MESSAGE);
 
-      for (let offset = 0; offset < rows.length; offset += SHOP_EXPORT_PAGE_SIZE) {
+      for (let offset = 0; offset < Math.max(rows.length, 1); offset += SHOP_EXPORT_PAGE_SIZE) {
         const shopPage = rows.slice(offset, offset + SHOP_EXPORT_PAGE_SIZE);
         const dailyResponse = await supabase.rpc('get_accounting_shop_daily_matrix', {
           p_from_date: fromDate, p_to_date: toDate,
@@ -449,6 +450,8 @@ export function AccountingPage({ userRole = 'round_lead', demoMode = false }: { 
         });
         if (dailyResponse.error) throw dailyResponse.error;
         const dailyPage = dailyResponse.data as unknown as AccountingShopDailyResponse;
+        if (offset === 0) casualDays = dailyPage.casual_days;
+        else if (JSON.stringify(casualDays) !== JSON.stringify(dailyPage.casual_days)) throw new Error(SHOP_EXPORT_RETRY_MESSAGE);
         validateShopDailyExportPage(shopPage, dailyPage, dates);
         dailyPage.ice_types.forEach((iceType) => {
           const existing = iceTypes.get(iceType.ice_type_id);
@@ -460,7 +463,7 @@ export function AccountingPage({ userRole = 'round_lead', demoMode = false }: { 
         const rowsByShop = new Map(dailyPage.rows.map((row) => [row.shop_id, row]));
         dailyRows.push(...shopPage.map((shop) => rowsByShop.get(shop.shop_id)!));
       }
-      await exportAccountingShopDaily(rows, { ice_types: [...iceTypes.values()], rows: dailyRows }, fromDate, toDate);
+      await exportAccountingShopDaily(rows, { ice_types: [...iceTypes.values()], rows: dailyRows, casual_days: casualDays }, fromDate, toDate);
     } catch (exportError) {
       setError(getErrorMessage(exportError));
     } finally {
@@ -853,10 +856,33 @@ function ShopDailyMatrix({ collapsedGroups, daily, data, fromDate, grouped, onOp
         </tr>
         <tr>{dates.flatMap((date) => [
           ...daily.ice_types.map((iceType) => <th key={`${date}:${iceType.ice_type_id}`} title={iceType.name}>{iceType.name}</th>),
-          <th key={`${date}:sales`}>ยอดขาย</th>, <th key={`${date}:cash`}>รับจริงรายร้าน</th>,
+          <th key={`${date}:sales`}>ยอดขาย</th>, <th key={`${date}:cash`}>รับเงินจริง</th>,
         ])}</tr>
       </thead>
       <tbody>
+        <tr className="accounting-daily-matrix__casual">
+          <td className="accounting-daily-matrix__sequence">—</td>
+          <th className="accounting-daily-matrix__shop">ลูกค้าขาจร<small>รวมทุกจุดถือครอง · ไม่ขึ้นกับตัวกรองร้าน/โซน</small></th>
+          {dates.map((date) => {
+            const day = daily.casual_days?.find((item) => item.service_date === date);
+            return <Fragment key={`casual:${date}`}>
+              {daily.ice_types.map((iceType) => {
+                const item = day?.items.find((item) => item.ice_type_id === iceType.ice_type_id);
+                return <td className="accounting-daily-matrix__quantity" key={iceType.ice_type_id} aria-label={`ลูกค้าขาจร ${date} ${iceType.name}`}>
+                  {day ? number.format(Number(item?.quantity ?? 0)) : '—'}
+                  {Number(item?.automatic_quantity) > 0 ? <small>รวมจากยอดเงิน {number.format(item!.automatic_quantity)} {iceType.unit}</small> : null}
+                  {Number(item?.free_quantity) > 0 ? <small>รวมแจกฟรี {number.format(item!.free_quantity)} {iceType.unit}</small> : null}
+                  {Number(item?.loose_count) > 0 ? <small>แบ่งขาย/แจก {item!.loose_count} ครั้ง · {money.format(item!.loose_sales_amount)}</small> : null}
+                  {Number(item?.remainder_amount) > 0 ? <small>ยังไม่ครบถุง {money.format(item!.remainder_amount)}</small> : null}
+                  {Number(item?.unconverted_amount) > 0 ? <small>ยังไม่แปลงเป็นถุง {money.format(item!.unconverted_amount!)} · รายการเดิมปิดวันแล้วหรือไม่มีราคากลาง</small> : null}
+                </td>;
+              })}
+              <td className="accounting-daily-matrix__money" aria-label={`ลูกค้าขาจร ${date} ยอดขาย`}>{day ? money.format(day.sales_amount) : '—'}</td>
+              <td className="accounting-daily-matrix__money" aria-label={`ลูกค้าขาจร ${date} รับเงินจริง`}>{day ? money.format(day.cash_received) : '—'}{day && day.cash_refunded > 0 ? <small>คืนเงิน {money.format(day.cash_refunded)} · สุทธิ {money.format(day.cash_received - day.cash_refunded)}</small> : null}</td>
+            </Fragment>;
+          })}
+          <td>—</td><td>—</td><td>—</td><td>จ่ายทันที / แจกฟรี</td><td className="accounting-daily-matrix__note">{daily.casual_days ? 'จำนวนรวมถุงที่ระบุและถุงที่ครบราคากลางต่อวัน/จุดถือครอง เศษยอดและแจกฟรีไม่ระบุจำนวนยังต้องตรวจนับ' : 'ยังไม่มีข้อมูลขาจรรายวันจากระบบ'}</td>
+        </tr>
         {!data.rows.length ? <tr><td colSpan={totalColumnCount}>ไม่พบร้านที่ตรงกับตัวกรอง</td></tr> : !grouped ? data.rows.map(renderShopRow) : [...groups.entries()].map(([key, rows]) => {
           const group = derivedShopGroup(rows);
           const collapsed = collapsedGroups.has(key);
@@ -893,6 +919,7 @@ function ShopDailyMatrix({ collapsedGroups, daily, data, fromDate, grouped, onOp
       </tbody>
     </table></div>
     <div className="accounting-daily-matrix__legend" aria-label="ความหมายสถานะ">
+      <span>แถวลูกค้าขาจรรวมยอดทุกจุดถือครองในช่วงวันที่เลือก ไม่รวมซ้ำในยอดของกลุ่มร้าน</span>
       {(Object.entries(dailyStatusLabels) as Array<[AccountingShopDailyStatus, string]>).filter(([status]) => status !== 'purchased').map(([status, label]) => <span key={status}><i className={`accounting-daily-status accounting-daily-status--${status}`} />{label}</span>)}
     </div>
   </div>;

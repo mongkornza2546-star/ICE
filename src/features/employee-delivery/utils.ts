@@ -62,3 +62,11 @@ export function employeeErrorMessage(error: unknown) {
   if (normalized.includes('fetch') || normalized.includes('network') || normalized.includes('timeout')) return 'เชื่อมต่อไม่สำเร็จ ตรวจอินเทอร์เน็ตแล้วลองอีกครั้ง';
   return message || 'เกิดข้อผิดพลาด กรุณาลองอีกครั้ง';
 }
+
+export function isBoothSameAsName(shopName?: string | null, boothNumber?: string | null): boolean {
+  if (!shopName || !boothNumber) return false;
+  const name = shopName.trim().toLowerCase();
+  const booth = boothNumber.trim().toLowerCase();
+  return name === booth || name === `บูธ ${booth}` || name === `บูธ${booth}`;
+}
+

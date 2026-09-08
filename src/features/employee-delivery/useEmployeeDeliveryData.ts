@@ -486,7 +486,7 @@ export function useEmployeeDeliveryData({
     }).sort((left, right) => destinationKind === 'event'
       ? (left.booth_number ?? '').localeCompare(right.booth_number ?? '', 'th', { numeric: true })
         || compareShopCodes(left.shop_code, right.shop_code)
-      : compareShopCodes(left.shop_code, right.shop_code));
+      : left.sequence_no - right.sequence_no || compareShopCodes(left.shop_code, right.shop_code));
   }, [cards, destinationKind, query, selectedBuildingId, selectedEventJobId, selectedZone]);
 
   const setDestinationKind = (kind: 'regular' | 'event') => {

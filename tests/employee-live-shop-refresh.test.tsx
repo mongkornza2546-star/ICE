@@ -630,6 +630,54 @@ describe('employee live shop loading', () => {
     nowSpy.mockRestore();
   });
 
+  it('orders shops by delivery sequence and updates the order after a catalog refresh', async () => {
+    let catalogCards = [{ ...shopCard, sequence_no: 2 }, { ...newShopCard, sequence_no: 1 }];
+    const loadShopCards = vi.fn().mockImplementation(async () => catalogCards);
+    const gateway = {
+      loadReferenceData: vi.fn().mockResolvedValue({
+        rounds: [{
+          id: 'round-1',
+          service_date: '2026-08-11',
+          name: 'งานประจำวัน',
+          round_type: 'daily',
+          status: 'open',
+          opened_at: '2026-08-11T01:00:00Z',
+        }],
+        iceTypes: [{ id: 'ice-1', code: 'ICE', name: 'น้ำแข็ง', unit: 'ถุง' }],
+      }),
+      loadShopCards,
+      loadEmployeeStockState: vi.fn(),
+      recordEmployeeStockTransfer: vi.fn(),
+      recordEmployeeStockReturn: vi.fn(),
+      recordEmployeeStockDamage: vi.fn(),
+      recordDelivery: vi.fn(),
+    } as unknown as EmployeeDeliveryGateway;
+    const view = render(<EmployeeDeliveryWorkspace
+      gateway={gateway}
+      requestScope="employee-reactivation"
+      serviceDate="2026-08-11"
+    />);
+
+    await screen.findByText(shopCard.shop_name);
+    expect(screen.getAllByRole('button', { name: /^เลือกร้าน / }).map((button) => button.textContent)).toEqual([expect.stringContaining(newShopCard.shop_name), expect.stringContaining(shopCard.shop_name)]);
+    view.rerender(<EmployeeDeliveryWorkspace
+      gateway={gateway}
+      isActive={false}
+      requestScope="employee-reactivation"
+      serviceDate="2026-08-11"
+    />);
+    catalogCards = [shopCard, newShopCard];
+    view.rerender(<EmployeeDeliveryWorkspace
+      gateway={gateway}
+      isActive
+      requestScope="employee-reactivation"
+      serviceDate="2026-08-11"
+    />);
+
+    await waitFor(() => expect(screen.getAllByRole('button', { name: /^เลือกร้าน / }).map((button) => button.textContent)).toEqual([expect.stringContaining(shopCard.shop_name), expect.stringContaining(newShopCard.shop_name)]));
+    expect(loadShopCards).toHaveBeenNthCalledWith(2, 'round-1', { forceRefresh: true });
+  });
+
   it('reconciles the shop catalog when an inactive workspace becomes active again', async () => {
     let catalogCards = [shopCard];
     const loadShopCards = vi.fn().mockImplementation(async () => catalogCards);

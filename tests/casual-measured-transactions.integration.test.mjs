@@ -15,6 +15,10 @@ const looseTransactions = readFileSync(
   new URL('../supabase/migrations/0155_casual_loose_transactions.sql', import.meta.url),
   'utf8',
 );
+const aggregateStock = readFileSync(
+  new URL('../supabase/migrations/0107_daily_aggregate_stock.sql', import.meta.url),
+  'utf8',
+);
 
 const USER_ID = '10000000-0000-4000-8000-000000000001';
 const OTHER_USER_ID = '10000000-0000-4000-8000-000000000002';
@@ -212,6 +216,210 @@ async function createDatabase(t, role = 'courier') {
   await db.exec(looseTransactions);
   return db;
 }
+
+async function createConvertedDatabase(t, beforeConversion) {
+  const db = await createDatabase(t);
+  await db.exec(`create table public.ice_type_prices (ice_type_id uuid, unit_price numeric, valid_from date, valid_to date, is_active boolean);
+    insert into public.ice_type_prices values ('${ICE_ID}', 100, '2026-01-01', null, true);
+    create table public.daily_aggregate_stock_closure_items (
+      service_date date, ice_type_id uuid, system_quantity numeric,
+      actual_quantity numeric, variance_quantity numeric, note text
+    );
+    create sequence casual_receipt_test_seq;
+    create or replace function public.next_sales_document_number(text, date) returns text language sql as $$ select 'REC-' || nextval('casual_receipt_test_seq') $$;`);
+  await db.exec(aggregateStock.slice(
+    aggregateStock.indexOf('create or replace function public.get_daily_aggregate_stock_summary('),
+    aggregateStock.indexOf('create or replace function public.record_daily_stock_refill('),
+  ));
+  if (beforeConversion) await beforeConversion(db);
+  await db.exec(readFileSync(new URL('../supabase/migrations/0179_casual_loose_stock_conversion.sql', import.meta.url), 'utf8'));
+  return db;
+}
+
+async function recordLoose(db, amount, index, roundId = ROUND_ID, iceId = ICE_ID) {
+  const result = await db.query(`select public.record_casual_loose_transaction(
+    '${roundId}', '${iceId}', 'paid', ${amount}, 'cash', ${amount},
+    null, null, null, now(), '60000000-0000-4000-8000-${String(index).padStart(12, '0')}') as result`);
+  return result.rows[0].result.transaction.id;
+}
+
+test('daily close explains casual stock deductions and preserves the count through void and close', async (t) => {
+  const db = await createConvertedDatabase(t);
+  const readItem = async () => (await db.query(`
+    select public.get_daily_aggregate_stock_summary('${SERVICE_DATE}') as result
+  `)).rows[0].result.items[0];
+
+  await recordLoose(db, 60, 601);
+  const id = await recordLoose(db, 50, 602);
+  let item = await readItem();
+  assert.equal(item.ordered_quantity, 5);
+  assert.equal(item.available_quantity, 4);
+  assert.equal(item.sold_quantity, 1);
+
+  await db.query(`select public.void_casual_transaction('${id}', 'คืนเงินแล้ว', 'cash', null, null,
+    '70000000-0000-4000-8000-000000000602')`);
+  item = await readItem();
+  assert.equal(item.available_quantity, 5);
+  assert.equal(item.sold_quantity, 0);
+
+  await recordLoose(db, 50, 603);
+  await db.query(`select public.record_casual_transaction('${ROUND_ID}', '${ICE_ID}', 0.5, 'free', 0, null, null,
+    null, null, null, now(), '60000000-0000-4000-8000-000000000604')`);
+  item = await readItem();
+  assert.equal(item.available_quantity, 3.5);
+  assert.equal(item.sold_quantity, 1.5);
+
+  await db.exec(`
+    insert into public.round_stops values ('90000000-0000-4000-8000-000000000601', '${ROUND_ID}');
+    insert into public.delivery_events values ('90000000-0000-4000-8000-000000000602',
+      '90000000-0000-4000-8000-000000000601', '${HOLDING_ID}', 'active');
+    insert into public.delivery_items values ('90000000-0000-4000-8000-000000000602', '${ICE_ID}', 1);
+  `);
+  item = await readItem();
+  assert.equal(item.available_quantity, 2.5);
+  assert.equal(item.sold_quantity, 2.5);
+
+  await db.exec(`
+    alter table public.daily_aggregate_stock_closures
+      add column idempotency_key uuid, add column note text, add column closed_by uuid, add column closed_at timestamptz;
+    alter table public.delivery_rounds add column closed_by uuid, add column closed_at timestamptz;
+    create or replace function public.current_app_role() returns public.app_role language sql stable as $$ select 'round_lead'::public.app_role $$;
+  `);
+  await db.exec(aggregateStock.slice(
+    aggregateStock.indexOf('create or replace function public.close_daily_aggregate_stock('),
+    aggregateStock.indexOf('-- Keep pricing, charges,'),
+  ));
+  const closed = (await db.query(`select public.close_daily_aggregate_stock('${SERVICE_DATE}',
+    '[{"ice_type_id":"${ICE_ID}","actual_quantity":2.5}]'::jsonb, null,
+    '80000000-0000-4000-8000-000000000601') as result`)).rows[0].result;
+  assert.equal(closed.status, 'closed');
+  assert.equal(closed.items[0].sold_quantity, 2.5);
+  assert.equal(closed.items[0].available_quantity, 0);
+  assert.equal(closed.items[0].actual_quantity, 2.5);
+  assert.equal(closed.items[0].variance_quantity, 0);
+  const count = (await db.query(`select system_quantity, actual_quantity, variance_quantity
+    from public.daily_aggregate_stock_closure_items`)).rows[0];
+  assert.equal(Number(count.system_quantity), 2.5);
+  assert.equal(Number(count.actual_quantity), 2.5);
+  assert.equal(Number(count.variance_quantity), 0);
+  assert.deepEqual((await db.query(`select
+    has_function_privilege('authenticated', 'public.get_daily_aggregate_stock_summary(date)', 'execute') as reader,
+    has_function_privilege('anon', 'public.get_daily_aggregate_stock_summary(date)', 'execute') as anonymous,
+    has_function_privilege('authenticated', 'public.get_daily_aggregate_stock_summary_without_casual(date)', 'execute') as backup
+  `)).rows[0], { reader: true, anonymous: false, backup: false });
+});
+
+test('loose money crosses a whole-bag threshold once, replays safely, and restores stock on void', async (t) => {
+  const db = await createConvertedDatabase(t);
+  await recordLoose(db, 60, 101);
+  const id = await recordLoose(db, 50, 102);
+  await recordLoose(db, 50, 102);
+  let balance = await db.query(`select public.stock_balance_at('${SERVICE_DATE}', '${HOLDING_ID}', '${ICE_ID}') as holding,
+    public.daily_aggregate_stock_balance_at('${SERVICE_DATE}', '${ICE_ID}') as aggregate`);
+  assert.deepEqual(balance.rows[0], { holding: '4.0', aggregate: '4.0' });
+  let totals = await db.query(`select * from public.casual_loose_stock_totals('${SERVICE_DATE}')`);
+  assert.equal(totals.rows[0].quantity, '1');
+  assert.equal(totals.rows[0].remainder_amount, '10');
+  await db.exec(`update public.ice_type_prices set unit_price = 200`);
+  await recordLoose(db, 90, 103);
+  totals = await db.query(`select * from public.casual_loose_stock_totals('${SERVICE_DATE}')`);
+  assert.equal(totals.rows[0].quantity, '2');
+  assert.equal(totals.rows[0].unit_price, '100');
+  await db.query(`select public.void_casual_transaction('${id}', 'คืนเงินแล้ว', 'cash', null, null, '70000000-0000-4000-8000-000000000102')`);
+  balance = await db.query(`select public.stock_balance_at('${SERVICE_DATE}', '${HOLDING_ID}', '${ICE_ID}') as holding`);
+  assert.equal(balance.rows[0].holding, '4.0');
+  const reconciliation = await db.query(`select public.get_accounting_reconciliation('${SERVICE_DATE}') as result`);
+  assert.equal(reconciliation.rows[0].result.aggregate[0].sold, 1);
+  const ledger = await db.query(`select sum(quantity_out) as quantity from public.accounting_casual_transaction_rows('${SERVICE_DATE}', '${SERVICE_DATE}') where type = 'SALE'`);
+  assert.equal(Number(ledger.rows[0].quantity), 1);
+});
+
+test('conversion rejects missing prices and overselling atomically; measured sales are not converted again', async (t) => {
+  const db = await createConvertedDatabase(t);
+  await db.exec('delete from public.ice_type_prices');
+  await assert.rejects(recordLoose(db, 60, 201), /ราคากลาง/);
+  await db.exec(`insert into public.ice_type_prices values ('${ICE_ID}', 100, '2026-01-01', null, true)`);
+  await assert.rejects(recordLoose(db, 600, 202), /สต๊อกไม่พอ/);
+  assert.equal((await db.query('select count(*)::int as count from public.casual_transactions')).rows[0].count, 0);
+  await db.query(`select public.record_casual_transaction('${ROUND_ID}', '${ICE_ID}', 0.5, 'paid', 100, 'cash', 100,
+    null, null, null, now(), '60000000-0000-4000-8000-000000000203')`);
+  await recordLoose(db, 100, 204);
+  assert.equal((await db.query(`select public.stock_balance_at('${SERVICE_DATE}', '${HOLDING_ID}', '${ICE_ID}') as amount`)).rows[0].amount, '3.5');
+});
+
+test('loose thresholds do not pool money across days, ice types or holding locations', async (t) => {
+  const db = await createConvertedDatabase(t);
+  const secondIce = '20000000-0000-4000-8000-000000000002';
+  const secondRound = '30000000-0000-4000-8000-000000000002';
+  const secondHolding = '40000000-0000-4000-8000-000000000003';
+  await db.exec(`
+    insert into public.ice_types values ('${secondIce}', 'ICE2', 'น้ำแข็งสอง', 'ถุง', true);
+    insert into public.ice_type_prices values ('${secondIce}', 100, '2026-01-01', null, true);
+    insert into public.stock_movement_items values ('${MOVEMENT_ID}', '${secondIce}', 5);
+    insert into public.delivery_rounds values ('${secondRound}', '2026-08-21', 'วันถัดไป', 'open', null);
+    insert into public.stock_movements values ('50000000-0000-4000-8000-000000000002', '2026-08-21', 'active', 'factory_order', null, '${HOLDING_ID}');
+    insert into public.stock_movement_items values ('50000000-0000-4000-8000-000000000002', '${ICE_ID}', 5);
+  `);
+  await recordLoose(db, 60, 401);
+  await recordLoose(db, 60, 402, ROUND_ID, secondIce);
+  await recordLoose(db, 60, 403, secondRound);
+  await db.exec(`update public.stock_locations set is_active = false where id = '${HOLDING_ID}';
+    insert into public.stock_locations values ('${secondHolding}', 'HOLD2', 'จุดสอง', 'team', true, '${USER_ID}', false);
+    insert into public.stock_movements values ('50000000-0000-4000-8000-000000000003', '${SERVICE_DATE}', 'active', 'transfer', '${HOLDING_ID}', '${secondHolding}');
+    insert into public.stock_movement_items values ('50000000-0000-4000-8000-000000000003', '${ICE_ID}', 2);`);
+  await recordLoose(db, 60, 404);
+  assert.equal(Number((await db.query(`select sum(quantity) as quantity from public.casual_loose_stock_totals('${SERVICE_DATE}')`)).rows[0].quantity), 0);
+  await recordLoose(db, 40, 405);
+  assert.equal(Number((await db.query(`select public.stock_balance_at('${SERVICE_DATE}', '${secondHolding}', '${ICE_ID}') as quantity`)).rows[0].quantity), 1);
+  assert.equal(Number((await db.query(`select quantity from public.casual_loose_stock_totals('2026-08-21')`)).rows[0].quantity), 0);
+});
+
+test('backfills open-day loose sales but leaves closed-day stock untouched', async (t) => {
+  const closedRound = '30000000-0000-4000-8000-000000000009';
+  const db = await createConvertedDatabase(t, async (legacy) => {
+    await recordLoose(legacy, 120, 501);
+    await legacy.exec(`insert into public.delivery_rounds values ('${closedRound}', '2026-08-19', 'วันเก่า', 'open', null)`);
+    await recordLoose(legacy, 120, 502, closedRound);
+    await legacy.exec(`insert into public.daily_aggregate_stock_closures values ('2026-08-19', 'closed')`);
+  });
+  assert.equal(Number((await db.query(`select quantity from public.casual_loose_stock_totals('${SERVICE_DATE}')`)).rows[0].quantity), 1);
+  assert.deepEqual((await db.query(`select * from public.casual_loose_stock_totals('2026-08-19')`)).rows, []);
+  assert.equal(Number((await db.query(`select public.daily_aggregate_stock_balance_at('2026-08-19', '${ICE_ID}') as quantity`)).rows[0].quantity), 0);
+  await assert.rejects(db.exec('update public.casual_loose_stock_prices set unit_price = 200'), /immutable/);
+});
+
+test('casual daily matrix includes measured, converted, free and loose quantities without a shop', async (t) => {
+  const db = await createConvertedDatabase(t);
+  const paidId = await recordLoose(db, 110, 301);
+  await db.query(`select public.record_casual_transaction('${ROUND_ID}', '${ICE_ID}', 0.5, 'free', 0, null, null,
+    null, null, null, now(), '60000000-0000-4000-8000-000000000302')`);
+  await db.exec(`
+    create or replace function public.current_app_role() returns public.app_role language sql stable as $$ select 'admin'::public.app_role $$;
+    create table public.shops (id uuid, status text);
+    create table public.shop_payment_profiles (shop_id uuid, allowed_payment_terms text[], default_payment_term text, credit_due_rule text, credit_collection_weekday int, credit_days int);
+    alter table public.round_stops add column shop_id uuid, add column status text;
+    alter table public.delivery_charges add column shop_id uuid, add column status text;
+    alter table public.payments add column shop_id uuid, add column status text, add column allocated_amount numeric, add column recorded_at timestamptz;
+    create function public.effective_delivery_charge_amount(uuid) returns numeric language sql as $$ select 0::numeric $$;
+  `);
+  await db.exec(readFileSync(new URL('../supabase/migrations/0146_accounting_shop_daily_matrix.sql', import.meta.url), 'utf8'));
+  await db.exec(readFileSync(new URL('../supabase/migrations/0180_accounting_casual_daily_matrix.sql', import.meta.url), 'utf8'));
+  const result = (await db.query(`select public.get_accounting_shop_daily_matrix('${SERVICE_DATE}', '${SERVICE_DATE}', '{}'::uuid[]) as result`)).rows[0].result;
+  assert.deepEqual(result.rows, []);
+  assert.equal(result.casual_days[0].sales_amount, 110);
+  assert.equal(result.casual_days[0].items[0].quantity, 1.5);
+  assert.equal(result.casual_days[0].items[0].automatic_quantity, 1);
+  assert.equal(result.casual_days[0].items[0].free_quantity, 0.5);
+  assert.equal(result.casual_days[0].items[0].remainder_amount, 10);
+  const receiptDate = (await db.query(`select (recorded_at at time zone 'Asia/Bangkok')::date::text as value from public.casual_transactions where id = '${paidId}'`)).rows[0].value;
+  await db.query(`select public.void_casual_transaction('${paidId}', 'คืนเงินแล้ว', 'cash', null, null, '70000000-0000-4000-8000-000000000301')`);
+  const receiptDay = (await db.query(`select public.get_accounting_shop_daily_matrix('${receiptDate}', '${receiptDate}', '{}'::uuid[]) as result`)).rows[0].result.casual_days[0];
+  assert.equal(receiptDay.cash_received, 110);
+  assert.equal(receiptDay.cash_refunded, 110);
+  await assert.rejects(db.query(`select public.get_accounting_shop_daily_matrix('2026-01-01', '2026-08-20', '{}'::uuid[])`), /31 days/);
+  await db.exec(`create or replace function public.current_app_role() returns public.app_role language sql stable as $$ select 'courier'::public.app_role $$;`);
+  await assert.rejects(db.query(`select public.get_accounting_shop_daily_matrix('${SERVICE_DATE}', '${SERVICE_DATE}', '{}'::uuid[])`), /round lead or admin/);
+});
 
 test('takes the service-date advisory lock before mutable row locks', () => {
   const recordBody = production.slice(

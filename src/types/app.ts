@@ -152,6 +152,7 @@ export interface CasualTransactionHistoryItem {
 }
 
 export interface CasualTransactionContext {
+  loose_stock?: Array<{ ice_type_id: string; unit_price: number; sales_amount: number; quantity: number; remainder_amount: number }>;
   round_id: string;
   service_date: string;
   round_status: DeliveryRoundStatus;

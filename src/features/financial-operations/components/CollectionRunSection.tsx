@@ -8,6 +8,7 @@ import {
 import { useMemo, useState } from 'react';
 import type { QueueShop } from '../types';
 import { money } from '../utils';
+import { isBoothSameAsName } from '../../employee-delivery/utils';
 
 export function CollectionRunSection({
   runId,
@@ -98,9 +99,13 @@ export function CollectionRunSection({
                 {shop.has_new_charges ? <small>มียอดเพิ่ม</small> : null}
               </span>
               <span className="financial-ops__shop-body">
-                <strong>{shop.shop_code}</strong>
-                <b>{shop.shop_name}</b>
-                {shop.destination_kind === 'event' ? <small>{shop.event_name} · บูธ {shop.event_booth ?? '—'}</small> : null}
+                <strong>{shop.destination_kind === 'event'
+                  ? (shop.event_booth ? `บูธ ${shop.event_booth}` : shop.shop_name)
+                  : shop.shop_code}</strong>
+                <b>{shop.destination_kind === 'event' && shop.event_booth && isBoothSameAsName(shop.shop_name, shop.event_booth)
+                  ? ''
+                  : shop.shop_name}</b>
+                {shop.destination_kind === 'event' ? <small>{[shop.event_name, shop.event_zone && `โซน ${shop.event_zone}`].filter(Boolean).join(' · ')}</small> : null}
                 <small><ListNumbers aria-hidden="true" size={15} /> {shop.charge_count} รายการค้าง</small>
                 <em>{money.format(shop.outstanding_amount)}</em>
               </span>

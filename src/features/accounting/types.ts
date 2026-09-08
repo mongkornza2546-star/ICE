@@ -175,8 +175,18 @@ export type AccountingShopDailyRow = {
 };
 
 export type AccountingShopDailyResponse = {
+  casual_days?: AccountingCasualDailyCell[];
   ice_types: Array<{ ice_type_id: string; code: string; name: string; unit: string }>;
   rows: AccountingShopDailyRow[];
+};
+
+export type AccountingCasualDailyCell = {
+  service_date: string;
+  items: Array<{ ice_type_id: string; quantity: number; automatic_quantity: number; remainder_amount: number; unconverted_amount?: number; free_quantity: number; loose_count: number; loose_sales_amount: number }>;
+  sales_amount: number;
+  cash_received: number;
+  cash_refunded: number;
+  transaction_count: number;
 };
 
 export type AccountingShopInvoiceDetailEntry = {

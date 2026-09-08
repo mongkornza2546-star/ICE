@@ -226,6 +226,21 @@ export async function exportAccountingShopDaily(
     buildSheet(shops, 'สรุปรายร้านทุกพื้นที่'),
     ...orderedGroups.map((group) => buildSheet(group.rows, group.title)),
   ];
+  if (daily.casual_days) {
+    sheets.push(safeSheetName('ลูกค้าขาจร', usedNames));
+    data.push([
+      [textCell('ลูกค้าขาจร · รวมทุกจุดถือครอง ไม่ขึ้นกับตัวกรองร้านหรือโซน')],
+      ['วันที่', 'ชนิดน้ำแข็ง', 'จำนวนออกทั้งหมด', 'รวมจากยอดเงิน', 'จำนวนแจกฟรี', 'แบ่งขาย/แจก (ครั้ง)', 'ยอดแบ่งขาย', 'เศษยังไม่ครบถุง', 'ยอดขายรวม', 'รับเงินจริง', 'คืนเงินจริง', 'เงินสุทธิ', 'ยอดเดิมยังไม่แปลงเป็นถุง'].map((value) => ({ ...textCell(value), ...headerStyle })),
+      ...daily.casual_days.flatMap((day) => [
+        [textCell(day.service_date), textCell('รวมเงินประจำวัน'), ...Array.from({ length: 6 }, () => textCell('')),
+          numberCell(day.sales_amount, '#,##0.00'), numberCell(day.cash_received, '#,##0.00'), numberCell(day.cash_refunded, '#,##0.00'), numberCell(day.cash_received - day.cash_refunded, '#,##0.00')],
+        ...day.items.map((item) => [textCell(day.service_date), textCell(iceTypes.find((ice) => ice.ice_type_id === item.ice_type_id)?.name ?? item.ice_type_id),
+          numberCell(item.quantity, '#,##0.0'), numberCell(item.automatic_quantity, '#,##0.0'), numberCell(item.free_quantity, '#,##0.0'), numberCell(item.loose_count, '0'),
+          numberCell(item.loose_sales_amount, '#,##0.00'), numberCell(item.remainder_amount, '#,##0.00'),
+          ...Array.from({ length: 4 }, () => textCell('')), numberCell(item.unconverted_amount ?? 0, '#,##0.00')]),
+      ]),
+    ]);
+  }
   const columnWidths = headings.map((_, index) => ({ width: index === 2 ? 28 : index === 3 || index === headings.length - 1 ? 20 : index < 4 ? 12 : 15 }));
   await writeXlsxFile(data, {
     columns: data.map(() => columnWidths),

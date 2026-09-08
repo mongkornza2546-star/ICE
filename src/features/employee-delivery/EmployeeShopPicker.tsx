@@ -3,7 +3,7 @@ import { MagnifyingGlass, Buildings, MapPin, Storefront, CaretRight, WarningCirc
 import type { ShopCard, EmployeeStockState } from '../../types/app';
 import { FilterChips } from './FilterChips';
 import { EmployeeState } from './EmployeeState';
-import { statusTone } from './utils';
+import { isBoothSameAsName, statusTone } from './utils';
 import { STATUS_LABELS } from './constants';
 
 function RegularShopVisual({
@@ -237,55 +237,75 @@ export function EmployeeShopPicker({
             <span>{filteredCards.length} ร้าน</span>
           </div>
           <div className="employee-shop-grid">
-            {filteredCards.map((card) => (
-              <article
-                className="employee-shop-tile"
-                key={card.round_stop_id}
-              >
-                {card.destination_kind === 'event' ? (
-                  <span className="employee-shop-tile__visual employee-shop-tile__visual--booth">
-                    <span className="employee-shop-tile__booth"><small>บูธ</small><strong>{card.booth_number || 'ไม่ระบุ'}</strong></span>
-                    <span className={`employee-status employee-status--${statusTone(card.stop_status)}`}>
-                      {STATUS_LABELS[card.stop_status]}
-                    </span>
-                  </span>
-                ) : (
-                  <RegularShopVisual
-                    card={card}
-                    onPreview={(event, imageUrl) => setPreviewImage({
-                      name: `${card.shop_code} · ${card.shop_name}`,
-                      url: imageUrl,
-                      trigger: event.currentTarget,
-                    })}
-                    refreshImageUrl={refreshShopImageUrl}
-                  />
-                )}
-                <button
-                  aria-label={`เลือกร้าน ${card.shop_code} ${card.shop_name}`}
-                  className="employee-shop-tile__select"
-                  disabled={(enableAssignedStockFlow && !stockState)
-                    || (card.destination_kind === 'event' && (!card.event_delivery_enabled || !card.is_operational))}
-                  onClick={() => openCard(card)}
-                  ref={(node) => {
-                    if (node) shopButtonRefs.current.set(card.round_stop_id, node);
-                    else shopButtonRefs.current.delete(card.round_stop_id);
-                  }}
-                  type="button"
+            {filteredCards.map((card) => {
+              const isEvent = card.destination_kind === 'event';
+              const boothText = card.booth_number ? `บูธ ${card.booth_number}` : '';
+              const sameAsBooth = isEvent && isBoothSameAsName(card.shop_name, card.booth_number);
+              const eventPrimaryHeading = boothText || card.shop_name || 'ไม่ระบุบูธ';
+              const eventSecondaryHeading = sameAsBooth ? null : card.shop_name;
+              const buttonAriaLabel = isEvent
+                ? `เลือกร้าน ${[boothText, card.shop_name].filter(Boolean).join(' ')}`
+                : `เลือกร้าน ${card.shop_code} ${card.shop_name}`;
+
+              return (
+                <article
+                  className="employee-shop-tile"
+                  key={card.round_stop_id}
                 >
-                  <span className="employee-shop-tile__body">
-                    <strong>{card.shop_code}</strong>
-                    <b>{card.shop_name}</b>
-                    <small>{card.destination_kind === 'event'
-                      ? `${card.event_name} · ${card.event_location}${card.event_zone ? ` · โซน ${card.event_zone}` : ''}`
-                      : `${card.building_name} · ${card.floor_or_zone}`}</small>
-                    {card.destination_kind === 'event' && !card.event_delivery_enabled
-                      ? <span>ยังไม่เปิดบันทึกส่งน้ำแข็ง</span>
-                      : null}
-                  </span>
-                  <CaretRight aria-hidden="true" className="employee-shop-tile__arrow" size={20} />
-                </button>
-              </article>
-            ))}
+                  {isEvent ? (
+                    <span className="employee-shop-tile__visual employee-shop-tile__visual--booth">
+                      <span className="employee-shop-tile__booth"><small>บูธ</small><strong>{card.booth_number || 'ไม่ระบุ'}</strong></span>
+                      <span className={`employee-status employee-status--${statusTone(card.stop_status)}`}>
+                        {STATUS_LABELS[card.stop_status]}
+                      </span>
+                    </span>
+                  ) : (
+                    <RegularShopVisual
+                      card={card}
+                      onPreview={(event, imageUrl) => setPreviewImage({
+                        name: `${card.shop_code} · ${card.shop_name}`,
+                        url: imageUrl,
+                        trigger: event.currentTarget,
+                      })}
+                      refreshImageUrl={refreshShopImageUrl}
+                    />
+                  )}
+                  <button
+                    aria-label={buttonAriaLabel}
+                    className="employee-shop-tile__select"
+                    disabled={(enableAssignedStockFlow && !stockState)
+                      || (isEvent && (!card.event_delivery_enabled || !card.is_operational))}
+                    onClick={() => openCard(card)}
+                    ref={(node) => {
+                      if (node) shopButtonRefs.current.set(card.round_stop_id, node);
+                      else shopButtonRefs.current.delete(card.round_stop_id);
+                    }}
+                    type="button"
+                  >
+                    <span className="employee-shop-tile__body">
+                      {isEvent ? (
+                        <>
+                          <strong>{eventPrimaryHeading}</strong>
+                          {eventSecondaryHeading ? <b>{eventSecondaryHeading}</b> : null}
+                        </>
+                      ) : (
+                        <>
+                          <strong>{card.shop_code}</strong>
+                          <b>{card.shop_name}</b>
+                        </>
+                      )}
+                      <small>{isEvent
+                        ? `${card.event_name} · ${card.event_location}${card.event_zone ? ` · โซน ${card.event_zone}` : ''}`
+                        : `${card.building_name} · ${card.floor_or_zone}`}</small>
+                      {isEvent && !card.event_delivery_enabled
+                        ? <span>ยังไม่เปิดบันทึกส่งน้ำแข็ง</span>
+                        : null}
+                    </span>
+                    <CaretRight aria-hidden="true" className="employee-shop-tile__arrow" size={20} />
+                  </button>
+                </article>
+              );
+            })}
           </div>
         </section>
       )}

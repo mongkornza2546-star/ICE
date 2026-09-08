@@ -171,7 +171,10 @@ describe('employee shop picker image preview', () => {
     expect(screen.getByText('B-17')).toBeTruthy();
     expect(screen.queryByRole('button', { name: /ดูรูปร้าน/ })).toBeNull();
     expect(screen.getByText('งานทดสอบ · ฮอลล์ A · โซน อาหาร')).toBeTruthy();
-    const eventCardButton = screen.getByRole('button', { name: 'เลือกร้าน BB16 ร้านเล่าซา' });
+    expect(screen.queryByText('BB16')).toBeNull();
+    expect(screen.getByText('บูธ B-17')).toBeTruthy();
+    expect(screen.getByText('ร้านเล่าซา')).toBeTruthy();
+    const eventCardButton = screen.getByRole('button', { name: 'เลือกร้าน บูธ B-17 ร้านเล่าซา' });
     expect(eventCardButton.hasAttribute('disabled')).toBe(true);
     await user.click(eventCardButton);
     expect(openCard).not.toHaveBeenCalled();

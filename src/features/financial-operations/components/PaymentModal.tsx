@@ -104,14 +104,19 @@ export function PaymentModal({
             )}
           </span>
           <span>
-            <small>{selectedShop.shop_code}</small>
-            <h2>{isPanel ? `${selectedShop.shop_code} · ${selectedShop.shop_name}` : 'บันทึกรับชำระเงิน'}</h2>
+            <small>{selectedShop.destination_kind === 'event'
+              ? (selectedShop.event_booth ? `บูธ ${selectedShop.event_booth}` : '')
+              : selectedShop.shop_code}</small>
+            <h2>{isPanel
+              ? (selectedShop.destination_kind === 'event'
+                ? `${selectedShop.event_booth ? `บูธ ${selectedShop.event_booth} · ` : ''}${selectedShop.shop_name}`
+                : `${selectedShop.shop_code} · ${selectedShop.shop_name}`)
+              : 'บันทึกรับชำระเงิน'}</h2>
             <b>{selectedShop.shop_name}</b>
             {selectedShop.destination_kind === 'event' ? <small>{[
               selectedShop.event_name,
               selectedShop.event_location,
               selectedShop.event_zone,
-              selectedShop.event_booth && `บูธ ${selectedShop.event_booth}`,
             ].filter(Boolean).join(' · ')}</small> : null}
           </span>
           <button

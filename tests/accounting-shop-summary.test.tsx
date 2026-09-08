@@ -146,6 +146,33 @@ beforeEach(() => {
 });
 
 describe('accounting shop summary', () => {
+  it('shows casual stock and money with no shops and exports them once', async () => {
+    const user = userEvent.setup();
+    const date = bangkokDate();
+    const casualDay = {
+      service_date: date, sales_amount: 110, cash_received: 110, cash_refunded: 10, transaction_count: 3,
+      items: [{ ice_type_id: 'ice-1', quantity: 1.5, automatic_quantity: 1, free_quantity: 0.5, loose_count: 2, loose_sales_amount: 110, remainder_amount: 10 }],
+    };
+    rpcMock.mockImplementation(async (name: string) => {
+      if (name === 'get_accounting_shop_summary') return { data: { ...populatedSummary, rows: [], total_count: 0 }, error: null };
+      if (name === 'get_accounting_shop_daily_matrix') return { data: {
+        rows: [], ice_types: [{ ice_type_id: 'ice-1', code: 'ICE', name: 'หลอดเล็ก', unit: 'ถุง' }], casual_days: [casualDay],
+      }, error: null };
+      if (name === 'get_accounting_review_queue') return { data: { rows: [], total_count: 0 }, error: null };
+      throw new Error(`Unexpected RPC: ${name}`);
+    });
+    render(<AccountingPage />);
+    await waitFor(() => expect(screen.getByLabelText(`ลูกค้าขาจร ${date} หลอดเล็ก`).textContent).toContain('รวมจากยอดเงิน 1 ถุง'));
+    expect(screen.getByLabelText(`ลูกค้าขาจร ${date} หลอดเล็ก`).textContent).toContain('รวมแจกฟรี 0.5 ถุง');
+    expect(screen.getByLabelText(`ลูกค้าขาจร ${date} รับเงินจริง`).textContent).toContain('สุทธิ ฿100.00');
+    await user.click(screen.getByRole('button', { name: 'ส่งออก Excel' }));
+    await waitFor(() => expect(writeXlsxFileMock).toHaveBeenCalledTimes(1));
+    const [sheets, options] = writeXlsxFileMock.mock.calls[0];
+    expect(options.sheets).toEqual(['สรุปทุกพื้นที่', 'ลูกค้าขาจร']);
+    expect(sheets[1][2].map((cell: { value: unknown }) => cell.value).slice(8)).toEqual([110, 110, 10, 100]);
+    expect(sheets[1][3].map((cell: { value: unknown }) => cell.value).slice(2, 8)).toEqual([1.5, 1, 0.5, 2, 110, 10]);
+  });
+
   it('does not render the daily matrix when a date input is empty', async () => {
     mockSuccessfulShopSummary();
     render(<AccountingPage />);

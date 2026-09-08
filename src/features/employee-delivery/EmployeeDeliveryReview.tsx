@@ -26,7 +26,7 @@ import type {
   ShopRoundStatus,
 } from '../../types/app';
 import { MAX_PAYMENT_EVIDENCE_SIZE } from '../../lib/paymentEvidence';
-import { formatShortTime, renderTotals, statusTone, stockQuantity, toTotals } from './utils';
+import { formatShortTime, isBoothSameAsName, renderTotals, statusTone, stockQuantity, toTotals } from './utils';
 import { PROBLEM_STATUSES, STATUS_LABELS } from './constants';
 import { DeliveryCorrectionDialog } from '../delivery-corrections/DeliveryCorrectionDialog';
 
@@ -284,7 +284,9 @@ export function EmployeeDeliveryReview({
             )}
           </span>
           <span>
-            <small>{shopCard.shop_code}</small>
+            <small>{shopCard.destination_kind === 'event'
+              ? (shopCard.booth_number ? `บูธ ${shopCard.booth_number}` : '')
+              : shopCard.shop_code}</small>
             <h2>บันทึกรับชำระเงิน</h2>
             <b>{shopCard.shop_name}</b>
           </span>
@@ -459,9 +461,20 @@ export function EmployeeDeliveryReview({
           <span><Storefront aria-hidden="true" size={30} /></span>
         )}
         <div>
-          <p>{shopCard.shop_code}</p>
-          <h1>{shopCard.shop_name}</h1>
-          <small><MapPin aria-hidden="true" size={16} />{shopCard.building_name} · {shopCard.floor_or_zone}</small>
+          {shopCard.destination_kind === 'event' ? (
+            <>
+              {shopCard.booth_number && !isBoothSameAsName(shopCard.shop_name, shopCard.booth_number) ? (
+                <p>บูธ {shopCard.booth_number}</p>
+              ) : null}
+              <h1>{shopCard.booth_number ? (isBoothSameAsName(shopCard.shop_name, shopCard.booth_number) ? `บูธ ${shopCard.booth_number}` : shopCard.shop_name) : shopCard.shop_name}</h1>
+            </>
+          ) : (
+            <>
+              <p>{shopCard.shop_code}</p>
+              <h1>{shopCard.shop_name}</h1>
+            </>
+          )}
+          <small><MapPin aria-hidden="true" size={16} />{shopCard.destination_kind === 'event' ? `${shopCard.event_name ?? shopCard.building_name} · ${shopCard.floor_or_zone}` : `${shopCard.building_name} · ${shopCard.floor_or_zone}`}</small>
         </div>
         <span className={`employee-status employee-status--${statusTone(shopCard.stop_status)}`}>
           {STATUS_LABELS[shopCard.stop_status]}
@@ -482,16 +495,22 @@ export function EmployeeDeliveryReview({
             <section aria-label="เลือกร้านอื่น" className="employee-pos-shops">
               <div className="employee-pos-heading"><div><p>ร้าน</p><h2>ร้านในรอบ</h2></div><span>{shopCards.length} ร้าน</span></div>
               <div className="employee-pos-shop-list">
-                {shopCards.map((card) => (
-                  <button
-                    aria-current={card.round_stop_id === shopCard.round_stop_id ? 'true' : undefined}
-                    key={card.round_stop_id}
-                    onClick={() => onChangeShop(card)}
-                    type="button"
-                  >
-                    <strong>{card.shop_code}</strong><span>{card.shop_name}</span>
-                  </button>
-                ))}
+                {shopCards.map((card) => {
+                  const isEvent = card.destination_kind === 'event';
+                  const boothText = card.booth_number ? `บูธ ${card.booth_number}` : '';
+                  const sameBooth = isEvent && isBoothSameAsName(card.shop_name, card.booth_number);
+                  return (
+                    <button
+                      aria-current={card.round_stop_id === shopCard.round_stop_id ? 'true' : undefined}
+                      key={card.round_stop_id}
+                      onClick={() => onChangeShop(card)}
+                      type="button"
+                    >
+                      <strong>{isEvent ? (boothText || card.shop_name) : card.shop_code}</strong>
+                      <span>{isEvent ? (sameBooth ? '' : card.shop_name) : card.shop_name}</span>
+                    </button>
+                  );
+                })}
               </div>
             </section>
             <section className={`employee-pos-products ${mobileStep === 'items' ? '' : 'employee-pos-mobile--hidden'}`} aria-labelledby="employee-delivery-items">
