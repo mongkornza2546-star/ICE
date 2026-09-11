@@ -1,0 +1,9 @@
+.employee-stock-product-image-retry {
+  display: flex;
+  min-height: 72px;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+}

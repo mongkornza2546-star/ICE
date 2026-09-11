@@ -3,6 +3,8 @@ import { ArrowClockwise, Check, Truck, WarningCircle, CaretRight, X } from '@pho
 import type { DeliveryRound, EmployeeStockState, IceTypeOption } from '../../types/app';
 import type { StockTransferMode } from './useEmployeeDeliveryData';
 import { EmployeeState } from './EmployeeState';
+import { EmployeeStockProductImage } from './EmployeeStockProductImage';
+import './employee-stock-product-image.css';
 import { QuantityStepper } from './QuantityStepper';
 import { stockQuantity } from './utils';
 
@@ -127,15 +129,12 @@ export function EmployeeStockTransferSection({
                     <div className="employee-stock-row" key={iceType.id} role="listitem">
                       <strong><span>{iceType.name}</span> <small>({iceType.unit})</small></strong>
                       <span className="employee-stock-available"><small>{usesHoldingStock ? isDamage ? 'เหลือก่อนละลาย' : 'เหลือก่อนคืน' : 'เหลือบนรถ'}</small>{usesHoldingStock ? holdingBefore : truckBefore} {iceType.unit}</span>
-                      {iceType.image_url ? (
-                        <button
-                          aria-label={`ดูรูป ${iceType.name} ขนาดใหญ่`}
-                          className="employee-stock-product-image-button"
-                          onClick={() => setPreviewImage({ name: iceType.name, url: iceType.image_url! })}
-                          type="button"
-                        >
-                          <img alt={iceType.name} className="employee-stock-product-image" loading="lazy" src={iceType.image_url} />
-                        </button>
+                      {iceType.image_url || iceType.image_path ? (
+                        <EmployeeStockProductImage
+                          key={`${iceType.id}:${iceType.image_path}:${iceType.image_url}`}
+                          iceType={iceType}
+                          onPreview={setPreviewImage}
+                        />
                       ) : null}
                       <div className="employee-stock-transfer-cell">
                         <QuantityStepper

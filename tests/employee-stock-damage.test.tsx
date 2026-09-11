@@ -1,9 +1,15 @@
 import { useState } from 'react';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { EmployeeStockTransferSection } from '../src/features/employee-delivery/EmployeeStockTransferSection';
 import type { StockTransferMode } from '../src/features/employee-delivery/useEmployeeDeliveryData';
+
+const imageMocks = vi.hoisted(() => ({ refresh: vi.fn() }));
+vi.mock('../src/lib/r2Storage', () => ({
+  isR2Path: (path: string) => path.includes('/r2/'),
+  refreshR2CatalogObjectUrl: imageMocks.refresh,
+}));
 
 const stockState = {
   round_id: 'round-1',
@@ -19,7 +25,7 @@ const stockState = {
   },
 };
 
-function StockTransferHarness({ onSubmit }: { onSubmit: (quantity: number) => void }) {
+function StockTransferHarness({ onSubmit, image = false }: { onSubmit: (quantity: number) => void; image?: boolean }) {
   const [mode, setMode] = useState<StockTransferMode>('receive');
   const [quantity, setQuantity] = useState(0);
   return <EmployeeStockTransferSection
@@ -28,7 +34,7 @@ function StockTransferHarness({ onSubmit }: { onSubmit: (quantity: number) => vo
     loadStockState={() => undefined}
     selectedRoundId="round-1"
     stockState={stockState}
-    iceTypes={[{ id: 'ice-1', code: 'ICE', name: 'หลอดเล็ก', unit: 'ถุง' }]}
+    iceTypes={[{ id: 'ice-1', code: 'ICE', name: 'หลอดเล็ก', unit: 'ถุง', ...(image ? { image_path: 'ice_types/ice-1/r2/photo.webp', image_url: 'https://r2.test/stale' } : {}) }]}
     transferQuantities={{ 'ice-1': quantity }}
     changeTransferQuantity={(_, delta) => setQuantity((current) => Math.max(0, Math.min(3, current + delta)))}
     stockTransferMode={mode}
@@ -101,5 +107,30 @@ describe('employee stock return', () => {
     expect(quantityInput.value).toBe('0.5');
     await user.click(screen.getByRole('button', { name: 'ยืนยันคืนของ' }));
     expect(onSubmit).toHaveBeenCalledWith(0.5);
+  });
+});
+
+
+describe('employee stock image recovery', () => {
+  it('refreshes a broken signed image and previews the replacement', async () => {
+    imageMocks.refresh.mockResolvedValue('https://r2.test/fresh');
+    render(<StockTransferHarness onSubmit={() => undefined} image />);
+    fireEvent.error(screen.getByAltText('หลอดเล็ก'));
+    await waitFor(() => expect(imageMocks.refresh).toHaveBeenCalledWith('ice-type-images', 'ice_types/ice-1/r2/photo.webp'));
+    await waitFor(() => expect(screen.getByAltText('หลอดเล็ก').getAttribute('src')).toBe('https://r2.test/fresh'));
+    fireEvent.click(screen.getByRole('button', { name: 'ดูรูป หลอดเล็ก ขนาดใหญ่' }));
+    expect(screen.getByRole('dialog').querySelector('img')?.getAttribute('src')).toBe('https://r2.test/fresh');
+  });
+
+  it('stops after one automatic retry and offers a manual retry', async () => {
+    imageMocks.refresh.mockClear().mockResolvedValue('https://r2.test/fresh');
+    render(<StockTransferHarness onSubmit={() => undefined} image />);
+    fireEvent.error(screen.getByAltText('หลอดเล็ก'));
+    await waitFor(() => expect(screen.getByAltText('หลอดเล็ก').getAttribute('src')).toBe('https://r2.test/fresh'));
+    fireEvent.error(screen.getByAltText('หลอดเล็ก'));
+    expect(screen.queryByAltText('หลอดเล็ก')).toBeNull();
+    expect(imageMocks.refresh).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole('button', { name: 'โหลดรูป หลอดเล็ก ใหม่' }));
+    await waitFor(() => expect(imageMocks.refresh).toHaveBeenCalledTimes(2));
   });
 });
