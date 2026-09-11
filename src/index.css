@@ -2674,6 +2674,7 @@ input:disabled, select:disabled, textarea:disabled { background: #f2f5f8; color:
   .employee-main { padding-right: 16px; padding-left: 16px; }
   .employee-task-tabs { padding: 4px max(13px, env(safe-area-inset-right)) calc(4px + env(safe-area-inset-bottom)) max(13px, env(safe-area-inset-left)); }
   .employee-task-tabs button { min-height: 46px; margin: 0 3px; }
+  .thermal-printer-fab { bottom: calc(62px + env(safe-area-inset-bottom)); }
   .employee-workspace--withdrawal .employee-intro {
     display: grid;
     grid-template-columns: minmax(0, 1fr) 140px;
