@@ -162,6 +162,7 @@ test('quick entry creates and publishes 300 booths atomically without regular de
   await db.exec(definition('create_delivery_round', migration('0006_rounds_without_routes').replace('create function public.create_delivery_round', 'create or replace function public.create_delivery_round')));
   await db.exec(definition('sync_daily_round_active_shops', migration('0157_event_destination_compatibility_fence')));
   await db.exec(migration('0176_event_quick_entry_and_bulk_booths'));
+  await db.exec(migration('0184_event_participation_booth_uniqueness'));
   await db.exec(definition('audit_row_update', migration('0001_phase_1_foundation')));
   await db.exec('create trigger shops_audit_update after update on public.shops for each row execute function public.audit_row_update()');
   const createEvent = async () => (await db.query(`select public.save_event_job(null, '', null, '', null, '', '2026-09-07', '2026-09-07', null, null, null, null, false, false, false, false, false, false) as value`)).rows[0].value;
@@ -200,6 +201,24 @@ test('quick entry creates and publishes 300 booths atomically without regular de
   await assert.rejects(rename(participant, 'Should roll back', '2026-09-08'), /within the event date range/);
   assert.equal((await db.query('select name from public.shops where id=$1', [participant.shop_id])).rows[0].name, 'บูธ A1');
   assert.equal((await db.query('select landmark from public.event_participations where id=$1', [participant.id])).rows[0].landmark, null);
+  // Every writer must reserve the same normalized event/zone/booth key.
+  const saveRegularBooth = (booth, zone) => db.query(
+    "select public.save_event_participation(null,$1,'20000000-0000-4000-8000-000000000001',$2,$3,null,null,null,'2026-09-07','2026-09-07',false)",
+    [id, booth, zone],
+  );
+  await assert.rejects(rename({...participant, booth_number: ' a2 ', event_zone: ' ตึก B '}, 'Must roll back'), /เลขบูธนี้มีอยู่แล้ว/);
+  assert.equal((await db.query('select name from public.shops where id=$1', [participant.shop_id])).rows[0].name, 'บูธ A1');
+  assert.equal((await db.query('select booth_number from public.event_participations where id=$1', [participant.id])).rows[0].booth_number, 'A1');
+  await assert.rejects(saveRegularBooth('a2', 'ตึก B'), /เลขบูธนี้มีอยู่แล้ว/);
+  await db.exec('begin');
+  await db.query("select public.cancel_event_participation(id,'test cancellation') from public.event_participations where event_job_id=$1 and booth_number='A2'", [id]);
+  await assert.rejects(saveRegularBooth('A2', 'ตึก B'), /เลขบูธนี้มีอยู่แล้ว/);
+  await db.exec('rollback');
+  // Different zones, empty booth numbers, and unchanged keys remain valid.
+  await db.exec('begin');
+  await saveRegularBooth('A2', 'ตึก C');
+  await rename({...participant, booth_number: ''}, 'No booth');
+  await db.exec('rollback');
   await rename(participant, ' ร้านอาหารจากเชียงใหม่ ');
   // A shop-write failure must also undo the participation update and audit entry.
   await db.exec("alter table public.shops add constraint test_name_write_failure check (name <> 'FAIL_RENAME')");
@@ -229,6 +248,7 @@ test('quick entry creates and publishes 300 booths atomically without regular de
   await db.query('select public.sync_daily_round_destinations($1)', [round]);
   assert.equal(Number((await db.query('select count(*) as n from public.round_stops')).rows[0].n),305);
   await db.exec("select set_config('app.test_role', 'admin', false)");
+  await assert.rejects(rename({...participant, booth_number: 'A2'}, 'Duplicate after publish'), /เลขบูธนี้มีอยู่แล้ว/);
   // Published renames keep the same customer and frozen delivery history.
   const beforeRename = (await db.query('select shop_name_snapshot from public.round_stops where event_participation_id=$1', [participant.id])).rows[0].shop_name_snapshot;
   await rename(participant, 'ชื่อร้านที่แก้หลังเผยแพร่');

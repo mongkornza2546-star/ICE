@@ -50,11 +50,22 @@ vi.mock('../src/features/shop-settings/loadShopDirectoryExportData', () => ({
 }));
 
 function queryResult(data: unknown[], trackRange = false, failedRange?: [number, number]) {
+  let rows = [...data] as Array<Record<string, unknown>>;
   let requestedRange: [number, number] | null = null;
   const query = {
     select: vi.fn(),
     eq: vi.fn(),
-    is: vi.fn(),
+    is: vi.fn((column: string, value: unknown) => {
+      rows = rows.filter((row) => row[column] === value || (value === null && row[column] == null));
+      return query;
+    }),
+    not: vi.fn((column: string, operator: string, value: unknown) => {
+      if (operator === 'like' && typeof value === 'string' && value.endsWith('%')) {
+        const prefix = value.slice(0, -1);
+        rows = rows.filter((row) => !String(row[column] ?? '').startsWith(prefix));
+      }
+      return query;
+    }),
     ilike: vi.fn(),
     order: vi.fn(),
     range: vi.fn((from: number, to: number) => {
@@ -66,13 +77,12 @@ function queryResult(data: unknown[], trackRange = false, failedRange?: [number,
       if (requestedRange && failedRange && requestedRange[0] === failedRange[0] && requestedRange[1] === failedRange[1]) {
         return Promise.resolve({ data: null, error: { message: 'โหลดหน้าร้านไม่สำเร็จ' }, count: data.length }).then(onFulfilled, onRejected);
       }
-      const rows = requestedRange ? data.slice(requestedRange[0], requestedRange[1] + 1) : data;
-      return Promise.resolve({ data: rows, error: null, count: data.length }).then(onFulfilled, onRejected);
+      const pageRows = requestedRange ? rows.slice(requestedRange[0], requestedRange[1] + 1) : rows;
+      return Promise.resolve({ data: pageRows, error: null, count: rows.length }).then(onFulfilled, onRejected);
     },
   };
   query.select.mockReturnValue(query);
   query.eq.mockReturnValue(query);
-  query.is.mockReturnValue(query);
   query.ilike.mockReturnValue(query);
   query.order.mockReturnValue(query);
   return query;
@@ -85,12 +95,13 @@ describe('ShopSettings shop status summary and filter', () => {
       { id: 'shop-1', code: 'A01', name: 'ร้านเปิดหนึ่ง', image_path: null, building_id: 'building-1', zone_id: 'zone-1', floor_or_zone: 'ชั้น 1', government_shop_code: null, contact_name: null, contact_phone: null, delivery_sequence: 1, normal_rounds_per_day: 1, access_note: null, status: 'active' },
       { id: 'shop-2', code: 'A02', name: 'ร้านเปิดสอง', image_path: null, building_id: 'building-1', zone_id: 'zone-1', floor_or_zone: 'ชั้น 1', government_shop_code: null, contact_name: null, contact_phone: null, delivery_sequence: 2, normal_rounds_per_day: 1, access_note: null, status: 'active' },
       { id: 'shop-3', code: 'A03', name: 'ร้านปิดแล้ว', image_path: null, building_id: 'building-1', zone_id: 'zone-1', floor_or_zone: 'ชั้น 1', government_shop_code: null, contact_name: null, contact_phone: null, delivery_sequence: 3, normal_rounds_per_day: 1, access_note: null, status: 'inactive' },
+      { id: 'event-shop', code: 'EV-1', name: 'บูธ A1', image_path: null, building_id: 'event-building', zone_id: 'event-zone', floor_or_zone: 'งานทดสอบ', government_shop_code: null, contact_name: null, contact_phone: null, delivery_sequence: null, normal_rounds_per_day: 1, access_note: null, status: 'active', event_job_id: 'event-1' },
     ];
 
     fromMock.mockImplementation((table: string) => queryResult({
       shops,
-      buildings: [{ id: 'building-1', code: 'A', name: 'อาคาร A' }],
-      building_zones: [{ id: 'zone-1', building_id: 'building-1', code: '1', name: 'ชั้น 1', sort_order: 1, is_active: true }],
+      buildings: [{ id: 'building-1', code: 'A', name: 'อาคาร A' }, { id: 'event-building', code: 'EVENT-event-1', name: 'งานทดสอบ' }],
+      building_zones: [{ id: 'zone-1', building_id: 'building-1', code: '1', name: 'ชั้น 1', sort_order: 1, is_active: true }, { id: 'event-zone', building_id: 'event-building', code: 'EVENT-event-1', name: 'งานทดสอบ', sort_order: 2, is_active: true }],
       ice_types: [],
       shop_rented_tanks: [],
     }[table] ?? [], table === 'shops'));
@@ -124,16 +135,18 @@ describe('ShopSettings shop status summary and filter', () => {
     exportShopDirectoryMock.mockResolvedValue(undefined);
   });
 
-  it('counts inactive shops in the total while keeping POS percentages active-only', async () => {
+  it('counts inactive regular shops in the total while keeping POS percentages active-only', async () => {
     render(<ShopSettings />);
 
-    const totalCard = await screen.findByText('ร้านค้าทั้งหมด').then((label) => label.closest('article'));
+    const totalCard = await screen.findByText('ร้านประจำทั้งหมด').then((label) => label.closest('article'));
     const readyCard = screen.getByText('พร้อมใช้งาน POS').closest('article');
 
     expect(totalCard).not.toBeNull();
     expect(readyCard).not.toBeNull();
     expect(within(totalCard!).getByText('3')).not.toBeNull();
     expect(within(readyCard!).getByText(/50%/)).not.toBeNull();
+    expect(screen.queryByRole('button', { name: 'EV-1 บูธ A1' })).toBeNull();
+    expect(screen.queryByRole('option', { name: /EVENT-event-1/ })).toBeNull();
     expect(screen.getByRole('button', { name: 'ส่งออก Excel' })).not.toBeNull();
   });
 
@@ -325,6 +338,9 @@ describe('ShopSettings shop status summary and filter', () => {
       expect.objectContaining({ from: fromMock }),
       expect.arrayContaining([expect.objectContaining({ id: 'shop-1' }), expect.objectContaining({ id: 'shop-3' })]),
       expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+    );
+    expect(loadShopDirectoryExportDataMock.mock.calls[0][1]).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: 'event-shop' })]),
     );
     expect(exportShopDirectoryMock).toHaveBeenCalledWith(expect.objectContaining({
       buildings: [{ id: 'building-old', code: 'OLD', name: 'อาคารเดิม' }],

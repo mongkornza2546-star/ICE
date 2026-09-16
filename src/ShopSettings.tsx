@@ -238,6 +238,7 @@ export function ShopSettings({
       const { data, error: loadError } = await client
         .from('shops')
         .select('id, code, name, government_shop_code, status')
+        .is('event_job_id', null)
         .ilike('government_shop_code', escapeLikePattern(draft.government_shop_code.trim()));
       if (cancelled) return;
       if (loadError) setError(loadError.message);
@@ -283,10 +284,11 @@ export function ShopSettings({
       supabase
         .from('shops')
         .select(SHOP_FIELDS, { count: 'exact' })
+        .is('event_job_id', null)
         .order('code')
         .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1),
-      supabase.from('buildings').select('id, code, name').eq('is_active', true).order('code'),
-      supabase.from('building_zones').select('id, building_id, code, name, sort_order, is_active').eq('is_active', true).order('sort_order'),
+      supabase.from('buildings').select('id, code, name').eq('is_active', true).not('code', 'like', 'EVENT-%').order('code'),
+      supabase.from('building_zones').select('id, building_id, code, name, sort_order, is_active').eq('is_active', true).not('code', 'like', 'EVENT-%').order('sort_order'),
       supabase.from('ice_types').select('id, code, name, unit').eq('is_active', true).order('code'),
     ]);
     const firstError = shopsResponse.error ?? buildingsResponse.error ?? zonesResponse.error ?? iceTypesResponse.error;
@@ -340,6 +342,7 @@ export function ShopSettings({
     const { data, error: loadError, count } = await client
       .from('shops')
       .select(SHOP_FIELDS, { count: 'exact' })
+      .is('event_job_id', null)
       .order('code')
       .range(from, from + PAGE_SIZE - 1);
 
@@ -383,6 +386,7 @@ export function ShopSettings({
       const { data, error: loadError, count } = await client
         .from('shops')
         .select(SHOP_FIELDS, { count: 'exact' })
+        .is('event_job_id', null)
         .order('code')
         .range(loadedShops.length, loadedShops.length + ALL_SHOPS_PAGE_SIZE - 1);
       if (loadError) throw new Error(loadError.message);
@@ -935,7 +939,7 @@ export function ShopSettings({
       <header className="shop-page-heading">
         <div>
           <h1>ร้านค้า</h1>
-          <p>จัดการร้านค้า สถานะการตั้งค่า POS และข้อมูลสำคัญของร้านค้าในศูนย์ราชการ</p>
+          <p>จัดการร้านประจำ สถานะการตั้งค่า POS และข้อมูลสำคัญของร้านค้าในศูนย์ราชการ</p>
         </div>
         <div className="shop-page-actions">
           <button className="primary-button shop-page-actions__new" onClick={() => void startNew()} type="button"><Plus size={21} weight="regular" />ร้านใหม่</button>
@@ -950,7 +954,7 @@ export function ShopSettings({
       {exportSuccess ? <p aria-live="polite" className="success-text shop-export-feedback">{exportSuccess}</p> : null}
 
       <section aria-label="สรุปสถานะร้าน" className="shop-summary-grid">
-        <article className="shop-summary-card shop-summary-card--blue"><span className="shop-summary-card__icon"><Storefront size={35} weight="duotone" /></span><div><p>ร้านค้าทั้งหมด</p><strong>{totalShopCount}</strong><small>ร้าน</small><a href="#shop-directory">ดูรายละเอียดทั้งหมด <CaretRight size={14} /></a></div></article>
+        <article className="shop-summary-card shop-summary-card--blue"><span className="shop-summary-card__icon"><Storefront size={35} weight="duotone" /></span><div><p>ร้านประจำทั้งหมด</p><strong>{totalShopCount}</strong><small>ร้าน</small><a href="#shop-directory">ดูรายละเอียดทั้งหมด <CaretRight size={14} /></a></div></article>
         <article className="shop-summary-card shop-summary-card--green"><span className="shop-summary-card__icon"><CheckCircle size={35} weight="duotone" /></span><div><p>พร้อมใช้งาน POS</p><strong>{readinessMetric(readyShopCount)}</strong><small>ร้าน {readinessAvailable && activeShopCount ? `(${Math.round((readyShopCount / activeShopCount) * 100)}%)` : ''}</small><em>พร้อมรับออเดอร์</em></div></article>
         <article className="shop-summary-card shop-summary-card--orange"><span className="shop-summary-card__icon"><CreditCard size={35} weight="duotone" /></span><div><p>ยังไม่มี Payment Profile</p><strong>{readinessMetric(missingProfileCount)}</strong><small>ร้าน {readinessAvailable && activeShopCount ? `(${Math.round((missingProfileCount / activeShopCount) * 100)}%)` : ''}</small><em>ตั้งค่าให้เสร็จเพื่อขายได้</em></div></article>
         <article className="shop-summary-card shop-summary-card--red"><span className="shop-summary-card__icon"><Warning size={35} weight="duotone" /></span><div><p>ยังไม่มีราคากลางน้ำแข็ง</p><strong>{readinessMetric(missingPriceCount)}</strong><small>ร้าน</small><em>ตั้งราคากลางก่อนขาย</em></div></article>
