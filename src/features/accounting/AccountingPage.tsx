@@ -565,7 +565,7 @@ export function AccountingPage({ userRole = 'round_lead', demoMode = false }: { 
         document.body,
       ) : null}
     </> : tab === 'reconciliation' ? <ReconciliationPanel data={reconciliation} serviceDate={serviceDate} setServiceDate={setServiceDate} /> : <>
-      <div className="accounting-filters">
+      <div className={tab === 'review' ? 'accounting-filters accounting-filters--review' : 'accounting-filters'}>
         <label className="accounting-filters__range"><span>ช่วงเวลา</span><span><input aria-label="จาก" max={toDate} onChange={(event) => { setShopWindowMode('custom'); setFromDate(event.target.value); setPage(0); }} type="date" value={fromDate} /><span aria-hidden="true">ถึง</span><input aria-label="ถึง" max={today} min={fromDate} onChange={(event) => { setShopWindowMode('custom'); setToDate(event.target.value); setPage(0); }} type="date" value={toDate} /></span></label>
         <label className="accounting-filters__search"><span>ค้นหาเอกสาร</span><span className="accounting-filters__input-wrap"><MagnifyingGlass size={17} /><input aria-label="ค้นเอกสาร" onChange={(event) => updateFilter({ document: event.target.value })} placeholder="เลขเอกสาร / อ้างอิง" value={filters.document ?? ''} /></span></label>
         {tab === 'transactions' ? <>

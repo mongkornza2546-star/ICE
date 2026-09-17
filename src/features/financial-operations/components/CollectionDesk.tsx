@@ -16,6 +16,8 @@ import { money, paymentMethodLabel, receiptDateTime } from '../utils';
 
 type QueueFilter = 'outstanding' | 'collected' | 'all';
 
+const PAGE_SIZE = 20;
+
 type CollectionRow = {
   id: string;
   kind: 'shop' | 'payment';
@@ -99,6 +101,7 @@ export function CollectionDesk({
   const [filter, setFilter] = useState<QueueFilter>('outstanding');
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState<'high' | 'low'>('high');
+  const [page, setPage] = useState(0);
   const [selectedPayment, setSelectedPayment] = useState<PaymentHistoryItem | null>(null);
   const [previewImage, setPreviewImage] = useState<{ name: string; url: string } | null>(null);
   const normalizedQuery = query.trim().toLocaleLowerCase();
@@ -168,9 +171,14 @@ export function CollectionDesk({
     return rows.sort((left, right) => (sort === 'high' ? 1 : -1) * (right.amount - left.amount));
   }, [filter, normalizedQuery, paymentHistory, queue, serviceDate, sort]);
 
-  const totalCount = filter === 'outstanding' ? queue.length
-    : filter === 'collected' ? paymentHistory.length
-      : queue.length + paymentHistory.length;
+  const totalCount = visibleRows.length;
+  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages - 1);
+  const pageRows = visibleRows.slice(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE);
+
+  useEffect(() => {
+    setPage((current) => Math.min(current, totalPages - 1));
+  }, [totalPages]);
 
   const stats = [
     { label: 'ยอดค้างทั้งหมด', value: outstandingTotal, note: `${queue.length} กลุ่มยอดค้าง`, icon: Receipt, tone: 'blue' },
@@ -181,6 +189,7 @@ export function CollectionDesk({
 
   const changeFilter = (nextFilter: QueueFilter) => {
     setFilter(nextFilter);
+    setPage(0);
     if (nextFilter === 'outstanding') setSelectedPayment(null);
     if (nextFilter === 'collected') onClearShop();
   };
@@ -215,13 +224,13 @@ export function CollectionDesk({
           </div>
           <>
             <div className="collection-desk__filters">
-              <label><MagnifyingGlass size={18} /><input onChange={(event) => setQuery(event.target.value)} placeholder="ค้นหาร้านค้า / เลขที่เอกสาร" value={query} /></label>
+              <label><MagnifyingGlass size={18} /><input onChange={(event) => { setQuery(event.target.value); setPage(0); }} placeholder="ค้นหาร้านค้า / เลขที่เอกสาร" value={query} /></label>
               <select aria-label="สถานะ" onChange={(event) => changeFilter(event.target.value as QueueFilter)} value={filter}>
                 <option value="outstanding">สถานะ: ค้างชำระ</option>
                 <option value="collected">สถานะ: รับเงินแล้ว</option>
                 <option value="all">ทั้งหมด</option>
               </select>
-              <select aria-label="เรียงรายการ" onChange={(event) => setSort(event.target.value as 'high' | 'low')} value={sort}><option value="high">เรียง: ยอดค้างมาก - น้อย</option><option value="low">เรียง: ยอดค้างน้อย - มาก</option></select>
+              <select aria-label="เรียงรายการ" onChange={(event) => { setSort(event.target.value as 'high' | 'low'); setPage(0); }} value={sort}><option value="high">เรียง: ยอดค้างมาก - น้อย</option><option value="low">เรียง: ยอดค้างน้อย - มาก</option></select>
             </div>
 
             {filter !== 'outstanding' ? <div className="collection-desk__history-date">
@@ -240,7 +249,7 @@ export function CollectionDesk({
 
             <div className="collection-desk__table-head" aria-hidden="true"><span>ร้านค้า</span><span>ประเภทรายการ</span><span>ยอดเงิน</span><span>เอกสารล่าสุด</span><span>วันที่ล่าสุด</span><span>สถานะ</span><span /></div>
             <div className="collection-desk__rows">
-              {visibleRows.map((row, index) => {
+              {pageRows.map((row, index) => {
                 const isSelected = row.kind === 'shop'
                   ? !selectedPayment
                     && (selectedShop?.queue_key ?? (selectedShop ? `regular:${selectedShop.shop_id}` : null)) === row.id
@@ -279,9 +288,9 @@ export function CollectionDesk({
                   </div>
                 );
               })}
-              {visibleRows.length === 0 ? <p>ไม่พบรายการที่ค้นหา</p> : null}
+              {pageRows.length === 0 ? <p>ไม่พบรายการที่ค้นหา</p> : null}
             </div>
-            <footer><span>แสดง {visibleRows.length ? `1 - ${visibleRows.length}` : '0'} จาก {totalCount} รายการ</span><span><button disabled type="button">‹</button><b>1</b><button disabled type="button">›</button></span><select aria-label="จำนวนรายการต่อหน้า"><option>20 รายการ/หน้า</option></select></footer>
+            <footer><span>แสดง {pageRows.length ? `${currentPage * PAGE_SIZE + 1} - ${currentPage * PAGE_SIZE + pageRows.length}` : '0'} จาก {totalCount} รายการ</span><span><button aria-label="ก่อนหน้า" disabled={currentPage === 0} onClick={() => setPage(currentPage - 1)} type="button">‹</button><b>{currentPage + 1}</b><button aria-label="ถัดไป" disabled={currentPage + 1 >= totalPages} onClick={() => setPage(currentPage + 1)} type="button">›</button></span><select aria-label="จำนวนรายการต่อหน้า" defaultValue={PAGE_SIZE}><option value={PAGE_SIZE}>20 รายการ/หน้า</option></select></footer>
           </>
         </section>
 

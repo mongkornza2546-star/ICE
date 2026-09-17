@@ -88,6 +88,7 @@
 .accounting-filters__input-wrap input { width: 100%; padding-left: 34px; }
 .accounting-filters .accounting-filters__checkbox { flex: 0 0 auto; display: flex; flex-direction: row; align-items: center; gap: 7px; min-height: 40px; white-space: nowrap; }
 .accounting-filters__checkbox input { min-height: auto; }
+.accounting-filters--review { display: grid; grid-template-columns: minmax(210px, 1.3fr) minmax(160px, 1.2fr) auto; }
 .accounting-filters--shop-summary { display: grid; grid-template-columns: minmax(230px, 1.4fr) minmax(200px, 1.2fr) minmax(150px, 1fr) minmax(200px, 1.2fr) minmax(120px, .8fr) auto; align-items: end; gap: 10px; }
 .accounting-filters--shop-summary > label { min-width: 0; }
 .accounting-filters--shop-summary > label > select, .accounting-filters--shop-summary > label > input { width: 100%; min-width: 0; }
@@ -286,6 +287,7 @@
 }
 
 @media (max-width: 760px) {
+  .accounting-filters--review { grid-template-columns: 1fr; }
   .accounting-filters--shop-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .accounting-filters--shop-summary .accounting-filters__range, .accounting-filters--shop-summary .accounting-filters__search, .accounting-filters--shop-summary .accounting-filters__more, .accounting-filters__extra { grid-column: 1 / -1; }
   .accounting-filters__extra { grid-template-columns: 1fr; }

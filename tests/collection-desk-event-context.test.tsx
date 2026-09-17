@@ -90,4 +90,52 @@ describe('CollectionDesk event queue identity', () => {
 
     expect(onSelectShop).toHaveBeenCalledWith(event, expect.any(HTMLButtonElement));
   });
+
+  it('shows 20 rows per page and navigates to the remaining rows', async () => {
+    const user = userEvent.setup();
+    const queue = Array.from({ length: 21 }, (_, index) => queueEntry({
+      queue_key: `regular:shop-${index + 1}`,
+      shop_id: `shop-${index + 1}`,
+      shop_code: `S${String(index + 1).padStart(3, '0')}`,
+      shop_name: `ร้านที่ ${index + 1}`,
+      outstanding_amount: 21 - index,
+      charges: [{
+        charge_id: `charge-${index + 1}`,
+        charge_number: `INV-${String(index + 1).padStart(3, '0')}`,
+        service_date: '2026-09-03',
+        original_amount: 21 - index,
+        outstanding_amount: 21 - index,
+        items: [],
+      }],
+    }));
+
+    render(<CollectionDesk
+      busy={false}
+      historyDate="2026-09-03"
+      onClearShop={vi.fn()}
+      onHistoryDateChange={vi.fn()}
+      onOpenReceipt={vi.fn()}
+      onPrintReceipt={vi.fn()}
+      onRefresh={vi.fn()}
+      onSelectShop={vi.fn()}
+      onVoidPayment={vi.fn()}
+      paymentHistory={[]}
+      paymentPanel={null}
+      queue={queue}
+      runId="run-1"
+      selectedShop={null}
+      serviceDate="2026-09-03"
+      todayPayments={[]}
+    />);
+
+    expect(screen.getAllByRole('button', { name: /^เลือกรายการ/ })).toHaveLength(20);
+    expect(screen.getByText('แสดง 1 - 20 จาก 21 รายการ')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'เลือกรายการ S021 · ร้านที่ 21' })).toBeNull();
+
+    await user.click(screen.getByRole('button', { name: 'ถัดไป' }));
+
+    expect(screen.getAllByRole('button', { name: /^เลือกรายการ/ })).toHaveLength(1);
+    expect(screen.getByRole('button', { name: 'เลือกรายการ S021 · ร้านที่ 21' })).toBeTruthy();
+    expect(screen.getByText('แสดง 21 - 21 จาก 21 รายการ')).toBeTruthy();
+  });
 });

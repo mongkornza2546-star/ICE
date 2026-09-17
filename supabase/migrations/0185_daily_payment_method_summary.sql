@@ -11,7 +11,7 @@ as $$
 declare
   v_service_date date := coalesce(
     p_service_date,
-    (clock_timestamp() at time zone 'Asia/Bangkok')::date
+    (now() at time zone 'Asia/Bangkok')::date
   );
 begin
   if not public.is_active_user()
