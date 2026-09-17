@@ -13,7 +13,9 @@ function setup(status = 'open') {
       deliverySummary: { regularShopCount: 0, eventParticipationCount: 0, activeDeliveryCount: 0 },
       salesSummary: { netSalesValue: 800 }, cancellationState: { can_cancel: false }, problems: [],
       readiness: [{ status: 'uncounted', location_id: 'legacy-location' }],
-    } : name === 'get_stock_control_summary' ? { locations: [] } : {
+    } : name === 'get_stock_control_summary' ? { locations: [] } : name === 'get_daily_payment_method_summary' ? {
+      cashReceivedValue: 200, transferReceivedValue: 300, creditSalesValue: 300,
+    } : {
       service_date: args.p_service_date, status, items: [{ ice_type_id: 'ice', name: 'หลอด', unit: 'ถุง', available_quantity: status === 'closed' ? 0 : 10 }],
     } }));
 }
@@ -25,6 +27,9 @@ it('shows the aggregate closure instead of obsolete per-location count warnings'
   expect(screen.queryByText('มีจุดถือครองที่ต้องตรวจนับ')).toBeNull();
   expect(screen.queryByText('รอตรวจนับใหม่ก่อนปิดวัน')).toBeNull();
   expect(screen.getAllByText('ปิดยอดรวมแล้ว').length).toBeGreaterThan(0);
+  expect(screen.getByText('เงินสด')).not.toBeNull();
+  expect(screen.getByText('โอน / QR')).not.toBeNull();
+  expect(screen.getByText('เครดิต')).not.toBeNull();
 });
 
 it('refreshes visible dashboards from the server and pauses while inactive', async () => {

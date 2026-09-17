@@ -1,0 +1,176 @@
+{
+  "source": "สรุปยอดขาย ศูนย์ราชการ ปี 69-3.xls",
+  "started_at": "2026-09-17T10:52:16.652Z",
+  "days": {
+    "2026-09-16": {
+      "round_id": "7f518b2e-9f13-4645-b75c-d639f5aa8f98",
+      "created": 0,
+      "already_exact": 112,
+      "existing_conflicts": [
+        {
+          "sheet": "ตีกB โดม1",
+          "row": 972,
+          "shop_code": "BB85",
+          "shop_name": "เซเว่น 7-11",
+          "excel": {
+            "2390e8cf-c4d1-4948-bc6d-5db526432b0e": 5
+          },
+          "system": {
+            "29733db5-603e-4cf8-8a93-609645afcee4": 1
+          },
+          "event_id": "b29c0d3a-a23e-45b2-8208-d39f772f6ba7"
+        }
+      ],
+      "errors": [],
+      "missing_stops": [],
+      "payment_review": []
+    },
+    "2026-09-17": {
+      "round_id": "53714c47-948f-4b2f-839a-985886610162",
+      "created": 0,
+      "already_exact": 103,
+      "existing_conflicts": [
+        {
+          "sheet": "sky walk",
+          "row": 1315,
+          "shop_code": "SW-15",
+          "shop_name": "15",
+          "excel": {
+            "29733db5-603e-4cf8-8a93-609645afcee4": 0.5
+          },
+          "system": {
+            "29733db5-603e-4cf8-8a93-609645afcee4": 1
+          },
+          "event_id": "5183439a-10fd-4711-af49-d934082e8353"
+        },
+        {
+          "sheet": "ตีกB โดม1",
+          "row": 972,
+          "shop_code": "BB85",
+          "shop_name": "เซเว่น 7-11",
+          "excel": {
+            "2390e8cf-c4d1-4948-bc6d-5db526432b0e": 5
+          },
+          "system": {
+            "29733db5-603e-4cf8-8a93-609645afcee4": 1
+          },
+          "event_id": "f39f50c3-4879-4a63-9361-6fbd257a2d9f"
+        }
+      ],
+      "errors": [],
+      "missing_stops": [],
+      "payment_review": [
+        {
+          "sheet": "ฟอร์มตึก A",
+          "row": 1591,
+          "shop_code": "AA17",
+          "shop_name": "ร้านเจ้าเงาะ",
+          "reason": "payment_only",
+          "money": 50
+        }
+      ]
+    }
+  },
+  "skipped_source_rows": [
+    {
+      "date": "2026-09-16",
+      "sheet": "ตึกC",
+      "row": 1325,
+      "code": "Evc",
+      "name": "พี่เหมียว+ถัง1",
+      "quantities": {
+        "โม่": 1
+      }
+    },
+    {
+      "date": "2026-09-16",
+      "sheet": "ตึกC",
+      "row": 1326,
+      "code": "Evc",
+      "name": "พีกาว+ถัง1",
+      "quantities": {
+        "โม่": 1
+      }
+    },
+    {
+      "date": "2026-09-16",
+      "sheet": "ตึกC",
+      "row": 1327,
+      "code": "Evc",
+      "name": "พี่เบน",
+      "quantities": {
+        "โม่": 1
+      }
+    },
+    {
+      "date": "2026-09-16",
+      "sheet": "ตึกC",
+      "row": 1329,
+      "code": "Evc",
+      "name": "บูธ2+ถัง1",
+      "quantities": {
+        "โม่": 2
+      }
+    },
+    {
+      "date": "2026-09-17",
+      "sheet": "ตีกB โดม1",
+      "row": 974,
+      "code": "",
+      "name": "สด",
+      "quantities": {
+        "เล็ก": 1
+      }
+    },
+    {
+      "date": "2026-09-17",
+      "sheet": "ตึกB โดม4",
+      "row": 531,
+      "code": "",
+      "name": "สด",
+      "quantities": {
+        "เล็ก": 1
+      }
+    },
+    {
+      "date": "2026-09-17",
+      "sheet": "ตึกC",
+      "row": 1325,
+      "code": "Evc",
+      "name": "พี่เหมียว+ถัง1",
+      "quantities": {
+        "โม่": 1
+      }
+    },
+    {
+      "date": "2026-09-17",
+      "sheet": "ตึกC",
+      "row": 1326,
+      "code": "Evc",
+      "name": "พีกาว+ถัง1",
+      "quantities": {}
+    },
+    {
+      "date": "2026-09-17",
+      "sheet": "ตึกC",
+      "row": 1327,
+      "code": "Evc",
+      "name": "พี่เบน",
+      "quantities": {
+        "โม่": 1
+      }
+    }
+  ],
+  "payment_review": [
+    {
+      "date": "2026-09-17",
+      "sheet": "ฟอร์มตึก A",
+      "row": 1591,
+      "shop_code": "AA17",
+      "shop_name": "ร้านเจ้าเงาะ",
+      "reason": "payment_only",
+      "money": 50
+    }
+  ],
+  "finished_at": "2026-09-17T10:52:19.141Z"
+}

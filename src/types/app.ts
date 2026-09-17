@@ -654,6 +654,15 @@ export interface DailyWorkIceTypeSale {
 export interface DailyWorkSalesSummary {
   netSalesValue: number;
   iceTypeSales: DailyWorkIceTypeSale[];
+  cashReceivedValue?: number;
+  transferReceivedValue?: number;
+  creditSalesValue?: number;
+}
+
+export interface DailyPaymentMethodSummary {
+  cashReceivedValue: number;
+  transferReceivedValue: number;
+  creditSalesValue: number;
 }
 
 export interface DailyWorkRecentDelivery {

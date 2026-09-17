@@ -1,0 +1,2098 @@
+{
+  "source": "/Users/bhusitt./Downloads/สรุปยอดขาย ศูนย์ราชการ ปี 69-2.xls",
+  "status": "NOT_IMPORTED",
+  "rows": [
+    {
+      "sheet": "sky walk",
+      "row": 1301,
+      "month_header": "เดือน กันยายน 2569",
+      "requested_date": "2026-09-16",
+      "source_code": 17.0,
+      "source_name": "ลุงนวย",
+      "quantities": {
+        "เล็ก": 1.5
+      },
+      "money_cell": 90.0,
+      "source_column_start": 10,
+      "source_column_end": 12,
+      "flags": [
+        "missing_or_nonunique_shop_code"
+      ]
+    },
+    {
+      "sheet": "sky walk",
+      "row": 1303,
+      "month_header": "เดือน กันยายน 2569",
+      "requested_date": "2026-09-16",
+      "source_code": 19.0,
+      "source_name": "",
+      "quantities": {
+        "โม่": 1.0,
+        "เล็ก": 5.0
+      },
+      "money_cell": 360.0,
+      "source_column_start": 10,
+      "source_column_end": 12,
+      "flags": [
+        "missing_shop_name",
+        "missing_or_nonunique_shop_code"
+      ]
+    },
+    {
+      "sheet": "sky walk",
+      "row": 1304,
+      "month_header": "เดือน กันยายน 2569",
+      "requested_date": "2026-09-16",
+      "source_code": 20.0,
+      "source_name": "",
+      "quantities": {
+        "โม่": 0.5
+      },
+      "money_cell": 30.0,
+      "source_column_start": 10,
+      "source_column_end": 12,
+      "flags": [
+        "missing_shop_name",
+        "missing_or_nonunique_shop_code"
+      ]
+    },
+    {
+      "sheet": "sky walk",
+      "row": 1310,
+      "month_header": "เดือน กันยายน 2569",
+      "requested_date": "2026-09-16",
+      "source_code": 26.0,
+      "source_name": "",
+      "quantities": {
+        "โม่": 0.5
+      },
+      "money_cell": 30.0,
+      "source_column_start": 10,
+      "source_column_end": 12,
+      "flags": [
+        "missing_shop_name",
+        "missing_or_nonunique_shop_code"
+      ]
+    },
+    {
+      "sheet": "sky walk",
+      "row": 1317,
+      "month_header": "เดือน กันยายน 2569",
+      "requested_date": "2026-09-16",
+      "source_code": 33.0,
+      "source_name": "ผลไม้",
+      "quantities": {
+        "โม่": 2.0
+      },
+      "money_cell": 120.0,
+      "source_column_start": 10,
+      "source_column_end": 12,
+      "flags": [
+        "missing_or_nonunique_shop_code"
+      ]
+    },
+    {
+      "sheet": "sky walk",
+      "row": 1319,
+      "month_header": "เดือน กันยายน 2569",
+      "requested_date": "2026-09-16",
+      "source_code": 35.0,
+      "source_name": "",
+      "quantities": {
+        "เล็ก": 1.5
+      },
+      "money_cell": 90.0,
+      "source_column_start": 10,
+      "source_column_end": 12,
+      "flags": [
+        "missing_shop_name",
+        "missing_or_nonunique_shop_code"
+      ]
+    },
+    {
+      "sheet": "sky walk",
+      "row": 1321,
+      "month_header": "เดือน กันยายน 2569",
+      "requested_date": "2026-09-16",
+      "source_code": 37.0,
+      "source_name": "",
+      "quantities": {
+        "โม่": 0.5
+      },
+      "money_cell": 30.0,
+      "source_column_start": 10,
+      "source_column_end": 12,
+      "flags": [
+        "missing_shop_name",
+        "missing_or_nonunique_shop_code"
+      ]
+    },
+    {
+      "sheet": "sky walk",
+      "row": 1324,
+      "month_header": "เดือน กันยายน 2569",
+      "requested_date": "2026-09-16",
+      "source_code": 45.0,
+      "source_name": "",
+      "quantities": {
+        "เล็ก": 4.0
+      },
+      "money_cell": 240.0,
+      "source_column_start": 10,
+      "source_column_end": 12,
+      "flags": [
+        "missing_shop_name",
+        "missing_or_nonunique_shop_code"
+      ]
+    },
+    {
+      "sheet": "sky walk",
+      "row": 1327,
+      "month_header": "เดือน กันยายน 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "",
+      "source_name": "ออแกไนซ์",
+      "quantities": {
+        "เล็ก": 1.0
+      },
+      "money_cell": "",
+      "source_column_start": 10,
+      "source_column_end": 12,
+      "flags": [
+        "missing_or_nonunique_shop_code",
+        "payment_or_price_needs_confirmation"
+      ]
+    },
+    {
+      "sheet": "ตีกB โดม1",
+      "row": 963,
+      "month_header": "เดือน สิงหาคม 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "bb27",
+      "source_name": "ร้านดิโอโร่Cr (ซุ้ม 1)",
+      "quantities": {
+        "เล็ก": 2.0
+      },
+      "money_cell": "",
+      "source_column_start": 10,
+      "source_column_end": 12,
+      "flags": [
+        "month_not_september",
+        "payment_or_price_needs_confirmation"
+      ]
+    },
+    {
+      "sheet": "ตีกB โดม1",
+      "row": 965,
+      "month_header": "เดือน สิงหาคม 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "bb29",
+      "source_name": "ร้านคอฟฟี่ Coffee(ซุ้ม 1)",
+      "quantities": {
+        "เล็ก": 4.5
+      },
+      "money_cell": 270.0,
+      "source_column_start": 10,
+      "source_column_end": 12,
+      "flags": [
+        "month_not_september"
+      ]
+    },
+    {
+      "sheet": "ตีกB โดม1",
+      "row": 966,
+      "month_header": "เดือน สิงหาคม 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "bb30",
+      "source_name": "ร้านคอฟฟี่ คอนพันนา (ซุ้ม 1)",
+      "quantities": {
+        "เล็ก": 6.0
+      },
+      "money_cell": 360.0,
+      "source_column_start": 10,
+      "source_column_end": 12,
+      "flags": [
+        "month_not_september"
+      ]
+    },
+    {
+      "sheet": "ตีกB โดม1",
+      "row": 967,
+      "month_header": "เดือน สิงหาคม 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "bb31",
+      "source_name": "มะพร้าวปั่นคุณป้า(ซุ้ม 1)",
+      "quantities": {
+        "โม่": 2.0
+      },
+      "money_cell": 120.0,
+      "source_column_start": 10,
+      "source_column_end": 12,
+      "flags": [
+        "month_not_september"
+      ]
+    },
+    {
+      "sheet": "ตีกB โดม1",
+      "row": 968,
+      "month_header": "เดือน สิงหาคม 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "bb33",
+      "source_name": "ร้านขนมปราง (ชั้น5) (ซุ้ม 1)",
+      "quantities": {
+        "เล็ก": 1.5
+      },
+      "money_cell": 300.0,
+      "source_column_start": 10,
+      "source_column_end": 12,
+      "flags": [
+        "month_not_september"
+      ]
+    },
+    {
+      "sheet": "ตีกB โดม1",
+      "row": 972,
+      "month_header": "เดือน สิงหาคม 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "Evb",
+      "source_name": "เซเว่น",
+      "quantities": {
+        "เล็ก": 5.0
+      },
+      "money_cell": 300.0,
+      "source_column_start": 10,
+      "source_column_end": 12,
+      "flags": [
+        "month_not_september",
+        "missing_or_nonunique_shop_code"
+      ]
+    },
+    {
+      "sheet": "ตีกB โดม1",
+      "row": 973,
+      "month_header": "เดือน สิงหาคม 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "Evb",
+      "source_name": "วิน",
+      "quantities": {
+        "โม่": 1.0,
+        "เล็ก": 2.0
+      },
+      "money_cell": "",
+      "source_column_start": 10,
+      "source_column_end": 12,
+      "flags": [
+        "month_not_september",
+        "missing_or_nonunique_shop_code",
+        "payment_or_price_needs_confirmation"
+      ]
+    },
+    {
+      "sheet": "ตีกB โดม1",
+      "row": 975,
+      "month_header": "เดือน สิงหาคม 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "",
+      "source_name": "lamonday",
+      "quantities": {
+        "เล็ก": 2.0
+      },
+      "money_cell": 120.0,
+      "source_column_start": 10,
+      "source_column_end": 12,
+      "flags": [
+        "month_not_september",
+        "missing_or_nonunique_shop_code"
+      ]
+    },
+    {
+      "sheet": "ตึกB โดม2",
+      "row": 620,
+      "month_header": "เดือน สิงหาคม 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "bb37",
+      "source_name": "ร้านเจียง ลูกชิ้นปลา(เครดิต) (ซุ้ม2)",
+      "quantities": {
+        "โม่": 3.0,
+        "เล็ก": 3.0
+      },
+      "money_cell": "",
+      "source_column_start": 9,
+      "source_column_end": 11,
+      "flags": [
+        "month_not_september",
+        "payment_or_price_needs_confirmation"
+      ]
+    },
+    {
+      "sheet": "ตึกB โดม2",
+      "row": 621,
+      "month_header": "เดือน สิงหาคม 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "bb38",
+      "source_name": "ร้านเดอะเทสคาเฟ่ (ซุ้ม2)",
+      "quantities": {
+        "โม่": 2.0,
+        "เล็ก": 2.0
+      },
+      "money_cell": 240.0,
+      "source_column_start": 9,
+      "source_column_end": 11,
+      "flags": [
+        "month_not_september"
+      ]
+    },
+    {
+      "sheet": "ตึกB โดม2",
+      "row": 624,
+      "month_header": "เดือน สิงหาคม 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "bb41",
+      "source_name": "กรผลไม้ (ตรงข้ามมอร์นิ่งโรส) (ซุ้ม2)",
+      "quantities": {
+        "โม่": 0.5
+      },
+      "money_cell": 30.0,
+      "source_column_start": 9,
+      "source_column_end": 11,
+      "flags": [
+        "month_not_september"
+      ]
+    },
+    {
+      "sheet": "ตึกB โดม2",
+      "row": 625,
+      "month_header": "เดือน สิงหาคม 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "bb42",
+      "source_name": "ป้าผลไม้หน้าเจียง(ซุ้ม2)",
+      "quantities": {
+        "โม่": 4.0
+      },
+      "money_cell": 240.0,
+      "source_column_start": 9,
+      "source_column_end": 11,
+      "flags": [
+        "month_not_september"
+      ]
+    },
+    {
+      "sheet": "ตึกB โดม3",
+      "row": 710,
+      "month_header": "เดือน กันยายน 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "bb43",
+      "source_name": "ร้านกาแฟ T24 (ซุ้ม3)",
+      "quantities": {
+        "เล็ก": 2.0
+      },
+      "money_cell": "ค้าง",
+      "source_column_start": 12,
+      "source_column_end": 14,
+      "flags": [
+        "payment_or_price_needs_confirmation"
+      ]
+    },
+    {
+      "sheet": "ตึกB โดม3",
+      "row": 711,
+      "month_header": "เดือน กันยายน 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "bb44",
+      "source_name": "ร้านใหม่น้ำปั่น (ซุ้ม3)",
+      "quantities": {
+        "เล็ก": 2.0
+      },
+      "money_cell": 120.0,
+      "source_column_start": 12,
+      "source_column_end": 14,
+      "flags": []
+    },
+    {
+      "sheet": "ตึกB โดม3",
+      "row": 712,
+      "month_header": "เดือน กันยายน 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "bb45",
+      "source_name": "กาแฟหน้าเซเว่น (ซุ้ม3)",
+      "quantities": {
+        "โม่": 1.0,
+        "เล็ก": 2.0
+      },
+      "money_cell": 180.0,
+      "source_column_start": 12,
+      "source_column_end": 14,
+      "flags": []
+    },
+    {
+      "sheet": "ตึกB โดม3",
+      "row": 713,
+      "month_header": "เดือน กันยายน 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "bb46",
+      "source_name": "ร้านอเมซอน (ซุ้ม3)",
+      "quantities": {
+        "เล็ก": 10.0
+      },
+      "money_cell": 600.0,
+      "source_column_start": 12,
+      "source_column_end": 14,
+      "flags": []
+    },
+    {
+      "sheet": "ตึกB โดม3",
+      "row": 714,
+      "month_header": "เดือน กันยายน 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "bb47",
+      "source_name": "ร้านมิกก้า(Mikka)(เครดิต1 เดือน)  (ซุ้ม3)",
+      "quantities": {
+        "เล็ก": 2.0
+      },
+      "money_cell": "",
+      "source_column_start": 12,
+      "source_column_end": 14,
+      "flags": [
+        "payment_or_price_needs_confirmation"
+      ]
+    },
+    {
+      "sheet": "ตึกB โดม3",
+      "row": 715,
+      "month_header": "เดือน กันยายน 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "bb48",
+      "source_name": "ร้านมาดามเมลโล่(MADAM MELLO) (ซุ้ม3)",
+      "quantities": {
+        "เล็ก": 0.5
+      },
+      "money_cell": 30.0,
+      "source_column_start": 12,
+      "source_column_end": 14,
+      "flags": []
+    },
+    {
+      "sheet": "ตึกB โดม3",
+      "row": 716,
+      "month_header": "เดือน กันยายน 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "bb49",
+      "source_name": "ชานมไข่มุก (ซุ้ม3)",
+      "quantities": {
+        "เล็ก": 3.0
+      },
+      "money_cell": 180.0,
+      "source_column_start": 12,
+      "source_column_end": 14,
+      "flags": []
+    },
+    {
+      "sheet": "ตึกB โดม3",
+      "row": 717,
+      "month_header": "เดือน กันยายน 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "bb50",
+      "source_name": "คอน นิ จิ วะ(เครดิต1 เดือน)  (ซุ้ม3)",
+      "quantities": {
+        "เล็ก": 1.0
+      },
+      "money_cell": "",
+      "source_column_start": 12,
+      "source_column_end": 14,
+      "flags": [
+        "payment_or_price_needs_confirmation"
+      ]
+    },
+    {
+      "sheet": "ตึกB โดม3",
+      "row": 720,
+      "month_header": "เดือน กันยายน 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "",
+      "source_name": "ฮัซ อาวเฮอร์",
+      "quantities": {
+        "เล็ก": 5.0
+      },
+      "money_cell": 300.0,
+      "source_column_start": 12,
+      "source_column_end": 14,
+      "flags": [
+        "missing_or_nonunique_shop_code"
+      ]
+    },
+    {
+      "sheet": "ตึกB โดม4",
+      "row": 526,
+      "month_header": "เดือน กันยายน 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "bb53",
+      "source_name": "ร้านกาแฟพันธุ์ไทย(เครดิต) (ซุ้ม4)",
+      "quantities": {
+        "เล็ก": 7.0
+      },
+      "money_cell": "",
+      "source_column_start": 9,
+      "source_column_end": 11,
+      "flags": [
+        "payment_or_price_needs_confirmation"
+      ]
+    },
+    {
+      "sheet": "ตึกB โดม4",
+      "row": 527,
+      "month_header": "เดือน กันยายน 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "bb54",
+      "source_name": "ร้านMister Donutเ(เคดิต)(ซุ้ม4)",
+      "quantities": {
+        "เล็ก": 2.0
+      },
+      "money_cell": "",
+      "source_column_start": 9,
+      "source_column_end": 11,
+      "flags": [
+        "payment_or_price_needs_confirmation"
+      ]
+    },
+    {
+      "sheet": "ตึกB โดม4",
+      "row": 528,
+      "month_header": "เดือน กันยายน 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "bb55",
+      "source_name": "ร้านBella (ซุ้ม4)",
+      "quantities": {
+        "เล็ก": 1.0
+      },
+      "money_cell": 60.0,
+      "source_column_start": 9,
+      "source_column_end": 11,
+      "flags": []
+    },
+    {
+      "sheet": "ตึกB โดม4",
+      "row": 529,
+      "month_header": "เดือน กันยายน 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "bb56",
+      "source_name": "ร้านกุ้ง กาแฟ (ซุ้ม4)",
+      "quantities": {
+        "เล็ก": 2.0
+      },
+      "money_cell": 120.0,
+      "source_column_start": 9,
+      "source_column_end": 11,
+      "flags": []
+    },
+    {
+      "sheet": "ศูนย์อาหารฝั่งกรุงไทย",
+      "row": 900,
+      "month_header": "ตึกB     เดือน กันยาย 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "bb16",
+      "source_name": "ร้านร้านเล่าซา",
+      "quantities": {
+        "โม่": 1.0
+      },
+      "money_cell": 60.0,
+      "source_column_start": 11,
+      "source_column_end": 14,
+      "flags": []
+    },
+    {
+      "sheet": "ศูนย์อาหารฝั่งกรุงไทย",
+      "row": 901,
+      "month_header": "ตึกB     เดือน กันยาย 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "bb17",
+      "source_name": "เคบับและสเต็ก",
+      "quantities": {
+        "โม่": 0.5
+      },
+      "money_cell": 30.0,
+      "source_column_start": 11,
+      "source_column_end": 14,
+      "flags": []
+    },
+    {
+      "sheet": "ศูนย์อาหารฝั่งกรุงไทย",
+      "row": 903,
+      "month_header": "ตึกB     เดือน กันยาย 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "bb19",
+      "source_name": "ร้านเอวีแก้น",
+      "quantities": {
+        "เล็ก": 1.0
+      },
+      "money_cell": 60.0,
+      "source_column_start": 11,
+      "source_column_end": 14,
+      "flags": []
+    },
+    {
+      "sheet": "ศูนย์อาหารฝั่งกรุงไทย",
+      "row": 905,
+      "month_header": "ตึกB     เดือน กันยาย 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "bb21",
+      "source_name": "ร้านครัวยายนัน",
+      "quantities": {
+        "โม่": 1.0
+      },
+      "money_cell": 60.0,
+      "source_column_start": 11,
+      "source_column_end": 14,
+      "flags": []
+    },
+    {
+      "sheet": "ศูนย์อาหารฝั่งกรุงไทย",
+      "row": 906,
+      "month_header": "ตึกB     เดือน กันยาย 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "bb22",
+      "source_name": "ร้านน้ำป้าตุ๊ก MEA BOONSRI(50บาท)",
+      "quantities": {
+        "เล็ก": 8.0
+      },
+      "money_cell": 400.0,
+      "source_column_start": 11,
+      "source_column_end": 14,
+      "flags": []
+    },
+    {
+      "sheet": "ศูนย์อาหารฝั่งกรุงไทย",
+      "row": 907,
+      "month_header": "ตึกB     เดือน กันยาย 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "bb23",
+      "source_name": "ร้านเฉาก๋วย",
+      "quantities": {
+        "โม่": 1.0
+      },
+      "money_cell": 60.0,
+      "source_column_start": 11,
+      "source_column_end": 14,
+      "flags": []
+    },
+    {
+      "sheet": "ศูนย์อาหารฝั่งกรุงไทย",
+      "row": 908,
+      "month_header": "ตึกB     เดือน กันยาย 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "bb24",
+      "source_name": "ร้านผลไม้แช่เย็น",
+      "quantities": {
+        "โม่": 1.0
+      },
+      "money_cell": 60.0,
+      "source_column_start": 11,
+      "source_column_end": 14,
+      "flags": []
+    },
+    {
+      "sheet": "ศูนย์อาหารฝั่งกรุงไทย",
+      "row": 909,
+      "month_header": "ตึกB     เดือน กันยาย 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "bb26",
+      "source_name": "ไข่มุก",
+      "quantities": {
+        "เล็ก": 1.5
+      },
+      "money_cell": 90.0,
+      "source_column_start": 11,
+      "source_column_end": 14,
+      "flags": []
+    },
+    {
+      "sheet": "ศูนย์อาหารฝั่งกรุงไทย",
+      "row": 910,
+      "month_header": "ตึกB     เดือน กันยาย 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "",
+      "source_name": "ข้าวมันไก่",
+      "quantities": {
+        "โม่": 0.5
+      },
+      "money_cell": 30.0,
+      "source_column_start": 11,
+      "source_column_end": 14,
+      "flags": [
+        "missing_or_nonunique_shop_code"
+      ]
+    },
+    {
+      "sheet": "ศูนย์อาหารฝั่งกรุงไทย",
+      "row": 911,
+      "month_header": "ตึกB     เดือน กันยาย 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "",
+      "source_name": "ลุยสวน",
+      "quantities": {
+        "โม่": 0.5
+      },
+      "money_cell": 30.0,
+      "source_column_start": 11,
+      "source_column_end": 14,
+      "flags": [
+        "missing_or_nonunique_shop_code"
+      ]
+    },
+    {
+      "sheet": "ศูนย์อาหารฝั่งท็อป",
+      "row": 946,
+      "month_header": "เดือน  กันยายน 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "bb1",
+      "source_name": "ร้านข้าวแกงCK (50 บาท) (1)",
+      "quantities": {
+        "โม่": 1.5,
+        "เล็ก": 6.0
+      },
+      "money_cell": 375.0,
+      "source_column_start": 11,
+      "source_column_end": 14,
+      "flags": []
+    },
+    {
+      "sheet": "ศูนย์อาหารฝั่งท็อป",
+      "row": 947,
+      "month_header": "เดือน  กันยายน 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "bb2",
+      "source_name": "ร้านผัดไทโปรโอที (2)",
+      "quantities": {
+        "โม่": 0.5
+      },
+      "money_cell": 30.0,
+      "source_column_start": 11,
+      "source_column_end": 14,
+      "flags": []
+    },
+    {
+      "sheet": "ศูนย์อาหารฝั่งท็อป",
+      "row": 948,
+      "month_header": "เดือน  กันยายน 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "bb3",
+      "source_name": "ร้านเตือนใจข้าวมันไก่ (3)",
+      "quantities": {
+        "โม่": 1.0
+      },
+      "money_cell": 60.0,
+      "source_column_start": 11,
+      "source_column_end": 14,
+      "flags": []
+    },
+    {
+      "sheet": "ศูนย์อาหารฝั่งท็อป",
+      "row": 949,
+      "month_header": "เดือน  กันยายน 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "bb4",
+      "source_name": "ร้านเส้นก๋วยเตี๋ยว (4)",
+      "quantities": {
+        "โม่": 0.5
+      },
+      "money_cell": 30.0,
+      "source_column_start": 11,
+      "source_column_end": 14,
+      "flags": []
+    },
+    {
+      "sheet": "ศูนย์อาหารฝั่งท็อป",
+      "row": 950,
+      "month_header": "เดือน  กันยายน 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "bb5",
+      "source_name": "ร้านราดหน้ายอดผัก (5)",
+      "quantities": {
+        "โม่": 1.0
+      },
+      "money_cell": 60.0,
+      "source_column_start": 11,
+      "source_column_end": 14,
+      "flags": []
+    },
+    {
+      "sheet": "ศูนย์อาหารฝั่งท็อป",
+      "row": 951,
+      "month_header": "เดือน  กันยายน 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "bb6",
+      "source_name": "ร้านต้มเลือดหมู (6)",
+      "quantities": {
+        "โม่": 0.5
+      },
+      "money_cell": 30.0,
+      "source_column_start": 11,
+      "source_column_end": 14,
+      "flags": []
+    },
+    {
+      "sheet": "ศูนย์อาหารฝั่งท็อป",
+      "row": 952,
+      "month_header": "เดือน  กันยายน 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "bb7",
+      "source_name": "ร้านชมพู ข้าวยาไก่ทอด (7)",
+      "quantities": {
+        "โม่": 1.0
+      },
+      "money_cell": 60.0,
+      "source_column_start": 11,
+      "source_column_end": 14,
+      "flags": []
+    },
+    {
+      "sheet": "ศูนย์อาหารฝั่งท็อป",
+      "row": 953,
+      "month_header": "เดือน  กันยายน 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "bb8",
+      "source_name": "ร้านต้มยารสเด็ด ข้าวต้มปลา (8)",
+      "quantities": {
+        "โม่": 0.5
+      },
+      "money_cell": 30.0,
+      "source_column_start": 11,
+      "source_column_end": 14,
+      "flags": []
+    },
+    {
+      "sheet": "ศูนย์อาหารฝั่งท็อป",
+      "row": 955,
+      "month_header": "เดือน  กันยายน 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "bb10",
+      "source_name": "ข้าวหมูแดง ยายนัน (10)",
+      "quantities": {
+        "โม่": 0.5
+      },
+      "money_cell": 30.0,
+      "source_column_start": 11,
+      "source_column_end": 14,
+      "flags": []
+    },
+    {
+      "sheet": "ศูนย์อาหารฝั่งท็อป",
+      "row": 956,
+      "month_header": "เดือน  กันยายน 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "bb11",
+      "source_name": "ร้านทิพย์โอชา (ถัง300L) (ก้อน) (11)",
+      "quantities": {
+        "โม่": 0.5
+      },
+      "money_cell": 25.0,
+      "source_column_start": 11,
+      "source_column_end": 14,
+      "flags": []
+    },
+    {
+      "sheet": "ศูนย์อาหารฝั่งท็อป",
+      "row": 960,
+      "month_header": "เดือน  กันยายน 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "bb15",
+      "source_name": "ผลไม้ตามฤดูกาล (17)",
+      "quantities": {
+        "โม่": 0.5
+      },
+      "money_cell": 30.0,
+      "source_column_start": 11,
+      "source_column_end": 14,
+      "flags": []
+    },
+    {
+      "sheet": "ศูนย์อาหารฝั่งท็อป",
+      "row": 961,
+      "month_header": "เดือน  กันยายน 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "",
+      "source_name": "ชาบู",
+      "quantities": {
+        "โม่": 0.5
+      },
+      "money_cell": 30.0,
+      "source_column_start": 11,
+      "source_column_end": 14,
+      "flags": [
+        "missing_or_nonunique_shop_code"
+      ]
+    },
+    {
+      "sheet": "ร้อยล้านเมาร์เช่",
+      "row": 707,
+      "month_header": "ร้อยล้านมาร์เช่         เดือน กันยายน 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "bb76",
+      "source_name": "ข้าวคลุกกะปิ (ค้าง60)",
+      "quantities": {
+        "โม่": 1.0
+      },
+      "money_cell": 60.0,
+      "source_column_start": 9,
+      "source_column_end": 11,
+      "flags": []
+    },
+    {
+      "sheet": "ร้อยล้านเมาร์เช่",
+      "row": 708,
+      "month_header": "ร้อยล้านมาร์เช่         เดือน กันยายน 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "bb77",
+      "source_name": "สมจิตรข้าวเหนียวหมูทอด",
+      "quantities": {
+        "โม่": 1.0
+      },
+      "money_cell": 60.0,
+      "source_column_start": 9,
+      "source_column_end": 11,
+      "flags": []
+    },
+    {
+      "sheet": "ร้อยล้านเมาร์เช่",
+      "row": 709,
+      "month_header": "ร้อยล้านมาร์เช่         เดือน กันยายน 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "bb78",
+      "source_name": "ร้านอเวคอวาย",
+      "quantities": {
+        "เล็ก": 2.0
+      },
+      "money_cell": 120.0,
+      "source_column_start": 9,
+      "source_column_end": 11,
+      "flags": []
+    },
+    {
+      "sheet": "ร้อยล้านเมาร์เช่",
+      "row": 711,
+      "month_header": "ร้อยล้านมาร์เช่         เดือน กันยายน 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "bb81",
+      "source_name": "ร้านดอกไม้สุพาสิต",
+      "quantities": {
+        "เล็ก": 1.0
+      },
+      "money_cell": 60.0,
+      "source_column_start": 9,
+      "source_column_end": 11,
+      "flags": []
+    },
+    {
+      "sheet": "ร้อยล้านเมาร์เช่",
+      "row": 712,
+      "month_header": "ร้อยล้านมาร์เช่         เดือน กันยายน 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "bb82",
+      "source_name": "ลูกชิ้นหมูขั้นเทพ    +ถัง 1",
+      "quantities": {
+        "โม่": 1.0
+      },
+      "money_cell": 60.0,
+      "source_column_start": 9,
+      "source_column_end": 11,
+      "flags": []
+    },
+    {
+      "sheet": "ร้อยล้านเมาร์เช่",
+      "row": 715,
+      "month_header": "ร้อยล้านมาร์เช่         เดือน กันยายน 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "bb85",
+      "source_name": "ลาบเป็ด",
+      "quantities": {
+        "โม่": 1.0
+      },
+      "money_cell": "",
+      "source_column_start": 9,
+      "source_column_end": 11,
+      "flags": [
+        "payment_or_price_needs_confirmation"
+      ]
+    },
+    {
+      "sheet": "Food world",
+      "row": 976,
+      "month_header": "เดือน กันยายน 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "bb58",
+      "source_name": "กาแฟ Bellinee's",
+      "quantities": {
+        "เล็ก": 3.0
+      },
+      "money_cell": 180.0,
+      "source_column_start": 15,
+      "source_column_end": 17,
+      "flags": []
+    },
+    {
+      "sheet": "Food world",
+      "row": 977,
+      "month_header": "เดือน กันยายน 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "bb59",
+      "source_name": "Star coffee",
+      "quantities": {
+        "เล็ก": 2.5
+      },
+      "money_cell": 150.0,
+      "source_column_start": 15,
+      "source_column_end": 17,
+      "flags": []
+    },
+    {
+      "sheet": "Food world",
+      "row": 978,
+      "month_header": "เดือน กันยายน 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "bb60",
+      "source_name": "คิด&หมวย",
+      "quantities": {
+        "โม่": 3.0
+      },
+      "money_cell": 180.0,
+      "source_column_start": 15,
+      "source_column_end": 17,
+      "flags": []
+    },
+    {
+      "sheet": "Food world",
+      "row": 979,
+      "month_header": "เดือน กันยายน 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "bb61",
+      "source_name": "Fuku matcha",
+      "quantities": {
+        "เล็ก": 5.0
+      },
+      "money_cell": 300.0,
+      "source_column_start": 15,
+      "source_column_end": 17,
+      "flags": []
+    },
+    {
+      "sheet": "Food world",
+      "row": 980,
+      "month_header": "เดือน กันยายน 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "bb62",
+      "source_name": "ซาลาเปาโกอ้วน",
+      "quantities": {
+        "โม่": 0.5
+      },
+      "money_cell": 30.0,
+      "source_column_start": 15,
+      "source_column_end": 17,
+      "flags": []
+    },
+    {
+      "sheet": "Food world",
+      "row": 981,
+      "month_header": "เดือน กันยายน 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "bb63",
+      "source_name": "โอมมาร์",
+      "quantities": {
+        "โม่": 0.5
+      },
+      "money_cell": 30.0,
+      "source_column_start": 15,
+      "source_column_end": 17,
+      "flags": []
+    },
+    {
+      "sheet": "Food world",
+      "row": 982,
+      "month_header": "เดือน กันยายน 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "bb64",
+      "source_name": "มะพร้าวปั่นนมสด",
+      "quantities": {
+        "โม่": 2.0
+      },
+      "money_cell": 120.0,
+      "source_column_start": 15,
+      "source_column_end": 17,
+      "flags": []
+    },
+    {
+      "sheet": "Food world",
+      "row": 983,
+      "month_header": "เดือน กันยายน 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "bb66",
+      "source_name": "น้ำหวาน ข้าวปลาแกะ",
+      "quantities": {
+        "เล็ก": 1.0
+      },
+      "money_cell": 60.0,
+      "source_column_start": 15,
+      "source_column_end": 17,
+      "flags": []
+    },
+    {
+      "sheet": "Food world",
+      "row": 984,
+      "month_header": "เดือน กันยายน 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "bb67",
+      "source_name": "ลูกชิ้นปลา",
+      "quantities": {
+        "โม่": 0.5
+      },
+      "money_cell": 30.0,
+      "source_column_start": 15,
+      "source_column_end": 17,
+      "flags": []
+    },
+    {
+      "sheet": "Food world",
+      "row": 985,
+      "month_header": "เดือน กันยายน 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "bb70",
+      "source_name": "ก๋วยเตี๋ยวไก่มะระ",
+      "quantities": {
+        "โม่": 0.5
+      },
+      "money_cell": 30.0,
+      "source_column_start": 15,
+      "source_column_end": 17,
+      "flags": []
+    },
+    {
+      "sheet": "Food world",
+      "row": 986,
+      "month_header": "เดือน กันยายน 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "bb71",
+      "source_name": "Merry Fresh",
+      "quantities": {
+        "เล็ก": 1.0
+      },
+      "money_cell": 60.0,
+      "source_column_start": 15,
+      "source_column_end": 17,
+      "flags": []
+    },
+    {
+      "sheet": "Food world",
+      "row": 987,
+      "month_header": "เดือน กันยายน 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "bb72",
+      "source_name": "ยำสองใจ/ร้านยอดชา",
+      "quantities": {
+        "เล็ก": 6.0
+      },
+      "money_cell": "",
+      "source_column_start": 15,
+      "source_column_end": 17,
+      "flags": [
+        "payment_or_price_needs_confirmation"
+      ]
+    },
+    {
+      "sheet": "Food world",
+      "row": 990,
+      "month_header": "เดือน กันยายน 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "bb86",
+      "source_name": "ผลไม้",
+      "quantities": {
+        "โม่": 1.0
+      },
+      "money_cell": 60.0,
+      "source_column_start": 15,
+      "source_column_end": 17,
+      "flags": []
+    },
+    {
+      "sheet": "ฟอร์มตึก A",
+      "row": 1575,
+      "month_header": "เดือน กันยายน 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "aa1",
+      "source_name": "ร้านครัวน้องปาย (เบอร์9)",
+      "quantities": {
+        "เล็ก": 1.0
+      },
+      "money_cell": 50.0,
+      "source_column_start": 11,
+      "source_column_end": 14,
+      "flags": []
+    },
+    {
+      "sheet": "ฟอร์มตึก A",
+      "row": 1576,
+      "month_header": "เดือน กันยายน 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "aa2",
+      "source_name": "ร้านเจ้ต๋อย (ก้อน) (เบอร์8)",
+      "quantities": {
+        "โม่": 1.0
+      },
+      "money_cell": 50.0,
+      "source_column_start": 11,
+      "source_column_end": 14,
+      "flags": []
+    },
+    {
+      "sheet": "ฟอร์มตึก A",
+      "row": 1577,
+      "month_header": "เดือน กันยายน 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "aa3",
+      "source_name": "ร้านพอใจข้าวมันไก่  (ก้อน) (เบอร์3)",
+      "quantities": {
+        "โม่": 1.0
+      },
+      "money_cell": 50.0,
+      "source_column_start": 11,
+      "source_column_end": 14,
+      "flags": []
+    },
+    {
+      "sheet": "ฟอร์มตึก A",
+      "row": 1578,
+      "month_header": "เดือน กันยายน 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "aa4",
+      "source_name": "ร้านครัวถุงเงินถุงทอง",
+      "quantities": {
+        "โม่": 1.5
+      },
+      "money_cell": 75.0,
+      "source_column_start": 11,
+      "source_column_end": 14,
+      "flags": []
+    },
+    {
+      "sheet": "ฟอร์มตึก A",
+      "row": 1579,
+      "month_header": "เดือน กันยายน 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "aa5",
+      "source_name": "ร้านฟาฟา  น้ำผึ้งมะนาว",
+      "quantities": {
+        "โม่": 1.5,
+        "เล็ก": 1.0
+      },
+      "money_cell": 125.0,
+      "source_column_start": 11,
+      "source_column_end": 14,
+      "flags": []
+    },
+    {
+      "sheet": "ฟอร์มตึก A",
+      "row": 1580,
+      "month_header": "เดือน กันยายน 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "aa6",
+      "source_name": "ร้านJAVA HOLIC",
+      "quantities": {
+        "เล็ก": 5.0
+      },
+      "money_cell": 250.0,
+      "source_column_start": 11,
+      "source_column_end": 14,
+      "flags": []
+    },
+    {
+      "sheet": "ฟอร์มตึก A",
+      "row": 1581,
+      "month_header": "เดือน กันยายน 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "aa7",
+      "source_name": "ร้านน้ำ by ray",
+      "quantities": {
+        "เล็ก": 2.5
+      },
+      "money_cell": 125.0,
+      "source_column_start": 11,
+      "source_column_end": 14,
+      "flags": []
+    },
+    {
+      "sheet": "ฟอร์มตึก A",
+      "row": 1582,
+      "month_header": "เดือน กันยายน 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "aa8",
+      "source_name": "ร้านแอลลี่ L'ly",
+      "quantities": {
+        "เล็ก": 3.0
+      },
+      "money_cell": 150.0,
+      "source_column_start": 11,
+      "source_column_end": 14,
+      "flags": []
+    },
+    {
+      "sheet": "ฟอร์มตึก A",
+      "row": 1584,
+      "month_header": "เดือน กันยายน 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "aa10",
+      "source_name": "ร้านกาแฟเขาทะลุ ชุมพร",
+      "quantities": {
+        "เล็ก": 3.0
+      },
+      "money_cell": 150.0,
+      "source_column_start": 11,
+      "source_column_end": 14,
+      "flags": []
+    },
+    {
+      "sheet": "ฟอร์มตึก A",
+      "row": 1585,
+      "month_header": "เดือน กันยายน 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "aa11",
+      "source_name": "ร้านคาเฟ่ ลาเบล่า",
+      "quantities": {
+        "เล็ก": 1.5
+      },
+      "money_cell": 75.0,
+      "source_column_start": 11,
+      "source_column_end": 14,
+      "flags": []
+    },
+    {
+      "sheet": "ฟอร์มตึก A",
+      "row": 1586,
+      "month_header": "เดือน กันยายน 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "aa12",
+      "source_name": "ร้านมีน คอฟฟี่เดย์",
+      "quantities": {
+        "โม่": 0.5,
+        "เล็ก": 1.5
+      },
+      "money_cell": 100.0,
+      "source_column_start": 11,
+      "source_column_end": 14,
+      "flags": []
+    },
+    {
+      "sheet": "ฟอร์มตึก A",
+      "row": 1587,
+      "month_header": "เดือน กันยายน 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "aa13",
+      "source_name": "ร้านเอ็มคอฟฟี่ M.Coffee",
+      "quantities": {
+        "เล็ก": 3.0
+      },
+      "money_cell": 150.0,
+      "source_column_start": 11,
+      "source_column_end": 14,
+      "flags": []
+    },
+    {
+      "sheet": "ฟอร์มตึก A",
+      "row": 1588,
+      "month_header": "เดือน กันยายน 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "aa14",
+      "source_name": "ร้านกาแฟสด,กาแฟโบราณ",
+      "quantities": {
+        "โม่": 1.0,
+        "เล็ก": 0.5
+      },
+      "money_cell": 75.0,
+      "source_column_start": 11,
+      "source_column_end": 14,
+      "flags": []
+    },
+    {
+      "sheet": "ฟอร์มตึก A",
+      "row": 1589,
+      "month_header": "เดือน กันยายน 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "aa15",
+      "source_name": "ร้านน้ำปั่น by apple",
+      "quantities": {
+        "เล็ก": 1.0
+      },
+      "money_cell": 50.0,
+      "source_column_start": 11,
+      "source_column_end": 14,
+      "flags": []
+    },
+    {
+      "sheet": "ฟอร์มตึก A",
+      "row": 1590,
+      "month_header": "เดือน กันยายน 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "aa16",
+      "source_name": "ร้านน้ำปั่น by ray",
+      "quantities": {
+        "โม่": 1.0
+      },
+      "money_cell": "ค้าง",
+      "source_column_start": 11,
+      "source_column_end": 14,
+      "flags": [
+        "payment_or_price_needs_confirmation"
+      ]
+    },
+    {
+      "sheet": "ฟอร์มตึก A",
+      "row": 1591,
+      "month_header": "เดือน กันยายน 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "aa17",
+      "source_name": "ร้านเจ้าเงาะ",
+      "quantities": {
+        "โม่": 1.0
+      },
+      "money_cell": 50.0,
+      "source_column_start": 11,
+      "source_column_end": 14,
+      "flags": []
+    },
+    {
+      "sheet": "ฟอร์มตึก A",
+      "row": 1594,
+      "month_header": "เดือน กันยายน 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "aa20",
+      "source_name": "ร้านดอกไม้ใต้บรรได",
+      "quantities": {
+        "โม่": 1.0
+      },
+      "money_cell": 50.0,
+      "source_column_start": 11,
+      "source_column_end": 14,
+      "flags": []
+    },
+    {
+      "sheet": "ฟอร์มตึก A",
+      "row": 1595,
+      "month_header": "เดือน กันยายน 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "aa21",
+      "source_name": "ร้านมุมอร่อย",
+      "quantities": {
+        "โม่": 1.0
+      },
+      "money_cell": 50.0,
+      "source_column_start": 11,
+      "source_column_end": 14,
+      "flags": []
+    },
+    {
+      "sheet": "ฟอร์มตึก A",
+      "row": 1596,
+      "month_header": "เดือน กันยายน 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "",
+      "source_name": "ร้านกลาง",
+      "quantities": {
+        "โม่": 1.0
+      },
+      "money_cell": 50.0,
+      "source_column_start": 11,
+      "source_column_end": 14,
+      "flags": [
+        "missing_or_nonunique_shop_code"
+      ]
+    },
+    {
+      "sheet": "ฟอร์มตึก A",
+      "row": 1597,
+      "month_header": "เดือน กันยายน 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "",
+      "source_name": "สะตอ",
+      "quantities": {
+        "โม่": 1.0
+      },
+      "money_cell": 50.0,
+      "source_column_start": 11,
+      "source_column_end": 14,
+      "flags": [
+        "missing_or_nonunique_shop_code"
+      ]
+    },
+    {
+      "sheet": "ตึกC",
+      "row": 1303,
+      "month_header": "เดือน  กันยายน 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "cc1",
+      "source_name": "ชาชักตักวุ้น( เครดิต1เดือน)",
+      "quantities": {
+        "เล็ก": 3.0
+      },
+      "money_cell": "",
+      "source_column_start": 9,
+      "source_column_end": 11,
+      "flags": [
+        "payment_or_price_needs_confirmation"
+      ]
+    },
+    {
+      "sheet": "ตึกC",
+      "row": 1304,
+      "month_header": "เดือน  กันยายน 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "cc2",
+      "source_name": "พันธ์ไทย (เครดิต30วัน)",
+      "quantities": {
+        "เล็ก": 8.0
+      },
+      "money_cell": "",
+      "source_column_start": 9,
+      "source_column_end": 11,
+      "flags": [
+        "payment_or_price_needs_confirmation"
+      ]
+    },
+    {
+      "sheet": "ตึกC",
+      "row": 1305,
+      "month_header": "เดือน  กันยายน 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "cc3",
+      "source_name": "ชาว คาเฟ่(เครดิต1เดือน)",
+      "quantities": {
+        "เล็ก": 5.0
+      },
+      "money_cell": "",
+      "source_column_start": 9,
+      "source_column_end": 11,
+      "flags": [
+        "payment_or_price_needs_confirmation"
+      ]
+    },
+    {
+      "sheet": "ตึกC",
+      "row": 1306,
+      "month_header": "เดือน  กันยายน 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "cc4",
+      "source_name": "โอชายะ(เครดิต15วัน)",
+      "quantities": {
+        "เล็ก": 4.0
+      },
+      "money_cell": "",
+      "source_column_start": 9,
+      "source_column_end": 11,
+      "flags": [
+        "payment_or_price_needs_confirmation"
+      ]
+    },
+    {
+      "sheet": "ตึกC",
+      "row": 1307,
+      "month_header": "เดือน  กันยายน 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "cc5",
+      "source_name": "ดิโอโร่(เครดิต 1 เดือน)",
+      "quantities": {
+        "เล็ก": 1.0
+      },
+      "money_cell": "",
+      "source_column_start": 9,
+      "source_column_end": 11,
+      "flags": [
+        "payment_or_price_needs_confirmation"
+      ]
+    },
+    {
+      "sheet": "ตึกC",
+      "row": 1308,
+      "month_header": "เดือน  กันยายน 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "cc6",
+      "source_name": "ขนมปราง(เครดิต 15วัน)",
+      "quantities": {
+        "เล็ก": 1.0
+      },
+      "money_cell": "",
+      "source_column_start": 9,
+      "source_column_end": 11,
+      "flags": [
+        "payment_or_price_needs_confirmation"
+      ]
+    },
+    {
+      "sheet": "ตึกC",
+      "row": 1309,
+      "month_header": "เดือน  กันยายน 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "cc7",
+      "source_name": "ปังสยาม(เครดิต1เดือน)",
+      "quantities": {
+        "เล็ก": 5.0
+      },
+      "money_cell": "",
+      "source_column_start": 9,
+      "source_column_end": 11,
+      "flags": [
+        "payment_or_price_needs_confirmation"
+      ]
+    },
+    {
+      "sheet": "ตึกC",
+      "row": 1310,
+      "month_header": "เดือน  กันยายน 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "cc8",
+      "source_name": "โยกุรุโตะ(15วัน)",
+      "quantities": {
+        "เล็ก": 5.0
+      },
+      "money_cell": "",
+      "source_column_start": 9,
+      "source_column_end": 11,
+      "flags": [
+        "payment_or_price_needs_confirmation"
+      ]
+    },
+    {
+      "sheet": "ตึกC",
+      "row": 1312,
+      "month_header": "เดือน  กันยายน 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "cc10",
+      "source_name": "มะพร้าวโคโค่",
+      "quantities": {
+        "เล็ก": 1.0
+      },
+      "money_cell": "",
+      "source_column_start": 9,
+      "source_column_end": 11,
+      "flags": [
+        "payment_or_price_needs_confirmation"
+      ]
+    },
+    {
+      "sheet": "ตึกC",
+      "row": 1313,
+      "month_header": "เดือน  กันยายน 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "cc11",
+      "source_name": "Black Canyon",
+      "quantities": {
+        "เล็ก": 1.0
+      },
+      "money_cell": "",
+      "source_column_start": 9,
+      "source_column_end": 11,
+      "flags": [
+        "payment_or_price_needs_confirmation"
+      ]
+    },
+    {
+      "sheet": "ตึกC",
+      "row": 1315,
+      "month_header": "เดือน  กันยายน 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "cc13",
+      "source_name": "อเมซอน",
+      "quantities": {
+        "เล็ก": 12.0
+      },
+      "money_cell": 720.0,
+      "source_column_start": 9,
+      "source_column_end": 11,
+      "flags": []
+    },
+    {
+      "sheet": "ตึกC",
+      "row": 1317,
+      "month_header": "เดือน  กันยายน 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "cc15",
+      "source_name": "ข้าวหมกไก่",
+      "quantities": {
+        "โม่": 1.0
+      },
+      "money_cell": 60.0,
+      "source_column_start": 9,
+      "source_column_end": 11,
+      "flags": []
+    },
+    {
+      "sheet": "ตึกC",
+      "row": 1319,
+      "month_header": "เดือน  กันยายน 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "cc17",
+      "source_name": "ชานมไข่มุก(โนบิชา)",
+      "quantities": {
+        "เล็ก": 5.0
+      },
+      "money_cell": 300.0,
+      "source_column_start": 9,
+      "source_column_end": 11,
+      "flags": []
+    },
+    {
+      "sheet": "ตึกC",
+      "row": 1320,
+      "month_header": "เดือน  กันยายน 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "cc18",
+      "source_name": "คิดหมวย",
+      "quantities": {
+        "โม่": 1.0,
+        "เล็ก": 2.0
+      },
+      "money_cell": 160.0,
+      "source_column_start": 9,
+      "source_column_end": 11,
+      "flags": []
+    },
+    {
+      "sheet": "ตึกC",
+      "row": 1321,
+      "month_header": "เดือน  กันยายน 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "Evc",
+      "source_name": "ข้าวราดแกง",
+      "quantities": {
+        "เล็ก": 1.0
+      },
+      "money_cell": "",
+      "source_column_start": 9,
+      "source_column_end": 11,
+      "flags": [
+        "missing_or_nonunique_shop_code",
+        "payment_or_price_needs_confirmation"
+      ]
+    },
+    {
+      "sheet": "ตึกC",
+      "row": 1322,
+      "month_header": "เดือน  กันยายน 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "",
+      "source_name": "ข้าวเหนียวหมู",
+      "quantities": {
+        "โม่": 1.0
+      },
+      "money_cell": 60.0,
+      "source_column_start": 9,
+      "source_column_end": 11,
+      "flags": [
+        "missing_or_nonunique_shop_code"
+      ]
+    },
+    {
+      "sheet": "ตึกC",
+      "row": 1324,
+      "month_header": "เดือน  กันยายน 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "Evc",
+      "source_name": "ขนมหวาน",
+      "quantities": {
+        "โม่": 1.0
+      },
+      "money_cell": 60.0,
+      "source_column_start": 9,
+      "source_column_end": 11,
+      "flags": [
+        "missing_or_nonunique_shop_code"
+      ]
+    },
+    {
+      "sheet": "ตึกC",
+      "row": 1325,
+      "month_header": "เดือน  กันยายน 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "Evc",
+      "source_name": "พี่เหมียว+ถัง1",
+      "quantities": {
+        "โม่": 1.0
+      },
+      "money_cell": 60.0,
+      "source_column_start": 9,
+      "source_column_end": 11,
+      "flags": [
+        "missing_or_nonunique_shop_code"
+      ]
+    },
+    {
+      "sheet": "ตึกC",
+      "row": 1326,
+      "month_header": "เดือน  กันยายน 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "Evc",
+      "source_name": "พีกาว+ถัง1",
+      "quantities": {
+        "โม่": 1.0
+      },
+      "money_cell": "ค้าง",
+      "source_column_start": 9,
+      "source_column_end": 11,
+      "flags": [
+        "missing_or_nonunique_shop_code",
+        "payment_or_price_needs_confirmation"
+      ]
+    },
+    {
+      "sheet": "ตึกC",
+      "row": 1327,
+      "month_header": "เดือน  กันยายน 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "Evc",
+      "source_name": "พี่เบน",
+      "quantities": {
+        "โม่": 1.0
+      },
+      "money_cell": 60.0,
+      "source_column_start": 9,
+      "source_column_end": 11,
+      "flags": [
+        "missing_or_nonunique_shop_code"
+      ]
+    },
+    {
+      "sheet": "ตึกC",
+      "row": 1329,
+      "month_header": "เดือน  กันยายน 2569",
+      "requested_date": "2026-09-16",
+      "source_code": "Evc",
+      "source_name": "บูธ2+ถัง1",
+      "quantities": {
+        "โม่": 2.0
+      },
+      "money_cell": 120.0,
+      "source_column_start": 9,
+      "source_column_end": 11,
+      "flags": [
+        "missing_or_nonunique_shop_code"
+      ]
+    }
+  ],
+  "checks": [
+    {
+      "sheet": "sky walk",
+      "rows": 9,
+      "quantities": {
+        "ก้อน": 0,
+        "โม่": 4.5,
+        "เล็ก": 13.0
+      },
+      "money_cell_sum": 990.0,
+      "totals": [
+        {
+          "row": 1328,
+          "quantities": {
+            "โม่": 4.5,
+            "เล็ก": 13.0
+          },
+          "money": 990.0
+        }
+      ]
+    },
+    {
+      "sheet": "ตีกB โดม1",
+      "rows": 8,
+      "quantities": {
+        "ก้อน": 0,
+        "โม่": 3.0,
+        "เล็ก": 23.0
+      },
+      "money_cell_sum": 1470.0,
+      "totals": [
+        {
+          "row": 981,
+          "quantities": {
+            "โม่": 3.0,
+            "เล็ก": 23.0
+          },
+          "money": 1470.0
+        }
+      ]
+    },
+    {
+      "sheet": "ตึกB โดม2",
+      "rows": 4,
+      "quantities": {
+        "ก้อน": 0,
+        "โม่": 9.5,
+        "เล็ก": 5.0
+      },
+      "money_cell_sum": 510.0,
+      "totals": [
+        {
+          "row": 628,
+          "quantities": {
+            "โม่": 9.5,
+            "เล็ก": 5.0
+          },
+          "money": 510.0
+        }
+      ]
+    },
+    {
+      "sheet": "ตึกB โดม3",
+      "rows": 9,
+      "quantities": {
+        "ก้อน": 0,
+        "โม่": 1.0,
+        "เล็ก": 27.5
+      },
+      "money_cell_sum": 1410.0,
+      "totals": [
+        {
+          "row": 723,
+          "quantities": {
+            "โม่": 1.0,
+            "เล็ก": 27.5
+          },
+          "money": 1410.0
+        }
+      ]
+    },
+    {
+      "sheet": "ตึกB โดม4",
+      "rows": 4,
+      "quantities": {
+        "ก้อน": 0,
+        "โม่": 0,
+        "เล็ก": 12.0
+      },
+      "money_cell_sum": 180.0,
+      "totals": [
+        {
+          "row": 533,
+          "quantities": {
+            "เล็ก": 12.0
+          },
+          "money": 180.0
+        }
+      ]
+    },
+    {
+      "sheet": "ศูนย์อาหารฝั่งกรุงไทย",
+      "rows": 10,
+      "quantities": {
+        "ก้อน": 0,
+        "โม่": 5.5,
+        "เล็ก": 10.5
+      },
+      "money_cell_sum": 880.0,
+      "totals": [
+        {
+          "row": 913,
+          "quantities": {
+            "ก้อน": 0.0,
+            "โม่": 5.5,
+            "เล็ก": 10.5
+          },
+          "money": 880.0
+        }
+      ]
+    },
+    {
+      "sheet": "ศูนย์อาหารฝั่งท็อป",
+      "rows": 12,
+      "quantities": {
+        "ก้อน": 0,
+        "โม่": 8.5,
+        "เล็ก": 6.0
+      },
+      "money_cell_sum": 790.0,
+      "totals": [
+        {
+          "row": 965,
+          "quantities": {
+            "ก้อน": 0.0,
+            "โม่": 8.5,
+            "เล็ก": 6.0
+          },
+          "money": 790.0
+        }
+      ]
+    },
+    {
+      "sheet": "ร้อยล้านเมาร์เช่",
+      "rows": 6,
+      "quantities": {
+        "ก้อน": 0,
+        "โม่": 4.0,
+        "เล็ก": 3.0
+      },
+      "money_cell_sum": 360.0,
+      "totals": [
+        {
+          "row": 718,
+          "quantities": {
+            "โม่": 4.0,
+            "เล็ก": 3.0
+          },
+          "money": 360.0
+        }
+      ]
+    },
+    {
+      "sheet": "Food world",
+      "rows": 13,
+      "quantities": {
+        "ก้อน": 0,
+        "โม่": 8.0,
+        "เล็ก": 18.5
+      },
+      "money_cell_sum": 1230.0,
+      "totals": [
+        {
+          "row": 994,
+          "quantities": {
+            "โม่": 8.0,
+            "เล็ก": 18.5
+          },
+          "money": 1230.0
+        }
+      ]
+    },
+    {
+      "sheet": "ฟอร์มตึก A",
+      "rows": 20,
+      "quantities": {
+        "ก้อน": 0,
+        "โม่": 12.5,
+        "เล็ก": 23.0
+      },
+      "money_cell_sum": 1725.0,
+      "totals": [
+        {
+          "row": 1604,
+          "quantities": {
+            "โม่": 12.5,
+            "เล็ก": 23.0
+          },
+          "money": 1725.0
+        }
+      ]
+    },
+    {
+      "sheet": "ตึกC",
+      "rows": 21,
+      "quantities": {
+        "ก้อน": 0,
+        "โม่": 9.0,
+        "เล็ก": 54.0
+      },
+      "money_cell_sum": 1600.0,
+      "totals": [
+        {
+          "row": 1332,
+          "quantities": {
+            "โม่": 9.0,
+            "เล็ก": 54.0
+          },
+          "money": 1600.0
+        }
+      ]
+    }
+  ]
+}

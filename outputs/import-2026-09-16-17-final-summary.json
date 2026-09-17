@@ -1,0 +1,176 @@
+{
+  "verified_at": "2026-09-17T10:55:31.693853+00:00",
+  "source": "สรุปยอดขาย ศูนย์ราชการ ปี 69-3.xls",
+  "stock_added_2026-09-16": {
+    "หลอดเล็ก": 197,
+    "โม่": 65.5
+  },
+  "days": {
+    "2026-09-16": {
+      "active_delivery_events": 113,
+      "active_delivery_quantities": {
+        "หลอดเล็ก": 197.0,
+        "โม่": 60.5
+      }
+    },
+    "2026-09-17": {
+      "active_delivery_events": 107,
+      "active_delivery_quantities": {
+        "โม่": 59.5,
+        "หลอดเล็ก": 188.5
+      }
+    }
+  },
+  "t24": {
+    "shop_code": "BB43",
+    "shop_name": "ร้านกาแฟ T24",
+    "receipt_number": "REC2609-00174",
+    "charges": [
+      {
+        "service_date": "2026-09-16",
+        "charge_id": "5391bd28-209d-4452-b221-05bc2f81bc24",
+        "amount": 120.0,
+        "paid": 120.0,
+        "outstanding": 0.0
+      },
+      {
+        "service_date": "2026-09-17",
+        "charge_id": "447d4f7c-46c1-4cef-b229-07d5f299544d",
+        "amount": 120.0,
+        "paid": 120.0,
+        "outstanding": 0.0
+      }
+    ]
+  },
+  "conflicts_left_unchanged": [
+    {
+      "sheet": "ตีกB โดม1",
+      "row": 972,
+      "shop_code": "BB85",
+      "shop_name": "เซเว่น 7-11",
+      "excel": {
+        "2390e8cf-c4d1-4948-bc6d-5db526432b0e": 5
+      },
+      "system": {
+        "29733db5-603e-4cf8-8a93-609645afcee4": 1
+      },
+      "event_id": "b29c0d3a-a23e-45b2-8208-d39f772f6ba7"
+    },
+    {
+      "sheet": "sky walk",
+      "row": 1315,
+      "shop_code": "SW-15",
+      "shop_name": "15",
+      "excel": {
+        "29733db5-603e-4cf8-8a93-609645afcee4": 0.5
+      },
+      "system": {
+        "29733db5-603e-4cf8-8a93-609645afcee4": 1
+      },
+      "event_id": "5183439a-10fd-4711-af49-d934082e8353"
+    },
+    {
+      "sheet": "ตีกB โดม1",
+      "row": 972,
+      "shop_code": "BB85",
+      "shop_name": "เซเว่น 7-11",
+      "excel": {
+        "2390e8cf-c4d1-4948-bc6d-5db526432b0e": 5
+      },
+      "system": {
+        "29733db5-603e-4cf8-8a93-609645afcee4": 1
+      },
+      "event_id": "f39f50c3-4879-4a63-9361-6fbd257a2d9f"
+    }
+  ],
+  "skipped_source_rows": [
+    {
+      "date": "2026-09-16",
+      "sheet": "ตึกC",
+      "row": 1325,
+      "code": "Evc",
+      "name": "พี่เหมียว+ถัง1",
+      "quantities": {
+        "โม่": 1
+      }
+    },
+    {
+      "date": "2026-09-16",
+      "sheet": "ตึกC",
+      "row": 1326,
+      "code": "Evc",
+      "name": "พีกาว+ถัง1",
+      "quantities": {
+        "โม่": 1
+      }
+    },
+    {
+      "date": "2026-09-16",
+      "sheet": "ตึกC",
+      "row": 1327,
+      "code": "Evc",
+      "name": "พี่เบน",
+      "quantities": {
+        "โม่": 1
+      }
+    },
+    {
+      "date": "2026-09-16",
+      "sheet": "ตึกC",
+      "row": 1329,
+      "code": "Evc",
+      "name": "บูธ2+ถัง1",
+      "quantities": {
+        "โม่": 2
+      }
+    },
+    {
+      "date": "2026-09-17",
+      "sheet": "ตีกB โดม1",
+      "row": 974,
+      "code": "",
+      "name": "สด",
+      "quantities": {
+        "เล็ก": 1
+      }
+    },
+    {
+      "date": "2026-09-17",
+      "sheet": "ตึกB โดม4",
+      "row": 531,
+      "code": "",
+      "name": "สด",
+      "quantities": {
+        "เล็ก": 1
+      }
+    },
+    {
+      "date": "2026-09-17",
+      "sheet": "ตึกC",
+      "row": 1325,
+      "code": "Evc",
+      "name": "พี่เหมียว+ถัง1",
+      "quantities": {
+        "โม่": 1
+      }
+    },
+    {
+      "date": "2026-09-17",
+      "sheet": "ตึกC",
+      "row": 1326,
+      "code": "Evc",
+      "name": "พีกาว+ถัง1",
+      "quantities": {}
+    },
+    {
+      "date": "2026-09-17",
+      "sheet": "ตึกC",
+      "row": 1327,
+      "code": "Evc",
+      "name": "พี่เบน",
+      "quantities": {
+        "โม่": 1
+      }
+    }
+  ]
+}

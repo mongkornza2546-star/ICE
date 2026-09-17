@@ -5,6 +5,7 @@ import {
   CaretRight,
   CheckCircle,
   ClipboardText,
+  CreditCard,
   CurrencyDollar,
   DotsThreeVertical,
   Factory,
@@ -22,6 +23,7 @@ import { useBangkokServiceDate } from './hooks/useBangkokServiceDate';
 import { supabase } from './lib/supabase';
 import type {
   DailyWorkDashboard,
+  DailyPaymentMethodSummary,
   StockControlSummary,
 } from './types/app';
 
@@ -116,6 +118,7 @@ export function ManagerDashboard({
   const [loadedAt, setLoadedAt] = useState<Date | null>(null);
   const loadInFlight = useRef(false);
   const [dashboard, setDashboard] = useState<DailyWorkDashboard | null>(null);
+  const [paymentMethodSummary, setPaymentMethodSummary] = useState<DailyPaymentMethodSummary | null>(null);
   const [stockSummary, setStockSummary] = useState<StockControlSummary | null>(null);
   const [aggregateStockSummary, setAggregateStockSummary] = useState<DailyAggregateStockSummary | null>(null);
   const [loading, setLoading] = useState(true);
@@ -134,6 +137,11 @@ export function ManagerDashboard({
 
     if (demoDashboard && demoStockSummary && demoAggregateStockSummary) {
       setDashboard(demoDashboard);
+      setPaymentMethodSummary({
+        cashReceivedValue: demoDashboard.salesSummary.cashReceivedValue ?? 0,
+        transferReceivedValue: demoDashboard.salesSummary.transferReceivedValue ?? 0,
+        creditSalesValue: demoDashboard.salesSummary.creditSalesValue ?? 0,
+      });
       setStockSummary(demoStockSummary);
       setAggregateStockSummary(demoAggregateStockSummary);
       setError(null);
@@ -144,6 +152,7 @@ export function ManagerDashboard({
 
     if (!supabase) {
       setDashboard(null);
+      setPaymentMethodSummary(null);
       setError('ยังไม่ได้ตั้งค่าการเชื่อมต่อ Supabase');
       setLoading(false);
       return;
@@ -157,25 +166,29 @@ export function ManagerDashboard({
 
       try {
         const serviceDate = currentServiceDate;
-        const [dashRes, stockRes, aggregateRes] = await Promise.all([
+        const [dashRes, stockRes, aggregateRes, paymentSummaryRes] = await Promise.all([
           client.rpc('get_daily_work_dashboard', { p_service_date: serviceDate }),
           client.rpc('get_stock_control_summary', { p_service_date: serviceDate }),
           client.rpc('get_daily_aggregate_stock_summary', { p_service_date: serviceDate }),
+          client.rpc('get_daily_payment_method_summary', { p_service_date: serviceDate }),
         ]);
 
         if (currentRequest !== requestId.current) return;
         if (dashRes.error) throw new Error(dashRes.error.message);
         if (stockRes.error) throw new Error(stockRes.error.message);
         if (aggregateRes.error) throw new Error(aggregateRes.error.message);
+        if (paymentSummaryRes.error) throw new Error(paymentSummaryRes.error.message);
 
         setDashboard(dashRes.data as DailyWorkDashboard);
         setStockSummary(stockRes.data as StockControlSummary);
         setAggregateStockSummary(aggregateRes.data as DailyAggregateStockSummary);
+        setPaymentMethodSummary(paymentSummaryRes.data as DailyPaymentMethodSummary);
         setLoadedAt(new Date());
         setLoading(false);
       } catch (loadError) {
         if (currentRequest !== requestId.current) return;
         setDashboard(null);
+        setPaymentMethodSummary(null);
         setAggregateStockSummary(null);
         setError(loadError instanceof Error ? loadError.message : 'โหลดข้อมูลงานวันนี้ไม่สำเร็จ');
         setLoading(false);
@@ -262,6 +275,11 @@ export function ManagerDashboard({
   }
 
   const { session, deliverySummary, salesSummary, cancellationState, problems } = dashboard;
+  const paymentSummary = paymentMethodSummary ?? {
+    cashReceivedValue: 0,
+    transferReceivedValue: 0,
+    creditSalesValue: 0,
+  };
   const locations = (stockSummary?.locations ?? []).filter((location) => location.holds_inventory === true);
   const stockTotals = aggregateStockSummary.items.map((item) => ({
     unit: item.unit,
@@ -334,6 +352,12 @@ export function ManagerDashboard({
           tone="orange"
           value={aggregateClosed ? 'ปิดแล้ว' : hasStartedWork ? 'รอปิด' : 'ยังไม่เริ่ม'}
         />
+      </section>
+
+      <section className="dashboard-payment-grid" aria-label="สรุปการรับชำระและเครดิตวันนี้">
+        <OverviewCard icon={CurrencyDollar} label="เงินสด" value={formatCurrency(paymentSummary.cashReceivedValue)} detail="รับชำระแล้ววันนี้" tone="green" />
+        <OverviewCard icon={CreditCard} label="โอน / QR" value={formatCurrency(paymentSummary.transferReceivedValue)} detail="รับชำระแล้ววันนี้" tone="sky" />
+        <OverviewCard icon={CreditCard} label="เครดิต" value={formatCurrency(paymentSummary.creditSalesValue)} detail="ยอดขายเครดิตที่บันทึกวันนี้" tone="purple" />
       </section>
 
       <div className="dashboard-mid-grid">
@@ -410,7 +434,7 @@ function DashboardHeading({ title, detail, status, statusTone, children }: { tit
   return <header className="dashboard-heading"><div><h1>{title}</h1><p>{detail}</p></div><div className="dashboard-heading__actions">{status ? <span className={`dashboard-session-status dashboard-session-status--${statusTone}`}><i />{status}</span> : null}{children}</div></header>;
 }
 
-function OverviewCard({ icon: IconComponent, label, value, unit, detail, tone }: { icon: Icon; label: string; value: string; unit?: string; detail: string; tone: 'blue' | 'green' | 'sky' | 'orange' }) {
+function OverviewCard({ icon: IconComponent, label, value, unit, detail, tone }: { icon: Icon; label: string; value: string; unit?: string; detail: string; tone: 'blue' | 'green' | 'sky' | 'orange' | 'purple' }) {
   return <article className={`dashboard-overview-card dashboard-overview-card--${tone}`}><span className="dashboard-overview-card__icon"><IconComponent size={28} weight="fill" /></span><div><small>{label}</small><strong>{value}</strong>{unit ? <em>{unit}</em> : null}<p>{detail}</p><span className="dashboard-mini-bars" aria-hidden="true"><i /><i /><i /><i /><i /><i /><i /><i /></span></div></article>;
 }
 
