@@ -922,7 +922,7 @@ export function ShopSettings({
     setSaving(false);
   };
 
-  if (loading) return <p className="empty-text">กำลังโหลดข้อมูลร้าน...</p>;
+  if (loading && shops.length === 0) return <p className="empty-text">กำลังโหลดข้อมูลร้าน...</p>;
 
   const activeShopCount = readinessReport?.total_active_shops ?? shops.filter((shop) => shop.status === 'active').length;
   const readyShopCount = readinessReport?.shops_ready_count ?? 0;

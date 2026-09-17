@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ManagerRoundControl } from './ManagerRoundControl';
 import { ManagerStockControl } from './ManagerStockControl';
 import { useReferenceData } from './hooks/useReferenceData';
@@ -21,14 +21,18 @@ export function RoundWorkspace({ isActive }: { isActive: boolean }) {
   } = useReferenceData(false);
 
   const stockServiceDate = useBangkokServiceDate();
-
+  const [stockRefreshId, setStockRefreshId] = useState(0);
+  const refreshWorkspace = useCallback(async () => {
+    await loadReferenceData();
+    setStockRefreshId((current) => current + 1);
+  }, [loadReferenceData]);
 
   useEffect(() => {
     if (!isActive) return;
-    void loadReferenceData();
-  }, [isActive, loadReferenceData, stockServiceDate]);
+    void refreshWorkspace();
+  }, [isActive, refreshWorkspace, stockServiceDate]);
 
-  useEffect(() => subscribeToDataChange(['stock'], () => { if (isActive) void loadReferenceData(); }), [isActive, loadReferenceData]);
+  useEffect(() => subscribeToDataChange(['stock'], () => { if (isActive) void refreshWorkspace(); }), [isActive, refreshWorkspace]);
 
   const stockRound = useMemo(
     () => rounds.find((round) => (
@@ -46,7 +50,7 @@ export function RoundWorkspace({ isActive }: { isActive: boolean }) {
     () => legacyOpenRounds.find((round) => round.id === selectedRoundId) ?? legacyOpenRounds[0] ?? null,
     [legacyOpenRounds, selectedRoundId],
   );
-  if (loadingRounds) {
+  if (loadingRounds && rounds.length === 0 && stockRefreshId === 0) {
     return (
       <section className="panel center-panel">
         <p className="eyebrow">กำลังโหลดข้อมูลงาน</p>
@@ -91,13 +95,13 @@ export function RoundWorkspace({ isActive }: { isActive: boolean }) {
                 </div>
                 <div className="manager-section-divider" />
                 <ManagerRoundControl
-                  onCancelled={loadReferenceData}
-                  onClosed={loadReferenceData}
+                  onCancelled={refreshWorkspace}
+                  onClosed={refreshWorkspace}
                   round={selectedLegacyRound}
                 />
               </section>
             ) : null}
-            <ManagerStockControl key={stockServiceDate} operationRound={stockRound?.status === 'open' ? stockRound : null} round={stockRound} serviceDate={stockServiceDate} />
+            <ManagerStockControl key={stockServiceDate} operationRound={stockRound?.status === 'open' ? stockRound : null} refreshId={stockRefreshId} round={stockRound} serviceDate={stockServiceDate} />
         </div>
       </section>
     </div>

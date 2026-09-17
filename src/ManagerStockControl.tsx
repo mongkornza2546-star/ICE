@@ -42,11 +42,13 @@ export function ManagerStockControl({
   round,
   serviceDate,
   demoSummary,
+  refreshId = 0,
 }: {
   operationRound: DeliveryRound | null;
   round: DeliveryRound | null;
   serviceDate: string;
   demoSummary?: StockControlSummary;
+  refreshId?: number;
 }) {
   const isRoundSnapshot = round?.status === 'closed';
   const actionRound = operationRound ?? round;
@@ -72,7 +74,7 @@ export function ManagerStockControl({
   useEffect(() => {
     if (demoSummary) return;
     void loadSummary(serviceDate, round?.id ?? null);
-  }, [demoSummary, round?.id, serviceDate]);
+  }, [demoSummary, refreshId, round?.id, serviceDate]);
 
   useEffect(() => {
     if (!summary || !supabase?.storage) {
@@ -872,6 +874,7 @@ export function ManagerStockControl({
             </form>
           ) : (
             <DailyAggregateStockClose
+              refreshId={refreshId}
               failedImagePaths={failedImagePaths}
               imagePathByIceTypeId={imagePathByIceTypeId}
               imageUrls={imageUrls}

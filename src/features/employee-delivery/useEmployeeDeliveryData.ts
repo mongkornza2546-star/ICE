@@ -17,9 +17,24 @@ import { compareShopCodes, normalizeSearch, stockQuantity, employeeErrorMessage 
 import { clearRecovery, readRecovery, writeRecovery } from '../../lib/recoveryStorage';
 import { printSalesDocumentForCurrentPlatform, salesDocumentFromStored, type StoredSalesDocument } from '../../lib/salesDocumentPrint';
 import { publishDataChange } from '../../lib/dataChange';
+import {
+  readCachedEmployeeReferenceData,
+  readCachedEmployeeShopCards,
+  writeCachedEmployeeReferenceData,
+  writeCachedEmployeeShopCards,
+} from '../../lib/employeeWorkspaceCache';
 
 const PAD_VALUES = ['0', '1', '2', '3', '4', '5', '+'] as const;
 export type StockTransferMode = 'receive' | 'return' | 'damage';
+
+function automaticRoundId(rounds: DeliveryRound[]) {
+  const openRounds = rounds.filter((round) => round.status === 'open');
+  return openRounds.length === 1
+    ? openRounds[0].id
+    : rounds.length === 1
+      ? rounds[0].id
+      : '';
+}
 
 function withKnownIceTypeImages(context: DeliveryPosContext, iceTypes: IceTypeOption[]): DeliveryPosContext {
   const imageUrls = new Map(iceTypes.map((iceType) => [iceType.id, iceType.image_url ?? null]));
@@ -98,10 +113,16 @@ export function useEmployeeDeliveryData({
   const recoveryMode = enableAssignedStockFlow ? 'withdrawal' : 'pos';
   const recoveryScope = `${requestScope}:${serviceDate}:${recoveryMode}`;
 
-  const [rounds, setRounds] = useState<DeliveryRound[]>([]);
-  const [iceTypes, setIceTypes] = useState<IceTypeOption[]>([]);
-  const [cards, setCards] = useState<ShopCard[]>([]);
-  const [selectedRoundId, setSelectedRoundId] = useState('');
+  const initialReferenceCache = useRef(readCachedEmployeeReferenceData(requestScope, serviceDate)).current;
+  const initialRoundId = automaticRoundId(initialReferenceCache?.rounds ?? []);
+  const initialCards = initialRoundId
+    ? readCachedEmployeeShopCards(requestScope, serviceDate, initialRoundId) ?? []
+    : [];
+
+  const [rounds, setRounds] = useState<DeliveryRound[]>(initialReferenceCache?.rounds ?? []);
+  const [iceTypes, setIceTypes] = useState<IceTypeOption[]>(initialReferenceCache?.iceTypes ?? []);
+  const [cards, setCards] = useState<ShopCard[]>(initialCards);
+  const [selectedRoundId, setSelectedRoundId] = useState(initialRoundId);
   const [selectedBuildingId, setSelectedBuildingId] = useState('');
   const [selectedZone, setSelectedZone] = useState('');
   const [destinationKind, setDestinationKindState] = useState<'regular' | 'event'>('regular');
@@ -135,8 +156,10 @@ export function useEmployeeDeliveryData({
   const [transferSubmitting, setTransferSubmitting] = useState(false);
   const [entryError, setEntryError] = useState<string | null>(null);
   const [stockError, setStockError] = useState<string | null>(null);
-  const [loadingReference, setLoadingReference] = useState(true);
-  const [loadedReferenceServiceDate, setLoadedReferenceServiceDate] = useState<string | null>(null);
+  const [loadingReference, setLoadingReference] = useState(!initialReferenceCache);
+  const [loadedReferenceServiceDate, setLoadedReferenceServiceDate] = useState<string | null>(
+    initialReferenceCache ? serviceDate : null,
+  );
   const [loadingCards, setLoadingCards] = useState(false);
   const [eventCardsError, setEventCardsError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -151,10 +174,10 @@ export function useEmployeeDeliveryData({
 
   const referenceRequestId = useRef(0);
   const cardsRequestId = useRef(0);
-  const loadedCardsRoundId = useRef('');
+  const loadedCardsRoundId = useRef(initialCards.length > 0 ? initialRoundId : '');
   const stockRequestId = useRef(0);
   const posContextRequestId = useRef(0);
-  const activeRoundId = useRef('');
+  const activeRoundId = useRef(initialRoundId);
   const activeStockRoundId = useRef('');
   const browseScrollY = useRef(0);
   const browseScrollRestorePending = useRef(false);
@@ -230,8 +253,24 @@ export function useEmployeeDeliveryData({
 
   useEffect(() => {
     const requestId = ++referenceRequestId.current;
-    setLoadingReference(true);
-    setLoadedReferenceServiceDate(null);
+    const cachedReference = readCachedEmployeeReferenceData(requestScope, serviceDate);
+    if (cachedReference) {
+      setRounds(cachedReference.rounds);
+      setIceTypes(cachedReference.iceTypes);
+      setSelectedRoundId((current) => (
+        cachedReference.rounds.some((round) => round.id === current)
+          ? current
+          : automaticRoundId(cachedReference.rounds)
+      ));
+      setLoadedReferenceServiceDate(serviceDate);
+      setLoadingReference(false);
+    } else {
+      setRounds([]);
+      setIceTypes([]);
+      setSelectedRoundId('');
+      setLoadedReferenceServiceDate(null);
+      setLoadingReference(true);
+    }
     setError(null);
     void gateway.loadReferenceData(serviceDate).then(({ rounds: nextRounds, iceTypes: nextIceTypes }) => {
       if (requestId !== referenceRequestId.current) return;
@@ -246,13 +285,13 @@ export function useEmployeeDeliveryData({
       setTransferQuantities((current) => Object.fromEntries(
         nextIceTypes.map((iceType) => [iceType.id, current[iceType.id] ?? 0]),
       ));
-      const openRounds = nextRounds.filter((round) => round.status === 'open');
-      const automaticRound = openRounds.length === 1
-        ? openRounds[0]
-        : nextRounds.length === 1
-          ? nextRounds[0]
-          : null;
-      setSelectedRoundId((current) => nextRounds.some((round) => round.id === current) ? current : automaticRound?.id ?? '');
+      setSelectedRoundId((current) => (
+        nextRounds.some((round) => round.id === current) ? current : automaticRoundId(nextRounds)
+      ));
+      writeCachedEmployeeReferenceData(requestScope, serviceDate, {
+        rounds: nextRounds,
+        iceTypes: nextIceTypes,
+      });
       setLoadedReferenceServiceDate(serviceDate);
       setLoadingReference(false);
     }).catch((loadError: unknown) => {
@@ -263,7 +302,7 @@ export function useEmployeeDeliveryData({
     return () => {
       referenceRequestId.current += 1;
     };
-  }, [gateway, referenceReloadId, serviceDate]);
+  }, [gateway, referenceReloadId, requestScope, serviceDate]);
 
   useEffect(() => {
     recoveryHydratedScope.current = null;
@@ -321,12 +360,20 @@ export function useEmployeeDeliveryData({
     const requestId = ++cardsRequestId.current;
     const roundChanged = activeRoundId.current !== roundId;
     activeRoundId.current = roundId;
+    let hasLoadedCardsForRound = loadedCardsRoundId.current === roundId;
     if (roundChanged) {
-      loadedCardsRoundId.current = '';
-      setCards([]);
+      const cachedCards = readCachedEmployeeShopCards(requestScope, serviceDate, roundId);
+      if (cachedCards) {
+        loadedCardsRoundId.current = roundId;
+        hasLoadedCardsForRound = true;
+        setCards(cachedCards);
+      } else {
+        loadedCardsRoundId.current = '';
+        hasLoadedCardsForRound = false;
+        setCards([]);
+      }
       setEventCardsError(null);
     }
-    const hasLoadedCardsForRound = loadedCardsRoundId.current === roundId;
     setLoadingCards(!hasLoadedCardsForRound);
     setError(null);
     try {
@@ -338,6 +385,7 @@ export function useEmployeeDeliveryData({
             if (requestId !== cardsRequestId.current || activeRoundId.current !== roundId) return;
             loadedCardsRoundId.current = roundId;
             setCards(baseCards);
+            writeCachedEmployeeShopCards(requestScope, serviceDate, roundId, baseCards);
             setLoadingCards(false);
           },
         } : options,
@@ -345,6 +393,7 @@ export function useEmployeeDeliveryData({
       if (requestId !== cardsRequestId.current || activeRoundId.current !== roundId) return false;
       loadedCardsRoundId.current = roundId;
       setCards(nextCards);
+      writeCachedEmployeeShopCards(requestScope, serviceDate, roundId, nextCards);
       setEventCardsError(gateway.getEventCardsLoadError?.(roundId) ?? null);
       setLoadingCards(false);
       return true;
@@ -355,7 +404,7 @@ export function useEmployeeDeliveryData({
       setLoadingCards(false);
       return false;
     }
-  }, [gateway]);
+  }, [gateway, requestScope, serviceDate]);
 
   const loadStockState = useCallback(async (roundId: string) => {
     if (!enableAssignedStockFlow || !roundId) {
@@ -400,8 +449,8 @@ export function useEmployeeDeliveryData({
     setSelectedZone('');
     setDestinationKindState('regular');
     setSelectedEventJobId('');
-    setDeliveryQuantities(Object.fromEntries(iceTypes.map((iceType) => [iceType.id, 0])));
-    setTransferQuantities(Object.fromEntries(iceTypes.map((iceType) => [iceType.id, 0])));
+    setDeliveryQuantities({});
+    setTransferQuantities({});
     setStatus('delivered');
     setProblemOpen(false);
     setNote('');
@@ -409,7 +458,7 @@ export function useEmployeeDeliveryData({
     setSuccess(null);
     setStockError(null);
     void Promise.all([loadCards(selectedRoundId), loadStockState(selectedRoundId)]);
-  }, [iceTypes, loadCards, loadStockState, selectedRoundId]);
+  }, [loadCards, loadStockState, selectedRoundId]);
 
   const selectedRound = rounds.find((round) => round.id === selectedRoundId) ?? null;
   const selectedCard = cards.find((card) => card.round_stop_id === selectedCardId) ?? null;

@@ -780,6 +780,49 @@ describe('employee live shop loading', () => {
     await screen.findByText(newShopCard.shop_name);
   });
 
+  it('restores the last shop list immediately after the workspace is remounted', async () => {
+    const referenceData = {
+      rounds: [{
+        id: 'round-1',
+        service_date: '2026-08-11',
+        name: 'งานประจำวัน',
+        round_type: 'daily' as const,
+        status: 'open' as const,
+        opened_at: '2026-08-11T01:00:00Z',
+      }],
+      iceTypes: [{ id: 'ice-1', code: 'ICE', name: 'น้ำแข็ง', unit: 'ถุง' }],
+    };
+    const createGateway = (loadReferenceData: EmployeeDeliveryGateway['loadReferenceData'], loadShopCards: EmployeeDeliveryGateway['loadShopCards']) => ({
+      loadReferenceData,
+      loadShopCards,
+      loadEmployeeStockState: vi.fn(),
+      recordEmployeeStockTransfer: vi.fn(),
+      recordEmployeeStockReturn: vi.fn(),
+      recordEmployeeStockDamage: vi.fn(),
+      recordDelivery: vi.fn(),
+    }) as unknown as EmployeeDeliveryGateway;
+
+    const firstView = render(<EmployeeDeliveryWorkspace
+      gateway={createGateway(vi.fn().mockResolvedValue(referenceData), vi.fn().mockResolvedValue([shopCard]))}
+      requestScope="employee-remount-cache"
+      serviceDate="2026-08-11"
+    />);
+    await screen.findByText(shopCard.shop_name);
+    firstView.unmount();
+
+    const pendingReference = new Promise<typeof referenceData>(() => {});
+    const pendingCards = new Promise<ShopCard[]>(() => {});
+    render(<EmployeeDeliveryWorkspace
+      gateway={createGateway(vi.fn(() => pendingReference), vi.fn(() => pendingCards))}
+      requestScope="employee-remount-cache"
+      serviceDate="2026-08-11"
+    />);
+
+    expect(screen.getByText(shopCard.shop_name)).toBeTruthy();
+    expect(screen.queryByText('กำลังโหลดงานวันนี้')).toBeNull();
+    expect(screen.queryByText('กำลังโหลดร้าน')).toBeNull();
+  });
+
   it('queues a catalog refresh received while a stock submission is pending', async () => {
     const user = userEvent.setup();
     let resolveTransfer!: (value: EmployeeStockState) => void;

@@ -63,6 +63,7 @@ interface LegacyRefillHistoryItem {
 
 export function DailyAggregateStockClose({
   serviceDate,
+  refreshId = 0,
   onClosed,
   imagePathByIceTypeId = {},
   imageUrls = {},
@@ -71,6 +72,7 @@ export function DailyAggregateStockClose({
   onPreviewImage,
 }: {
   serviceDate: string;
+  refreshId?: number;
   onClosed?: () => void;
   imagePathByIceTypeId?: Record<string, string | null | undefined>;
   imageUrls?: Record<string, string>;
@@ -134,7 +136,7 @@ export function DailyAggregateStockClose({
     pendingRequest.current = null;
     void load();
     return () => { loadRequest.current += 1; };
-  }, [load]);
+  }, [load, refreshId]);
 
   const hasMissingCounts = !summary?.items.length || summary.items.some((item) => !isValidCount(counts[item.ice_type_id], 0.5))
     || (featureEnabled && employees.some((employee) => !isValidCount(cashCounts[employee.employee_id], 0.01)));
