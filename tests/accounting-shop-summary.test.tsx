@@ -268,11 +268,10 @@ describe('accounting shop summary', () => {
 
     const summaryTab = screen.getByRole('button', { name: 'สรุปรายร้าน' });
     expect(summaryTab.getAttribute('aria-current')).toBe('page');
-    expect(screen.getByText('ยอดขายตามร้านช่วงนี้', { selector: 'article span' })).toBeTruthy();
-    expect(screen.getByText('รับแล้วของยอดขายช่วงนี้', { selector: 'article span' })).toBeTruthy();
-    expect(screen.getByText('ค้างสะสมทั้งหมด', { selector: 'article span' })).toBeTruthy();
-    expect(screen.getByText('เกินกำหนดสะสม', { selector: 'article span' })).toBeTruthy();
-    const broadReceipts = screen.getByText('เงินรับจริงทั้งหมดตามร้าน/พื้นที่ช่วงนี้', { selector: 'article span' }).closest('article');
+    expect(screen.getByText('ยอดขายช่วงที่เลือก', { selector: 'article span' })).toBeTruthy();
+    expect(screen.getByText('รับชำระของยอดขายช่วงนี้', { selector: 'article span' })).toBeTruthy();
+    expect(screen.getByText('ยอดค้างสะสมทั้งหมด', { selector: 'article span' })).toBeTruthy();
+    const broadReceipts = screen.getByText('เงินรับจริงในช่วงนี้', { selector: 'article span' }).closest('article');
     expect(broadReceipts?.getAttribute('title')).toMatch(/รวมร้านที่ปิดใช้งาน.*ไม่เปลี่ยนตามตัวกรองเงื่อนไขหรือสถานะชำระ/);
     expect(screen.getByRole('columnheader', { name: 'ร้าน' })).toBeTruthy();
     expect(screen.getByRole('columnheader', { name: 'ค้างวันนี้' })).toBeTruthy();
@@ -698,8 +697,7 @@ describe('accounting shop summary', () => {
 
     expect(await screen.findByRole('button', { name: /S001 · ร้านสมใจ/ })).toBeTruthy();
     expect(screen.queryByRole('alert')).toBeNull();
-    const reviewCard = screen.getByText('รายการต้องตรวจสอบ', { selector: 'article span' }).closest('article');
-    expect(reviewCard && within(reviewCard).getByText('—')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'เปิดหน้ารายการตรวจสอบ' }).textContent).toContain('—');
   });
 
   it('clears stale shop rows and KPIs when a filtered summary request fails', async () => {

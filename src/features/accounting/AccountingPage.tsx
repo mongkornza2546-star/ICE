@@ -538,6 +538,7 @@ export function AccountingPage({ userRole = 'round_lead', demoMode = false }: { 
         exporting={exporting}
         onExport={() => void exportShopDaily()}
         onOpenShop={(shop, date) => void openShopInvoices(shop, date)}
+        onOpenReview={() => { setTab('review'); setPage(0); }}
         reviewCount={reviewCount}
         setFromDate={(date) => { setFromDate(date); setPage(0); }}
         setToDate={(date) => { setToDate(date); setPage(0); }}
@@ -591,13 +592,14 @@ export function AccountingPage({ userRole = 'round_lead', demoMode = false }: { 
   </section>;
 }
 
-function ShopSummaryPanel({ daily, data, exporting, filters, fromDate, onExport, onOpenShop, reviewCount, setFromDate, setToDate, setWindowMode, toDate, today, updateFilter, windowMode }: {
+function ShopSummaryPanel({ daily, data, exporting, filters, fromDate, onExport, onOpenReview, onOpenShop, reviewCount, setFromDate, setToDate, setWindowMode, toDate, today, updateFilter, windowMode }: {
   daily: AccountingShopDailyResponse;
   data: AccountingShopSummaryResponse;
   exporting: boolean;
   filters: AccountingFilters;
   fromDate: string;
   onExport: () => void;
+  onOpenReview: () => void;
   onOpenShop: (shop: AccountingShopSummaryRow, serviceDate?: string) => void;
   reviewCount: number | null;
   setFromDate: (date: string) => void;
@@ -612,17 +614,13 @@ function ShopSummaryPanel({ daily, data, exporting, filters, fromDate, onExport,
   const [extraFiltersOpen, setExtraFiltersOpen] = useState(false);
   const [view, setView] = useState<'daily' | 'totals'>('daily');
   const rangeError = getDateRange(fromDate, toDate).error;
-  const cards: Array<[string, number | null, 'money' | 'count', string?]> = [
-    ['ยอดขายตามร้านช่วงนี้', data.totals.sales_amount, 'money'],
-    ['ยอดขายลูกค้าขาจร', data.totals.casual_sales_amount ?? 0, 'money', 'แยกจากยอดตามร้านและไม่เปลี่ยนตามตัวกรองร้านหรือพื้นที่'],
-    ['รับแล้วของยอดขายช่วงนี้', data.totals.paid_amount, 'money', 'นับเงินที่จัดสรรเข้าบิลซึ่งขายในช่วงวันที่เลือก'],
-    ['ค้างของยอดขายช่วงนี้', data.totals.outstanding_amount, 'money'],
-    ['ค้างสะสมทั้งหมด', data.totals.cumulative_outstanding_amount, 'money'],
-    ['เกินกำหนดสะสม', data.totals.cumulative_overdue_amount, 'money'],
-    ['เงินรับจริงทั้งหมดตามร้าน/พื้นที่ช่วงนี้', data.totals.cash_received_in_period, 'money', 'รวมเงินรับจริงตามวันที่รับของร้านที่ตรงตัวกรองร้านและพื้นที่ รวมร้านที่ปิดใช้งานและบิลเก่า; ไม่เปลี่ยนตามตัวกรองเงื่อนไขหรือสถานะชำระ'],
-    ['ร้านที่ยังค้าง', data.totals.cumulative_outstanding_shop_count, 'count'],
-    ['รายการต้องตรวจสอบ', reviewCount, 'count'],
-  ];
+  const casualSales = data.totals.casual_sales_amount ?? 0;
+  const cards = [
+    { label: 'ยอดขายช่วงที่เลือก', value: data.totals.sales_amount, detail: `ตามร้าน · ลูกค้าขาจร ${money.format(casualSales)} (แยกต่างหาก)`, tone: 'sales' },
+    { label: 'รับชำระของยอดขายช่วงนี้', value: data.totals.paid_amount, detail: 'เงินที่จัดสรรเข้าบิลซึ่งขายในช่วงวันที่เลือก', tone: 'received' },
+    { label: 'ค้างของยอดขายช่วงนี้', value: data.totals.outstanding_amount, detail: 'ยอดขายที่ยังไม่ได้รับชำระ', tone: 'outstanding' },
+    { label: 'ยอดค้างสะสมทั้งหมด', value: data.totals.cumulative_outstanding_amount, detail: `${data.totals.cumulative_outstanding_shop_count.toLocaleString('th-TH')} ร้าน · เกินกำหนด ${money.format(data.totals.cumulative_overdue_amount)}`, tone: 'cumulative' },
+  ] as const;
 
   return <div className="accounting-shop-summary">
     <div className="accounting-shop-view-actions">
@@ -631,9 +629,6 @@ function ShopSummaryPanel({ daily, data, exporting, filters, fromDate, onExport,
         <button aria-pressed={view === 'totals'} onClick={() => setView('totals')} type="button">ยอดรวมช่วงวันที่</button>
       </div>
       <button className="accounting-shop-export" disabled={exporting} onClick={onExport} type="button"><DownloadSimple size={18} />{exporting ? 'กำลังส่งออก...' : 'ส่งออก Excel'}</button>
-    </div>
-    <div className="accounting-financial-cards">
-      {cards.map(([label, value, format, title]) => <article key={label} title={title}><span>{label}</span><strong>{value == null ? '—' : format === 'money' ? money.format(value) : value.toLocaleString('th-TH')}</strong></article>)}
     </div>
     <div className="accounting-filters accounting-filters--shop-summary">
       <label className="accounting-filters__range"><span>ช่วงเวลา</span><span><input aria-describedby={rangeError ? 'accounting-shop-date-error' : undefined} aria-invalid={rangeError ? true : undefined} aria-label="จาก" max={toDate} onChange={(event) => { setWindowMode('custom'); setFromDate(event.target.value); }} type="date" value={fromDate} /><span aria-hidden="true">ถึง</span><input aria-describedby={rangeError ? 'accounting-shop-date-error' : undefined} aria-invalid={rangeError ? true : undefined} aria-label="ถึง" max={today} min={fromDate} onChange={(event) => { setWindowMode('custom'); setToDate(event.target.value); }} type="date" value={toDate} /></span></label>
@@ -653,6 +648,17 @@ function ShopSummaryPanel({ daily, data, exporting, filters, fromDate, onExport,
       {extraFiltersOpen ? <div className="accounting-filters__extra">
         <label><span>เลือกร้านโดยตรง</span><select aria-label="ร้าน" onChange={(event) => updateFilter({ shop_id: event.target.value || undefined })} value={filters.shop_id ?? ''}><option value="">ทุกร้าน</option>{data.facets.shops.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
       </div> : null}
+    </div>
+    <div className="accounting-financial-cards" aria-label="สรุปยอดการเงิน">
+      {cards.map((card) => <article className={`accounting-financial-card accounting-financial-card--${card.tone}`} key={card.label}><span>{card.label}</span><strong>{money.format(card.value)}</strong><small>{card.detail}</small></article>)}
+    </div>
+    <div className="accounting-shop-summary__supporting">
+      <article className="accounting-receipts-summary" title="รวมเงินรับจริงตามวันที่รับของร้านที่ตรงตัวกรองร้านและพื้นที่ รวมร้านที่ปิดใช้งานและบิลเก่า; ไม่เปลี่ยนตามตัวกรองเงื่อนไขหรือสถานะชำระ">
+        <span>เงินรับจริงในช่วงนี้</span><strong>{money.format(data.totals.cash_received_in_period)}</strong><small>รวมยอดรับชำระบิลเก่าตามวันที่รับเงิน</small>
+      </article>
+      <button aria-label="เปิดหน้ารายการตรวจสอบ" className="accounting-review-summary" onClick={onOpenReview} type="button">
+        <span>รายการต้องตรวจสอบ</span><strong>{reviewCount == null ? '—' : reviewCount.toLocaleString('th-TH')}</strong><small>กดเพื่อเปิดรายการและดำเนินการต่อ</small>
+      </button>
     </div>
     {data.facets.zones.length ? <div aria-label="เลือกโซนร้านค้า" className="accounting-zone-tabs" role="group">
       <button

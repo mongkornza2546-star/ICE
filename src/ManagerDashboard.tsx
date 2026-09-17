@@ -6,6 +6,7 @@ import {
   CheckCircle,
   ClipboardText,
   CreditCard,
+  Cube,
   CurrencyDollar,
   DotsThreeVertical,
   Factory,
@@ -358,6 +359,24 @@ export function ManagerDashboard({
         <OverviewCard icon={CurrencyDollar} label="เงินสด" value={formatCurrency(paymentSummary.cashReceivedValue)} detail="รับชำระแล้ววันนี้" tone="green" />
         <OverviewCard icon={CreditCard} label="โอน / QR" value={formatCurrency(paymentSummary.transferReceivedValue)} detail="รับชำระแล้ววันนี้" tone="sky" />
         <OverviewCard icon={CreditCard} label="เครดิต" value={formatCurrency(paymentSummary.creditSalesValue)} detail="ยอดขายเครดิตที่บันทึกวันนี้" tone="purple" />
+      </section>
+
+      <section className="dashboard-panel dashboard-product-sales-panel" aria-label="ยอดขายแยกตามประเภทน้ำแข็ง">
+        <PanelHeading title="ยอดขายแยกตามประเภทน้ำแข็ง" detail="จำนวนที่ขายได้วันนี้" />
+        <div className="dashboard-product-sales-grid">
+          {(salesSummary.iceTypeSales ?? []).map((item) => (
+            <article className="dashboard-product-sale" key={item.ice_type_id}>
+              <span className="dashboard-product-sale__icon"><Cube size={24} weight="fill" /></span>
+              <div>
+                <strong>{item.ice_type_name}</strong>
+                <p><b>{formatQuantity(item.quantity)}</b> <span>{item.unit}</span></p>
+              </div>
+            </article>
+          ))}
+          {(salesSummary.iceTypeSales ?? []).length === 0 ? (
+            <p className="dashboard-product-sales-empty">ยังไม่มียอดขายน้ำแข็งสำหรับวันนี้</p>
+          ) : null}
+        </div>
       </section>
 
       <div className="dashboard-mid-grid">

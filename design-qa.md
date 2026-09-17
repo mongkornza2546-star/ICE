@@ -1,3 +1,44 @@
+## 2026-09-17 — Manager dashboard sales by ice type
+
+**Comparison Target**
+
+- Source visual truth: `/Users/bhusitt./Desktop/ภาพถ่ายหน้าจอ2569-09-17เวลา 18.38.37.png` (2880 × 1800 px, Safari/macOS capture).
+- Rendered implementation: `http://127.0.0.1:4317/?screen=today-layout`, captured and inspected in the Codex in-app browser at 701 × 718 CSS px, DPR 1.
+- Responsive evidence: the same implementation was inspected at 390 × 844 CSS px, DPR 1; the document width remained 390 px with no horizontal overflow.
+- State: admin demo dashboard, in-progress day, three ice types with sales of 72, 28, and 18 bags.
+- Full-view comparison evidence: the supplied reference and browser-rendered implementation were reviewed together in the same QA pass. The new section preserves the existing white panel, navy hierarchy, pale-blue icon treatment, border, radius, shadow, and spacing language.
+- Focused-region evidence: the browser capture shows the complete new section between payment totals and the route summary; labels, quantities, units, three product cards, and surrounding section spacing are legible without an additional crop.
+
+**Findings**
+
+- No actionable P0/P1/P2 differences remain.
+- Accepted intentional addition: the reference dashboard does not yet contain this section. The implementation adds the requested sales-by-ice-type panel without changing existing cards, routes, alerts, or navigation.
+- Accepted compact behavior: long ice-type names use the same single-line ellipsis behavior as other dashboard cards while retaining their full accessible text.
+
+**Required Fidelity Surfaces**
+
+- Fonts and typography: retained the existing Thai font stack, navy section heading, muted description, bold numeric hierarchy, and compact unit label.
+- Spacing and layout rhythm: the section uses the existing 13 px panel radius and 15 px padding, with a 10 px product-card gap. Desktop uses an auto-fitting grid; mobile uses two 166 px columns.
+- Colors and visual tokens: reused the existing white, pale-blue, navy, muted blue-gray, border, and low-elevation shadow tokens.
+- Image quality and asset fidelity: no raster asset was required. Each product uses the installed Phosphor `Cube` icon; no placeholder, handcrafted SVG, emoji, or CSS illustration was introduced.
+- Copy and content: the section identifies each ice type and displays its formatted quantity with the source unit (`ถุง`, `แถว`, or another configured unit). An explicit no-sales message covers an empty result.
+
+**Interaction And Build Checks**
+
+- In-app browser: verified three sales cards render from `salesSummary.iceTypeSales`; at 390 px the grid uses two columns and the document has no horizontal overflow.
+- Browser console: no errors or warnings.
+- Focused UI tests: `tests/manager-dashboard-refresh.test.tsx` passed, 2/2, including ice-type labels and quantities.
+- Production build: `npm run build` passed. The existing Vite large-chunk warning remains unchanged.
+
+**Comparison History**
+
+- The first implementation pass rendered the new panel with one demo item and passed layout checks.
+- Demo data was expanded to three representative ice types so the final browser pass could verify the intended multi-card layout. Desktop and mobile checks found no remaining P0/P1/P2 issue.
+
+final result: passed
+
+---
+
 ## 2026-08-11 — Shop directory Excel export
 
 **Comparison Target**

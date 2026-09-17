@@ -11,7 +11,13 @@ function setup(status = 'open') {
     name === 'get_daily_work_dashboard' ? {
       session: { status: status === 'closed' ? 'completed' : 'in_progress', service_date: args.p_service_date },
       deliverySummary: { regularShopCount: 0, eventParticipationCount: 0, activeDeliveryCount: 0 },
-      salesSummary: { netSalesValue: 800 }, cancellationState: { can_cancel: false }, problems: [],
+      salesSummary: {
+        netSalesValue: 800,
+        iceTypeSales: [
+          { ice_type_id: 'small-tube', ice_type_name: 'หลอดเล็ก', unit: 'ถุง', quantity: 42 },
+          { ice_type_id: 'large-tube', ice_type_name: 'หลอดใหญ่', unit: 'ถุง', quantity: 18 },
+        ],
+      }, cancellationState: { can_cancel: false }, problems: [],
       readiness: [{ status: 'uncounted', location_id: 'legacy-location' }],
     } : name === 'get_stock_control_summary' ? { locations: [] } : name === 'get_daily_payment_method_summary' ? {
       cashReceivedValue: 200, transferReceivedValue: 300, creditSalesValue: 300,
@@ -30,6 +36,11 @@ it('shows the aggregate closure instead of obsolete per-location count warnings'
   expect(screen.getByText('เงินสด')).not.toBeNull();
   expect(screen.getByText('โอน / QR')).not.toBeNull();
   expect(screen.getByText('เครดิต')).not.toBeNull();
+  expect(screen.getByText('ยอดขายแยกตามประเภทน้ำแข็ง')).not.toBeNull();
+  expect(screen.getByText('หลอดเล็ก')).not.toBeNull();
+  expect(screen.getByText('42')).not.toBeNull();
+  expect(screen.getByText('หลอดใหญ่')).not.toBeNull();
+  expect(screen.getByText('18')).not.toBeNull();
 });
 
 it('refreshes visible dashboards from the server and pauses while inactive', async () => {

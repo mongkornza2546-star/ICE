@@ -491,7 +491,17 @@ const managerDashboardDemo: DailyWorkDashboard = {
     eventParticipationCount: 0,
     eventProblemCount: 0,
   },
-  salesSummary: { netSalesValue: 3860, cashReceivedValue: 1400, transferReceivedValue: 1600, creditSalesValue: 860, iceTypeSales: [{ ice_type_id: 'tube', ice_type_name: 'หลอดเล็ก', unit: 'ถุง', quantity: 118 }] },
+  salesSummary: {
+    netSalesValue: 3860,
+    cashReceivedValue: 1400,
+    transferReceivedValue: 1600,
+    creditSalesValue: 860,
+    iceTypeSales: [
+      { ice_type_id: 'ice-block', ice_type_name: 'หลอดเล็ก', unit: 'ถุง', quantity: 72 },
+      { ice_type_id: 'ice-small', ice_type_name: 'หลอดเล็กโม่', unit: 'ถุง', quantity: 28 },
+      { ice_type_id: 'ice-tube', ice_type_name: 'เปลือย (หลอดใหญ่)', unit: 'ถุง', quantity: 18 },
+    ],
+  },
   recentDeliveries: [],
   problems: [{ stop_id: 'demo-problem', shop_code: 'A01', shop_name: 'Skywalk, ฝั่งสระลม', problem_note: 'ลูกค้ายังไม่พร้อมรับสินค้า', updated_at: '2026-07-20T04:10:00.000Z', updated_by_name: 'สมชาย ใจดี' }],
   readiness: [
