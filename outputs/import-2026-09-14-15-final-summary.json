@@ -1,0 +1,96 @@
+{
+  "verified_at": "2026-09-18T08:45:00Z",
+  "source": "สรุปยอดขาย ศูนย์ราชการ ปี 69-3.xls",
+  "days": {
+    "2026-09-14": {
+      "round_id": "729e9dea-feff-48f4-a5d9-47b86d596300",
+      "active_delivery_events": 123,
+      "active_delivery_quantities": {
+        "หลอดเล็ก": 225.5,
+        "โม่": 88.5,
+        "น้ำแข็งก้อน": 7,
+        "เปลือย(หลอดใหญ่)": 1
+      },
+      "sales_amount": 18600,
+      "payment_terms": {
+        "immediate": 99,
+        "end_of_day": 4,
+        "credit": 20
+      },
+      "stock_added": {
+        "หลอดเล็ก": 225.5,
+        "โม่": 89,
+        "น้ำแข็งก้อน": 7,
+        "เปลือย(หลอดใหญ่)": 1
+      }
+    },
+    "2026-09-15": {
+      "round_id": "be28dd9e-5828-4ab9-9334-ba128e6b143d",
+      "active_delivery_events": 109,
+      "active_delivery_quantities": {
+        "หลอดเล็ก": 181,
+        "โม่": 58.5
+      },
+      "sales_amount": 13890,
+      "payment_terms": {
+        "immediate": 86,
+        "end_of_day": 3,
+        "credit": 20
+      },
+      "stock_added": {
+        "หลอเล็ก": 181,
+        "โม่": 58.5
+      }
+    }
+  },
+  "additional_exception": {
+    "date": "2026-09-14",
+    "shop_code": "BB20",
+    "shop_name": "ร้านป้าอุ๊ ไก่ตุ๋น",
+    "reason": "shop_inactive_no_round_stop",
+    "not_imported_quantities": {
+      "โม่": 0.5
+    }
+  },
+  "unmatched_source_rows": {
+    "2026-09-14": 6,
+    "2026-09-15": 5
+  },
+  "payment_review": [
+    {
+      "date": "2026-09-14",
+      "shop_code": "BB84",
+      "reason": "payment_only",
+      "money": 100
+    },
+    {
+      "date": "2026-09-14",
+      "shop_code": "BB34",
+      "reason": "partial_or_non_immediate",
+      "sale": 120,
+      "money": 60
+    },
+    {
+      "date": "2026-09-14",
+      "shop_code": "BB53",
+      "reason": "non_immediate_money_needs_review",
+      "sale": 540,
+      "money": 2340
+    },
+    {
+      "date": "2026-09-14",
+      "shop_code": "BB21",
+      "reason": "excess_money",
+      "sale": 60,
+      "money": 120
+    },
+    {
+      "date": "2026-09-14",
+      "shop_code": "BB82",
+      "reason": "excess_money",
+      "sale": 60,
+      "money": 160
+    }
+  ],
+  "cancelled_empty_duplicate_round": "6c808db0-c8cd-44a6-9ae4-c08ec952cd19"
+}

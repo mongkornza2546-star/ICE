@@ -1,0 +1,1629 @@
+{
+  "source": "สรุปยอดขาย ศูนย์ราชการ ปี 69-3.xls",
+  "started_at": "2026-09-18T08:37:17.031Z",
+  "days": {
+    "2026-09-14": {
+      "round_id": "729e9dea-feff-48f4-a5d9-47b86d596300",
+      "stock_movement_id": {
+        "locations": [
+          {
+            "id": "46dca9b3-fe99-4f3e-be95-ce51d0d1aa98",
+            "code": "TUCK",
+            "kind": "truck",
+            "name": "รถบรรทุก",
+            "balances": [
+              {
+                "unit": "ถุง",
+                "quantity": 225.5,
+                "image_path": "ice_types/2390e8cf-c4d1-4948-bc6d-5db526432b0e/r2/1787183504320-76af1b04-a890-49eb-a08b-803e1720c238.webp",
+                "ice_type_id": "2390e8cf-c4d1-4948-bc6d-5db526432b0e",
+                "ice_type_name": "หลอดเล็ก"
+              },
+              {
+                "unit": "ถุง",
+                "quantity": 89,
+                "image_path": "ice_types/29733db5-603e-4cf8-8a93-609645afcee4/r2/1787183489064-64313426-77dc-476f-b33d-bb94f82f22db.webp",
+                "ice_type_id": "29733db5-603e-4cf8-8a93-609645afcee4",
+                "ice_type_name": "โม่"
+              },
+              {
+                "unit": "ถุง",
+                "quantity": 0,
+                "image_path": null,
+                "ice_type_id": "3b744723-9f9c-4a3f-86ab-09abbca62d73",
+                "ice_type_name": "หลอดเล็กโม่"
+              },
+              {
+                "unit": "ถุง",
+                "quantity": 1,
+                "image_path": null,
+                "ice_type_id": "b3f89fa3-9bab-48df-8195-7990fc6de15f",
+                "ice_type_name": "เปลือย(หลอดใหญ่)"
+              },
+              {
+                "unit": "แถว",
+                "quantity": 7,
+                "image_path": "ice_types/08ac20ac-0a76-4adc-b25d-5c1927c44dc3/r2/1787183518571-cf6b1c5d-9df9-445a-b989-767fca2289f8.webp",
+                "ice_type_id": "08ac20ac-0a76-4adc-b25d-5c1927c44dc3",
+                "ice_type_name": "น้ำแข็งก้อน"
+              },
+              {
+                "unit": "ถุง",
+                "quantity": 0,
+                "image_path": null,
+                "ice_type_id": "67514646-1ceb-417c-90ca-212c147301a6",
+                "ice_type_name": "หลอดเล็กถุงใส"
+              }
+            ],
+            "holds_inventory": true,
+            "assigned_employee": null,
+            "is_courier_source": true,
+            "assigned_employees": [],
+            "assigned_work_sites": [],
+            "requires_daily_count": true
+          },
+          {
+            "id": "221e258d-1057-4d51-8965-430e2e3062f7",
+            "code": "SITE-AA",
+            "kind": "work_site",
+            "name": "A · จุดปฏิบัติงาน",
+            "balances": [
+              {
+                "unit": "ถุง",
+                "quantity": 0,
+                "image_path": "ice_types/2390e8cf-c4d1-4948-bc6d-5db526432b0e/r2/1787183504320-76af1b04-a890-49eb-a08b-803e1720c238.webp",
+                "ice_type_id": "2390e8cf-c4d1-4948-bc6d-5db526432b0e",
+                "ice_type_name": "หลอดเล็ก"
+              },
+              {
+                "unit": "ถุง",
+                "quantity": 0,
+                "image_path": "ice_types/29733db5-603e-4cf8-8a93-609645afcee4/r2/1787183489064-64313426-77dc-476f-b33d-bb94f82f22db.webp",
+                "ice_type_id": "29733db5-603e-4cf8-8a93-609645afcee4",
+                "ice_type_name": "โม่"
+              },
+              {
+                "unit": "ถุง",
+                "quantity": 0,
+                "image_path": null,
+                "ice_type_id": "3b744723-9f9c-4a3f-86ab-09abbca62d73",
+                "ice_type_name": "หลอดเล็กโม่"
+              },
+              {
+                "unit": "ถุง",
+                "quantity": 0,
+                "image_path": null,
+                "ice_type_id": "b3f89fa3-9bab-48df-8195-7990fc6de15f",
+                "ice_type_name": "เปลือย(หลอดใหญ่)"
+              },
+              {
+                "unit": "แถว",
+                "quantity": 0,
+                "image_path": "ice_types/08ac20ac-0a76-4adc-b25d-5c1927c44dc3/r2/1787183518571-cf6b1c5d-9df9-445a-b989-767fca2289f8.webp",
+                "ice_type_id": "08ac20ac-0a76-4adc-b25d-5c1927c44dc3",
+                "ice_type_name": "น้ำแข็งก้อน"
+              },
+              {
+                "unit": "ถุง",
+                "quantity": 0,
+                "image_path": null,
+                "ice_type_id": "67514646-1ceb-417c-90ca-212c147301a6",
+                "ice_type_name": "หลอดเล็กถุงใส"
+              }
+            ],
+            "holds_inventory": false,
+            "assigned_employee": null,
+            "is_courier_source": false,
+            "assigned_employees": [
+              {
+                "id": "797f7695-d748-473f-9cc7-9c8c90070c1b",
+                "code": "AUTH-797F7695D748473F9CC79C8C90070C1B",
+                "nickname": "มืด",
+                "avatar_path": null,
+                "display_name": "lamkeo@gmail.com"
+              },
+              {
+                "id": "92d09ca9-e7f3-4680-b9d1-b103334ba0b6",
+                "code": "AUTH-92D09CA9E7F34680B9D1B103334BA0B6",
+                "nickname": "หนึ่ง",
+                "avatar_path": "users/92d09ca9-e7f3-4680-b9d1-b103334ba0b6/1784775663108-e9135942-7778-4b2a-8c46-f4bce5618359.jpg",
+                "display_name": "test01@gmail.com"
+              }
+            ],
+            "assigned_work_sites": [],
+            "requires_daily_count": false
+          },
+          {
+            "id": "94f87bc8-8918-4deb-8fad-d754c9a2c698",
+            "code": "SITE-BB",
+            "kind": "work_site",
+            "name": "B · จุดปฏิบัติงาน",
+            "balances": [
+              {
+                "unit": "ถุง",
+                "quantity": 0,
+                "image_path": "ice_types/2390e8cf-c4d1-4948-bc6d-5db526432b0e/r2/1787183504320-76af1b04-a890-49eb-a08b-803e1720c238.webp",
+                "ice_type_id": "2390e8cf-c4d1-4948-bc6d-5db526432b0e",
+                "ice_type_name": "หลอดเล็ก"
+              },
+              {
+                "unit": "ถุง",
+                "quantity": 0,
+                "image_path": "ice_types/29733db5-603e-4cf8-8a93-609645afcee4/r2/1787183489064-64313426-77dc-476f-b33d-bb94f82f22db.webp",
+                "ice_type_id": "29733db5-603e-4cf8-8a93-609645afcee4",
+                "ice_type_name": "โม่"
+              },
+              {
+                "unit": "ถุง",
+                "quantity": 0,
+                "image_path": null,
+                "ice_type_id": "3b744723-9f9c-4a3f-86ab-09abbca62d73",
+                "ice_type_name": "หลอดเล็กโม่"
+              },
+              {
+                "unit": "ถุง",
+                "quantity": 0,
+                "image_path": null,
+                "ice_type_id": "b3f89fa3-9bab-48df-8195-7990fc6de15f",
+                "ice_type_name": "เปลือย(หลอดใหญ่)"
+              },
+              {
+                "unit": "แถว",
+                "quantity": 0,
+                "image_path": "ice_types/08ac20ac-0a76-4adc-b25d-5c1927c44dc3/r2/1787183518571-cf6b1c5d-9df9-445a-b989-767fca2289f8.webp",
+                "ice_type_id": "08ac20ac-0a76-4adc-b25d-5c1927c44dc3",
+                "ice_type_name": "น้ำแข็งก้อน"
+              },
+              {
+                "unit": "ถุง",
+                "quantity": 0,
+                "image_path": null,
+                "ice_type_id": "67514646-1ceb-417c-90ca-212c147301a6",
+                "ice_type_name": "หลอดเล็กถุงใส"
+              }
+            ],
+            "holds_inventory": false,
+            "assigned_employee": null,
+            "is_courier_source": false,
+            "assigned_employees": [
+              {
+                "id": "92d09ca9-e7f3-4680-b9d1-b103334ba0b6",
+                "code": "AUTH-92D09CA9E7F34680B9D1B103334BA0B6",
+                "nickname": "หนึ่ง",
+                "avatar_path": "users/92d09ca9-e7f3-4680-b9d1-b103334ba0b6/1784775663108-e9135942-7778-4b2a-8c46-f4bce5618359.jpg",
+                "display_name": "test01@gmail.com"
+              },
+              {
+                "id": "f5466e59-4440-44a8-93bf-8b9611723015",
+                "code": "AUTH-F5466E59444044A893BF8B9611723015",
+                "nickname": "So",
+                "avatar_path": "users/f5466e59-4440-44a8-93bf-8b9611723015/1785734543542-bbddf01f-fa93-4a24-a787-01336f3dc014.jpg",
+                "display_name": "sosee@gmail.com"
+              }
+            ],
+            "assigned_work_sites": [],
+            "requires_daily_count": false
+          },
+          {
+            "id": "563f41af-9a6f-4f09-bc85-77d3f73534b8",
+            "code": "SITE-CC",
+            "kind": "work_site",
+            "name": "C · จุดปฏิบัติงาน",
+            "balances": [
+              {
+                "unit": "ถุง",
+                "quantity": 0,
+                "image_path": "ice_types/2390e8cf-c4d1-4948-bc6d-5db526432b0e/r2/1787183504320-76af1b04-a890-49eb-a08b-803e1720c238.webp",
+                "ice_type_id": "2390e8cf-c4d1-4948-bc6d-5db526432b0e",
+                "ice_type_name": "หลอดเล็ก"
+              },
+              {
+                "unit": "ถุง",
+                "quantity": 0,
+                "image_path": "ice_types/29733db5-603e-4cf8-8a93-609645afcee4/r2/1787183489064-64313426-77dc-476f-b33d-bb94f82f22db.webp",
+                "ice_type_id": "29733db5-603e-4cf8-8a93-609645afcee4",
+                "ice_type_name": "โม่"
+              },
+              {
+                "unit": "ถุง",
+                "quantity": 0,
+                "image_path": null,
+                "ice_type_id": "3b744723-9f9c-4a3f-86ab-09abbca62d73",
+                "ice_type_name": "หลอดเล็กโม่"
+              },
+              {
+                "unit": "ถุง",
+                "quantity": 0,
+                "image_path": null,
+                "ice_type_id": "b3f89fa3-9bab-48df-8195-7990fc6de15f",
+                "ice_type_name": "เปลือย(หลอดใหญ่)"
+              },
+              {
+                "unit": "แถว",
+                "quantity": 0,
+                "image_path": "ice_types/08ac20ac-0a76-4adc-b25d-5c1927c44dc3/r2/1787183518571-cf6b1c5d-9df9-445a-b989-767fca2289f8.webp",
+                "ice_type_id": "08ac20ac-0a76-4adc-b25d-5c1927c44dc3",
+                "ice_type_name": "น้ำแข็งก้อน"
+              },
+              {
+                "unit": "ถุง",
+                "quantity": 0,
+                "image_path": null,
+                "ice_type_id": "67514646-1ceb-417c-90ca-212c147301a6",
+                "ice_type_name": "หลอดเล็กถุงใส"
+              }
+            ],
+            "holds_inventory": false,
+            "assigned_employee": null,
+            "is_courier_source": false,
+            "assigned_employees": [
+              {
+                "id": "797f7695-d748-473f-9cc7-9c8c90070c1b",
+                "code": "AUTH-797F7695D748473F9CC79C8C90070C1B",
+                "nickname": "มืด",
+                "avatar_path": null,
+                "display_name": "lamkeo@gmail.com"
+              },
+              {
+                "id": "92d09ca9-e7f3-4680-b9d1-b103334ba0b6",
+                "code": "AUTH-92D09CA9E7F34680B9D1B103334BA0B6",
+                "nickname": "หนึ่ง",
+                "avatar_path": "users/92d09ca9-e7f3-4680-b9d1-b103334ba0b6/1784775663108-e9135942-7778-4b2a-8c46-f4bce5618359.jpg",
+                "display_name": "test01@gmail.com"
+              }
+            ],
+            "assigned_work_sites": [],
+            "requires_daily_count": false
+          },
+          {
+            "id": "2ae48cd7-48a2-4409-9d80-7a3e5e6e27c9",
+            "code": "SITE-SW",
+            "kind": "work_site",
+            "name": "SKY WALK · จุดปฏิบัติงาน",
+            "balances": [
+              {
+                "unit": "ถุง",
+                "quantity": 0,
+                "image_path": "ice_types/2390e8cf-c4d1-4948-bc6d-5db526432b0e/r2/1787183504320-76af1b04-a890-49eb-a08b-803e1720c238.webp",
+                "ice_type_id": "2390e8cf-c4d1-4948-bc6d-5db526432b0e",
+                "ice_type_name": "หลอดเล็ก"
+              },
+              {
+                "unit": "ถุง",
+                "quantity": 0,
+                "image_path": "ice_types/29733db5-603e-4cf8-8a93-609645afcee4/r2/1787183489064-64313426-77dc-476f-b33d-bb94f82f22db.webp",
+                "ice_type_id": "29733db5-603e-4cf8-8a93-609645afcee4",
+                "ice_type_name": "โม่"
+              },
+              {
+                "unit": "ถุง",
+                "quantity": 0,
+                "image_path": null,
+                "ice_type_id": "3b744723-9f9c-4a3f-86ab-09abbca62d73",
+                "ice_type_name": "หลอดเล็กโม่"
+              },
+              {
+                "unit": "ถุง",
+                "quantity": 0,
+                "image_path": null,
+                "ice_type_id": "b3f89fa3-9bab-48df-8195-7990fc6de15f",
+                "ice_type_name": "เปลือย(หลอดใหญ่)"
+              },
+              {
+                "unit": "แถว",
+                "quantity": 0,
+                "image_path": "ice_types/08ac20ac-0a76-4adc-b25d-5c1927c44dc3/r2/1787183518571-cf6b1c5d-9df9-445a-b989-767fca2289f8.webp",
+                "ice_type_id": "08ac20ac-0a76-4adc-b25d-5c1927c44dc3",
+                "ice_type_name": "น้ำแข็งก้อน"
+              },
+              {
+                "unit": "ถุง",
+                "quantity": 0,
+                "image_path": null,
+                "ice_type_id": "67514646-1ceb-417c-90ca-212c147301a6",
+                "ice_type_name": "หลอดเล็กถุงใส"
+              }
+            ],
+            "holds_inventory": false,
+            "assigned_employee": null,
+            "is_courier_source": false,
+            "assigned_employees": [
+              {
+                "id": "797f7695-d748-473f-9cc7-9c8c90070c1b",
+                "code": "AUTH-797F7695D748473F9CC79C8C90070C1B",
+                "nickname": "มืด",
+                "avatar_path": null,
+                "display_name": "lamkeo@gmail.com"
+              },
+              {
+                "id": "92d09ca9-e7f3-4680-b9d1-b103334ba0b6",
+                "code": "AUTH-92D09CA9E7F34680B9D1B103334BA0B6",
+                "nickname": "หนึ่ง",
+                "avatar_path": "users/92d09ca9-e7f3-4680-b9d1-b103334ba0b6/1784775663108-e9135942-7778-4b2a-8c46-f4bce5618359.jpg",
+                "display_name": "test01@gmail.com"
+              }
+            ],
+            "assigned_work_sites": [],
+            "requires_daily_count": false
+          },
+          {
+            "id": "93ff5c04-96fa-4689-9c15-c415032c35fe",
+            "code": "SITE-EVENT-66B12FB6-0E47-4D1F-97CA-A1EC3B212990",
+            "kind": "work_site",
+            "name": "ตึก B · จุดปฏิบัติงาน",
+            "balances": [
+              {
+                "unit": "ถุง",
+                "quantity": 0,
+                "image_path": "ice_types/2390e8cf-c4d1-4948-bc6d-5db526432b0e/r2/1787183504320-76af1b04-a890-49eb-a08b-803e1720c238.webp",
+                "ice_type_id": "2390e8cf-c4d1-4948-bc6d-5db526432b0e",
+                "ice_type_name": "หลอดเล็ก"
+              },
+              {
+                "unit": "ถุง",
+                "quantity": 0,
+                "image_path": "ice_types/29733db5-603e-4cf8-8a93-609645afcee4/r2/1787183489064-64313426-77dc-476f-b33d-bb94f82f22db.webp",
+                "ice_type_id": "29733db5-603e-4cf8-8a93-609645afcee4",
+                "ice_type_name": "โม่"
+              },
+              {
+                "unit": "ถุง",
+                "quantity": 0,
+                "image_path": null,
+                "ice_type_id": "3b744723-9f9c-4a3f-86ab-09abbca62d73",
+                "ice_type_name": "หลอดเล็กโม่"
+              },
+              {
+                "unit": "ถุง",
+                "quantity": 0,
+                "image_path": null,
+                "ice_type_id": "b3f89fa3-9bab-48df-8195-7990fc6de15f",
+                "ice_type_name": "เปลือย(หลอดใหญ่)"
+              },
+              {
+                "unit": "แถว",
+                "quantity": 0,
+                "image_path": "ice_types/08ac20ac-0a76-4adc-b25d-5c1927c44dc3/r2/1787183518571-cf6b1c5d-9df9-445a-b989-767fca2289f8.webp",
+                "ice_type_id": "08ac20ac-0a76-4adc-b25d-5c1927c44dc3",
+                "ice_type_name": "น้ำแข็งก้อน"
+              },
+              {
+                "unit": "ถุง",
+                "quantity": 0,
+                "image_path": null,
+                "ice_type_id": "67514646-1ceb-417c-90ca-212c147301a6",
+                "ice_type_name": "หลอดเล็กถุงใส"
+              }
+            ],
+            "holds_inventory": false,
+            "assigned_employee": null,
+            "is_courier_source": false,
+            "assigned_employees": [],
+            "assigned_work_sites": [],
+            "requires_daily_count": false
+          },
+          {
+            "id": "3fee147a-f243-4dbf-8d31-a3d903648a33",
+            "code": "HOLDER-797F7695D748473F9CC79C8C90070C1B",
+            "kind": "team",
+            "name": "lamkeo@gmail.com · จุดรับสต๊อก",
+            "balances": [
+              {
+                "unit": "ถุง",
+                "quantity": 0,
+                "image_path": "ice_types/2390e8cf-c4d1-4948-bc6d-5db526432b0e/r2/1787183504320-76af1b04-a890-49eb-a08b-803e1720c238.webp",
+                "ice_type_id": "2390e8cf-c4d1-4948-bc6d-5db526432b0e",
+                "ice_type_name": "หลอดเล็ก"
+              },
+              {
+                "unit": "ถุง",
+                "quantity": 0,
+                "image_path": "ice_types/29733db5-603e-4cf8-8a93-609645afcee4/r2/1787183489064-64313426-77dc-476f-b33d-bb94f82f22db.webp",
+                "ice_type_id": "29733db5-603e-4cf8-8a93-609645afcee4",
+                "ice_type_name": "โม่"
+              },
+              {
+                "unit": "ถุง",
+                "quantity": 0,
+                "image_path": null,
+                "ice_type_id": "3b744723-9f9c-4a3f-86ab-09abbca62d73",
+                "ice_type_name": "หลอดเล็กโม่"
+              },
+              {
+                "unit": "ถุง",
+                "quantity": 0,
+                "image_path": null,
+                "ice_type_id": "b3f89fa3-9bab-48df-8195-7990fc6de15f",
+                "ice_type_name": "เปลือย(หลอดใหญ่)"
+              },
+              {
+                "unit": "แถว",
+                "quantity": 0,
+                "image_path": "ice_types/08ac20ac-0a76-4adc-b25d-5c1927c44dc3/r2/1787183518571-cf6b1c5d-9df9-445a-b989-767fca2289f8.webp",
+                "ice_type_id": "08ac20ac-0a76-4adc-b25d-5c1927c44dc3",
+                "ice_type_name": "น้ำแข็งก้อน"
+              },
+              {
+                "unit": "ถุง",
+                "quantity": 0,
+                "image_path": null,
+                "ice_type_id": "67514646-1ceb-417c-90ca-212c147301a6",
+                "ice_type_name": "หลอดเล็กถุงใส"
+              }
+            ],
+            "holds_inventory": true,
+            "assigned_employee": {
+              "id": "797f7695-d748-473f-9cc7-9c8c90070c1b",
+              "code": "AUTH-797F7695D748473F9CC79C8C90070C1B",
+              "nickname": "มืด",
+              "avatar_path": null,
+              "display_name": "lamkeo@gmail.com"
+            },
+            "is_courier_source": false,
+            "assigned_employees": [],
+            "assigned_work_sites": [
+              {
+                "id": "221e258d-1057-4d51-8965-430e2e3062f7",
+                "code": "SITE-AA",
+                "name": "A · จุดปฏิบัติงาน"
+              },
+              {
+                "id": "563f41af-9a6f-4f09-bc85-77d3f73534b8",
+                "code": "SITE-CC",
+                "name": "C · จุดปฏิบัติงาน"
+              },
+              {
+                "id": "2ae48cd7-48a2-4409-9d80-7a3e5e6e27c9",
+                "code": "SITE-SW",
+                "name": "SKY WALK · จุดปฏิบัติงาน"
+              }
+            ],
+            "requires_daily_count": true
+          },
+          {
+            "id": "16454b7a-6e55-41a6-8989-0a0efe8576c6",
+            "code": "HOLDER-F5466E59444044A893BF8B9611723015",
+            "kind": "team",
+            "name": "sosee@gmail.com · จุดรับสต๊อก",
+            "balances": [
+              {
+                "unit": "ถุง",
+                "quantity": 0,
+                "image_path": "ice_types/2390e8cf-c4d1-4948-bc6d-5db526432b0e/r2/1787183504320-76af1b04-a890-49eb-a08b-803e1720c238.webp",
+                "ice_type_id": "2390e8cf-c4d1-4948-bc6d-5db526432b0e",
+                "ice_type_name": "หลอดเล็ก"
+              },
+              {
+                "unit": "ถุง",
+                "quantity": 0,
+                "image_path": "ice_types/29733db5-603e-4cf8-8a93-609645afcee4/r2/1787183489064-64313426-77dc-476f-b33d-bb94f82f22db.webp",
+                "ice_type_id": "29733db5-603e-4cf8-8a93-609645afcee4",
+                "ice_type_name": "โม่"
+              },
+              {
+                "unit": "ถุง",
+                "quantity": 0,
+                "image_path": null,
+                "ice_type_id": "3b744723-9f9c-4a3f-86ab-09abbca62d73",
+                "ice_type_name": "หลอดเล็กโม่"
+              },
+              {
+                "unit": "ถุง",
+                "quantity": 0,
+                "image_path": null,
+                "ice_type_id": "b3f89fa3-9bab-48df-8195-7990fc6de15f",
+                "ice_type_name": "เปลือย(หลอดใหญ่)"
+              },
+              {
+                "unit": "แถว",
+                "quantity": 0,
+                "image_path": "ice_types/08ac20ac-0a76-4adc-b25d-5c1927c44dc3/r2/1787183518571-cf6b1c5d-9df9-445a-b989-767fca2289f8.webp",
+                "ice_type_id": "08ac20ac-0a76-4adc-b25d-5c1927c44dc3",
+                "ice_type_name": "น้ำแข็งก้อน"
+              },
+              {
+                "unit": "ถุง",
+                "quantity": 0,
+                "image_path": null,
+                "ice_type_id": "67514646-1ceb-417c-90ca-212c147301a6",
+                "ice_type_name": "หลอดเล็กถุงใส"
+              }
+            ],
+            "holds_inventory": true,
+            "assigned_employee": {
+              "id": "f5466e59-4440-44a8-93bf-8b9611723015",
+              "code": "AUTH-F5466E59444044A893BF8B9611723015",
+              "nickname": "So",
+              "avatar_path": "users/f5466e59-4440-44a8-93bf-8b9611723015/1785734543542-bbddf01f-fa93-4a24-a787-01336f3dc014.jpg",
+              "display_name": "sosee@gmail.com"
+            },
+            "is_courier_source": false,
+            "assigned_employees": [],
+            "assigned_work_sites": [
+              {
+                "id": "94f87bc8-8918-4deb-8fad-d754c9a2c698",
+                "code": "SITE-BB",
+                "name": "B · จุดปฏิบัติงาน"
+              }
+            ],
+            "requires_daily_count": true
+          },
+          {
+            "id": "149f175b-42e8-4671-b521-30d983fd9f2d",
+            "code": "HOLDER-92D09CA9E7F34680B9D1B103334BA0B6",
+            "kind": "team",
+            "name": "test01@gmail.com · จุดรับสต๊อก",
+            "balances": [
+              {
+                "unit": "ถุง",
+                "quantity": 0,
+                "image_path": "ice_types/2390e8cf-c4d1-4948-bc6d-5db526432b0e/r2/1787183504320-76af1b04-a890-49eb-a08b-803e1720c238.webp",
+                "ice_type_id": "2390e8cf-c4d1-4948-bc6d-5db526432b0e",
+                "ice_type_name": "หลอดเล็ก"
+              },
+              {
+                "unit": "ถุง",
+                "quantity": 0,
+                "image_path": "ice_types/29733db5-603e-4cf8-8a93-609645afcee4/r2/1787183489064-64313426-77dc-476f-b33d-bb94f82f22db.webp",
+                "ice_type_id": "29733db5-603e-4cf8-8a93-609645afcee4",
+                "ice_type_name": "โม่"
+              },
+              {
+                "unit": "ถุง",
+                "quantity": 0,
+                "image_path": null,
+                "ice_type_id": "3b744723-9f9c-4a3f-86ab-09abbca62d73",
+                "ice_type_name": "หลอดเล็กโม่"
+              },
+              {
+                "unit": "ถุง",
+                "quantity": 0,
+                "image_path": null,
+                "ice_type_id": "b3f89fa3-9bab-48df-8195-7990fc6de15f",
+                "ice_type_name": "เปลือย(หลอดใหญ่)"
+              },
+              {
+                "unit": "แถว",
+                "quantity": 0,
+                "image_path": "ice_types/08ac20ac-0a76-4adc-b25d-5c1927c44dc3/r2/1787183518571-cf6b1c5d-9df9-445a-b989-767fca2289f8.webp",
+                "ice_type_id": "08ac20ac-0a76-4adc-b25d-5c1927c44dc3",
+                "ice_type_name": "น้ำแข็งก้อน"
+              },
+              {
+                "unit": "ถุง",
+                "quantity": 0,
+                "image_path": null,
+                "ice_type_id": "67514646-1ceb-417c-90ca-212c147301a6",
+                "ice_type_name": "หลอดเล็กถุงใส"
+              }
+            ],
+            "holds_inventory": true,
+            "assigned_employee": {
+              "id": "92d09ca9-e7f3-4680-b9d1-b103334ba0b6",
+              "code": "AUTH-92D09CA9E7F34680B9D1B103334BA0B6",
+              "nickname": "หนึ่ง",
+              "avatar_path": "users/92d09ca9-e7f3-4680-b9d1-b103334ba0b6/1784775663108-e9135942-7778-4b2a-8c46-f4bce5618359.jpg",
+              "display_name": "test01@gmail.com"
+            },
+            "is_courier_source": false,
+            "assigned_employees": [],
+            "assigned_work_sites": [
+              {
+                "id": "221e258d-1057-4d51-8965-430e2e3062f7",
+                "code": "SITE-AA",
+                "name": "A · จุดปฏิบัติงาน"
+              },
+              {
+                "id": "94f87bc8-8918-4deb-8fad-d754c9a2c698",
+                "code": "SITE-BB",
+                "name": "B · จุดปฏิบัติงาน"
+              },
+              {
+                "id": "563f41af-9a6f-4f09-bc85-77d3f73534b8",
+                "code": "SITE-CC",
+                "name": "C · จุดปฏิบัติงาน"
+              },
+              {
+                "id": "2ae48cd7-48a2-4409-9d80-7a3e5e6e27c9",
+                "code": "SITE-SW",
+                "name": "SKY WALK · จุดปฏิบัติงาน"
+              }
+            ],
+            "requires_daily_count": true
+          }
+        ],
+        "is_snapshot": false,
+        "snapshot_at": null,
+        "service_date": "2026-09-14",
+        "recent_movements": [
+          {
+            "id": "8656ac41-c741-460e-a7ff-fc15c05ece92",
+            "kind": "factory_order",
+            "note": "เพิ่มสต๊อกตามยอดขายที่นำเข้าจากไฟล์ สรุปยอดขาย ศูนย์ราชการ ปี 69-3.xls วันที่ 14",
+            "items": [
+              {
+                "unit": "ถุง",
+                "quantity": 225.5,
+                "ice_type_id": "2390e8cf-c4d1-4948-bc6d-5db526432b0e",
+                "ice_type_name": "หลอดเล็ก"
+              },
+              {
+                "unit": "ถุง",
+                "quantity": 89,
+                "ice_type_id": "29733db5-603e-4cf8-8a93-609645afcee4",
+                "ice_type_name": "โม่"
+              },
+              {
+                "unit": "ถุง",
+                "quantity": 1,
+                "ice_type_id": "b3f89fa3-9bab-48df-8195-7990fc6de15f",
+                "ice_type_name": "เปลือย(หลอดใหญ่)"
+              },
+              {
+                "unit": "แถว",
+                "quantity": 7,
+                "ice_type_id": "08ac20ac-0a76-4adc-b25d-5c1927c44dc3",
+                "ice_type_name": "น้ำแข็งก้อน"
+              }
+            ],
+            "recorded_at": "2026-09-18T08:37:18.874355+00:00",
+            "recorded_by": "bhusit.tanchavanich@gmail.com",
+            "to_location_name": "รถบรรทุก",
+            "from_location_name": null
+          }
+        ]
+      },
+      "stock_quantities": {
+        "29733db5-603e-4cf8-8a93-609645afcee4": 89,
+        "2390e8cf-c4d1-4948-bc6d-5db526432b0e": 225.5,
+        "b3f89fa3-9bab-48df-8195-7990fc6de15f": 1,
+        "08ac20ac-0a76-4adc-b25d-5c1927c44dc3": 7
+      },
+      "created": 123,
+      "already_exact": 0,
+      "existing_conflicts": [],
+      "errors": [],
+      "missing_stops": [
+        {
+          "shop_code": "BB20",
+          "shop_name": "ร้านป้าอุ๊ ไก่ตุ๋น",
+          "sources": [
+            {
+              "sheet": "ศูนย์อาหารฝั่งกรุงไทย",
+              "row": 904,
+              "money": 30
+            }
+          ]
+        }
+      ],
+      "payment_review": [
+        {
+          "sheet": "ร้อยล้านเมาร์เช่",
+          "row": 714,
+          "shop_code": "BB84",
+          "shop_name": "ฮัช อาวเออร์ HUHH HOUR",
+          "reason": "payment_only",
+          "money": 100
+        },
+        {
+          "shop_code": "BB34",
+          "shop_name": "ชั้น 9 (เรือนกระจก) (ซุ้ม 1)",
+          "reason": "partial_or_non_immediate",
+          "sale": 120,
+          "money": 60,
+          "pending": 60,
+          "sources": [
+            {
+              "sheet": "ตีกB โดม1",
+              "row": 969,
+              "money": 60
+            }
+          ]
+        },
+        {
+          "shop_code": "BB53",
+          "shop_name": "ร้านกาแฟพันธุ์ไทย (ซุ้ม 4)",
+          "reason": "partial_or_non_immediate",
+          "sale": 540,
+          "money": 2340,
+          "pending": 2340,
+          "sources": [
+            {
+              "sheet": "ตึกB โดม4",
+              "row": 526,
+              "money": 2340
+            }
+          ]
+        },
+        {
+          "shop_code": "BB21",
+          "shop_name": "ร้านครัวยายนัน",
+          "reason": "excess_money",
+          "sale": 60,
+          "money": 120,
+          "pending": 60,
+          "sources": [
+            {
+              "sheet": "ศูนย์อาหารฝั่งกรุงไทย",
+              "row": 905,
+              "money": 120
+            }
+          ]
+        },
+        {
+          "shop_code": "BB82",
+          "shop_name": "ลูกชิ้นหมูขั้นเทพ",
+          "reason": "excess_money",
+          "sale": 60,
+          "money": 160,
+          "pending": 100,
+          "sources": [
+            {
+              "sheet": "ร้อยล้านเมาร์เช่",
+              "row": 712,
+              "money": 160
+            }
+          ]
+        }
+      ]
+    },
+    "2026-09-15": {
+      "round_id": "be28dd9e-5828-4ab9-9334-ba128e6b143d",
+      "stock_movement_id": {
+        "locations": [
+          {
+            "id": "46dca9b3-fe99-4f3e-be95-ce51d0d1aa98",
+            "code": "TUCK",
+            "kind": "truck",
+            "name": "รถบรรทุก",
+            "balances": [
+              {
+                "unit": "ถุง",
+                "quantity": 181,
+                "image_path": "ice_types/2390e8cf-c4d1-4948-bc6d-5db526432b0e/r2/1787183504320-76af1b04-a890-49eb-a08b-803e1720c238.webp",
+                "ice_type_id": "2390e8cf-c4d1-4948-bc6d-5db526432b0e",
+                "ice_type_name": "หลอดเล็ก"
+              },
+              {
+                "unit": "ถุง",
+                "quantity": 58.5,
+                "image_path": "ice_types/29733db5-603e-4cf8-8a93-609645afcee4/r2/1787183489064-64313426-77dc-476f-b33d-bb94f82f22db.webp",
+                "ice_type_id": "29733db5-603e-4cf8-8a93-609645afcee4",
+                "ice_type_name": "โม่"
+              },
+              {
+                "unit": "ถุง",
+                "quantity": 0,
+                "image_path": null,
+                "ice_type_id": "3b744723-9f9c-4a3f-86ab-09abbca62d73",
+                "ice_type_name": "หลอดเล็กโม่"
+              },
+              {
+                "unit": "ถุง",
+                "quantity": 0,
+                "image_path": null,
+                "ice_type_id": "b3f89fa3-9bab-48df-8195-7990fc6de15f",
+                "ice_type_name": "เปลือย(หลอดใหญ่)"
+              },
+              {
+                "unit": "แถว",
+                "quantity": 0,
+                "image_path": "ice_types/08ac20ac-0a76-4adc-b25d-5c1927c44dc3/r2/1787183518571-cf6b1c5d-9df9-445a-b989-767fca2289f8.webp",
+                "ice_type_id": "08ac20ac-0a76-4adc-b25d-5c1927c44dc3",
+                "ice_type_name": "น้ำแข็งก้อน"
+              },
+              {
+                "unit": "ถุง",
+                "quantity": 0,
+                "image_path": null,
+                "ice_type_id": "67514646-1ceb-417c-90ca-212c147301a6",
+                "ice_type_name": "หลอดเล็กถุงใส"
+              }
+            ],
+            "holds_inventory": true,
+            "assigned_employee": null,
+            "is_courier_source": true,
+            "assigned_employees": [],
+            "assigned_work_sites": [],
+            "requires_daily_count": true
+          },
+          {
+            "id": "221e258d-1057-4d51-8965-430e2e3062f7",
+            "code": "SITE-AA",
+            "kind": "work_site",
+            "name": "A · จุดปฏิบัติงาน",
+            "balances": [
+              {
+                "unit": "ถุง",
+                "quantity": 0,
+                "image_path": "ice_types/2390e8cf-c4d1-4948-bc6d-5db526432b0e/r2/1787183504320-76af1b04-a890-49eb-a08b-803e1720c238.webp",
+                "ice_type_id": "2390e8cf-c4d1-4948-bc6d-5db526432b0e",
+                "ice_type_name": "หลอดเล็ก"
+              },
+              {
+                "unit": "ถุง",
+                "quantity": 0,
+                "image_path": "ice_types/29733db5-603e-4cf8-8a93-609645afcee4/r2/1787183489064-64313426-77dc-476f-b33d-bb94f82f22db.webp",
+                "ice_type_id": "29733db5-603e-4cf8-8a93-609645afcee4",
+                "ice_type_name": "โม่"
+              },
+              {
+                "unit": "ถุง",
+                "quantity": 0,
+                "image_path": null,
+                "ice_type_id": "3b744723-9f9c-4a3f-86ab-09abbca62d73",
+                "ice_type_name": "หลอดเล็กโม่"
+              },
+              {
+                "unit": "ถุง",
+                "quantity": 0,
+                "image_path": null,
+                "ice_type_id": "b3f89fa3-9bab-48df-8195-7990fc6de15f",
+                "ice_type_name": "เปลือย(หลอดใหญ่)"
+              },
+              {
+                "unit": "แถว",
+                "quantity": 0,
+                "image_path": "ice_types/08ac20ac-0a76-4adc-b25d-5c1927c44dc3/r2/1787183518571-cf6b1c5d-9df9-445a-b989-767fca2289f8.webp",
+                "ice_type_id": "08ac20ac-0a76-4adc-b25d-5c1927c44dc3",
+                "ice_type_name": "น้ำแข็งก้อน"
+              },
+              {
+                "unit": "ถุง",
+                "quantity": 0,
+                "image_path": null,
+                "ice_type_id": "67514646-1ceb-417c-90ca-212c147301a6",
+                "ice_type_name": "หลอดเล็กถุงใส"
+              }
+            ],
+            "holds_inventory": false,
+            "assigned_employee": null,
+            "is_courier_source": false,
+            "assigned_employees": [
+              {
+                "id": "797f7695-d748-473f-9cc7-9c8c90070c1b",
+                "code": "AUTH-797F7695D748473F9CC79C8C90070C1B",
+                "nickname": "มืด",
+                "avatar_path": null,
+                "display_name": "lamkeo@gmail.com"
+              },
+              {
+                "id": "92d09ca9-e7f3-4680-b9d1-b103334ba0b6",
+                "code": "AUTH-92D09CA9E7F34680B9D1B103334BA0B6",
+                "nickname": "หนึ่ง",
+                "avatar_path": "users/92d09ca9-e7f3-4680-b9d1-b103334ba0b6/1784775663108-e9135942-7778-4b2a-8c46-f4bce5618359.jpg",
+                "display_name": "test01@gmail.com"
+              }
+            ],
+            "assigned_work_sites": [],
+            "requires_daily_count": false
+          },
+          {
+            "id": "94f87bc8-8918-4deb-8fad-d754c9a2c698",
+            "code": "SITE-BB",
+            "kind": "work_site",
+            "name": "B · จุดปฏิบัติงาน",
+            "balances": [
+              {
+                "unit": "ถุง",
+                "quantity": 0,
+                "image_path": "ice_types/2390e8cf-c4d1-4948-bc6d-5db526432b0e/r2/1787183504320-76af1b04-a890-49eb-a08b-803e1720c238.webp",
+                "ice_type_id": "2390e8cf-c4d1-4948-bc6d-5db526432b0e",
+                "ice_type_name": "หลอดเล็ก"
+              },
+              {
+                "unit": "ถุง",
+                "quantity": 0,
+                "image_path": "ice_types/29733db5-603e-4cf8-8a93-609645afcee4/r2/1787183489064-64313426-77dc-476f-b33d-bb94f82f22db.webp",
+                "ice_type_id": "29733db5-603e-4cf8-8a93-609645afcee4",
+                "ice_type_name": "โม่"
+              },
+              {
+                "unit": "ถุง",
+                "quantity": 0,
+                "image_path": null,
+                "ice_type_id": "3b744723-9f9c-4a3f-86ab-09abbca62d73",
+                "ice_type_name": "หลอดเล็กโม่"
+              },
+              {
+                "unit": "ถุง",
+                "quantity": 0,
+                "image_path": null,
+                "ice_type_id": "b3f89fa3-9bab-48df-8195-7990fc6de15f",
+                "ice_type_name": "เปลือย(หลอดใหญ่)"
+              },
+              {
+                "unit": "แถว",
+                "quantity": 0,
+                "image_path": "ice_types/08ac20ac-0a76-4adc-b25d-5c1927c44dc3/r2/1787183518571-cf6b1c5d-9df9-445a-b989-767fca2289f8.webp",
+                "ice_type_id": "08ac20ac-0a76-4adc-b25d-5c1927c44dc3",
+                "ice_type_name": "น้ำแข็งก้อน"
+              },
+              {
+                "unit": "ถุง",
+                "quantity": 0,
+                "image_path": null,
+                "ice_type_id": "67514646-1ceb-417c-90ca-212c147301a6",
+                "ice_type_name": "หลอดเล็กถุงใส"
+              }
+            ],
+            "holds_inventory": false,
+            "assigned_employee": null,
+            "is_courier_source": false,
+            "assigned_employees": [
+              {
+                "id": "92d09ca9-e7f3-4680-b9d1-b103334ba0b6",
+                "code": "AUTH-92D09CA9E7F34680B9D1B103334BA0B6",
+                "nickname": "หนึ่ง",
+                "avatar_path": "users/92d09ca9-e7f3-4680-b9d1-b103334ba0b6/1784775663108-e9135942-7778-4b2a-8c46-f4bce5618359.jpg",
+                "display_name": "test01@gmail.com"
+              },
+              {
+                "id": "f5466e59-4440-44a8-93bf-8b9611723015",
+                "code": "AUTH-F5466E59444044A893BF8B9611723015",
+                "nickname": "So",
+                "avatar_path": "users/f5466e59-4440-44a8-93bf-8b9611723015/1785734543542-bbddf01f-fa93-4a24-a787-01336f3dc014.jpg",
+                "display_name": "sosee@gmail.com"
+              }
+            ],
+            "assigned_work_sites": [],
+            "requires_daily_count": false
+          },
+          {
+            "id": "563f41af-9a6f-4f09-bc85-77d3f73534b8",
+            "code": "SITE-CC",
+            "kind": "work_site",
+            "name": "C · จุดปฏิบัติงาน",
+            "balances": [
+              {
+                "unit": "ถุง",
+                "quantity": 0,
+                "image_path": "ice_types/2390e8cf-c4d1-4948-bc6d-5db526432b0e/r2/1787183504320-76af1b04-a890-49eb-a08b-803e1720c238.webp",
+                "ice_type_id": "2390e8cf-c4d1-4948-bc6d-5db526432b0e",
+                "ice_type_name": "หลอดเล็ก"
+              },
+              {
+                "unit": "ถุง",
+                "quantity": 0,
+                "image_path": "ice_types/29733db5-603e-4cf8-8a93-609645afcee4/r2/1787183489064-64313426-77dc-476f-b33d-bb94f82f22db.webp",
+                "ice_type_id": "29733db5-603e-4cf8-8a93-609645afcee4",
+                "ice_type_name": "โม่"
+              },
+              {
+                "unit": "ถุง",
+                "quantity": 0,
+                "image_path": null,
+                "ice_type_id": "3b744723-9f9c-4a3f-86ab-09abbca62d73",
+                "ice_type_name": "หลอดเล็กโม่"
+              },
+              {
+                "unit": "ถุง",
+                "quantity": 0,
+                "image_path": null,
+                "ice_type_id": "b3f89fa3-9bab-48df-8195-7990fc6de15f",
+                "ice_type_name": "เปลือย(หลอดใหญ่)"
+              },
+              {
+                "unit": "แถว",
+                "quantity": 0,
+                "image_path": "ice_types/08ac20ac-0a76-4adc-b25d-5c1927c44dc3/r2/1787183518571-cf6b1c5d-9df9-445a-b989-767fca2289f8.webp",
+                "ice_type_id": "08ac20ac-0a76-4adc-b25d-5c1927c44dc3",
+                "ice_type_name": "น้ำแข็งก้อน"
+              },
+              {
+                "unit": "ถุง",
+                "quantity": 0,
+                "image_path": null,
+                "ice_type_id": "67514646-1ceb-417c-90ca-212c147301a6",
+                "ice_type_name": "หลอดเล็กถุงใส"
+              }
+            ],
+            "holds_inventory": false,
+            "assigned_employee": null,
+            "is_courier_source": false,
+            "assigned_employees": [
+              {
+                "id": "797f7695-d748-473f-9cc7-9c8c90070c1b",
+                "code": "AUTH-797F7695D748473F9CC79C8C90070C1B",
+                "nickname": "มืด",
+                "avatar_path": null,
+                "display_name": "lamkeo@gmail.com"
+              },
+              {
+                "id": "92d09ca9-e7f3-4680-b9d1-b103334ba0b6",
+                "code": "AUTH-92D09CA9E7F34680B9D1B103334BA0B6",
+                "nickname": "หนึ่ง",
+                "avatar_path": "users/92d09ca9-e7f3-4680-b9d1-b103334ba0b6/1784775663108-e9135942-7778-4b2a-8c46-f4bce5618359.jpg",
+                "display_name": "test01@gmail.com"
+              }
+            ],
+            "assigned_work_sites": [],
+            "requires_daily_count": false
+          },
+          {
+            "id": "2ae48cd7-48a2-4409-9d80-7a3e5e6e27c9",
+            "code": "SITE-SW",
+            "kind": "work_site",
+            "name": "SKY WALK · จุดปฏิบัติงาน",
+            "balances": [
+              {
+                "unit": "ถุง",
+                "quantity": 0,
+                "image_path": "ice_types/2390e8cf-c4d1-4948-bc6d-5db526432b0e/r2/1787183504320-76af1b04-a890-49eb-a08b-803e1720c238.webp",
+                "ice_type_id": "2390e8cf-c4d1-4948-bc6d-5db526432b0e",
+                "ice_type_name": "หลอดเล็ก"
+              },
+              {
+                "unit": "ถุง",
+                "quantity": 0,
+                "image_path": "ice_types/29733db5-603e-4cf8-8a93-609645afcee4/r2/1787183489064-64313426-77dc-476f-b33d-bb94f82f22db.webp",
+                "ice_type_id": "29733db5-603e-4cf8-8a93-609645afcee4",
+                "ice_type_name": "โม่"
+              },
+              {
+                "unit": "ถุง",
+                "quantity": 0,
+                "image_path": null,
+                "ice_type_id": "3b744723-9f9c-4a3f-86ab-09abbca62d73",
+                "ice_type_name": "หลอดเล็กโม่"
+              },
+              {
+                "unit": "ถุง",
+                "quantity": 0,
+                "image_path": null,
+                "ice_type_id": "b3f89fa3-9bab-48df-8195-7990fc6de15f",
+                "ice_type_name": "เปลือย(หลอดใหญ่)"
+              },
+              {
+                "unit": "แถว",
+                "quantity": 0,
+                "image_path": "ice_types/08ac20ac-0a76-4adc-b25d-5c1927c44dc3/r2/1787183518571-cf6b1c5d-9df9-445a-b989-767fca2289f8.webp",
+                "ice_type_id": "08ac20ac-0a76-4adc-b25d-5c1927c44dc3",
+                "ice_type_name": "น้ำแข็งก้อน"
+              },
+              {
+                "unit": "ถุง",
+                "quantity": 0,
+                "image_path": null,
+                "ice_type_id": "67514646-1ceb-417c-90ca-212c147301a6",
+                "ice_type_name": "หลอดเล็กถุงใส"
+              }
+            ],
+            "holds_inventory": false,
+            "assigned_employee": null,
+            "is_courier_source": false,
+            "assigned_employees": [
+              {
+                "id": "797f7695-d748-473f-9cc7-9c8c90070c1b",
+                "code": "AUTH-797F7695D748473F9CC79C8C90070C1B",
+                "nickname": "มืด",
+                "avatar_path": null,
+                "display_name": "lamkeo@gmail.com"
+              },
+              {
+                "id": "92d09ca9-e7f3-4680-b9d1-b103334ba0b6",
+                "code": "AUTH-92D09CA9E7F34680B9D1B103334BA0B6",
+                "nickname": "หนึ่ง",
+                "avatar_path": "users/92d09ca9-e7f3-4680-b9d1-b103334ba0b6/1784775663108-e9135942-7778-4b2a-8c46-f4bce5618359.jpg",
+                "display_name": "test01@gmail.com"
+              }
+            ],
+            "assigned_work_sites": [],
+            "requires_daily_count": false
+          },
+          {
+            "id": "93ff5c04-96fa-4689-9c15-c415032c35fe",
+            "code": "SITE-EVENT-66B12FB6-0E47-4D1F-97CA-A1EC3B212990",
+            "kind": "work_site",
+            "name": "ตึก B · จุดปฏิบัติงาน",
+            "balances": [
+              {
+                "unit": "ถุง",
+                "quantity": 0,
+                "image_path": "ice_types/2390e8cf-c4d1-4948-bc6d-5db526432b0e/r2/1787183504320-76af1b04-a890-49eb-a08b-803e1720c238.webp",
+                "ice_type_id": "2390e8cf-c4d1-4948-bc6d-5db526432b0e",
+                "ice_type_name": "หลอดเล็ก"
+              },
+              {
+                "unit": "ถุง",
+                "quantity": 0,
+                "image_path": "ice_types/29733db5-603e-4cf8-8a93-609645afcee4/r2/1787183489064-64313426-77dc-476f-b33d-bb94f82f22db.webp",
+                "ice_type_id": "29733db5-603e-4cf8-8a93-609645afcee4",
+                "ice_type_name": "โม่"
+              },
+              {
+                "unit": "ถุง",
+                "quantity": 0,
+                "image_path": null,
+                "ice_type_id": "3b744723-9f9c-4a3f-86ab-09abbca62d73",
+                "ice_type_name": "หลอดเล็กโม่"
+              },
+              {
+                "unit": "ถุง",
+                "quantity": 0,
+                "image_path": null,
+                "ice_type_id": "b3f89fa3-9bab-48df-8195-7990fc6de15f",
+                "ice_type_name": "เปลือย(หลอดใหญ่)"
+              },
+              {
+                "unit": "แถว",
+                "quantity": 0,
+                "image_path": "ice_types/08ac20ac-0a76-4adc-b25d-5c1927c44dc3/r2/1787183518571-cf6b1c5d-9df9-445a-b989-767fca2289f8.webp",
+                "ice_type_id": "08ac20ac-0a76-4adc-b25d-5c1927c44dc3",
+                "ice_type_name": "น้ำแข็งก้อน"
+              },
+              {
+                "unit": "ถุง",
+                "quantity": 0,
+                "image_path": null,
+                "ice_type_id": "67514646-1ceb-417c-90ca-212c147301a6",
+                "ice_type_name": "หลอดเล็กถุงใส"
+              }
+            ],
+            "holds_inventory": false,
+            "assigned_employee": null,
+            "is_courier_source": false,
+            "assigned_employees": [],
+            "assigned_work_sites": [],
+            "requires_daily_count": false
+          },
+          {
+            "id": "3fee147a-f243-4dbf-8d31-a3d903648a33",
+            "code": "HOLDER-797F7695D748473F9CC79C8C90070C1B",
+            "kind": "team",
+            "name": "lamkeo@gmail.com · จุดรับสต๊อก",
+            "balances": [
+              {
+                "unit": "ถุง",
+                "quantity": 0,
+                "image_path": "ice_types/2390e8cf-c4d1-4948-bc6d-5db526432b0e/r2/1787183504320-76af1b04-a890-49eb-a08b-803e1720c238.webp",
+                "ice_type_id": "2390e8cf-c4d1-4948-bc6d-5db526432b0e",
+                "ice_type_name": "หลอดเล็ก"
+              },
+              {
+                "unit": "ถุง",
+                "quantity": 0,
+                "image_path": "ice_types/29733db5-603e-4cf8-8a93-609645afcee4/r2/1787183489064-64313426-77dc-476f-b33d-bb94f82f22db.webp",
+                "ice_type_id": "29733db5-603e-4cf8-8a93-609645afcee4",
+                "ice_type_name": "โม่"
+              },
+              {
+                "unit": "ถุง",
+                "quantity": 0,
+                "image_path": null,
+                "ice_type_id": "3b744723-9f9c-4a3f-86ab-09abbca62d73",
+                "ice_type_name": "หลอดเล็กโม่"
+              },
+              {
+                "unit": "ถุง",
+                "quantity": 0,
+                "image_path": null,
+                "ice_type_id": "b3f89fa3-9bab-48df-8195-7990fc6de15f",
+                "ice_type_name": "เปลือย(หลอดใหญ่)"
+              },
+              {
+                "unit": "แถว",
+                "quantity": 0,
+                "image_path": "ice_types/08ac20ac-0a76-4adc-b25d-5c1927c44dc3/r2/1787183518571-cf6b1c5d-9df9-445a-b989-767fca2289f8.webp",
+                "ice_type_id": "08ac20ac-0a76-4adc-b25d-5c1927c44dc3",
+                "ice_type_name": "น้ำแข็งก้อน"
+              },
+              {
+                "unit": "ถุง",
+                "quantity": 0,
+                "image_path": null,
+                "ice_type_id": "67514646-1ceb-417c-90ca-212c147301a6",
+                "ice_type_name": "หลอดเล็กถุงใส"
+              }
+            ],
+            "holds_inventory": true,
+            "assigned_employee": {
+              "id": "797f7695-d748-473f-9cc7-9c8c90070c1b",
+              "code": "AUTH-797F7695D748473F9CC79C8C90070C1B",
+              "nickname": "มืด",
+              "avatar_path": null,
+              "display_name": "lamkeo@gmail.com"
+            },
+            "is_courier_source": false,
+            "assigned_employees": [],
+            "assigned_work_sites": [
+              {
+                "id": "221e258d-1057-4d51-8965-430e2e3062f7",
+                "code": "SITE-AA",
+                "name": "A · จุดปฏิบัติงาน"
+              },
+              {
+                "id": "563f41af-9a6f-4f09-bc85-77d3f73534b8",
+                "code": "SITE-CC",
+                "name": "C · จุดปฏิบัติงาน"
+              },
+              {
+                "id": "2ae48cd7-48a2-4409-9d80-7a3e5e6e27c9",
+                "code": "SITE-SW",
+                "name": "SKY WALK · จุดปฏิบัติงาน"
+              }
+            ],
+            "requires_daily_count": true
+          },
+          {
+            "id": "16454b7a-6e55-41a6-8989-0a0efe8576c6",
+            "code": "HOLDER-F5466E59444044A893BF8B9611723015",
+            "kind": "team",
+            "name": "sosee@gmail.com · จุดรับสต๊อก",
+            "balances": [
+              {
+                "unit": "ถุง",
+                "quantity": 0,
+                "image_path": "ice_types/2390e8cf-c4d1-4948-bc6d-5db526432b0e/r2/1787183504320-76af1b04-a890-49eb-a08b-803e1720c238.webp",
+                "ice_type_id": "2390e8cf-c4d1-4948-bc6d-5db526432b0e",
+                "ice_type_name": "หลอดเล็ก"
+              },
+              {
+                "unit": "ถุง",
+                "quantity": 0,
+                "image_path": "ice_types/29733db5-603e-4cf8-8a93-609645afcee4/r2/1787183489064-64313426-77dc-476f-b33d-bb94f82f22db.webp",
+                "ice_type_id": "29733db5-603e-4cf8-8a93-609645afcee4",
+                "ice_type_name": "โม่"
+              },
+              {
+                "unit": "ถุง",
+                "quantity": 0,
+                "image_path": null,
+                "ice_type_id": "3b744723-9f9c-4a3f-86ab-09abbca62d73",
+                "ice_type_name": "หลอดเล็กโม่"
+              },
+              {
+                "unit": "ถุง",
+                "quantity": 0,
+                "image_path": null,
+                "ice_type_id": "b3f89fa3-9bab-48df-8195-7990fc6de15f",
+                "ice_type_name": "เปลือย(หลอดใหญ่)"
+              },
+              {
+                "unit": "แถว",
+                "quantity": 0,
+                "image_path": "ice_types/08ac20ac-0a76-4adc-b25d-5c1927c44dc3/r2/1787183518571-cf6b1c5d-9df9-445a-b989-767fca2289f8.webp",
+                "ice_type_id": "08ac20ac-0a76-4adc-b25d-5c1927c44dc3",
+                "ice_type_name": "น้ำแข็งก้อน"
+              },
+              {
+                "unit": "ถุง",
+                "quantity": 0,
+                "image_path": null,
+                "ice_type_id": "67514646-1ceb-417c-90ca-212c147301a6",
+                "ice_type_name": "หลอดเล็กถุงใส"
+              }
+            ],
+            "holds_inventory": true,
+            "assigned_employee": {
+              "id": "f5466e59-4440-44a8-93bf-8b9611723015",
+              "code": "AUTH-F5466E59444044A893BF8B9611723015",
+              "nickname": "So",
+              "avatar_path": "users/f5466e59-4440-44a8-93bf-8b9611723015/1785734543542-bbddf01f-fa93-4a24-a787-01336f3dc014.jpg",
+              "display_name": "sosee@gmail.com"
+            },
+            "is_courier_source": false,
+            "assigned_employees": [],
+            "assigned_work_sites": [
+              {
+                "id": "94f87bc8-8918-4deb-8fad-d754c9a2c698",
+                "code": "SITE-BB",
+                "name": "B · จุดปฏิบัติงาน"
+              }
+            ],
+            "requires_daily_count": true
+          },
+          {
+            "id": "149f175b-42e8-4671-b521-30d983fd9f2d",
+            "code": "HOLDER-92D09CA9E7F34680B9D1B103334BA0B6",
+            "kind": "team",
+            "name": "test01@gmail.com · จุดรับสต๊อก",
+            "balances": [
+              {
+                "unit": "ถุง",
+                "quantity": 0,
+                "image_path": "ice_types/2390e8cf-c4d1-4948-bc6d-5db526432b0e/r2/1787183504320-76af1b04-a890-49eb-a08b-803e1720c238.webp",
+                "ice_type_id": "2390e8cf-c4d1-4948-bc6d-5db526432b0e",
+                "ice_type_name": "หลอดเล็ก"
+              },
+              {
+                "unit": "ถุง",
+                "quantity": 0,
+                "image_path": "ice_types/29733db5-603e-4cf8-8a93-609645afcee4/r2/1787183489064-64313426-77dc-476f-b33d-bb94f82f22db.webp",
+                "ice_type_id": "29733db5-603e-4cf8-8a93-609645afcee4",
+                "ice_type_name": "โม่"
+              },
+              {
+                "unit": "ถุง",
+                "quantity": 0,
+                "image_path": null,
+                "ice_type_id": "3b744723-9f9c-4a3f-86ab-09abbca62d73",
+                "ice_type_name": "หลอดเล็กโม่"
+              },
+              {
+                "unit": "ถุง",
+                "quantity": 0,
+                "image_path": null,
+                "ice_type_id": "b3f89fa3-9bab-48df-8195-7990fc6de15f",
+                "ice_type_name": "เปลือย(หลอดใหญ่)"
+              },
+              {
+                "unit": "แถว",
+                "quantity": 0,
+                "image_path": "ice_types/08ac20ac-0a76-4adc-b25d-5c1927c44dc3/r2/1787183518571-cf6b1c5d-9df9-445a-b989-767fca2289f8.webp",
+                "ice_type_id": "08ac20ac-0a76-4adc-b25d-5c1927c44dc3",
+                "ice_type_name": "น้ำแข็งก้อน"
+              },
+              {
+                "unit": "ถุง",
+                "quantity": 0,
+                "image_path": null,
+                "ice_type_id": "67514646-1ceb-417c-90ca-212c147301a6",
+                "ice_type_name": "หลอดเล็กถุงใส"
+              }
+            ],
+            "holds_inventory": true,
+            "assigned_employee": {
+              "id": "92d09ca9-e7f3-4680-b9d1-b103334ba0b6",
+              "code": "AUTH-92D09CA9E7F34680B9D1B103334BA0B6",
+              "nickname": "หนึ่ง",
+              "avatar_path": "users/92d09ca9-e7f3-4680-b9d1-b103334ba0b6/1784775663108-e9135942-7778-4b2a-8c46-f4bce5618359.jpg",
+              "display_name": "test01@gmail.com"
+            },
+            "is_courier_source": false,
+            "assigned_employees": [],
+            "assigned_work_sites": [
+              {
+                "id": "221e258d-1057-4d51-8965-430e2e3062f7",
+                "code": "SITE-AA",
+                "name": "A · จุดปฏิบัติงาน"
+              },
+              {
+                "id": "94f87bc8-8918-4deb-8fad-d754c9a2c698",
+                "code": "SITE-BB",
+                "name": "B · จุดปฏิบัติงาน"
+              },
+              {
+                "id": "563f41af-9a6f-4f09-bc85-77d3f73534b8",
+                "code": "SITE-CC",
+                "name": "C · จุดปฏิบัติงาน"
+              },
+              {
+                "id": "2ae48cd7-48a2-4409-9d80-7a3e5e6e27c9",
+                "code": "SITE-SW",
+                "name": "SKY WALK · จุดปฏิบัติงาน"
+              }
+            ],
+            "requires_daily_count": true
+          }
+        ],
+        "is_snapshot": false,
+        "snapshot_at": null,
+        "service_date": "2026-09-15",
+        "recent_movements": [
+          {
+            "id": "ab397739-8361-44c0-88fa-9df9bea4b688",
+            "kind": "factory_order",
+            "note": "เพิ่มสต๊อกตามยอดขายที่นำเข้าจากไฟล์ สรุปยอดขาย ศูนย์ราชการ ปี 69-3.xls วันที่ 15",
+            "items": [
+              {
+                "unit": "ถุง",
+                "quantity": 181,
+                "ice_type_id": "2390e8cf-c4d1-4948-bc6d-5db526432b0e",
+                "ice_type_name": "หลอดเล็ก"
+              },
+              {
+                "unit": "ถุง",
+                "quantity": 58.5,
+                "ice_type_id": "29733db5-603e-4cf8-8a93-609645afcee4",
+                "ice_type_name": "โม่"
+              }
+            ],
+            "recorded_at": "2026-09-18T08:38:15.159948+00:00",
+            "recorded_by": "bhusit.tanchavanich@gmail.com",
+            "to_location_name": "รถบรรทุก",
+            "from_location_name": null
+          }
+        ]
+      },
+      "stock_quantities": {
+        "29733db5-603e-4cf8-8a93-609645afcee4": 58.5,
+        "2390e8cf-c4d1-4948-bc6d-5db526432b0e": 181
+      },
+      "created": 109,
+      "already_exact": 0,
+      "existing_conflicts": [],
+      "errors": [],
+      "missing_stops": [],
+      "payment_review": []
+    }
+  },
+  "skipped_source_rows": [
+    {
+      "date": "2026-09-14",
+      "sheet": "ตีกB โดม1",
+      "row": 974,
+      "code": "",
+      "name": "สด",
+      "quantities": {
+        "เล็ก": 1
+      }
+    },
+    {
+      "date": "2026-09-14",
+      "sheet": "ตึกB โดม4",
+      "row": 531,
+      "code": "",
+      "name": "สด",
+      "quantities": {
+        "เล็ก": 0.5
+      }
+    },
+    {
+      "date": "2026-09-14",
+      "sheet": "ตึกC",
+      "row": 1325,
+      "code": "Evc",
+      "name": "พี่เหมียว+ถัง1",
+      "quantities": {
+        "โม่": 2
+      }
+    },
+    {
+      "date": "2026-09-14",
+      "sheet": "ตึกC",
+      "row": 1326,
+      "code": "Evc",
+      "name": "พีกาว+ถัง1",
+      "quantities": {
+        "โม่": 1
+      }
+    },
+    {
+      "date": "2026-09-14",
+      "sheet": "ตึกC",
+      "row": 1327,
+      "code": "Evc",
+      "name": "พี่เบน",
+      "quantities": {
+        "โม่": 2
+      }
+    },
+    {
+      "date": "2026-09-14",
+      "sheet": "ตึกC",
+      "row": 1329,
+      "code": "Evc",
+      "name": "บูธ2+ถัง1",
+      "quantities": {
+        "โม่": 2
+      }
+    },
+    {
+      "date": "2026-09-15",
+      "sheet": "ตึกB โดม4",
+      "row": 531,
+      "code": "",
+      "name": "สด",
+      "quantities": {
+        "เล็ก": 1
+      }
+    },
+    {
+      "date": "2026-09-15",
+      "sheet": "ฟอร์มตึก A",
+      "row": 1598,
+      "code": "",
+      "name": "จัดเลี้ยง",
+      "quantities": {
+        "เล็ก": 1
+      }
+    },
+    {
+      "date": "2026-09-15",
+      "sheet": "ฟอร์มตึก A",
+      "row": 1599,
+      "code": "",
+      "name": "สด",
+      "quantities": {
+        "เล็ก": 1
+      }
+    },
+    {
+      "date": "2026-09-15",
+      "sheet": "ตึกC",
+      "row": 1323,
+      "code": "Evc",
+      "name": "นน",
+      "quantities": {
+        "เล็ก": 1
+      }
+    },
+    {
+      "date": "2026-09-15",
+      "sheet": "ตึกC",
+      "row": 1327,
+      "code": "Evc",
+      "name": "พี่เบน",
+      "quantities": {
+        "โม่": 1
+      }
+    }
+  ],
+  "payment_review": [
+    {
+      "date": "2026-09-14",
+      "sheet": "ร้อยล้านเมาร์เช่",
+      "row": 714,
+      "shop_code": "BB84",
+      "shop_name": "ฮัช อาวเออร์ HUHH HOUR",
+      "reason": "payment_only",
+      "money": 100
+    },
+    {
+      "date": "2026-09-14",
+      "shop_code": "BB34",
+      "shop_name": "ชั้น 9 (เรือนกระจก) (ซุ้ม 1)",
+      "reason": "partial_or_non_immediate",
+      "sale": 120,
+      "money": 60,
+      "pending": 60,
+      "sources": [
+        {
+          "sheet": "ตีกB โดม1",
+          "row": 969,
+          "money": 60
+        }
+      ]
+    },
+    {
+      "date": "2026-09-14",
+      "shop_code": "BB53",
+      "shop_name": "ร้านกาแฟพันธุ์ไทย (ซุ้ม 4)",
+      "reason": "partial_or_non_immediate",
+      "sale": 540,
+      "money": 2340,
+      "pending": 2340,
+      "sources": [
+        {
+          "sheet": "ตึกB โดม4",
+          "row": 526,
+          "money": 2340
+        }
+      ]
+    },
+    {
+      "date": "2026-09-14",
+      "shop_code": "BB21",
+      "shop_name": "ร้านครัวยายนัน",
+      "reason": "excess_money",
+      "sale": 60,
+      "money": 120,
+      "pending": 60,
+      "sources": [
+        {
+          "sheet": "ศูนย์อาหารฝั่งกรุงไทย",
+          "row": 905,
+          "money": 120
+        }
+      ]
+    },
+    {
+      "date": "2026-09-14",
+      "shop_code": "BB82",
+      "shop_name": "ลูกชิ้นหมูขั้นเทพ",
+      "reason": "excess_money",
+      "sale": 60,
+      "money": 160,
+      "pending": 100,
+      "sources": [
+        {
+          "sheet": "ร้อยล้านเมาร์เช่",
+          "row": 712,
+          "money": 160
+        }
+      ]
+    }
+  ],
+  "finished_at": "2026-09-18T08:39:04.080Z"
+}
