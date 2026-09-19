@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({ invoke: vi.fn() }));
 
@@ -16,6 +16,7 @@ import {
 import { removeTankImage } from '../src/lib/tankImage';
 
 describe('R2 storage client', () => {
+  afterEach(() => vi.useRealTimers());
   beforeEach(() => {
     vi.clearAllMocks();
     clearR2CatalogUrlCache();
@@ -177,6 +178,44 @@ describe('R2 storage client', () => {
     const refreshed = await refreshR2CatalogObjectUrl('shop-images', path);
 
     expect(refreshed).toBe('https://r2.test/fresh');
+    expect(mocks.invoke).toHaveBeenCalledTimes(2);
+  });
+
+  it('rejects persisted one-hour URLs even when the old cache claims six days', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-09-19T08:00:00Z'));
+    const path = 'shops/expired/r2/photo.webp';
+    window.localStorage.setItem(`ice-r2-catalog-url:v1:shop-images:${path}`, JSON.stringify({
+      signedUrl: 'https://r2.test/expired?X-Amz-Date=20260917T104835Z&X-Amz-Expires=3600',
+      expiresAt: new Date('2026-09-23T10:48:35Z').getTime(),
+    }));
+    mocks.invoke.mockResolvedValue({
+      data: { signedUrls: [{ path, signedUrl: 'https://r2.test/fresh' }] }, error: null,
+    });
+
+    expect(await getHybridObjectUrls('shop-images', [path], async () => [])).toEqual([
+      { path, signedUrl: 'https://r2.test/fresh' },
+    ]);
+    expect(mocks.invoke).toHaveBeenCalledTimes(1);
+  });
+
+  it('renews one-hour URLs from memory before their signature expires', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-09-19T08:00:00Z'));
+    const path = 'shops/short-lived/r2/photo.webp';
+    mocks.invoke.mockResolvedValueOnce({
+      data: { signedUrls: [{ path, signedUrl: 'https://r2.test/short?X-Amz-Date=20260919T080000Z&X-Amz-Expires=3600' }] }, error: null,
+    }).mockResolvedValueOnce({
+      data: { signedUrls: [{ path, signedUrl: 'https://r2.test/fresh' }] }, error: null,
+    });
+    await getHybridObjectUrls('shop-images', [path], async () => []);
+    vi.setSystemTime(new Date('2026-09-19T08:30:00Z'));
+    await getHybridObjectUrls('shop-images', [path], async () => []);
+    expect(mocks.invoke).toHaveBeenCalledTimes(1);
+    vi.setSystemTime(new Date('2026-09-19T08:59:30Z'));
+    expect(await getHybridObjectUrls('shop-images', [path], async () => [])).toEqual([
+      { path, signedUrl: 'https://r2.test/fresh' },
+    ]);
     expect(mocks.invoke).toHaveBeenCalledTimes(2);
   });
 });

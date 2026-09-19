@@ -25,11 +25,28 @@ function r2CatalogCacheKey(namespace: R2Namespace, path: string) {
   return `${R2_CATALOG_URL_CACHE_PREFIX}${namespace}:${path}`;
 }
 
+function catalogUrlExpiresAt(signedUrl: string, cacheExpiresAt: number) {
+  try {
+    const params = new URL(signedUrl).searchParams;
+    if (!params.has('X-Amz-Date') && !params.has('X-Amz-Expires')) return cacheExpiresAt;
+    const date = params.get('X-Amz-Date')?.match(/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z$/);
+    const ttl = Number(params.get('X-Amz-Expires'));
+    if (!date || !Number.isFinite(ttl) || ttl <= 0) return 0;
+    const issuedAt = Date.UTC(+date[1], +date[2] - 1, +date[3], +date[4], +date[5], +date[6]);
+    // Old persisted entries can claim six days even for one-hour signatures.
+    return Math.min(cacheExpiresAt, issuedAt + ttl * 1000 - 60_000);
+  } catch {
+    return 0;
+  }
+}
+
 function readCachedR2CatalogUrl(namespace: R2Namespace, path: string, now: number) {
   if (!catalogNamespaces.has(namespace)) return null;
   const key = r2CatalogCacheKey(namespace, path);
   const memoryEntry = r2CatalogUrlMemoryCache.get(key);
-  if (memoryEntry?.expiresAt && memoryEntry.expiresAt > now) return memoryEntry.signedUrl;
+  if (memoryEntry && catalogUrlExpiresAt(memoryEntry.signedUrl, memoryEntry.expiresAt) > now) {
+    return memoryEntry.signedUrl;
+  }
   r2CatalogUrlMemoryCache.delete(key);
 
   try {
@@ -38,7 +55,7 @@ function readCachedR2CatalogUrl(namespace: R2Namespace, path: string, now: numbe
     const entry = JSON.parse(stored) as CachedR2Url;
     if (typeof entry.signedUrl !== 'string'
       || typeof entry.expiresAt !== 'number'
-      || entry.expiresAt <= now) {
+      || catalogUrlExpiresAt(entry.signedUrl, entry.expiresAt) <= now) {
       window.localStorage.removeItem(key);
       return null;
     }
@@ -57,7 +74,7 @@ function writeCachedR2CatalogUrl(
 ) {
   if (!catalogNamespaces.has(namespace)) return;
   const key = r2CatalogCacheKey(namespace, path);
-  const entry = { signedUrl, expiresAt };
+  const entry = { signedUrl, expiresAt: catalogUrlExpiresAt(signedUrl, expiresAt) };
   r2CatalogUrlMemoryCache.set(key, entry);
   try {
     window.localStorage.setItem(key, JSON.stringify(entry));
