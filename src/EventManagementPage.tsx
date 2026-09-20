@@ -12,6 +12,7 @@ import {
   WarningCircle,
   X,
 } from '@phosphor-icons/react';
+import { EventExcelImportDialog } from './features/event-management/EventExcelImportDialog';
 import { parseBoothRanges } from './features/event-management/boothRanges';
 import { toBangkokDateString } from './lib/serviceDate';
 import type { PaymentMethod } from './types/app';
@@ -201,6 +202,7 @@ export function EventManagementPage({
   isActive?: boolean;
   profileRole: ManagerRole;
 }) {
+  const [importOpen, setImportOpen] = useState(false);
   const [events, setEvents] = useState<EventOverview[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<EventManagementDetail | null>(null);
@@ -564,6 +566,7 @@ export function EventManagementPage({
             <EventDetail
               busyAction={busyAction}
               detail={detail}
+              onImport={() => setImportOpen(true)}
               onAddParticipation={() => void openParticipationEditor()}
               onCancelEvent={() => { setActionError(null); setCancelTarget({ kind: 'event', id: detail.event.id, label: detail.event.name }); }}
               onCancelParticipation={(participation) => { setActionError(null); setCancelTarget({ kind: 'participation', id: participation.id, label: `${participation.shop_code} ${participation.shop_name}` }); }}
@@ -576,6 +579,12 @@ export function EventManagementPage({
           {!detailLoading && !detail ? <div className="event-detail-placeholder"><CalendarBlank size={34} /><p>เลือกงานเพื่อดูรายละเอียด</p></div> : null}
         </section>
       </div>
+
+      {importOpen && detail ? <EventExcelImportDialog detail={detail} gateway={gateway} onClose={() => setImportOpen(false)} onImported={async (result) => {
+        setImportOpen(false);
+        setSuccess(`นำเข้า ${result.created_count} ร้านแล้ว${result.skipped_count ? ` · ข้ามบูธที่มีอยู่แล้ว ${result.skipped_count} ร้าน` : ''}`);
+        await loadPage(detail.event.id);
+      }} /> : null}
 
       {eventDraft ? (
         <div className="event-modal-layer" role="dialog" aria-modal="true" aria-labelledby="event-editor-title">
@@ -710,6 +719,7 @@ function EventDetail({
   busyAction,
   detail,
   onAddParticipation,
+  onImport,
   onCancelEvent,
   onCancelParticipation,
   onEditEvent,
@@ -720,6 +730,7 @@ function EventDetail({
   busyAction: BusyAction;
   detail: EventManagementDetail;
   onAddParticipation: () => void;
+  onImport: () => void;
   onCancelEvent: () => void;
   onCancelParticipation: (participation: EventParticipation) => void;
   onEditEvent: () => void;
@@ -764,7 +775,7 @@ function EventDetail({
       </section>
 
       <section className="event-participations">
-        <header><div><h3>ร้านที่เข้าร่วม</h3><p>{activeParticipations.length} ร้านที่ใช้งาน</p></div>{event.status !== 'cancelled' ? <button className="secondary-button" onClick={onAddParticipation} type="button"><Plus size={16} />เพิ่มร้าน</button> : null}</header>
+        <header><div><h3>ร้านที่เข้าร่วม</h3><p>{activeParticipations.length} ร้านที่ใช้งาน</p></div>{event.status !== 'cancelled' ? <div className="event-import-actions"><button className="secondary-button" disabled={Boolean(busyAction)} onClick={onImport} type="button">อัปโหลด Excel</button><button className="secondary-button" onClick={onAddParticipation} type="button"><Plus size={16} />เพิ่มร้าน</button></div> : null}</header>
         <div className="event-participation-list">
           {sortedParticipations.map((participation) => <article className={participation.status === 'cancelled' ? 'is-cancelled' : ''} key={participation.id}>
             <span className="event-participation-icon"><Storefront size={21} /></span>

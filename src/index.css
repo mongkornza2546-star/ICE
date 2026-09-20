@@ -4073,3 +4073,11 @@ input:disabled, select:disabled, textarea:disabled { background: #f2f5f8; color:
 .event-modal .event-check-grid label, .event-modal .event-payment-rule label { display: flex; flex-direction: row; }
 .event-modal input[type="date"] { box-sizing: border-box; max-width: 100%; }
 .event-settings-hint { margin: 0; color: #62798c; font-size: .68rem; line-height: 1.6; }
+
+.event-import-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.event-import-preview { overflow: auto; max-height: 360px; }
+.event-import-preview table { width: 100%; border-collapse: collapse; font-size: .8rem; }
+.event-import-preview th, .event-import-preview td { padding: 9px; text-align: left; border-bottom: 1px solid #dbe5ed; }
+.event-import-preview th { position: sticky; top: 0; background: #edf5fc; color: #214a6c; }
+.event-import-error { white-space: pre-line; }
+@media (max-width: 600px) { .event-participations > header { flex-wrap: wrap; } }

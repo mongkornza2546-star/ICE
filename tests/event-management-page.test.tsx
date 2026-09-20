@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { EventManagementPage } from '../src/EventManagementPage';
@@ -380,4 +380,14 @@ it('keeps regular-shop names read-only in the event editor', async () => {
   await user.click(screen.getByRole('button', { name: 'บันทึกร้าน' }));
   await waitFor(() => expect(api.saveParticipation).toHaveBeenCalled());
   expect(vi.mocked(api.saveParticipation).mock.calls[0][0]).not.toHaveProperty('shop_name');
+});
+
+
+it('opens the Excel import dialog from the event shop section', async () => {
+  const user = userEvent.setup();
+  render(<EventManagementPage gateway={gateway()} profileRole="admin" />);
+  await user.click(await screen.findByRole('button', { name: 'อัปโหลด Excel' }));
+  expect(screen.getByRole('dialog', { name: 'อัปโหลด Excel ร้านในงาน' })).toBeTruthy();
+  await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'ยกเลิก', exact: true }));
+  expect(screen.queryByRole('dialog')).toBeNull();
 });
