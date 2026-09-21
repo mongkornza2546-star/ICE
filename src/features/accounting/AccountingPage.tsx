@@ -24,6 +24,13 @@ import type {
   AccountingTransactionType,
   AccountingTransactionsResponse,
 } from './types';
+import {
+  cleanAreaName,
+  formatAccountingGroupTitle,
+  formatAccountingShopFacetLabel,
+  formatAccountingShopTitle,
+  formatAccountingZoneFacetLabel,
+} from './utils';
 import type { AppRole } from '../../types/app';
 
 const PAGE_SIZE = 100;
@@ -570,7 +577,7 @@ export function AccountingPage({ userRole = 'round_lead', demoMode = false }: { 
         <label className="accounting-filters__search"><span>ค้นหาเอกสาร</span><span className="accounting-filters__input-wrap"><MagnifyingGlass size={17} /><input aria-label="ค้นเอกสาร" onChange={(event) => updateFilter({ document: event.target.value })} placeholder="เลขเอกสาร / อ้างอิง" value={filters.document ?? ''} /></span></label>
         {tab === 'transactions' ? <>
           <label className="accounting-filters__select"><span>ชนิดน้ำแข็ง</span><select aria-label="ชนิดน้ำแข็ง" onChange={(event) => updateFilter({ ice_type_id: event.target.value || undefined })} value={filters.ice_type_id ?? ''}><option value="">ทุกชนิดน้ำแข็ง</option>{transactions.facets.ice_types.map((item) => <option key={item.value} value={item.value}>{item.label} ({item.count})</option>)}</select></label>
-          <label className="accounting-filters__select"><span>ร้านค้า</span><select aria-label="ร้าน" onChange={(event) => updateFilter({ shop_id: event.target.value || undefined })} value={filters.shop_id ?? ''}><option value="">ทุกร้าน</option>{transactions.facets.shops.map((item) => <option key={item.value} value={item.value}>{item.label} ({item.count})</option>)}</select></label>
+          <label className="accounting-filters__select"><span>ร้านค้า</span><select aria-label="ร้าน" onChange={(event) => updateFilter({ shop_id: event.target.value || undefined })} value={filters.shop_id ?? ''}><option value="">ทุกร้าน</option>{transactions.facets.shops.map((item) => <option key={item.value} value={item.value}>{formatAccountingShopFacetLabel(item.label)} ({item.count})</option>)}</select></label>
           <label className="accounting-filters__select"><span>พนักงาน</span><select aria-label="พนักงาน" onChange={(event) => updateFilter({ employee_id: event.target.value || undefined })} value={filters.employee_id ?? ''}><option value="">ทุกพนักงาน</option>{transactions.facets.employees.map((item) => <option key={item.value} value={item.value}>{item.label} ({item.count})</option>)}</select></label>
           <label className="accounting-filters__select"><span>ประเภทเอกสาร</span><select aria-label="ประเภทเอกสารและการเงิน" onChange={(event) => updateFilter({ types: event.target.value ? [event.target.value as AccountingTransaction['type']] : undefined })} value={filters.types?.[0] ?? ''}><option value="">ทุกเอกสารและการเงิน</option>{financialTransactionTypes.map((type) => <option key={type} value={type}>{typeLabels[type]}</option>)}</select></label>
         </> : null}
@@ -634,8 +641,8 @@ function ShopSummaryPanel({ daily, data, exporting, filters, fromDate, onExport,
       <label className="accounting-filters__range"><span>ช่วงเวลา</span><span><input aria-describedby={rangeError ? 'accounting-shop-date-error' : undefined} aria-invalid={rangeError ? true : undefined} aria-label="จาก" max={toDate} onChange={(event) => { setWindowMode('custom'); setFromDate(event.target.value); }} type="date" value={fromDate} /><span aria-hidden="true">ถึง</span><input aria-describedby={rangeError ? 'accounting-shop-date-error' : undefined} aria-invalid={rangeError ? true : undefined} aria-label="ถึง" max={today} min={fromDate} onChange={(event) => { setWindowMode('custom'); setToDate(event.target.value); }} type="date" value={toDate} /></span></label>
       <label className="accounting-filters__search"><span>ร้านค้า</span><span className="accounting-filters__input-wrap"><MagnifyingGlass size={17} /><input aria-label="ค้นหาร้าน" onChange={(event) => updateFilter({ shop_search: event.target.value })} placeholder="ค้นหาร้านค้า" value={filters.shop_search ?? ''} /></span></label>
       <div className="accounting-filters__field"><span>อาคาร / โซน</span><span>
-        <select aria-label="อาคาร" onChange={(event) => updateFilter({ building_id: event.target.value || undefined, zone_id: undefined })} value={filters.building_id ?? ''}><option value="">ทุกอาคาร</option>{data.facets.buildings.map((item) => <option key={item.value} value={item.value}>{item.label} ({item.count})</option>)}</select>
-        <select aria-label="โซน" onChange={(event) => updateFilter({ zone_id: event.target.value || undefined })} title="ตัวกรองโซนใช้ตำแหน่งปัจจุบันของร้าน" value={filters.zone_id ?? ''}><option value="">ทุกโซน</option>{data.facets.zones.map((item) => <option key={item.value} value={item.value}>{item.label} ({item.count})</option>)}</select>
+        <select aria-label="อาคาร" onChange={(event) => updateFilter({ building_id: event.target.value || undefined, zone_id: undefined })} value={filters.building_id ?? ''}><option value="">ทุกอาคาร</option>{data.facets.buildings.map((item) => <option key={item.value} value={item.value}>{cleanAreaName(item.label)} ({item.count})</option>)}</select>
+        <select aria-label="โซน" onChange={(event) => updateFilter({ zone_id: event.target.value || undefined })} title="ตัวกรองโซนใช้ตำแหน่งปัจจุบันของร้าน" value={filters.zone_id ?? ''}><option value="">ทุกโซน</option>{data.facets.zones.map((item) => <option key={item.value} value={item.value}>{formatAccountingZoneFacetLabel(item.label, ' / ')} ({item.count})</option>)}</select>
       </span></div>
       <div className="accounting-filters__field"><span>สถานะ / เงื่อนไขชำระ</span><span>
         <select aria-label="สถานะชำระ" onChange={(event) => updateFilter({ payment_status: (event.target.value || undefined) as AccountingFilters['payment_status'] })} value={filters.payment_status ?? ''}><option value="">ทุกสถานะ</option>{Object.entries(paymentStatusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
@@ -646,7 +653,7 @@ function ShopSummaryPanel({ daily, data, exporting, filters, fromDate, onExport,
       </select></label>
       <button aria-expanded={extraFiltersOpen} className={extraFiltersOpen ? 'accounting-filters__more accounting-filters__more--active' : 'accounting-filters__more'} onClick={() => setExtraFiltersOpen((open) => !open)} type="button"><Funnel size={17} />ตัวกรองเพิ่มเติม</button>
       {extraFiltersOpen ? <div className="accounting-filters__extra">
-        <label><span>เลือกร้านโดยตรง</span><select aria-label="ร้าน" onChange={(event) => updateFilter({ shop_id: event.target.value || undefined })} value={filters.shop_id ?? ''}><option value="">ทุกร้าน</option>{data.facets.shops.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
+        <label><span>เลือกร้านโดยตรง</span><select aria-label="ร้าน" onChange={(event) => updateFilter({ shop_id: event.target.value || undefined })} value={filters.shop_id ?? ''}><option value="">ทุกร้าน</option>{data.facets.shops.map((item) => <option key={item.value} value={item.value}>{formatAccountingShopFacetLabel(item.label)}</option>)}</select></label>
       </div> : null}
     </div>
     <div className="accounting-financial-cards" aria-label="สรุปยอดการเงิน">
@@ -671,7 +678,7 @@ function ShopSummaryPanel({ daily, data, exporting, filters, fromDate, onExport,
         key={zone.value}
         onClick={() => updateFilter({ zone_id: zone.value })}
         type="button"
-      >{zone.label.replace(' / ', ' ')}</button>)}
+      >{formatAccountingZoneFacetLabel(zone.label)}</button>)}
     </div> : null}
     {view === 'daily' ? <ShopDailyMatrix
       collapsedGroups={collapsedGroups}
@@ -830,7 +837,7 @@ function ShopDailyMatrix({ collapsedGroups, daily, data, fromDate, grouped, onOp
     const note = shop.delivery_sequence == null ? 'ยังไม่ได้กำหนดลำดับส่ง' : shop.historical_zone_name && shop.current_zone_name && shop.historical_zone_name !== shop.current_zone_name ? 'พื้นที่ล่าสุดต่างจากพื้นที่ประจำ' : '—';
     return <tr className={shop.payment_status === 'overdue' ? 'accounting-row--issue' : ''} key={shop.shop_id}>
       <td className="accounting-daily-matrix__sequence">{shop.delivery_sequence?.toLocaleString('th-TH') ?? '—'}</td>
-      <th className="accounting-daily-matrix__shop"><button className="accounting-link" onClick={() => onOpenShop(shop)} type="button">{shop.shop_code} · {shop.shop_name}</button></th>
+      <th className="accounting-daily-matrix__shop"><button className="accounting-link" onClick={() => onOpenShop(shop)} type="button">{formatAccountingShopTitle(shop)}</button></th>
       {dates.map((date) => renderDayCells(shop, days.get(date), date))}
       <td>{money.format(shop.outstanding_amount)}</td><td>{money.format(shop.cumulative_outstanding_amount)}</td><td>{money.format(shop.cumulative_overdue_amount)}</td><td><span className={`accounting-payment-status accounting-payment-status--${shop.payment_status}`}>{paymentStatusLabels[shop.payment_status]}</span></td><td className="accounting-daily-matrix__note">{note}</td>
     </tr>;
@@ -900,10 +907,10 @@ function ShopDailyMatrix({ collapsedGroups, daily, data, fromDate, grouped, onOp
             return counts;
           }, { purchased: 0, recorded_no_sale: 0, no_purchase: 0, closed_shop: 0, not_recorded: 0, not_scheduled: 0, skipped: 0 } as Record<AccountingShopDailyStatus, number>);
           return <Fragment key={key}>
-            <tr className="accounting-shop-group accounting-daily-matrix__group"><th colSpan={totalColumnCount}><button aria-expanded={!collapsed} onClick={() => onToggleGroup(key)} type="button"><span aria-hidden="true">{collapsed ? '▶' : '▼'}</span><strong>{group.building_name} · {group.current_zone_name ?? 'ไม่มีโซน'}</strong><span>หน้านี้ {group.total_shop_count.toLocaleString('th-TH')} ร้าน</span>{groupDailyComplete ? <><span>ซื้อแล้ว {statusCounts.purchased.toLocaleString('th-TH')}</span>{statusCounts.recorded_no_sale ? <span>มีบันทึกแต่ไม่มีการขาย {statusCounts.recorded_no_sale.toLocaleString('th-TH')}</span> : null}<span>ไม่ซื้อ {statusCounts.no_purchase.toLocaleString('th-TH')}</span><span>ยังไม่บันทึก {statusCounts.not_recorded.toLocaleString('th-TH')}</span></> : <span>ข้อมูลรายวันไม่ครบ</span>}<span>ยอดขาย {money.format(group.sales_amount)}</span><span>รับจริงเฉพาะร้านในหน้านี้ {groupCash == null ? '—' : money.format(groupCash)}</span><span>ค้าง {money.format(group.cumulative_outstanding_amount)}</span></button></th></tr>
+            <tr className="accounting-shop-group accounting-daily-matrix__group"><th colSpan={totalColumnCount}><button aria-expanded={!collapsed} onClick={() => onToggleGroup(key)} type="button"><span aria-hidden="true">{collapsed ? '▶' : '▼'}</span><strong>{formatAccountingGroupTitle(group.building_name, group.current_zone_name)}</strong><span>หน้านี้ {group.total_shop_count.toLocaleString('th-TH')} ร้าน</span>{groupDailyComplete ? <><span>ซื้อแล้ว {statusCounts.purchased.toLocaleString('th-TH')}</span>{statusCounts.recorded_no_sale ? <span>มีบันทึกแต่ไม่มีการขาย {statusCounts.recorded_no_sale.toLocaleString('th-TH')}</span> : null}<span>ไม่ซื้อ {statusCounts.no_purchase.toLocaleString('th-TH')}</span><span>ยังไม่บันทึก {statusCounts.not_recorded.toLocaleString('th-TH')}</span></> : <span>ข้อมูลรายวันไม่ครบ</span>}<span>ยอดขาย {money.format(group.sales_amount)}</span><span>รับจริงเฉพาะร้านในหน้านี้ {groupCash == null ? '—' : money.format(groupCash)}</span><span>ค้าง {money.format(group.cumulative_outstanding_amount)}</span></button></th></tr>
             {collapsed ? null : <>
               {rows.map(renderShopRow)}
-              <tr className="accounting-daily-matrix__totals"><th colSpan={2}>รวมร้านในหน้านี้ {group.building_name} · {group.current_zone_name ?? 'ไม่มีโซน'}</th>
+              <tr className="accounting-daily-matrix__totals"><th colSpan={2}>รวมร้านในหน้านี้ {formatAccountingGroupTitle(group.building_name, group.current_zone_name)}</th>
                 {dates.map((date) => {
                   const dayCells = rows.map((shop) => dailyRows.get(shop.shop_id)?.days.find((day) => day.service_date === date));
                   const complete = dayCells.every(Boolean);
@@ -945,7 +952,7 @@ function ShopSummaryTable({ collapsedGroups, data, grouped, onOpenShop, onToggle
         const group = derivedShopGroup(rows);
         const collapsed = collapsedGroups.has(key);
         return <Fragment key={key}>
-          <tr className="accounting-shop-group"><th colSpan={9}><button aria-expanded={!collapsed} onClick={() => onToggleGroup(key)} type="button"><span aria-hidden="true">{collapsed ? '▶' : '▼'}</span><strong>{group.building_name} / {group.current_zone_name ?? 'ไม่มีโซน'}</strong><span>หน้านี้ {group.total_shop_count.toLocaleString('th-TH')} ร้าน</span><span>ซื้อ {group.purchased_shop_count.toLocaleString('th-TH')}</span>{group.recorded_no_sale_shop_count ? <span>มีบันทึกแต่ไม่มีการขาย {group.recorded_no_sale_shop_count.toLocaleString('th-TH')}</span> : null}{group.closed_shop_count ? <span>ปิดร้าน {group.closed_shop_count.toLocaleString('th-TH')}</span> : null}<span>ยังไม่มีบันทึก {group.not_recorded_shop_count.toLocaleString('th-TH')}</span><span>ยอด {money.format(group.sales_amount)}</span><span>ค้าง {money.format(group.cumulative_outstanding_amount)}</span></button></th></tr>
+          <tr className="accounting-shop-group"><th colSpan={9}><button aria-expanded={!collapsed} onClick={() => onToggleGroup(key)} type="button"><span aria-hidden="true">{collapsed ? '▶' : '▼'}</span><strong>{formatAccountingGroupTitle(group.building_name, group.current_zone_name, ' / ')}</strong><span>หน้านี้ {group.total_shop_count.toLocaleString('th-TH')} ร้าน</span><span>ซื้อ {group.purchased_shop_count.toLocaleString('th-TH')}</span>{group.recorded_no_sale_shop_count ? <span>มีบันทึกแต่ไม่มีการขาย {group.recorded_no_sale_shop_count.toLocaleString('th-TH')}</span> : null}{group.closed_shop_count ? <span>ปิดร้าน {group.closed_shop_count.toLocaleString('th-TH')}</span> : null}<span>ยังไม่มีบันทึก {group.not_recorded_shop_count.toLocaleString('th-TH')}</span><span>ยอด {money.format(group.sales_amount)}</span><span>ค้าง {money.format(group.cumulative_outstanding_amount)}</span></button></th></tr>
           {collapsed ? null : rows.map((row) => <ShopSummaryRow key={row.shop_id} onOpenShop={onOpenShop} row={row} />)}
         </Fragment>;
       }) : data.rows.map((row) => <ShopSummaryRow key={row.shop_id} onOpenShop={onOpenShop} row={row} />)}
@@ -953,7 +960,7 @@ function ShopSummaryTable({ collapsedGroups, data, grouped, onOpenShop, onToggle
 }
 
 function ShopSummaryRow({ onOpenShop, row }: { onOpenShop: (shop: AccountingShopSummaryRow) => void; row: AccountingShopSummaryRow }) {
-  return <tr className={row.payment_status === 'overdue' ? 'accounting-row--issue' : ''} onClick={() => onOpenShop(row)}><th><button className="accounting-link" onClick={(event) => { event.stopPropagation(); onOpenShop(row); }} type="button">{row.shop_code} · {row.shop_name}</button><small className={row.delivery_sequence == null ? 'accounting-shop-sequence--missing' : undefined}>{row.delivery_sequence == null ? 'ยังไม่ได้กำหนดลำดับส่ง' : `ลำดับส่ง ${row.delivery_sequence.toLocaleString('th-TH')}`}</small>{row.employee_names ? <small>{row.employee_names}</small> : null}</th><td>{money.format(row.sales_amount)}</td><td>{money.format(row.paid_amount)}</td><td>{money.format(row.outstanding_amount)}</td><td>{money.format(row.cumulative_outstanding_amount)}</td><td>{money.format(row.cumulative_overdue_amount)}</td><td>{row.invoice_count.toLocaleString('th-TH')}</td><td>{row.oldest_outstanding_due_date ? accountingDate.format(new Date(`${row.oldest_outstanding_due_date}T12:00:00+07:00`)) : '—'}</td><td><span className={`accounting-payment-status accounting-payment-status--${row.payment_status}`}>{paymentStatusLabels[row.payment_status]}</span></td></tr>;
+  return <tr className={row.payment_status === 'overdue' ? 'accounting-row--issue' : ''} onClick={() => onOpenShop(row)}><th><button className="accounting-link" onClick={(event) => { event.stopPropagation(); onOpenShop(row); }} type="button">{formatAccountingShopTitle(row)}</button><small className={row.delivery_sequence == null ? 'accounting-shop-sequence--missing' : undefined}>{row.delivery_sequence == null ? 'ยังไม่ได้กำหนดลำดับส่ง' : `ลำดับส่ง ${row.delivery_sequence.toLocaleString('th-TH')}`}</small>{row.employee_names ? <small>{row.employee_names}</small> : null}</th><td>{money.format(row.sales_amount)}</td><td>{money.format(row.paid_amount)}</td><td>{money.format(row.outstanding_amount)}</td><td>{money.format(row.cumulative_outstanding_amount)}</td><td>{money.format(row.cumulative_overdue_amount)}</td><td>{row.invoice_count.toLocaleString('th-TH')}</td><td>{row.oldest_outstanding_due_date ? accountingDate.format(new Date(`${row.oldest_outstanding_due_date}T12:00:00+07:00`)) : '—'}</td><td><span className={`accounting-payment-status accounting-payment-status--${row.payment_status}`}>{paymentStatusLabels[row.payment_status]}</span></td></tr>;
 }
 
 function ShopInvoiceDetail({ entries, error, fromDate, loading, onClose, shop, toDate }: {
@@ -978,9 +985,9 @@ function ShopInvoiceDetail({ entries, error, fromDate, loading, onClose, shop, t
     };
   }, [onClose]);
 
-  return <section aria-label={`รายละเอียดบิลของ ${shop.shop_code} · ${shop.shop_name}`} aria-modal="true" className="accounting-shop-detail" role="dialog">
+  return <section aria-label={`รายละเอียดบิลของ ${formatAccountingShopTitle(shop)}`} aria-modal="true" className="accounting-shop-detail" role="dialog">
     <header>
-      <div><p className="eyebrow">รายละเอียดตามใบส่งของ / ใบแจ้งหนี้</p><h2>{shop.shop_code} · {shop.shop_name}</h2><span>ช่วงสรุปและบิลค้างนอกช่วง: {accountingDate.format(new Date(`${fromDate}T12:00:00+07:00`))} – {accountingDate.format(new Date(`${toDate}T12:00:00+07:00`))}</span><small>ยอดรับแล้วและยอดค้างเป็นยอดปัจจุบัน จึงรวมการรับชำระหลังช่วงสรุป</small></div>
+      <div><p className="eyebrow">รายละเอียดตามใบส่งของ / ใบแจ้งหนี้</p><h2>{formatAccountingShopTitle(shop)}</h2><span>ช่วงสรุปและบิลค้างนอกช่วง: {accountingDate.format(new Date(`${fromDate}T12:00:00+07:00`))} – {accountingDate.format(new Date(`${toDate}T12:00:00+07:00`))}</span><small>ยอดรับแล้วและยอดค้างเป็นยอดปัจจุบัน จึงรวมการรับชำระหลังช่วงสรุป</small></div>
       <button aria-label="ปิดรายละเอียดร้าน" onClick={onClose} type="button"><X size={19} /></button>
     </header>
     {loading ? <p className="accounting-shop-detail__state">กำลังโหลดรายละเอียดบิล...</p>

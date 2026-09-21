@@ -1,4 +1,5 @@
 import type { AccountingShopDailyResponse, AccountingShopSummaryRow, AccountingTransaction } from './types';
+import { formatAccountingGroupTitle, isEventCode } from './utils';
 
 export function safeSpreadsheetText(value: unknown) {
   const text = value == null ? '' : String(value);
@@ -27,7 +28,7 @@ export async function exportAccountingTransactions(
         Number.isNaN(occurredAt.getTime()) ? '' : occurredAt.toLocaleTimeString('th-TH'),
         row.document_number,
         row.type,
-        [row.shop_code, row.shop_name].filter(Boolean).join(' '),
+        isEventCode(row.shop_code) ? (row.shop_name ?? '') : [row.shop_code, row.shop_name].filter(Boolean).join(' '),
         row.holder_name ?? '',
         row.employee_name ?? '',
         row.ice_type_name ?? '',
@@ -131,7 +132,7 @@ export async function exportAccountingShopDaily(
         : null;
       const cells = [
         shop.delivery_sequence == null ? textCell('') : numberCell(shop.delivery_sequence, '#,##0'),
-        textCell(shop.shop_code), textCell(shop.shop_name, true), textCell(dailyRow?.payment_condition ?? unavailableLabel),
+        textCell(isEventCode(shop.shop_code) ? '' : shop.shop_code), textCell(shop.shop_name, true), textCell(dailyRow?.payment_condition ?? unavailableLabel),
       ];
       dates.forEach((date) => {
         const day = days.get(date);
@@ -211,7 +212,7 @@ export async function exportAccountingShopDaily(
       groups.set(key, {
         buildingSortOrder: shop.building_sort_order ?? Number.MAX_SAFE_INTEGER,
         zoneSortOrder: shop.zone_sort_order ?? Number.MAX_SAFE_INTEGER,
-        title: `${shop.building_name}-${shop.current_zone_name ?? 'ไม่มีโซน'}`,
+        title: formatAccountingGroupTitle(shop.building_name, shop.current_zone_name, '-'),
         rows: [shop],
       });
     }
