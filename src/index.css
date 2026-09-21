@@ -4081,3 +4081,16 @@ input:disabled, select:disabled, textarea:disabled { background: #f2f5f8; color:
 .event-import-preview th { position: sticky; top: 0; background: #edf5fc; color: #214a6c; }
 .event-import-error { white-space: pre-line; }
 @media (max-width: 600px) { .event-participations > header { flex-wrap: wrap; } }
+
+.event-preparation { margin: 0; }
+.event-preparation details { border-top: 1px solid #dbe5ed; padding-top: 12px; }
+.event-preparation summary { color: #214a6c; font-weight: 700; cursor: pointer; padding: 6px 0; }
+.event-preparation form { margin-top: 12px; }
+.event-preparation fieldset { border: 0; padding: 0; min-width: 0; display: grid; gap: 10px; }
+.event-preparation label { display: grid; gap: 5px; font-size: .8rem; }
+.event-preparation input:not([type=checkbox]), .event-preparation select { width: 100%; min-height: 40px; padding: 8px; border: 1px solid #cad9e5; border-radius: 8px; background: #fff; color: #214a6c; }
+.event-preparation p { font-size: .75rem; color: #647a8e; line-height: 1.6; }
+.event-preparation-shops { max-height: 240px; overflow-y: auto; display: grid; gap: 8px; }
+.event-preparation-shops label { display: flex; align-items: center; gap: 8px; padding: 8px; background: #f5f9fc; border-radius: 6px; }
+.event-preparation .event-preparation-shops label { flex-direction: row; justify-content: flex-start; text-align: left; }
+.event-preparation .event-preparation-shops input[type="checkbox"] { width: 18px; height: 18px; min-height: 18px; flex: 0 0 18px; margin: 0; accent-color: #0865d5; }

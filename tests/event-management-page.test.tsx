@@ -105,6 +105,8 @@ function detail(ready = true): EventManagementDetail {
 
 function gateway(detailValue = detail()): EventManagementGateway {
   return {
+    prepareShops: vi.fn().mockResolvedValue({ prepared_count: 1 }),
+    recordTankMovement: vi.fn().mockResolvedValue({}),
     loadCapability: vi.fn().mockResolvedValue({ schema_version: 5, lifecycle_enabled: true }),
     loadOverview: vi.fn().mockResolvedValue([event]),
     loadDetail: vi.fn().mockResolvedValue(detailValue),
@@ -294,8 +296,8 @@ it('creates a typed new shop and clears an earlier regular-shop selection when t
   await user.click(await screen.findByRole('button', { name: 'เพิ่มร้าน' }));
   await user.click(screen.getByRole('button', { name: 'เลือกร้านประจำ' }));
   await user.click(await screen.findByRole('option', { name: /S03.*ร้านสาม/ }));
-  await user.clear(screen.getByRole('combobox'));
-  await user.type(screen.getByRole('combobox'), 'ร้านใหม่วันนี้');
+  await user.clear(within(screen.getByRole('dialog')).getByRole('combobox'));
+  await user.type(within(screen.getByRole('dialog')).getByRole('combobox'), 'ร้านใหม่วันนี้');
   await user.click(screen.getByRole('button', { name: 'บันทึกร้าน' }));
   await waitFor(() => expect(api.createEventShops).toHaveBeenCalledWith('event-1', expect.any(String), [expect.objectContaining({ name: 'ร้านใหม่วันนี้' })]));
   expect(api.saveParticipation).not.toHaveBeenCalled();

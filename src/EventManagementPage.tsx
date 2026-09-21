@@ -12,6 +12,7 @@ import {
   WarningCircle,
   X,
 } from '@phosphor-icons/react';
+import { EventPreparationPanel } from './features/event-management/EventPreparationPanel';
 import { EventExcelImportDialog } from './features/event-management/EventExcelImportDialog';
 import { parseBoothRanges } from './features/event-management/boothRanges';
 import { toBangkokDateString } from './lib/serviceDate';
@@ -168,6 +169,7 @@ function displayStatus(job: EventJob) {
   if (job.status === 'cancelled') return { label: 'ยกเลิก', tone: 'cancelled' };
   if (job.status === 'draft') return { label: 'ฉบับร่าง', tone: 'draft' };
   const today = toBangkokDateString();
+  if (job.preparation_start_date && today >= job.preparation_start_date && today < job.start_date) return { label: 'เตรียมงาน', tone: 'upcoming' };
   if (today < job.start_date) return { label: 'กำลังจะเริ่ม', tone: 'upcoming' };
   if (today > job.end_date) return { label: 'จบงาน', tone: 'ended' };
   return { label: 'กำลังจัดงาน', tone: 'active' };
@@ -574,6 +576,11 @@ export function EventManagementPage({
               onEditParticipation={(participation) => void openParticipationEditor(participation)}
               onPublish={() => void publishEvent()}
               profileRole={profileRole}
+              preparationPanel={<EventPreparationPanel key={detail.event.id} detail={detail} gateway={gateway} onSaved={async () => {
+                const request = ++loadRequest.current;
+                const [nextDetail, nextEvents] = await Promise.all([gateway.loadDetail(detail.event.id), gateway.loadOverview()]);
+                if (request === loadRequest.current) { setDetail(nextDetail); setEvents(nextEvents); }
+              }} />}
             />
           ) : null}
           {!detailLoading && !detail ? <div className="event-detail-placeholder"><CalendarBlank size={34} /><p>เลือกงานเพื่อดูรายละเอียด</p></div> : null}
@@ -716,6 +723,7 @@ function EventConfigurationFields({ draft, onChange }: { draft: EventDraft; onCh
 }
 
 function EventDetail({
+  preparationPanel,
   busyAction,
   detail,
   onAddParticipation,
@@ -727,6 +735,7 @@ function EventDetail({
   onPublish,
   profileRole,
 }: {
+  preparationPanel: ReactNode;
   busyAction: BusyAction;
   detail: EventManagementDetail;
   onAddParticipation: () => void;
@@ -773,6 +782,8 @@ function EventDetail({
         <header><h3>นโยบายการชำระเงิน</h3>{profileRole === 'round_lead' ? <span>อ่านอย่างเดียว</span> : null}</header>
         {configuration ? <dl><div><dt>วิธีรับเงิน</dt><dd>{configuration.allowed_payment_methods.map(paymentLabel).join(', ')}</dd></div><div><dt>วิธีเริ่มต้น</dt><dd>{paymentLabel(configuration.default_payment_method)}</dd></div><div><dt>เงื่อนไข</dt><dd>ชำระสิ้นวัน</dd></div><div><dt>Config version</dt><dd>v{configuration.version_no}</dd></div></dl> : <p className="event-config-missing"><WarningCircle size={18} />รอแอดมินตั้งค่า config</p>}
       </section>
+
+      {preparationPanel}
 
       <section className="event-participations">
         <header><div><h3>ร้านที่เข้าร่วม</h3><p>{activeParticipations.length} ร้านที่ใช้งาน</p></div>{event.status !== 'cancelled' ? <div className="event-import-actions"><button className="secondary-button" disabled={Boolean(busyAction)} onClick={onImport} type="button">อัปโหลด Excel</button><button className="secondary-button" onClick={onAddParticipation} type="button"><Plus size={16} />เพิ่มร้าน</button></div> : null}</header>

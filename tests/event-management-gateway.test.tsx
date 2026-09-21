@@ -81,3 +81,19 @@ it.each([undefined, 'ร้านจากเชียงใหม่'])('routes
   if (shopName === undefined) expect(args).not.toHaveProperty('p_shop_name');
   else expect(args.p_shop_name).toBe(shopName);
 });
+
+it('sends selected preparation shops without changing public event dates', async () => {
+  supabaseMock.client.rpc.mockResolvedValueOnce({ data: { prepared_count: 1 }, error: null });
+  await eventManagementGateway.prepareShops('event-1', '2026-09-20', ['participation-1']);
+  expect(supabaseMock.client.rpc).toHaveBeenLastCalledWith('prepare_event_shops', {
+    p_event_job_id: 'event-1', p_service_date: '2026-09-20', p_participation_ids: ['participation-1'],
+  });
+});
+
+it('sends the actual tank movement date and stable request ID', async () => {
+  supabaseMock.client.rpc.mockResolvedValueOnce({ data: { id: 'movement-1' }, error: null });
+  await eventManagementGateway.recordTankMovement({ participationId: 'participation-1', kind: 'handoff', quantity: 2, serviceDate: '2026-09-20', note: 'ตั้งถัง', requestId: 'request-1' });
+  expect(supabaseMock.client.rpc).toHaveBeenLastCalledWith('record_event_tank_movement', {
+    p_participation_id: 'participation-1', p_kind: 'handoff', p_quantity: 2, p_service_date: '2026-09-20', p_note: 'ตั้งถัง', p_request_id: 'request-1',
+  });
+});

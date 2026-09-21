@@ -13,6 +13,7 @@ import type {
   EventParticipation,
   EventParticipationInput,
   EventShopOption,
+  EventTankMovement,
 } from './types';
 
 const SHOP_PAGE_SIZE = 500;
@@ -25,6 +26,9 @@ function client() {
 async function rpc<T>(name: string, args?: Record<string, unknown>) {
   const { data, error } = await client().rpc(name, args);
   if (error) {
+    if (['prepare_event_shops', 'record_event_tank_movement'].includes(name) && isMissingRpc(error)) {
+      throw new Error('ฐานข้อมูลยังไม่รองรับการเตรียมงาน กรุณาติดตั้ง migration 0187');
+    }
     if (name.startsWith('get_event_management_') && isMissingRpc(error)) {
       throw new Error('ฐานข้อมูลยังไม่พร้อมสำหรับหน้างานอีเวนต์ กรุณาติดตั้ง migration 0169');
     }
@@ -34,6 +38,17 @@ async function rpc<T>(name: string, args?: Record<string, unknown>) {
 }
 
 export const eventManagementGateway: EventManagementGateway = {
+  async prepareShops(eventJobId, serviceDate, participationIds) {
+    return rpc('prepare_event_shops', { p_event_job_id: eventJobId, p_service_date: serviceDate, p_participation_ids: participationIds });
+  },
+
+  async recordTankMovement(input) {
+    return rpc<EventTankMovement>('record_event_tank_movement', {
+      p_participation_id: input.participationId, p_kind: input.kind, p_quantity: input.quantity,
+      p_service_date: input.serviceDate, p_note: input.note, p_request_id: input.requestId,
+    });
+  },
+
   async loadCapability() {
     return rpc<EventDeliveryCapability>('get_event_delivery_capability');
   },

@@ -17,7 +17,9 @@ export async function uploadDailyCreditAcknowledgementEvidence(file: File, docum
   const uploadFile = await optimizeImage(file);
   const path = `${userData.user.id}/${documentId}/r2/${crypto.randomUUID()}.webp`;
   await uploadR2Object('credit-signoff-evidence', path, uploadFile);
-  const { error } = await supabase.storage.from('credit-signoff-evidence').upload(path, new Blob([]), {
+  const { error } = await supabase.storage.from('credit-signoff-evidence').upload(path, new Blob([], {
+    type: uploadFile.type,
+  }), {
     contentType: 'image/webp',
   });
   if (error) {

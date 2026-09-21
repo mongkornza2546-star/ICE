@@ -55,6 +55,16 @@ describe('image upload compression coverage', () => {
     });
   });
 
+  it.each([
+    ['payment evidence', () => uploadPaymentEvidence(sourceImage, 'request-1')],
+    ['credit sign-off evidence', () => uploadDailyCreditAcknowledgementEvidence(sourceImage, 'document-1')],
+  ])('gives the %s storage marker its actual WebP MIME type', async (_label, uploadFile) => {
+    await uploadFile();
+
+    const marker = mocks.upload.mock.calls[0]?.[1] as Blob;
+    expect(marker.type).toBe('image/webp');
+  });
+
   it('preserves payment evidence PDFs without image compression', async () => {
     const pdf = new File(['pdf'], 'receipt.pdf', { type: 'application/pdf' });
 
@@ -70,6 +80,8 @@ describe('image upload compression coverage', () => {
       expect.any(Blob),
       expect.objectContaining({ contentType: 'application/pdf' }),
     );
+    const marker = mocks.upload.mock.calls[0]?.[1] as Blob;
+    expect(marker.type).toBe('application/pdf');
   });
 
   it('rejects a shop image when the optimized result still exceeds 5 MB', async () => {

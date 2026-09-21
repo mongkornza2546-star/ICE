@@ -32,7 +32,9 @@ export async function uploadPaymentEvidence(file: File, idempotencyKey: string) 
   const digest = await evidenceDigest(uploadFile);
   const path = `${userData.user.id}/r2/${idempotencyKey}-${digest}.${extension}`;
   await uploadR2Object('payment-evidence', path, uploadFile);
-  const { error } = await supabase.storage.from('payment-evidence').upload(path, new Blob([]), {
+  const { error } = await supabase.storage.from('payment-evidence').upload(path, new Blob([], {
+    type: uploadFile.type,
+  }), {
     upsert: true,
     contentType: uploadFile.type,
   });

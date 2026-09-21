@@ -4,6 +4,7 @@ export type EventJobStatus = 'draft' | 'published' | 'cancelled';
 export type EventParticipationStatus = 'active' | 'cancelled';
 
 export interface EventJob {
+  preparation_start_date?: string | null;
   id: string;
   name: string;
   organizer_name: string;
@@ -45,6 +46,7 @@ export interface EventConfiguration {
 }
 
 export interface EventParticipation {
+  preparation_start_date?: string | null;
   id: string;
   event_job_id: string;
   shop_id: string;
@@ -81,7 +83,28 @@ export interface EventReadiness {
   checks: EventReadinessCheck[];
 }
 
+export interface EventTankMovement {
+  id: string;
+  event_participation_id: string;
+  movement_kind: 'handoff' | 'return';
+  quantity: number;
+  service_date: string;
+  rental_start_date: string | null;
+  rental_unit_price: number | null;
+  note: string;
+}
+
+export interface EventTankMovementInput {
+  participationId: string;
+  kind: 'handoff' | 'return';
+  quantity: number;
+  serviceDate: string;
+  note: string;
+  requestId: string;
+}
+
 export interface EventManagementDetail {
+  tank_movements?: EventTankMovement[];
   event: EventJob;
   configuration: EventConfiguration | null;
   participations: EventParticipation[];
@@ -158,6 +181,8 @@ export interface EventNewShopsResult {
 }
 
 export interface EventManagementGateway {
+  prepareShops(eventJobId: string, serviceDate: string, participationIds: string[]): Promise<{ prepared_count: number }>;
+  recordTankMovement(input: EventTankMovementInput): Promise<EventTankMovement>;
   createEventShops(eventJobId: string, requestId: string, rows: EventNewShopInput[]): Promise<EventNewShopsResult>;
   loadCapability(): Promise<EventDeliveryCapability>;
   loadOverview(): Promise<EventOverview[]>;
