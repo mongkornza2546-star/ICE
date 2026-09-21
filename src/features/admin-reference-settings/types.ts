@@ -19,6 +19,31 @@ export interface WorkSiteOption {
   name: string;
 }
 
+export function isEventCode(code?: string | null): boolean {
+  if (!code) return false;
+  const upper = code.trim().toUpperCase();
+  return (
+    upper.startsWith('SITE-EVENT-') ||
+    upper.startsWith('EVENT-') ||
+    upper.includes('EVENT-') ||
+    upper === 'SITE-EVENT' ||
+    upper === 'EVENT'
+  );
+}
+
+export function formatWorkSiteLabel(workSite: WorkSiteOption): string {
+  if (isEventCode(workSite.code)) {
+    return workSite.name;
+  }
+  if (!workSite.code) {
+    return workSite.name;
+  }
+  if (workSite.name.startsWith(workSite.code)) {
+    return workSite.name;
+  }
+  return `${workSite.code} · ${workSite.name}`;
+}
+
 export interface EmployeeWorkSiteAssignment {
   user_id: string;
   stock_location_id: string;

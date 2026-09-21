@@ -1,6 +1,11 @@
 import { useRef, useState } from 'react';
 import { toBangkokDateString, shiftServiceDate } from '../../lib/serviceDate';
+import { supabase } from '../../lib/supabase';
+import { isAndroidApp } from '../../lib/thermalPrinter';
+import { printSalesDocumentForCurrentPlatform, salesDocumentFromStored, type StoredSalesDocument } from '../../lib/salesDocumentPrint';
 import type { EventManagementDetail, EventManagementGateway } from './types';
+
+const money = (value: number) => Number(value).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export function EventPreparationPanel({ detail, gateway, onSaved }: {
   detail: EventManagementDetail;
@@ -39,6 +44,20 @@ export function EventPreparationPanel({ detail, gateway, onSaved }: {
     catch (cause) { setError(cause instanceof Error ? cause.message : 'บันทึกไม่สำเร็จ'); }
     finally { inFlight.current = false; setBusy(false); }
   };
+  async function printInvoice(chargeId: string) {
+    if (inFlight.current) return;
+    const native = isAndroidApp();
+    const printWindow = native ? null : window.open('', '_blank', 'popup,width=360,height=680');
+    if (!native && !printWindow) { setError('กรุณาอนุญาตป๊อปอัปเพื่อพิมพ์บิล'); return; }
+    inFlight.current = true; setBusy(true); setError('');
+    try {
+      if (!supabase) throw new Error('ยังไม่ได้เชื่อมต่อระบบ');
+      const result = await supabase.rpc('get_charge_print_document', { p_charge_id: chargeId });
+      if (result.error) throw new Error(result.error.message);
+      await printSalesDocumentForCurrentPlatform(salesDocumentFromStored(result.data as StoredSalesDocument), printWindow);
+    } catch (cause) { printWindow?.close(); setError(cause instanceof Error ? cause.message : 'พิมพ์บิลไม่สำเร็จ'); }
+    finally { inFlight.current = false; setBusy(false); }
+  }
   const saveTanks = () => run(async () => {
     if (!tankOptions.some((row) => row.id === tankShop)) throw new Error('เลือกร้านที่รับหรือคืนถังได้ในวันที่ระบุ');
     const count = Number(quantity);
@@ -50,7 +69,7 @@ export function EventPreparationPanel({ detail, gateway, onSaved }: {
     await gateway.recordTankMovement({ ...input, requestId: retry.current.id });
     retry.current = null;
     setTankShop(''); setNote('');
-    return `${kind === 'handoff' ? 'บันทึกส่งมอบ' : 'บันทึกรับคืน'} ${count} ถังแล้ว`;
+    return `${kind === 'handoff' ? 'บันทึกส่งมอบและสร้างบิลค่าเช่า' : 'บันทึกรับคืน'} ${count} ถังแล้ว`;
   });
   return <section className="event-preparation event-participations">
     <header><div><h3>เตรียมงาน / ส่งล่วงหน้า</h3><p>วันเปิดงาน {event.start_date} · ค่าเช่าถังเริ่มวันเปิดงาน หรือวันส่งมอบหากส่งหลังเปิดงาน</p></div></header>
@@ -87,12 +106,24 @@ export function EventPreparationPanel({ detail, gateway, onSaved }: {
           <label>จำนวนถัง<input type="number" required min="1" max={kind === 'return' && tankShop ? balance(tankShop) : 10000} step="1" value={quantity} onChange={(e) => setQuantity(e.target.value)} /></label>
           <label>หมายเหตุ<input value={note} onChange={(e) => setNote(e.target.value)} /></label>
         </div>
-        {kind === 'handoff' ? <p>เริ่มค่าเช่า {tankDate > event.start_date ? tankDate : event.start_date} · เก็บราคาเช่าตามนโยบายงานในทะเบียนถัง ยังไม่สร้างบิลค่าเช่าอัตโนมัติ</p> : null}
+        {kind === 'handoff' ? <p>เริ่มค่าเช่า {tankDate > event.start_date ? tankDate : event.start_date}{detail.configuration?.tank_rental_unit_price ? ` · ค่าเช่า ${money(detail.configuration.tank_rental_unit_price)} บาท/ถัง (รวม ${money(Number(quantity || 0) * detail.configuration.tank_rental_unit_price)} บาท)` : ''} · ระบบสร้างบิลค่าเช่าอัตโนมัติ</p> : null}
         <button className="primary-button" disabled={!tankShop || !tankOptions.length} type="submit">{busy ? 'กำลังบันทึก...' : 'บันทึกรายการถัง'}</button>
       </fieldset></form>
-      <div className="event-import-preview"><table><thead><tr><th>วันที่</th><th>ร้าน / บูธ</th><th>รายการ</th><th>จำนวน</th><th>เริ่มค่าเช่า</th></tr></thead><tbody>{[...movements].reverse().map((row) => {
+      <div className="event-import-preview"><table><thead><tr><th>วันที่</th><th>ร้าน / บูธ</th><th>รายการ</th><th>จำนวน</th><th>เริ่มค่าเช่า</th><th>บิลค่าเช่า</th><th>การจัดการ</th></tr></thead><tbody>{[...movements].reverse().map((row) => {
         const shop = participations.find((p) => p.id === row.event_participation_id);
-        return <tr key={row.id}><td>{row.service_date}</td><td>{shop?.booth_number} · {shop?.shop_name}</td><td>{row.movement_kind === 'handoff' ? 'ส่งมอบ' : 'รับคืน'}{row.note ? ` · ${row.note}` : ''}</td><td>{row.quantity}</td><td>{row.rental_start_date ?? '—'}</td></tr>;
+        return <tr key={row.id}>
+          <td>{row.service_date}</td>
+          <td>{shop?.booth_number || '—'} · {shop?.shop_name}</td>
+          <td>{row.movement_kind === 'handoff' ? 'ส่งมอบ' : 'รับคืน'}{row.note ? ` · ${row.note}` : ''}</td>
+          <td>{row.quantity}</td>
+          <td>{row.rental_start_date ?? '—'}</td>
+          <td>
+            {row.charge_number ? <span>{row.charge_number}{row.outstanding_amount != null ? <small style={{ display: 'block', color: Number(row.outstanding_amount) > 0 ? '#b91c1c' : '#15803d' }}>{Number(row.outstanding_amount) > 0 ? `ค้างชำระ ${money(row.outstanding_amount)} บ.` : 'ชำระแล้ว'}</small> : null}</span> : '—'}
+          </td>
+          <td>
+            {row.charge_id ? <button type="button" className="secondary-button" disabled={busy} onClick={() => void printInvoice(row.charge_id!)}>พิมพ์บิล</button> : '—'}
+          </td>
+        </tr>;
       })}</tbody></table>{!movements.length ? <p>ยังไม่มีรายการส่งมอบหรือรับคืนถัง</p> : null}</div>
     </details>
   </section>;

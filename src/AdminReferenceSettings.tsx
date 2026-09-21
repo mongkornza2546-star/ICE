@@ -14,6 +14,9 @@ import type { IceTypePriceSetting } from './types/app';
 export interface ReferenceSettingsPreviewData {
   iceTypes: IceTypeSetting[];
   prices?: IceTypePriceSetting[];
+  users?: UserProfile[];
+  workSites?: WorkSiteOption[];
+  workSiteAssignments?: EmployeeWorkSiteAssignment[];
 }
 
 export function AdminReferenceSettings({
@@ -51,6 +54,9 @@ function AdminReferenceSettingsContent({
   useEffect(() => {
     if (previewData) {
       setIceTypes(previewData.iceTypes);
+      if (previewData.users) setUsers(previewData.users);
+      if (previewData.workSites) setWorkSites(previewData.workSites);
+      if (previewData.workSiteAssignments) setWorkSiteAssignments(previewData.workSiteAssignments);
       setAuthorized(true);
       setLoading(false);
       return undefined;

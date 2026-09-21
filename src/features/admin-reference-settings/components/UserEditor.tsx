@@ -13,6 +13,7 @@ import {
   type EmployeeWorkSiteAssignment,
   type UserDraft,
   type WorkSiteOption,
+  formatWorkSiteLabel,
   ALLOWED_USER_AVATAR_TYPES,
   MAX_USER_AVATAR_SIZE,
 } from '../types';
@@ -513,16 +514,15 @@ export function UserEditor({
             </div>
 
             {/* Work Sites Section */}
-            <fieldset
-              className="ref-section"
-              disabled={userDraft.role !== 'courier' || !userDraft.isActive}
+            <div
+              className={`ref-section ${userDraft.role !== 'courier' || !userDraft.isActive ? 'ref-section--disabled' : ''}`}
               aria-label="จุดปฏิบัติงานประจำ"
               role="group"
             >
-              <legend className="ref-section-title">
+              <div className="ref-section-title">
                 <h3>จุดปฏิบัติงานประจำ</h3>
                 <p className="ref-muted-note">เลือกได้มากกว่าหนึ่งจุด ข้อมูลนี้ใช้ระบุว่าพนักงานแต่ละคนดูแลจุดใดบ้าง</p>
-              </legend>
+              </div>
 
               <div className="ref-worksite-grid">
                 {workSites.map((workSite) => {
@@ -552,8 +552,7 @@ export function UserEditor({
                         {checked ? <Check size={14} weight="bold" /> : null}
                       </div>
                       <div className="ref-worksite-card__info">
-                        <strong>{workSite.code} · {workSite.name}</strong>
-                        <small>{workSite.name}</small>
+                        <strong>{formatWorkSiteLabel(workSite)}</strong>
                       </div>
                     </label>
                   );
@@ -562,7 +561,7 @@ export function UserEditor({
               {userDraft.role !== 'courier' ? (
                 <p className="ref-muted-note">การกำหนดจุดประจำใช้กับบทบาทพนักงานส่งเท่านั้น</p>
               ) : null}
-            </fieldset>
+            </div>
 
             {/* Employee Image Section (Optional) */}
             <div className="ref-section">

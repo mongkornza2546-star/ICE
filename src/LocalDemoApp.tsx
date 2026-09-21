@@ -14,8 +14,8 @@ import { ManagerStockControl } from './ManagerStockControl';
 import { ManagerDashboard } from './ManagerDashboard';
 import { ShopSettings } from './ShopSettings';
 import { FinancialOperations } from './FinancialOperations';
-import type { DailyWorkDashboard, DeliveryRound, EmployeeStockState, IceTypeOption, ShopCard, ShopCardHistoryEntry, StockControlSummary } from './types/app';
-import type { IceTypeSetting } from './features/admin-reference-settings/types';
+import type { DailyWorkDashboard, DeliveryRound, EmployeeStockState, IceTypeOption, ShopCard, ShopCardHistoryEntry, StockControlSummary, UserProfile } from './types/app';
+import type { IceTypeSetting, WorkSiteOption, EmployeeWorkSiteAssignment } from './features/admin-reference-settings/types';
 import type { Approval, DueDateRequest, PaymentHistoryItem, QueueShop, Receivable } from './features/financial-operations/types';
 
 const collectionServiceDate = '2026-07-31';
@@ -243,6 +243,44 @@ const referencePreviewIceTypes: IceTypeSetting[] = [
   { id: 'preview-04', code: '04', name: 'เปลือย (หลอด)', unit: 'ถุง', image_path: null, is_active: true },
   { id: 'preview-05', code: '05', name: 'น้ำแข็งก้อน', unit: 'แถว', image_path: null, is_active: true },
   { id: 'preview-06', code: '06', name: 'หลอดเล็กถุงใส', unit: 'ถุง', image_path: null, is_active: true },
+];
+
+const referencePreviewUsers: UserProfile[] = [
+  {
+    id: 'user-01',
+    code: 'EMP-01',
+    display_name: 'สมชาย สายส่ง',
+    nickname: 'ชาย',
+    phone: '081-234-5678',
+    role: 'courier',
+    is_active: true,
+    can_collect_shop_payments: true,
+    avatar_path: null,
+  },
+  {
+    id: 'user-02',
+    code: 'EMP-02',
+    display_name: 'วิชัย ใจดี',
+    nickname: 'ชัย',
+    phone: '089-876-5432',
+    role: 'admin',
+    is_active: true,
+    can_collect_shop_payments: false,
+    avatar_path: null,
+  },
+];
+
+const referencePreviewWorkSites: WorkSiteOption[] = [
+  { id: 'site-1', code: 'SITE-AA', name: 'A' },
+  { id: 'site-2', code: 'SITE-BB', name: 'B' },
+  { id: 'site-3', code: 'SITE-CC', name: 'C' },
+  { id: 'site-4', code: 'SITE-EVENT-305B76A6-ED33-46C7-BB12-007', name: 'Event ประจำเดือน' },
+  { id: 'site-5', code: 'SITE-EVENT-66B12FB6-0E47-4D1F-97C4-47B2E', name: 'ตึก B' },
+  { id: 'site-6', code: 'SITE-SW', name: 'SKY WALK' },
+];
+
+const referencePreviewAssignments: EmployeeWorkSiteAssignment[] = [
+  { user_id: 'user-01', stock_location_id: 'site-1' },
 ];
 
 function createCard(
@@ -932,7 +970,8 @@ export function LocalDemoApp() {
     );
   }
 
-  if (new URLSearchParams(window.location.search).get('screen') === 'ice-types-layout') {
+  const screenParam = new URLSearchParams(window.location.search).get('screen');
+  if (screenParam === 'ice-types-layout' || screenParam === 'users-layout') {
     return (
       <AdminLayout
         activeView="reference_settings"
@@ -941,9 +980,12 @@ export function LocalDemoApp() {
         profileLabel="bhusit.tanchavanic..."
       >
         <AdminReferenceSettings
-          initialTab="ice_types"
+          initialTab={screenParam === 'ice-types-layout' ? 'ice_types' : 'users'}
           previewData={{
             iceTypes: referencePreviewIceTypes,
+            users: referencePreviewUsers,
+            workSites: referencePreviewWorkSites,
+            workSiteAssignments: referencePreviewAssignments,
             prices: [{
               id: 'preview-price', ice_type_id: 'preview-01', unit_price: 60, valid_from: '2026-07-24', valid_to: null, is_active: true,
             }],

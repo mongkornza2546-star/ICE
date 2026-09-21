@@ -6,6 +6,7 @@ import type {
   StockLocationKind,
   StockLocationSetting,
 } from './types/app';
+import { isEventCode } from './features/admin-reference-settings/types';
 
 const LOCATION_KINDS: Array<{ value: StockLocationKind; label: string }> = [
   { value: 'truck', label: 'รถบรรทุก' },
@@ -167,7 +168,7 @@ export function StockLocationSettings() {
               onClick={() => chooseLocation(location)}
               type="button"
             >
-              <span>{location.code} · {location.name}</span>
+              <span>{isEventCode(location.code) ? location.name : `${location.code} · ${location.name}`}</span>
               <small>{KIND_LABELS[location.kind]} · {location.is_active ? 'ใช้งาน' : 'พักใช้งาน'}</small>
             </button>
           ))}

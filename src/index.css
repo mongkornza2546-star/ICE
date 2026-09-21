@@ -2787,13 +2787,19 @@ input:disabled, select:disabled, textarea:disabled { background: #f2f5f8; color:
 
 /* ==========================================================================
    Redesigned "ผู้ใช้และชนิดน้ำแข็ง" Layout Styles
-   ========================================================================== */
+.reference-settings-page {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: hidden;
+}
 .ref-page-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
   margin-bottom: 25px;
+  flex-wrap: wrap;
 }
 .ref-page-header__titles h1 {
   font-size: 1.55rem;
@@ -2876,6 +2882,7 @@ input:disabled, select:disabled, textarea:disabled { background: #f2f5f8; color:
   border-radius: 14px;
   background: #fff;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.02);
+  min-width: 0;
 }
 .ref-stat-card__icon {
   width: 48px;
@@ -3397,12 +3404,29 @@ input:disabled, select:disabled, textarea:disabled { background: #f2f5f8; color:
 }
 
 /* Worksite Card Selector */
+.ref-section--disabled {
+  opacity: 0.6;
+  pointer-events: none;
+}
+fieldset.ref-section {
+  border: none;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
 .ref-worksite-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
+  gap: 10px;
+  width: 100%;
+  min-width: 0;
 }
-@media (max-width: 768px) {
+@media (max-width: 900px) {
+  .ref-worksite-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 600px) {
   .ref-worksite-grid {
     grid-template-columns: 1fr;
   }
@@ -3411,12 +3435,17 @@ input:disabled, select:disabled, textarea:disabled { background: #f2f5f8; color:
   border: 1px solid #e2e8f0;
   border-radius: 12px;
   padding: 12px 14px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  gap: 12px;
   cursor: pointer;
   transition: all 0.15s ease;
   background: #fff;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+  text-align: left !important;
 }
 .ref-worksite-card:hover:not(.ref-worksite-card--disabled) {
   border-color: #93c5fd;
@@ -3435,10 +3464,10 @@ input:disabled, select:disabled, textarea:disabled { background: #f2f5f8; color:
   display: none;
 }
 .ref-worksite-card__box {
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
   border: 1.5px solid #cbd5e1;
-  border-radius: 4px;
+  border-radius: 5px;
   display: grid;
   place-items: center;
   color: #fff;
@@ -3453,18 +3482,24 @@ input:disabled, select:disabled, textarea:disabled { background: #f2f5f8; color:
   flex-direction: column;
   gap: 2px;
   min-width: 0;
+  flex: 1;
 }
 .ref-worksite-card__info strong {
-  font-size: 0.84rem;
+  font-size: 0.86rem;
   font-weight: 600;
   color: #1e293b;
+  display: block;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .ref-worksite-card__info small {
-  font-size: 0.75rem;
+  font-size: 0.76rem;
   color: #64748b;
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Drag & Drop Upload Zone */
@@ -3541,6 +3576,19 @@ input:disabled, select:disabled, textarea:disabled { background: #f2f5f8; color:
 }
 .ref-image-preview-card--inline .ref-upload-btn {
   flex: 0 1 172px;
+}
+@media (max-width: 480px) {
+  .ref-image-preview-card--inline {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto auto;
+  }
+  .ref-image-preview-card--inline .ref-image-preview-box {
+    height: 120px;
+    grid-row: auto;
+  }
+  .ref-image-preview-card--inline .ref-upload-btn {
+    flex: 1 1 auto;
+  }
 }
 .ref-image-preview-box {
   width: 100%;
@@ -3779,7 +3827,84 @@ input:disabled, select:disabled, textarea:disabled { background: #f2f5f8; color:
 }
 
 @media (max-width: 700px) {
-  .admin-shell--reference-settings .admin-content { padding: 14px 12px 24px; }
+  .admin-shell--reference-settings {
+    width: 100%;
+    display: block;
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .admin-shell--reference-settings .admin-content {
+    padding: 14px 12px 24px;
+    width: 100%;
+    max-width: 100vw;
+    box-sizing: border-box;
+    overflow-x: hidden;
+  }
+  .ref-page-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+  .ref-page-header__actions {
+    width: 100%;
+  }
+  .ref-page-header__actions .ref-create-btn {
+    width: 100%;
+    justify-content: center;
+  }
+  .ref-stats-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+    margin-bottom: 14px;
+  }
+  .ref-stat-card {
+    flex-direction: column;
+    align-items: flex-start;
+    padding: 10px 8px;
+    gap: 6px;
+    border-radius: 12px;
+    min-width: 0;
+  }
+  .ref-stat-card__icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+  }
+  .ref-stat-card__icon svg {
+    width: 18px;
+    height: 18px;
+  }
+  .ref-stat-card__content {
+    gap: 1px;
+    min-width: 0;
+    width: 100%;
+  }
+  .ref-stat-card__content p {
+    font-size: 0.72rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .ref-stat-card__val {
+    gap: 4px;
+    flex-wrap: wrap;
+  }
+  .ref-stat-card__val strong {
+    font-size: 1.22rem;
+    line-height: 1.1;
+  }
+  .ref-stat-card__val span {
+    font-size: 0.72rem;
+  }
+  .ref-left-panel,
+  .ref-right-panel {
+    padding: 14px 12px;
+    border-radius: 14px;
+  }
+  .ref-actions-bar {
+    margin: -15px -12px -14px;
+    padding: 12px 14px;
+  }
   .admin-shell--shops .admin-content { padding: 14px 12px 24px; }
   .shop-settings-page { gap: 14px; }
   .shop-page-heading { align-items: stretch; flex-direction: column; padding: 0 4px; }

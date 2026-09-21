@@ -92,6 +92,9 @@ export interface EventTankMovement {
   rental_start_date: string | null;
   rental_unit_price: number | null;
   note: string;
+  charge_id?: string | null;
+  charge_number?: string | null;
+  outstanding_amount?: number | null;
 }
 
 export interface EventTankMovementInput {
