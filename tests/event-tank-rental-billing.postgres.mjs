@@ -64,14 +64,14 @@ try {
   `);
 
   const directory = new URL('../supabase/migrations/', import.meta.url);
-  for (const name of readdirSync(directory).filter(name => /^\d{4}_.+\.sql$/.test(name) && name <= '0189_event_tank_rental_billing.sql').sort()) {
+  for (const name of readdirSync(directory).filter(name => /^\d{4}_.+\.sql$/.test(name) && name <= '0191_allow_event_carry_forward_collections.sql').sort()) {
     try {
       psql(`begin; ${readFileSync(new URL(name, directory), 'utf8')} commit;`);
     } catch (error) {
       throw new Error(`${name}: ${error.message}`);
     }
   }
-  console.log('All migrations through 0189 applied successfully');
+  console.log('All migrations through 0191 applied successfully');
 
   // Seed base entities
   psql(`
@@ -129,14 +129,14 @@ try {
     ) values (
       '41000000-0000-4000-8000-000000000001',
       '40000000-0000-4000-8000-000000000001', 25,
-      (clock_timestamp() at time zone 'Asia/Bangkok')::date,
+      (clock_timestamp() at time zone 'Asia/Bangkok')::date - 10,
       '10000000-0000-4000-8000-000000000001'
     );
   `);
 
   // Create published event job with participations
   const saved = JSON.parse(run(`
-    select public.save_event_job(null, 'Expo 2026', 'Organizer', 'Manager', '0812345678', 'Impact Arena', ${today}, ${today} + 3, 'Test event', 100, array['cash']::public.payment_method[], 'cash', false, false, false, false, false, false);
+    select public.save_event_job(null, 'Expo 2026', 'Organizer', 'Manager', '0812345678', 'Impact Arena', ${today} - 2, ${today} + 3, 'Test event', 100, array['cash']::public.payment_method[], 'cash', false, false, false, false, false, false);
   `));
   const jobId = saved.event_job.id;
 
@@ -145,14 +145,14 @@ try {
     select to_jsonb(public.save_event_participation(
       null, '${jobId}'::uuid, '30000000-0000-4000-8000-000000000001'::uuid,
       'A01', 'Food Zone', 'Near Entrance', 'Seller A', '0811111111',
-      ${today}, ${today} + 3, true
+      ${today} - 2, ${today} + 3, true
     ));
   `));
   const part2 = JSON.parse(run(`
     select to_jsonb(public.save_event_participation(
       null, '${jobId}'::uuid, '30000000-0000-4000-8000-000000000002'::uuid,
       'A02', 'Food Zone', 'Near Entrance', 'Seller B', '0822222222',
-      ${today}, ${today} + 3, true
+      ${today} - 2, ${today} + 3, true
     ));
   `));
   const part1Id = part1.id;
@@ -301,6 +301,47 @@ try {
   assert.ok(handoffMovement.charge_id);
   assert.ok(handoffMovement.charge_number);
   assert.equal(Number(handoffMovement.outstanding_amount), 0, 'Fully paid');
+
+  // 8. Test carry-forward event collections from yesterday (Migration 0191)
+  const yesterdayHandoffReq = randomUUID();
+  const yesterdayHandoff = JSON.parse(run(`
+    select to_jsonb(public.record_event_tank_movement(
+      '${part2Id}', 'handoff', 2, ${today} - 1, 'Yesterday tanks', '${yesterdayHandoffReq}'
+    ));
+  `));
+  const yesterdayCharge = JSON.parse(run(`
+    select to_jsonb(c) from public.delivery_charges c where event_tank_rental_id = '${yesterdayHandoff.id}';
+  `));
+  assert.equal(Number(yesterdayCharge.original_amount), 200);
+
+  // Check that in today's collection run (runId on today), the yesterday event charge appears in the queue!
+  const todayQueue = JSON.parse(run(`select public.get_collection_run_queue('${runId}');`));
+  assert.equal(todayQueue.length, 1, 'Yesterday event charge carried forward into today collection queue');
+  assert.equal(todayQueue[0].event_booth, 'A02');
+  assert.equal(Number(todayQueue[0].outstanding_amount), 200);
+
+  // Pay the yesterday event charge in today's collection run!
+  const yesterdayPaymentResult = JSON.parse(run(`
+    select public.record_event_payment(
+      '${todayQueue[0].event_settlement_context_id}',
+      '${part2Id}',
+      ${today} - 1,
+      '${todayQueue[0].settlement_policy_fingerprint}',
+      '${JSON.stringify([{ charge_id: yesterdayCharge.id, amount: 200 }])}',
+      'cash',
+      200,
+      null,
+      null,
+      '${runId}',
+      200,
+      '${randomUUID()}'
+    );
+  `));
+  assert.ok(yesterdayPaymentResult.payment_id, 'Yesterday charge paid successfully in today collection run');
+
+  // Verify queue is now empty again
+  const emptyQueue = JSON.parse(run(`select public.get_collection_run_queue('${runId}');`));
+  assert.equal(emptyQueue.length, 0, 'Queue is cleared after paying carry-forward charge');
 
   console.log('All event tank rental billing postgres tests PASSED!');
 } finally {

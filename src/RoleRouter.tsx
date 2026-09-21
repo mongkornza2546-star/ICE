@@ -57,6 +57,7 @@ export function RoleRouter({
   const [courierView, setCourierView] = useState<'withdrawal' | 'pos' | 'collection'>('pos');
   const [courierCollectionFocus, setCourierCollectionFocus] = useState<CollectionFocusRequest | null>(null);
   const [courierCollectionVisited, setCourierCollectionVisited] = useState(false);
+  const [adminCollectionFocus, setAdminCollectionFocus] = useState<CollectionFocusRequest | null>(null);
   const [billingServiceDate, setBillingServiceDate] = useState(() => toBangkokDateString());
   const [currentBangkokDate, setCurrentBangkokDate] = useState(() => toBangkokDateString());
   const [deliveryDraftState, setDeliveryDraftState] = useState({ dirty: false, submitting: false });
@@ -360,6 +361,9 @@ export function RoleRouter({
 
   const navigate = (view: AdminView) => {
     if (view !== currentView && currentView === 'delivery' && !confirmLeavingDelivery()) return;
+    if (view !== 'financial_operations') {
+      setAdminCollectionFocus(null);
+    }
     if (view === 'delivery' && currentView !== 'delivery') {
       setBillingServiceDate(currentBangkokDate);
     }
@@ -441,9 +445,16 @@ export function RoleRouter({
       {visitedViews.has('delivery') && (
         <KeepAlive active={currentView === 'delivery'}>
           <EmployeeDeliveryWorkspace
+            canCollectShopPayments={profile.can_collect_shop_payments ?? true}
             casualCustomerEnabled
             isActive={currentView === 'delivery'}
             onDraftStateChange={setDeliveryDraftState}
+            onOpenCollection={(request) => {
+              setAdminCollectionFocus(request);
+              setVisitedViews((views) => new Set([...views, 'financial_operations']));
+              setFinancialPage('collection');
+              setActiveView('financial_operations');
+            }}
             requestScope={profile.id}
             serviceDate={profile.role === 'admin' ? billingServiceDate : undefined}
             stockSourceLabel="สต๊อกรวมประจำวัน"
@@ -453,10 +464,17 @@ export function RoleRouter({
       {visitedViews.has('financial_operations') && (
         <KeepAlive active={currentView === 'financial_operations'}>
           <FinancialOperations
+            canCollectShopPayments={profile.can_collect_shop_payments ?? true}
             currentUserId={profile.id}
+            focusRequest={adminCollectionFocus}
             isActive={currentView === 'financial_operations'}
             managerPage={financialPage}
+            onFocusedCollectionClose={() => {
+              setAdminCollectionFocus(null);
+              setActiveView('delivery');
+            }}
             onManagerPageChange={setFinancialPage}
+            serviceDate={profile.role === 'admin' ? billingServiceDate : undefined}
             userRole={profile.role}
           />
         </KeepAlive>

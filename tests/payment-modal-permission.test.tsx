@@ -66,7 +66,7 @@ describe('PaymentModal collection capability', () => {
       serviceDate="2026-08-27"
     />);
 
-    expect(screen.getByRole('dialog', { name: 'รับเงิน ร้านทดสอบ' })).not.toBeNull();
+    expect(screen.getByRole('dialog', { name: /รับเงิน.*ร้านทดสอบ/ })).not.toBeNull();
     expect(screen.getByText('ดูข้อมูลได้ แต่ยังไม่ได้รับสิทธิ์บันทึกรับเงิน')).not.toBeNull();
     expect(screen.getByRole('spinbutton', { name: 'ยอดรับเงินจริง' }).hasAttribute('disabled')).toBe(true);
     expect(screen.getByRole('button', { name: 'เงินสด' }).hasAttribute('disabled')).toBe(true);

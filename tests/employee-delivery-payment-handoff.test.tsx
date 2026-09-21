@@ -162,11 +162,11 @@ describe('employee delivery to collection handoff', () => {
       userRole="courier"
     />);
 
-    expect(await screen.findByRole('dialog', { name: 'รับเงิน ร้านทดสอบ' })).not.toBeNull();
+    expect(await screen.findByRole('dialog', { name: /รับเงิน.*ร้านทดสอบ/ })).not.toBeNull();
     await user.click(screen.getByRole('button', { name: 'ยกเลิก' }));
 
     expect(onFocusedCollectionClose).toHaveBeenCalledWith(false);
-    expect(screen.queryByRole('dialog', { name: 'รับเงิน ร้านทดสอบ' })).toBeNull();
+    expect(screen.queryByRole('dialog', { name: /รับเงิน.*ร้านทดสอบ/ })).toBeNull();
     expect(queueShop.charges[0].outstanding_amount).toBe(30);
   });
 
@@ -233,7 +233,7 @@ describe('employee delivery to collection handoff', () => {
         userRole="courier"
       />);
 
-      expect(await screen.findByRole('dialog', { name: 'รับเงิน ร้านทดสอบ' })).not.toBeNull();
+      expect(await screen.findByRole('dialog', { name: /รับเงิน.*ร้านทดสอบ/ })).not.toBeNull();
       fireEvent.keyDown(window, { key: 'Escape' });
 
       expect(onFocusedCollectionClose).toHaveBeenCalledWith(false);
@@ -287,7 +287,7 @@ describe('employee delivery to collection handoff', () => {
       userRole="courier"
     />);
 
-    expect(await screen.findByRole('dialog', { name: 'รับเงิน ร้านทดสอบ' })).not.toBeNull();
+    expect(await screen.findByRole('dialog', { name: /รับเงิน.*ร้านทดสอบ/ })).not.toBeNull();
   });
 
   it('keeps separate deferred immediate deliveries in receipt history', async () => {
@@ -356,5 +356,74 @@ describe('employee delivery to collection handoff', () => {
     const paidCharges = await screen.findByRole('region', { name: 'บิลที่ชำระ' });
     expect(within(paidCharges).getAllByText('ขายสด')).toHaveLength(2);
     expect(rpcMock).toHaveBeenCalledWith('get_payment_receipt_snapshot', { p_payment_id: 'payment-1' });
+  });
+
+  it('includes prior unpaid bills and latest delivery bill in total due when collecting immediate payment', async () => {
+    const queueShop: QueueShop = {
+      queue_key: 'regular:shop-1',
+      destination_kind: 'regular',
+      shop_id: 'shop-1',
+      shop_code: 'BB1',
+      shop_name: 'ร้านข้าวแกง CK',
+      image_path: null,
+      outstanding_amount: 100, // 50 old bill + 50 latest bill
+      charge_count: 2,
+      has_new_charges: true,
+      payment_profile: {
+        allowed_payment_methods: ['cash'],
+        default_payment_method: 'cash',
+        cash_reference_required: false,
+        cash_evidence_required: false,
+        bank_transfer_reference_required: false,
+        bank_transfer_evidence_required: false,
+        qr_reference_required: false,
+        qr_evidence_required: false,
+      },
+      charges: [
+        {
+          charge_id: 'old-charge-1',
+          charge_number: 'INV-OLD',
+          service_date: '2026-08-18',
+          original_amount: 50,
+          outstanding_amount: 50,
+          items: [],
+        },
+        {
+          charge_id: 'latest-charge-2',
+          charge_number: 'INV-NEW',
+          service_date: '2026-08-19',
+          original_amount: 50,
+          outstanding_amount: 50,
+          items: [],
+        },
+      ],
+    };
+
+    render(<FinancialOperations
+      demoData={{
+        serviceDate: '2026-08-19',
+        queue: [queueShop],
+        paymentHistory: [],
+        runId: 'run-1',
+      }}
+      focusRequest={{ queueKey: 'regular:shop-1', chargeId: 'latest-charge-2' }}
+      userRole="admin"
+    />);
+
+    expect(await screen.findByRole('dialog', { name: /รับเงิน.*ร้านข้าวแกง CK/ })).not.toBeNull();
+    // Total amount due includes all bills (50 + 50 = 100)
+    const amountDueSection = screen.getByRole('region', { name: 'ยอดที่ต้องชำระ' });
+    expect(amountDueSection.textContent).toContain('100.00');
+
+    // Breakdown shows prior bills and latest delivery bill
+    const breakdownSection = screen.getByRole('region', { name: 'สรุปยอดหลังส่งรอบล่าสุด' });
+    expect(breakdownSection.textContent).toContain('ยอดค้างก่อนหน้า');
+    expect(breakdownSection.textContent).toContain('50.00');
+    expect(breakdownSection.textContent).toContain('ยอดส่งรอบล่าสุด');
+    expect(breakdownSection.textContent).toContain('ยอดรับชำระทั้งหมด');
+
+    // Input default payment amount is pre-filled with the total 100.00
+    const paymentInput = screen.getByRole('spinbutton', { name: 'ยอดรับเงินจริง' }) as HTMLInputElement;
+    expect(paymentInput.value).toBe('100.00');
   });
 });

@@ -996,8 +996,11 @@ export function useEmployeeDeliveryData({
           await handleRecorded(true, result);
           if (requestId !== submissionRequestId.current) return;
           setSubmitting(false);
+          const queueKey = selectedCard.destination_kind === 'event'
+            ? `event:${selectedCard.event_job_id ?? selectedCard.event_participation_id ?? selectedCard.shop_id}`
+            : `regular:${selectedCard.shop_id}`;
           onOpenCollection({
-            queueKey: `regular:${selectedCard.shop_id}`,
+            queueKey,
             chargeId: result.charge_id,
           });
           return;

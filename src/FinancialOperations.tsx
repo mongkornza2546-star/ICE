@@ -95,6 +95,7 @@ export function FinancialOperations({
   onManagerPageChange,
   focusRequest,
   onFocusedCollectionClose,
+  serviceDate: propServiceDate,
 }: {
   userRole?: AppRole;
   canCollectShopPayments?: boolean;
@@ -105,8 +106,9 @@ export function FinancialOperations({
   onManagerPageChange?: (page: 'collection' | 'transactions' | 'credit') => void;
   focusRequest?: CollectionFocusRequest | null;
   onFocusedCollectionClose?: (paymentRecorded: boolean) => void;
+  serviceDate?: string;
 }) {
-  const serviceDate = demoData?.serviceDate ?? toBangkokDateString();
+  const serviceDate = demoData?.serviceDate ?? propServiceDate ?? toBangkokDateString();
   const isManager = userRole === 'admin' || userRole === 'round_lead';
   const initialDemoRunId = demoData
     ? demoData.runId === undefined ? 'demo-collection-run' : demoData.runId
@@ -231,8 +233,9 @@ export function FinancialOperations({
       }
       const nextQueue = await withPublicShopImages((queueResponse.data ?? []) as QueueShop[]);
       const currentShop = selectedShopRef.current;
-      const preferredShop = preferredQueueKey
-        ? nextQueue.find((shop) => queueIdentity(shop) === preferredQueueKey) ?? null
+      const preferredShop = preferredQueueKey || preferredChargeId
+        ? nextQueue.find((shop) => (preferredChargeId && shop.charges.some((charge) => charge.charge_id === preferredChargeId))
+            || (preferredQueueKey && queueIdentity(shop) === preferredQueueKey)) ?? null
         : null;
       if (preferredQueueKey && !preferredShop) throw new Error('ไม่พบร้านนี้ในคิวรับเงินล่าสุด');
       if (preferredChargeId && preferredShop
@@ -290,7 +293,10 @@ export function FinancialOperations({
   const closePayment = useCallback(() => {
     const currentShop = selectedShopRef.current;
     const closingFocusedCollection = Boolean(
-      focusRequest && currentShop && focusRequest.queueKey === queueIdentity(currentShop),
+      focusRequest && currentShop && (
+        focusRequest.queueKey === queueIdentity(currentShop)
+        || currentShop.charges.some((charge) => charge.charge_id === focusRequest.chargeId)
+      ),
     );
     const paymentRecorded = Boolean(receiptRef.current);
     if (receiptRef.current) {
@@ -894,7 +900,7 @@ export function FinancialOperations({
           evidence={evidence}
           evidenceError={evidenceError}
           evidenceRequired={evidenceRequired}
-          focusedChargeId={focusRequest?.queueKey === queueIdentity(selectedShop) ? focusRequest.chargeId : null}
+          focusedChargeId={focusRequest && (focusRequest.queueKey === queueIdentity(selectedShop) || selectedShop.charges.some((charge) => charge.charge_id === focusRequest.chargeId)) ? focusRequest.chargeId : null}
           method={method}
           onAmountChange={setAmount}
           onClose={closePayment}
@@ -950,7 +956,7 @@ export function FinancialOperations({
           evidence={evidence}
           evidenceError={evidenceError}
           evidenceRequired={evidenceRequired}
-          focusedChargeId={focusRequest?.queueKey === queueIdentity(selectedShop) ? focusRequest.chargeId : null}
+          focusedChargeId={focusRequest && (focusRequest.queueKey === queueIdentity(selectedShop) || selectedShop.charges.some((charge) => charge.charge_id === focusRequest.chargeId)) ? focusRequest.chargeId : null}
           method={method}
           onAmountChange={setAmount}
           onClose={closePayment}
