@@ -1,7 +1,7 @@
 import type { RefObject } from 'react';
 import { Coins, ListNumbers, Printer, X } from '@phosphor-icons/react';
 import type { HistoryReceiptDetail, PaymentCorrectionTarget } from '../types';
-import { money, paymentMethodLabel, receiptDateTime } from '../utils';
+import { formatCollectionShopIdentity, money, paymentMethodLabel, receiptDateTime } from '../utils';
 
 export function HistoryReceiptModal({
   historyReceipt,
@@ -22,6 +22,13 @@ export function HistoryReceiptModal({
   onVoid?: () => void;
   onCorrect?: (target: PaymentCorrectionTarget) => void;
 }) {
+  const shopIdentity = formatCollectionShopIdentity({
+    destination_kind: historyReceipt.payment.destination_kind,
+    shop_code: historyReceipt.payment.shops?.code,
+    shop_name: historyReceipt.payment.shops?.name,
+    event_booth: historyReceipt.payment.event_booth,
+  });
+
   return (
     <div
       aria-label={`รายละเอียดใบเสร็จ ${historyReceipt.payment.receipt_number}`}
@@ -37,7 +44,7 @@ export function HistoryReceiptModal({
           <span>
             <small>ใบเสร็จรับเงิน</small>
             <h2>{historyReceipt.payment.receipt_number}</h2>
-            <b>{historyReceipt.payment.shops?.code ?? '—'} · {historyReceipt.payment.shops?.name ?? 'ไม่พบร้าน'}</b>
+            <b>{shopIdentity.title}</b>
           </span>
           <button
             aria-label="ปิดรายละเอียดใบเสร็จ"

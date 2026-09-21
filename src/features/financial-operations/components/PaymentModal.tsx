@@ -14,7 +14,7 @@ import {
 } from '@phosphor-icons/react';
 import type { PaymentMethod } from '../../../types/app';
 import type { PaymentReceipt, QueueShop } from '../types';
-import { formatServiceDate, money, paymentMethodLabel } from '../utils';
+import { formatCollectionShopIdentity, formatServiceDate, money, paymentMethodLabel } from '../utils';
 
 export function PaymentModal({
   presentation = 'modal',
@@ -83,9 +83,10 @@ export function PaymentModal({
   const priorOutstandingAmount = focusedCharge
     ? Math.max(Number(selectedShop.outstanding_amount) - Number(focusedCharge.outstanding_amount), 0)
     : 0;
+  const identity = formatCollectionShopIdentity(selectedShop);
   return (
     <div
-      aria-label={`รับเงิน ${selectedShop.shop_name}`}
+      aria-label={`รับเงิน ${identity.title}`}
       aria-modal={isPanel ? undefined : 'true'}
       className={isPanel ? 'financial-ops__inline-panel' : 'financial-ops__modal'}
       ref={dialogRef}
@@ -98,22 +99,20 @@ export function PaymentModal({
         <header>
           <span className="financial-ops__payment-image">
             {selectedShop.image_url ? (
-              <img alt={`ร้าน ${selectedShop.shop_name}`} src={selectedShop.image_url} />
+              <img alt={`ร้าน ${identity.title}`} src={selectedShop.image_url} />
             ) : (
               <Storefront aria-hidden="true" size={40} weight="duotone" />
             )}
           </span>
           <span>
-            <small>{selectedShop.destination_kind === 'event'
-              ? (selectedShop.event_booth ? `บูธ ${selectedShop.event_booth}` : '')
-              : selectedShop.shop_code}</small>
-            <h2>{isPanel
-              ? (selectedShop.destination_kind === 'event'
-                ? `${selectedShop.event_booth ? `บูธ ${selectedShop.event_booth} · ` : ''}${selectedShop.shop_name}`
-                : `${selectedShop.shop_code} · ${selectedShop.shop_name}`)
-              : 'บันทึกรับชำระเงิน'}</h2>
-            <b>{selectedShop.shop_name}</b>
-            {selectedShop.destination_kind === 'event' ? <small>{[
+            <small>{identity.isEventOnly ? identity.boothText : selectedShop.shop_code}</small>
+            <h2>{isPanel ? identity.title : 'บันทึกรับชำระเงิน'}</h2>
+            {isPanel ? (
+              identity.shopName ? <b>{identity.shopName}</b> : null
+            ) : (
+              <b>{identity.isEventOnly ? (identity.shopName || identity.boothText) : selectedShop.shop_name}</b>
+            )}
+            {!identity.isEventOnly && selectedShop.destination_kind === 'event' ? <small>{[
               selectedShop.event_name,
               selectedShop.event_location,
               selectedShop.event_zone,

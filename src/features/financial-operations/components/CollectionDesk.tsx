@@ -12,7 +12,7 @@ import {
 } from '@phosphor-icons/react';
 import { shiftServiceDate } from '../../../lib/serviceDate';
 import type { PaymentHistoryItem, QueueShop } from '../types';
-import { money, paymentMethodLabel, receiptDateTime } from '../utils';
+import { formatCollectionShopIdentity, money, paymentMethodLabel, receiptDateTime } from '../utils';
 
 type QueueFilter = 'outstanding' | 'collected' | 'all';
 
@@ -23,6 +23,8 @@ type CollectionRow = {
   kind: 'shop' | 'payment';
   shopCode: string;
   shopName: string;
+  displayTitle: string;
+  avatarText: string;
   transactionType: string;
   amount: number;
   document: string;
@@ -32,10 +34,6 @@ type CollectionRow = {
   shop?: QueueShop;
   payment?: PaymentHistoryItem;
 };
-
-function initials(code: string) {
-  return code.replace(/[^A-Za-zก-๙]/g, '').slice(0, 2).toUpperCase() || 'ร';
-}
 
 function dueLabel(shop: QueueShop, serviceDate: string) {
   const accountableDate = (charge: QueueShop['charges'][number]) => (
@@ -57,8 +55,11 @@ function outstandingType(shop: QueueShop) {
 
 const serviceDateTime = new Intl.DateTimeFormat('th-TH', { day: 'numeric', month: 'numeric', year: '2-digit' });
 
-function eventContextLabel(item: Pick<QueueShop, 'destination_kind' | 'event_name' | 'event_location' | 'event_zone' | 'event_booth'>) {
-  if (item.destination_kind !== 'event') return null;
+function eventContextLabel(
+  item: Pick<QueueShop, 'destination_kind' | 'event_name' | 'event_location' | 'event_zone' | 'event_booth'>,
+  isEventOnly = false,
+) {
+  if (item.destination_kind !== 'event' || isEventOnly) return null;
   return [item.event_name, item.event_location, item.event_zone,
     item.event_booth && `บูธ ${item.event_booth}`].filter(Boolean).join(' · ');
 }
@@ -133,16 +134,24 @@ export function CollectionDesk({
         .toLocaleLowerCase().includes(normalizedQuery))
       .map((shop) => {
         const latest = [...shop.charges].sort((left, right) => right.service_date.localeCompare(left.service_date))[0];
+        const identity = formatCollectionShopIdentity({
+          destination_kind: shop.destination_kind,
+          shop_code: shop.shop_code,
+          shop_name: shop.shop_name,
+          event_booth: shop.event_booth,
+        });
         return {
           id: shop.queue_key ?? `regular:${shop.shop_id}`,
           kind: 'shop',
           shopCode: shop.shop_code,
           shopName: shop.shop_name,
+          displayTitle: identity.title,
+          avatarText: identity.avatarText,
           transactionType: outstandingType(shop),
           amount: Number(shop.outstanding_amount),
           document: latest?.charge_number ?? '—',
           latestDate: latest?.service_date ? serviceDateTime.format(new Date(`${latest.service_date}T12:00:00+07:00`)) : '—',
-          contextLabel: eventContextLabel(shop),
+          contextLabel: eventContextLabel(shop, identity.isEventOnly),
           status: dueLabel(shop, serviceDate),
           shop,
         };
@@ -150,21 +159,31 @@ export function CollectionDesk({
     const paymentRows: CollectionRow[] = paymentHistory
       .filter((payment) => `${payment.shops?.code ?? ''} ${payment.shops?.name ?? ''} ${payment.event_name ?? ''} ${payment.event_location ?? ''} ${payment.event_zone ?? ''} ${payment.event_booth ?? ''} ${payment.receipt_number}`
         .toLocaleLowerCase().includes(normalizedQuery))
-      .map((payment) => ({
-        id: payment.id,
-        kind: 'payment',
-        shopCode: payment.shops?.code ?? '—',
-        shopName: payment.shops?.name ?? 'ไม่พบร้าน',
-        transactionType: `รับ${paymentMethodLabel(payment.payment_method)}`,
-        amount: Number(payment.allocated_amount),
-        document: payment.receipt_number,
-        latestDate: receiptDateTime.format(new Date(payment.recorded_at)),
-        contextLabel: eventContextLabel(payment),
-        status: payment.status === 'active'
-          ? { label: 'รับเงินแล้ว', tone: 'success' as const }
-          : { label: 'ยกเลิกแล้ว', tone: 'voided' as const },
-        payment,
-      }));
+      .map((payment) => {
+        const identity = formatCollectionShopIdentity({
+          destination_kind: payment.destination_kind,
+          shop_code: payment.shops?.code,
+          shop_name: payment.shops?.name,
+          event_booth: payment.event_booth,
+        });
+        return {
+          id: payment.id,
+          kind: 'payment',
+          shopCode: payment.shops?.code ?? '—',
+          shopName: payment.shops?.name ?? 'ไม่พบร้าน',
+          displayTitle: identity.title,
+          avatarText: identity.avatarText,
+          transactionType: `รับ${paymentMethodLabel(payment.payment_method)}`,
+          amount: Number(payment.allocated_amount),
+          document: payment.receipt_number,
+          latestDate: receiptDateTime.format(new Date(payment.recorded_at)),
+          contextLabel: eventContextLabel(payment, identity.isEventOnly),
+          status: payment.status === 'active'
+            ? { label: 'รับเงินแล้ว', tone: 'success' as const }
+            : { label: 'ยกเลิกแล้ว', tone: 'voided' as const },
+          payment,
+        };
+      });
     const rows = filter === 'outstanding' ? shopRows
       : filter === 'collected' ? paymentRows
         : [...shopRows, ...paymentRows];
@@ -257,7 +276,7 @@ export function CollectionDesk({
                 return (
                   <div className={isSelected ? 'collection-desk__row is-selected' : 'collection-desk__row'} key={`${row.kind}-${row.id}`}>
                     <button
-                      aria-label={`เลือกรายการ ${row.shopCode} · ${row.shopName}`}
+                      aria-label={`เลือกรายการ ${row.displayTitle}`}
                       className="collection-desk__row-action"
                       onClick={(event) => {
                         if (row.shop) {
@@ -271,7 +290,7 @@ export function CollectionDesk({
                       }}
                       type="button"
                     >
-                      <span className="collection-desk__identity"><span aria-hidden="true" className={`collection-desk__avatar collection-desk__avatar--${index % 5}`}>{initials(row.shopCode)}</span><span><strong>{row.shopCode} · {row.shopName}</strong>{row.contextLabel ? <small>{row.contextLabel}</small> : null}<small>{row.kind === 'shop' ? `${row.shop?.charge_count ?? 0} รายการค้าง` : paymentMethodLabel(row.payment!.payment_method)}</small></span></span>
+                      <span className="collection-desk__identity"><span aria-hidden="true" className={`collection-desk__avatar collection-desk__avatar--${index % 5}`}>{row.avatarText}</span><span><strong>{row.displayTitle}</strong>{row.contextLabel ? <small>{row.contextLabel}</small> : null}<small>{row.kind === 'shop' ? `${row.shop?.charge_count ?? 0} รายการค้าง` : paymentMethodLabel(row.payment!.payment_method)}</small></span></span>
                       <span className="collection-desk__type">{row.transactionType}</span>
                       <b>{money.format(row.amount)}</b>
                       <span className="collection-desk__document"><strong>{row.document}</strong></span>
@@ -280,9 +299,9 @@ export function CollectionDesk({
                       <CaretRight aria-hidden="true" size={18} />
                     </button>
                     {row.shop?.image_url ? <button
-                      aria-label={`ดูรูปร้าน ${row.shopName} ขนาดใหญ่`}
+                      aria-label={`ดูรูปร้าน ${row.displayTitle} ขนาดใหญ่`}
                       className="collection-desk__shop-image-button"
-                      onClick={() => setPreviewImage({ name: `${row.shopCode} · ${row.shopName}`, url: row.shop!.image_url! })}
+                      onClick={() => setPreviewImage({ name: row.displayTitle, url: row.shop!.image_url! })}
                       type="button"
                     ><img alt="" src={row.shop.image_url} /></button> : null}
                   </div>
@@ -298,7 +317,23 @@ export function CollectionDesk({
           <div className="collection-desk__detail-title">รายละเอียดการรับเงิน</div>
           {selectedPayment ? <section className="collection-desk__payment-detail" aria-label={`รายละเอียด ${selectedPayment.receipt_number}`}>
             <header>
-              <span><small>{selectedPayment.shops?.code ?? '—'}</small><h2>{selectedPayment.shops?.name ?? 'ไม่พบร้าน'}</h2>{eventContextLabel(selectedPayment) ? <small>{eventContextLabel(selectedPayment)}</small> : null}</span>
+              <span>
+                {(() => {
+                  const paymentIdentity = formatCollectionShopIdentity({
+                    destination_kind: selectedPayment.destination_kind,
+                    shop_code: selectedPayment.shops?.code,
+                    shop_name: selectedPayment.shops?.name,
+                    event_booth: selectedPayment.event_booth,
+                  });
+                  return (
+                    <>
+                      {!paymentIdentity.isEventOnly ? <small>{selectedPayment.shops?.code ?? '—'}</small> : null}
+                      <h2>{paymentIdentity.title}</h2>
+                      {eventContextLabel(selectedPayment, paymentIdentity.isEventOnly) ? <small>{eventContextLabel(selectedPayment, paymentIdentity.isEventOnly)}</small> : null}
+                    </>
+                  );
+                })()}
+              </span>
               <button aria-label="ปิดรายละเอียดรายการ" onClick={() => setSelectedPayment(null)} type="button"><X aria-hidden="true" size={20} /></button>
             </header>
             <div className="collection-desk__payment-detail-summary">

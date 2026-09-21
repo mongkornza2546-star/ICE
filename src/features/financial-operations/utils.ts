@@ -9,6 +9,7 @@ import type {
   ReceiptItemRow,
 } from './types';
 import type { PaymentMethod } from '../../types/app';
+import { isBoothSameAsName } from '../employee-delivery/utils';
 
 export const USER_AVATAR_BUCKET = 'user-avatars';
 export const SHOP_IMAGE_BUCKET = 'shop-images';
@@ -33,6 +34,71 @@ export function formatServiceDate(value: string) {
 
 export function paymentMethodLabel(method: PaymentMethod) {
   return method === 'cash' ? 'เงินสด' : method === 'bank_transfer' ? 'โอนเงิน' : 'QR';
+}
+
+export function initials(code: string) {
+  return code.replace(/[^A-Za-zก-๙0-9]/g, '').slice(0, 2).toUpperCase() || 'ร';
+}
+
+export function isEventCode(code?: string | null): boolean {
+  if (!code) return false;
+  const upper = code.trim().toUpperCase();
+  return upper.startsWith('EV-') || upper.startsWith('EVENT-') || upper.startsWith('SITE-EVENT-');
+}
+
+export function formatBoothText(boothNumber?: string | null): string {
+  if (!boothNumber || !boothNumber.trim()) return '';
+  const trimmed = boothNumber.trim();
+  return trimmed.startsWith('บูธ') ? trimmed : `บูธ ${trimmed}`;
+}
+
+export function formatCollectionShopIdentity(shop: {
+  destination_kind?: 'regular' | 'event';
+  shop_code?: string | null;
+  shop_name?: string | null;
+  event_booth?: string | null;
+}) {
+  const isEvent = shop.destination_kind === 'event';
+  const hasEventCode = isEventCode(shop.shop_code) || (isEvent && !shop.shop_code);
+
+  if (!isEvent) {
+    const code = shop.shop_code ?? '—';
+    const name = shop.shop_name ?? '';
+    return {
+      isEvent: false,
+      isEventOnly: false,
+      title: name ? `${code} · ${name}` : code,
+      boothText: '',
+      shopName: name,
+      avatarText: initials(code),
+    };
+  }
+
+  const boothText = formatBoothText(shop.event_booth);
+  const rawBooth = shop.event_booth?.trim() ?? '';
+  const shopName = shop.shop_name?.trim() ?? '';
+  const sameAsBooth = isBoothSameAsName(shopName, rawBooth);
+  const hasDistinctName = Boolean(shopName && !sameAsBooth);
+
+  const primary = boothText || shopName || 'ไม่ระบุบูธ';
+  let title: string;
+  if (hasEventCode) {
+    title = hasDistinctName && boothText ? `${boothText} · ${shopName}` : primary;
+  } else {
+    const code = shop.shop_code ?? '—';
+    title = shopName ? `${code} · ${shopName}` : code;
+  }
+
+  const avatarSource = (hasEventCode ? rawBooth.replace(/^บูธ\s*/, '') || shopName : shop.shop_code) || 'บ';
+
+  return {
+    isEvent: true,
+    isEventOnly: hasEventCode,
+    title,
+    boothText: primary,
+    shopName: hasDistinctName ? shopName : '',
+    avatarText: initials(avatarSource),
+  };
 }
 
 export function receiptChargesFromRows(rows: ReceiptItemRow[]) {

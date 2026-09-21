@@ -15,7 +15,7 @@ import {
 import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { shiftServiceDate } from '../../../lib/serviceDate';
 import type { Approval, DueDateRequest, PaymentHistoryItem, Receivable, ReceivableCharge } from '../types';
-import { money, paymentMethodLabel, receiptDateTime } from '../utils';
+import { formatCollectionShopIdentity, money, paymentMethodLabel, receiptDateTime } from '../utils';
 
 function chargeStatus(charge: ReceivableCharge) {
   if (charge.payment_status === 'paid') return 'ชำระครบแล้ว';
@@ -374,34 +374,43 @@ export function PaymentHistorySection({
         <p className="financial-ops__empty">ไม่พบรายการตามตัวกรอง</p>
       ) : (
         <div className="financial-ops__list">
-          {visiblePayments.map((payment) => (
-            <article className="financial-ops__history-item" key={payment.id}>
-              <button
-                aria-label={`ดูบิล ${payment.receipt_number} ของ ${payment.shops?.name ?? 'ร้านค้า'}`}
-                className="financial-ops__history-summary"
-                onClick={(event) => onOpenReceipt(payment, event.currentTarget)}
-                type="button"
-              >
-                <span className="financial-ops__history-visual">
-                  {payment.image_url ? (
-                    <img alt="" aria-hidden="true" loading="lazy" src={payment.image_url} />
-                  ) : (
-                    <span><Storefront aria-hidden="true" size={28} weight="duotone" /></span>
-                  )}
-                </span>
-                <span className="financial-ops__history-info">
-                  <strong>{payment.shops?.code ?? '—'} · {payment.shops?.name ?? 'ไม่พบร้าน'}</strong>
-                  {payment.destination_kind === 'event' ? (
-                    <small>{[payment.event_name, payment.event_location, payment.event_zone, payment.event_booth && `บูธ ${payment.event_booth}`].filter(Boolean).join(' · ')}</small>
-                  ) : (
-                    (payment.building_name || payment.zone_name) ? (
-                      <small>{[payment.building_name, payment.zone_name].filter(Boolean).join(' · ')}</small>
-                    ) : null
-                  )}
-                  <small>{payment.receipt_number} · {paymentMethodLabel(payment.payment_method)} · {receiptDateTime.format(new Date(payment.recorded_at))}{payment.status === 'voided' ? ` · ยกเลิก: ${payment.void_reason ?? '—'}` : ''}</small>
-                </span>
-                <span className="financial-ops__history-open-label">ดูบิล <CaretRight aria-hidden="true" size={19} /></span>
-              </button>
+          {visiblePayments.map((payment) => {
+            const paymentIdentity = formatCollectionShopIdentity({
+              destination_kind: payment.destination_kind,
+              shop_code: payment.shops?.code,
+              shop_name: payment.shops?.name,
+              event_booth: payment.event_booth,
+            });
+            return (
+              <article className="financial-ops__history-item" key={payment.id}>
+                <button
+                  aria-label={`ดูบิล ${payment.receipt_number} ของ ${payment.destination_kind === 'event' ? paymentIdentity.title : (payment.shops?.name ?? 'ร้านค้า')}`}
+                  className="financial-ops__history-summary"
+                  onClick={(event) => onOpenReceipt(payment, event.currentTarget)}
+                  type="button"
+                >
+                  <span className="financial-ops__history-visual">
+                    {payment.image_url ? (
+                      <img alt="" aria-hidden="true" loading="lazy" src={payment.image_url} />
+                    ) : (
+                      <span><Storefront aria-hidden="true" size={28} weight="duotone" /></span>
+                    )}
+                  </span>
+                  <span className="financial-ops__history-info">
+                    <strong>{paymentIdentity.title}</strong>
+                    {payment.destination_kind === 'event' ? (
+                      !paymentIdentity.isEventOnly ? (
+                        <small>{[payment.event_name, payment.event_location, payment.event_zone, payment.event_booth && `บูธ ${payment.event_booth}`].filter(Boolean).join(' · ')}</small>
+                      ) : null
+                    ) : (
+                      (payment.building_name || payment.zone_name) ? (
+                        <small>{[payment.building_name, payment.zone_name].filter(Boolean).join(' · ')}</small>
+                      ) : null
+                    )}
+                    <small>{payment.receipt_number} · {paymentMethodLabel(payment.payment_method)} · {receiptDateTime.format(new Date(payment.recorded_at))}{payment.status === 'voided' ? ` · ยกเลิก: ${payment.void_reason ?? '—'}` : ''}</small>
+                  </span>
+                  <span className="financial-ops__history-open-label">ดูบิล <CaretRight aria-hidden="true" size={19} /></span>
+                </button>
               <span className="financial-ops__history-side">
                 <b>{money.format(payment.allocated_amount)}</b>
                 {payment.status === 'active' ? (
@@ -412,7 +421,8 @@ export function PaymentHistorySection({
                 ) : null}
               </span>
             </article>
-          ))}
+            );
+          })}
         </div>
       )}
     </section>
