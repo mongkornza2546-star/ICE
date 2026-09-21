@@ -30,7 +30,7 @@ vi.mock('../src/lib/env', () => ({
 }));
 
 vi.mock('../src/lib/supabase', () => ({
-  supabase: { from: fromMock, storage: { from: storageFromMock } },
+  supabase: { from: fromMock, rpc: vi.fn().mockResolvedValue({ data: [], error: null }), storage: { from: storageFromMock } },
 }));
 
 vi.mock('../src/features/admin-reference-settings/adminReferenceSettingsService', () => ({

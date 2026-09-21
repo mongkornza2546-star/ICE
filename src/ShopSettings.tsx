@@ -10,6 +10,7 @@ import { ShopPaymentProfileEditor } from './features/shop-settings/components/Sh
 import { ShopSpecialPriceEditor } from './features/shop-settings/components/ShopSpecialPriceEditor';
 import { BulkPaymentSetupModal } from './features/shop-settings/components/BulkPaymentSetupModal';
 import { BulkShopPriceSetupModal } from './features/shop-settings/components/BulkShopPriceSetupModal';
+import { ShopTankRentalPanel } from './features/shop-settings/components/ShopTankRentalPanel';
 import { ShopPurchaseHistory } from './features/shop-settings/components/ShopPurchaseHistory';
 import {
   exportShopDirectory,
@@ -1155,6 +1156,7 @@ export function ShopSettings({
             </form> : null}
 
             {!historyOnlyPreview ? <div className="shop-editor-tab-content" hidden={editorTab !== 'assets'}>
+              {draft.id ? <ShopTankRentalPanel key={draft.id} shopId={draft.id} isActive={editorTab === 'assets'} shopActive={draft.status === 'active'} /> : <p className="muted">บันทึกข้อมูลร้านก่อน แล้วจึงเช่าถังรายครั้ง</p>}
               <ShopImageEditor
                 onShopSaved={(savedShop) => {
                   const updateImagePath = (shop: ShopSetting) => shop.id === savedShop.id ? { ...shop, image_path: savedShop.image_path } : shop;

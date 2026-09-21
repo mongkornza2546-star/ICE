@@ -4094,3 +4094,10 @@ input:disabled, select:disabled, textarea:disabled { background: #f2f5f8; color:
 .event-preparation-shops label { display: flex; align-items: center; gap: 8px; padding: 8px; background: #f5f9fc; border-radius: 6px; }
 .event-preparation .event-preparation-shops label { flex-direction: row; justify-content: flex-start; text-align: left; }
 .event-preparation .event-preparation-shops input[type="checkbox"] { width: 18px; height: 18px; min-height: 18px; flex: 0 0 18px; margin: 0; accent-color: #0865d5; }
+
+.shop-rental-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; border: 0; padding: 12px 0; min-width: 0; }
+.shop-rental-fields label { display: grid; gap: 6px; min-width: 0; }
+.shop-rental-fields input { width: 100%; min-width: 0; box-sizing: border-box; }
+.shop-rental-list { display: grid; gap: 12px; margin-top: 16px; }
+.shop-rental-card { display: grid; gap: 8px; padding: 16px; border: 1px solid #d8e2ef; border-radius: 12px; overflow-wrap: anywhere; }
+@media (max-width: 600px) { .shop-rental-fields { grid-template-columns: 1fr; } }
