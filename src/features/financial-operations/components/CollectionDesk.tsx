@@ -4,17 +4,20 @@ import {
   CalendarBlank,
   CaretRight,
   Coins,
+  ListNumbers,
   MagnifyingGlass,
   Money,
   Printer,
   Receipt,
   SquaresFour,
+  Storefront,
   Table,
   X,
 } from '@phosphor-icons/react';
 import { shiftServiceDate } from '../../../lib/serviceDate';
 import type { PaymentHistoryItem, QueueShop } from '../types';
 import { formatCollectionShopIdentity, money, paymentMethodLabel, receiptDateTime } from '../utils';
+import { isBoothSameAsName } from '../../employee-delivery/utils';
 
 type QueueFilter = 'outstanding' | 'collected' | 'all';
 
@@ -246,14 +249,20 @@ export function CollectionDesk({
 
   return (
     <div className="collection-desk">
-      <header className="collection-desk__header">
-        <div><h1>เก็บเงินร้านค้า</h1><p>ติดตามยอดค้างชำระและรับชำระเงินจากร้านค้า</p></div>
+      <header className="financial-ops__header collection-desk__header">
         <div>
-          <span className="collection-desk__auto-refresh"><i aria-hidden="true" />อัปเดตอัตโนมัติทุก 30 วินาที</span>
-          {runId ? <button className="collection-desk__primary" disabled={busy} onClick={onRefresh} type="button">
-            อัปเดตตอนนี้
-          </button> : null}
+          <p className="eyebrow">การเงินหน้าร้าน</p>
+          <h1>คิวเก็บเงินของฉัน</h1>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+            วันที่ธุรกิจ {serviceDate}
+            <span className="collection-desk__auto-refresh"><i aria-hidden="true" />อัปเดตอัตโนมัติ 30 วิ</span>
+          </span>
         </div>
+        {runId ? (
+          <button disabled={busy} onClick={onRefresh} type="button">
+            รีเฟรชยอดล่าสุด
+          </button>
+        ) : null}
       </header>
 
       <section className="collection-desk__stats" aria-label="สรุปการเก็บเงิน">
@@ -266,78 +275,87 @@ export function CollectionDesk({
       </section>
 
       <div className={`collection-desk__workspace ${!hasDetailPanel ? 'collection-desk__workspace--full' : ''}`}>
-        <section className="collection-desk__queue">
-          <div className="collection-desk__tabs-bar">
-            <div className="collection-desk__tabs" role="tablist" aria-label="กรองรายการร้านค้า">
-              <button aria-selected={filter === 'outstanding'} onClick={() => changeFilter('outstanding')} role="tab" type="button">ค้างชำระทั้งหมด <b>{queue.length}</b></button>
-              <button aria-selected={filter === 'collected'} onClick={() => changeFilter('collected')} role="tab" type="button">ประวัติรับเงิน <b>{paymentHistory.length}</b></button>
-              <button aria-selected={filter === 'all'} onClick={() => changeFilter('all')} role="tab" type="button">ทั้งหมด</button>
+        <section className="financial-ops__section collection-desk__section">
+          <div className="financial-ops__title">
+            <div>
+              <Coins size={22} weight="duotone" />
+              <span>
+                <h2>คิวรับเงินร้านค้า</h2>
+                <p>รวมยอดที่ถึงกำหนดและยอดค้างโดยอัตโนมัติ</p>
+              </span>
             </div>
-            {filter === 'outstanding' ? (
-              <div className="collection-desk__view-toggle" aria-label="เลือกมุมมอง">
-                <button
-                  aria-pressed={viewMode === 'cards'}
-                  className={viewMode === 'cards' ? 'is-active' : ''}
-                  onClick={() => setViewMode('cards')}
-                  title="มุมมองการ์ด (POS)"
-                  type="button"
-                >
-                  <SquaresFour size={18} weight={viewMode === 'cards' ? 'fill' : 'regular'} />
-                  <span>การ์ด</span>
-                </button>
-                <button
-                  aria-pressed={viewMode === 'table'}
-                  className={viewMode === 'table' ? 'is-active' : ''}
-                  onClick={() => setViewMode('table')}
-                  title="มุมมองตาราง"
-                  type="button"
-                >
-                  <Table size={18} weight={viewMode === 'table' ? 'fill' : 'regular'} />
-                  <span>ตาราง</span>
-                </button>
-              </div>
-            ) : null}
           </div>
 
-          <div className="collection-desk__filters">
-            <label className="collection-desk__search-input">
-              <MagnifyingGlass size={18} />
+          <div className="financial-ops__queue-filters">
+            <label className="financial-ops__queue-search">
+              <MagnifyingGlass aria-hidden="true" size={20} />
               <input
+                aria-label="ค้นหาร้านค้า"
                 onChange={(event) => { setQuery(event.target.value); setPage(0); }}
-                placeholder="ค้นหาร้านค้า / เลขที่เอกสาร"
+                placeholder="ค้นหารหัสร้าน หรือชื่อร้าน"
                 type="search"
                 value={query}
               />
             </label>
-            {buildings.length > 0 ? (
+            <label>ตึก
               <select
                 aria-label="เลือกตึก"
                 onChange={(event) => { setBuildingId(event.target.value); setZoneId(''); setPage(0); }}
                 value={buildingId}
               >
-                <option value="">ทุกตึก ({buildings.length})</option>
+                <option value="">ทุกตึก {buildings.length > 0 ? `(${buildings.length})` : ''}</option>
                 {buildings.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
               </select>
-            ) : null}
-            {zones.length > 0 && buildingId ? (
+            </label>
+            <label>โซน
               <select
                 aria-label="เลือกโซน"
+                disabled={!buildingId}
                 onChange={(event) => { setZoneId(event.target.value); setPage(0); }}
                 value={zoneId}
               >
-                <option value="">ทุกโซน ({zones.length})</option>
+                <option value="">ทุกโซน {zones.length > 0 ? `(${zones.length})` : ''}</option>
                 {zones.map((z) => <option key={z.id} value={z.id}>{z.name}</option>)}
               </select>
-            ) : null}
-            <select aria-label="สถานะ" onChange={(event) => changeFilter(event.target.value as QueueFilter)} value={filter}>
-              <option value="outstanding">สถานะ: ค้างชำระ</option>
-              <option value="collected">สถานะ: รับเงินแล้ว</option>
-              <option value="all">ทั้งหมด</option>
-            </select>
-            <select aria-label="เรียงรายการ" onChange={(event) => { setSort(event.target.value as 'high' | 'low'); setPage(0); }} value={sort}>
-              <option value="high">เรียง: ยอดค้างมาก - น้อย</option>
-              <option value="low">เรียง: ยอดค้างน้อย - มาก</option>
-            </select>
+            </label>
+          </div>
+
+          <div className="collection-desk__admin-bar">
+            <div className="collection-desk__tabs" role="tablist" aria-label="กรองรายการร้านค้า">
+              <button aria-selected={filter === 'outstanding'} onClick={() => changeFilter('outstanding')} role="tab" type="button">ค้างชำระทั้งหมด <b>{queue.length}</b></button>
+              <button aria-selected={filter === 'collected'} onClick={() => changeFilter('collected')} role="tab" type="button">ประวัติรับเงิน <b>{paymentHistory.length}</b></button>
+              <button aria-selected={filter === 'all'} onClick={() => changeFilter('all')} role="tab" type="button">ทั้งหมด</button>
+            </div>
+            <div className="collection-desk__subfilters">
+              <select aria-label="เรียงรายการ" onChange={(event) => { setSort(event.target.value as 'high' | 'low'); setPage(0); }} value={sort}>
+                <option value="high">เรียง: ยอดค้างมาก - น้อย</option>
+                <option value="low">เรียง: ยอดค้างน้อย - มาก</option>
+              </select>
+              {filter === 'outstanding' ? (
+                <div className="collection-desk__view-toggle" aria-label="เลือกมุมมอง">
+                  <button
+                    aria-pressed={viewMode === 'cards'}
+                    className={viewMode === 'cards' ? 'is-active' : ''}
+                    onClick={() => setViewMode('cards')}
+                    title="มุมมองการ์ด (POS)"
+                    type="button"
+                  >
+                    <SquaresFour size={18} weight={viewMode === 'cards' ? 'fill' : 'regular'} />
+                    <span>การ์ด</span>
+                  </button>
+                  <button
+                    aria-pressed={viewMode === 'table'}
+                    className={viewMode === 'table' ? 'is-active' : ''}
+                    onClick={() => setViewMode('table')}
+                    title="มุมมองตาราง"
+                    type="button"
+                  >
+                    <Table size={18} weight={viewMode === 'table' ? 'fill' : 'regular'} />
+                    <span>ตาราง</span>
+                  </button>
+                </div>
+              ) : null}
+            </div>
           </div>
 
           {filter !== 'outstanding' ? (
@@ -356,57 +374,86 @@ export function CollectionDesk({
             </div>
           ) : null}
 
-          {viewMode === 'cards' && filter === 'outstanding' ? (
-            <div className="collection-desk__cards-grid">
-              {pageRows.map((row, index) => {
+          {viewMode === 'cards' ? (
+            <div className="financial-ops__shop-grid">
+              {pageRows.map((row) => {
                 const isSelected = row.kind === 'shop'
-                  && (selectedShop?.queue_key ?? (selectedShop ? `regular:${selectedShop.shop_id}` : null)) === row.id;
+                  ? !selectedPayment && (selectedShop?.queue_key ?? (selectedShop ? `regular:${selectedShop.shop_id}` : null)) === row.id
+                  : selectedPayment?.id === row.id;
+                if (row.kind === 'shop' && row.shop) {
+                  const shop = row.shop;
+                  return (
+                    <button
+                      aria-label={`เลือกรายการ ${row.displayTitle}`}
+                      className={`financial-ops__shop-card ${isSelected ? 'is-selected' : ''}`}
+                      key={`${row.kind}-${row.id}`}
+                      onClick={(event) => {
+                        setSelectedPayment(null);
+                        onSelectShop(shop, event.currentTarget);
+                      }}
+                      type="button"
+                    >
+                      <span className="financial-ops__shop-visual">
+                        {shop.image_url ? (
+                          <img alt="" aria-hidden="true" loading="lazy" src={shop.image_url} />
+                        ) : (
+                          <span>
+                            <Storefront aria-hidden="true" size={36} weight="duotone" />
+                            <span className="sr-only">{row.avatarText}</span>
+                          </span>
+                        )}
+                        {shop.has_new_charges ? <small>มียอดเพิ่ม</small> : null}
+                      </span>
+                      <span className="financial-ops__shop-body">
+                        <strong>{shop.destination_kind === 'event'
+                          ? (shop.event_booth ? `บูธ ${shop.event_booth}` : shop.shop_name)
+                          : shop.shop_code}</strong>
+                        <b>{shop.destination_kind === 'event' && shop.event_booth && isBoothSameAsName(shop.shop_name, shop.event_booth)
+                          ? ''
+                          : shop.shop_name}</b>
+                        {row.contextLabel ? <small>{row.contextLabel}</small> : null}
+                        <small><ListNumbers aria-hidden="true" size={15} /> {shop.charge_count} รายการค้าง</small>
+                        <em>{money.format(row.amount)}</em>
+                      </span>
+                      <CaretRight aria-hidden="true" className="financial-ops__shop-arrow" size={20} />
+                    </button>
+                  );
+                }
+
+                const payment = row.payment!;
                 return (
                   <button
                     aria-label={`เลือกรายการ ${row.displayTitle}`}
-                    className={`collection-desk__card ${isSelected ? 'is-selected' : ''}`}
+                    className={`financial-ops__shop-card ${isSelected ? 'is-selected' : ''}`}
                     key={`${row.kind}-${row.id}`}
                     onClick={(event) => {
-                      if (row.shop) {
-                        setSelectedPayment(null);
-                        onSelectShop(row.shop, event.currentTarget);
-                      }
+                      onClearShop();
+                      if (!paymentPanel || window.innerWidth < 1100) onOpenReceipt(payment, event.currentTarget);
+                      else setSelectedPayment(payment);
                     }}
                     type="button"
                   >
-                    <div className="collection-desk__card-visual">
-                      {row.shop?.image_url ? (
-                        <img alt="" loading="lazy" src={row.shop.image_url} />
+                    <span className="financial-ops__shop-visual">
+                      {payment.image_url ? (
+                        <img alt="" aria-hidden="true" loading="lazy" src={payment.image_url} />
                       ) : (
-                        <span aria-hidden="true" className={`collection-desk__avatar collection-desk__avatar--${index % 5}`}>
-                          {row.avatarText}
+                        <span>
+                          <Receipt aria-hidden="true" size={36} weight="duotone" />
+                          <span className="sr-only">{row.avatarText}</span>
                         </span>
                       )}
-                      <em className={`collection-desk__status collection-desk__status--${row.status.tone}`}>
-                        {row.status.label}
-                      </em>
-                    </div>
-                    <div className="collection-desk__card-body">
-                      <div className="collection-desk__card-header">
-                        <strong className="collection-desk__card-title">{row.displayTitle}</strong>
-                        {row.contextLabel ? <small className="collection-desk__card-context">{row.contextLabel}</small> : null}
-                        <span className="collection-desk__card-count">{row.shop?.charge_count ?? 0} รายการค้าง</span>
-                      </div>
-                      <div className="collection-desk__card-footer">
-                        <div className="collection-desk__card-amount">
-                          <small>ยอดค้างรวม</small>
-                          <b>{money.format(row.amount)}</b>
-                        </div>
-                        <span className="collection-desk__card-pay-btn">
-                          <Coins aria-hidden="true" size={18} weight="duotone" />
-                          <span>รับเงิน</span>
-                        </span>
-                      </div>
-                    </div>
+                    </span>
+                    <span className="financial-ops__shop-body">
+                      <strong>{payment.receipt_number}</strong>
+                      <b>{row.shopName || payment.shops?.name || '-'}</b>
+                      <small>{paymentMethodLabel(payment.payment_method)} · {receiptDateTime.format(new Date(payment.recorded_at))}</small>
+                      <em>{money.format(row.amount)}</em>
+                    </span>
+                    <CaretRight aria-hidden="true" className="financial-ops__shop-arrow" size={20} />
                   </button>
                 );
               })}
-              {pageRows.length === 0 ? <p className="collection-desk__empty-notice">ไม่พบรายการที่ค้นหา</p> : null}
+              {pageRows.length === 0 ? <p className="financial-ops__empty">ไม่พบรายการที่ค้นหา</p> : null}
             </div>
           ) : (
             <>

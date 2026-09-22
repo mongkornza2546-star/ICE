@@ -1771,6 +1771,9 @@ input:disabled, select:disabled, textarea:disabled { background: #f2f5f8; color:
 .collection-desk__view-toggle button { min-height: 32px; display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; border: 1px solid #d4e0ec; border-radius: 7px; color: #556c84; background: #f8fbfe; font: inherit; font-size: .68rem; font-weight: 700; cursor: pointer; transition: all 120ms ease; }
 .collection-desk__view-toggle button:hover { border-color: #92bce6; color: #0b6ad5; }
 .collection-desk__view-toggle button.is-active { border-color: #0870e8; color: #fff; background: #0870e8; box-shadow: 0 2px 6px rgba(8, 112, 232, .25); }
+.collection-desk__admin-bar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; padding: 4px 0 8px; border-bottom: 1px solid #edf3f8; }
+.collection-desk__subfilters { display: flex; align-items: center; gap: 8px; }
+.collection-desk__subfilters select { height: 38px; padding: 0 10px; border: 1px solid #c9dbe9; border-radius: 8px; color: #294867; background: #fff; font: inherit; font-size: .72rem; font-weight: 600; cursor: pointer; }
 .collection-desk__filters { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 11px 13px; border-bottom: 1px solid #e5ebf2; background: #fafcff; }
 .collection-desk__search-input { flex: 1 1 220px; min-width: 180px; display: flex; align-items: center; gap: 8px; height: 38px; padding: 0 11px; border: 1px solid #cddbea; border-radius: 9px; background: #fff; color: #637b94; }
 .collection-desk__search-input input { min-width: 0; width: 100%; height: 100%; border: 0; outline: 0; background: transparent; color: #1a3654; font: inherit; font-size: .73rem; }
@@ -1867,8 +1870,8 @@ input:disabled, select:disabled, textarea:disabled { background: #f2f5f8; color:
   .financial-ops__employee-nav button { justify-content: center; min-height: 46px; padding: 7px; text-align: center; }
   .financial-ops__employee-nav button[aria-current="page"] { box-shadow: inset 0 -3px #0875db; }
   .collection-desk__header { align-items: stretch; flex-direction: column; }
-  .collection-desk__header > div:last-child { display: grid; grid-template-columns: 1fr 1fr; }
-  .collection-desk__header > div:last-child > button:only-child { grid-column: 2; }
+  .collection-desk__admin-bar { flex-direction: column; align-items: stretch; gap: 8px; }
+  .collection-desk__subfilters { justify-content: space-between; }
   .collection-desk__stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .collection-desk__stats article { min-height: 96px; padding: 13px; }
   .collection-desk__stat-icon { width: 42px; height: 42px; flex-basis: 42px; }

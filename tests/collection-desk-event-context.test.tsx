@@ -84,7 +84,7 @@ describe('CollectionDesk event queue identity', () => {
     expect(screen.getByText('งานแฟร์ · Hall A · Food · บูธ A1')).toBeTruthy();
     expect(screen.getAllByRole('button', { name: 'เลือกรายการ S001 · ร้านน้ำแข็ง' })).toHaveLength(2);
 
-    await userEvent.type(screen.getByPlaceholderText('ค้นหาร้านค้า / เลขที่เอกสาร'), 'Hall A');
+    await userEvent.type(screen.getByPlaceholderText('ค้นหารหัสร้าน หรือชื่อร้าน'), 'Hall A');
     const matchingRow = screen.getByRole('button', { name: 'เลือกรายการ S001 · ร้านน้ำแข็ง' });
     await userEvent.click(matchingRow);
 
