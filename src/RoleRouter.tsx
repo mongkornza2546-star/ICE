@@ -39,6 +39,14 @@ function KeepAlive({ active, children }: { active: boolean; children: ReactNode 
   );
 }
 
+export function canUserProfileCollectPayments(
+  profile: Pick<UserProfile, 'role' | 'can_collect_shop_payments'> | null | undefined,
+): boolean {
+  if (!profile) return false;
+  if (profile.role === 'admin' || profile.role === 'round_lead') return true;
+  return Boolean(profile.can_collect_shop_payments);
+}
+
 export function RoleRouter({
   session,
   onRecoverableSessionError,
@@ -243,6 +251,8 @@ export function RoleRouter({
     );
   }
 
+  const canCollectPayments = canUserProfileCollectPayments(profile);
+
   if (profile.role === 'courier') {
     return (
       <EmployeeLayout onSignOut={signOut} profileLabel={profile.display_name} signOutDisabled={deliveryDraftState.submitting}>
@@ -289,7 +299,7 @@ export function RoleRouter({
         <KeepAlive active={courierView !== 'collection'}>
           <EmployeeDeliveryWorkspace
             casualCustomerEnabled
-            canCollectShopPayments={profile.can_collect_shop_payments}
+            canCollectShopPayments={canCollectPayments}
             enableAssignedStockFlow={courierView === 'withdrawal'}
             isActive={courierView !== 'collection'}
             onDraftStateChange={setDeliveryDraftState}
@@ -305,7 +315,7 @@ export function RoleRouter({
         {courierCollectionVisited || courierView === 'collection' ? (
           <KeepAlive active={courierView === 'collection'}>
             <FinancialOperations
-              canCollectShopPayments={profile.can_collect_shop_payments}
+              canCollectShopPayments={canCollectPayments}
               currentUserId={profile.id}
               focusRequest={courierCollectionFocus}
               isActive={courierView === 'collection'}
@@ -445,7 +455,7 @@ export function RoleRouter({
       {visitedViews.has('delivery') && (
         <KeepAlive active={currentView === 'delivery'}>
           <EmployeeDeliveryWorkspace
-            canCollectShopPayments={profile.can_collect_shop_payments ?? true}
+            canCollectShopPayments={canCollectPayments}
             casualCustomerEnabled
             isActive={currentView === 'delivery'}
             onDraftStateChange={setDeliveryDraftState}
@@ -464,7 +474,7 @@ export function RoleRouter({
       {visitedViews.has('financial_operations') && (
         <KeepAlive active={currentView === 'financial_operations'}>
           <FinancialOperations
-            canCollectShopPayments={profile.can_collect_shop_payments ?? true}
+            canCollectShopPayments={canCollectPayments}
             currentUserId={profile.id}
             focusRequest={adminCollectionFocus}
             isActive={currentView === 'financial_operations'}

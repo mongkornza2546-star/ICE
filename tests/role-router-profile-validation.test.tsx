@@ -26,7 +26,12 @@ const supabaseMock = vi.hoisted(() => {
 
 vi.mock('../src/lib/supabase', () => ({ supabase: supabaseMock.client }));
 vi.mock('../src/AdminLayout', () => ({
-  AdminLayout: ({ children }: { children: ReactNode }) => <div data-testid="admin-layout">{children}</div>,
+  AdminLayout: ({ children, onNavigate }: { children: ReactNode; onNavigate?: (view: string) => void }) => (
+    <div data-testid="admin-layout">
+      <button onClick={() => onNavigate?.('financial_operations')} type="button">ไปหน้าการเงิน</button>
+      {children}
+    </div>
+  ),
 }));
 vi.mock('../src/EmployeeLayout', () => ({
   EmployeeLayout: ({ children }: { children: ReactNode }) => <div data-testid="employee-layout">{children}</div>,
@@ -45,7 +50,7 @@ vi.mock('../src/FinancialOperations', () => ({
   ),
 }));
 
-import { RoleRouter } from '../src/RoleRouter';
+import { RoleRouter, canUserProfileCollectPayments } from '../src/RoleRouter';
 
 const session = {
   access_token: 'access-token',
@@ -159,5 +164,37 @@ describe('RoleRouter profile validation', () => {
     expect(screen.getByRole('button', { name: 'เก็บเงิน' }).getAttribute('aria-current')).toBe('page');
     expect(screen.getByTestId('financial-operations').getAttribute('data-can-collect')).toBe('false');
     expect(supabaseMock.maybeSingle).toHaveBeenCalledTimes(2);
+  });
+
+  it('correctly evaluates collection capability across roles using canUserProfileCollectPayments', () => {
+    expect(canUserProfileCollectPayments({ role: 'admin', can_collect_shop_payments: false })).toBe(true);
+    expect(canUserProfileCollectPayments({ role: 'round_lead', can_collect_shop_payments: false })).toBe(true);
+    expect(canUserProfileCollectPayments({ role: 'courier', can_collect_shop_payments: true })).toBe(true);
+    expect(canUserProfileCollectPayments({ role: 'courier', can_collect_shop_payments: false })).toBe(false);
+    expect(canUserProfileCollectPayments(null)).toBe(false);
+  });
+
+  it('grants collection capability to admin even when can_collect_shop_payments is false', async () => {
+    supabaseMock.maybeSingle.mockResolvedValueOnce({
+      data: { ...courierProfile, role: 'admin', can_collect_shop_payments: false },
+      error: null,
+    });
+
+    render(<RoleRouter onRecoverableSessionError={vi.fn().mockResolvedValue(false)} session={session} />);
+    expect(await screen.findByTestId('admin-layout')).not.toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'ไปหน้าการเงิน' }));
+    expect((await screen.findByTestId('financial-operations')).getAttribute('data-can-collect')).toBe('true');
+  });
+
+  it('grants collection capability to round_lead even when can_collect_shop_payments is false', async () => {
+    supabaseMock.maybeSingle.mockResolvedValueOnce({
+      data: { ...courierProfile, role: 'round_lead', can_collect_shop_payments: false },
+      error: null,
+    });
+
+    render(<RoleRouter onRecoverableSessionError={vi.fn().mockResolvedValue(false)} session={session} />);
+    expect(await screen.findByTestId('admin-layout')).not.toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'ไปหน้าการเงิน' }));
+    expect((await screen.findByTestId('financial-operations')).getAttribute('data-can-collect')).toBe('true');
   });
 });
