@@ -244,7 +244,7 @@ export function FinancialOperations({
       }
       const nextSelectedShop = preferredShop ?? (currentShop
         ? nextQueue.find((shop) => queueIdentity(shop) === queueIdentity(currentShop)) ?? null
-        : (isManager && window.innerWidth >= 1100 ? nextQueue[0] ?? null : null));
+        : null);
       setQueue(nextQueue);
       setSelectedShop(nextSelectedShop);
       if (nextSelectedShop && (preferredShop
@@ -889,36 +889,7 @@ export function FinancialOperations({
         onClearShop={closePayment}
         onSelectShop={chooseShop}
         onVoidPayment={voidPayment}
-        paymentPanel={selectedShop && window.innerWidth >= 1100 ? <PaymentModal
-          allocatedAmount={allocatedAmount}
-          amount={amount}
-          busy={busy}
-          canRecordPayment={canCollectShopPayments}
-          changeAmount={changeAmount}
-          closeButtonRef={closeButtonRef}
-          dialogRef={dialogRef}
-          evidence={evidence}
-          evidenceError={evidenceError}
-          evidenceRequired={evidenceRequired}
-          focusedChargeId={focusRequest && (focusRequest.queueKey === queueIdentity(selectedShop) || selectedShop.charges.some((charge) => charge.charge_id === focusRequest.chargeId)) ? focusRequest.chargeId : null}
-          method={method}
-          onAmountChange={setAmount}
-          onClose={closePayment}
-          onEvidenceChange={selectEvidence}
-          onEditCharge={openChargeCorrection}
-          onPaymentMethodChange={choosePaymentMethod}
-          onPrintReceipt={(targetReceipt) => printStoredReceipt(targetReceipt.paymentId)}
-          onRecordPayment={recordPayment}
-          onRequestDueDate={requestDueDate}
-          onReferenceChange={setReference}
-          paymentReady={paymentReady}
-          presentation="panel"
-          receipt={receipt}
-          reference={reference}
-          remainingAmount={remainingAmount}
-          selectedShop={selectedShop}
-          serviceDate={serviceDate}
-        /> : null}
+        paymentPanel={null}
         paymentHistory={paymentHistory}
         queue={queue}
         runId={runId}
@@ -944,7 +915,7 @@ export function FinancialOperations({
         userRole={userRole}
       /> : null}
 
-      {selectedShop && (!isManager || managerPage === 'collection') && (!isManager || window.innerWidth < 1100) ? createPortal(
+      {selectedShop && (!isManager || managerPage === 'collection') ? createPortal(
         <PaymentModal
           allocatedAmount={allocatedAmount}
           amount={amount}

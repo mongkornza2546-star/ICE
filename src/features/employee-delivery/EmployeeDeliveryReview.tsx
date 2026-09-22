@@ -361,6 +361,13 @@ export function EmployeeDeliveryReview({
 
             {paymentMethod === 'cash' ? (
               <div className="financial-ops__quick-amounts" aria-label="เลือกยอดรับเงินด่วน">
+                <button
+                  className="financial-ops__quick-exact"
+                  onClick={() => onPaymentAmountChange(totalDue.toFixed(2))}
+                  type="button"
+                >
+                  จ่ายพอดี
+                </button>
                 {[100, 200, 500, 1000].map((value) => (
                   <button key={value} onClick={() => onPaymentAmountChange(value.toFixed(2))} type="button">
                     {value.toLocaleString('th-TH')}

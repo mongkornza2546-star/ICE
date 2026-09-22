@@ -273,6 +273,14 @@ export function PaymentModal({
 
             {method === 'cash' ? (
               <div className="financial-ops__quick-amounts" aria-label="เลือกยอดรับเงินด่วน">
+                <button
+                  className="financial-ops__quick-exact"
+                  disabled={!canRecordPayment}
+                  onClick={() => onAmountChange(Number(selectedShop.outstanding_amount).toFixed(2))}
+                  type="button"
+                >
+                  จ่ายพอดี
+                </button>
                 {[100, 200, 500, 1000].map((value) => (
                   <button disabled={!canRecordPayment} key={value} onClick={() => onAmountChange(value.toFixed(2))} type="button">
                     {value.toLocaleString('th-TH')}
