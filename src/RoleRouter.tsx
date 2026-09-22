@@ -24,6 +24,7 @@ import {
   writeCachedUserProfile,
 } from './lib/userProfileCache';
 import { COLLECTION_PROFILE_REFRESH_EVENT } from './lib/collectionContext';
+import { initGlobalRealtimeSync } from './lib/realtimeSync';
 
 /**
  * Wrapper that keeps its children mounted once rendered,
@@ -169,6 +170,10 @@ export function RoleRouter({
       window.clearInterval(intervalId);
       window.removeEventListener('focus', refreshCurrentDate);
     };
+  }, []);
+
+  useEffect(() => {
+    return initGlobalRealtimeSync();
   }, []);
 
   useEffect(() => {
