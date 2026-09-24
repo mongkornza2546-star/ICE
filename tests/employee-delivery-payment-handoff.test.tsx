@@ -66,10 +66,12 @@ function createGateway(events: string[]): EmployeeDeliveryGateway {
 
 function DeliveryHarness({
   canCollectShopPayments = true,
+  card = shop,
   gateway,
   onOpenCollection,
 }: {
   canCollectShopPayments?: boolean;
+  card?: ShopCard;
   gateway: EmployeeDeliveryGateway;
   onOpenCollection: (request: CollectionFocusRequest) => void;
 }) {
@@ -83,11 +85,12 @@ function DeliveryHarness({
 
   if (data.loadingReference || data.loadingCards || data.cards.length === 0) return <div>กำลังโหลด</div>;
   if (!data.selectedCard) {
-    return <button onClick={() => data.openCard(shop)} type="button">เลือกร้าน</button>;
+    return <button onClick={() => data.openCard(card)} type="button">เลือกร้าน</button>;
   }
   return (
     <form onSubmit={data.handleSubmit}>
       <button onClick={() => data.setDeliveryQuantity('ice-1', 1)} type="button">ใส่จำนวน</button>
+      {card.destination_kind === 'event' ? <button onClick={() => data.setPaymentTerm('immediate')} type="button">ส่งและรับชำระ</button> : null}
       <button type="submit">ยืนยันส่งร้านนี้</button>
       {data.entryError ? <p role="alert">{data.entryError}</p> : null}
     </form>
@@ -95,6 +98,51 @@ function DeliveryHarness({
 }
 
 describe('employee delivery to collection handoff', () => {
+  it('opens event collection after recording an event delivery with end-of-day settlement', async () => {
+    const user = userEvent.setup();
+    const events: string[] = [];
+    const eventShop: ShopCard = {
+      ...shop,
+      destination_kind: 'event',
+      event_job_id: 'event-1',
+      event_participation_id: 'participation-1',
+      event_delivery_enabled: true,
+      is_operational: true,
+    };
+    const gateway = createGateway(events);
+    gateway.loadShopCards = vi.fn().mockResolvedValue([eventShop]);
+    gateway.recordDelivery = vi.fn().mockImplementation(async () => {
+      events.push('delivery');
+      return {
+        delivery_event_id: 'delivery-1',
+        round_stop_id: eventShop.round_stop_id,
+        charge_id: 'charge-1',
+        service_date: '2026-08-19',
+        total_amount: 30,
+        payment_term: 'end_of_day',
+        payment_status: 'unpaid',
+        due_date: null,
+        approval_id: null,
+      };
+    });
+    const onOpenCollection = vi.fn(() => events.push('collection'));
+    render(<DeliveryHarness card={eventShop} gateway={gateway} onOpenCollection={onOpenCollection} />);
+
+    await user.click(await screen.findByRole('button', { name: 'เลือกร้าน' }));
+    await user.click(screen.getByRole('button', { name: 'ใส่จำนวน' }));
+    await user.click(screen.getByRole('button', { name: 'ส่งและรับชำระ' }));
+    await user.click(screen.getByRole('button', { name: 'ยืนยันส่งร้านนี้' }));
+
+    await waitFor(() => expect(onOpenCollection).toHaveBeenCalledWith({
+      queueKey: 'event:event-1', chargeId: 'charge-1',
+    }));
+    expect(gateway.recordDelivery).toHaveBeenCalledWith(expect.objectContaining({
+      destinationKind: 'event', paymentTerm: 'immediate',
+    }));
+    expect(gateway.recordImmediateSale).not.toHaveBeenCalled();
+    expect(events).toEqual(['delivery', 'collection']);
+  });
+
   it('records an unpaid delivery before opening the existing collection screen', async () => {
     const user = userEvent.setup();
     const events: string[] = [];

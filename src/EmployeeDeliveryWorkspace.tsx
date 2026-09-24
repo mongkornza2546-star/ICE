@@ -863,7 +863,9 @@ export function EmployeeDeliveryWorkspace({
         <EmployeeDeliveryReview
         assignedStockState={enableAssignedStockFlow ? data.stockState : null}
         atomicImmediateSale={Boolean(gateway.recordImmediateSale) && !onOpenCollection}
-        canCollectImmediatePayment={!onOpenCollection || canCollectShopPayments}
+        canCollectImmediatePayment={data.selectedCard.destination_kind === 'event'
+          ? Boolean(onOpenCollection) && canCollectShopPayments
+          : !onOpenCollection || canCollectShopPayments}
         deliveryQuantities={data.deliveryQuantities}
         posContext={data.posContext}
         posContextError={data.posContextError}

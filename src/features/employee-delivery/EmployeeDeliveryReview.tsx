@@ -664,7 +664,9 @@ export function EmployeeDeliveryReview({
               {posContext?.payment_profile ? (
                 <fieldset className="employee-payment-terms">
                   <legend>เงื่อนไขชำระ</legend>
-                  {sortPaymentTerms(posContext.payment_profile.allowed_payment_terms).map((term) => (
+                  {sortPaymentTerms(shopCard.destination_kind === 'event' && canCollectImmediatePayment
+                    ? [...posContext.payment_profile.allowed_payment_terms, 'immediate']
+                    : posContext.payment_profile.allowed_payment_terms).map((term) => (
                     <button
                       aria-pressed={paymentTerm === term}
                       disabled={term === 'immediate' && !canCollectImmediatePayment}

@@ -920,7 +920,11 @@ export function useEmployeeDeliveryData({
       setEntryError('บัญชีนี้ยังไม่ได้รับสิทธิ์รับชำระเงิน กรุณาเลือกส่งอย่างเดียวหรือเครดิต');
       return;
     }
-    if (isDelivery && paymentTerm === 'immediate' && gateway.recordImmediateSale && !onOpenCollection) {
+    if (isDelivery && paymentTerm === 'immediate' && selectedCard.destination_kind === 'event' && !onOpenCollection) {
+      setEntryError('การรับชำระบูธอีเวนต์ต้องเปิดผ่านหน้ารับชำระ');
+      return;
+    }
+    if (isDelivery && paymentTerm === 'immediate' && selectedCard.destination_kind !== 'event' && gateway.recordImmediateSale && !onOpenCollection) {
       const totalAmount = items.reduce((total, item) => {
         const contextItem = posContext?.items.find((candidate) => candidate.ice_type_id === item.ice_type_id);
         return total + item.quantity * (contextItem?.unit_price ?? 0);
@@ -991,7 +995,10 @@ export function useEmployeeDeliveryData({
       });
       publishDataChange(['accounting', 'stock', 'pos', 'receivable']);
       if (requestId !== submissionRequestId.current) return;
-      if (result && isDelivery && result.payment_term === 'immediate' && result.charge_id) {
+      // Event charges keep their end-of-day settlement term; this choice opens collection immediately.
+      if (result && isDelivery && result.charge_id
+        && (result.payment_term === 'immediate'
+          || (selectedCard.destination_kind === 'event' && paymentTerm === 'immediate'))) {
         if (onOpenCollection) {
           clearRecovery(requestScope, serviceDate, recoveryMode);
           clearPendingRequest(signature, request.key);

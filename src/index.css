@@ -156,14 +156,19 @@
 .accounting-daily-matrix__period strong { min-width: 220px; text-align: center; color: #244b3d; font-size: .84rem; }
 .accounting-daily-matrix__windows button[aria-pressed="true"] { border-color: #4a9a7e; background: #e8f4ef; color: #146549; }
 .accounting-daily-matrix__scroll { height: min(70dvh, 760px); overflow: auto; scrollbar-gutter: stable; }
-.accounting-daily-matrix__table { width: max-content !important; min-width: 100%; }
+.accounting-daily-matrix__table { width: var(--matrix-width) !important; min-width: var(--matrix-width); table-layout: fixed; }
+.accounting-daily-matrix__col-sequence { width: 52px; }
+.accounting-daily-matrix__col-shop { width: 210px; }
+.accounting-daily-matrix__col-quantity { width: 110px; }
+.accounting-daily-matrix__col-money { width: 118px; }
 .accounting-daily-matrix__table th, .accounting-daily-matrix__table td { height: 48px; padding: 7px 8px; text-align: center; }
+.accounting-daily-matrix__table thead tr:nth-child(2) th { overflow-wrap: anywhere; line-height: 1.2; }
 .accounting-daily-matrix__table thead tr:first-child th { top: 0; height: 46px; border-right: 1px solid #ccd9d2; background: #e3eee8; text-align: center; }
 .accounting-daily-matrix__table thead tr:nth-child(2) th { top: 46px; min-width: 78px; border-right: 1px solid #dfe7e2; background: #f0f5f2; text-align: center; }
 .accounting-daily-matrix__table thead tr:nth-child(2) th:nth-child(n) { max-width: 112px; }
 .accounting-daily-matrix__date { color: #173f32 !important; font-size: .88rem !important; }
-.accounting-daily-matrix__sequence { position: sticky; z-index: 3; left: 0; width: 62px; min-width: 62px; background: #fff; text-align: center !important; }
-.accounting-daily-matrix__shop { position: sticky; z-index: 3; left: 62px; width: 240px; min-width: 240px; border-right: 2px solid #aec4b9; background: #fff; text-align: left !important; }
+.accounting-daily-matrix__sequence { position: sticky; z-index: 3; left: 0; width: 52px; min-width: 52px; background: #fff; text-align: center !important; }
+.accounting-daily-matrix__shop { position: sticky; z-index: 3; left: 52px; width: 210px; min-width: 210px; border-right: 2px solid #aec4b9; background: #fff; text-align: left !important; }
 .accounting-daily-matrix__table thead .accounting-daily-matrix__sequence, .accounting-daily-matrix__table thead .accounting-daily-matrix__shop { z-index: 6; background: #d8e9e1; }
 .accounting-daily-matrix__table tbody tr:hover > .accounting-daily-matrix__sequence, .accounting-daily-matrix__table tbody tr:hover > .accounting-daily-matrix__shop { background: #f5faf7; }
 .accounting-daily-matrix__table tbody .accounting-row--issue > .accounting-daily-matrix__sequence, .accounting-daily-matrix__table tbody .accounting-row--issue > .accounting-daily-matrix__shop { background: #fff4e6; }
@@ -222,7 +227,7 @@
 .accounting-review-summary strong { color: #9b4c17; }
 .accounting-review-summary:hover { border-color: #d5a56d; background: #fff6e8; }
 .accounting-daily-matrix__casual > td, .accounting-daily-matrix__casual > th { background: #eef7ff; }
-.accounting-daily-matrix__casual small { display: block; margin-top: 4px; color: #536b83; font-weight: 400; white-space: normal; min-width: 120px; }
+.accounting-daily-matrix__casual small { display: block; margin-top: 4px; color: #536b83; font-weight: 400; white-space: normal; overflow-wrap: anywhere; }
 .accounting-reconciliation__table { display: grid; gap: 10px; }
 .accounting-reconciliation__table h3, .accounting-reconciliation h2 { margin: 0; }
 .accounting-review-list { display: grid; gap: 10px; }
@@ -262,17 +267,6 @@
   .accounting-daily-matrix__table thead .accounting-daily-matrix__sequence,
   .accounting-daily-matrix__table thead .accounting-daily-matrix__shop { position: sticky; top: 0; left: auto; z-index: 2; }
   .accounting-daily-matrix__totals th { position: static; left: auto; }
-}
-
-@media (min-width: 1500px) {
-  .accounting-daily-matrix__table tbody tr:not(.accounting-daily-matrix__group) > *:nth-last-child(-n+6), .accounting-daily-matrix__table thead tr:first-child > *:nth-last-child(-n+6) { position: sticky; z-index: 4; min-width: 108px; background: #f8fbf9; }
-  .accounting-daily-matrix__table tr > *:nth-last-child(1) { right: 0; }
-  .accounting-daily-matrix__table tr > *:nth-last-child(2) { right: 150px; }
-  .accounting-daily-matrix__table tr > *:nth-last-child(3) { right: 258px; }
-  .accounting-daily-matrix__table tr > *:nth-last-child(4) { right: 366px; }
-  .accounting-daily-matrix__table tr > *:nth-last-child(5) { right: 474px; }
-  .accounting-daily-matrix__table tr > *:nth-last-child(6) { right: 582px; border-left: 2px solid #aec4b9; }
-  .accounting-daily-matrix__table thead tr:first-child > *:nth-last-child(-n+6) { z-index: 7; background: #d8e9e1; }
 }
 
 @media (min-width: 761px) and (max-width: 1200px) {
@@ -4009,7 +4003,7 @@ fieldset.ref-section {
 
 /* Prioritize storefront photos while scanning the POS shop list with fixed, uniform frames. */
 .employee-shop-grid { grid-template-columns: 1fr; }
-.employee-shop-tile { min-height: 140px; grid-template-columns: minmax(130px, clamp(140px, 35%, 260px)) minmax(0, 1fr); grid-template-rows: 1fr; align-items: stretch; }
+.employee-shop-tile { height: 160px; min-height: 160px; grid-template-columns: 160px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); align-items: stretch; }
 .employee-shop-tile__image-button { display: block; width: 100%; height: 100%; min-width: 0; min-height: 0; aspect-ratio: 1 / 1; }
 .employee-shop-tile__visual { position: relative; display: block; width: 100%; height: 100%; min-height: 0; aspect-ratio: 1 / 1; overflow: hidden; background: #edf3f9; }
 .employee-shop-tile__visual img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: center; }
@@ -4022,7 +4016,7 @@ fieldset.ref-section {
 .employee-shop-tile__arrow { bottom: 50%; transform: translateY(50%); }
 
 @media (max-width: 390px) {
-  .employee-shop-tile { min-height: 126px; grid-template-columns: 126px minmax(0, 1fr); }
+  .employee-shop-tile { height: 126px; min-height: 126px; grid-template-columns: 126px minmax(0, 1fr); }
   .employee-shop-tile__image-button { min-height: 126px; aspect-ratio: 1 / 1; }
   .employee-shop-tile__visual { min-height: 126px; aspect-ratio: 1 / 1; }
   .employee-shop-tile__body { padding: 12px 36px 12px 12px; }

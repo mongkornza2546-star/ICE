@@ -5,6 +5,10 @@ import test from 'node:test';
 const css = readFileSync(new URL('../src/index.css', import.meta.url), 'utf8');
 
 test('employee shop tile image button and visual enforce a fixed 1:1 aspect ratio to avoid layout shift', () => {
+  assert.match(
+    css,
+    /\.employee-shop-tile\s*\{[^}]*height:\s*160px;[^}]*grid-template-columns:\s*160px minmax\(0, 1fr\);/,
+  );
   // Ensure no aspect-ratio: auto exists for employee-shop-tile__visual
   assert.equal(
     css.includes('.employee-shop-tile__visual { height: 100%; min-height: 140px; aspect-ratio: auto; }'),
@@ -40,6 +44,10 @@ test('mobile employee shop tile images retain fixed 1:1 aspect ratio', () => {
     }
   }
   assert.ok(shopTileRule.length > 0, 'Must have a 390px media query for .employee-shop-tile');
+  assert.match(
+    shopTileRule,
+    /\.employee-shop-tile\s*\{[^}]*height:\s*126px;[^}]*grid-template-columns:\s*126px minmax\(0, 1fr\);/,
+  );
   assert.match(
     shopTileRule,
     /\.employee-shop-tile__image-button\s*\{[^}]*aspect-ratio:\s*1\s*\/\s*1;/,

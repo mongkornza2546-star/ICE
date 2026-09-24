@@ -802,7 +802,8 @@ function ShopDailyMatrix({ collapsedGroups, daily, data, fromDate, grouped, onOp
     groups.set(key, [...(groups.get(key) ?? []), row]);
   });
   const dayColumnCount = daily.ice_types.length + 2;
-  const totalColumnCount = 2 + dates.length * dayColumnCount + 5;
+  const totalColumnCount = 2 + dates.length * dayColumnCount;
+  const tableWidth = 262 + dates.length * (daily.ice_types.length * 110 + 236);
 
   const renderDayCells = (shop: AccountingShopSummaryRow, day: AccountingShopDailyCell | undefined, date: string) => {
     if (!day) return <Fragment key={date}>
@@ -834,12 +835,10 @@ function ShopDailyMatrix({ collapsedGroups, daily, data, fromDate, grouped, onOp
   const renderShopRow = (shop: AccountingShopSummaryRow) => {
     const row = dailyRows.get(shop.shop_id);
     const days = new Map((row?.days ?? []).map((day) => [day.service_date, day]));
-    const note = shop.delivery_sequence == null ? 'ยังไม่ได้กำหนดลำดับส่ง' : shop.historical_zone_name && shop.current_zone_name && shop.historical_zone_name !== shop.current_zone_name ? 'พื้นที่ล่าสุดต่างจากพื้นที่ประจำ' : '—';
     return <tr className={shop.payment_status === 'overdue' ? 'accounting-row--issue' : ''} key={shop.shop_id}>
       <td className="accounting-daily-matrix__sequence">{shop.delivery_sequence?.toLocaleString('th-TH') ?? '—'}</td>
       <th className="accounting-daily-matrix__shop"><button className="accounting-link" onClick={() => onOpenShop(shop)} type="button">{formatAccountingShopTitle(shop)}</button></th>
       {dates.map((date) => renderDayCells(shop, days.get(date), date))}
-      <td>{money.format(shop.outstanding_amount)}</td><td>{money.format(shop.cumulative_outstanding_amount)}</td><td>{money.format(shop.cumulative_overdue_amount)}</td><td><span className={`accounting-payment-status accounting-payment-status--${shop.payment_status}`}>{paymentStatusLabels[shop.payment_status]}</span></td><td className="accounting-daily-matrix__note">{note}</td>
     </tr>;
   };
 
@@ -857,11 +856,18 @@ function ShopDailyMatrix({ collapsedGroups, daily, data, fromDate, grouped, onOp
         <button aria-pressed={windowMode === 'month'} onClick={() => setWindow('month')} type="button">ทั้งเดือน</button>
       </div>
     </div>
-    <div className="accounting-table-wrap accounting-table-wrap--ledger accounting-daily-matrix__scroll"><table className="accounting-table accounting-daily-matrix__table">
+    <div className="accounting-table-wrap accounting-table-wrap--ledger accounting-daily-matrix__scroll"><table className="accounting-table accounting-daily-matrix__table" style={{ '--matrix-width': `${tableWidth}px` } as React.CSSProperties}>
+      <colgroup>
+        <col className="accounting-daily-matrix__col-sequence" /><col className="accounting-daily-matrix__col-shop" />
+        {dates.flatMap((date) => [
+          ...daily.ice_types.map((iceType) => <col className="accounting-daily-matrix__col-quantity" key={`${date}:${iceType.ice_type_id}`} />),
+          <col className="accounting-daily-matrix__col-money" key={`${date}:sales`} />,
+          <col className="accounting-daily-matrix__col-money" key={`${date}:cash`} />,
+        ])}
+      </colgroup>
       <thead>
         <tr><th className="accounting-daily-matrix__sequence" rowSpan={2}>ลำดับ</th><th className="accounting-daily-matrix__shop" rowSpan={2}>ร้าน</th>
           {dates.map((date) => <th className="accounting-daily-matrix__date" colSpan={dayColumnCount} key={date}>{dailyDate.format(new Date(`${date}T12:00:00+07:00`))}</th>)}
-          <th rowSpan={2}>ค้างวันนี้</th><th rowSpan={2}>ค้างสะสม</th><th rowSpan={2}>เกินกำหนด</th><th rowSpan={2}>สถานะชำระ</th><th rowSpan={2}>หมายเหตุ</th>
         </tr>
         <tr>{dates.flatMap((date) => [
           ...daily.ice_types.map((iceType) => <th key={`${date}:${iceType.ice_type_id}`} title={iceType.name}>{iceType.name}</th>),
@@ -890,7 +896,6 @@ function ShopDailyMatrix({ collapsedGroups, daily, data, fromDate, grouped, onOp
               <td className="accounting-daily-matrix__money" aria-label={`ลูกค้าขาจร ${date} รับเงินจริง`}>{day ? money.format(day.cash_received) : '—'}{day && day.cash_refunded > 0 ? <small>คืนเงิน {money.format(day.cash_refunded)} · สุทธิ {money.format(day.cash_received - day.cash_refunded)}</small> : null}</td>
             </Fragment>;
           })}
-          <td>—</td><td>—</td><td>—</td><td>จ่ายทันที / แจกฟรี</td><td className="accounting-daily-matrix__note">{daily.casual_days ? 'จำนวนรวมถุงที่ระบุและถุงที่ครบราคากลางต่อวัน/จุดถือครอง เศษยอดและแจกฟรีไม่ระบุจำนวนยังต้องตรวจนับ' : 'ยังไม่มีข้อมูลขาจรรายวันจากระบบ'}</td>
         </tr>
         {!data.rows.length ? <tr><td colSpan={totalColumnCount}>ไม่พบร้านที่ตรงกับตัวกรอง</td></tr> : !grouped ? data.rows.map(renderShopRow) : [...groups.entries()].map(([key, rows]) => {
           const group = derivedShopGroup(rows);
@@ -920,7 +925,6 @@ function ShopDailyMatrix({ collapsedGroups, daily, data, fromDate, grouped, onOp
                     <td>{complete ? money.format(dayCells.reduce((sum, day) => sum + Number(day?.cash_received), 0)) : '—'}</td>
                   </Fragment>;
                 })}
-                <td>{money.format(rows.reduce((sum, shop) => sum + shop.outstanding_amount, 0))}</td><td>{money.format(group.cumulative_outstanding_amount)}</td><td>{money.format(rows.reduce((sum, shop) => sum + shop.cumulative_overdue_amount, 0))}</td><td>—</td><td>—</td>
               </tr>
             </>}
           </Fragment>;
