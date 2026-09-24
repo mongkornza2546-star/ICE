@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Printer, WarningCircle, X } from '@phosphor-icons/react';
 import { supabase } from '../../lib/supabase';
 import { getErrorMessage } from '../../lib/errorMessage';
@@ -38,16 +38,6 @@ type CorrectionContext = {
   items: CorrectionItem[];
 };
 
-type CorrectionPreview = {
-  old_amount: number;
-  new_amount: number;
-  allocated_amount: number;
-  refund_amount: number;
-  outstanding_amount: number;
-  approval_required?: boolean;
-  stock_deltas: Array<{ ice_type_id: string; name: string; unit: string; quantity_delta: number }>;
-};
-
 const money = new Intl.NumberFormat('th-TH', {
   style: 'currency',
   currency: 'THB',
@@ -58,22 +48,10 @@ function requestKey() {
   return globalThis.crypto?.randomUUID?.() ?? `correction-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
-function correctionConfirmation(preview: CorrectionPreview, isClosed: boolean) {
-  const newAmount = money.format(Number(preview.new_amount));
-  const allocated = money.format(Number(preview.allocated_amount));
-  const effect = Number(preview.refund_amount) > 0
-    ? `ยอดรับชำระจะเกินยอดบิล ${money.format(Number(preview.refund_amount))}`
-    : Number(preview.outstanding_amount) > 0
-      ? `ร้านจะมียอดค้างเพิ่ม ${money.format(Number(preview.outstanding_amount))}`
-      : 'บิลจะชำระครบ';
-  return `${isClosed ? 'ยอดปรับปรุง' : 'บิลใหม่'} ${newAmount} เงินที่รับและจัดสรรแล้ว ${allocated}\nหลังยืนยัน ${effect} ใบเสร็จเดิมยังคงอยู่`;
-}
-
 export function DeliveryCorrectionDialog({
   eventId,
   onClose,
   onSuccess,
-  userRole = 'round_lead',
 }: {
   eventId: string;
   onClose: () => void;
@@ -81,16 +59,10 @@ export function DeliveryCorrectionDialog({
   userRole?: AppRole;
 }) {
   const [context, setContext] = useState<CorrectionContext | null>(null);
-  const [quantities, setQuantities] = useState<Record<string, number>>({});
   const [reason, setReason] = useState('');
-  const [note, setNote] = useState('');
-  const [preview, setPreview] = useState<CorrectionPreview | null>(null);
-  const [approvalId, setApprovalId] = useState<string | null>(null);
-  const [approvalStatus, setApprovalStatus] = useState<'pending' | 'approved' | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const correctionKey = useRef(requestKey());
   const cancellationKey = useRef(requestKey());
 
   useEffect(() => {
@@ -114,8 +86,6 @@ export function DeliveryCorrectionDialog({
         if (!active) return;
         const next = data as CorrectionContext;
         setContext(next);
-        setQuantities(Object.fromEntries((next.items ?? []).map((item) => [item.ice_type_id, Number(item.quantity)])));
-        setNote(next.note ?? '');
       } catch (loadError) {
         if (active) setError(getErrorMessage(loadError));
       } finally {
@@ -127,34 +97,6 @@ export function DeliveryCorrectionDialog({
   }, [eventId]);
 
   const isClosed = Boolean(context && (context.round_status === 'closed' || context.day_closed));
-  const canCreateAdjustment = isClosed && userRole === 'admin';
-  const items = useMemo(() => (context?.ice_types ?? context?.items ?? [])
-    .map((item) => ({ ice_type_id: item.ice_type_id, quantity: quantities[item.ice_type_id] ?? 0 }))
-    .filter((item) => item.quantity > 0), [context, quantities]);
-
-  const localClosedPreview = () => {
-    if (!context) return null;
-    const newAmount = items.reduce((total, item) => {
-      const product = (context.ice_types ?? context.items).find((candidate) => candidate.ice_type_id === item.ice_type_id);
-      if (product?.unit_price == null) throw new Error('พบชนิดน้ำแข็งที่ไม่มีราคา');
-      return total + item.quantity * Number(product.unit_price);
-    }, 0);
-    return {
-      old_amount: Number(context.effective_amount),
-      new_amount: newAmount,
-      allocated_amount: Number(context.allocated_amount),
-      refund_amount: Math.max(Number(context.allocated_amount) - newAmount, 0),
-      outstanding_amount: Math.max(newAmount - Number(context.allocated_amount), 0),
-      stock_deltas: (context.ice_types ?? context.items).map((product) => ({
-        ice_type_id: product.ice_type_id,
-        name: product.name,
-        unit: product.unit,
-        quantity_delta: Number(context.items.find((item) => item.ice_type_id === product.ice_type_id)?.quantity ?? 0)
-          - Number(items.find((item) => item.ice_type_id === product.ice_type_id)?.quantity ?? 0),
-      })).filter((item) => item.quantity_delta !== 0),
-    };
-  };
-
   const printDeliveryDocument = async () => {
     if (!context?.charge_id) return;
     const nativeAndroid = isAndroidApp();
@@ -180,120 +122,11 @@ export function DeliveryCorrectionDialog({
     }
   };
 
-  const previewChange = async () => {
-    if (!context || (!isClosed && items.length === 0)) return setError('รายการส่งต้องมีน้ำแข็งอย่างน้อย 1 ชนิด');
-    setSubmitting(true);
-    setError(null);
-    try {
-      if (isClosed) {
-        setPreview(localClosedPreview());
-      } else {
-        if (!supabase) throw new Error('ยังไม่ได้ตั้งค่า Supabase');
-        const previewRpc = context.destination_kind === 'event'
-          ? 'preview_event_delivery_correction'
-          : 'preview_delivery_correction';
-        const { data, error: previewError } = await supabase.rpc(previewRpc, {
-          p_event_id: eventId,
-          p_action: 'correct',
-          p_items: items,
-          p_stop_status: 'delivered',
-        });
-        if (previewError) throw previewError;
-        setPreview(data as CorrectionPreview);
-        setApprovalId(null);
-        setApprovalStatus(null);
-      }
-    } catch (previewError) {
-      setError(getErrorMessage(previewError));
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const requestApproval = async () => {
-    if (!context || !preview?.approval_required || !reason.trim()) {
-      setError('กรุณาระบุเหตุผลก่อนขออนุมัติ');
-      return;
-    }
-    setSubmitting(true);
-    setError(null);
-    try {
-      if (!supabase) throw new Error('ยังไม่ได้ตั้งค่า Supabase');
-      const { data, error: approvalError } = await supabase.rpc('request_financial_approval', {
-        p_round_stop_id: context.round_stop_id,
-        p_kind: 'credit_limit',
-        p_items: items,
-        p_payment_term: 'credit',
-        p_requested_amount: preview.new_amount,
-        p_reason: reason.trim(),
-        p_charge_id: null,
-      });
-      if (approvalError) throw approvalError;
-      const approval = data as { id: string; status: 'pending' | 'approved' | 'rejected' | 'consumed' };
-      if (approval.status === 'approved') {
-        setApprovalId(approval.id);
-        setApprovalStatus('approved');
-      } else {
-        setApprovalId(null);
-        setApprovalStatus('pending');
-      }
-    } catch (approvalError) {
-      setError(getErrorMessage(approvalError));
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const submitChange = async (event: FormEvent) => {
-    event.preventDefault();
-    if (!context || !preview) return void previewChange();
-    if (!reason.trim()) return setError('กรุณาระบุเหตุผล');
-    if (!window.confirm(correctionConfirmation(preview, isClosed))) return;
-    setSubmitting(true);
-    setError(null);
-    try {
-      if (!supabase) throw new Error('ยังไม่ได้ตั้งค่า Supabase');
-      const rpc = isClosed
-        ? context.destination_kind === 'event'
-          ? 'create_closed_event_delivery_adjustment'
-          : 'create_closed_delivery_adjustment'
-        : context.destination_kind === 'event'
-          ? 'apply_open_event_delivery_correction'
-          : 'apply_open_delivery_correction';
-      const args = isClosed ? {
-        p_event_id: eventId,
-        p_items: items,
-        p_reason: reason.trim(),
-        p_idempotency_key: correctionKey.current,
-      } : {
-        p_event_id: eventId,
-        p_action: 'correct',
-        p_items: items,
-        p_stop_status: 'delivered',
-        p_note: note.trim() || null,
-        p_reason: reason.trim(),
-        p_idempotency_key: correctionKey.current,
-        p_approval_id: approvalId,
-      };
-      const { error: saveError } = await supabase.rpc(rpc, args);
-      if (saveError) throw saveError;
-      publishDataChange(['accounting', 'payment', 'receivable', 'refund', 'stock', 'pos']);
-      await Promise.allSettled([Promise.resolve(onSuccess(
-        isClosed ? 'สร้างเอกสารปรับปรุงบิลแล้ว' : 'แก้ไขบิลแล้ว',
-      ))]);
-      onClose();
-    } catch (saveError) {
-      setError(getErrorMessage(saveError));
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
   const cancelBill = async () => {
-    if (!context || !context.can_cancel || !reason.trim()) return setError('กรุณาระบุเหตุผลก่อนยกเลิกบิล');
+    if (!context || !canCancel || submitting || !reason.trim()) return setError('กรุณาระบุเหตุผลก่อนยกเลิกบิล');
     const cancellationEffect = Number(context.allocated_amount) > 0
-      ? `หลังยืนยันบิลส่งของจะถูกยกเลิก ใบเสร็จเดิมยอด ${money.format(Number(context.allocated_amount))} ยังคงอยู่`
-      : 'หลังยืนยันบิลส่งของจะถูกยกเลิก โดยไม่ยกเลิกรับเงินอัตโนมัติ';
+      ? `หลังยืนยันใบส่งจะถูกยกเลิก และสร้างยอดรอคืนเงิน ${money.format(Number(context.allocated_amount))} ใบเสร็จเดิมยังคงอยู่`
+      : 'หลังยืนยันใบส่งจะถูกยกเลิกและคืนสต๊อก จากนั้นสามารถบันทึกส่งใหม่ได้';
     if (!window.confirm(`ยืนยันยกเลิกบิล ${context.charge_number ?? ''} หรือไม่\n${cancellationEffect}`)) return;
     setSubmitting(true);
     setError(null);
@@ -307,16 +140,14 @@ export function DeliveryCorrectionDialog({
         p_action: 'cancel',
         p_items: [],
         p_stop_status: 'delivered',
-        p_note: note.trim() || null,
+        p_note: context.note,
         p_reason: reason.trim(),
         p_idempotency_key: cancellationKey.current,
         p_approval_id: null,
       });
       if (saveError) throw saveError;
       publishDataChange(['accounting', 'payment', 'receivable', 'refund', 'stock', 'pos']);
-      await Promise.allSettled([Promise.resolve(onSuccess(context.payment_term === 'immediate'
-        ? 'ยกเลิกรายการขายสดแล้ว สามารถบันทึกขายใหม่ได้'
-        : 'ยกเลิกบิลแล้ว'))]);
+      await Promise.allSettled([Promise.resolve(onSuccess('ยกเลิกใบส่งน้ำแข็งแล้ว สามารถบันทึกส่งใหม่ได้'))]);
       onClose();
     } catch (saveError) {
       setError(getErrorMessage(saveError));
@@ -326,12 +157,13 @@ export function DeliveryCorrectionDialog({
   };
 
   const immediateSale = context?.payment_term === 'immediate';
-  const editable = Boolean(context && !immediateSale && (context.can_correct || canCreateAdjustment));
+  const canCancel = Boolean(context?.can_cancel && (!isClosed || immediateSale)
+    && (!immediateSale || Number(context?.allocated_amount) === 0));
 
   return <div className="modal-backdrop delivery-correction-layer">
-    <form aria-label={`แก้ไขบิล ${context?.charge_number ?? ''}`} aria-modal="true" className="modal-card delivery-correction-dialog" onSubmit={submitChange} role="dialog">
+    <form aria-label={`ยกเลิกใบส่งน้ำแข็ง ${context?.charge_number ?? ''}`} aria-modal="true" className="modal-card delivery-correction-dialog" onSubmit={(event) => { event.preventDefault(); void cancelBill(); }} role="dialog">
       <div className="panel-header">
-        <div><p className="eyebrow">{isClosed ? 'เอกสารปรับปรุง' : 'แก้ไขบิล'}</p><h2>{context?.charge_number ?? 'รายการขายสด'}</h2></div>
+        <div><p className="eyebrow">ยกเลิกใบส่งน้ำแข็ง</p><h2>{context?.charge_number ?? 'รายการขายสด'}</h2></div>
         <button aria-label="ปิด" className="ghost-button" disabled={submitting} onClick={onClose} type="button"><X size={20} /></button>
       </div>
       {loading ? <p className="muted">กำลังโหลดข้อมูลบิล...</p> : context ? <>
@@ -340,36 +172,22 @@ export function DeliveryCorrectionDialog({
           <span><small>ยอดปัจจุบัน</small><strong>{money.format(Number(context.effective_amount))}</strong></span>
           <span><small>รับชำระแล้ว</small><strong>{money.format(Number(context.allocated_amount))}</strong></span>
         </div>
-        {isClosed ? <p className="delivery-correction-dialog__notice"><WarningCircle size={18} />รอบหรือวันนี้ปิดแล้ว ระบบจะเก็บเป็นเอกสารปรับปรุงโดยไม่แก้รายการเดิม</p> : null}
+        {isClosed && !canCancel ? <p className="delivery-correction-dialog__notice"><WarningCircle size={18} />รอบหรือวันนี้ปิดแล้ว ไม่สามารถยกเลิกใบส่งนี้ได้</p> : null}
         {immediateSale ? <p className="delivery-correction-dialog__notice"><WarningCircle size={18} />{Number(context.allocated_amount) > 0
-          ? 'ขายสดแก้ไขในบิลเดิมไม่ได้ ให้ยกเลิก REC ก่อน แล้วจึงยกเลิกรายการส่งและบันทึกขายใหม่'
+          ? 'ให้หัวหน้าหรือแอดมินยกเลิกใบเสร็จรับเงินก่อน แล้วจึงยกเลิกรายการส่งและบันทึกขายใหม่'
           : 'รายการนี้ไม่มียอดรับชำระที่ยังใช้งานอยู่ ให้ยกเลิกรายการส่งก่อนบันทึกขายใหม่'}</p> : null}
-        <div className="field-grid field-grid--three">
-          {(context.ice_types ?? context.items).map((ice) => <label key={ice.ice_type_id}>{ice.name} ({ice.unit})<input disabled={!editable || submitting} min="0" onChange={(event) => { setQuantities((current) => ({ ...current, [ice.ice_type_id]: Math.max(0, Math.round((Number(event.target.value) || 0) * 2) / 2) })); setPreview(null); setApprovalId(null); setApprovalStatus(null); }} step="0.5" type="number" value={quantities[ice.ice_type_id] ?? 0} /></label>)}
+        <p className="muted">หากบันทึกผิด ให้ยกเลิกใบส่งนี้ แล้วบันทึกส่งใหม่</p>
+        <div className="delivery-correction-dialog__stock-impact">
+          <strong>รายการที่จะยกเลิก</strong>
+          {context.items.map((ice) => <span key={ice.ice_type_id}>{ice.name} {Number(ice.quantity ?? 0).toLocaleString('th-TH')} {ice.unit}</span>)}
         </div>
-        <label>เหตุผล<input disabled={(!editable && !context.can_cancel) || submitting} onChange={(event) => setReason(event.target.value)} required value={reason} /></label>
-        {!isClosed ? <label>หมายเหตุ<textarea disabled={!editable || submitting} onChange={(event) => setNote(event.target.value)} rows={2} value={note} /></label> : null}
-        {preview ? <div className="delivery-correction-dialog__preview">
-          <span><small>ยอดใหม่</small><strong>{money.format(Number(preview.new_amount))}</strong></span>
-          <span><small>ยอดค้างใหม่</small><strong>{money.format(Number(preview.outstanding_amount))}</strong></span>
-          <span><small>ยอดรับเกิน</small><strong>{money.format(Number(preview.refund_amount))}</strong></span>
-        </div> : null}
-        {preview?.approval_required ? <div className="employee-approval-request">
-          <strong>{approvalStatus === 'approved' ? 'อนุมัติวงเงินแล้ว' : approvalStatus === 'pending' ? 'ส่งคำขอแล้ว รออนุมัติ' : 'ยอดใหม่เกินวงเงินเครดิต'}</strong>
-          {approvalStatus !== 'approved' ? <button disabled={submitting} onClick={() => void requestApproval()} type="button">{approvalStatus === 'pending' ? 'ตรวจสถานะคำขอ' : 'ขออนุมัติวงเงิน'}</button> : null}
-        </div> : null}
-        {preview?.stock_deltas?.length ? <div className="delivery-correction-dialog__stock-impact"><strong>ผลต่อสต๊อก</strong>{context.day_closed ? <span>วันนี้ปิดสต๊อกแล้ว จึงไม่เปลี่ยน snapshot สิ้นวัน</span> : preview.stock_deltas.map((item) => <span key={item.ice_type_id}>{item.name}: {item.quantity_delta > 0 ? 'รับคืนเข้าสต๊อก' : 'ส่งเพิ่มให้ร้าน'} {Math.abs(item.quantity_delta).toLocaleString('th-TH')} {item.unit}</span>)}</div> : null}
-        {context.blocker_reason && !canCreateAdjustment ? <p className="credit-ar__action-error" role="alert">{context.blocker_reason}</p> : null}
+        <label>เหตุผล<input disabled={!canCancel || submitting} onChange={(event) => setReason(event.target.value)} required value={reason} /></label>
+        {context.blocker_reason ? <p className="credit-ar__action-error" role="alert">{context.blocker_reason}</p> : null}
       </> : null}
       {error ? <p className="credit-ar__action-error" role="alert">{error}</p> : null}
       <div className="modal-actions">
         {context?.charge_number ? <button className="ghost-button" disabled={submitting} onClick={() => void printDeliveryDocument()} type="button"><Printer size={18} />พิมพ์เอกสาร</button> : null}
-        {context?.can_cancel && (!isClosed || immediateSale)
-          && (!immediateSale || Number(context.allocated_amount) === 0)
-          ? <button className="ghost-button danger-button" disabled={submitting} onClick={() => void cancelBill()} type="button">ยกเลิกบิลส่งของ</button>
-          : null}
-        <button className="secondary-button" disabled={!editable || submitting} onClick={() => void previewChange()} type="button">คำนวณผลกระทบ</button>
-        <button className="primary-button" disabled={!editable || !preview || submitting || Boolean(preview.approval_required && !approvalId)} type="submit">{submitting ? 'กำลังบันทึก...' : isClosed ? 'สร้างเอกสารปรับปรุง' : 'ยืนยันแก้ไข'}</button>
+        {canCancel ? <button className="ghost-button danger-button" disabled={submitting} type="submit">{submitting ? 'กำลังยกเลิก...' : 'ยืนยันยกเลิกใบส่งน้ำแข็ง'}</button> : null}
       </div>
     </form>
   </div>;

@@ -11,6 +11,10 @@ const presentationMigration = readFileSync(
   new URL('../supabase/migrations/0168_event_card_presentation_contract.sql', import.meta.url),
   'utf8',
 );
+const cancelOnlyMigration = readFileSync(
+  new URL('../supabase/migrations/0194_delivery_slips_cancel_only.sql', import.meta.url),
+  'utf8',
+);
 const roundCancellationMigration = readFileSync(
   new URL('../supabase/migrations/0027_cancel_delivery_round.sql', import.meta.url),
   'utf8',
@@ -183,6 +187,17 @@ test('destination counts and event cards preserve regular/event separation', asy
         event_stops_enabled = true;
   `);
   await db.exec(presentationMigration);
+  await db.exec(`
+    create function public.get_event_delivery_correction_context(p_event_id uuid)
+    returns jsonb language sql stable as $$
+      select jsonb_build_object('can_cancel', p_event_id = '80000000-0000-4000-8000-000000000002'::uuid)
+    $$;
+  `);
+  const historyPatchStart = cancelOnlyMigration.indexOf('do $event_history_cancellation$');
+  assert.notEqual(historyPatchStart, -1);
+  const historyPatchEnd = cancelOnlyMigration.indexOf('$event_history_cancellation$;', historyPatchStart);
+  assert.notEqual(historyPatchEnd, -1);
+  await db.exec(cancelOnlyMigration.slice(historyPatchStart, historyPatchEnd + '$event_history_cancellation$;'.length));
 
   const ids = {
     user: '10000000-0000-4000-8000-000000000001',
@@ -305,6 +320,7 @@ test('destination counts and event cards preserve regular/event separation', asy
   assert.equal(cards.rows[0].value.cards[0].stop_status, 'pending');
   assert.equal(cards.rows[0].value.cards[0].stop_note, null);
   assert.equal(cards.rows[0].value.cards[0].today_history.length, 1);
+  assert.equal(cards.rows[0].value.cards[0].today_history[0].can_cancel, true);
   assert.equal(cards.rows[0].value.cards[0].today_totals[0].quantity, 3);
 
   const problemCards = await db.query(`

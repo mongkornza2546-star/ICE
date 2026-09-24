@@ -200,6 +200,7 @@ describe('employee live shop loading', () => {
             stop_note: 'เข้าถึงบูธไม่ได้',
             today_history: [{
               delivery_event_id: 'delivery-issue-1',
+              can_cancel: true,
               recorded_at: '2026-08-11T01:00:00Z',
               stop_status: 'no_access',
               note: 'เข้าบูธไม่ได้',
@@ -225,6 +226,7 @@ describe('employee live shop loading', () => {
       event_delivery_enabled: false,
       today_history: [{
         event_id: 'delivery-issue-1',
+        can_cancel: true,
         stop_status: 'no_access',
         note: 'เข้าบูธไม่ได้',
         items: {},

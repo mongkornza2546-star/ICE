@@ -9,8 +9,8 @@ import {
   Cube,
   CurrencyDollar,
   DotsThreeVertical,
-  Factory,
-  MapPin,
+  Buildings,
+  CalendarBlank,
   Package,
   Storefront,
   Truck,
@@ -105,7 +105,6 @@ export function ManagerDashboard({
   profileRole,
   onNavigate,
   demoDashboard,
-  demoStockSummary,
   demoAggregateStockSummary,
 }: {
   isActive: boolean;
@@ -120,7 +119,6 @@ export function ManagerDashboard({
   const loadInFlight = useRef(false);
   const [dashboard, setDashboard] = useState<DailyWorkDashboard | null>(null);
   const [paymentMethodSummary, setPaymentMethodSummary] = useState<DailyPaymentMethodSummary | null>(null);
-  const [stockSummary, setStockSummary] = useState<StockControlSummary | null>(null);
   const [aggregateStockSummary, setAggregateStockSummary] = useState<DailyAggregateStockSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -136,14 +134,13 @@ export function ManagerDashboard({
     if (!isActive) return undefined;
     const currentRequest = ++requestId.current;
 
-    if (demoDashboard && demoStockSummary && demoAggregateStockSummary) {
+    if (demoDashboard && demoAggregateStockSummary) {
       setDashboard(demoDashboard);
       setPaymentMethodSummary({
         cashReceivedValue: demoDashboard.salesSummary.cashReceivedValue ?? 0,
         transferReceivedValue: demoDashboard.salesSummary.transferReceivedValue ?? 0,
         creditSalesValue: demoDashboard.salesSummary.creditSalesValue ?? 0,
       });
-      setStockSummary(demoStockSummary);
       setAggregateStockSummary(demoAggregateStockSummary);
       setError(null);
       setLoadedAt(new Date());
@@ -167,21 +164,18 @@ export function ManagerDashboard({
 
       try {
         const serviceDate = currentServiceDate;
-        const [dashRes, stockRes, aggregateRes, paymentSummaryRes] = await Promise.all([
+        const [dashRes, aggregateRes, paymentSummaryRes] = await Promise.all([
           client.rpc('get_daily_work_dashboard', { p_service_date: serviceDate }),
-          client.rpc('get_stock_control_summary', { p_service_date: serviceDate }),
           client.rpc('get_daily_aggregate_stock_summary', { p_service_date: serviceDate }),
           client.rpc('get_daily_payment_method_summary', { p_service_date: serviceDate }),
         ]);
 
         if (currentRequest !== requestId.current) return;
         if (dashRes.error) throw new Error(dashRes.error.message);
-        if (stockRes.error) throw new Error(stockRes.error.message);
         if (aggregateRes.error) throw new Error(aggregateRes.error.message);
         if (paymentSummaryRes.error) throw new Error(paymentSummaryRes.error.message);
 
         setDashboard(dashRes.data as DailyWorkDashboard);
-        setStockSummary(stockRes.data as StockControlSummary);
         setAggregateStockSummary(aggregateRes.data as DailyAggregateStockSummary);
         setPaymentMethodSummary(paymentSummaryRes.data as DailyPaymentMethodSummary);
         setLoadedAt(new Date());
@@ -203,7 +197,7 @@ export function ManagerDashboard({
       requestId.current += 1;
       loadInFlight.current = false;
     };
-  }, [isActive, reloadKey, currentServiceDate, demoAggregateStockSummary, demoDashboard, demoStockSummary]);
+  }, [isActive, reloadKey, currentServiceDate, demoAggregateStockSummary, demoDashboard]);
 
   useEffect(() => subscribeToDataChange(['stock', 'pos'], () => {
     if (isActive) setReloadKey((key) => key + 1);
@@ -281,7 +275,7 @@ export function ManagerDashboard({
     transferReceivedValue: 0,
     creditSalesValue: 0,
   };
-  const locations = (stockSummary?.locations ?? []).filter((location) => location.holds_inventory === true);
+  const locationSales = salesSummary.locationSales ?? [];
   const stockTotals = aggregateStockSummary.items.map((item) => ({
     unit: item.unit,
     quantity: Number(item.available_quantity),
@@ -380,26 +374,23 @@ export function ManagerDashboard({
       </section>
 
       <div className="dashboard-mid-grid">
-        <section className="dashboard-panel dashboard-flow-panel">
-          <PanelHeading title="สรุปเส้นทางการกระจายน้ำแข็งวันนี้" />
-          <div className="dashboard-flow" aria-label="เส้นทางกระจายสต๊อก">
-            <FlowStep icon={Factory} label="โรงงาน" value={totalStock.value} unit={totalStock.unit} state="พร้อมส่ง" />
-            {locations.slice(0, 4).map((location, index) => {
-              const quantity = summarizeQuantity(location.balances);
-              const hasStock = location.balances.some((balance) => balance.quantity > 0);
+        <section className="dashboard-panel">
+          <PanelHeading title="สรุปยอดขายแต่ล่ะจุด" detail="ยอดขายสุทธิแยกตามตึกและอีเว้นในวันนี้" />
+          <div className="dashboard-location-sales" aria-label="ยอดขายแยกตามตึกและอีเว้น">
+            {locationSales.map((location) => {
+              const LocationIcon = location.kind === 'event' ? CalendarBlank : Buildings;
               return (
-                <FlowStep
-                  icon={index === 0 ? Truck : MapPin}
-                  key={location.id}
-                  label={location.name}
-                  value={quantity.value}
-                  unit={quantity.unit}
-                  state={hasStock ? 'พร้อมใช้งาน' : 'ไม่มีสต๊อก'}
-                  muted={!hasStock}
-                />
+                <article className="dashboard-location-sale" key={`${location.kind}-${location.id}`}>
+                  <span className={`dashboard-location-sale__icon dashboard-location-sale__icon--${location.kind}`}><LocationIcon size={24} weight="duotone" /></span>
+                  <div className="dashboard-location-sale__name">
+                    <strong>{location.name}</strong>
+                    <small>{location.kind === 'event' ? 'อีเว้น' : 'ตึก'} · {location.saleCount.toLocaleString('th-TH')} รายการขาย</small>
+                  </div>
+                  <b>{formatCurrency(location.netSalesValue)}</b>
+                </article>
               );
             })}
-            {locations.length === 0 ? <p className="dashboard-flow__empty">ยังไม่มีจุดถือครองสำหรับวันนี้</p> : null}
+            {locationSales.length === 0 ? <p className="dashboard-product-sales-empty">ยังไม่มีข้อมูลยอดขายแยกตามจุดสำหรับวันนี้</p> : null}
           </div>
         </section>
 
@@ -459,8 +450,4 @@ function OverviewCard({ icon: IconComponent, label, value, unit, detail, tone }:
 
 function PanelHeading({ title, detail }: { title: string; detail?: string }) {
   return <div className="dashboard-panel__heading"><div><h2>{title}</h2>{detail ? <p>{detail}</p> : null}</div></div>;
-}
-
-function FlowStep({ icon: IconComponent, label, value, unit, state, muted = false }: { icon: Icon; label: string; value: string; unit?: string; state: string; muted?: boolean }) {
-  return <article className={`dashboard-flow__step ${muted ? 'dashboard-flow__step--muted' : ''}`}><span className="dashboard-flow__node"><IconComponent size={27} weight="fill" /></span><strong>{label}</strong><b>{value}</b>{unit ? <small>{unit}</small> : null}<em><i />{state}</em></article>;
 }

@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 const client = vi.hoisted(() => ({ rpc: vi.fn() }));
 vi.mock('../src/lib/supabase', () => ({ supabase: client }));
@@ -13,6 +13,11 @@ function setup(status = 'open') {
       deliverySummary: { regularShopCount: 0, eventParticipationCount: 0, activeDeliveryCount: 0 },
       salesSummary: {
         netSalesValue: 800,
+        locationSales: [
+          { id: 'building-a', kind: 'building', name: 'ตึก A', netSalesValue: 500, saleCount: 4 },
+          { id: 'building-b', kind: 'building', name: 'ตึก B', netSalesValue: 0, saleCount: 0 },
+          { id: 'event-today', kind: 'event', name: 'ตลาดวันนี้', netSalesValue: 300, saleCount: 2 },
+        ],
         iceTypeSales: [
           { ice_type_id: 'small-tube', ice_type_name: 'หลอดเล็ก', unit: 'ถุง', quantity: 42 },
           { ice_type_id: 'large-tube', ice_type_name: 'หลอดใหญ่', unit: 'ถุง', quantity: 18 },
@@ -41,6 +46,15 @@ it('shows the aggregate closure instead of obsolete per-location count warnings'
   expect(screen.getByText('42')).not.toBeNull();
   expect(screen.getByText('หลอดใหญ่')).not.toBeNull();
   expect(screen.getByText('18')).not.toBeNull();
+  const pointSales = within(screen.getByLabelText('ยอดขายแยกตามตึกและอีเว้น'));
+  expect(pointSales.getByText('ตึก A')).not.toBeNull();
+  expect(pointSales.getByText('ตึก B')).not.toBeNull();
+  expect(pointSales.getByText('ตลาดวันนี้')).not.toBeNull();
+  expect(pointSales.getByText('฿500.00')).not.toBeNull();
+  expect(pointSales.getByText('฿0.00')).not.toBeNull();
+  expect(pointSales.getByText('฿300.00')).not.toBeNull();
+  expect(pointSales.getByText('อีเว้น · 2 รายการขาย')).not.toBeNull();
+  expect(screen.queryByLabelText('เส้นทางกระจายสต๊อก')).toBeNull();
 });
 
 it('refreshes visible dashboards from the server and pauses while inactive', async () => {

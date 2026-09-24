@@ -199,12 +199,12 @@ export function PaymentModal({
                       {(charge.items ?? []).length === 0 ? <small>ไม่พบรายละเอียดสินค้าของบิลนี้</small> : null}
                     </div>
                     {isExpanded && onEditCharge && charge.delivery_event_id ? <button
-                      aria-label={`แก้ไขหรือยกเลิกใบส่งของ ${charge.charge_number ?? 'ขายสด'}`}
+                      aria-label={`ยกเลิกใบส่งน้ำแข็ง ${charge.charge_number ?? 'ขายสด'}`}
                       className="financial-ops__charge-edit"
                       disabled={busy}
                       onClick={() => onEditCharge(charge)}
                       type="button"
-                    >แก้ไขหรือยกเลิกใบส่งของ</button> : null}
+                    >ยกเลิกใบส่งน้ำแข็ง</button> : null}
                     {charge.payment_term === 'credit' ? (
                       <button
                         className="financial-ops__due-date-request"

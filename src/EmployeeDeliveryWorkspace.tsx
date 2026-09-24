@@ -181,6 +181,7 @@ interface EventDeliveryCardDto {
   stop_note: string | null;
   today_history: Array<{
     delivery_event_id: string;
+    can_cancel?: boolean;
     recorded_at: string;
     stop_status: Exclude<ShopRoundStatus, 'pending'>;
     note: string | null;
@@ -440,6 +441,7 @@ export function createSupabaseGateway(): EmployeeDeliveryGateway {
             stop_note: card.stop_note,
             today_history: card.today_history.map((entry) => ({
               event_id: entry.delivery_event_id,
+              can_cancel: entry.can_cancel ?? false,
               recorded_at: entry.recorded_at,
               round_name: card.event_name,
               recorded_by: '—',

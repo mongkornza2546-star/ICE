@@ -77,10 +77,10 @@ const posContext: DeliveryPosContext = {
   },
 };
 
-function renderReview(canCollectImmediatePayment = true) {
+function renderReview(canCollectImmediatePayment = true, card = shopCard) {
   render(<EmployeeDeliveryReview
     round={round}
-    shopCard={shopCard}
+    shopCard={card}
     atomicImmediateSale={false}
     canCollectImmediatePayment={canCollectImmediatePayment}
     assignedStockState={null}
@@ -105,7 +105,7 @@ function renderReview(canCollectImmediatePayment = true) {
     items={[{ ice_type_id: 'ice-1', quantity: 2 }]}
     status="delivered"
     stockSourceLabel="สต๊อกรวมประจำวัน"
-    shopCards={[shopCard]}
+    shopCards={[card]}
     note=""
     problemOpen={false}
     submitting={false}
@@ -160,6 +160,27 @@ describe('employee delivery review navigation', () => {
     expect(screen.getByText('บัญชีนี้ยังไม่ได้รับสิทธิ์รับชำระเงิน')).not.toBeNull();
   });
 
+  it('opens cancellation for an eligible event delivery in employee history', async () => {
+    const user = userEvent.setup();
+    renderReview(true, {
+      ...shopCard,
+      destination_kind: 'event',
+      today_history: [{
+        event_id: 'event-delivery-1',
+        recorded_at: '2026-08-18T01:00:00Z',
+        round_name: 'งานทดสอบ',
+        recorded_by: 'พนักงาน',
+        stop_status: 'delivered',
+        note: null,
+        items: { 'ice-1': 2 },
+        can_cancel: true,
+      }],
+    });
+
+    await user.click(screen.getByRole('button', { name: 'ยกเลิกใบส่งน้ำแข็ง' }));
+    expect(screen.getByRole('dialog', { name: /ยกเลิกใบส่งน้ำแข็ง/ })).toBeTruthy();
+  });
+
   it('guarantees end_of_day is always placed on the left and immediate on the right regardless of input order', () => {
     expect(sortPaymentTerms(['immediate', 'end_of_day'])).toEqual(['end_of_day', 'immediate']);
     expect(sortPaymentTerms(['end_of_day', 'immediate'])).toEqual(['end_of_day', 'immediate']);
@@ -167,4 +188,3 @@ describe('employee delivery review navigation', () => {
     expect(sortPaymentTerms(['immediate', 'end_of_day', 'immediate'])).toEqual(['end_of_day', 'immediate']);
   });
 });
-

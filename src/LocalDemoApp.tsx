@@ -531,6 +531,11 @@ const managerDashboardDemo: DailyWorkDashboard = {
   },
   salesSummary: {
     netSalesValue: 3860,
+    locationSales: [
+      { id: 'building-a', kind: 'building', name: 'ตึก A', netSalesValue: 1800, saleCount: 22 },
+      { id: 'building-b', kind: 'building', name: 'ตึก B', netSalesValue: 2060, saleCount: 26 },
+      { id: 'building-c', kind: 'building', name: 'ตึก C', netSalesValue: 0, saleCount: 0 },
+    ],
     cashReceivedValue: 1400,
     transferReceivedValue: 1600,
     creditSalesValue: 860,

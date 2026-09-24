@@ -91,11 +91,11 @@ export function HistoryReceiptModal({
           <section className="financial-ops__receipt-charges" aria-label="บิลปัจจุบันที่แก้ไขได้">
             <strong><ListNumbers aria-hidden="true" size={18} /> บิลที่ชำระครบและแก้ไขได้</strong>
             {historyReceipt.correctionTargets === null && !historyReceipt.correctionError ? <p>กำลังตรวจสอบบิล...</p> : null}
-            {historyReceipt.correctionError ? <p className="employee-error" role="alert">ตรวจสอบสิทธิ์แก้ไขบิลไม่สำเร็จ: {historyReceipt.correctionError}</p> : null}
+            {historyReceipt.correctionError ? <p className="employee-error" role="alert">ตรวจสอบสิทธิ์ยกเลิกใบส่งไม่สำเร็จ: {historyReceipt.correctionError}</p> : null}
             {historyReceipt.correctionTargets?.map((target) => (
               <article key={target.charge_id}>
                 <header><strong>{target.charge_number ?? 'ขายสด'}</strong><b>{money.format(target.effective_amount)}</b></header>
-                <button disabled={busy} onClick={() => onCorrect(target)} type="button">แก้ไขหรือยกเลิกใบส่งของ {target.charge_number ?? 'ขายสด'}</button>
+                <button disabled={busy} onClick={() => onCorrect(target)} type="button">ยกเลิกใบส่งน้ำแข็ง {target.charge_number ?? 'ขายสด'}</button>
               </article>
             ))}
           </section>

@@ -66,6 +66,62 @@ test('dashboard uses adjusted sales and recent amounts without changing original
   await assert.rejects(db.query(`select public.get_daily_work_dashboard('2026-09-06')`), /Only a round lead or admin/);
 });
 
+test('dashboard groups adjusted sales by every building and the events for that day', async (t) => {
+  const db = await database(t);
+  const building = '40000000-0000-4000-8000-000000000001';
+  const emptyBuilding = '40000000-0000-4000-8000-000000000002';
+  const event = '50000000-0000-4000-8000-000000000001';
+  const participation = '60000000-0000-4000-8000-000000000001';
+  const context = '70000000-0000-4000-8000-000000000001';
+  await db.exec(`
+    create table public.buildings(id uuid primary key, name text, is_active boolean, sort_order integer);
+    create table public.event_jobs(id uuid primary key, name text, status text, start_date date, end_date date, preparation_start_date date);
+    create table public.event_participations(id uuid primary key, event_job_id uuid);
+    create table public.event_settlement_contexts(id uuid primary key, event_participation_id uuid);
+    alter table public.shops add column building_id uuid;
+    alter table public.round_stops add column building_id_snapshot uuid, add column event_participation_id uuid;
+    alter table public.delivery_charges add column event_settlement_context_id uuid;
+    insert into public.buildings values
+      ('${building}', 'ตึก A', true, 1), ('${emptyBuilding}', 'ตึก B', true, 2),
+      ('40000000-0000-4000-8000-000000000003', 'ตึกปิด', false, 3);
+    update public.shops set building_id = '${building}';
+    insert into public.event_jobs values
+      ('${event}', 'งานวันนี้', 'published', '2026-09-06', '2026-09-06', null),
+      ('50000000-0000-4000-8000-000000000002', 'งานวันอื่น', 'published', '2026-09-07', '2026-09-07', null),
+      ('50000000-0000-4000-8000-000000000003', 'งานร่าง', 'draft', '2026-09-06', '2026-09-06', null),
+      ('50000000-0000-4000-8000-000000000004', 'งานยกเลิก', 'cancelled', '2026-09-06', '2026-09-06', null),
+      ('50000000-0000-4000-8000-000000000005', 'งานยังไม่ขาย', 'published', '2026-09-06', '2026-09-06', null);
+    insert into public.event_participations values ('${participation}', '${event}');
+    insert into public.event_settlement_contexts values ('${context}', '${participation}');
+    insert into public.delivery_charge_adjustments values ('${charge}', -200, 'active');
+    insert into public.delivery_charges(id, shop_id, service_date, status, original_amount, event_settlement_context_id) values
+      ('30000000-0000-4000-8000-000000000002', '${shop}', '2026-09-06', 'active', 300, '${context}'),
+      ('30000000-0000-4000-8000-000000000003', '${shop}', '2026-09-06', 'voided', 900, '${context}'),
+      ('30000000-0000-4000-8000-000000000004', '${shop}', '2026-09-07', 'active', 700, '${context}');
+    insert into public.round_stops(id, building_id_snapshot, event_participation_id)
+      values ('80000000-0000-4000-8000-000000000001', '${building}', '${participation}');
+    insert into public.delivery_events(id, round_stop_id) values
+      ('90000000-0000-4000-8000-000000000001', '80000000-0000-4000-8000-000000000001');
+    insert into public.delivery_charges(id, shop_id, delivery_event_id, service_date, status, original_amount) values
+      ('30000000-0000-4000-8000-000000000005', '${shop}', '90000000-0000-4000-8000-000000000001', '2026-09-06', 'active', 50);
+  `);
+  await db.exec(readMigration('0174_manager_dashboard_effective_sales.sql'));
+  await db.exec(readMigration('0195_dashboard_location_sales.sql'));
+  const { rows } = await db.query(`select public.get_daily_work_dashboard('2026-09-06') as dashboard`);
+  const sales = rows[0].dashboard.salesSummary;
+  assert.deepEqual(sales.locationSales, [
+    { id: building, kind: 'building', name: 'ตึก A', netSalesValue: 800, saleCount: 1 },
+    { id: emptyBuilding, kind: 'building', name: 'ตึก B', netSalesValue: 0, saleCount: 0 },
+    { id: '50000000-0000-4000-8000-000000000005', kind: 'event', name: 'งานยังไม่ขาย', netSalesValue: 0, saleCount: 0 },
+    { id: event, kind: 'event', name: 'งานวันนี้', netSalesValue: 350, saleCount: 2 },
+  ]);
+  assert.equal(sales.locationSales.reduce((sum, point) => sum + point.netSalesValue, 0), sales.netSalesValue);
+  const later = await db.query(`select public.daily_work_location_sales('2026-09-08') as points`);
+  assert.equal(later.rows[0].points.filter((point) => point.kind === 'event').length, 0);
+  await db.exec(`set test.role = 'courier'`);
+  await assert.rejects(db.query(`select public.daily_work_location_sales('2026-09-06')`), /Only a round lead or admin/);
+});
+
 const terms = {
   allowed_payment_terms: ['end_of_day'], default_payment_term: 'end_of_day', allow_outstanding: true,
   credit_due_rule: null, credit_days: null, credit_collection_weekday: null, credit_limit: null,

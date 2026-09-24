@@ -769,12 +769,12 @@ export function EmployeeDeliveryReview({
             {shopCard.today_history.map((entry) => (
               <article key={entry.event_id}>
                 <div><strong>{formatShortTime(entry.recorded_at)} · {entry.round_name}</strong>
-                {entry.can_correct ? <button className="employee-text-button" onClick={() => setCorrectionEventId(entry.event_id)} type="button">แก้จำนวนส่ง</button> : null}</div>
+                {(entry.can_cancel || entry.can_correct) ? <button className="employee-text-button" onClick={() => setCorrectionEventId(entry.event_id)} type="button">ยกเลิกใบส่งน้ำแข็ง</button> : null}</div>
                 <span>{entry.stop_status && entry.stop_status !== 'delivered'
                   ? `${STATUS_LABELS[entry.stop_status]}${entry.note ? ` · ${entry.note}` : ''}`
                   : renderTotals(entry.items, iceTypes)}</span>
                 <small>{entry.recorded_by}</small>
-                {entry.correction_blocker && !entry.can_correct ? <small title={entry.correction_blocker}>{entry.correction_blocker}</small> : null}
+                {entry.correction_blocker && !(entry.can_cancel || entry.can_correct) ? <small title={entry.correction_blocker}>{entry.correction_blocker}</small> : null}
               </article>
             ))}
           </div>

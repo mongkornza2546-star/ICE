@@ -653,6 +653,13 @@ export interface DailyWorkIceTypeSale {
 
 export interface DailyWorkSalesSummary {
   netSalesValue: number;
+  locationSales?: Array<{
+    id: string;
+    kind: 'building' | 'event';
+    name: string;
+    netSalesValue: number;
+    saleCount: number;
+  }>;
   iceTypeSales: DailyWorkIceTypeSale[];
   cashReceivedValue?: number;
   transferReceivedValue?: number;
