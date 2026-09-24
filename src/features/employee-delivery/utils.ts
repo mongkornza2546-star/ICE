@@ -1,4 +1,15 @@
-import type { EmployeeStockState, IceTypeOption, ShopRoundStatus } from '../../types/app';
+import type { EmployeeStockState, IceTypeOption, PaymentTerm, ShopRoundStatus } from '../../types/app';
+
+export const PAYMENT_TERM_ORDER: Record<PaymentTerm, number> = {
+  end_of_day: 0,
+  immediate: 1,
+  credit: 2,
+};
+
+export function sortPaymentTerms(terms: readonly PaymentTerm[]): PaymentTerm[] {
+  const unique = Array.from(new Set(terms));
+  return unique.sort((a, b) => (PAYMENT_TERM_ORDER[a] ?? 99) - (PAYMENT_TERM_ORDER[b] ?? 99));
+}
 
 const shopCodeCollator = new Intl.Collator('en', { numeric: true, sensitivity: 'base' });
 

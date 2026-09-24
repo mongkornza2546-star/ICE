@@ -3,6 +3,7 @@ import { CreditCard } from '@phosphor-icons/react';
 import type { ShopPaymentProfileSetting, PaymentTerm, PaymentMethod, CreditDueRule } from '../../../types/app';
 import { CREDIT_COLLECTION_WEEKDAY_OPTIONS, formatCreditCollectionCycle } from '../../../lib/creditCollectionCycle';
 import { loadShopPaymentProfile, saveShopPaymentProfile, getErrorMessage } from '../../admin-reference-settings/adminReferenceSettingsService';
+import { sortPaymentTerms } from '../../employee-delivery/utils';
 
 interface ShopPaymentProfileEditorProps {
   shopId: string;
@@ -72,7 +73,7 @@ export function ShopPaymentProfileEditor({ shopId, shopName, onSaved }: ShopPaym
           nextTerms = filtered; // keep at least one
         }
       } else {
-        nextTerms = [...filtered, term];
+        nextTerms = sortPaymentTerms([...filtered, term]);
       }
     }
 
@@ -175,7 +176,7 @@ export function ShopPaymentProfileEditor({ shopId, shopName, onSaved }: ShopPaym
               onChange={(e) => setProfile({ ...profile, default_payment_term: e.target.value as PaymentTerm })}
               value={profile.default_payment_term}
             >
-              {profile.allowed_payment_terms.map((term) => (
+              {sortPaymentTerms(profile.allowed_payment_terms).map((term) => (
                 <option key={term} value={term}>
                   {term === 'immediate' ? 'จ่ายทันที' : term === 'end_of_day' ? 'เก็บท้ายวัน' : 'เครดิต'}
                 </option>

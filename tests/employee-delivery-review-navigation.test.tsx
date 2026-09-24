@@ -2,6 +2,7 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { EmployeeDeliveryReview } from '../src/features/employee-delivery/EmployeeDeliveryReview';
+import { sortPaymentTerms } from '../src/features/employee-delivery/utils';
 import type { DeliveryPosContext, DeliveryRound, ShopCard } from '../src/types/app';
 
 const round: DeliveryRound = {
@@ -134,8 +135,10 @@ describe('employee delivery review navigation', () => {
   it('describes the delivery-first collection choices from the employee perspective', () => {
     renderReview();
 
-    expect(screen.getByRole('button', { name: 'ส่งและรับชำระ' })).not.toBeNull();
-    expect(screen.getByRole('button', { name: 'ส่งอย่างเดียว' })).not.toBeNull();
+    const paymentButtons = screen.getAllByRole('button', { name: /(ส่งอย่างเดียว|ส่งและรับชำระ)/ });
+    expect(paymentButtons).toHaveLength(2);
+    expect(paymentButtons[0].textContent).toContain('ส่งอย่างเดียว');
+    expect(paymentButtons[1].textContent).toContain('ส่งและรับชำระ');
     expect(screen.getByText('หลังยืนยัน ระบบจะเปิดหน้ารับชำระของลูกค้ารายนี้')).not.toBeNull();
   });
 
@@ -156,4 +159,12 @@ describe('employee delivery review navigation', () => {
     expect(screen.getByRole('button', { name: 'ยืนยันส่งร้านนี้' }).hasAttribute('disabled')).toBe(true);
     expect(screen.getByText('บัญชีนี้ยังไม่ได้รับสิทธิ์รับชำระเงิน')).not.toBeNull();
   });
+
+  it('guarantees end_of_day is always placed on the left and immediate on the right regardless of input order', () => {
+    expect(sortPaymentTerms(['immediate', 'end_of_day'])).toEqual(['end_of_day', 'immediate']);
+    expect(sortPaymentTerms(['end_of_day', 'immediate'])).toEqual(['end_of_day', 'immediate']);
+    expect(sortPaymentTerms(['credit', 'immediate', 'end_of_day'])).toEqual(['end_of_day', 'immediate', 'credit']);
+    expect(sortPaymentTerms(['immediate', 'end_of_day', 'immediate'])).toEqual(['end_of_day', 'immediate']);
+  });
 });
+

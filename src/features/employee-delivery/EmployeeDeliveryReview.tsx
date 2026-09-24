@@ -26,9 +26,10 @@ import type {
   ShopRoundStatus,
 } from '../../types/app';
 import { MAX_PAYMENT_EVIDENCE_SIZE } from '../../lib/paymentEvidence';
-import { formatShortTime, isBoothSameAsName, renderTotals, statusTone, stockQuantity, toTotals } from './utils';
+import { formatShortTime, isBoothSameAsName, renderTotals, sortPaymentTerms, statusTone, stockQuantity, toTotals } from './utils';
 import { PROBLEM_STATUSES, STATUS_LABELS } from './constants';
 import { DeliveryCorrectionDialog } from '../delivery-corrections/DeliveryCorrectionDialog';
+import { AutoRefreshShopImage } from '../financial-operations/components/AutoRefreshShopImage';
 
 const TERM_LABELS: Record<PaymentTerm, string> = {
   immediate: 'ส่งและรับชำระ',
@@ -277,11 +278,12 @@ export function EmployeeDeliveryReview({
       <div className="employee-payment-sheet financial-ops__payment-card">
         <header>
           <span className="financial-ops__payment-image">
-            {shopCard.image_url ? (
-              <img alt={`ร้าน ${shopCard.shop_name}`} src={shopCard.image_url} />
-            ) : (
-              <Storefront aria-hidden="true" size={40} weight="duotone" />
-            )}
+            <AutoRefreshShopImage
+              alt={`ร้าน ${shopCard.shop_name}`}
+              fallback={<Storefront aria-hidden="true" size={40} weight="duotone" />}
+              imagePath={shopCard.image_path}
+              imageUrl={shopCard.image_url}
+            />
           </span>
           <span>
             <small>{shopCard.destination_kind === 'event'
@@ -464,9 +466,12 @@ export function EmployeeDeliveryReview({
       </nav>
 
       <header className="employee-pos-shop">
-        {shopCard.image_url ? <img alt="" src={shopCard.image_url} /> : (
-          <span><Storefront aria-hidden="true" size={30} /></span>
-        )}
+        <AutoRefreshShopImage
+          alt=""
+          fallback={<span><Storefront aria-hidden="true" size={30} /></span>}
+          imagePath={shopCard.image_path}
+          imageUrl={shopCard.image_url}
+        />
         <div>
           {shopCard.destination_kind === 'event' ? (
             <>
@@ -659,7 +664,7 @@ export function EmployeeDeliveryReview({
               {posContext?.payment_profile ? (
                 <fieldset className="employee-payment-terms">
                   <legend>เงื่อนไขชำระ</legend>
-                  {posContext.payment_profile.allowed_payment_terms.map((term) => (
+                  {sortPaymentTerms(posContext.payment_profile.allowed_payment_terms).map((term) => (
                     <button
                       aria-pressed={paymentTerm === term}
                       disabled={term === 'immediate' && !canCollectImmediatePayment}

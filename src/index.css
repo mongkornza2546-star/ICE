@@ -943,6 +943,7 @@ select.shop-filter-button { min-width: 126px; max-width: 164px; padding-right: 2
 .shop-purchase-status--paid { color: #18884d; background: #eaf8ef; }
 .shop-purchase-status--partial { color: #c26b14; background: #fff3df; }
 .shop-purchase-status--unpaid { color: #d34850; background: #fff0f1; }
+.shop-purchase-status--voided { color: #8792a2; background: #f1f3f5; }
 .shop-purchase-status--legacy { color: #65758a; background: #eef2f6; }
 .shop-purchase-card__items { display: flex; flex-wrap: wrap; gap: 7px; }
 .shop-purchase-card__items > span { min-width: 150px; display: grid; gap: 1px; padding: 7px 10px; border: 1px solid #e0e8f1; border-radius: 8px; background: #fbfcfe; }
@@ -1574,7 +1575,7 @@ input:disabled, select:disabled, textarea:disabled { background: #f2f5f8; color:
 /* Financial POS workspace */
 .employee-shop-grid { grid-template-columns: 1fr; }
 .employee-shop-tile { min-height: 78px; grid-template-columns: 76px minmax(0, 1fr); grid-template-rows: 1fr; }
-.employee-shop-tile__visual { height: 100%; min-height: 76px; aspect-ratio: auto; }
+.employee-shop-tile__visual { height: 100%; min-height: 76px; aspect-ratio: 1 / 1; }
 .employee-shop-tile__body { align-content: center; padding: 9px 38px 9px 11px; }
 .employee-shop-tile__body > span { margin-top: 1px; }
 .employee-shop-tile__arrow { bottom: 50%; transform: translateY(50%); }
@@ -4006,11 +4007,14 @@ fieldset.ref-section {
   .shop-purchase-card__meta > span:nth-child(3) { padding-left: 0; }
 }
 
-/* Prioritize storefront photos while scanning the POS shop list. */
+/* Prioritize storefront photos while scanning the POS shop list with fixed, uniform frames. */
 .employee-shop-grid { grid-template-columns: 1fr; }
-.employee-shop-tile { min-height: 140px; grid-template-columns: minmax(140px, 38%) minmax(0, 1fr); grid-template-rows: 1fr; }
-.employee-shop-tile__image-button { min-height: 140px; }
-.employee-shop-tile__visual { height: 100%; min-height: 140px; aspect-ratio: auto; }
+.employee-shop-tile { min-height: 140px; grid-template-columns: minmax(130px, clamp(140px, 35%, 260px)) minmax(0, 1fr); grid-template-rows: 1fr; align-items: stretch; }
+.employee-shop-tile__image-button { display: block; width: 100%; height: 100%; min-width: 0; min-height: 0; aspect-ratio: 1 / 1; }
+.employee-shop-tile__visual { position: relative; display: block; width: 100%; height: 100%; min-height: 0; aspect-ratio: 1 / 1; overflow: hidden; background: #edf3f9; }
+.employee-shop-tile__visual img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: center; }
+.employee-shop-tile__placeholder { display: grid; place-items: center; width: 100%; height: 100%; }
+.employee-shop-tile__visual--booth { display: grid; place-items: center; width: 100%; height: 100%; aspect-ratio: 1 / 1; min-height: 0; }
 .employee-shop-tile__body { align-content: center; padding: 14px 42px 14px 15px; }
 .employee-shop-tile__body > strong { font-size: 1.05rem; }
 .employee-shop-tile__body > b { font-size: .96rem; white-space: normal; }
@@ -4019,8 +4023,8 @@ fieldset.ref-section {
 
 @media (max-width: 390px) {
   .employee-shop-tile { min-height: 126px; grid-template-columns: 126px minmax(0, 1fr); }
-  .employee-shop-tile__image-button { min-height: 126px; }
-  .employee-shop-tile__visual { min-height: 126px; }
+  .employee-shop-tile__image-button { min-height: 126px; aspect-ratio: 1 / 1; }
+  .employee-shop-tile__visual { min-height: 126px; aspect-ratio: 1 / 1; }
   .employee-shop-tile__body { padding: 12px 36px 12px 12px; }
   .employee-shop-tile__body > strong { font-size: .94rem; }
   .employee-shop-tile__body > b { font-size: .84rem; }

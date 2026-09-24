@@ -15,6 +15,7 @@ import {
 import type { PaymentMethod } from '../../../types/app';
 import type { PaymentReceipt, QueueShop } from '../types';
 import { formatCollectionShopIdentity, formatServiceDate, money, paymentMethodLabel } from '../utils';
+import { AutoRefreshShopImage } from './AutoRefreshShopImage';
 
 export function PaymentModal({
   presentation = 'modal',
@@ -98,11 +99,12 @@ export function PaymentModal({
       <article className="financial-ops__payment-card">
         <header>
           <span className="financial-ops__payment-image">
-            {selectedShop.image_url ? (
-              <img alt={`ร้าน ${identity.title}`} src={selectedShop.image_url} />
-            ) : (
-              <Storefront aria-hidden="true" size={40} weight="duotone" />
-            )}
+            <AutoRefreshShopImage
+              alt={`ร้าน ${identity.title}`}
+              fallback={<Storefront aria-hidden="true" size={40} weight="duotone" />}
+              imagePath={selectedShop.image_path}
+              imageUrl={selectedShop.image_url}
+            />
           </span>
           <span>
             <small>{identity.isEventOnly ? identity.boothText : selectedShop.shop_code}</small>

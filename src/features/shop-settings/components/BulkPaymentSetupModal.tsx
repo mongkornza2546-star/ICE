@@ -3,6 +3,7 @@ import { X } from '@phosphor-icons/react';
 import type { ShopSetting, BuildingOption, BuildingZoneOption, PaymentTerm, PaymentMethod, CreditDueRule } from '../../../types/app';
 import { bulkSaveShopPaymentProfiles, getErrorMessage } from '../../admin-reference-settings/adminReferenceSettingsService';
 import { CREDIT_COLLECTION_WEEKDAY_OPTIONS, formatCreditCollectionCycle } from '../../../lib/creditCollectionCycle';
+import { sortPaymentTerms } from '../../employee-delivery/utils';
 
 interface BulkPaymentSetupModalProps {
   shops: ShopSetting[];
@@ -54,8 +55,9 @@ export function BulkPaymentSetupModal({ shops, buildings, zones, onClose, onSucc
       : [...nonCreditTerms, term];
     if (nextTerms.length === 0) return;
 
-    setAllowedPaymentTerms(nextTerms);
-    if (!nextTerms.includes(defaultPaymentTerm)) setDefaultPaymentTerm(nextTerms[0]);
+    const sortedTerms = sortPaymentTerms(nextTerms);
+    setAllowedPaymentTerms(sortedTerms);
+    if (!sortedTerms.includes(defaultPaymentTerm)) setDefaultPaymentTerm(sortedTerms[0]);
   }
 
   function togglePaymentMethod(method: PaymentMethod) {

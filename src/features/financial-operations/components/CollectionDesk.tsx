@@ -18,6 +18,7 @@ import { shiftServiceDate } from '../../../lib/serviceDate';
 import type { PaymentHistoryItem, QueueShop } from '../types';
 import { formatCollectionShopIdentity, money, paymentMethodLabel, receiptDateTime } from '../utils';
 import { isBoothSameAsName } from '../../employee-delivery/utils';
+import { AutoRefreshShopImage } from './AutoRefreshShopImage';
 
 type QueueFilter = 'outstanding' | 'collected' | 'all';
 
@@ -394,14 +395,18 @@ export function CollectionDesk({
                       type="button"
                     >
                       <span className="financial-ops__shop-visual">
-                        {shop.image_url ? (
-                          <img alt="" aria-hidden="true" loading="lazy" src={shop.image_url} />
-                        ) : (
-                          <span>
-                            <Storefront aria-hidden="true" size={36} weight="duotone" />
-                            <span className="sr-only">{row.avatarText}</span>
-                          </span>
-                        )}
+                        <AutoRefreshShopImage
+                          alt=""
+                          fallback={(
+                            <span>
+                              <Storefront aria-hidden="true" size={36} weight="duotone" />
+                              <span className="sr-only">{row.avatarText}</span>
+                            </span>
+                          )}
+                          imagePath={shop.image_path}
+                          imageUrl={shop.image_url}
+                          loading="lazy"
+                        />
                         {shop.has_new_charges ? <small>มียอดเพิ่ม</small> : null}
                       </span>
                       <span className="financial-ops__shop-body">
@@ -434,14 +439,18 @@ export function CollectionDesk({
                     type="button"
                   >
                     <span className="financial-ops__shop-visual">
-                      {payment.image_url ? (
-                        <img alt="" aria-hidden="true" loading="lazy" src={payment.image_url} />
-                      ) : (
-                        <span>
-                          <Receipt aria-hidden="true" size={36} weight="duotone" />
-                          <span className="sr-only">{row.avatarText}</span>
-                        </span>
-                      )}
+                      <AutoRefreshShopImage
+                        alt=""
+                        fallback={(
+                          <span>
+                            <Receipt aria-hidden="true" size={36} weight="duotone" />
+                            <span className="sr-only">{row.avatarText}</span>
+                          </span>
+                        )}
+                        imagePath={null}
+                        imageUrl={payment.image_url}
+                        loading="lazy"
+                      />
                     </span>
                     <span className="financial-ops__shop-body">
                       <strong>{payment.receipt_number}</strong>
@@ -507,14 +516,22 @@ export function CollectionDesk({
                         <CaretRight aria-hidden="true" size={18} />
                       </button>
                       {row.shop?.image_url ? (
-                        <button
-                          aria-label={`ดูรูปร้าน ${row.displayTitle} ขนาดใหญ่`}
-                          className="collection-desk__shop-image-button"
-                          onClick={() => setPreviewImage({ name: row.displayTitle, url: row.shop!.image_url! })}
-                          type="button"
-                        >
-                          <img alt="" src={row.shop.image_url} />
-                        </button>
+                        <AutoRefreshShopImage
+                          alt=""
+                          fallback={null}
+                          imagePath={row.shop.image_path}
+                          imageUrl={row.shop.image_url}
+                          renderImage={(src, onError) => (
+                            <button
+                              aria-label={`ดูรูปร้าน ${row.displayTitle} ขนาดใหญ่`}
+                              className="collection-desk__shop-image-button"
+                              onClick={() => setPreviewImage({ name: row.displayTitle, url: src })}
+                              type="button"
+                            >
+                              <img alt="" onError={onError} src={src} />
+                            </button>
+                          )}
+                        />
                       ) : null}
                     </div>
                   );

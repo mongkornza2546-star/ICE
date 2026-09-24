@@ -9,6 +9,7 @@ import { useMemo, useState } from 'react';
 import type { QueueShop } from '../types';
 import { money } from '../utils';
 import { isBoothSameAsName } from '../../employee-delivery/utils';
+import { AutoRefreshShopImage } from './AutoRefreshShopImage';
 
 export function CollectionRunSection({
   runId,
@@ -91,11 +92,13 @@ export function CollectionRunSection({
               type="button"
             >
               <span className="financial-ops__shop-visual">
-                {shop.image_url ? (
-                  <img alt="" aria-hidden="true" loading="lazy" src={shop.image_url} />
-                ) : (
-                  <span><Storefront aria-hidden="true" size={36} weight="duotone" /></span>
-                )}
+                <AutoRefreshShopImage
+                  alt=""
+                  fallback={<span><Storefront aria-hidden="true" size={36} weight="duotone" /></span>}
+                  imagePath={shop.image_path}
+                  imageUrl={shop.image_url}
+                  loading="lazy"
+                />
                 {shop.has_new_charges ? <small>มียอดเพิ่ม</small> : null}
               </span>
               <span className="financial-ops__shop-body">

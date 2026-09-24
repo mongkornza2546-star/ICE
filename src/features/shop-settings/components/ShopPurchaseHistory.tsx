@@ -41,7 +41,7 @@ export type PurchaseHistoryEntry = {
   payment_term: PaymentTerm | null;
   allocated_amount: number;
   outstanding_amount: number;
-  payment_status: FinancialPaymentStatus | null;
+  payment_status: FinancialPaymentStatus | 'voided' | null;
   delivery_status?: 'active' | 'replaced' | 'cancelled';
   charge_status?: 'active' | 'voided' | null;
   base_amount?: number | null;
@@ -119,10 +119,11 @@ const paymentTermLabel: Record<PaymentTerm, string> = {
   credit: 'เครดิต',
 };
 
-function paymentStatusLabel(status: FinancialPaymentStatus | null) {
+function paymentStatusLabel(status: FinancialPaymentStatus | 'voided' | null) {
   if (status === 'paid') return 'ชำระแล้ว';
   if (status === 'partial') return 'ชำระบางส่วน';
   if (status === 'unpaid') return 'ค้างชำระ';
+  if (status === 'voided') return 'ยกเลิกแล้ว';
   return 'ข้อมูลเดิม';
 }
 
