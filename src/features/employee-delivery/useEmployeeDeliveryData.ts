@@ -94,6 +94,7 @@ export function useEmployeeDeliveryData({
   canCollectShopPayments = true,
   gateway,
   enableAssignedStockFlow = false,
+  isActive = true,
   requestScope = 'default',
   serviceDate,
   stockSourceLabel = 'สต๊อกรวมประจำวัน',
@@ -103,6 +104,7 @@ export function useEmployeeDeliveryData({
   canCollectShopPayments?: boolean;
   gateway: EmployeeDeliveryGateway;
   enableAssignedStockFlow?: boolean;
+  isActive?: boolean;
   requestScope?: string;
   serviceDate: string;
   stockSourceLabel?: string;
@@ -547,12 +549,12 @@ export function useEmployeeDeliveryData({
   };
 
   useLayoutEffect(() => {
-    if (selectedCardId || loadingCards || !browseScrollRestorePending.current) return;
+    if (!isActive || selectedCardId || loadingCards || !browseScrollRestorePending.current) return;
     browseScrollRestorePending.current = false;
     const focusId = returnFocusCardId.current;
     if (focusId) shopButtonRefs.current.get(focusId)?.focus({ preventScroll: true });
     window.scrollTo({ top: browseScrollY.current, behavior: 'auto' });
-  }, [loadingCards, selectedCardId]);
+  }, [isActive, loadingCards, selectedCardId]);
 
   const returnToBrowse = useCallback(() => {
     posContextRequestId.current += 1;
@@ -999,6 +1001,9 @@ export function useEmployeeDeliveryData({
           const queueKey = selectedCard.destination_kind === 'event'
             ? `event:${selectedCard.event_job_id ?? selectedCard.event_participation_id ?? selectedCard.shop_id}`
             : `regular:${selectedCard.shop_id}`;
+          // Delivery handoff hides this workspace. Restore the browse position
+          // again when collection closes and this page becomes visible.
+          browseScrollRestorePending.current = true;
           onOpenCollection({
             queueKey,
             chargeId: result.charge_id,

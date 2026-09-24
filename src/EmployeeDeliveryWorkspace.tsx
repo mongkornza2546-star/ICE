@@ -748,6 +748,7 @@ export function EmployeeDeliveryWorkspace({
     canCollectShopPayments,
     gateway,
     enableAssignedStockFlow,
+    isActive,
     requestScope,
     serviceDate,
     stockSourceLabel,

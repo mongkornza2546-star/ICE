@@ -125,21 +125,36 @@ export function CollectionDesk({
 
   const buildings = useMemo(() => {
     const found = new Map<string, string>();
-    queue.forEach((shop) => {
-      if (shop.building_id && shop.building_name) found.set(shop.building_id, shop.building_name);
+    const items = filter === 'outstanding' ? queue : filter === 'collected' ? paymentHistory : [...queue, ...paymentHistory];
+    items.forEach((item) => {
+      if (item.building_id && item.building_name) found.set(item.building_id, item.building_name);
     });
     return [...found].map(([id, name]) => ({ id, name })).sort((left, right) => left.name.localeCompare(right.name, 'th'));
-  }, [queue]);
+  }, [filter, paymentHistory, queue]);
 
   const zones = useMemo(() => {
     const found = new Map<string, string>();
-    queue.forEach((shop) => {
-      if ((!buildingId || shop.building_id === buildingId) && shop.zone_id && shop.zone_name) {
-        found.set(shop.zone_id, shop.zone_name);
+    const items = filter === 'outstanding' ? queue : filter === 'collected' ? paymentHistory : [...queue, ...paymentHistory];
+    items.forEach((item) => {
+      if (item.building_id === buildingId && item.zone_id && item.zone_name) {
+        found.set(item.zone_id, item.zone_name);
       }
     });
     return [...found].map(([id, name]) => ({ id, name })).sort((left, right) => left.name.localeCompare(right.name, 'th'));
-  }, [buildingId, queue]);
+  }, [buildingId, filter, paymentHistory, queue]);
+
+  useEffect(() => {
+    if (buildingId && !buildings.some((building) => building.id === buildingId)) {
+      setBuildingId('');
+      setZoneId('');
+    }
+  }, [buildingId, buildings]);
+
+  useEffect(() => {
+    if (zoneId && (!buildingId || !zones.some((zone) => zone.id === zoneId))) {
+      setZoneId('');
+    }
+  }, [buildingId, zoneId, zones]);
 
   useEffect(() => {
     setSelectedPayment((current) => current
@@ -190,8 +205,13 @@ export function CollectionDesk({
         };
       });
     const paymentRows: CollectionRow[] = paymentHistory
-      .filter((payment) => `${payment.shops?.code ?? ''} ${payment.shops?.name ?? ''} ${payment.event_name ?? ''} ${payment.event_location ?? ''} ${payment.event_zone ?? ''} ${payment.event_booth ?? ''} ${payment.receipt_number}`
-        .toLocaleLowerCase().includes(normalizedQuery))
+      .filter((payment) => {
+        const matchesQuery = `${payment.shops?.code ?? ''} ${payment.shops?.name ?? ''} ${payment.event_name ?? ''} ${payment.event_location ?? ''} ${payment.event_zone ?? ''} ${payment.event_booth ?? ''} ${payment.receipt_number}`
+          .toLocaleLowerCase().includes(normalizedQuery);
+        const matchesBuilding = !buildingId || payment.building_id === buildingId;
+        const matchesZone = !zoneId || payment.zone_id === zoneId;
+        return matchesQuery && matchesBuilding && matchesZone;
+      })
       .map((payment) => {
         const identity = formatCollectionShopIdentity({
           destination_kind: payment.destination_kind,
