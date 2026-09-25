@@ -274,7 +274,6 @@ export function printSalesDocument(
       totals.append(row);
     }
     root.append(totals);
-    line('ลงชื่อผู้รับของ: ................................  (                              )', 'receipt-signature');
 
     if (payload.voidInfo) {
       line(`ยกเลิกเมื่อ ${dateTime.format(new Date(payload.voidInfo.voidedAt))}${payload.voidInfo.voidedBy ? ` · ${payload.voidInfo.voidedBy}` : ''}`, undefined, 'small');

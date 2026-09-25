@@ -52,7 +52,7 @@ export function printDailyCreditAcknowledgement(
   existingPrintWindow?: Window | null,
 ) {
   const itemCount = payload.invoices.reduce((total, invoice) => total + invoice.items.length, 0);
-  const heightMm = Math.max(90, 61 + payload.invoices.length * 8 + itemCount * 5 + payload.item_totals.length * 4);
+  const heightMm = Math.max(70, 45 + payload.invoices.length * 8 + itemCount * 5 + payload.item_totals.length * 4);
   const printWindow = existingPrintWindow
     ?? window.open('', '_blank', `popup,width=360,height=${Math.ceil(heightMm * 3.78)}`);
   if (!printWindow) return false;
@@ -76,8 +76,6 @@ export function printDailyCreditAcknowledgement(
     .item { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 1mm; margin-top: .45mm; }
     .item span:last-child { white-space: nowrap; }
     .grand-total { font-size: 9pt; font-weight: 700; }
-    .signature { margin-top: 5mm; display: grid; gap: 4mm; }
-    .signature p { padding-top: 1mm; border-top: .25mm solid #000; text-align: center; }
   `;
   printDocument.head.replaceChildren(style);
 
@@ -151,14 +149,7 @@ export function printDailyCreditAcknowledgement(
   root.append(grandTotal);
   line('ร้านได้รับสินค้าตามรายการและรับทราบยอดเครดิตข้างต้น', undefined, 'small');
 
-  const signature = printDocument.createElement('section');
-  signature.className = 'signature';
-  for (const text of ['ชื่อผู้รับ ____________________', 'ลายเซ็นร้าน ____________________', 'วันที่ / เวลา ____________________']) {
-    const field = printDocument.createElement('p');
-    field.textContent = text;
-    signature.append(field);
-  }
-  root.append(signature);
+  line('ชื่อผู้รับ ____________________', 'center');
 
   printDocument.body.replaceChildren(root);
   printWindow.addEventListener('afterprint', () => printWindow.close(), { once: true });

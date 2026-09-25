@@ -250,8 +250,6 @@ export async function renderSalesDocumentRaster(payload: SalesDocumentPayload) {
     receipt.row('ยอดรวมสุทธิ (Total)', money.format(payload.totals.total), { bold: true, size: 22 });
     receipt.row(payload.paymentMethod ? receiptReceivedLabels[payload.paymentMethod] : 'รับเงิน (Received)', money.format(payload.totals.received ?? payload.totals.total));
     receipt.row('เงินทอน (Change)', money.format(payload.totals.change ?? 0));
-    receipt.gap(34);
-    receipt.text('ลงชื่อผู้รับของ: ____________________', { align: 'center' });
     if (payload.voidInfo) {
       receipt.text(`ยกเลิกเมื่อ ${dateTime.format(new Date(payload.voidInfo.voidedAt))}${payload.voidInfo.voidedBy ? ` · ${payload.voidInfo.voidedBy}` : ''}`, { size: 18 });
     }
@@ -312,12 +310,8 @@ export async function renderDailyCreditRaster(payload: DailyCreditAcknowledgemen
   receipt.rule();
   receipt.row('ยอดเครดิตวันนี้', money.format(Number(payload.total_amount)), { bold: true, size: 23 });
   receipt.text('ร้านได้รับสินค้าตามรายการและรับทราบยอดเครดิตข้างต้น', { size: 18 });
-  receipt.gap(36);
+  receipt.gap(20);
   receipt.text('ชื่อผู้รับ ____________________', { align: 'center' });
-  receipt.gap(20);
-  receipt.text('ลายเซ็นร้าน ____________________', { align: 'center' });
-  receipt.gap(20);
-  receipt.text('วันที่ / เวลา ____________________', { align: 'center' });
   return receipt.finish();
 }
 

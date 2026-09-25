@@ -103,7 +103,7 @@ describe('casual-customer POS navigation', () => {
     expect(scrollY).toBe(0);
     expect(await screen.findByRole('heading', { level: 2, name: 'เลือกน้ำแข็ง' })).toBeTruthy();
     await user.click(document.querySelector('.employee-pos-product-grid button') as HTMLButtonElement);
-    expect(document.querySelector('.employee-pos-product-grid button small')?.textContent).toBe('0 ถุง');
+    expect(document.querySelector('.employee-pos-product-grid button small')?.textContent).toBe('ไม่ระบุจำนวน');
 
     await user.click(screen.getByRole('button', { name: 'กลับไปเลือกร้าน' }));
     const restoredButton = await screen.findByRole('button', { name: 'บันทึกลูกค้าขาจร' });
@@ -127,7 +127,8 @@ describe('casual-customer POS navigation', () => {
 
     await user.click(await screen.findByRole('button', { name: 'บันทึกลูกค้าขาจร' }));
     await user.click(document.querySelector('.employee-pos-product-grid button') as HTMLButtonElement);
-    expect(document.querySelector('.employee-pos-product-grid button small')?.textContent).toBe('0 แถว');
+    expect(document.querySelector('.employee-pos-product-grid button small')?.textContent).toBe('ไม่ระบุจำนวน');
+    await user.click(screen.getByRole('button', { name: 'ระบุจำนวน' }));
     await user.click(screen.getByRole('button', { name: 'เพิ่มครึ่งแถว' }));
     expect(document.querySelector('.employee-pos-quantity strong')?.textContent).toBe('0.5 แถว');
   });

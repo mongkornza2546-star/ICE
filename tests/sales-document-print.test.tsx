@@ -51,7 +51,7 @@ describe('receipt printing', () => {
     expect(text).toContain('ยอดรวมสุทธิ (Total)฿300.00');
     expect(text).toContain('รับเงินสด (Cash Received)฿300.00');
     expect(text).toContain('เงินทอน (Change)฿0.00');
-    expect(text).toContain('ลงชื่อผู้รับของ:');
+    expect(text).not.toContain('ลงชื่อผู้รับของ:');
     expect(printWindow.print).toHaveBeenCalledOnce();
   });
 

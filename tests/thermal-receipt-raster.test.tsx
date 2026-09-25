@@ -95,10 +95,10 @@ describe('thermal receipt raster', () => {
     expect(text).toContain('สอง');
   });
 
-  it('keeps every daily-credit signature field', async () => {
+  it('prints the daily delivery slip with only the recipient name field', async () => {
     const daily: DailyCreditAcknowledgementDocument = {
       document_id: 'document-1',
-      document_title: 'ใบสรุปยอดเครดิต',
+      document_title: 'ใบส่งของ',
       version: 1,
       generated_at: '2026-08-21T08:00:00.000Z',
       service_date: '2026-08-21',
@@ -111,7 +111,10 @@ describe('thermal receipt raster', () => {
 
     await renderDailyCreditRaster(daily);
 
-    expect(drawnText).toContain('วันที่ / เวลา ____________________');
+    expect(drawnText).toContain('ใบส่งของ');
+    expect(drawnText).toContain('ชื่อผู้รับ ____________________');
+    expect(drawnText).not.toContain('ลายเซ็นร้าน ____________________');
+    expect(drawnText).not.toContain('วันที่ / เวลา ____________________');
   });
 
   it('never separates a Thai combining mark from its base character', () => {

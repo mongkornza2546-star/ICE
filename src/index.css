@@ -1426,6 +1426,15 @@ input:disabled, select:disabled, textarea:disabled { background: #f2f5f8; color:
 .employee-casual-page { display: grid; gap: 14px; }
 .employee-casual-page__loading { color: #617991; text-align: center; }
 .employee-casual-form { display: grid; gap: 16px; }
+.employee-casual-selection { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px; border-radius: 10px; background: #eef6fd; }
+.employee-casual-selection > div { min-width: 0; display: grid; gap: 3px; }
+.employee-casual-selection strong { color: #183655; }
+.employee-casual-selection span, .employee-casual-help { color: #526981; font-size: .72rem; line-height: 1.6; }
+.employee-casual-help { margin: 0; }
+.employee-casual-selection button { flex-shrink: 0; min-height: 44px; padding: 8px 12px; border: 1px solid #b9d1ea; border-radius: 9px; color: #075fc8; background: #fff; font: inherit; font-size: .72rem; font-weight: 700; }
+.employee-casual-selection button:disabled { opacity: .45; }
+.employee-casual-form .employee-pos-keypad { grid-column: auto; }
+.employee-casual-form .employee-casual-payment { grid-template-columns: 1fr; }
 .employee-casual-form__title { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: start; gap: 10px; }
 .employee-casual-form__title > span { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 50%; color: #fff; background: #0b68df; font-weight: 800; }
 .employee-casual-form__title h2, .employee-casual-form__title p { margin: 0; }
@@ -2204,11 +2213,16 @@ input:disabled, select:disabled, textarea:disabled { background: #f2f5f8; color:
 
 @container employee-workspace (max-width: 1050px) {
   .employee-pos-layout { grid-template-columns: 1fr; }
+  .employee-pos-layout--casual { grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); }
   .employee-pos-mobile-steps { display: grid; }
   .employee-pos-mobile--hidden { display: none; }
   .employee-pos-mobile-next, .employee-pos-mobile-back { display: block; }
   .employee-pos-shops { display: none; }
   .employee-pos-products, .employee-pos-keypad, .employee-pos-cart { grid-column: auto; grid-row: auto; }
+}
+
+@container employee-workspace (max-width: 759px) {
+  .employee-pos-layout--casual { grid-template-columns: 1fr; }
 }
 
 @media (min-width: 760px) and (max-width: 899px) {
