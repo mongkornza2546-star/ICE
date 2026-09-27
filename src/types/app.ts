@@ -16,8 +16,25 @@ export type FinancialPaymentStatus = 'unpaid' | 'partial' | 'paid';
 export type PriceSource = 'standard' | 'shop_override';
 
 export interface CollectionFocusRequest {
+  requestId: string;
+  source: 'delivery' | 'pos-shortcut';
+  shopId: string;
   queueKey: string;
-  chargeId: string;
+  chargeId?: string;
+  returnContextId: string;
+}
+
+export interface CollectionCloseResult {
+  status: 'completed' | 'cancelled';
+  requestId: string;
+  shopId: string;
+  paymentId?: string;
+}
+
+export interface CollectionOutstandingSummary {
+  queueKey: string;
+  shopId: string;
+  outstandingAmount: number;
 }
 
 export interface DeliveryPosItem {

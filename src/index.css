@@ -1402,7 +1402,27 @@ input:disabled, select:disabled, textarea:disabled { background: #f2f5f8; color:
 .employee-shop-tile__body > b { overflow: hidden; color: #193653; font-size: .88rem; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
 .employee-shop-tile__body > small { overflow: hidden; color: #687c94; font-size: .69rem; text-overflow: ellipsis; white-space: nowrap; }
 .employee-shop-tile__body > span { margin-top: 4px; color: #516b86; font-size: .68rem; line-height: 1.45; }
+.employee-shop-tile__body > .employee-shop-tile__outstanding { margin-top: 7px; color: #0a5eb9; font-size: .72rem; font-weight: 800; }
 .employee-shop-tile__arrow { position: absolute; right: 11px; bottom: 15px; color: #78a4d2; }
+
+.employee-task-choice { width: min(620px, 100%); display: grid; gap: 16px; margin: 0 auto; padding: 18px; border: 1px solid #d8e4f0; border-radius: 16px; background: #fff; box-shadow: 0 10px 30px rgba(18,54,97,.08); }
+.employee-task-choice__back { width: fit-content; min-height: 48px; display: inline-flex; align-items: center; gap: 7px; padding: 0 12px; border: 1px solid #d2dfec; border-radius: 10px; color: #365777; background: #fff; font: inherit; font-size: .78rem; font-weight: 800; }
+.employee-task-choice header { display: grid; gap: 3px; }
+.employee-task-choice__code { color: #0865d5; font-size: .82rem; font-weight: 900; }
+.employee-task-choice h1 { color: #163754; font-size: clamp(1.2rem, 5vw, 1.6rem); line-height: 1.35; }
+.employee-task-choice header p { color: #667d94; font-size: .8rem; }
+.employee-task-choice dl { display: grid; gap: 0; overflow: hidden; border: 1px solid #dce7f2; border-radius: 12px; background: #f8fbff; }
+.employee-task-choice dl div { min-height: 52px; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 13px; }
+.employee-task-choice dl div + div { border-top: 1px solid #dce7f2; }
+.employee-task-choice dt { color: #60758c; font-size: .76rem; }
+.employee-task-choice dd { margin: 0; color: #173b61; font-size: .82rem; font-weight: 900; text-align: right; }
+.employee-task-choice__load-error { min-height: 48px; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 9px; padding: 10px 12px; border: 1px solid #efbcc0; border-radius: 11px; color: #a82d36; background: #fff2f3; font-size: .75rem; }
+.employee-task-choice__load-error button { min-height: 40px; padding: 0 12px; border: 1px solid #d8737b; border-radius: 8px; color: #982731; background: #fff; font: inherit; font-weight: 800; }
+.employee-task-choice__actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.employee-task-choice__actions button { min-height: 52px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 0 14px; font: inherit; font-size: .84rem; font-weight: 900; touch-action: manipulation; }
+.employee-secondary-action { border: 1px solid #1870d9; border-radius: 11px; color: #0963c8; background: #edf6ff; }
+.employee-secondary-action:disabled { cursor: not-allowed; border-color: #c9d5e1; color: #8494a5; background: #f2f5f8; }
+.employee-task-choice__hint { margin: -6px 0 0; color: #708298; font-size: .72rem; text-align: right; }
 
 .employee-state { min-height: 250px; display: grid; place-items: center; align-content: center; gap: 7px; padding: 28px; border: 1px dashed #c9d9e9; border-radius: 15px; color: #76a5d8; background: rgba(255,255,255,.62); text-align: center; }
 .employee-state h2 { color: #315474; font-size: 1rem; }
@@ -1670,6 +1690,12 @@ input:disabled, select:disabled, textarea:disabled { background: #f2f5f8; color:
 .employee-payment-sheet input { min-height: 48px; padding: 9px 11px; border: 1px solid #cbdbea; border-radius: 9px; font: inherit; }
 .employee-payment-summary { display: flex; justify-content: space-between; gap: 12px; padding: 12px; border-radius: 10px; color: #3c5c75; background: #eff7fd; font-size: .74rem; }
 .financial-ops { display: grid; gap: 16px; }
+.financial-ops__focus-state { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 10px; padding: 14px; border: 1px solid #c9dcef; border-radius: 13px; color: #2f587c; background: #f4f9ff; }
+.financial-ops__focus-state > div { min-width: 0; display: grid; gap: 3px; }
+.financial-ops__focus-state strong { color: #173b61; font-size: .84rem; }
+.financial-ops__focus-state span { color: #637c94; font-size: .73rem; line-height: 1.45; }
+.financial-ops__focus-state button { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 0 13px; border: 1px solid #8fb8e2; border-radius: 9px; color: #075fc4; background: #fff; font: inherit; font-size: .75rem; font-weight: 800; }
+.financial-ops__focus-state .financial-ops__focus-back { border-color: #d3dfe9; color: #4b647c; }
 .financial-ops__employee-workspace { min-width: 0; display: grid; grid-template-columns: 190px minmax(0, 1fr); align-items: start; gap: 16px; }
 .financial-ops__employee-nav { position: sticky; top: 92px; display: grid; gap: 6px; padding: 8px; border: 1px solid #d8e5ef; border-radius: 14px; background: #fff; box-shadow: 0 7px 22px rgba(19,57,103,.045); }
 .financial-ops__employee-nav button { min-height: 48px; display: flex; align-items: center; gap: 9px; padding: 9px 11px; border: 0; border-radius: 9px; color: #526c84; background: transparent; font: inherit; font-size: .76rem; font-weight: 800; text-align: left; }
@@ -1867,6 +1893,8 @@ input:disabled, select:disabled, textarea:disabled { background: #f2f5f8; color:
 }
 
 @media (max-width: 759px) {
+  .financial-ops__focus-state { grid-template-columns: auto minmax(0, 1fr); }
+  .financial-ops__focus-state button { width: 100%; grid-column: auto; }
   .financial-ops__employee-workspace { grid-template-columns: minmax(0, 1fr); gap: 12px; }
   .financial-ops__employee-nav { position: static; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; padding: 5px; }
   .financial-ops__employee-nav button { justify-content: center; min-height: 46px; padding: 7px; text-align: center; }
@@ -4031,10 +4059,12 @@ fieldset.ref-section {
   .employee-shop-tile { height: 126px; min-height: 126px; grid-template-columns: 126px minmax(0, 1fr); }
   .employee-shop-tile__image-button { min-height: 126px; aspect-ratio: 1 / 1; }
   .employee-shop-tile__visual { min-height: 126px; aspect-ratio: 1 / 1; }
-  .employee-shop-tile__body { padding: 12px 36px 12px 12px; }
+  .employee-shop-tile__body { gap: 2px; padding: 8px 34px 8px 10px; }
   .employee-shop-tile__body > strong { font-size: .94rem; }
   .employee-shop-tile__body > b { font-size: .84rem; }
   .employee-shop-tile__body > small { font-size: .68rem; }
+  .employee-shop-tile__body > .employee-shop-tile__outstanding { margin-top: 3px; font-size: .62rem; }
+  .employee-task-choice { padding: 14px; }
 }
 
 /* Prevent phone browsers from zooming focused form controls. */

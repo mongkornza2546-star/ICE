@@ -3,6 +3,7 @@ import type {
   DeliveryRound,
   DeliveryFinancialResult,
   DeliveryPosContext,
+  CollectionCloseResult,
   CollectionFocusRequest,
   EmployeeStockState,
   IceTypeOption,
@@ -17,6 +18,13 @@ import { compareShopCodes, normalizeSearch, stockQuantity, employeeErrorMessage 
 import { clearRecovery, readRecovery, writeRecovery } from '../../lib/recoveryStorage';
 import { printSalesDocumentForCurrentPlatform, salesDocumentFromStored, type StoredSalesDocument } from '../../lib/salesDocumentPrint';
 import { publishDataChange } from '../../lib/dataChange';
+import { toBangkokDateString } from '../../lib/serviceDate';
+import {
+  clearPosCollectionReturn,
+  readPosCollectionReturn,
+  writePosCollectionReturn,
+  type PosCollectionReturnContext,
+} from '../../lib/posCollectionReturn';
 import {
   readCachedEmployeeReferenceData,
   readCachedEmployeeShopCards,
@@ -34,6 +42,12 @@ function automaticRoundId(rounds: DeliveryRound[]) {
     : rounds.length === 1
       ? rounds[0].id
       : '';
+}
+
+function newCollectionRequestId() {
+  return typeof crypto !== 'undefined' && 'randomUUID' in crypto
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
 function withKnownIceTypeImages(context: DeliveryPosContext, iceTypes: IceTypeOption[]): DeliveryPosContext {
@@ -100,6 +114,8 @@ export function useEmployeeDeliveryData({
   stockSourceLabel = 'สต๊อกรวมประจำวัน',
   onDraftStateChange,
   onOpenCollection,
+  collectionReturnOrigin = 'courier-pos',
+  collectionCloseResult = null,
 }: {
   canCollectShopPayments?: boolean;
   gateway: EmployeeDeliveryGateway;
@@ -110,13 +126,20 @@ export function useEmployeeDeliveryData({
   stockSourceLabel?: string;
   onDraftStateChange?: (state: EmployeeDeliveryDraftState) => void;
   onOpenCollection?: (request: CollectionFocusRequest) => void;
+  collectionReturnOrigin?: PosCollectionReturnContext['origin'];
+  collectionCloseResult?: CollectionCloseResult | null;
 }) {
   const { getOrCreatePendingRequest, clearPendingRequest } = usePendingRequests();
   const recoveryMode = enableAssignedStockFlow ? 'withdrawal' : 'pos';
   const recoveryScope = `${requestScope}:${serviceDate}:${recoveryMode}`;
 
+  const storedReturnContext = useRef(readPosCollectionReturn(requestScope)).current;
+  const matchingReturnContext = storedReturnContext?.posServiceDate === serviceDate
+    ? storedReturnContext
+    : null;
   const initialReferenceCache = useRef(readCachedEmployeeReferenceData(requestScope, serviceDate)).current;
-  const initialRoundId = automaticRoundId(initialReferenceCache?.rounds ?? []);
+  const initialRoundId = matchingReturnContext?.selectedRoundId
+    ?? automaticRoundId(initialReferenceCache?.rounds ?? []);
   const initialCards = initialRoundId
     ? readCachedEmployeeShopCards(requestScope, serviceDate, initialRoundId) ?? []
     : [];
@@ -125,12 +148,18 @@ export function useEmployeeDeliveryData({
   const [iceTypes, setIceTypes] = useState<IceTypeOption[]>(initialReferenceCache?.iceTypes ?? []);
   const [cards, setCards] = useState<ShopCard[]>(initialCards);
   const [selectedRoundId, setSelectedRoundId] = useState(initialRoundId);
-  const [selectedBuildingId, setSelectedBuildingId] = useState('');
-  const [selectedZone, setSelectedZone] = useState('');
-  const [destinationKind, setDestinationKindState] = useState<'regular' | 'event'>('regular');
-  const [selectedEventJobId, setSelectedEventJobId] = useState('');
-  const [query, setQuery] = useState('');
+  const [selectedBuildingId, setSelectedBuildingId] = useState(matchingReturnContext?.selectedBuildingId ?? '');
+  const [selectedZone, setSelectedZone] = useState(matchingReturnContext?.selectedZone ?? '');
+  const [destinationKind, setDestinationKindState] = useState<'regular' | 'event'>(matchingReturnContext?.destinationKind ?? 'regular');
+  const [selectedEventJobId, setSelectedEventJobId] = useState(matchingReturnContext?.selectedEventJobId ?? '');
+  const [query, setQuery] = useState(matchingReturnContext?.query ?? '');
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
+  const [taskChoiceCardId, setTaskChoiceCardId] = useState<string | null>(null);
+  const [collectionOutstanding, setCollectionOutstanding] = useState<Record<string, number> | null>(
+    gateway.loadCollectionOutstanding ? null : {},
+  );
+  const [collectionOutstandingLoading, setCollectionOutstandingLoading] = useState(false);
+  const [collectionOutstandingError, setCollectionOutstandingError] = useState<string | null>(null);
   const [selectedIceTypeId, setSelectedIceTypeId] = useState('');
   const [deliveryQuantities, setDeliveryQuantities] = useState<Record<string, number>>({});
   const [transferQuantities, setTransferQuantities] = useState<Record<string, number>>({});
@@ -179,15 +208,20 @@ export function useEmployeeDeliveryData({
   const loadedCardsRoundId = useRef(initialCards.length > 0 ? initialRoundId : '');
   const stockRequestId = useRef(0);
   const posContextRequestId = useRef(0);
+  const collectionOutstandingRequestId = useRef(0);
+  const handledCollectionCloseRequestId = useRef<string | null>(null);
   const activeRoundId = useRef(initialRoundId);
   const activeStockRoundId = useRef('');
-  const browseScrollY = useRef(0);
-  const browseScrollRestorePending = useRef(false);
-  const returnFocusCardId = useRef<string | null>(null);
+  const browseScrollY = useRef(matchingReturnContext?.scrollY ?? 0);
+  const browseScrollRestorePending = useRef(Boolean(matchingReturnContext));
+  const returnFocusCardId = useRef<string | null>(matchingReturnContext?.roundStopId ?? null);
+  const returnCardViewportOffset = useRef<number | null>(matchingReturnContext?.cardViewportOffset ?? null);
+  const pendingReturnContextId = useRef<string | null>(matchingReturnContext?.request.returnContextId ?? null);
   const shopButtonRefs = useRef(new Map<string, HTMLButtonElement>());
   const submissionRequestId = useRef(0);
   const transferRequestId = useRef(0);
   const recoveryHydratedScope = useRef<string | null>(null);
+  const returnFiltersRoundId = useRef(matchingReturnContext?.selectedRoundId ?? null);
   const pendingCardRecovery = useRef<EmployeeWorkspaceRecovery | null>(null);
   const [recoveryHydrated, setRecoveryHydrated] = useState(false);
   const [recoveryReadyToPersist, setRecoveryReadyToPersist] = useState(false);
@@ -269,7 +303,11 @@ export function useEmployeeDeliveryData({
     } else {
       setRounds([]);
       setIceTypes([]);
-      setSelectedRoundId('');
+      // Keep the return round while references load so the round-reset effect
+      // does not discard restored filters on an intermediate empty selection.
+      setSelectedRoundId(pendingReturnContextId.current && matchingReturnContext
+        ? matchingReturnContext.selectedRoundId
+        : '');
       setLoadedReferenceServiceDate(null);
       setLoadingReference(true);
     }
@@ -304,7 +342,7 @@ export function useEmployeeDeliveryData({
     return () => {
       referenceRequestId.current += 1;
     };
-  }, [gateway, referenceReloadId, requestScope, serviceDate]);
+  }, [gateway, matchingReturnContext, referenceReloadId, requestScope, serviceDate]);
 
   useEffect(() => {
     recoveryHydratedScope.current = null;
@@ -439,6 +477,7 @@ export function useEmployeeDeliveryData({
     transferRequestId.current += 1;
     setTransferSubmitting(false);
     setSelectedCardId(null);
+    setTaskChoiceCardId(null);
     setPosContext(null);
     setPosContextError(null);
     setPaymentResult(null);
@@ -447,10 +486,15 @@ export function useEmployeeDeliveryData({
     setPaymentSubmitting(false);
     setApprovalId(null);
     setApprovalReason('');
-    setSelectedBuildingId('');
-    setSelectedZone('');
-    setDestinationKindState('regular');
-    setSelectedEventJobId('');
+    // Preserve the restored round across repeated initialization effects. Once
+    // another round/date is chosen, normal filter reset behavior resumes.
+    if (!matchingReturnContext || returnFiltersRoundId.current !== selectedRoundId) {
+      returnFiltersRoundId.current = null;
+      setSelectedBuildingId('');
+      setSelectedZone('');
+      setDestinationKindState('regular');
+      setSelectedEventJobId('');
+    }
     setDeliveryQuantities({});
     setTransferQuantities({});
     setStatus('delivered');
@@ -460,10 +504,11 @@ export function useEmployeeDeliveryData({
     setSuccess(null);
     setStockError(null);
     void Promise.all([loadCards(selectedRoundId), loadStockState(selectedRoundId)]);
-  }, [loadCards, loadStockState, selectedRoundId]);
+  }, [loadCards, loadStockState, matchingReturnContext, selectedRoundId]);
 
   const selectedRound = rounds.find((round) => round.id === selectedRoundId) ?? null;
   const selectedCard = cards.find((card) => card.round_stop_id === selectedCardId) ?? null;
+  const taskChoiceCard = cards.find((card) => card.round_stop_id === taskChoiceCardId) ?? null;
   const items = useMemo(() => iceTypes
     .map((iceType) => ({ ice_type_id: iceType.id, quantity: deliveryQuantities[iceType.id] ?? 0 }))
     .filter((item) => item.quantity > 0), [deliveryQuantities, iceTypes]);
@@ -548,18 +593,67 @@ export function useEmployeeDeliveryData({
     setQuery('');
   };
 
+  const refreshCollectionOutstanding = useCallback(async () => {
+    if (!gateway.loadCollectionOutstanding || enableAssignedStockFlow) return;
+    const requestId = ++collectionOutstandingRequestId.current;
+    setCollectionOutstandingLoading(true);
+    setCollectionOutstandingError(null);
+    try {
+      const summaries = await gateway.loadCollectionOutstanding(toBangkokDateString());
+      if (requestId !== collectionOutstandingRequestId.current) return;
+      setCollectionOutstanding(Object.fromEntries(
+        summaries.map((summary) => [summary.shopId, summary.outstandingAmount]),
+      ));
+      if (collectionCloseResult?.status === 'completed') {
+        handledCollectionCloseRequestId.current = collectionCloseResult.requestId;
+      }
+    } catch (loadError) {
+      if (requestId !== collectionOutstandingRequestId.current) return;
+      const message = employeeErrorMessage(loadError);
+      setCollectionOutstandingError(
+        collectionCloseResult?.status === 'completed'
+          && collectionCloseResult.requestId !== handledCollectionCloseRequestId.current
+          ? `บันทึกเงินแล้ว แต่ยังอัปเดตยอดไม่ได้: ${message}`
+          : message,
+      );
+    } finally {
+      if (requestId === collectionOutstandingRequestId.current) setCollectionOutstandingLoading(false);
+    }
+  }, [collectionCloseResult, enableAssignedStockFlow, gateway, serviceDate]);
+
+  useEffect(() => {
+    if (!isActive || enableAssignedStockFlow) return;
+    void refreshCollectionOutstanding();
+  }, [enableAssignedStockFlow, isActive, refreshCollectionOutstanding]);
+
   useLayoutEffect(() => {
-    if (!isActive || selectedCardId || loadingCards || !browseScrollRestorePending.current) return;
-    browseScrollRestorePending.current = false;
+    if (!isActive || selectedCardId || taskChoiceCardId || loadingReference || loadingCards
+      || loadedReferenceServiceDate !== serviceDate || !selectedRoundId
+      || loadedCardsRoundId.current !== selectedRoundId || !browseScrollRestorePending.current) return;
     const focusId = returnFocusCardId.current;
-    if (focusId) shopButtonRefs.current.get(focusId)?.focus({ preventScroll: true });
-    window.scrollTo({ top: browseScrollY.current, behavior: 'auto' });
-  }, [isActive, loadingCards, selectedCardId]);
+    const focusTarget = focusId ? shopButtonRefs.current.get(focusId) : null;
+    if (!focusTarget && filteredCards.some((card) => card.round_stop_id === focusId)) return;
+    browseScrollRestorePending.current = false;
+    focusTarget?.focus({ preventScroll: true });
+    const rememberedOffset = returnCardViewportOffset.current;
+    const currentOffset = focusTarget?.closest('.employee-shop-tile')?.getBoundingClientRect().top;
+    const fallbackTop = Math.max(0, browseScrollY.current);
+    const restoredTop = rememberedOffset !== null && currentOffset !== undefined
+      ? Math.max(0, window.scrollY + currentOffset - rememberedOffset)
+      : fallbackTop;
+    window.scrollTo({ top: restoredTop, behavior: 'auto' });
+    if (pendingReturnContextId.current) {
+      clearPosCollectionReturn(requestScope);
+      pendingReturnContextId.current = null;
+    }
+  }, [filteredCards, isActive, loadedReferenceServiceDate, loadingCards, loadingReference, requestScope,
+    selectedCardId, selectedRoundId, serviceDate, taskChoiceCardId]);
 
   const returnToBrowse = useCallback(() => {
     posContextRequestId.current += 1;
     browseScrollRestorePending.current = true;
     setSelectedCardId(null);
+    setTaskChoiceCardId(null);
     setStatus('delivered');
     setProblemOpen(false);
     setNote('');
@@ -573,12 +667,19 @@ export function useEmployeeDeliveryData({
     setApprovalId(null);
   }, []);
 
-  const openCard = (card: ShopCard, recovery?: EmployeeWorkspaceRecovery) => {
+  const rememberBrowsePosition = useCallback((card: ShopCard) => {
+    browseScrollY.current = window.scrollY;
+    returnFocusCardId.current = card.round_stop_id;
+    const button = shopButtonRefs.current.get(card.round_stop_id);
+    returnCardViewportOffset.current = button?.closest('.employee-shop-tile')?.getBoundingClientRect().top ?? null;
+  }, []);
+
+  const openCard = (card: ShopCard, recovery?: EmployeeWorkspaceRecovery, preserveBrowsePosition = false) => {
     if (enableAssignedStockFlow && !stockState) return;
     if (card.destination_kind === 'event'
       && (!card.event_delivery_enabled || !card.is_operational)) return;
-    browseScrollY.current = window.scrollY;
-    returnFocusCardId.current = card.round_stop_id;
+    if (!preserveBrowsePosition) rememberBrowsePosition(card);
+    setTaskChoiceCardId(null);
     setSuccess(null);
     setEntryError(null);
     setDeliveryQuantities(Object.fromEntries(iceTypes.map((iceType) => [iceType.id, 0])));
@@ -644,6 +745,81 @@ export function useEmployeeDeliveryData({
       });
     }
     window.scrollTo({ top: 0, behavior: 'auto' });
+  };
+
+  const openCardFromPicker = (card: ShopCard) => {
+    if ((card.destination_kind ?? 'regular') === 'event') {
+      openCard(card);
+      return;
+    }
+    const outstandingKnown = collectionOutstanding !== null;
+    const outstandingAmount = collectionOutstanding?.[card.shop_id] ?? 0;
+    const needsTaskChoice = card.stop_status !== 'pending'
+      || !outstandingKnown
+      || Boolean(collectionOutstandingError)
+      || outstandingAmount > 0;
+    if (!needsTaskChoice) {
+      openCard(card);
+      return;
+    }
+    rememberBrowsePosition(card);
+    setTaskChoiceCardId(card.round_stop_id);
+    setSuccess(null);
+    setEntryError(null);
+    window.scrollTo({ top: 0, behavior: 'auto' });
+  };
+
+  const returnFromTaskChoice = () => {
+    browseScrollRestorePending.current = true;
+    setTaskChoiceCardId(null);
+  };
+
+  const sendFromTaskChoice = () => {
+    const card = cards.find((candidate) => candidate.round_stop_id === taskChoiceCardId);
+    if (card) openCard(card, undefined, true);
+  };
+
+  const persistCollectionReturn = (request: CollectionFocusRequest, card: ShopCard) => {
+    writePosCollectionReturn({
+      version: 1,
+      ownerId: requestScope,
+      request,
+      returnTo: 'pos',
+      origin: collectionReturnOrigin,
+      posServiceDate: serviceDate,
+      collectionServiceDate: request.source === 'pos-shortcut' ? toBangkokDateString() : serviceDate,
+      selectedRoundId,
+      destinationKind,
+      selectedBuildingId,
+      selectedZone,
+      selectedEventJobId,
+      query,
+      shopId: card.shop_id,
+      roundStopId: card.round_stop_id,
+      scrollY: browseScrollY.current,
+      cardViewportOffset: returnCardViewportOffset.current,
+      savedAt: new Date().toISOString(),
+    });
+    pendingReturnContextId.current = request.returnContextId;
+  };
+
+  const openCollectionFromTaskChoice = () => {
+    const card = cards.find((candidate) => candidate.round_stop_id === taskChoiceCardId);
+    if (!card || !onOpenCollection || !canCollectShopPayments) return;
+    const outstandingAmount = collectionOutstanding?.[card.shop_id];
+    if (outstandingAmount === undefined || outstandingAmount <= 0 || collectionOutstandingError) return;
+    const requestId = newCollectionRequestId();
+    const request: CollectionFocusRequest = {
+      requestId,
+      source: 'pos-shortcut',
+      shopId: card.shop_id,
+      queueKey: `regular:${card.shop_id}`,
+      returnContextId: requestId,
+    };
+    persistCollectionReturn(request, card);
+    browseScrollRestorePending.current = true;
+    setTaskChoiceCardId(null);
+    onOpenCollection(request);
   };
 
   useEffect(() => {
@@ -1011,10 +1187,17 @@ export function useEmployeeDeliveryData({
           // Delivery handoff hides this workspace. Restore the browse position
           // again when collection closes and this page becomes visible.
           browseScrollRestorePending.current = true;
-          onOpenCollection({
+          const collectionRequestId = newCollectionRequestId();
+          const collectionRequest: CollectionFocusRequest = {
+            requestId: collectionRequestId,
+            source: 'delivery',
+            shopId: selectedCard.shop_id,
             queueKey,
             chargeId: result.charge_id,
-          });
+            returnContextId: collectionRequestId,
+          };
+          persistCollectionReturn(collectionRequest, selectedCard);
+          onOpenCollection(collectionRequest);
           return;
         }
         const nextPaymentAmount = String(result.total_amount ?? '');
@@ -1327,6 +1510,7 @@ export function useEmployeeDeliveryData({
     selectedEventJobId,
     query,
     selectedCardId,
+    taskChoiceCardId,
     selectedIceTypeId,
     deliveryQuantities,
     transferQuantities,
@@ -1362,6 +1546,10 @@ export function useEmployeeDeliveryData({
     latestReceiptAvailable,
     selectedRound,
     selectedCard,
+    taskChoiceCard,
+    collectionOutstanding,
+    collectionOutstandingLoading,
+    collectionOutstandingError,
     items,
     transferItems,
     anySubmitting,
@@ -1388,6 +1576,7 @@ export function useEmployeeDeliveryData({
     setApprovalReason,
     retryLoad,
     refreshShopCatalog,
+    refreshCollectionOutstanding,
     printLatestReceipt,
     chooseRound,
     setPadValue,
@@ -1404,6 +1593,10 @@ export function useEmployeeDeliveryData({
     cancelImmediateSaleDraft,
     handleRequestApproval,
     openCard,
+    openCardFromPicker,
+    returnFromTaskChoice,
+    sendFromTaskChoice,
+    openCollectionFromTaskChoice,
     changeShop,
     loadStockState,
   };

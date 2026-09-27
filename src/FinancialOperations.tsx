@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { CheckCircle, ClockCounterClockwise, FileText, ListBullets, WarningCircle } from '@phosphor-icons/react';
+import { ArrowLeft, CheckCircle, ClockCounterClockwise, FileText, ListBullets, WarningCircle } from '@phosphor-icons/react';
 import { supabase } from './lib/supabase';
 import { toBangkokDateString } from './lib/serviceDate';
 import { MAX_PAYMENT_EVIDENCE_SIZE, uploadPaymentEvidence } from './lib/paymentEvidence';
@@ -34,9 +34,10 @@ import {
   receiptFromSnapshot,
   withPublicShopImages,
 } from './features/financial-operations/utils';
-import type { AppRole, CollectionFocusRequest, CreditDueRule, PaymentMethod } from './types/app';
+import type { AppRole, CollectionCloseResult, CollectionFocusRequest, CreditDueRule, PaymentMethod } from './types/app';
 import { publishDataChange, subscribeToDataChange } from './lib/dataChange';
-import { ensureCurrentCollectionContext, invalidateCurrentCollectionContext } from './lib/collectionContext';
+import { invalidateCurrentCollectionContext } from './lib/collectionContext';
+import { loadCurrentCollectionQueue } from './lib/collectionQueue';
 
 const COLLECTION_AUTO_REFRESH_MS = 2 * 60_000;
 
@@ -105,7 +106,7 @@ export function FinancialOperations({
   managerPage?: 'collection' | 'transactions' | 'credit';
   onManagerPageChange?: (page: 'collection' | 'transactions' | 'credit') => void;
   focusRequest?: CollectionFocusRequest | null;
-  onFocusedCollectionClose?: (paymentRecorded: boolean) => void;
+  onFocusedCollectionClose?: (result: CollectionCloseResult) => void;
   serviceDate?: string;
 }) {
   const serviceDate = demoData?.serviceDate ?? propServiceDate ?? toBangkokDateString();
@@ -142,6 +143,8 @@ export function FinancialOperations({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [focusLoadError, setFocusLoadError] = useState<string | null>(null);
+  const [focusLoading, setFocusLoading] = useState(false);
   const pageRef = useRef<HTMLDivElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
@@ -154,7 +157,8 @@ export function FinancialOperations({
   const selectedShopRef = useRef<QueueShop | null>(selectedShop);
   const busyRef = useRef(busy);
   const receiptRef = useRef<PaymentReceipt | null>(receipt);
-  const handledFocusChargeIdRef = useRef<string | null>(null);
+  const handledFocusRequestIdRef = useRef<string | null>(null);
+  const focusLoadRequestRef = useRef(0);
   busyRef.current = busy;
   receiptRef.current = receipt;
   selectedShopRef.current = selectedShop;
@@ -183,7 +187,11 @@ export function FinancialOperations({
     setPaymentHistory(historyItems);
   }, [demoData, historyDate]);
 
-  const load = useCallback(async (preferredQueueKey?: string, preferredChargeId?: string) => {
+  const load = useCallback(async (
+    preferredQueueKey?: string,
+    preferredChargeId?: string,
+    focusLoadRequestId?: number,
+  ) => {
     if (demoData) {
       if (preferredQueueKey) {
         const preferredShop = demoData.queue.find((shop) => queueIdentity(shop) === preferredQueueKey);
@@ -191,6 +199,7 @@ export function FinancialOperations({
         if (preferredChargeId && !preferredShop.charges.some((charge) => charge.charge_id === preferredChargeId)) {
           throw new Error('ไม่พบยอดส่งรอบล่าสุดในคิวรับเงิน');
         }
+        if (focusLoadRequestId && focusLoadRequestId !== focusLoadRequestRef.current) return;
         setQueue(demoData.queue);
         setSelectedShop(preferredShop);
         resetPaymentForm(preferredShop);
@@ -220,18 +229,13 @@ export function FinancialOperations({
       return;
     }
 
-    const context = await ensureCurrentCollectionContext(serviceDate);
-    const nextRunId = context.collection_run_id;
+    const collectionQueue = await loadCurrentCollectionQueue(serviceDate);
+    if (focusLoadRequestId && focusLoadRequestId !== focusLoadRequestRef.current) return;
+    const nextRunId = collectionQueue.runId;
     setRunId(nextRunId);
     if (nextRunId) {
-      const queueResponse = await supabase.rpc('get_collection_run_queue', {
-        p_collection_run_id: nextRunId,
-      });
-      if (queueResponse.error) {
-        invalidateCurrentCollectionContext(true);
-        throw queueResponse.error;
-      }
-      const nextQueue = await withPublicShopImages((queueResponse.data ?? []) as QueueShop[]);
+      const nextQueue = await withPublicShopImages(collectionQueue.queue);
+      if (focusLoadRequestId && focusLoadRequestId !== focusLoadRequestRef.current) return;
       const currentShop = selectedShopRef.current;
       const preferredShop = preferredQueueKey || preferredChargeId
         ? nextQueue.find((shop) => (preferredChargeId && shop.charges.some((charge) => charge.charge_id === preferredChargeId))
@@ -254,6 +258,7 @@ export function FinancialOperations({
     } else {
       setQueue([]);
       setSelectedShop(null);
+      if (preferredQueueKey) throw new Error('ไม่พบร้านนี้ในคิวรับเงินล่าสุด');
     }
 
     if (!isManager) return;
@@ -263,12 +268,29 @@ export function FinancialOperations({
   }, [demoData, isManager, managerPage, resetPaymentForm, serviceDate]);
 
   const loadPendingFocus = useCallback(async () => {
-    const pendingFocus = focusRequest?.chargeId !== handledFocusChargeIdRef.current
+    const pendingFocus = focusRequest?.requestId !== handledFocusRequestIdRef.current
       ? focusRequest
       : null;
-    if (pendingFocus) setEmployeeView('queue');
-    await load(pendingFocus?.queueKey, pendingFocus?.chargeId);
-    if (pendingFocus) handledFocusChargeIdRef.current = pendingFocus.chargeId;
+    if (!pendingFocus) {
+      await load();
+      return;
+    }
+    setEmployeeView('queue');
+    setFocusLoadError(null);
+    setSelectedShop(null);
+    setFocusLoading(true);
+    const requestId = ++focusLoadRequestRef.current;
+    try {
+      await load(pendingFocus.queueKey, pendingFocus.chargeId, requestId);
+      if (requestId !== focusLoadRequestRef.current) return;
+      handledFocusRequestIdRef.current = pendingFocus.requestId;
+    } catch (loadError) {
+      if (requestId !== focusLoadRequestRef.current) return;
+      setSelectedShop(null);
+      setFocusLoadError(getErrorMessage(loadError));
+    } finally {
+      if (requestId === focusLoadRequestRef.current) setFocusLoading(false);
+    }
   }, [focusRequest, load]);
 
   const refreshFinancialData = useCallback(async () => {
@@ -295,10 +317,10 @@ export function FinancialOperations({
     const closingFocusedCollection = Boolean(
       focusRequest && currentShop && (
         focusRequest.queueKey === queueIdentity(currentShop)
-        || currentShop.charges.some((charge) => charge.charge_id === focusRequest.chargeId)
+        || Boolean(focusRequest.chargeId && currentShop.charges.some((charge) => charge.charge_id === focusRequest.chargeId))
       ),
     );
-    const paymentRecorded = Boolean(receiptRef.current);
+    const recordedReceipt = receiptRef.current;
     if (receiptRef.current) {
       void refreshFinancialData().catch((loadError: unknown) => {
         setError(getErrorMessage(loadError));
@@ -306,8 +328,24 @@ export function FinancialOperations({
     }
     setReceipt(null);
     setSelectedShop(null);
-    if (closingFocusedCollection) onFocusedCollectionClose?.(paymentRecorded);
+    if (closingFocusedCollection && focusRequest) onFocusedCollectionClose?.({
+      status: recordedReceipt ? 'completed' : 'cancelled',
+      requestId: focusRequest.requestId,
+      shopId: focusRequest.shopId,
+      paymentId: recordedReceipt?.paymentId,
+    });
   }, [focusRequest, onFocusedCollectionClose, refreshFinancialData]);
+
+  const closeFocusedLoadError = useCallback(() => {
+    if (!focusRequest) return;
+    focusLoadRequestRef.current += 1;
+    setFocusLoadError(null);
+    onFocusedCollectionClose?.({
+      status: 'cancelled',
+      requestId: focusRequest.requestId,
+      shopId: focusRequest.shopId,
+    });
+  }, [focusRequest, onFocusedCollectionClose]);
 
   useEffect(() => {
     if (!isActive) return undefined;
@@ -315,10 +353,18 @@ export function FinancialOperations({
   }, [autoRefreshFinancialData, isActive]);
 
   useEffect(() => {
-    if (!isActive) return;
+    setFocusLoading(false);
+    setFocusLoadError(null);
+    if (!isActive) {
+      setSelectedShop(null);
+      return;
+    }
     void loadPendingFocus().catch((loadError: unknown) => {
       setError(getErrorMessage(loadError));
     });
+    return () => {
+      focusLoadRequestRef.current += 1;
+    };
   }, [isActive, loadPendingFocus]);
 
   useEffect(() => {
@@ -346,7 +392,7 @@ export function FinancialOperations({
   }, [autoRefreshFinancialData, demoData, isActive, isManager, managerPage]);
 
   useEffect(() => {
-    if (!selectedShop || (isManager && window.innerWidth >= 1100)) return;
+    if (!isActive || !selectedShop || (isManager && window.innerWidth >= 1100)) return;
     const page = pageRef.current;
     const previousOverflow = document.body.style.overflow;
     const closeOnKeydown = (event: KeyboardEvent) => {
@@ -380,7 +426,7 @@ export function FinancialOperations({
       window.removeEventListener('keydown', closeOnKeydown);
       returnFocusRef.current?.focus();
     };
-  }, [closePayment, isManager, selectedShop ? queueIdentity(selectedShop) : null]);
+  }, [closePayment, isActive, isManager, selectedShop ? queueIdentity(selectedShop) : null]);
 
   useEffect(() => {
     if (!historyReceipt) return;
@@ -820,6 +866,19 @@ export function FinancialOperations({
     <div className="financial-ops" ref={pageRef}>
       {error ? <p className="employee-error" role="alert"><WarningCircle />{error}</p> : null}
       {success ? <p className="employee-success"><CheckCircle weight="fill" />{success}</p> : null}
+      {focusRequest && (focusLoading || focusLoadError) ? (
+        <section className="financial-ops__focus-state" aria-live="polite" role={focusLoadError ? 'alert' : 'status'}>
+          <WarningCircle aria-hidden="true" size={24} weight={focusLoadError ? 'fill' : 'duotone'} />
+          <div>
+            <strong>{focusLoading ? 'กำลังโหลดคิวล่าสุดของร้าน' : 'เปิดยอดรอรับชำระไม่สำเร็จ'}</strong>
+            <span>{focusLoading ? 'ระบบกำลังตรวจยอดก่อนเปิดหน้ารับเงิน' : focusLoadError}</span>
+          </div>
+          {focusLoadError ? <button disabled={focusLoading} onClick={() => void loadPendingFocus()} type="button">ลองใหม่</button> : null}
+          <button className="financial-ops__focus-back" onClick={closeFocusedLoadError} type="button">
+            <ArrowLeft aria-hidden="true" size={18} /> กลับ POS
+          </button>
+        </section>
+      ) : null}
 
       {!isManager ? <div className="financial-ops__employee-workspace">
         <nav aria-label="เมนูเก็บเงิน" className="financial-ops__employee-nav">
@@ -915,7 +974,7 @@ export function FinancialOperations({
         userRole={userRole}
       /> : null}
 
-      {selectedShop && (!isManager || managerPage === 'collection') ? createPortal(
+      {isActive && selectedShop && (!isManager || managerPage === 'collection') ? createPortal(
         <PaymentModal
           allocatedAmount={allocatedAmount}
           amount={amount}

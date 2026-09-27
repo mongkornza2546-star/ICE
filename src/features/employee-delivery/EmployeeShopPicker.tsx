@@ -103,6 +103,9 @@ export function EmployeeShopPicker({
   setSelectedEventJobId,
   eventOptions,
   loadingCards,
+  collectionOutstanding = null,
+  collectionOutstandingError = null,
+  collectionOutstandingLoading = false,
   eventCardsError,
   filteredCards,
   refreshShopImageUrl,
@@ -129,6 +132,9 @@ export function EmployeeShopPicker({
   setSelectedEventJobId: (id: string) => void;
   eventOptions: Array<{ id: string; name: string }>;
   loadingCards: boolean;
+  collectionOutstanding?: Record<string, number> | null;
+  collectionOutstandingError?: string | null;
+  collectionOutstandingLoading?: boolean;
   eventCardsError: string | null;
   filteredCards: ShopCard[];
   refreshShopImageUrl: (card: ShopCard) => Promise<string | null>;
@@ -246,6 +252,19 @@ export function EmployeeShopPicker({
               const buttonAriaLabel = isEvent
                 ? `เลือกร้าน ${[boothText, card.shop_name].filter(Boolean).join(' ')}`
                 : `เลือกร้าน ${card.shop_code} ${card.shop_name}`;
+              const outstandingAmount = collectionOutstanding === null
+                ? undefined
+                : collectionOutstanding[card.shop_id] ?? 0;
+              const outstandingLabel = collectionOutstandingError
+                ? 'โหลดยอดรอรับชำระไม่สำเร็จ'
+                : outstandingAmount === undefined
+                  ? collectionOutstandingLoading ? 'กำลังโหลดยอดรอรับชำระ…' : 'ตรวจยอดเมื่อเปิดร้าน'
+                  : `ยอดรอรับชำระ ${new Intl.NumberFormat('th-TH', {
+                    style: 'currency',
+                    currency: 'THB',
+                    minimumFractionDigits: 0,
+                    maximumFractionDigits: 2,
+                  }).format(outstandingAmount)}`;
 
               return (
                 <article
@@ -297,6 +316,7 @@ export function EmployeeShopPicker({
                       <small>{isEvent
                         ? `${card.event_name} · ${card.event_location}${card.event_zone ? ` · โซน ${card.event_zone}` : ''}`
                         : `${card.building_name} · ${card.floor_or_zone}`}</small>
+                      {!isEvent ? <span className="employee-shop-tile__outstanding">{outstandingLabel}</span> : null}
                       {isEvent && !card.event_delivery_enabled
                         ? <span>ยังไม่เปิดบันทึกส่งน้ำแข็ง</span>
                         : null}

@@ -29,6 +29,17 @@ const shop: ShopCard = {
   today_totals: {},
 };
 
+function collectionFocus(chargeId = 'charge-1'): CollectionFocusRequest {
+  return {
+    requestId: `request-${chargeId}`,
+    source: 'delivery',
+    shopId: 'shop-1',
+    queueKey: 'regular:shop-1',
+    chargeId,
+    returnContextId: `return-${chargeId}`,
+  };
+}
+
 function createGateway(events: string[]): EmployeeDeliveryGateway {
   return {
     loadReferenceData: vi.fn().mockResolvedValue({
@@ -133,9 +144,9 @@ describe('employee delivery to collection handoff', () => {
     await user.click(screen.getByRole('button', { name: 'ส่งและรับชำระ' }));
     await user.click(screen.getByRole('button', { name: 'ยืนยันส่งร้านนี้' }));
 
-    await waitFor(() => expect(onOpenCollection).toHaveBeenCalledWith({
-      queueKey: 'event:event-1', chargeId: 'charge-1',
-    }));
+    await waitFor(() => expect(onOpenCollection).toHaveBeenCalledWith(expect.objectContaining({
+      source: 'delivery', shopId: 'shop-1', queueKey: 'event:event-1', chargeId: 'charge-1',
+    })));
     expect(gateway.recordDelivery).toHaveBeenCalledWith(expect.objectContaining({
       destinationKind: 'event', paymentTerm: 'immediate',
     }));
@@ -149,7 +160,9 @@ describe('employee delivery to collection handoff', () => {
     const gateway = createGateway(events);
     const onOpenCollection = vi.fn((request: CollectionFocusRequest) => {
       events.push('collection');
-      expect(request).toEqual({ queueKey: 'regular:shop-1', chargeId: 'charge-1' });
+      expect(request).toEqual(expect.objectContaining({
+        source: 'delivery', shopId: 'shop-1', queueKey: 'regular:shop-1', chargeId: 'charge-1',
+      }));
     });
     render(<DeliveryHarness gateway={gateway} onOpenCollection={onOpenCollection} />);
 
@@ -205,7 +218,7 @@ describe('employee delivery to collection handoff', () => {
         paymentHistory: [],
         runId: 'run-1',
       }}
-      focusRequest={{ queueKey: 'regular:shop-1', chargeId: 'charge-1' }}
+      focusRequest={collectionFocus()}
       onFocusedCollectionClose={onFocusedCollectionClose}
       userRole="courier"
     />);
@@ -213,9 +226,71 @@ describe('employee delivery to collection handoff', () => {
     expect(await screen.findByRole('dialog', { name: /รับเงิน.*ร้านทดสอบ/ })).not.toBeNull();
     await user.click(screen.getByRole('button', { name: 'ยกเลิก' }));
 
-    expect(onFocusedCollectionClose).toHaveBeenCalledWith(false);
+    expect(onFocusedCollectionClose).toHaveBeenCalledWith({
+      status: 'cancelled', requestId: 'request-charge-1', shopId: 'shop-1', paymentId: undefined,
+    });
     expect(screen.queryByRole('dialog', { name: /รับเงิน.*ร้านทดสอบ/ })).toBeNull();
     expect(queueShop.charges[0].outstanding_amount).toBe(30);
+  });
+
+  it('opens the existing collection screen for a POS shortcut without a new charge', async () => {
+    const queueShop: QueueShop = {
+      queue_key: 'regular:shop-1',
+      destination_kind: 'regular',
+      shop_id: 'shop-1',
+      shop_code: 'BB15',
+      shop_name: 'ร้านทดสอบ',
+      image_path: null,
+      outstanding_amount: 80,
+      charge_count: 2,
+      has_new_charges: false,
+      payment_profile: {
+        allowed_payment_methods: ['cash'],
+        default_payment_method: 'cash',
+        cash_reference_required: false,
+        cash_evidence_required: false,
+        bank_transfer_reference_required: false,
+        bank_transfer_evidence_required: false,
+        qr_reference_required: false,
+        qr_evidence_required: false,
+      },
+      charges: [{
+        charge_id: 'old-charge-1',
+        charge_number: 'INV-OLD-1',
+        service_date: '2026-08-18',
+        original_amount: 30,
+        outstanding_amount: 30,
+        items: [],
+      }, {
+        charge_id: 'old-charge-2',
+        charge_number: 'INV-OLD-2',
+        service_date: '2026-08-17',
+        original_amount: 50,
+        outstanding_amount: 50,
+        items: [],
+      }],
+    };
+    const focusRequest: CollectionFocusRequest = {
+      requestId: 'request-pos-shortcut',
+      source: 'pos-shortcut',
+      shopId: 'shop-1',
+      queueKey: 'regular:shop-1',
+      returnContextId: 'return-pos-shortcut',
+    };
+
+    render(<FinancialOperations
+      demoData={{
+        serviceDate: '2026-08-19',
+        queue: [queueShop],
+        paymentHistory: [],
+        runId: 'run-1',
+      }}
+      focusRequest={focusRequest}
+      userRole="courier"
+    />);
+
+    expect(await screen.findByRole('dialog', { name: /รับเงิน.*ร้านทดสอบ/ })).not.toBeNull();
+    expect((screen.getByRole('spinbutton', { name: 'ยอดรับเงินจริง' }) as HTMLInputElement).value).toBe('80.00');
   });
 
   it('blocks send-and-collect before delivery for a courier without collection permission', async () => {
@@ -276,7 +351,7 @@ describe('employee delivery to collection handoff', () => {
     try {
       render(<FinancialOperations
         demoData={{ serviceDate: '2026-08-19', queue: [queueShop], paymentHistory: [], runId: 'run-1' }}
-        focusRequest={{ queueKey: 'regular:shop-1', chargeId: 'charge-1' }}
+        focusRequest={collectionFocus()}
         onFocusedCollectionClose={onFocusedCollectionClose}
         userRole="courier"
       />);
@@ -284,14 +359,16 @@ describe('employee delivery to collection handoff', () => {
       expect(await screen.findByRole('dialog', { name: /รับเงิน.*ร้านทดสอบ/ })).not.toBeNull();
       fireEvent.keyDown(window, { key: 'Escape' });
 
-      expect(onFocusedCollectionClose).toHaveBeenCalledWith(false);
+      expect(onFocusedCollectionClose).toHaveBeenCalledWith({
+        status: 'cancelled', requestId: 'request-charge-1', shopId: 'shop-1', paymentId: undefined,
+      });
     } finally {
       Object.defineProperty(window, 'innerWidth', { configurable: true, value: originalInnerWidth });
     }
   });
 
   it('retries the same focus request after the queue becomes available', async () => {
-    const focusRequest = { queueKey: 'regular:shop-1', chargeId: 'charge-1' };
+    const focusRequest = collectionFocus();
     const queueShop: QueueShop = {
       queue_key: focusRequest.queueKey,
       destination_kind: 'regular',
@@ -454,7 +531,7 @@ describe('employee delivery to collection handoff', () => {
         paymentHistory: [],
         runId: 'run-1',
       }}
-      focusRequest={{ queueKey: 'regular:shop-1', chargeId: 'latest-charge-2' }}
+      focusRequest={collectionFocus('latest-charge-2')}
       userRole="admin"
     />);
 

@@ -15,6 +15,8 @@ import type {
   PaymentMethod,
   PaymentTerm,
   CollectionFocusRequest,
+  CollectionCloseResult,
+  CollectionOutstandingSummary,
   ShopCard,
   ShopCardHistoryEntry,
   ShopRoundStatus,
@@ -22,6 +24,7 @@ import type {
 import { EmployeeState } from './features/employee-delivery/EmployeeState';
 import { EmployeeStockTransferSection } from './features/employee-delivery/EmployeeStockTransferSection';
 import { EmployeeShopPicker } from './features/employee-delivery/EmployeeShopPicker';
+import { EmployeeShopTaskChoice } from './features/employee-delivery/EmployeeShopTaskChoice';
 import { EmployeeCasualCustomerPage } from './features/employee-delivery/EmployeeCasualCustomerPage';
 import { EmployeeDeliveryReview } from './features/employee-delivery/EmployeeDeliveryReview';
 import { useEmployeeDeliveryData } from './features/employee-delivery/useEmployeeDeliveryData';
@@ -36,6 +39,7 @@ import {
 } from './lib/r2Storage';
 import { subscribeToDataChange } from './lib/dataChange';
 import { getErrorMessage } from './lib/errorMessage';
+import { loadCurrentCollectionQueue } from './lib/collectionQueue';
 
 export interface EmployeeDeliveryPayload {
   destinationKind: NonNullable<ShopCard['destination_kind']>;
@@ -122,6 +126,7 @@ export interface EmployeeDeliveryGateway {
     forceRefresh?: boolean;
     onBaseCards?: (cards: ShopCard[]) => void;
   }): Promise<ShopCard[]>;
+  loadCollectionOutstanding?(serviceDate: string): Promise<CollectionOutstandingSummary[]>;
   getEventCardsLoadError?(roundId: string): string | null;
   loadDeliveryPosContext?(roundStopId: string, options: {
     destinationKind: NonNullable<ShopCard['destination_kind']>;
@@ -473,6 +478,16 @@ export function createSupabaseGateway(): EmployeeDeliveryGateway {
         return destinationCards;
       });
     },
+    async loadCollectionOutstanding(collectionServiceDate) {
+      const { queue } = await loadCurrentCollectionQueue(collectionServiceDate);
+      return queue
+        .filter((shop) => (shop.destination_kind ?? 'regular') === 'regular')
+        .map((shop) => ({
+          queueKey: shop.queue_key ?? `regular:${shop.shop_id}`,
+          shopId: shop.shop_id,
+          outstandingAmount: Number(shop.outstanding_amount),
+        }));
+    },
     getEventCardsLoadError(roundId) {
       return eventCardLoadErrors.get(roundId) ?? null;
     },
@@ -712,6 +727,8 @@ export function EmployeeDeliveryWorkspace({
   isActive = true,
   onDraftStateChange,
   onOpenCollection,
+  collectionReturnOrigin = 'courier-pos',
+  collectionCloseResult = null,
   requestScope = 'default',
   serviceDate = toBangkokDateString(),
   stockSourceLabel = 'สต๊อกรวมประจำวัน',
@@ -724,6 +741,8 @@ export function EmployeeDeliveryWorkspace({
   isActive?: boolean;
   onDraftStateChange?: (state: EmployeeDeliveryDraftState) => void;
   onOpenCollection?: (request: CollectionFocusRequest) => void;
+  collectionReturnOrigin?: 'courier-pos' | 'admin-delivery';
+  collectionCloseResult?: CollectionCloseResult | null;
   requestScope?: string;
   serviceDate?: string;
   stockSourceLabel?: string;
@@ -756,6 +775,8 @@ export function EmployeeDeliveryWorkspace({
     stockSourceLabel,
     onDraftStateChange: setDeliveryDraftState,
     onOpenCollection,
+    collectionReturnOrigin,
+    collectionCloseResult,
   });
   const anySubmittingRef = useRef(data.anySubmitting);
   anySubmittingRef.current = data.anySubmitting;
@@ -811,6 +832,11 @@ export function EmployeeDeliveryWorkspace({
     data.retryLoad();
   }), [data.anySubmitting, data.retryLoad, gateway, isActive]);
 
+  useEffect(() => subscribeToDataChange(['payment', 'receivable'], () => {
+    if (!isActive) return;
+    void data.refreshCollectionOutstanding();
+  }), [data.refreshCollectionOutstanding, isActive]);
+
   useEffect(() => {
     if (!isActive) return undefined;
     const refreshOnFocus = () => {
@@ -857,6 +883,26 @@ export function EmployeeDeliveryWorkspace({
 
   if (!data.error && data.iceTypes.length === 0) {
     return <EmployeeState title="ยังไม่มีชนิดน้ำแข็งที่ใช้งาน" detail="ให้แอดมินเปิดใช้งานชนิดน้ำแข็งอย่างน้อย 1 รายการก่อนบันทึกส่ง" />;
+  }
+
+  if (data.taskChoiceCard) {
+    return (
+      <div className="employee-workspace">
+        <EmployeeShopTaskChoice
+          canCollect={canCollectShopPayments}
+          card={data.taskChoiceCard}
+          onBack={data.returnFromTaskChoice}
+          onCollect={data.openCollectionFromTaskChoice}
+          onRetry={() => void data.refreshCollectionOutstanding()}
+          onSend={data.sendFromTaskChoice}
+          outstandingAmount={data.collectionOutstanding === null
+            ? undefined
+            : data.collectionOutstanding[data.taskChoiceCard.shop_id] ?? 0}
+          outstandingError={data.collectionOutstandingError}
+          outstandingLoading={data.collectionOutstandingLoading}
+        />
+      </div>
+    );
   }
 
   if (data.selectedCard && data.selectedRound) {
@@ -1069,6 +1115,9 @@ export function EmployeeDeliveryWorkspace({
             setSelectedEventJobId={data.setSelectedEventJobId}
             eventOptions={data.eventOptions}
             loadingCards={data.loadingCards}
+            collectionOutstanding={data.collectionOutstanding}
+            collectionOutstandingError={data.collectionOutstandingError}
+            collectionOutstandingLoading={data.collectionOutstandingLoading}
             eventCardsError={data.eventCardsError}
             filteredCards={data.filteredCards}
             refreshShopImageUrl={(card) => {
@@ -1085,7 +1134,7 @@ export function EmployeeDeliveryWorkspace({
               setCasualCustomerOpen(true);
               window.scrollTo({ top: 0, behavior: 'auto' });
             }}
-            openCard={data.openCard}
+            openCard={data.openCardFromPicker}
             stockState={data.stockState}
             shopButtonRefs={data.shopButtonRefs}
           /> : null}

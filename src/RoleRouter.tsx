@@ -14,7 +14,7 @@ import { ManagerStockAudit } from './ManagerStockAudit';
 import { FinancialOperations } from './FinancialOperations';
 import { EventManagementPage } from './EventManagementPage';
 import { Coins, Package, Storefront } from '@phosphor-icons/react';
-import type { CollectionFocusRequest, UserProfile } from './types/app';
+import type { CollectionCloseResult, CollectionFocusRequest, UserProfile } from './types/app';
 import { toBangkokDateString } from './lib/serviceDate';
 import { clearNavigation, clearRecoveryForOwner, readNavigation, writeNavigation } from './lib/recoveryStorage';
 import {
@@ -25,6 +25,7 @@ import {
 } from './lib/userProfileCache';
 import { COLLECTION_PROFILE_REFRESH_EVENT } from './lib/collectionContext';
 import { initGlobalRealtimeSync } from './lib/realtimeSync';
+import { clearPosCollectionReturn, readPosCollectionReturn } from './lib/posCollectionReturn';
 
 /**
  * Wrapper that keeps its children mounted once rendered,
@@ -67,10 +68,13 @@ export function RoleRouter({
   const [courierCollectionFocus, setCourierCollectionFocus] = useState<CollectionFocusRequest | null>(null);
   const [courierCollectionVisited, setCourierCollectionVisited] = useState(false);
   const [adminCollectionFocus, setAdminCollectionFocus] = useState<CollectionFocusRequest | null>(null);
+  const [focusedCollectionServiceDate, setFocusedCollectionServiceDate] = useState<string | null>(null);
+  const [collectionCloseResult, setCollectionCloseResult] = useState<CollectionCloseResult | null>(null);
   const [billingServiceDate, setBillingServiceDate] = useState(() => toBangkokDateString());
   const [currentBangkokDate, setCurrentBangkokDate] = useState(() => toBangkokDateString());
   const [deliveryDraftState, setDeliveryDraftState] = useState({ dirty: false, submitting: false });
   const navigationOwner = useRef<string | null>(null);
+  const [navigationReadyOwner, setNavigationReadyOwner] = useState<string | null>(null);
   const previousBangkokDate = useRef(currentBangkokDate);
   // Track which views have been visited so we only mount them on first visit
   // (lazy mount) but keep them alive afterwards (no unmount on tab switch).
@@ -148,7 +152,24 @@ export function RoleRouter({
     if (!profile) return;
     if (navigationOwner.current !== profile.id) {
       const saved = readNavigation(profile.id);
+      const returnContext = readPosCollectionReturn(profile.id);
       navigationOwner.current = profile.id;
+      setNavigationReadyOwner(profile.id);
+      if (returnContext) {
+        setBillingServiceDate(returnContext.posServiceDate);
+        setFocusedCollectionServiceDate(returnContext.collectionServiceDate);
+        if (profile.role === 'courier') {
+          setCourierCollectionFocus(returnContext.request);
+          setCourierCollectionVisited(true);
+          setCourierView('collection');
+        } else {
+          setAdminCollectionFocus(returnContext.request);
+          setVisitedViews((views) => new Set([...views, 'delivery', 'financial_operations']));
+          setFinancialPage('collection');
+          setActiveView('financial_operations');
+        }
+        return;
+      }
       setActiveView(saved?.activeView ? saved.activeView as AdminView : 'manager_overview');
       setFinancialPage(saved?.financialPage === 'transactions' || saved?.financialPage === 'credit' ? saved.financialPage : 'collection');
       setCourierView(saved?.courierView ?? 'pos');
@@ -206,6 +227,7 @@ export function RoleRouter({
   const signOut = async () => {
     if (!confirmLeavingDelivery()) return;
     if (profile) {
+      clearPosCollectionReturn(profile.id);
       clearNavigation(profile.id);
       clearRecoveryForOwner(profile.id);
       clearCachedUserProfile(profile.id);
@@ -213,7 +235,7 @@ export function RoleRouter({
     await supabase?.auth.signOut();
   };
 
-  if (profileLoading) {
+  if (profileLoading || (profile && navigationReadyOwner !== profile.id)) {
     return (
       <div className="app-shell">
         <section className="panel center-panel">
@@ -266,6 +288,7 @@ export function RoleRouter({
             aria-current={courierView === 'withdrawal' ? 'page' : undefined}
             onClick={() => {
               if (courierView !== 'withdrawal' && !confirmLeavingDelivery()) return;
+              clearPosCollectionReturn(profile.id);
               setCourierCollectionFocus(null);
               setCourierView('withdrawal');
             }}
@@ -278,6 +301,7 @@ export function RoleRouter({
             aria-current={courierView === 'pos' ? 'page' : undefined}
             onClick={() => {
               if (courierView !== 'pos' && !confirmLeavingDelivery()) return;
+              clearPosCollectionReturn(profile.id);
               setCourierCollectionFocus(null);
               setCourierView('pos');
             }}
@@ -291,6 +315,7 @@ export function RoleRouter({
             disabled={deliveryDraftState.submitting}
             onClick={() => {
               if (courierView !== 'collection' && !confirmLeavingDelivery()) return;
+              clearPosCollectionReturn(profile.id);
               setCourierCollectionFocus(null);
               setCourierCollectionVisited(true);
               setCourierView('collection');
@@ -309,11 +334,15 @@ export function RoleRouter({
             isActive={courierView !== 'collection'}
             onDraftStateChange={setDeliveryDraftState}
             onOpenCollection={(request) => {
+              setCollectionCloseResult(null);
               setCourierCollectionFocus(request);
+              setFocusedCollectionServiceDate(currentBangkokDate);
               setCourierCollectionVisited(true);
               setCourierView('collection');
             }}
             requestScope={profile.id}
+            collectionReturnOrigin="courier-pos"
+            collectionCloseResult={collectionCloseResult}
             viewMode={courierView === 'withdrawal' ? 'withdrawal' : 'pos'}
           />
         </KeepAlive>
@@ -324,10 +353,13 @@ export function RoleRouter({
               currentUserId={profile.id}
               focusRequest={courierCollectionFocus}
               isActive={courierView === 'collection'}
-              onFocusedCollectionClose={() => {
+              onFocusedCollectionClose={(result) => {
+                setCollectionCloseResult(result);
                 setCourierCollectionFocus(null);
+                setFocusedCollectionServiceDate(null);
                 setCourierView('pos');
               }}
+              serviceDate={focusedCollectionServiceDate ?? undefined}
               userRole="courier"
             />
           </KeepAlive>
@@ -377,6 +409,7 @@ export function RoleRouter({
   const navigate = (view: AdminView) => {
     if (view !== currentView && currentView === 'delivery' && !confirmLeavingDelivery()) return;
     if (view !== 'financial_operations') {
+      clearPosCollectionReturn(profile.id);
       setAdminCollectionFocus(null);
     }
     if (view === 'delivery' && currentView !== 'delivery') {
@@ -392,13 +425,22 @@ export function RoleRouter({
     setBillingServiceDate(serviceDate);
   };
 
+  const changeFinancialPage = (page: FinancialPage) => {
+    if (adminCollectionFocus && page !== 'collection') {
+      clearPosCollectionReturn(profile.id);
+      setAdminCollectionFocus(null);
+      setFocusedCollectionServiceDate(null);
+    }
+    setFinancialPage(page);
+  };
+
   return (
     <AdminLayout
       activeView={currentView}
       allowedViews={allowedViews}
       financialPage={financialPage}
       onNavigate={navigate}
-      onFinancialPageChange={setFinancialPage}
+      onFinancialPageChange={changeFinancialPage}
       onServiceDateChange={profile.role === 'admin' && currentView === 'delivery'
         ? changeBillingServiceDate
         : undefined}
@@ -465,12 +507,16 @@ export function RoleRouter({
             isActive={currentView === 'delivery'}
             onDraftStateChange={setDeliveryDraftState}
             onOpenCollection={(request) => {
+              setCollectionCloseResult(null);
               setAdminCollectionFocus(request);
+              setFocusedCollectionServiceDate(request.source === 'pos-shortcut' ? currentBangkokDate : billingServiceDate);
               setVisitedViews((views) => new Set([...views, 'financial_operations']));
               setFinancialPage('collection');
               setActiveView('financial_operations');
             }}
             requestScope={profile.id}
+            collectionReturnOrigin="admin-delivery"
+            collectionCloseResult={collectionCloseResult}
             serviceDate={profile.role === 'admin' ? billingServiceDate : undefined}
             stockSourceLabel="สต๊อกรวมประจำวัน"
           />
@@ -484,12 +530,14 @@ export function RoleRouter({
             focusRequest={adminCollectionFocus}
             isActive={currentView === 'financial_operations'}
             managerPage={financialPage}
-            onFocusedCollectionClose={() => {
+            onFocusedCollectionClose={(result) => {
+              setCollectionCloseResult(result);
               setAdminCollectionFocus(null);
+              setFocusedCollectionServiceDate(null);
               setActiveView('delivery');
             }}
-            onManagerPageChange={setFinancialPage}
-            serviceDate={profile.role === 'admin' ? billingServiceDate : undefined}
+            onManagerPageChange={changeFinancialPage}
+            serviceDate={adminCollectionFocus ? focusedCollectionServiceDate ?? undefined : profile.role === 'admin' ? billingServiceDate : undefined}
             userRole={profile.role}
           />
         </KeepAlive>
