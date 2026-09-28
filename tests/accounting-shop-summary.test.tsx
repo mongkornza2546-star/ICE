@@ -162,6 +162,7 @@ describe('accounting shop summary', () => {
       throw new Error(`Unexpected RPC: ${name}`);
     });
     render(<AccountingPage />);
+    fireEvent.click(await screen.findByRole('button', { name: 'ตารางรายวัน' }));
     await waitFor(() => expect(screen.getByLabelText(`ลูกค้าขาจร ${date} หลอดเล็ก`).textContent).toContain('รวมจากยอดเงิน 1 ถุง'));
     expect(screen.getByLabelText(`ลูกค้าขาจร ${date} หลอดเล็ก`).textContent).toContain('รวมแจกฟรี 0.5 ถุง');
     expect(screen.getByLabelText(`ลูกค้าขาจร ${date} รับเงินจริง`).textContent).toContain('สุทธิ ฿100.00');
@@ -190,6 +191,7 @@ describe('accounting shop summary', () => {
     const user = userEvent.setup();
     mockSuccessfulShopSummary();
     render(<AccountingPage />);
+    fireEvent.click(await screen.findByRole('button', { name: 'ตารางรายวัน' }));
     await screen.findByRole('button', { name: /S001 · ร้านสมใจ/ });
 
     const today = bangkokDate();
@@ -197,7 +199,7 @@ describe('accounting shop summary', () => {
     const currentMonthStart = new Date(Date.UTC(year, month - 1, 1)).toISOString().slice(0, 10);
     const previousMonthStart = new Date(Date.UTC(year, month - 2, 1)).toISOString().slice(0, 10);
     const previousMonthEnd = new Date(Date.UTC(year, month - 1, 0)).toISOString().slice(0, 10);
-    const monthButton = screen.getByRole('button', { name: 'ทั้งเดือน' });
+    const monthButton = screen.getByRole('button', { name: 'เดือนนี้' });
 
     await user.click(monthButton);
     expect((screen.getByLabelText('จาก') as HTMLInputElement).value).toBe(currentMonthStart);
@@ -228,7 +230,7 @@ describe('accounting shop summary', () => {
 
     await waitFor(() => expect(rpcMock).toHaveBeenCalledWith('get_accounting_shop_daily_matrix', expect.anything()));
     expect(screen.queryByRole('button', { name: /S001 · ร้านสมใจ/ })).toBeNull();
-    expect(screen.getByText('กำลังโหลดข้อมูล...')).toBeTruthy();
+    expect(screen.getByRole('status')).toBeTruthy();
 
     await act(async () => {
       resolveDaily({ data: emptyDailyMatrix, error: null });
@@ -254,6 +256,7 @@ describe('accounting shop summary', () => {
   it('shows missing daily cells as unavailable instead of zero or not recorded', async () => {
     mockSuccessfulShopSummary();
     render(<AccountingPage />);
+    fireEvent.click(await screen.findByRole('button', { name: 'ตารางรายวัน' }));
     await screen.findByRole('button', { name: /S001 · ร้านสมใจ/ });
     const toDate = (screen.getByLabelText('ถึง') as HTMLInputElement).value;
 
@@ -268,13 +271,14 @@ describe('accounting shop summary', () => {
 
     const summaryTab = screen.getByRole('button', { name: 'สรุปรายร้าน' });
     expect(summaryTab.getAttribute('aria-current')).toBe('page');
-    expect(screen.getByText('ยอดขายช่วงที่เลือก', { selector: 'article span' })).toBeTruthy();
-    expect(screen.getByText('รับชำระของยอดขายช่วงนี้', { selector: 'article span' })).toBeTruthy();
-    expect(screen.getByText('ยอดค้างสะสมทั้งหมด', { selector: 'article span' })).toBeTruthy();
-    const broadReceipts = screen.getByText('เงินรับจริงในช่วงนี้', { selector: 'article span' }).closest('article');
-    expect(broadReceipts?.getAttribute('title')).toMatch(/รวมร้านที่ปิดใช้งาน.*ไม่เปลี่ยนตามตัวกรองเงื่อนไขหรือสถานะชำระ/);
+    expect(await screen.findByText('ยอดขายรายร้านในช่วง', { selector: 'article span' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'ยอดรวมช่วงวันที่' }).getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByText(/รับชำระแล้ว/, { selector: '.accounting-metric__breakdown span' })).toBeTruthy();
+    expect(screen.getByText('ยอดค้างสะสมของร้าน', { selector: 'article span' })).toBeTruthy();
+    const broadReceipts = screen.getByText('เงินรับจริงจากร้านในช่วง', { selector: 'article span' }).closest('article');
+    expect(broadReceipts?.textContent).toMatch(/ร้านปิดใช้งาน.*ไม่ตามสถานะหรือเงื่อนไขชำระ/);
     expect(screen.getByRole('columnheader', { name: 'ร้าน' })).toBeTruthy();
-    expect(screen.getByRole('columnheader', { name: 'ค้างวันนี้' })).toBeTruthy();
+    expect(screen.getByRole('columnheader', { name: 'ค้างของบิลช่วงนี้' })).toBeTruthy();
     expect(screen.getByRole('columnheader', { name: 'ค้างสะสม' })).toBeTruthy();
     expect(screen.getByRole('columnheader', { name: 'สถานะชำระ' })).toBeTruthy();
     expect(screen.queryByRole('columnheader', { name: 'รับชำระในช่วงนี้' })).toBeNull();
@@ -325,25 +329,22 @@ describe('accounting shop summary', () => {
     render(<AccountingPage />);
     await screen.findByRole('button', { name: /S001 · ร้านสมใจ/ });
 
-    const allZonesButton = screen.getByRole('button', { name: 'ทุกโซน', exact: true });
-    const secondZoneButton = screen.getByRole('button', { name: 'อาคาร B โซน 2', exact: true });
-    expect(allZonesButton.getAttribute('aria-pressed')).toBe('true');
-    expect(secondZoneButton.getAttribute('aria-pressed')).toBe('false');
-
-    await user.click(secondZoneButton);
+    const zoneSelect = screen.getByRole('combobox', { name: 'โซน' });
+    expect((zoneSelect as HTMLSelectElement).value).toBe('');
+    await user.selectOptions(zoneSelect, 'zone-2');
 
     await waitFor(() => expect(rpcMock).toHaveBeenCalledWith('get_accounting_shop_summary', expect.objectContaining({
       p_filters: { zone_id: 'zone-2' },
     })));
-    expect(secondZoneButton.getAttribute('aria-pressed')).toBe('true');
+    expect((zoneSelect as HTMLSelectElement).value).toBe('zone-2');
     expect(await screen.findByRole('button', { name: /S002 · ร้านโซนสอง/ })).toBeTruthy();
     expect(screen.queryByRole('button', { name: /S001 · ร้านสมใจ/ })).toBeNull();
-    expect(screen.getByRole('button', { name: /อาคาร B · โซน 2.*หน้านี้/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /อาคาร B \/ โซน 2.*หน้านี้/ })).toBeTruthy();
 
-    await user.click(allZonesButton);
+    await user.selectOptions(zoneSelect, '');
 
     expect((await screen.findAllByRole('button', { name: /S00[12] · ร้าน/ }))).toHaveLength(2);
-    expect(allZonesButton.getAttribute('aria-pressed')).toBe('true');
+    expect((zoneSelect as HTMLSelectElement).value).toBe('');
   });
 
   it('shows daily quantities, keeps statuses and receipts display-only, and opens purchased sales', async () => {
@@ -375,6 +376,7 @@ describe('accounting shop summary', () => {
     });
     const user = userEvent.setup();
     render(<AccountingPage />);
+    fireEvent.click(await screen.findByRole('button', { name: 'ตารางรายวัน' }));
 
     const fromDate = (screen.getByLabelText('จาก') as HTMLInputElement).value;
     const toDate = (screen.getByLabelText('ถึง') as HTMLInputElement).value;
@@ -416,6 +418,7 @@ describe('accounting shop summary', () => {
       throw new Error(`Unexpected RPC: ${name}`);
     });
     render(<AccountingPage />);
+    fireEvent.click(await screen.findByRole('button', { name: 'ตารางรายวัน' }));
 
     await screen.findByRole('button', { name: /S001 · ร้านสมใจ/ });
     const groupHeader = screen.getByRole('button', { name: /อาคาร A · ชั้น 9 ปัจจุบัน/ });
@@ -446,7 +449,7 @@ describe('accounting shop summary', () => {
       p_filters: { shop_sort: 'outstanding' },
     })));
     const shops = await screen.findAllByRole('button', { name: /S00[123] · ร้าน/ });
-    expect(shops.map((shop) => shop.textContent?.replace(/\s/g, ''))).toEqual([
+    expect(shops.map((shop) => shop.getAttribute('aria-label')?.replace(/\s/g, ''))).toEqual([
       'S003·ร้านสาม', 'S001·ร้านหนึ่ง', 'S002·ร้านสอง',
     ]);
     expect(screen.queryByRole('button', { name: /อาคาร A · ชั้น 9 ปัจจุบัน/ })).toBeNull();
@@ -543,7 +546,7 @@ describe('accounting shop summary', () => {
     expect(screen.queryByRole('columnheader', { name: 'อาคาร / โซนประจำร้าน' })).toBeNull();
     expect(screen.queryByRole('columnheader', { name: 'เงื่อนไขชำระ' })).toBeNull();
     expect((screen.getByRole('combobox', { name: 'เรียงลำดับ' }) as HTMLSelectElement).value).toBe('area');
-    expect(screen.getByText('ลำดับส่ง 3')).toBeTruthy();
+    expect(screen.getByText(/ลำดับส่ง 3/)).toBeTruthy();
 
     const group = screen.getByRole('button', { name: /อาคาร A \/ ชั้น 9 ปัจจุบัน.*1 ร้าน.*ซื้อ 1/ });
     await user.click(group);
@@ -621,7 +624,7 @@ describe('accounting shop summary', () => {
 
     const detail = await screen.findByRole('dialog', { name: 'รายละเอียดบิลของ S002 · ร้านไม่มีรายการวันนี้' });
     expect(within(detail).getByText('INV-OLD-DEBT')).toBeTruthy();
-    expect(within(detail).getByText('หนี้ค้างก่อนช่วง')).toBeTruthy();
+    expect(within(detail).getByText(/หนี้ค้างก่อนช่วง/)).toBeTruthy();
   });
 
   it('opens invoice-centric detail for the selected shop and summary period', async () => {
@@ -647,7 +650,7 @@ describe('accounting shop summary', () => {
     expect(within(detail).getByText(/ยอดรับแล้วและยอดค้างเป็นยอดปัจจุบัน/)).toBeTruthy();
     expect(within(detail).getByText('INV2608-00001')).toBeTruthy();
     expect(within(detail).getByText(/น้ำแข็งหลอด/)).toBeTruthy();
-    expect(within(detail).getByText(/เงินสด.*300\.00/)).toBeTruthy();
+    expect(within(detail).getByText('เงินสด').closest('li')?.textContent).toMatch(/300\.00/);
     expect(screen.getByRole('button', { name: 'สรุปรายร้าน' }).getAttribute('aria-current')).toBe('page');
     expect(document.body.style.overflow).toBe('hidden');
 
@@ -677,8 +680,8 @@ describe('accounting shop summary', () => {
       await user.click(await screen.findByRole('button', { name: /S001 · ร้านสมใจ/ }));
 
       const detail = await screen.findByRole('dialog', { name: 'รายละเอียดบิลของ S001 · ร้านสมใจ' });
-      const bangkokDateLabel = new Intl.DateTimeFormat('th-TH', { timeZone: 'Asia/Bangkok' }).format(new Date(recordedAt));
-      expect(detail.querySelector('.accounting-shop-detail__payments')?.textContent).toContain(bangkokDateLabel);
+      const bangkokDateLabel = new Intl.DateTimeFormat('th-TH', { timeZone: 'Asia/Bangkok', dateStyle: 'medium', timeStyle: 'short' }).format(new Date(recordedAt));
+      expect(detail.textContent).toContain(bangkokDateLabel);
     } finally {
       if (previousTimezone === undefined) delete process.env.TZ;
       else process.env.TZ = previousTimezone;
@@ -763,6 +766,7 @@ describe('accounting shop summary', () => {
       p_offset: 0,
     }));
     await screen.findByRole('button', { name: /S001 · ร้านสมใจ/ });
+    await user.click(screen.getByRole('button', { name: 'ตัวกรองเพิ่มเติม' }));
     await user.selectOptions(screen.getByRole('combobox', { name: 'เงื่อนไขชำระ' }), 'credit');
     await waitFor(() => expect(rpcMock).toHaveBeenCalledWith('get_accounting_shop_summary', {
       p_from_date: fromDate,
@@ -904,6 +908,7 @@ describe('accounting shop summary', () => {
     await screen.findByRole('button', { name: /S001 · ร้านสมใจ/ });
     await user.selectOptions(screen.getByRole('combobox', { name: 'โซน' }), 'zone-current');
     await screen.findByRole('button', { name: /S001 · ร้านสมใจ/ });
+    await user.click(screen.getByRole('button', { name: 'ตัวกรองเพิ่มเติม' }));
     await user.selectOptions(screen.getByRole('combobox', { name: 'เงื่อนไขชำระ' }), 'credit');
     await user.click(await screen.findByRole('button', { name: /S001 · ร้านสมใจ/ }));
 
@@ -917,8 +922,8 @@ describe('accounting shop summary', () => {
     }));
     expect(await screen.findByText('INV-CREDIT-BUILDING-1')).toBeTruthy();
     expect(screen.getByText('INV-IMMEDIATE-BUILDING-2')).toBeTruthy();
-    expect(screen.getByText('อาคารเดิม A / โซนเดิม 1')).toBeTruthy();
-    expect(screen.getByText('อาคารเดิม B / โซนเดิม 2')).toBeTruthy();
+    expect(screen.getByText(/อาคารเดิม A \/ โซนเดิม 1/)).toBeTruthy();
+    expect(screen.getByText(/อาคารเดิม B \/ โซนเดิม 2/)).toBeTruthy();
   });
 
   it('shows invoice adjustment amounts and corrected item quantities', async () => {
@@ -961,7 +966,7 @@ describe('accounting shop summary', () => {
     await user.click(await screen.findByRole('button', { name: /S001 · ร้านสมใจ/ }));
 
     const detail = await screen.findByRole('dialog', { name: 'รายละเอียดบิลของ S001 · ร้านสมใจ' });
-    expect(within(detail).getByText(/น้ำแข็งหลอด 10 ถุง/, { selector: 'strong' })).toBeTruthy();
+    expect(within(detail).getByText(/น้ำแข็งหลอด 10 ถุง/, { selector: 'li span' })).toBeTruthy();
     expect(within(detail).getByText(/แก้เป็น 8 ถุง/)).toBeTruthy();
     expect(within(detail).getByText(/น้ำแข็งก้อน.*แก้เป็น 2 ถุง/)).toBeTruthy();
     expect(within(detail).getByText('แก้จำนวนส่งผิด')).toBeTruthy();
@@ -969,7 +974,7 @@ describe('accounting shop summary', () => {
     expect(within(detail).getByText(/ยอดหลังปรับ.*400\.00/)).toBeTruthy();
   });
 
-  it('does not let a late shop badge response overwrite the review-tab count', async () => {
+  it('keeps the period badge separate from the filtered review count', async () => {
     type BadgeResponse = { data: { rows: never[]; total_count: number }; error: null };
     let resolveBadge: (response: BadgeResponse) => void = () => undefined;
     const badgeRequest = new Promise<BadgeResponse>((resolve) => { resolveBadge = resolve; });
@@ -985,15 +990,15 @@ describe('accounting shop summary', () => {
     await screen.findByRole('button', { name: /S001 · ร้านสมใจ/ });
 
     await user.click(screen.getByRole('button', { name: 'รายการต้องตรวจสอบ' }));
-    await waitFor(() => expect(screen.getByRole('button', { name: /รายการต้องตรวจสอบ/ }).textContent).toContain('7'));
+    await waitFor(() => expect(screen.getByText('ทั้งหมด 7 รายการ')).toBeTruthy());
 
     await act(async () => {
       resolveBadge({ data: { rows: [], total_count: 99 }, error: null });
       await Promise.resolve();
     });
 
-    expect(screen.getByRole('button', { name: /รายการต้องตรวจสอบ/ }).textContent).toContain('7');
-    expect(screen.getByRole('button', { name: /รายการต้องตรวจสอบ/ }).textContent).not.toContain('99');
+    expect(screen.getByRole('button', { name: /รายการต้องตรวจสอบ/ }).textContent).toContain('99');
+    expect(screen.getByText('ทั้งหมด 7 รายการ')).toBeTruthy();
   });
 
   it('refreshes the review badge when the shared date range changes on the transaction tab', async () => {

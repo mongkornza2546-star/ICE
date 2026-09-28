@@ -32,6 +32,9 @@ import {
   formatAccountingZoneFacetLabel,
 } from './utils';
 import type { AppRole } from '../../types/app';
+import type { StoredSalesDocument } from '../../lib/salesDocumentPrint';
+import { AccountingLoading, ReceiptPreview, ReviewResolutionDialog, accountingDateTime, accountingStatus, useAccountingDialog } from './AccountingPresentation';
+import './accounting.css';
 
 const PAGE_SIZE = 100;
 const EXPORT_PAGE_SIZE = 50_000;
@@ -174,10 +177,17 @@ export function AccountingPage({ userRole = 'round_lead', demoMode = false }: { 
   const [fromDate, setFromDate] = useState(shiftDate(today, -6));
   const [toDate, setToDate] = useState(today);
   const [shopWindowMode, setShopWindowMode] = useState<ShopDateWindow>(7);
-  const [filters, setFilters] = useState<AccountingFilters>({});
+  const [shopView, setShopView] = useState<'daily' | 'totals'>('totals');
+  const [transactionFilters, setTransactionFilters] = useState<AccountingFilters>({});
+  const [reviewFilters, setReviewFilters] = useState<AccountingFilters>({});
+  const filters = tab === 'review' ? reviewFilters : transactionFilters;
   const [shopFilters, setShopFilters] = useState<AccountingFilters>({});
   const [sort, setSort] = useState<AccountingSort>({ key: 'occurred_at', direction: 'desc' });
-  const [page, setPage] = useState(0);
+  const [pages, setPages] = useState<Record<AccountingTab, number>>({ shops: 0, reconciliation: 0, transactions: 0, review: 0 });
+  const page = pages[tab];
+  const setPage = useCallback((update: number | ((current: number) => number)) => {
+    setPages((current) => ({ ...current, [tab]: typeof update === 'function' ? update(current[tab]) : update }));
+  }, [tab]);
   const [reconciliation, setReconciliation] = useState<AccountingReconciliation | null>(null);
   const [shopSummary, setShopSummary] = useState<AccountingShopSummaryResponse>(emptyShopSummary);
   const [shopDaily, setShopDaily] = useState<AccountingShopDailyResponse>(emptyShopDaily);
@@ -190,12 +200,18 @@ export function AccountingPage({ userRole = 'round_lead', demoMode = false }: { 
   const [shopHistoryLoading, setShopHistoryLoading] = useState(false);
   const [shopHistoryError, setShopHistoryError] = useState<string | null>(null);
   const [selected, setSelected] = useState<AccountingTransaction | null>(null);
-  const [receiptSnapshot, setReceiptSnapshot] = useState<Record<string, unknown> | null>(null);
+  const [receiptSnapshot, setReceiptSnapshot] = useState<StoredSalesDocument | null>(null);
+  const [receiptLoading, setReceiptLoading] = useState(false);
+  const [receiptError, setReceiptError] = useState<string | null>(null);
   const [correctionTargets, setCorrectionTargets] = useState<Array<{ charge_id: string; charge_number: string; delivery_event_id: string }>>([]);
   const [correctionEventId, setCorrectionEventId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [resolvingIssueId, setResolvingIssueId] = useState<string | null>(null);
+  const [resolutionItem, setResolutionItem] = useState<AccountingReviewResponse['rows'][number] | null>(null);
+  const [resolutionError, setResolutionError] = useState<string | null>(null);
+  const [lastUpdated, setLastUpdated] = useState<string | null>(null);
+  const [sourceReturn, setSourceReturn] = useState<{ tab: AccountingTab; from: string; to: string; window: ShopDateWindow } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshToken, setRefreshToken] = useState(0);
   const loadRequestId = useRef(0);
@@ -223,6 +239,10 @@ export function AccountingPage({ userRole = 'round_lead', demoMode = false }: { 
       setShopHistoryLoading(false);
     } else if (tab === 'reconciliation') {
       setReconciliation(null);
+    } else if (tab === 'transactions') {
+      setTransactions((current) => ({ ...emptyTransactions(), facets: current.facets }));
+    } else {
+      setReviews({ rows: [], total_count: 0 });
     }
     try {
       if (demoMode) {
@@ -232,6 +252,7 @@ export function AccountingPage({ userRole = 'round_lead', demoMode = false }: { 
         setShopDaily(emptyShopDaily());
         setTransactions(emptyTransactions());
         setReviews({ rows: [], total_count: 0 });
+        setLastUpdated(new Date().toISOString());
         return;
       }
       if (!supabase) throw new Error('ยังไม่ได้ตั้งค่า Supabase');
@@ -294,15 +315,15 @@ export function AccountingPage({ userRole = 'round_lead', demoMode = false }: { 
             return;
           }
           setReviews(reviewData);
-          setReviewCount(reviewData.total_count);
         }
       }
+      setLastUpdated(new Date().toISOString());
     } catch (loadError) {
       if (loadRequestId.current === requestId) setError(getErrorMessage(loadError));
     } finally {
       if (loadRequestId.current === requestId) setLoading(false);
     }
-  }, [demoMode, filters, fromDate, page, serviceDate, shopFilters, sort, tab, toDate, validateRange]);
+  }, [demoMode, filters, fromDate, page, serviceDate, setPage, shopFilters, sort, tab, toDate, validateRange]);
 
   const loadReviewCount = useCallback(async () => {
     const requestId = reviewCountRequestId.current + 1;
@@ -327,13 +348,9 @@ export function AccountingPage({ userRole = 'round_lead', demoMode = false }: { 
 
   useEffect(() => { void load(); }, [load, refreshToken]);
   useEffect(() => {
-    if (tab === 'review') {
-      reviewCountRequestId.current += 1;
-      return;
-    }
     void loadReviewCount();
     return () => { reviewCountRequestId.current += 1; };
-  }, [loadReviewCount, refreshToken, tab]);
+  }, [loadReviewCount, refreshToken]);
   useEffect(() => subscribeToDataChange(['accounting', 'payment', 'receivable', 'refund', 'stock', 'pos'], () => setRefreshToken((value) => value + 1)), []);
 
   const openRow = async (row: AccountingTransaction) => {
@@ -341,32 +358,42 @@ export function AccountingPage({ userRole = 'round_lead', demoMode = false }: { 
     drawerRequestId.current = requestId;
     setSelected(row);
     setReceiptSnapshot(null);
+    setReceiptError(null);
+    setReceiptLoading(false);
     setCorrectionTargets([]);
     if (row.type !== 'REC' || demoMode || !supabase) return;
+    setReceiptLoading(true);
+    try {
     if (row.source_table === 'casual_transactions') {
       const snapshot = await supabase.rpc('get_casual_receipt_snapshot', { p_transaction_id: row.source_id });
       if (drawerRequestId.current === requestId && !snapshot.error) {
-        setReceiptSnapshot(snapshot.data as Record<string, unknown>);
+        setReceiptSnapshot(snapshot.data as StoredSalesDocument);
       }
+      if (snapshot.error) throw snapshot.error;
       return;
     }
-    if (!row.payment_id) return;
+    if (!row.payment_id) throw new Error('รายการนี้ไม่มีข้อมูลอ้างอิงใบเสร็จ');
     const [snapshot, targets] = await Promise.allSettled([
       supabase.rpc('get_payment_receipt_snapshot', { p_payment_id: row.payment_id }),
       supabase.rpc('get_payment_correction_targets', { p_payment_id: row.payment_id }),
     ]);
     if (drawerRequestId.current !== requestId) return;
-    if (snapshot.status === 'fulfilled' && !snapshot.value.error) setReceiptSnapshot(snapshot.value.data as Record<string, unknown>);
+    if (snapshot.status === 'fulfilled' && !snapshot.value.error) setReceiptSnapshot(snapshot.value.data as StoredSalesDocument);
     if (targets.status === 'fulfilled' && !targets.value.error) setCorrectionTargets((targets.value.data ?? []) as typeof correctionTargets);
+    if (snapshot.status === 'rejected') throw snapshot.reason;
+    if (snapshot.value.error) throw snapshot.value.error;
+    if (targets.status === 'rejected' || targets.value.error) setReceiptError('โหลดข้อมูลการดำเนินการต้นทางไม่สำเร็จ กรุณาลองใหม่');
+    } catch (detailError) {
+      if (drawerRequestId.current === requestId) setReceiptError(getErrorMessage(detailError));
+    } finally {
+      if (drawerRequestId.current === requestId) setReceiptLoading(false);
+    }
   };
 
-  const resolveReviewIssue = async (item: AccountingReviewResponse['rows'][number]) => {
+  const resolveReviewIssue = async (item: AccountingReviewResponse['rows'][number], resolutionNote: string, externalReference: string | null) => {
     if (!item.issue_id.startsWith('daily-close-') || demoMode || !supabase || resolvingIssueId) return;
-    const resolutionNote = window.prompt('สรุปการตรวจสอบและการดำเนินการภายนอก')?.trim();
-    if (!resolutionNote) return;
-    const externalReference = window.prompt('เลขอ้างอิงภายนอก (ถ้ามี)')?.trim() || null;
     setResolvingIssueId(item.issue_id);
-    setError(null);
+    setResolutionError(null);
     try {
       const response = await supabase.rpc('resolve_daily_close_reconciliation_issue', {
         p_issue_id: item.source_id,
@@ -374,10 +401,11 @@ export function AccountingPage({ userRole = 'round_lead', demoMode = false }: { 
         p_external_reference: externalReference,
       });
       if (response.error) throw response.error;
+      setResolutionItem(null);
       publishDataChange(['accounting']);
       setRefreshToken((value) => value + 1);
     } catch (resolveError) {
-      setError(getErrorMessage(resolveError));
+      setResolutionError(getErrorMessage(resolveError));
     } finally {
       setResolvingIssueId(null);
     }
@@ -479,7 +507,31 @@ export function AccountingPage({ userRole = 'round_lead', demoMode = false }: { 
   };
 
   const totalCount = tab === 'shops' ? shopSummary.total_count : tab === 'transactions' ? transactions.total_count : reviews.total_count;
-  const updateFilter = (change: Partial<AccountingFilters>) => { setFilters((current) => ({ ...current, ...change })); setPage(0); };
+  const updateFilter = (change: Partial<AccountingFilters>) => {
+    (tab === 'review' ? setReviewFilters : setTransactionFilters)((current) => ({ ...current, ...change })); setPage(0);
+  };
+  const changeTab = (next: AccountingTab) => {
+    if (next === tab) return;
+    if (sourceReturn) {
+      setFromDate(sourceReturn.from); setToDate(sourceReturn.to); setShopWindowMode(sourceReturn.window);
+      setSourceReturn(null);
+    }
+    if (next === 'reconciliation') setServiceDate(sourceReturn?.to ?? toDate);
+    setTab(next);
+  };
+  const openDocument = (document: string, date?: string) => {
+    setSourceReturn({ tab, from: fromDate, to: toDate, window: shopWindowMode });
+    setTransactionFilters({ document });
+    if (date && (date < fromDate || date > toDate)) { setFromDate(date); setToDate(date); setShopWindowMode('custom'); }
+    setSelectedShop(null); setTab('transactions'); setPages((current) => ({ ...current, transactions: 0 }));
+  };
+  const openReviewSource = (item: AccountingReviewResponse['rows'][number]) => {
+    if (item.document_number) openDocument(item.document_number, item.service_date);
+    else {
+      setSourceReturn({ tab, from: fromDate, to: toDate, window: shopWindowMode });
+      setServiceDate(item.service_date); setTab('reconciliation');
+    }
+  };
   const updateShopFilter = (change: Partial<AccountingFilters>) => { setShopFilters((current) => ({ ...current, ...change })); setPage(0); };
   const openShopInvoices = async (shop: AccountingShopSummaryRow, serviceDate?: string) => {
     const requestId = shopHistoryRequestId.current + 1;
@@ -530,22 +582,26 @@ export function AccountingPage({ userRole = 'round_lead', demoMode = false }: { 
 
   return <section className="accounting-page">
     <header className="financial-ops__header accounting-page__header">
-      <div><p className="eyebrow">การเงินและบัญชี</p><h1>บัญชี / เอกสารและการเงิน</h1><span>ข้อมูลจากเอกสารและเหตุการณ์จริง · แก้ไขต้นทางเท่านั้น</span></div>
-      <button disabled={loading} onClick={() => setRefreshToken((value) => value + 1)} type="button"><ArrowClockwise size={18} />รีเฟรช</button>
+      <div><h1>บัญชี / เอกสารและการเงิน</h1><span>ตรวจสอบยอดและเอกสาร · แก้ไขที่ต้นทาง</span></div>
+      <div className="accounting-header-actions"><small>{loading ? 'กำลังอัปเดต…' : lastUpdated ? `โหลดล่าสุด ${accountingDateTime(lastUpdated)}` : 'ยังไม่ได้โหลดข้อมูล'}{error ? ' · โหลดครั้งล่าสุดไม่สำเร็จ' : ''}</small><div><button disabled={loading} onClick={() => setRefreshToken((value) => value + 1)} type="button"><ArrowClockwise size={18} />รีเฟรช</button>{tab === 'shops' || tab === 'transactions' ? <button disabled={loading || exporting || Boolean(error)} onClick={() => void (tab === 'shops' ? exportShopDaily() : exportRows())} type="button"><DownloadSimple size={18} />{exporting ? 'กำลังส่งออก...' : 'ส่งออก Excel'}</button> : null}</div></div>
     </header>
     <nav aria-label="แท็บบัญชี" className="accounting-tabs">
-      {([['shops', 'สรุปรายร้าน'], ['reconciliation', 'สรุปเทียบยอด'], ['transactions', 'เอกสารและการเงิน'], ['review', 'รายการต้องตรวจสอบ']] as const).map(([value, label]) => <button aria-current={tab === value ? 'page' : undefined} key={value} onClick={() => { setTab(value); setPage(0); }} type="button">{label}{value === 'review' && reviewCount ? <span>{reviewCount}</span> : null}</button>)}
+      {([['shops', 'สรุปรายร้าน'], ['reconciliation', 'สรุปเทียบยอด'], ['transactions', 'เอกสารและการเงิน'], ['review', 'รายการต้องตรวจสอบ']] as const).map(([value, label]) => <button aria-current={tab === value ? 'page' : undefined} key={value} onClick={() => changeTab(value)} type="button">{label}{value === 'review' && reviewCount ? <span>{reviewCount}</span> : null}</button>)}
     </nav>
+    {sourceReturn ? <div className="accounting-source-context"><span>กำลังดูต้นทางจาก{sourceReturn.tab === 'shops' ? 'สรุปรายร้าน' : 'รายการต้องตรวจสอบ'}</span><button type="button" onClick={() => changeTab(sourceReturn.tab)}>กลับไป{sourceReturn.tab === 'shops' ? 'สรุปรายร้าน' : 'รายการต้องตรวจสอบ'}</button></div> : null}
     {tab === 'shops' ? <>
       <ShopSummaryPanel
         daily={shopDaily}
         data={shopSummary}
         filters={shopFilters}
         fromDate={fromDate}
-        exporting={exporting}
-        onExport={() => void exportShopDaily()}
+        loading={loading}
+        unavailable={Boolean(error)}
+        view={shopView}
+        onViewChange={setShopView}
+        onClearFilters={() => { setShopFilters({}); setPage(0); }}
         onOpenShop={(shop, date) => void openShopInvoices(shop, date)}
-        onOpenReview={() => { setTab('review'); setPage(0); }}
+        onOpenReview={() => { setReviewFilters({}); setPages((current) => ({ ...current, review: 0 })); changeTab('review'); }}
         reviewCount={reviewCount}
         setFromDate={(date) => { setFromDate(date); setPage(0); }}
         setToDate={(date) => { setToDate(date); setPage(0); }}
@@ -555,7 +611,7 @@ export function AccountingPage({ userRole = 'round_lead', demoMode = false }: { 
         updateFilter={updateShopFilter}
         windowMode={shopWindowMode}
       />
-      <AccountingPagination page={page} pageSize={PAGE_SIZE} setPage={setPage} totalCount={totalCount} />
+      {!loading && !error ? <AccountingPagination page={page} pageSize={PAGE_SIZE} setPage={setPage} totalCount={totalCount} /> : null}
       {selectedShop ? createPortal(
         <div className="accounting-shop-detail-layer">
           <button aria-label="ปิดหน้าต่างรายละเอียดร้าน" className="accounting-shop-detail-backdrop" onClick={closeShopInvoices} type="button" />
@@ -565,13 +621,14 @@ export function AccountingPage({ userRole = 'round_lead', demoMode = false }: { 
             fromDate={selectedShopRange?.from ?? fromDate}
             loading={shopHistoryLoading}
             onClose={closeShopInvoices}
+            onOpenDocument={openDocument}
             shop={selectedShop}
             toDate={selectedShopRange?.to ?? toDate}
           />
         </div>,
         document.body,
       ) : null}
-    </> : tab === 'reconciliation' ? <ReconciliationPanel data={reconciliation} serviceDate={serviceDate} setServiceDate={setServiceDate} /> : <>
+    </> : tab === 'reconciliation' ? <ReconciliationPanel data={reconciliation} loading={loading} serviceDate={serviceDate} setServiceDate={setServiceDate} /> : <>
       <div className={tab === 'review' ? 'accounting-filters accounting-filters--review' : 'accounting-filters'}>
         <label className="accounting-filters__range"><span>ช่วงเวลา</span><span><input aria-label="จาก" max={toDate} onChange={(event) => { setShopWindowMode('custom'); setFromDate(event.target.value); setPage(0); }} type="date" value={fromDate} /><span aria-hidden="true">ถึง</span><input aria-label="ถึง" max={today} min={fromDate} onChange={(event) => { setShopWindowMode('custom'); setToDate(event.target.value); setPage(0); }} type="date" value={toDate} /></span></label>
         <label className="accounting-filters__search"><span>ค้นหาเอกสาร</span><span className="accounting-filters__input-wrap"><MagnifyingGlass size={17} /><input aria-label="ค้นเอกสาร" onChange={(event) => updateFilter({ document: event.target.value })} placeholder="เลขเอกสาร / อ้างอิง" value={filters.document ?? ''} /></span></label>
@@ -581,31 +638,35 @@ export function AccountingPage({ userRole = 'round_lead', demoMode = false }: { 
           <label className="accounting-filters__select"><span>พนักงาน</span><select aria-label="พนักงาน" onChange={(event) => updateFilter({ employee_id: event.target.value || undefined })} value={filters.employee_id ?? ''}><option value="">ทุกพนักงาน</option>{transactions.facets.employees.map((item) => <option key={item.value} value={item.value}>{item.label} ({item.count})</option>)}</select></label>
           <label className="accounting-filters__select"><span>ประเภทเอกสาร</span><select aria-label="ประเภทเอกสารและการเงิน" onChange={(event) => updateFilter({ types: event.target.value ? [event.target.value as AccountingTransaction['type']] : undefined })} value={filters.types?.[0] ?? ''}><option value="">ทุกเอกสารและการเงิน</option>{financialTransactionTypes.map((type) => <option key={type} value={type}>{typeLabels[type]}</option>)}</select></label>
         </> : null}
-        <label className="accounting-filters__checkbox"><input checked={Boolean(filters.issues_only)} onChange={(event) => updateFilter({ issues_only: event.target.checked || undefined })} type="checkbox" /><Funnel size={16} />เฉพาะมีประเด็น</label>
-        {tab === 'transactions' ? <button disabled={exporting || loading} onClick={() => void exportRows()} type="button"><DownloadSimple size={18} />{exporting ? 'กำลังส่งออก...' : 'ส่งออก .xlsx'}</button> : null}
+        {tab === 'transactions' ? <label className="accounting-filters__checkbox"><input checked={Boolean(filters.issues_only)} onChange={(event) => updateFilter({ issues_only: event.target.checked || undefined })} type="checkbox" /><Funnel size={16} />เฉพาะมีประเด็น</label> : null}
+        {Object.values(filters).some(Boolean) ? <button onClick={() => { (tab === 'review' ? setReviewFilters : setTransactionFilters)({}); setPage(0); }} type="button">ล้างตัวกรอง</button> : null}
       </div>
-      {tab === 'transactions' ? <TransactionsTable onOpen={(row) => void openRow(row)} rows={transactions.rows} setSort={setSort} sort={sort} /> : <ReviewQueue onResolve={(item) => void resolveReviewIssue(item)} resolvingIssueId={resolvingIssueId} rows={reviews.rows} />}
-      <AccountingPagination page={page} pageSize={PAGE_SIZE} setPage={setPage} totalCount={totalCount} />
+      <p className="accounting-context-note">{getDateRange(fromDate, toDate).error ?? `${accountingDate.format(new Date(`${fromDate}T12:00:00+07:00`))} – ${accountingDate.format(new Date(`${toDate}T12:00:00+07:00`))}`}{tab === 'review' ? ' · ประเด็นทั้งหมดในช่วง ไม่ตามตัวกรองร้านของแท็บสรุป' : ' · แสดงรายการตามเอกสารต้นทาง'}</p>
+      {loading ? <AccountingLoading /> : error ? null : tab === 'transactions' ? <TransactionsTable onOpen={(row) => void openRow(row)} rows={transactions.rows} setSort={setSort} sort={sort} /> : <ReviewQueue onOpenSource={openReviewSource} onResolve={(item) => { setResolutionError(null); setResolutionItem(item); }} resolvingIssueId={resolvingIssueId} rows={reviews.rows} />}
+      {!loading && !error ? <AccountingPagination page={page} pageSize={PAGE_SIZE} setPage={setPage} totalCount={totalCount} /> : null}
     </>}
-    {loading ? <p className="accounting-page__loading">กำลังโหลดข้อมูล...</p> : null}
-    {error ? <p className="credit-ar__action-error" role="alert"><WarningCircle size={18} />{error}</p> : null}
+    {error ? <div className="accounting-error" role="alert"><WarningCircle size={18} /><span>{error}</span><button disabled={loading} onClick={() => setRefreshToken((value) => value + 1)} type="button">ลองใหม่</button></div> : null}
     {selected ? <TransactionDrawer correctionTargets={correctionTargets} onClose={() => {
       drawerRequestId.current += 1;
       setSelected(null);
       setReceiptSnapshot(null);
       setCorrectionTargets([]);
-    }} onCorrect={setCorrectionEventId} receiptSnapshot={receiptSnapshot} row={selected} /> : null}
+    }} onCorrect={(id) => { setSelected(null); setCorrectionEventId(id); }} onRetry={() => void openRow(selected)} receiptLoading={receiptLoading} receiptError={receiptError} receiptSnapshot={receiptSnapshot} row={selected} /> : null}
+    {resolutionItem ? createPortal(<ReviewResolutionDialog item={resolutionItem} busy={Boolean(resolvingIssueId)} error={resolutionError} onClose={() => setResolutionItem(null)} onSubmit={(note, reference) => void resolveReviewIssue(resolutionItem, note, reference)} />, document.body) : null}
     {correctionEventId ? <DeliveryCorrectionDialog eventId={correctionEventId} onClose={() => setCorrectionEventId(null)} onSuccess={() => undefined} userRole={userRole} /> : null}
   </section>;
 }
 
-function ShopSummaryPanel({ daily, data, exporting, filters, fromDate, onExport, onOpenReview, onOpenShop, reviewCount, setFromDate, setToDate, setWindowMode, toDate, today, updateFilter, windowMode }: {
+function ShopSummaryPanel({ daily, data, loading, unavailable, view, onViewChange, filters, fromDate, onClearFilters, onOpenReview, onOpenShop, reviewCount, setFromDate, setToDate, setWindowMode, toDate, today, updateFilter, windowMode }: {
   daily: AccountingShopDailyResponse;
   data: AccountingShopSummaryResponse;
-  exporting: boolean;
+  loading: boolean;
+  unavailable: boolean;
+  view: 'daily' | 'totals';
+  onViewChange: (view: 'daily' | 'totals') => void;
   filters: AccountingFilters;
   fromDate: string;
-  onExport: () => void;
+  onClearFilters: () => void;
   onOpenReview: () => void;
   onOpenShop: (shop: AccountingShopSummaryRow, serviceDate?: string) => void;
   reviewCount: number | null;
@@ -619,67 +680,61 @@ function ShopSummaryPanel({ daily, data, exporting, filters, fromDate, onExport,
 }) {
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => new Set());
   const [extraFiltersOpen, setExtraFiltersOpen] = useState(false);
-  const [view, setView] = useState<'daily' | 'totals'>('daily');
   const rangeError = getDateRange(fromDate, toDate).error;
-  const casualSales = data.totals.casual_sales_amount ?? 0;
-  const cards = [
-    { label: 'ยอดขายช่วงที่เลือก', value: data.totals.sales_amount, detail: `ตามร้าน · ลูกค้าขาจร ${money.format(casualSales)} (แยกต่างหาก)`, tone: 'sales' },
-    { label: 'รับชำระของยอดขายช่วงนี้', value: data.totals.paid_amount, detail: 'เงินที่จัดสรรเข้าบิลซึ่งขายในช่วงวันที่เลือก', tone: 'received' },
-    { label: 'ค้างของยอดขายช่วงนี้', value: data.totals.outstanding_amount, detail: 'ยอดขายที่ยังไม่ได้รับชำระ', tone: 'outstanding' },
-    { label: 'ยอดค้างสะสมทั้งหมด', value: data.totals.cumulative_outstanding_amount, detail: `${data.totals.cumulative_outstanding_shop_count.toLocaleString('th-TH')} ร้าน · เกินกำหนด ${money.format(data.totals.cumulative_overdue_amount)}`, tone: 'cumulative' },
-  ] as const;
-
+  const activeFilters = Object.entries(filters).filter(([key, value]) => key !== 'shop_sort' && Boolean(value));
+  const extraCount = [filters.payment_term, filters.shop_id].filter(Boolean).length;
+  const chooseWindow = (mode: Exclude<ShopDateWindow, 'custom'>) => {
+    setWindowMode(mode);
+    const next = mode === 'month' ? calendarMonthRange(today, today) : { fromDate: shiftDate(today, -(mode - 1)), toDate: today };
+    setFromDate(next.fromDate); setToDate(next.toDate);
+  };
+  const totals = data.totals;
+  const filterLabels: Record<string, string> = {
+    shop_search: `ค้นหา: ${filters.shop_search ?? ''}`,
+    shop_id: data.facets.shops.find((item) => item.value === filters.shop_id)?.label ?? 'ร้านที่เลือก',
+    building_id: data.facets.buildings.find((item) => item.value === filters.building_id)?.label ?? 'อาคารที่เลือก',
+    zone_id: data.facets.zones.find((item) => item.value === filters.zone_id)?.label ?? 'โซนที่เลือก',
+    payment_status: filters.payment_status ? paymentStatusLabels[filters.payment_status] : '',
+    payment_term: filters.payment_term ? paymentTermLabels[filters.payment_term] : '',
+  };
   return <div className="accounting-shop-summary">
-    <div className="accounting-shop-view-actions">
-      <div className="accounting-shop-view-switch" role="group" aria-label="มุมมองสรุปรายร้าน">
-        <button aria-pressed={view === 'daily'} onClick={() => setView('daily')} type="button">ตารางรายวัน</button>
-        <button aria-pressed={view === 'totals'} onClick={() => setView('totals')} type="button">ยอดรวมช่วงวันที่</button>
+    <div className="accounting-filter-panel">
+      <div className="accounting-period-bar"><div className="accounting-period-presets" role="group" aria-label="ช่วงวันที่รายงาน">
+        {([[1, 'วันนี้'], [7, '7 วัน'], [14, '14 วัน'], ['month', 'เดือนนี้']] as const).map(([mode, label]) => <button key={mode} type="button" aria-pressed={windowMode === mode} onClick={() => chooseWindow(mode)}>{label}</button>)}
+        <button type="button" aria-pressed={windowMode === 'custom'} onClick={() => setWindowMode('custom')}>กำหนดเอง</button>
+      </div><span>{rangeError ? 'เลือกช่วงวันที่ได้สูงสุด 31 วัน' : `${accountingDate.format(new Date(`${fromDate}T12:00:00+07:00`))} – ${accountingDate.format(new Date(`${toDate}T12:00:00+07:00`))}`}</span></div>
+      <div className="accounting-filters accounting-filters--shop-summary">
+        <label className="accounting-filters__range"><span>ช่วงวันที่รายงาน</span><span><input aria-describedby={rangeError ? 'accounting-shop-date-error' : undefined} aria-invalid={Boolean(rangeError)} aria-label="จาก" max={toDate} onChange={(event) => { setWindowMode('custom'); setFromDate(event.target.value); }} type="date" value={fromDate} /><span aria-hidden="true">ถึง</span><input aria-describedby={rangeError ? 'accounting-shop-date-error' : undefined} aria-invalid={Boolean(rangeError)} aria-label="ถึง" max={today} min={fromDate} onChange={(event) => { setWindowMode('custom'); setToDate(event.target.value); }} type="date" value={toDate} /></span></label>
+        <label className="accounting-filters__search"><span>ค้นหาร้าน</span><span className="accounting-filters__input-wrap"><MagnifyingGlass size={17} /><input aria-label="ค้นหาร้าน" onChange={(event) => updateFilter({ shop_search: event.target.value })} placeholder="ชื่อหรือรหัสร้าน" value={filters.shop_search ?? ''} /></span></label>
+        <div className="accounting-filters__field"><span>พื้นที่ปัจจุบันของร้าน</span><span>
+          <select aria-label="อาคาร" onChange={(event) => updateFilter({ building_id: event.target.value || undefined, zone_id: undefined })} value={filters.building_id ?? ''}><option value="">ทุกอาคาร</option>{data.facets.buildings.map((item) => <option key={item.value} value={item.value}>{cleanAreaName(item.label)} ({item.count})</option>)}</select>
+          <select aria-label="โซน" onChange={(event) => updateFilter({ zone_id: event.target.value || undefined })} value={filters.zone_id ?? ''}><option value="">ทุกโซน</option>{data.facets.zones.map((item) => <option key={item.value} value={item.value}>{formatAccountingZoneFacetLabel(item.label, ' / ')} ({item.count})</option>)}</select>
+        </span></div>
+        <label><span>สถานะชำระสะสม</span><select aria-label="สถานะชำระ" onChange={(event) => updateFilter({ payment_status: (event.target.value || undefined) as AccountingFilters['payment_status'] })} value={filters.payment_status ?? ''}><option value="">ทุกสถานะ</option>{Object.entries(paymentStatusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+        <button aria-expanded={extraFiltersOpen} className="accounting-filters__more" onClick={() => setExtraFiltersOpen((open) => !open)} type="button"><Funnel size={17} />ตัวกรองเพิ่มเติม{extraCount ? ` (${extraCount})` : ''}</button>
+        {extraFiltersOpen ? <div className="accounting-filters__extra">
+          <label><span>เงื่อนไขชำระปัจจุบัน</span><select aria-label="เงื่อนไขชำระ" onChange={(event) => updateFilter({ payment_term: (event.target.value || undefined) as AccountingFilters['payment_term'] })} value={filters.payment_term ?? ''}><option value="">ทุกเงื่อนไข</option>{Object.entries(paymentTermLabels).filter(([value]) => value !== 'mixed').map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+          <label><span>เลือกร้านโดยตรง</span><select aria-label="ร้าน" onChange={(event) => updateFilter({ shop_id: event.target.value || undefined })} value={filters.shop_id ?? ''}><option value="">ทุกร้าน</option>{data.facets.shops.map((item) => <option key={item.value} value={item.value}>{formatAccountingShopFacetLabel(item.label)}</option>)}</select></label>
+        </div> : null}
       </div>
-      <button className="accounting-shop-export" disabled={exporting} onClick={onExport} type="button"><DownloadSimple size={18} />{exporting ? 'กำลังส่งออก...' : 'ส่งออก Excel'}</button>
+      {activeFilters.length ? <div className="accounting-filter-chips" aria-label="ตัวกรองที่ใช้อยู่">{activeFilters.map(([key]) => <button type="button" key={key} onClick={() => updateFilter(key === 'building_id' ? { building_id: undefined, zone_id: undefined } : { [key]: undefined })}>{filterLabels[key] ?? key}<X size={13} aria-label="นำตัวกรองออก" /></button>)}<button type="button" onClick={onClearFilters}>ล้างตัวกรองทั้งหมด</button></div> : null}
+      {rangeError ? <p className="accounting-context-note" id="accounting-shop-date-error">{rangeError}</p> : null}
     </div>
-    <div className="accounting-filters accounting-filters--shop-summary">
-      <label className="accounting-filters__range"><span>ช่วงเวลา</span><span><input aria-describedby={rangeError ? 'accounting-shop-date-error' : undefined} aria-invalid={rangeError ? true : undefined} aria-label="จาก" max={toDate} onChange={(event) => { setWindowMode('custom'); setFromDate(event.target.value); }} type="date" value={fromDate} /><span aria-hidden="true">ถึง</span><input aria-describedby={rangeError ? 'accounting-shop-date-error' : undefined} aria-invalid={rangeError ? true : undefined} aria-label="ถึง" max={today} min={fromDate} onChange={(event) => { setWindowMode('custom'); setToDate(event.target.value); }} type="date" value={toDate} /></span></label>
-      <label className="accounting-filters__search"><span>ร้านค้า</span><span className="accounting-filters__input-wrap"><MagnifyingGlass size={17} /><input aria-label="ค้นหาร้าน" onChange={(event) => updateFilter({ shop_search: event.target.value })} placeholder="ค้นหาร้านค้า" value={filters.shop_search ?? ''} /></span></label>
-      <div className="accounting-filters__field"><span>อาคาร / โซน</span><span>
-        <select aria-label="อาคาร" onChange={(event) => updateFilter({ building_id: event.target.value || undefined, zone_id: undefined })} value={filters.building_id ?? ''}><option value="">ทุกอาคาร</option>{data.facets.buildings.map((item) => <option key={item.value} value={item.value}>{cleanAreaName(item.label)} ({item.count})</option>)}</select>
-        <select aria-label="โซน" onChange={(event) => updateFilter({ zone_id: event.target.value || undefined })} title="ตัวกรองโซนใช้ตำแหน่งปัจจุบันของร้าน" value={filters.zone_id ?? ''}><option value="">ทุกโซน</option>{data.facets.zones.map((item) => <option key={item.value} value={item.value}>{formatAccountingZoneFacetLabel(item.label, ' / ')} ({item.count})</option>)}</select>
-      </span></div>
-      <div className="accounting-filters__field"><span>สถานะ / เงื่อนไขชำระ</span><span>
-        <select aria-label="สถานะชำระ" onChange={(event) => updateFilter({ payment_status: (event.target.value || undefined) as AccountingFilters['payment_status'] })} value={filters.payment_status ?? ''}><option value="">ทุกสถานะ</option>{Object.entries(paymentStatusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
-        <select aria-label="เงื่อนไขชำระ" onChange={(event) => updateFilter({ payment_term: (event.target.value || undefined) as AccountingFilters['payment_term'] })} value={filters.payment_term ?? ''}><option value="">ทุกเงื่อนไข</option>{Object.entries(paymentTermLabels).filter(([value]) => value !== 'mixed').map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
-      </span></div>
-      <label><span>เรียงลำดับ</span><select aria-label="เรียงลำดับ" onChange={(event) => updateFilter({ shop_sort: event.target.value === 'area' ? undefined : event.target.value as AccountingFilters['shop_sort'] })} value={filters.shop_sort ?? 'area'}>
-        <option value="area">ตามพื้นที่</option><option value="outstanding">ค้างมากสุด</option><option value="overdue">เกินกำหนดมากสุด</option><option value="sales">ยอดขายมากสุด</option><option value="name">ชื่อร้าน</option><option value="code">รหัสร้าน</option>
-      </select></label>
-      <button aria-expanded={extraFiltersOpen} className={extraFiltersOpen ? 'accounting-filters__more accounting-filters__more--active' : 'accounting-filters__more'} onClick={() => setExtraFiltersOpen((open) => !open)} type="button"><Funnel size={17} />ตัวกรองเพิ่มเติม</button>
-      {extraFiltersOpen ? <div className="accounting-filters__extra">
-        <label><span>เลือกร้านโดยตรง</span><select aria-label="ร้าน" onChange={(event) => updateFilter({ shop_id: event.target.value || undefined })} value={filters.shop_id ?? ''}><option value="">ทุกร้าน</option>{data.facets.shops.map((item) => <option key={item.value} value={item.value}>{formatAccountingShopFacetLabel(item.label)}</option>)}</select></label>
-      </div> : null}
-    </div>
-    <div className="accounting-financial-cards" aria-label="สรุปยอดการเงิน">
-      {cards.map((card) => <article className={`accounting-financial-card accounting-financial-card--${card.tone}`} key={card.label}><span>{card.label}</span><strong>{money.format(card.value)}</strong><small>{card.detail}</small></article>)}
-    </div>
-    <div className="accounting-shop-summary__supporting">
-      <article className="accounting-receipts-summary" title="รวมเงินรับจริงตามวันที่รับของร้านที่ตรงตัวกรองร้านและพื้นที่ รวมร้านที่ปิดใช้งานและบิลเก่า; ไม่เปลี่ยนตามตัวกรองเงื่อนไขหรือสถานะชำระ">
-        <span>เงินรับจริงในช่วงนี้</span><strong>{money.format(data.totals.cash_received_in_period)}</strong><small>รวมยอดรับชำระบิลเก่าตามวันที่รับเงิน</small>
-      </article>
-      <button aria-label="เปิดหน้ารายการตรวจสอบ" className="accounting-review-summary" onClick={onOpenReview} type="button">
-        <span>รายการต้องตรวจสอบ</span><strong>{reviewCount == null ? '—' : reviewCount.toLocaleString('th-TH')}</strong><small>กดเพื่อเปิดรายการและดำเนินการต่อ</small>
-      </button>
-    </div>
-    {data.facets.zones.length ? <div aria-label="เลือกโซนร้านค้า" className="accounting-zone-tabs" role="group">
-      <button
-        aria-pressed={!filters.zone_id}
-        onClick={() => updateFilter({ zone_id: undefined })}
-        type="button"
-      >ทุกโซน</button>
-      {data.facets.zones.map((zone) => <button
-        aria-pressed={filters.zone_id === zone.value}
-        key={zone.value}
-        onClick={() => updateFilter({ zone_id: zone.value })}
-        type="button"
-      >{formatAccountingZoneFacetLabel(zone.label)}</button>)}
-    </div> : null}
+    {loading ? <AccountingLoading /> : unavailable || rangeError ? null : <>
+      <div className="accounting-overview" aria-label="สรุปยอดการเงิน">
+        <article className="accounting-metric accounting-metric--sales"><span>ยอดขายรายร้านในช่วง</span><strong>{money.format(totals.sales_amount)}</strong><div className="accounting-metric__breakdown"><span>รับชำระแล้ว <b>{money.format(totals.paid_amount)}</b></span><span>ค้างของบิลช่วงนี้ <b>{money.format(totals.outstanding_amount)}</b></span></div><small>รับชำระและค้างเป็นยอดปัจจุบัน รวมการชำระหลังช่วงรายงาน</small></article>
+        <article className="accounting-metric accounting-metric--received"><span>เงินรับจริงจากร้านในช่วง</span><strong>{money.format(totals.cash_received_in_period)}</strong><small>ตามวันที่รับเงิน รวมรับหนี้เก่าและร้านปิดใช้งาน</small><small>ตามร้าน/พื้นที่ · ไม่ตามสถานะหรือเงื่อนไขชำระ</small></article>
+        <article className="accounting-metric accounting-metric--debt"><span>ยอดค้างสะสมของร้าน</span><strong>{money.format(totals.cumulative_outstanding_amount)}</strong><div className="accounting-metric__breakdown"><span>{totals.cumulative_outstanding_shop_count.toLocaleString('th-TH')} ร้าน <b>เกินกำหนด {money.format(totals.cumulative_overdue_amount)}</b></span></div><small>หนี้ปัจจุบันทุกวันที่ขาย · เกินกำหนดรวมอยู่ในยอดค้าง</small></article>
+        <button className="accounting-metric accounting-metric--review" aria-label="เปิดหน้ารายการตรวจสอบ" onClick={onOpenReview} type="button"><span>รายการต้องตรวจสอบ</span><strong>{reviewCount == null ? '—' : reviewCount.toLocaleString('th-TH')}<small> รายการ</small></strong><small>ทั้งช่วงวันที่ · ไม่ตามตัวกรองร้าน</small><b>เปิดรายการตรวจสอบ →</b></button>
+      </div>
+
+      <div className="accounting-shop-view-actions">
+        <div className="accounting-shop-view-switch" role="group" aria-label="มุมมองสรุปรายร้าน"><button aria-pressed={view === 'totals'} onClick={() => onViewChange('totals')} type="button">ยอดรวมช่วงวันที่</button><button aria-pressed={view === 'daily'} onClick={() => onViewChange('daily')} type="button">ตารางรายวัน</button></div>
+      <details className="accounting-casual-summary"><summary><span>ลูกค้าขาจร <small>ทั้งช่วงวันที่ ทุกพื้นที่ · ไม่ตามตัวกรองร้าน</small></span><strong>ยอดขาย {totals.casual_sales_amount == null ? '—' : money.format(totals.casual_sales_amount)}</strong></summary><dl>{([
+        ['รับเงิน', totals.casual_received_amount], ['คืนเงิน', totals.casual_refunded_amount], ['เงินสุทธิ', totals.casual_net_cash],
+      ] as const).map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value == null ? '—' : money.format(value)}</dd></div>)}<div><dt>รายการแจก</dt><dd>{totals.casual_free_count?.toLocaleString('th-TH') ?? '—'} ครั้ง</dd></div></dl></details>
+        <label className="accounting-sort-label">เรียงตาม <select aria-label="เรียงลำดับ" onChange={(event) => updateFilter({ shop_sort: event.target.value === 'area' ? undefined : event.target.value as AccountingFilters['shop_sort'] })} value={filters.shop_sort ?? 'area'}><option value="area">พื้นที่ / ลำดับส่ง</option><option value="outstanding">ค้างมากสุด</option><option value="overdue">เกินกำหนดมากสุด</option><option value="sales">ยอดขายมากสุด</option><option value="name">ชื่อร้าน</option><option value="code">รหัสร้าน</option></select></label>
+      </div>
     {view === 'daily' ? <ShopDailyMatrix
       collapsedGroups={collapsedGroups}
       daily={daily}
@@ -714,20 +769,7 @@ function ShopSummaryPanel({ daily, data, exporting, filters, fromDate, onExport,
         if (next.has(key)) next.delete(key); else next.add(key);
         return next;
       })}
-      setWindow={(mode) => {
-        setWindowMode(mode);
-        if (mode === 'month') {
-          const nextRange = calendarMonthRange(toDate, today);
-          setFromDate(nextRange.fromDate);
-          setToDate(nextRange.toDate);
-        } else {
-          const anchorDate = dateKeyTimestamp(toDate) != null && toDate <= today ? toDate : today;
-          setFromDate(shiftDate(anchorDate, -(mode - 1)));
-          setToDate(anchorDate);
-        }
-      }}
       toDate={toDate}
-      windowMode={windowMode}
     /> : <ShopSummaryTable
       collapsedGroups={collapsedGroups}
       data={data}
@@ -739,6 +781,7 @@ function ShopSummaryPanel({ daily, data, exporting, filters, fromDate, onExport,
         return next;
       })}
     />}
+    </>}
   </div>;
 }
 
@@ -780,7 +823,7 @@ function dayItemQuantity(day: AccountingShopDailyCell | undefined, iceTypeId: st
   return Number(day?.items.find((item) => item.ice_type_id === iceTypeId)?.quantity ?? 0);
 }
 
-function ShopDailyMatrix({ collapsedGroups, daily, data, fromDate, grouped, onOpenShop, onShiftRange, onToggleGroup, setWindow, toDate, windowMode }: {
+function ShopDailyMatrix({ collapsedGroups, daily, data, fromDate, grouped, onOpenShop, onShiftRange, onToggleGroup, toDate }: {
   collapsedGroups: Set<string>;
   daily: AccountingShopDailyResponse;
   data: AccountingShopSummaryResponse;
@@ -789,9 +832,7 @@ function ShopDailyMatrix({ collapsedGroups, daily, data, fromDate, grouped, onOp
   onOpenShop: (shop: AccountingShopSummaryRow, serviceDate?: string) => void;
   onShiftRange: (direction: -1 | 1) => void;
   onToggleGroup: (key: string) => void;
-  setWindow: (days: 1 | 7 | 14 | 'month') => void;
   toDate: string;
-  windowMode: ShopDateWindow;
 }) {
   const { dates, error: rangeError } = getDateRange(fromDate, toDate);
   if (rangeError) return <p className="accounting-daily-matrix__state" id="accounting-shop-date-error">{rangeError}</p>;
@@ -849,12 +890,7 @@ function ShopDailyMatrix({ collapsedGroups, daily, data, fromDate, grouped, onOp
         <strong aria-live="polite">{accountingDate.format(new Date(`${fromDate}T12:00:00+07:00`))} – {accountingDate.format(new Date(`${toDate}T12:00:00+07:00`))}</strong>
         <button aria-label="ช่วงถัดไป" disabled={toDate >= toBangkokDateString()} onClick={() => onShiftRange(1)} type="button"><CaretRight size={18} /></button>
       </div>
-      <div aria-label="จำนวนวันที่แสดง" className="accounting-daily-matrix__windows" role="group">
-        <button aria-pressed={windowMode === 1} onClick={() => setWindow(1)} type="button">1 วัน</button>
-        <button aria-pressed={windowMode === 7} onClick={() => setWindow(7)} type="button">7 วัน</button>
-        <button aria-pressed={windowMode === 14} onClick={() => setWindow(14)} type="button">14 วัน</button>
-        <button aria-pressed={windowMode === 'month'} onClick={() => setWindow('month')} type="button">ทั้งเดือน</button>
-      </div>
+
     </div>
     <div className="accounting-table-wrap accounting-table-wrap--ledger accounting-daily-matrix__scroll"><table className="accounting-table accounting-daily-matrix__table" style={{ '--matrix-width': `${tableWidth}px` } as React.CSSProperties}>
       <colgroup>
@@ -950,7 +986,7 @@ function ShopSummaryTable({ collapsedGroups, data, grouped, onOpenShop, onToggle
     const key = shopGroupKey(row);
     groups.set(key, [...(groups.get(key) ?? []), row]);
   });
-  return <div className="accounting-table-wrap accounting-table-wrap--ledger"><table className="accounting-table accounting-shop-table"><thead><tr><th>ร้าน</th><th>ยอดขายช่วงนี้</th><th>รับแล้วของยอดช่วงนี้</th><th>ค้างวันนี้</th><th>ค้างสะสม</th><th>เกินกำหนดสะสม</th><th>จำนวนบิล</th><th>ครบกำหนดเก่าสุด</th><th>สถานะชำระ</th></tr></thead><tbody>
+  return <div className="accounting-table-wrap accounting-table-wrap--ledger"><table className="accounting-table accounting-shop-table"><thead><tr className="accounting-column-groups"><th rowSpan={2}>ร้าน</th><th colSpan={3}>บิลในช่วงที่เลือก · ยอดรับชำระปัจจุบัน</th><th colSpan={2}>หนี้สะสมปัจจุบัน</th><th rowSpan={2}>จำนวนบิล</th><th rowSpan={2}>ครบกำหนดเก่าสุด</th><th rowSpan={2}>สถานะชำระ</th></tr><tr><th>ยอดขายช่วงนี้</th><th>รับแล้วของยอดช่วงนี้</th><th>ค้างของบิลช่วงนี้</th><th>ค้างสะสม</th><th>เกินกำหนดสะสม</th></tr></thead><tbody>
     {!data.rows.length ? <tr><td colSpan={9}>ไม่พบร้านที่ตรงกับตัวกรอง</td></tr>
       : grouped ? [...groups.entries()].map(([key, rows]) => {
         const group = derivedShopGroup(rows);
@@ -964,45 +1000,40 @@ function ShopSummaryTable({ collapsedGroups, data, grouped, onOpenShop, onToggle
 }
 
 function ShopSummaryRow({ onOpenShop, row }: { onOpenShop: (shop: AccountingShopSummaryRow) => void; row: AccountingShopSummaryRow }) {
-  return <tr className={row.payment_status === 'overdue' ? 'accounting-row--issue' : ''} onClick={() => onOpenShop(row)}><th><button className="accounting-link" onClick={(event) => { event.stopPropagation(); onOpenShop(row); }} type="button">{formatAccountingShopTitle(row)}</button><small className={row.delivery_sequence == null ? 'accounting-shop-sequence--missing' : undefined}>{row.delivery_sequence == null ? 'ยังไม่ได้กำหนดลำดับส่ง' : `ลำดับส่ง ${row.delivery_sequence.toLocaleString('th-TH')}`}</small>{row.employee_names ? <small>{row.employee_names}</small> : null}</th><td>{money.format(row.sales_amount)}</td><td>{money.format(row.paid_amount)}</td><td>{money.format(row.outstanding_amount)}</td><td>{money.format(row.cumulative_outstanding_amount)}</td><td>{money.format(row.cumulative_overdue_amount)}</td><td>{row.invoice_count.toLocaleString('th-TH')}</td><td>{row.oldest_outstanding_due_date ? accountingDate.format(new Date(`${row.oldest_outstanding_due_date}T12:00:00+07:00`)) : '—'}</td><td><span className={`accounting-payment-status accounting-payment-status--${row.payment_status}`}>{paymentStatusLabels[row.payment_status]}</span></td></tr>;
+  return <tr className={row.payment_status === 'overdue' ? 'accounting-row--issue' : ''} onClick={() => onOpenShop(row)}><th><button aria-label={formatAccountingShopTitle(row)} aria-describedby={`accounting-shop-${row.shop_id}`} className="accounting-link accounting-shop-identity" onClick={(event) => { event.stopPropagation(); onOpenShop(row); }} type="button"><span>{formatAccountingShopTitle(row)}</span><small id={`accounting-shop-${row.shop_id}`}>{formatAccountingGroupTitle(row.building_name, row.current_zone_name, ' / ')} · {row.payment_term ? paymentTermLabels[row.payment_term] : 'ไม่ระบุเงื่อนไข'} · {row.delivery_sequence == null ? 'ยังไม่ได้กำหนดลำดับส่ง' : `ลำดับส่ง ${row.delivery_sequence.toLocaleString('th-TH')}`}</small></button></th><td>{money.format(row.sales_amount)}</td><td>{money.format(row.paid_amount)}</td><td>{money.format(row.outstanding_amount)}</td><td>{money.format(row.cumulative_outstanding_amount)}</td><td>{money.format(row.cumulative_overdue_amount)}</td><td>{row.invoice_count.toLocaleString('th-TH')}</td><td>{row.oldest_outstanding_due_date ? accountingDate.format(new Date(`${row.oldest_outstanding_due_date}T12:00:00+07:00`)) : '—'}</td><td><span className={`accounting-payment-status accounting-payment-status--${row.payment_status}`}>{paymentStatusLabels[row.payment_status]}</span></td></tr>;
 }
 
-function ShopInvoiceDetail({ entries, error, fromDate, loading, onClose, shop, toDate }: {
-  entries: AccountingShopInvoiceDetailEntry[];
-  error: string | null;
-  fromDate: string;
-  loading: boolean;
-  onClose: () => void;
-  shop: AccountingShopSummaryRow;
-  toDate: string;
+function ShopInvoiceDetail({ entries, error, fromDate, loading, onClose, onOpenDocument, shop, toDate }: {
+  entries: AccountingShopInvoiceDetailEntry[]; error: string | null; fromDate: string; loading: boolean;
+  onClose: () => void; onOpenDocument: (document: string, date?: string) => void;
+  shop: AccountingShopSummaryRow; toDate: string;
 }) {
-  useEffect(() => {
-    const previousOverflow = document.body.style.overflow;
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose();
-    };
-    document.body.style.overflow = 'hidden';
-    document.addEventListener('keydown', closeOnEscape);
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      document.removeEventListener('keydown', closeOnEscape);
-    };
-  }, [onClose]);
-
-  return <section aria-label={`รายละเอียดบิลของ ${formatAccountingShopTitle(shop)}`} aria-modal="true" className="accounting-shop-detail" role="dialog">
-    <header>
-      <div><p className="eyebrow">รายละเอียดตามใบส่งของ / ใบแจ้งหนี้</p><h2>{formatAccountingShopTitle(shop)}</h2><span>ช่วงสรุปและบิลค้างนอกช่วง: {accountingDate.format(new Date(`${fromDate}T12:00:00+07:00`))} – {accountingDate.format(new Date(`${toDate}T12:00:00+07:00`))}</span><small>ยอดรับแล้วและยอดค้างเป็นยอดปัจจุบัน จึงรวมการรับชำระหลังช่วงสรุป</small></div>
-      <button aria-label="ปิดรายละเอียดร้าน" onClick={onClose} type="button"><X size={19} /></button>
-    </header>
-    {loading ? <p className="accounting-shop-detail__state">กำลังโหลดรายละเอียดบิล...</p>
-      : error ? <p className="credit-ar__action-error" role="alert"><WarningCircle size={18} />{error}</p>
-        : <div className="accounting-table-wrap accounting-table-wrap--ledger"><table><thead><tr><th>วันที่</th><th>เอกสาร</th><th>อาคาร / โซน ณ เวลาขาย</th><th>รายการ</th><th>รายการปรับปรุง</th><th>ยอดขาย</th><th>รับแล้ว</th><th>การรับชำระ</th><th>ค้าง</th><th>สถานะ</th></tr></thead><tbody>{entries.length ? entries.map((entry) => {
-          const status = entry.delivery_status === 'replaced' ? 'ถูกแทนที่แล้ว'
-            : entry.delivery_status === 'cancelled' || entry.charge_status === 'voided' ? 'ยกเลิกแล้ว'
-              : entry.payment_status ? invoicePaymentStatusLabels[entry.payment_status] : 'ข้อมูลเดิม';
-          const outsidePeriodLabel = entry.service_date < fromDate ? 'หนี้ค้างก่อนช่วง' : entry.service_date > toDate ? 'บิลค้างหลังช่วง' : null;
-          return <tr key={entry.delivery_event_id}><td>{accountingDate.format(new Date(`${entry.service_date}T12:00:00+07:00`))}{outsidePeriodLabel ? <small className="accounting-shop-detail__carry-forward">{outsidePeriodLabel}</small> : null}</td><th>{entry.charge_number ?? 'รายการเดิมก่อนใช้ระบบบิล'}</th><td>{[entry.building_name, entry.historical_zone_name].filter(Boolean).join(' / ') || '—'}</td><td><div className="accounting-shop-detail__items">{entry.items.length ? entry.items.map((item) => <span key={item.ice_type_id}><strong>{item.name} {Number(item.quantity).toLocaleString('th-TH')} {item.unit}</strong></span>) : '—'}</div></td><td><div className="accounting-shop-detail__adjustments">{entry.adjustments.length ? entry.adjustments.map((adjustment) => <span key={adjustment.id}><strong>{adjustment.reason}</strong>{adjustment.items.map((item) => <small key={item.ice_type_id}>{`${item.name} ${Number(item.original_quantity).toLocaleString('th-TH')} ${item.unit} → แก้เป็น ${Number(item.corrected_quantity).toLocaleString('th-TH')} ${item.unit} (เปลี่ยน ${Number(item.quantity_delta).toLocaleString('th-TH')})`}</small>)}<small>ยอดปรับ {money.format(Number(adjustment.amount_delta))}</small><small>ยอดหลังปรับ {adjustment.corrected_total == null ? '—' : money.format(Number(adjustment.corrected_total))}</small></span>) : '—'}</div></td><td>{entry.total_amount == null ? '—' : money.format(Number(entry.total_amount))}</td><td>{money.format(Number(entry.allocated_amount))}</td><td><div className="accounting-shop-detail__payments">{entry.payments.length ? entry.payments.map((payment) => <span key={payment.payment_id}>{paymentMethodLabels[payment.payment_method]} · {money.format(Number(payment.amount))} · {accountingDate.format(new Date(payment.recorded_at))}</span>) : '—'}</div></td><td>{money.format(Number(entry.outstanding_amount))}</td><td>{status}</td></tr>;
-        }) : <tr><td colSpan={10}>ไม่พบบิลในช่วงสรุปและไม่มีบิลค้างนอกช่วง</td></tr>}</tbody></table></div>}
+  const ref = useAccountingDialog(onClose);
+  const inPeriod = entries.filter((entry) => entry.service_date >= fromDate && entry.service_date <= toDate);
+  const outsidePeriod = entries.filter((entry) => entry.service_date < fromDate || entry.service_date > toDate);
+  return <section ref={ref} tabIndex={-1} aria-label={`รายละเอียดบิลของ ${formatAccountingShopTitle(shop)}`} aria-modal="true" className="accounting-shop-detail" role="dialog">
+    <header><div><p className="eyebrow">รายละเอียดตามใบส่งของ / ใบแจ้งหนี้</p><h2>{formatAccountingShopTitle(shop)}</h2><span>ช่วงสรุปและบิลค้างนอกช่วง: {accountingDate.format(new Date(`${fromDate}T12:00:00+07:00`))} – {accountingDate.format(new Date(`${toDate}T12:00:00+07:00`))}</span><small>ยอดรับแล้วและยอดค้างเป็นยอดปัจจุบัน จึงรวมการรับชำระหลังช่วงสรุป</small></div><button aria-label="ปิดรายละเอียดร้าน" onClick={onClose} type="button"><X size={19} /></button></header>
+    <div className="accounting-invoice-scroll">
+      <div className="accounting-invoice-overview"><span>ค้างสะสมปัจจุบันของร้าน <strong>{money.format(shop.cumulative_outstanding_amount)}</strong></span><span>ในจำนวนนี้เกินกำหนด <strong>{money.format(shop.cumulative_overdue_amount)}</strong></span></div>
+      {loading ? <AccountingLoading /> : error ? <p className="credit-ar__action-error" role="alert">{error}</p> : entries.length ? ([['บิลในช่วงที่เลือก', inPeriod], ['บิลค้างนอกช่วง', outsidePeriod]] as const).map(([heading, group]) => group.length ? <section className="accounting-invoice-group" key={heading}><h3>{heading} <small>{group.length} รายการ</small></h3>{group.map((entry) => {
+        const status = entry.delivery_status === 'replaced' ? 'ถูกแทนที่แล้ว' : entry.delivery_status === 'cancelled' || entry.charge_status === 'voided' ? 'ยกเลิกแล้ว' : entry.payment_status ? invoicePaymentStatusLabels[entry.payment_status] : 'ข้อมูลเดิม';
+        const outsideLabel = entry.service_date < fromDate ? 'หนี้ค้างก่อนช่วง' : entry.service_date > toDate ? 'บิลค้างหลังช่วง' : null;
+        return <details className="accounting-invoice" key={entry.delivery_event_id}><summary>
+          <span><strong>{entry.charge_number ?? 'รายการเดิมก่อนใช้ระบบบิล'}</strong><small>{accountingDate.format(new Date(`${entry.service_date}T12:00:00+07:00`))}{outsideLabel ? ` · ${outsideLabel}` : ''}</small></span>
+          <span><small>ยอดขาย</small><strong>{entry.total_amount == null ? '—' : money.format(Number(entry.total_amount))}</strong></span>
+          <span><small>รับแล้ว</small><strong>{money.format(Number(entry.allocated_amount))}</strong></span>
+          <span><small>ค้าง</small><strong>{money.format(Number(entry.outstanding_amount))}</strong></span>
+          <span className={`accounting-payment-status accounting-payment-status--${entry.payment_status === 'paid' ? 'paid' : 'outstanding'}`}>{status}</span>
+        </summary><div className="accounting-invoice-body">
+          <p>พื้นที่ ณ เวลาขาย: {[entry.building_name, entry.historical_zone_name].filter(Boolean).join(' / ') || '—'} · ผู้บันทึก: {entry.recorded_by_name || '—'} · {accountingDateTime(entry.recorded_at)}</p>
+          {entry.event_name ? <p>งาน {entry.event_name} · {[entry.event_location, entry.event_zone, entry.event_booth].filter(Boolean).join(' / ')}</p> : null}
+          <div className="accounting-invoice-sections"><section><h4>สินค้าและราคา</h4>{entry.items.length ? <ul>{entry.items.map((item) => <li key={item.ice_type_id}><span>{item.name} {Number(item.quantity).toLocaleString('th-TH')} {item.unit}<small>ราคาต่อหน่วย {item.unit_price == null ? '—' : money.format(Number(item.unit_price))}</small></span><strong>{item.line_total == null ? '—' : money.format(Number(item.line_total))}</strong></li>)}</ul> : <p>ไม่มีรายละเอียดสินค้า</p>}</section>
+          <section><h4>ประวัติรับชำระ</h4>{entry.payments.length ? <ul>{entry.payments.map((payment) => <li key={payment.payment_id}><span>{paymentMethodLabels[payment.payment_method]}<small>{accountingDateTime(payment.recorded_at)}</small></span><strong>{money.format(Number(payment.amount))}</strong></li>)}</ul> : <p>ยังไม่มีการรับชำระ</p>}</section></div>
+          {entry.adjustments.length ? <section><h4>ประวัติปรับปรุง</h4><div className="accounting-shop-detail__adjustments">{entry.adjustments.map((adjustment) => <div key={adjustment.id}><strong>{adjustment.reason}</strong><small>{accountingDateTime(adjustment.created_at)}</small>{adjustment.items.map((item) => <p key={item.ice_type_id}>{`${item.name} ${Number(item.original_quantity).toLocaleString('th-TH')} ${item.unit} → แก้เป็น ${Number(item.corrected_quantity).toLocaleString('th-TH')} ${item.unit} (เปลี่ยน ${Number(item.quantity_delta).toLocaleString('th-TH')})`}</p>)}<p>ยอดปรับ {money.format(Number(adjustment.amount_delta))}</p><p>ยอดหลังปรับ {adjustment.corrected_total == null ? '—' : money.format(Number(adjustment.corrected_total))}</p></div>)}</div></section> : null}
+          {entry.charge_number ? <button className="accounting-source-button" type="button" onClick={() => onOpenDocument(entry.charge_number!, entry.service_date)}>ดูเอกสารต้นทาง {entry.charge_number}</button> : <small>รายการเดิมไม่มีเลขเอกสารอ้างอิง</small>}
+        </div></details>;
+      })}</section> : null) : <p>ไม่พบบิลในช่วงสรุปและไม่มีบิลค้างนอกช่วง</p>}
+    </div>
   </section>;
 }
 
@@ -1011,34 +1042,55 @@ function AccountingPagination({ page, pageSize, setPage, totalCount }: { page: n
   return <div className="accounting-pagination"><span>ทั้งหมด {totalCount.toLocaleString('th-TH')} รายการ</span><button disabled={page === 0} onClick={() => setPage((value) => value - 1)} type="button">ก่อนหน้า</button><strong>{page + 1} / {totalPages}</strong><button disabled={page + 1 >= totalPages} onClick={() => setPage((value) => value + 1)} type="button">ถัดไป</button></div>;
 }
 
-function ReconciliationPanel({ data, serviceDate, setServiceDate }: { data: AccountingReconciliation | null; serviceDate: string; setServiceDate: (date: string) => void }) {
-  const cards = data?.financial;
+function ReconciliationPanel({ data, loading, serviceDate, setServiceDate }: { data: AccountingReconciliation | null; loading: boolean; serviceDate: string; setServiceDate: (date: string) => void }) {
+  const financial = data?.financial;
+  const sections = financial ? [
+    { title: 'ยอดขายและการชำระบิล', rows: [['ยอดขายหลังปรับปรุง', financial.effective_sales], ['รับชำระบิลของวันนี้แล้ว', financial.allocated_to_sales], ['ค้างที่ต้องเก็บ', financial.outstanding_collectible], ['ลูกหนี้เครดิต', financial.outstanding_credit]], note: 'ตามวันที่ขาย · ยอดรับชำระเป็นยอดปัจจุบัน' },
+    { title: 'เงินรับและคืน', rows: [['รับเงินจริง', financial.cash_received], ['คืนเงินจริง', financial.cash_refunded], ['เงินสุทธิ', financial.net_cash], ['ยอดรอคืน', financial.pending_refunds]], note: 'ตามวันที่รับและคืนเงินจริง' },
+    { title: 'ลูกค้าขาจร', rows: [['ยอดขายขาจร', financial.casual_sales], ['รับเงินจริงขาจร', financial.casual_received], ['คืนเงินจริงขาจร', financial.casual_refunded]], note: 'รวมอยู่ในยอดขายและเงินรับ–คืนด้านซ้ายแล้ว' },
+  ] : [];
   return <div className="accounting-reconciliation">
-    <label className="accounting-reconciliation__date">วันที่ธุรกรรม<input onChange={(event) => setServiceDate(event.target.value)} type="date" value={serviceDate} /></label>
-    {data ? <><div className="accounting-financial-cards">
-      {[['ยอดขาย effective', cards?.effective_sales], ['ยอดขายขาจร', cards?.casual_sales], ['จัดสรรเข้าบิลวันนี้', cards?.allocated_to_sales], ['ควรเก็บแล้ว', cards?.outstanding_collectible], ['ลูกหนี้เครดิต', cards?.outstanding_credit], ['รับเงินจริง', cards?.cash_received], ['รับเงินจริงขาจร', cards?.casual_received], ['คืนเงินจริง', cards?.cash_refunded], ['คืนเงินจริงขาจร', cards?.casual_refunded], ['เงินสุทธิ', cards?.net_cash], ['ยอดรอคืน', cards?.pending_refunds]].map(([label, value]) => <article key={label}><span>{label}</span><strong>{money.format(Number(value ?? 0))}</strong></article>)}
-    </div>
-    <ReconciliationTable heading="สต๊อกรวมประจำวัน" rows={data.aggregate} /></> : null}
+    <label className="accounting-reconciliation__date">วันที่เทียบยอด <input aria-label="วันที่เทียบยอด" max={toBangkokDateString()} onChange={(event) => { if (dateKeyTimestamp(event.target.value) != null && event.target.value <= toBangkokDateString()) setServiceDate(event.target.value); }} type="date" value={serviceDate} /></label>
+    {loading ? <AccountingLoading /> : data ? <><div className="accounting-reconciliation-groups">{sections.map((section) => <article key={section.title}><h3>{section.title}</h3><small>{section.note}</small><dl>{section.rows.map(([label, value]) => <div key={String(label)}><dt>{label}</dt><dd>{value == null ? '—' : money.format(Number(value))}</dd></div>)}</dl></article>)}</div>
+      <ReconciliationTable heading="สต๊อกรวมประจำวัน" rows={data.aggregate} />
+      <details className="accounting-holder-details"><summary>สต๊อกแยกจุดถือครอง <span>{data.holders.length} จุด</span></summary>{data.holders.length ? data.holders.map((holder) => <ReconciliationTable key={holder.location_id} heading={`${holder.location_name}${holder.employee_name ? ` · ${holder.employee_name}` : ''}`} rows={holder.items} />) : <p>ไม่มีข้อมูลจุดถือครองในวันนี้</p>}</details>
+    </> : null}
   </div>;
 }
 
 function ReconciliationTable({ heading, rows }: { heading: string; rows: AccountingReconciliation['aggregate'] }) {
-  return <article className="accounting-reconciliation__table"><h3>{heading}</h3><div className="accounting-table-wrap"><table><thead><tr><th>ชนิด</th><th>โรงงานเข้า</th><th>ขาย</th><th>เติมเดิม</th><th>เสียหาย</th><th>ควรเหลือ</th><th>นับจริง</th><th>คืนตอนปิด</th><th>ต่าง</th><th>สถานะ</th></tr></thead><tbody>{rows.length ? rows.map((row) => <tr className={row.variance || row.count_status === 'stale' ? 'accounting-row--issue' : ''} key={row.ice_type_id}><th>{row.ice_type_name}</th><td>{number.format(row.factory_in)}</td><td>{number.format(row.sold)}</td><td>{number.format(row.legacy_refill ?? 0)}</td><td>{number.format(row.damaged)}</td><td>{number.format(row.expected)}</td><td>{row.actual == null ? '—' : number.format(row.actual)}</td><td>{number.format(row.closed_returned_to_factory ?? 0)}</td><td>{row.variance == null ? '—' : number.format(row.variance)}</td><td>{row.count_status === 'incomplete' ? 'ยังนับไม่ครบ' : row.count_status === 'stale' ? 'ยอดนับล้าสมัย' : row.variance ? 'ต้องตรวจสอบ' : 'ตรงยอด'}</td></tr>) : <tr><td colSpan={10}>ยังไม่มีข้อมูล</td></tr>}</tbody></table></div></article>;
+  return <article className="accounting-reconciliation__table"><h3>{heading}</h3><div className="accounting-table-wrap"><table><thead><tr><th>ชนิด</th><th>โรงงานเข้า</th><th>ขาย</th><th>เติมเดิม</th><th>เสียหาย</th><th>ควรเหลือ</th><th>นับจริง</th><th>คืนตอนปิด</th><th>ต่าง</th><th>สถานะ</th></tr></thead><tbody>{rows.length ? rows.map((row) => <tr className={row.variance || row.count_status === 'stale' ? 'accounting-row--issue' : ''} key={row.ice_type_id}><th>{row.ice_type_name}<small>หน่วย: {row.unit}</small></th><td>{number.format(row.factory_in)}</td><td>{number.format(row.sold)}</td><td>{number.format(row.legacy_refill ?? 0)}</td><td>{number.format(row.damaged)}</td><td>{number.format(row.expected)}</td><td>{row.actual == null ? '—' : number.format(row.actual)}</td><td>{number.format(row.closed_returned_to_factory ?? 0)}</td><td>{row.variance == null ? '—' : number.format(row.variance)}</td><td>{row.count_status === 'incomplete' ? 'ยังนับไม่ครบ' : row.count_status === 'stale' ? 'ยอดนับล้าสมัย' : row.variance ? 'ต้องตรวจสอบ' : 'ตรงยอด'}</td></tr>) : <tr><td colSpan={10}>ยังไม่มีข้อมูล</td></tr>}</tbody></table></div></article>;
 }
 
 function TransactionsTable({ rows, sort, setSort, onOpen }: { rows: AccountingTransaction[]; sort: AccountingSort; setSort: (sort: AccountingSort) => void; onOpen: (row: AccountingTransaction) => void }) {
-  const columns = [['occurred_at', 'วัน/เวลา'], ['document_number', 'เอกสาร'], ['type', 'ประเภท'], ['shop_name', 'ร้าน'], ['holder_name', 'จุดถือครอง'], ['employee_name', 'พนักงาน'], ['ice_type_name', 'ชนิดน้ำแข็ง'], ['quantity_in', 'เข้า'], ['quantity_out', 'ออก'], ['sales_amount', 'ยอดขาย'], ['cash_in', 'เงินเข้า'], ['cash_out', 'เงินออก'], ['receivable_delta', 'ลูกหนี้'], ['status', 'สถานะ'], ['can_correct', 'ดำเนินการ']] as const;
-  return <div className="accounting-table-wrap accounting-table-wrap--ledger"><table className="accounting-table"><thead><tr>{columns.map(([key, label]) => <th key={key}><SortButton column={key} label={label} onChange={setSort} sort={sort} /></th>)}</tr></thead><tbody>{rows.length ? rows.map((row) => <tr className={row.issue_code ? 'accounting-row--issue' : `accounting-row--${row.type.toLowerCase()}`} key={`${row.type}-${row.source_id}-${row.ice_type_id ?? ''}`} onClick={() => onOpen(row)} tabIndex={0}><td>{new Date(row.occurred_at).toLocaleString('th-TH')}</td><td><button className="accounting-link" onClick={(event) => { event.stopPropagation(); onOpen(row); }} type="button">{row.document_number}</button></td><td><span className={`accounting-type accounting-type--${row.type.toLowerCase()}`}>{row.type} · {typeLabels[row.type]}</span></td><td>{row.shop_name ?? '—'}</td><td>{row.holder_name ?? '—'}</td><td>{row.employee_name ?? '—'}</td><td>{row.ice_type_name ?? '—'}</td><td>{row.quantity_in || '—'}</td><td>{row.quantity_out || '—'}</td><td>{row.sales_amount ? money.format(row.sales_amount) : '—'}</td><td>{row.cash_in ? money.format(row.cash_in) : '—'}</td><td>{row.cash_out ? money.format(row.cash_out) : '—'}</td><td>{row.receivable_delta ? money.format(row.receivable_delta) : '—'}</td><td>{row.issue_label ?? row.status}</td><td>{row.can_correct ? 'จัดการใบส่ง' : 'ดูเท่านั้น'}</td></tr>) : <tr><td colSpan={15}>ไม่พบรายการที่ตรงตัวกรอง</td></tr>}</tbody></table></div>;
+  const columns = [['occurred_at', 'วัน/เวลา'], ['document_number', 'เอกสาร'], ['type', 'ประเภท'], ['shop_name', 'ร้าน'], ['sales_amount', 'ยอดขาย'], ['cash_in', 'เงินเข้า'], ['cash_out', 'เงินออก'], ['status', 'สถานะ']] as const;
+  return <div className="accounting-table-wrap accounting-table-wrap--ledger"><table className="accounting-table accounting-transactions-table"><thead><tr>{columns.map(([key, label]) => <th key={key} aria-sort={sort.key === key ? sort.direction === 'asc' ? 'ascending' : 'descending' : 'none'}><SortButton column={key} label={label} onChange={setSort} sort={sort} /></th>)}<th>รายละเอียด</th></tr></thead><tbody>{rows.length ? rows.map((row) => <tr className={row.issue_code ? 'accounting-row--issue' : `accounting-row--${row.type.toLowerCase()}`} key={`${row.type}-${row.source_id}-${row.ice_type_id ?? ''}`} onClick={() => onOpen(row)}>
+    <td>{accountingDateTime(row.occurred_at)}</td><td><button className="accounting-link" onClick={(event) => { event.stopPropagation(); onOpen(row); }} type="button">{row.document_number}</button>{row.ice_type_name ? <small>{row.ice_type_name}</small> : null}</td><td><span className={`accounting-type accounting-type--${row.type.toLowerCase()}`}>{typeLabels[row.type] ?? row.type}</span></td><td>{row.shop_name ?? '—'}</td><td>{money.format(row.sales_amount)}</td><td>{money.format(row.cash_in)}</td><td>{money.format(row.cash_out)}</td><td>{row.issue_label ?? accountingStatus(row.status)}</td><td><button type="button" className="accounting-link" onClick={(event) => { event.stopPropagation(); onOpen(row); }}>ดูรายละเอียด</button></td></tr>) : <tr><td colSpan={9}>ไม่พบรายการที่ตรงตัวกรอง</td></tr>}</tbody></table></div>;
 }
 
-function ReviewQueue({ onResolve, resolvingIssueId, rows }: {
+function ReviewQueue({ onOpenSource, onResolve, resolvingIssueId, rows }: {
+  onOpenSource: (item: AccountingReviewResponse['rows'][number]) => void;
   onResolve: (item: AccountingReviewResponse['rows'][number]) => void;
-  resolvingIssueId: string | null;
-  rows: AccountingReviewResponse['rows'];
+  resolvingIssueId: string | null; rows: AccountingReviewResponse['rows'];
 }) {
-  return <div className="accounting-review-list">{rows.length ? rows.map((item) => <article key={item.issue_id}><WarningCircle size={22} weight="fill" /><div><span>{item.issue_type} · {item.service_date}</span><h3>{item.title}</h3><p>{item.description}</p><small>{[item.document_number, item.shop_name].filter(Boolean).join(' · ')}</small></div><div className="accounting-review-list__actions"><strong>{item.severity === 'critical' ? 'เร่งด่วน' : 'ตรวจสอบ'}</strong>{item.issue_id.startsWith('daily-close-') ? <button disabled={Boolean(resolvingIssueId)} onClick={() => onResolve(item)} type="button">{resolvingIssueId === item.issue_id ? 'กำลังปิด...' : 'ปิดประเด็น'}</button> : null}</div></article>) : <p className="financial-ops__empty">ไม่มีรายการต้องตรวจสอบในช่วงนี้</p>}</div>;
+  return <div className="accounting-table-wrap"><table className="accounting-table accounting-review-table"><thead><tr><th>ความสำคัญ</th><th>ประเด็นที่ต้องตรวจสอบ</th><th>เอกสาร / ผู้เกี่ยวข้อง</th><th>วันที่</th><th>ดำเนินการ</th></tr></thead><tbody>{rows.length ? rows.map((item) => <tr key={item.issue_id}>
+    <td><span className={`accounting-severity accounting-severity--${item.severity}`}><WarningCircle size={16} />{item.severity === 'critical' ? 'เร่งด่วน' : 'ตรวจสอบ'}</span></td><td><strong>{item.title}</strong><p>{item.description}</p></td><td>{item.document_number ?? '—'}{item.shop_name ? <small>{item.shop_name}</small> : null}</td><td>{accountingDate.format(new Date(`${item.service_date}T12:00:00+07:00`))}</td><td><div className="accounting-review-actions">{item.document_number || ['STOCK_VARIANCE', 'CASH_VARIANCE'].includes(item.issue_type) ? <button type="button" onClick={() => onOpenSource(item)}>{item.document_number ? 'ดูเอกสารต้นทาง' : 'ดูยอดประจำวัน'}</button> : null}{item.issue_id.startsWith('daily-close-') ? <button disabled={Boolean(resolvingIssueId)} onClick={() => onResolve(item)} type="button">ปิดประเด็น</button> : null}</div></td>
+  </tr>) : <tr><td colSpan={5}>ไม่มีรายการต้องตรวจสอบที่ตรงกับช่วงวันที่และตัวกรอง</td></tr>}</tbody></table></div>;
 }
 
-function TransactionDrawer({ row, receiptSnapshot, correctionTargets, onClose, onCorrect }: { row: AccountingTransaction; receiptSnapshot: Record<string, unknown> | null; correctionTargets: Array<{ charge_id: string; charge_number: string; delivery_event_id: string }>; onClose: () => void; onCorrect: (eventId: string) => void }) {
-  return <div className="accounting-drawer-backdrop" onMouseDown={(event) => { if (event.currentTarget === event.target) onClose(); }}><aside aria-label={`รายละเอียด ${row.document_number}`} className="accounting-drawer"><header><div><p className="eyebrow">{row.type} · {typeLabels[row.type]}</p><h2>{row.document_number}</h2></div><button aria-label="ปิด" onClick={onClose} type="button"><X size={20} /></button></header><dl><div><dt>สถานะ</dt><dd>{row.issue_label ?? row.status}</dd></div><div><dt>ร้าน</dt><dd>{row.shop_name ?? '—'}</dd></div><div><dt>จุดถือครอง</dt><dd>{row.holder_name ?? '—'}</dd></div><div><dt>ผู้บันทึก</dt><dd>{row.employee_name ?? '—'}</dd></div><div><dt>Payment</dt><dd>{row.payment_id ?? '—'}</dd></div><div><dt>หมายเหตุ</dt><dd>{row.note ?? '—'}</dd></div></dl>{receiptSnapshot ? <section><h3>สำเนาใบเสร็จเดิม</h3><pre>{JSON.stringify(receiptSnapshot, null, 2)}</pre></section> : null}<footer>{row.type === 'INV' && row.can_correct && row.delivery_event_id ? <button className="primary-button" onClick={() => onCorrect(row.delivery_event_id!)} type="button">ยกเลิกใบส่งน้ำแข็ง</button> : null}{row.type === 'REC' ? correctionTargets.map((target) => <button className="primary-button" key={target.charge_id} onClick={() => onCorrect(target.delivery_event_id)} type="button">ยกเลิกใบส่ง {target.charge_number}</button>) : null}</footer></aside></div>;
+function TransactionDrawer({ row, receiptSnapshot, receiptLoading, receiptError, correctionTargets, onClose, onCorrect, onRetry }: {
+  row: AccountingTransaction; receiptSnapshot: StoredSalesDocument | null; receiptLoading: boolean; receiptError: string | null;
+  correctionTargets: Array<{ charge_id: string; charge_number: string; delivery_event_id: string }>;
+  onClose: () => void; onCorrect: (eventId: string) => void; onRetry: () => void;
+}) {
+  const ref = useAccountingDialog(onClose);
+  return <div className="accounting-drawer-backdrop" onMouseDown={(event) => { if (event.currentTarget === event.target) onClose(); }}><aside ref={ref} tabIndex={-1} role="dialog" aria-modal="true" aria-label={`รายละเอียด ${row.document_number}`} className="accounting-drawer">
+    <header><div><p className="eyebrow">{typeLabels[row.type]} · {row.type}</p><h2>{row.document_number}</h2></div><button aria-label="ปิด" onClick={onClose} type="button"><X size={20} /></button></header>
+    <dl><div><dt>สถานะ</dt><dd>{row.issue_label ?? accountingStatus(row.status)}</dd></div><div><dt>วันเวลาบันทึก</dt><dd>{accountingDateTime(row.occurred_at)}</dd></div><div><dt>ร้าน</dt><dd>{row.shop_name ?? '—'}</dd></div><div><dt>เลขอ้างอิง</dt><dd>{row.reference_number ?? '—'}</dd></div><div><dt>จุดถือครอง</dt><dd>{row.holder_name ?? '—'}</dd></div><div><dt>ผู้บันทึก</dt><dd>{row.employee_name ?? '—'}</dd></div><div><dt>ชนิดน้ำแข็ง</dt><dd>{row.ice_type_name ?? '—'}</dd></div><div><dt>ปริมาณเข้า / ออก</dt><dd>{number.format(row.quantity_in)} / {number.format(row.quantity_out)} {row.unit ?? ''}</dd></div><div><dt>ยอดขาย</dt><dd>{money.format(row.sales_amount)}</dd></div><div><dt>ผลต่อลูกหนี้</dt><dd>{money.format(row.receivable_delta)}</dd></div><div><dt>เงินเข้า</dt><dd>{money.format(row.cash_in)}</dd></div><div><dt>เงินออก</dt><dd>{money.format(row.cash_out)}</dd></div></dl>
+    {row.note ? <section><h3>หมายเหตุ</h3><p>{row.note}</p></section> : null}
+    {receiptLoading ? <p role="status">กำลังโหลดสำเนาใบเสร็จ…</p> : null}
+    {receiptSnapshot ? <ReceiptPreview receipt={receiptSnapshot} /> : !receiptLoading && row.type === 'REC' && !receiptError ? <p>ไม่มีสำเนาใบเสร็จสำหรับรายการนี้</p> : null}
+    {receiptError ? <div className="accounting-error" role="alert"><span>{receiptError}</span><button type="button" onClick={onRetry}>ลองโหลดรายละเอียดอีกครั้ง</button></div> : null}
+    <footer><small>ดำเนินการที่เอกสารต้นทางตามสิทธิ์ของคุณ</small>{row.type === 'INV' && row.can_correct && row.delivery_event_id ? <button className="accounting-danger-button" onClick={() => onCorrect(row.delivery_event_id!)} type="button">ยกเลิกใบส่งน้ำแข็ง</button> : null}{row.type === 'REC' ? correctionTargets.map((target) => <button className="accounting-danger-button" key={target.charge_id} onClick={() => onCorrect(target.delivery_event_id)} type="button">ยกเลิกใบส่ง {target.charge_number}</button>) : null}</footer>
+  </aside></div>;
 }

@@ -79,6 +79,7 @@ export function AdminLayout({
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const todayServiceDate = toBangkokDateString();
   const displayedServiceDate = serviceDate ?? todayServiceDate;
+  const accountingWorkspace = activeView === 'financial_operations' && financialPage === 'transactions';
   const displayedDate = new Intl.DateTimeFormat('th-TH', {
     day: 'numeric',
     month: 'short',
@@ -241,9 +242,9 @@ export function AdminLayout({
                 />
               </label>
             ) : (
-              <span className="context-pill"><CalendarBlank size={18} />{displayedDate}<CaretDown size={14} /></span>
+              <span className="context-pill"><CalendarBlank size={18} />{accountingWorkspace ? 'วันนี้ · ' : ''}{displayedDate}{accountingWorkspace ? null : <CaretDown size={14} />}</span>
             )}
-            <span className="context-pill"><MapPin size={18} />ศูนย์ราชการ<CaretDown size={14} /></span>
+            <span className="context-pill"><MapPin size={18} />ศูนย์ราชการ{accountingWorkspace ? null : <CaretDown size={14} />}</span>
           </div>
           <div className="admin-topbar__actions">
             <span className="current-view-label">{viewMeta[activeView].shortLabel}</span>

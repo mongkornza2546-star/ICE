@@ -1,0 +1,189 @@
+/* Accounting workspace: scoped to keep the other finance flows unchanged. */
+.accounting-page.accounting-page { gap: 14px; padding: 12px 18px 24px; color: #22374b; }
+.accounting-page .accounting-page__header { align-items: center; gap: 16px; }
+.accounting-page .accounting-page__header h1 { font-size: clamp(1.25rem, 1.7vw, 1.65rem); margin: 3px 0; }
+.accounting-page .accounting-page__header > div > span { font-size: .82rem; color: #526476; }
+.accounting-header-actions { display: grid; gap: 5px; justify-items: end; }
+.accounting-header-actions > small { color: #526476; font-size: .7rem; }
+.accounting-header-actions > div { display: flex; gap: 8px; }
+.accounting-page .accounting-header-actions button, .accounting-page .accounting-source-button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 44px; border: 1px solid #c9d7e3; border-radius: 8px; padding: 8px 12px; background: white; color: #135fac; font: inherit; font-size: .82rem; font-weight: 700; }
+.accounting-page .accounting-tabs { gap: 4px; border-color: #d9e2ea; }
+.accounting-page .accounting-tabs button { padding: 10px 14px; min-height: 44px; color: #526476; font-size: .88rem; }
+.accounting-page .accounting-tabs button[aria-current="page"] { color: #135fac; border-color: #176bd2; }
+.accounting-page .accounting-shop-summary { gap: 12px; min-width: 0; }
+.accounting-filter-panel { background: #fff; border: 1px solid #d9e2ea; border-radius: 12px; padding: 10px 12px; }
+.accounting-period-bar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px 12px; }
+.accounting-period-bar > span { color: #526476; font-size: .78rem; }
+.accounting-period-presets { display: flex; flex-wrap: wrap; gap: 4px; }
+.accounting-period-presets button { min-height: 44px; padding: 6px 10px; background: transparent; color: #435a70; font: inherit; font-size: .8rem; border: 1px solid transparent; border-radius: 7px; }
+.accounting-period-presets button[aria-pressed="true"] { background: #edf5ff; border-color: #c8ddf8; color: #145aa6; font-weight: 700; }
+.accounting-page .accounting-filters--shop-summary { grid-template-columns: minmax(220px, 1.35fr) minmax(150px, 1fr) minmax(220px, 1.3fr) minmax(140px, .8fr) auto; border: 0; padding: 8px 0 0; border-radius: 0; gap: 8px 12px; }
+.accounting-page .accounting-filters label, .accounting-page .accounting-filters__field { color: #435a70; font-size: .75rem; }
+.accounting-page .accounting-filters input, .accounting-page .accounting-filters select, .accounting-page .accounting-filters button { min-height: 44px; font-size: .8rem; border-color: #c9d7e3; }
+.accounting-page .accounting-filters__range input { font-size: .8rem; }
+.accounting-page .accounting-filters__more { color: #435a70 !important; }
+.accounting-filter-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.accounting-filter-chips button { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; border: 1px solid #c9d7e3; background: #f3f7fc; border-radius: 20px; color: #335779; padding: 5px 10px; font: inherit; font-size: .76rem; }
+.accounting-overview { display: grid; grid-template-columns: 1.25fr 1.1fr 1.1fr .8fr; gap: 10px; }
+.accounting-metric { display: flex; flex-direction: column; align-items: stretch; gap: 7px; min-width: 0; border: 1px solid #d9e2ea; border-top: 3px solid #167952; border-radius: 10px; background: white; padding: 12px 14px; text-align: left; font: inherit; color: #273d51; }
+.accounting-metric > span { font-size: .79rem; font-weight: 700; }
+.accounting-metric > strong { font-size: clamp(1.2rem, 1.7vw, 1.65rem); line-height: 1.3; font-variant-numeric: tabular-nums; color: #173e32; }
+.accounting-metric small { font-size: .71rem; line-height: 1.5; color: #526476; }
+.accounting-metric__breakdown { display: grid; gap: 3px; font-size: .73rem; }
+.accounting-metric__breakdown > span { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 3px 6px; }
+.accounting-metric__breakdown b { font-variant-numeric: tabular-nums; }
+.accounting-metric--received { border-top-color: #2674c9; }
+.accounting-metric--received > strong { color: #185da5; }
+.accounting-metric--debt { border-top-color: #bf802c; }
+.accounting-metric--debt > strong { color: #8f5214; }
+.accounting-metric--review { border-top-color: #c38c41; background: #fffaf3; }
+.accounting-metric--review > strong { color: #994b24; }
+.accounting-metric--review > b { font-size: .76rem; color: #8c4b1b; margin-top: auto; }
+.accounting-metric--review:hover { background: #fff2df; }
+.accounting-casual-summary { border: 1px solid #d9e2ea; border-radius: 9px; background: #f0f6fd; font-size: .78rem; }
+.accounting-casual-summary > summary { cursor: pointer; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px; padding: 10px 12px; min-height: 44px; }
+.accounting-casual-summary > summary::after { content: '+'; font-size: 1rem; }
+.accounting-casual-summary[open] > summary::after { content: '−'; }
+.accounting-casual-summary summary small { color: #526476; margin-left: 8px; }
+.accounting-casual-summary dl { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; padding: 0 12px 12px; margin: 0; }
+.accounting-casual-summary dd { margin: 3px 0 0; font-weight: 700; }
+.accounting-page .accounting-shop-view-switch { border-color: #cbd9e6; background: #edf2f7; }
+.accounting-page .accounting-shop-view-switch button { min-height: 44px; color: #435a70; }
+.accounting-page .accounting-shop-view-switch button[aria-pressed="true"] { color: #135fac; }
+.accounting-sort-label { display: flex; align-items: center; gap: 8px; color: #526476; font-size: .78rem; }
+.accounting-sort-label select { min-height: 44px; padding: 6px 10px; border: 1px solid #c9d7e3; border-radius: 8px; color: #273d51; background: white; font: inherit; }
+.accounting-page .accounting-table-wrap { border-color: #d9e2ea; border-radius: 10px; }
+.accounting-page .accounting-table-wrap th, .accounting-page .accounting-table-wrap td { font-size: .79rem; padding: 9px 12px; }
+.accounting-page .accounting-table-wrap thead th { background: #f0f4f9; color: #344e68; }
+.accounting-page .accounting-table-wrap th small, .accounting-page .accounting-table-wrap td small { display: block; font-weight: 400; color: #526476; margin-top: 3px; font-size: .71rem; }
+.accounting-page .accounting-shop-table th:first-child { min-width: 230px; }
+.accounting-page .accounting-shop-table tbody tr > th { position: sticky; left: 0; z-index: 1; background: #fff; }
+.accounting-page .accounting-shop-table .accounting-row--issue > th { background: #fff4e6; }
+.accounting-page .accounting-shop-table thead tr:first-child th { height: 38px; }
+.accounting-page .accounting-shop-table thead tr:nth-child(2) th { top: 38px; }
+.accounting-page .accounting-shop-table thead tr:first-child th:first-child { left: 0; z-index: 4; }
+.accounting-page .accounting-shop-table tbody td:nth-child(n+2):nth-child(-n+7), .accounting-page .accounting-transactions-table td:nth-child(n+5):nth-child(-n+7) { text-align: right; font-variant-numeric: tabular-nums; }
+.accounting-page .accounting-shop-group th { background: #eaf0f7 !important; }
+.accounting-page .accounting-shop-group button { min-height: 44px; color: #304e69; padding-block: 8px; }
+.accounting-page .accounting-shop-group button > span:not(:first-child) { color: #526476; }
+.accounting-page .accounting-link { color: #155fa9; min-height: 44px; }
+.accounting-page .accounting-table__sort { min-height: 28px; }
+.accounting-page .accounting-pagination button { min-height: 44px; }
+.accounting-context-note { color: #526476; font-size: .78rem; }
+.accounting-skeleton { display: grid; gap: 12px; padding: 12px 0; color: #526476; font-size: .82rem; }
+.accounting-skeleton > div { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+.accounting-skeleton i { display: block; height: 42px; border-radius: 9px; background: #e7edf4; }
+.accounting-skeleton > div i { height: 130px; }
+.accounting-error { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; background: #fff2f0; color: #943626; border: 1px solid #e7b8ae; border-radius: 10px; padding: 12px; }
+.accounting-error button { min-height: 44px; border: 1px solid #cda095; border-radius: 7px; background: white; color: #943626; padding: 8px 12px; font: inherit; }
+.accounting-reconciliation-groups { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.accounting-reconciliation-groups article { border: 1px solid #d9e2ea; background: white; border-radius: 10px; padding: 16px; }
+.accounting-reconciliation-groups small { color: #526476; font-size: .75rem; }
+.accounting-reconciliation-groups dl { display: grid; gap: 12px; margin-bottom: 0; }
+.accounting-reconciliation-groups dl > div { display: flex; justify-content: space-between; gap: 12px; font-size: .82rem; }
+.accounting-reconciliation-groups dd { margin: 0; font-weight: 700; font-variant-numeric: tabular-nums; }
+.accounting-holder-details > summary { min-height: 44px; cursor: pointer; padding: 10px 0; font-weight: 700; }
+.accounting-holder-details > summary span { font-weight: 400; color: #526476; }
+.accounting-holder-details > article { margin: 12px 0; }
+.accounting-page .accounting-review-table td { white-space: normal; vertical-align: top; }
+.accounting-page .accounting-review-table tbody tr { cursor: default; }
+.accounting-page .accounting-review-table td:nth-child(2) { min-width: 260px; }
+.accounting-review-table p { margin-top: 5px; color: #526476; line-height: 1.6; }
+.accounting-severity { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; padding: 5px 9px; border-radius: 7px; background: #fff1d8; color: #83530b; font-weight: 700; }
+.accounting-severity--critical { background: #fae8e5; color: #943626; }
+.accounting-review-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.accounting-review-actions button, .accounting-source-button { min-height: 44px; background: white; border: 1px solid #c9d7e3; color: #155fa9; border-radius: 7px; padding: 7px 10px; font: inherit; white-space: nowrap; }
+.accounting-shop-detail[role="dialog"] { grid-template-rows: auto minmax(0, 1fr); width: min(1180px, 100%); color: #273d51; }
+.accounting-shop-detail[role="dialog"] > header button { min-width: 44px; min-height: 44px; }
+.accounting-invoice-scroll { overflow: auto; min-height: 0; }
+.accounting-invoice-overview { display: flex; gap: 16px; flex-wrap: wrap; padding: 12px; background: #f3f6fa; border-radius: 8px; font-size: .84rem; }
+.accounting-invoice-overview strong { margin-left: 8px; }
+.accounting-invoice-group { margin-top: 16px; }
+.accounting-invoice-group > h3 { margin: 0 0 10px; }
+.accounting-invoice-group h3 small { font-weight: 400; color: #526476; }
+.accounting-invoice { border: 1px solid #d9e2ea; border-radius: 9px; margin-bottom: 10px; }
+.accounting-invoice > summary { cursor: pointer; display: grid; grid-template-columns: minmax(190px, 1.5fr) repeat(3, minmax(100px, 1fr)) auto; align-items: center; gap: 14px; padding: 14px; font-size: .85rem; }
+.accounting-invoice > summary::after { content: 'ดูรายละเอียด'; font-size: .72rem; color: #155fa9; }
+.accounting-invoice > summary small { display: block; color: #526476; font-size: .74rem; margin: 3px 0; }
+.accounting-invoice > summary > span:nth-child(n+2):nth-child(-n+4) { text-align: right; font-variant-numeric: tabular-nums; }
+.accounting-invoice-body { border-top: 1px solid #d9e2ea; padding: 14px; display: grid; gap: 14px; font-size: .82rem; }
+.accounting-invoice-sections { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+.accounting-invoice-body h4, .accounting-receipt h4 { margin: 0 0 8px; }
+.accounting-invoice-body ul, .accounting-receipt ul { list-style: none; margin: 0; padding: 0; }
+.accounting-invoice-body li, .accounting-receipt li { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid #e5ebf1; }
+.accounting-invoice-body small, .accounting-receipt li small { display: block; color: #526476; }
+.accounting-invoice-body .accounting-source-button { justify-self: start; }
+.accounting-drawer[role="dialog"] { width: min(640px, 100%); color: #273d51; }
+.accounting-drawer[role="dialog"] > header button { min-height: 44px; min-width: 44px; }
+.accounting-drawer[role="dialog"] dt { color: #526476; }
+.accounting-drawer[role="dialog"] dd { font-size: .85rem; }
+.accounting-drawer[role="dialog"] footer small { width: 100%; color: #526476; }
+.accounting-danger-button { min-height: 44px; border: 1px solid #d5aba4; border-radius: 7px; padding: 7px 12px; color: #943626; background: #fff; font: inherit; }
+.accounting-receipt { margin-top: 20px; font-size: .85rem; }
+.accounting-notice { background: #fff3e4; color: #784818; padding: 12px; border-radius: 8px; }
+.accounting-resolution-backdrop { position: fixed; inset: 0; z-index: 110; background: #102a225c; display: grid; place-items: center; padding: 16px; }
+.accounting-resolution-dialog { background: white; color: #273d51; border-radius: 14px; padding: 22px; width: min(580px, 100%); max-height: calc(100dvh - 32px); overflow: auto; }
+.accounting-resolution-dialog header { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
+.accounting-resolution-dialog form, .accounting-resolution-dialog label { display: grid; gap: 8px; }
+.accounting-resolution-dialog form { margin-top: 16px; gap: 16px; }
+.accounting-resolution-dialog label span { color: #526476; font-size: .8rem; }
+.accounting-resolution-dialog button, .accounting-resolution-dialog input, .accounting-resolution-dialog textarea { min-height: 44px; border: 1px solid #c9d7e3; border-radius: 8px; padding: 8px 12px; font: inherit; }
+.accounting-resolution-dialog textarea { resize: vertical; }
+.accounting-resolution-dialog header button { background: white; }
+.accounting-resolution-dialog footer { display: flex; justify-content: end; gap: 8px; }
+.accounting-page button:disabled, .accounting-resolution-dialog button:disabled { cursor: default; opacity: .55; }
+.accounting-page :focus-visible, .accounting-shop-detail :focus-visible, .accounting-drawer :focus-visible, .accounting-resolution-dialog :focus-visible { outline: 3px solid #2674c9; outline-offset: 2px; }
+@media (max-width: 1250px) {
+  .accounting-page .accounting-filters:not(.accounting-filters--shop-summary) .accounting-filters__range { flex-basis: 285px; min-width: 285px; }
+  .accounting-page .accounting-filters--shop-summary { grid-template-columns: minmax(285px, 1.35fr) minmax(150px, 1fr) minmax(200px, 1.2fr); }
+  .accounting-overview { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .accounting-reconciliation-groups { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 900px) {
+  .accounting-page.accounting-page { padding: 12px; }
+  .accounting-page .accounting-page__header { flex-wrap: wrap; }
+  .accounting-page .accounting-filters--shop-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .accounting-page .accounting-filters--shop-summary .accounting-filters__range, .accounting-page .accounting-filters--shop-summary .accounting-filters__search, .accounting-page .accounting-filters--shop-summary .accounting-filters__more { grid-column: auto; }
+  .accounting-page .accounting-filters--shop-summary .accounting-filters__more { justify-self: start; }
+  .accounting-page .accounting-table__sort { min-height: 44px; }
+  .accounting-page .accounting-shop-table thead tr:first-child th { height: 42px; }
+  .accounting-page .accounting-shop-table thead tr:nth-child(2) th { top: 42px; }
+  .accounting-invoice > summary { grid-template-columns: 1fr 1fr; }
+  .accounting-invoice > summary > span:first-child { grid-column: 1 / -1; }
+  .accounting-invoice > summary > span:nth-child(n+2):nth-child(-n+4) { text-align: left; }
+}
+@media (max-width: 600px) {
+  .accounting-page.accounting-page { padding: 8px 0 20px; }
+  .accounting-header-actions { justify-items: start; }
+  .accounting-page .accounting-filters--shop-summary { grid-template-columns: minmax(0, 1fr); }
+  .accounting-page .accounting-filters--shop-summary > * { grid-column: 1 !important; }
+  .accounting-page .accounting-filters .accounting-filters__range, .accounting-page .accounting-filters__search { min-width: 0; }
+  .accounting-overview, .accounting-reconciliation-groups { grid-template-columns: minmax(0, 1fr); }
+  .accounting-metric > strong { font-size: 1.5rem; }
+  .accounting-casual-summary summary small { display: block; margin-left: 0; }
+  .accounting-casual-summary dl { grid-template-columns: 1fr 1fr; }
+  .accounting-invoice-sections { grid-template-columns: 1fr; }
+  .accounting-page .accounting-pagination { flex-wrap: wrap; }
+  .accounting-page .accounting-pagination span { width: 100%; }
+}
+/* Keep the first three shop rows in view on the desktop overview. */
+.accounting-page.accounting-page { padding-top: 0; gap: 10px; }
+.accounting-page .accounting-sort-label { display: flex; flex-direction: row; gap: 8px; align-items: center; }
+.accounting-page .accounting-shop-view-actions { display: flex; align-items: center; gap: 10px; }
+.accounting-page .accounting-casual-summary { flex: 1; min-width: 220px; }
+.accounting-page .accounting-casual-summary > summary { gap: 8px; }
+.accounting-page .accounting-casual-summary summary small { display: block; margin: 2px 0 0; font-size: .67rem; }
+.accounting-page .accounting-casual-summary[open] { flex-basis: 100%; order: 3; }
+.accounting-page .accounting-shop-table tbody .accounting-shop-group th { padding: 0; }
+.accounting-page .accounting-shop-table tbody tr:not(.accounting-shop-group) > th { padding: 5px 12px; }
+.accounting-page .accounting-shop-identity { display: flex; flex-direction: column; justify-content: center; align-items: flex-start; width: 100%; text-align: left; min-height: 44px; }
+.accounting-page .accounting-shop-identity small { margin-top: 0; font-size: .67rem; text-decoration: none; }
+@media (max-width: 900px) {
+  .accounting-page .accounting-casual-summary { order: 3; flex-basis: 100%; }
+}
+.accounting-page .accounting-sort-label { white-space: nowrap; flex-shrink: 0; }
+.accounting-page .accounting-sort-label select { width: auto; }
+.accounting-page .accounting-shop-table th:first-child { min-width: 0; }
+.accounting-page .accounting-shop-table thead tr:first-child th:first-child, .accounting-page .accounting-shop-table tbody tr:not(.accounting-shop-group) > th { min-width: 235px; }
+.accounting-source-context { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; background: #edf5ff; border: 1px solid #c9dcf2; border-radius: 9px; padding: 8px 12px; color: #335779; font-size: .82rem; }
+.accounting-source-context button { min-height: 44px; background: white; border: 1px solid #b5cbe5; border-radius: 7px; color: #155fa9; font: inherit; padding: 7px 12px; }

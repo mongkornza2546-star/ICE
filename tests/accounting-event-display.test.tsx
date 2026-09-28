@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AccountingPage } from '../src/features/accounting/AccountingPage';
 import {
@@ -181,7 +181,7 @@ describe('AccountingPage event booth and area display', () => {
       return { data: null, error: null };
     });
 
-    render(<AccountingPage role="admin" />);
+    render(<AccountingPage userRole="admin" />);
 
     // Should display clean booth title "บูธ 18"
     const boothLink = await screen.findByRole('button', { name: 'บูธ 18' });
@@ -190,12 +190,13 @@ describe('AccountingPage event booth and area display', () => {
     // Should NOT display EV-48fe246c... anywhere in table text
     expect(screen.queryByText(/EV-48fe246c/)).toBeNull();
 
-    // Group header and zone tab both render "ตึก c" without repetition or UUID
+    // Group header renders "ตึก c" without repetition or UUID
     const buttonsWithBuilding = screen.getAllByRole('button', { name: /ตึก c/ });
-    expect(buttonsWithBuilding.length).toBeGreaterThanOrEqual(2);
+    expect(buttonsWithBuilding.length).toBeGreaterThanOrEqual(1);
     expect(screen.queryByText(/ตึก c · ตึก c/)).toBeNull();
     expect(screen.queryByText(/1c495ba3/)).toBeNull();
 
+    fireEvent.click(screen.getByRole('button', { name: 'ตารางรายวัน' }));
     // Totals row should say "รวมร้านในหน้านี้ ตึก c"
     expect(screen.getByText('รวมร้านในหน้านี้ ตึก c')).toBeTruthy();
   });
