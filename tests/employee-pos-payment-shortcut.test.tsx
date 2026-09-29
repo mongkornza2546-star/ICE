@@ -54,6 +54,21 @@ describe('POS payment shortcut', () => {
     window.localStorage.clear();
   });
 
+  it('opens employee events from POS without requiring a delivery round action', async () => {
+    const user = userEvent.setup();
+    const onOpenEvents = vi.fn();
+    render(<EmployeeDeliveryWorkspace
+      gateway={createGateway(0)}
+      onOpenEvents={onOpenEvents}
+      requestScope="employee-1"
+      serviceDate="2026-09-25"
+      viewMode="pos"
+    />);
+
+    await user.click(await screen.findByRole('button', { name: 'เปิดอีเวนต์' }));
+    expect(onOpenEvents).toHaveBeenCalledOnce();
+  });
+
   it('opens the existing collection flow without recording another delivery', async () => {
     const user = userEvent.setup();
     const gateway = createGateway(240);

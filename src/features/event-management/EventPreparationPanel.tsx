@@ -71,7 +71,7 @@ export function EventPreparationPanel({ detail, gateway, onSaved }: {
     setTankShop(''); setNote('');
     return `${kind === 'handoff' ? 'บันทึกส่งมอบและสร้างบิลค่าเช่า' : 'บันทึกรับคืน'} ${count} ถังแล้ว`;
   });
-  return <section className="event-preparation event-participations">
+  return <section className="event-preparation event-participations" id="event-tank-operations">
     <header><div><h3>เตรียมงาน / ส่งล่วงหน้า</h3><p>วันเปิดงาน {event.start_date} · ค่าเช่าถังเริ่มวันเปิดงาน หรือวันส่งมอบหากส่งหลังเปิดงาน</p></div></header>
     {error ? <div className="event-feedback event-feedback--error" role="alert">{error}</div> : null}
     {success ? <div className="event-feedback event-feedback--success" role="status">{success}</div> : null}
@@ -95,7 +95,7 @@ export function EventPreparationPanel({ detail, gateway, onSaved }: {
       </form>
       <p>จากนั้นเลือกวันที่ส่งจริงในเมนูบันทึกส่งน้ำแข็ง แล้วเลือกอีเวนต์นี้ ระบบใช้ราคา สต็อก และยอดขายของวันที่ส่ง</p>
     </details> : null}
-    <details>
+    <details data-event-tank-details>
       <summary>บันทึกตั้งถัง / รับคืนถัง · ค้างทั้งหมด {participations.reduce((sum, row) => sum + balance(row.id), 0)} ถัง</summary>
       {event.status === 'draft' ? <p>เผยแพร่งานก่อนบันทึกส่งมอบถังจริง</p> : null}
       <form onSubmit={(e) => { e.preventDefault(); void saveTanks(); }}><fieldset disabled={busy}>

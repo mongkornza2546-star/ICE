@@ -13,7 +13,8 @@ import { RoundWorkspace } from './RoundWorkspace';
 import { ManagerStockAudit } from './ManagerStockAudit';
 import { FinancialOperations } from './FinancialOperations';
 import { EventManagementPage } from './EventManagementPage';
-import { Coins, Package, Storefront } from '@phosphor-icons/react';
+import { EmployeeEventPage } from './EmployeeEventPage';
+import { CalendarBlank, Coins, Package, Storefront } from '@phosphor-icons/react';
 import type { CollectionCloseResult, CollectionFocusRequest, UserProfile } from './types/app';
 import { toBangkokDateString } from './lib/serviceDate';
 import { clearNavigation, clearRecoveryForOwner, readNavigation, writeNavigation } from './lib/recoveryStorage';
@@ -64,7 +65,7 @@ export function RoleRouter({
   const [profileError, setProfileError] = useState<string | null>(null);
   const [activeView, setActiveView] = useState<AdminView>('manager_overview');
   const [financialPage, setFinancialPage] = useState<FinancialPage>('collection');
-  const [courierView, setCourierView] = useState<'withdrawal' | 'pos' | 'collection'>('pos');
+  const [courierView, setCourierView] = useState<'withdrawal' | 'pos' | 'events' | 'collection'>('pos');
   const [courierCollectionFocus, setCourierCollectionFocus] = useState<CollectionFocusRequest | null>(null);
   const [courierCollectionVisited, setCourierCollectionVisited] = useState(false);
   const [adminCollectionFocus, setAdminCollectionFocus] = useState<CollectionFocusRequest | null>(null);
@@ -311,6 +312,20 @@ export function RoleRouter({
             <span>POS</span>
           </button>
           <button
+            aria-current={courierView === 'events' ? 'page' : undefined}
+            disabled={deliveryDraftState.submitting}
+            onClick={() => {
+              if (courierView !== 'events' && !confirmLeavingDelivery()) return;
+              clearPosCollectionReturn(profile.id);
+              setCourierCollectionFocus(null);
+              setCourierView('events');
+            }}
+            type="button"
+          >
+            <CalendarBlank aria-hidden="true" size={22} weight="duotone" />
+            <span>อีเวนต์</span>
+          </button>
+          <button
             aria-current={courierView === 'collection' ? 'page' : undefined}
             disabled={deliveryDraftState.submitting}
             onClick={() => {
@@ -326,12 +341,12 @@ export function RoleRouter({
             <span>เก็บเงิน</span>
           </button>
         </nav>
-        <KeepAlive active={courierView !== 'collection'}>
+        <KeepAlive active={courierView === 'withdrawal' || courierView === 'pos'}>
           <EmployeeDeliveryWorkspace
             casualCustomerEnabled
             canCollectShopPayments={canCollectPayments}
             enableAssignedStockFlow={courierView === 'withdrawal'}
-            isActive={courierView !== 'collection'}
+            isActive={courierView === 'withdrawal' || courierView === 'pos'}
             onDraftStateChange={setDeliveryDraftState}
             onOpenCollection={(request) => {
               setCollectionCloseResult(null);
@@ -340,11 +355,15 @@ export function RoleRouter({
               setCourierCollectionVisited(true);
               setCourierView('collection');
             }}
+            onOpenEvents={() => setCourierView('events')}
             requestScope={profile.id}
             collectionReturnOrigin="courier-pos"
             collectionCloseResult={collectionCloseResult}
             viewMode={courierView === 'withdrawal' ? 'withdrawal' : 'pos'}
           />
+        </KeepAlive>
+        <KeepAlive active={courierView === 'events'}>
+          <EmployeeEventPage isActive={courierView === 'events'} />
         </KeepAlive>
         {courierCollectionVisited || courierView === 'collection' ? (
           <KeepAlive active={courierView === 'collection'}>

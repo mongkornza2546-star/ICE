@@ -12,8 +12,10 @@ function psql(sql) {
 }
 
 const admin = '10000000-0000-4000-8000-000000000001';
+const courier = '10000000-0000-4000-8000-000000000002';
 const today = `(clock_timestamp() at time zone 'Asia/Bangkok')::date`;
 function run(sql) { return psql(`set request.jwt.claim.sub = '${admin}'; ${sql}`).replace(/^SET\n/, ''); }
+function runAs(userId, sql) { return psql(`set request.jwt.claim.sub = '${userId}'; ${sql}`).replace(/^SET\n/, ''); }
 
 try {
   const started = docker(['run', '--rm', '-d', '--name', container, '-e', 'POSTGRES_PASSWORD=test', 'postgres:16-alpine']);
@@ -64,14 +66,14 @@ try {
   `);
 
   const directory = new URL('../supabase/migrations/', import.meta.url);
-  for (const name of readdirSync(directory).filter(name => /^\d{4}_.+\.sql$/.test(name) && name <= '0191_allow_event_carry_forward_collections.sql').sort()) {
+  for (const name of readdirSync(directory).filter(name => /^\d{4}_.+\.sql$/.test(name) && Number(name.slice(0, 4)) <= 197).sort()) {
     try {
       psql(`begin; ${readFileSync(new URL(name, directory), 'utf8')} commit;`);
     } catch (error) {
       throw new Error(`${name}: ${error.message}`);
     }
   }
-  console.log('All migrations through 0191 applied successfully');
+  console.log('All migrations through 0197 applied successfully');
 
   // Seed base entities
   psql(`
@@ -79,9 +81,14 @@ try {
     insert into auth.users (id, email, raw_user_meta_data) values (
       '10000000-0000-4000-8000-000000000001', 'admin@example.test',
       '{"display_name":"Admin user"}'::jsonb
+    ), (
+      '10000000-0000-4000-8000-000000000002', 'courier@example.test',
+      '{"display_name":"Courier user"}'::jsonb
     );
     update public.users set is_active = true, role = 'admin'
     where id = '10000000-0000-4000-8000-000000000001';
+    update public.users set is_active = true, role = 'courier'
+    where id = '10000000-0000-4000-8000-000000000002';
   `);
 
   // Activate event ice delivery
@@ -342,6 +349,86 @@ try {
   // Verify queue is now empty again
   const emptyQueue = JSON.parse(run(`select public.get_collection_run_queue('${runId}');`));
   assert.equal(emptyQueue.length, 0, 'Queue is cleared after paying carry-forward charge');
+
+  // 9. Employee event RPCs do not require a round assignment. They can read a
+  // published event, create one booth idempotently, and hand off tanks at the
+  // frozen rental price while the legacy return RPC stays manager-only.
+  const employeeOverview = JSON.parse(runAs(courier, 'select public.get_employee_event_overview();'));
+  assert.ok(employeeOverview.events.some(event => event.id === jobId));
+  const employeeDetail = JSON.parse(runAs(courier, `select public.get_employee_event_detail('${jobId}');`));
+  assert.equal(employeeDetail.booths.length, 2);
+
+  // A matching zone name must never override the event's actual venue.
+  const venueId = randomUUID();
+  run(`insert into public.buildings(id, code, name) values
+    ('${venueId}', 'IMPACT-TEST', 'Impact Arena'),
+    ('${randomUUID()}', 'FOOD-TEST', 'Food Zone');`);
+
+  const boothRequestId = randomUUID();
+  const employeeBooth = JSON.parse(runAs(courier, `
+    select public.create_employee_event_booth(
+      '${jobId}', '${boothRequestId}', 'B01', 'Employee booth', 'Food Zone', null, null
+    );
+  `));
+  assert.equal(employeeBooth.created, true);
+  assert.equal(employeeBooth.booth.booth_number, 'B01');
+  const boothRetry = JSON.parse(runAs(courier, `
+    select public.create_employee_event_booth(
+      '${jobId}', '${boothRequestId}', 'B01', 'Employee booth', 'Food Zone', null, null
+    );
+  `));
+  assert.equal(boothRetry.booth.id, employeeBooth.booth.id);
+
+  const drinkBooth = JSON.parse(runAs(courier, `
+    select public.create_employee_event_booth(
+      '${jobId}', '${randomUUID()}', 'B02', null, 'Drinks Zone', null, null
+    );
+  `));
+  const adminBooths = JSON.parse(run(`select public.create_event_shops('${jobId}', '${randomUUID()}',
+    jsonb_build_array(
+      jsonb_build_object('booth_number', 'C01', 'event_zone', 'Food Zone', 'start_date', ${today}, 'end_date', ${today} + 1),
+      jsonb_build_object('booth_number', 'C02', 'event_zone', 'Drinks Zone', 'start_date', ${today}, 'end_date', ${today} + 1)
+    ));`));
+  assert.equal(adminBooths.created_count, 2);
+  const destinations = JSON.parse(run(`
+    select jsonb_agg(jsonb_build_object('booth', part.booth_number,
+      'building_id', shop.building_id, 'zone_id', zone.id, 'zone_name', zone.name,
+      'shop_zone', shop.floor_or_zone) order by part.booth_number)
+    from public.event_participations part
+    join public.shops shop on shop.id = part.shop_id
+    join public.building_zones zone on zone.id = shop.zone_id
+    where part.event_job_id = '${jobId}' and part.booth_number in ('B01', 'B02', 'C01', 'C02');
+  `));
+  assert.equal(destinations.length, 4);
+  for (const destination of destinations) {
+    assert.equal(destination.building_id, venueId, 'Employee and admin booths use the actual venue');
+    assert.equal(destination.zone_name, destination.booth.endsWith('1') ? 'Food Zone' : 'Drinks Zone');
+    assert.equal(destination.shop_zone, destination.zone_name);
+  }
+  assert.notEqual(destinations[0].zone_id, destinations[1].zone_id, 'Named zones stay distinct');
+  assert.equal(destinations[0].zone_id, destinations[2].zone_id, 'Admin reuses employee Food Zone');
+  assert.equal(destinations[1].zone_id, destinations[3].zone_id, 'Admin reuses employee Drinks Zone');
+  assert.notEqual(employeeBooth.booth.shop_id, drinkBooth.booth.shop_id);
+  assert.equal(run(`select has_function_privilege('authenticated',
+    'public.resolve_event_shop_zone_internal(uuid,text)', 'execute');`), 'f');
+  assert.equal(run(`select has_function_privilege('anon',
+    'public.resolve_event_shop_zone_internal(uuid,text)', 'execute');`), 'f');
+  assert.throws(() => runAs(courier, `select public.create_event_shops('${jobId}', '${randomUUID()}', '[]'::jsonb);`),
+    /Only an active admin or round lead/);
+
+  const employeeHandoff = JSON.parse(runAs(courier, `
+    select public.record_employee_event_tank_handoff(
+      '${employeeBooth.booth.id}', 2, 'Employee handoff', '${randomUUID()}'
+    );
+  `));
+  assert.equal(employeeHandoff.quantity, 2);
+  assert.equal(Number(employeeHandoff.rental_unit_price), 100);
+  assert.ok(employeeHandoff.charge_id);
+  assert.throws(() => runAs(courier, `
+    select public.record_event_tank_movement(
+      '${employeeBooth.booth.id}', 'return', 1, ${today}, 'Unauthorized return', '${randomUUID()}'
+    );
+  `), /Only an active admin or round lead/);
 
   console.log('All event tank rental billing postgres tests PASSED!');
 } finally {

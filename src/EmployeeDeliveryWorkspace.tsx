@@ -727,6 +727,7 @@ export function EmployeeDeliveryWorkspace({
   isActive = true,
   onDraftStateChange,
   onOpenCollection,
+  onOpenEvents,
   collectionReturnOrigin = 'courier-pos',
   collectionCloseResult = null,
   requestScope = 'default',
@@ -741,6 +742,7 @@ export function EmployeeDeliveryWorkspace({
   isActive?: boolean;
   onDraftStateChange?: (state: EmployeeDeliveryDraftState) => void;
   onOpenCollection?: (request: CollectionFocusRequest) => void;
+  onOpenEvents?: () => void;
   collectionReturnOrigin?: 'courier-pos' | 'admin-delivery';
   collectionCloseResult?: CollectionCloseResult | null;
   requestScope?: string;
@@ -1016,6 +1018,10 @@ export function EmployeeDeliveryWorkspace({
             ? 'เติมจากรถเข้าจุดถือครอง คืนของที่เหลือกลับขึ้นรถ หรือบันทึกน้ำแข็งละลายจากสต๊อกของคุณ'
             : 'เลือกร้านก่อน ระบบจะตรวจสต๊อกต้นทาง ราคา และเงื่อนไขชำระของร้านนั้น'}</p>
         </div>
+        <div className="employee-intro__actions">
+        {resolvedViewMode === 'pos' && onOpenEvents ? <button className="secondary-button" disabled={data.anySubmitting} onClick={onOpenEvents} type="button">
+          <CalendarBlank aria-hidden="true" size={18} />เปิดอีเวนต์
+        </button> : null}
         {data.selectedRound ? (
           <div className={`employee-round-badge ${data.selectedRound.status === 'closed' ? 'employee-round-badge--closed' : ''}`}>
             {resolvedViewMode === 'withdrawal' ? <CalendarBlank aria-hidden="true" size={24} weight="duotone" /> : null}
@@ -1028,6 +1034,7 @@ export function EmployeeDeliveryWorkspace({
               : null}
           </div>
         ) : null}
+        </div>
       </section>
 
       {openRounds.length > 1 ? (

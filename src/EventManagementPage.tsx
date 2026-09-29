@@ -1,5 +1,6 @@
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
+  ArrowLeft,
   CalendarBlank,
   CheckCircle,
   CircleNotch,
@@ -29,7 +30,7 @@ import type {
 } from './features/event-management/types';
 
 type ManagerRole = 'admin' | 'round_lead';
-type EventFilter = 'all' | 'draft' | 'published' | 'cancelled';
+type EventFilter = 'open' | 'draft' | 'preparation' | 'upcoming' | 'active' | 'ended' | 'cancelled' | 'all';
 type BusyAction = 'event' | 'participation' | 'publish' | 'cancel' | null;
 
 interface EventDraft {
@@ -212,7 +213,7 @@ export function EventManagementPage({
   const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState('');
-  const [filter, setFilter] = useState<EventFilter>('all');
+  const [filter, setFilter] = useState<EventFilter>('open');
   const [eventDraft, setEventDraft] = useState<EventDraft | null>(null);
   const [participationDraft, setParticipationDraft] = useState<ParticipationDraft | null>(null);
   const [shops, setShops] = useState<EventShopOption[] | null>(null);
@@ -247,7 +248,9 @@ export function EventManagementPage({
         ? preferredId
         : selectedId && nextEvents.some((event) => event.id === selectedId)
           ? selectedId
-          : nextEvents[0]?.id ?? null;
+          : nextEvents.find((event) => !['ended', 'cancelled'].includes(displayStatus(event).tone))?.id
+            ?? nextEvents[0]?.id
+            ?? null;
       setSelectedId(nextSelectedId);
       if (!nextSelectedId) {
         setDetail(null);
@@ -294,11 +297,20 @@ export function EventManagementPage({
 
   const filteredEvents = useMemo(() => {
     const normalizedQuery = query.trim().toLocaleLowerCase('th');
-    return events.filter((event) => (
-      (filter === 'all' || event.status === filter)
-      && (!normalizedQuery || [event.name, event.organizer_name, event.location]
+    return events.filter((event) => {
+      const visibleStatus = displayStatus(event);
+      const matchesFilter = filter === 'all'
+        || (filter === 'open' && visibleStatus.tone !== 'ended' && visibleStatus.tone !== 'cancelled')
+        || (filter === 'draft' && event.status === 'draft')
+        || (filter === 'cancelled' && event.status === 'cancelled')
+        || (filter === 'preparation' && visibleStatus.label === 'เตรียมงาน')
+        || (filter === 'upcoming' && visibleStatus.label === 'กำลังจะเริ่ม')
+        || (filter === 'active' && visibleStatus.tone === 'active')
+        || (filter === 'ended' && visibleStatus.tone === 'ended');
+      return matchesFilter
+      && (!normalizedQuery || [event.name, event.location]
         .some((value) => value.toLocaleLowerCase('th').includes(normalizedQuery)))
-    ));
+    });
   }, [events, filter, query]);
 
   const availableShops = useMemo(() => {
@@ -530,15 +542,19 @@ export function EventManagementPage({
       {success ? <div className="event-feedback event-feedback--success" role="status"><CheckCircle size={19} />{success}<button aria-label="ปิดข้อความ" onClick={() => setSuccess(null)} type="button"><X size={15} /></button></div> : null}
       {actionError && !eventDraft && !participationDraft && !cancelTarget ? <div className="event-feedback event-feedback--error" role="alert"><WarningCircle size={19} />{actionError}</div> : null}
 
-      <div className="event-management-grid">
+      {!detail && !detailLoading ? <div className="event-management-grid event-management-grid--overview">
         <section className="event-browser" aria-label="รายการงานอีเวนต์">
           <div className="event-browser__tools">
             <label className="event-search"><MagnifyingGlass size={18} /><span className="sr-only">ค้นหางาน</span><input onChange={(event) => setQuery(event.target.value)} placeholder="ค้นหาชื่องาน ผู้จัด สถานที่" value={query} /></label>
-            <div className="event-filter-tabs" role="group" aria-label="กรองสถานะงาน">
+            <div className="event-filter-tabs event-filter-tabs--lifecycle" role="group" aria-label="กรองสถานะงาน">
               {([
+                ['open', 'ยังไม่จบ'],
                 ['all', 'ทั้งหมด'],
                 ['draft', 'ฉบับร่าง'],
-                ['published', 'เผยแพร่'],
+                ['preparation', 'เตรียมงาน'],
+                ['upcoming', 'กำลังจะเริ่ม'],
+                ['active', 'กำลังจัดงาน'],
+                ['ended', 'จบงาน'],
                 ['cancelled', 'ยกเลิก'],
               ] as Array<[EventFilter, string]>).map(([value, label]) => (
                 <button aria-pressed={filter === value} key={value} onClick={() => setFilter(value)} type="button">{label}</button>
@@ -561,14 +577,15 @@ export function EventManagementPage({
             {filteredEvents.length === 0 ? <div className="event-empty-list"><CalendarBlank size={26} /><p>{events.length === 0 ? 'ยังไม่มีงานอีเวนต์' : 'ไม่พบงานตามตัวกรอง'}</p>{events.length === 0 ? <button onClick={() => openEventEditor()} type="button">สร้างงานแรก</button> : null}</div> : null}
           </div>
         </section>
+      </div> : null}
 
-        <section className="event-detail" aria-live="polite">
-          {detailLoading ? <div className="event-detail-loading"><CircleNotch className="event-spin" size={26} />กำลังโหลดรายละเอียด</div> : null}
-          {!detailLoading && detail ? (
+      {detailLoading ? <section className="event-detail event-detail--full" aria-live="polite"><div className="event-detail-loading"><CircleNotch className="event-spin" size={26} />กำลังโหลดรายละเอียด</div></section> : null}
+      {!detailLoading && detail ? <section className="event-detail event-detail--full" aria-live="polite">
             <EventDetail
               busyAction={busyAction}
               detail={detail}
               onImport={() => setImportOpen(true)}
+              onBack={() => { ++loadRequest.current; setSelectedId(null); setDetail(null); setActionError(null); }}
               onAddParticipation={() => void openParticipationEditor()}
               onCancelEvent={() => { setActionError(null); setCancelTarget({ kind: 'event', id: detail.event.id, label: detail.event.name }); }}
               onCancelParticipation={(participation) => { setActionError(null); setCancelTarget({ kind: 'participation', id: participation.id, label: `${participation.shop_code} ${participation.shop_name}` }); }}
@@ -582,10 +599,7 @@ export function EventManagementPage({
                 if (request === loadRequest.current) { setDetail(nextDetail); setEvents(nextEvents); }
               }} />}
             />
-          ) : null}
-          {!detailLoading && !detail ? <div className="event-detail-placeholder"><CalendarBlank size={34} /><p>เลือกงานเพื่อดูรายละเอียด</p></div> : null}
-        </section>
-      </div>
+      </section> : null}
 
       {importOpen && detail ? <EventExcelImportDialog detail={detail} gateway={gateway} onClose={() => setImportOpen(false)} onImported={async (result) => {
         setImportOpen(false);
@@ -728,6 +742,7 @@ function EventDetail({
   detail,
   onAddParticipation,
   onImport,
+  onBack,
   onCancelEvent,
   onCancelParticipation,
   onEditEvent,
@@ -740,6 +755,7 @@ function EventDetail({
   detail: EventManagementDetail;
   onAddParticipation: () => void;
   onImport: () => void;
+  onBack: () => void;
   onCancelEvent: () => void;
   onCancelParticipation: (participation: EventParticipation) => void;
   onEditEvent: () => void;
@@ -754,11 +770,23 @@ function EventDetail({
     || (a.booth_number ?? a.shop_code).localeCompare(b.booth_number ?? b.shop_code, 'th', { numeric: true })
   ));
   const activeParticipations = participations.filter((participation) => participation.status === 'active');
+  const tankBalance = (detail.tank_movements ?? []).reduce((total, movement) => (
+    total + (movement.movement_kind === 'handoff' ? movement.quantity : -movement.quantity)
+  ), 0);
+  const openTankOperations = () => {
+    const panel = document.getElementById('event-tank-operations');
+    const tankDetails = panel?.querySelector<HTMLDetailsElement>('[data-event-tank-details]');
+    if (tankDetails) tankDetails.open = true;
+    panel?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
   return (
     <div className="event-detail__content">
+      <button className="event-back-button" onClick={onBack} type="button"><ArrowLeft size={17} />กลับไปหน้ารวมงาน</button>
       <header className="event-detail__header">
-        <div><span className={`event-status event-status--${status.tone}`}>{status.label}</span><h2>{event.name}</h2><p>{event.organizer_name}</p></div>
+        <div><span className={`event-status event-status--${status.tone}`}>{status.label}</span><h2>{event.name}</h2><p>{event.organizer_name}</p><p className="event-detail__counts">{activeParticipations.length} บูธ · ถังค้าง {tankBalance} ใบ</p></div>
         <div className="event-detail__actions">
+          {event.status !== 'cancelled' ? <button className="secondary-button" disabled={Boolean(busyAction)} onClick={onAddParticipation} type="button"><Plus size={16} />เพิ่มบูธ</button> : null}
+          {event.status === 'published' ? <button className="secondary-button" disabled={Boolean(busyAction)} onClick={openTankOperations} type="button">ส่งเพิ่มถัง</button> : null}
           {event.status === 'draft' ? <button className="secondary-button" disabled={Boolean(busyAction)} onClick={onEditEvent} type="button"><PencilSimple size={16} />แก้ข้อมูลงาน</button> : null}
           {event.status === 'draft' ? <button className="primary-button" disabled={Boolean(busyAction) || !readiness.is_ready} onClick={onPublish} type="button">{busyAction === 'publish' ? 'กำลังเผยแพร่...' : 'Publish'}</button> : null}
           {event.status !== 'cancelled' ? <button className="event-danger-button" disabled={Boolean(busyAction)} onClick={onCancelEvent} type="button">ยกเลิกงาน</button> : null}
