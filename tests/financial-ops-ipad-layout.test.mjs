@@ -15,6 +15,11 @@ test('collection shop photos cannot cover shop details on iPad Safari', () => {
   );
   assert.match(
     css,
+    /\.financial-ops__shop-visual\s*\{[^}]*height:\s*100%;[^}]*align-self:\s*stretch;/,
+    'Safari must receive an explicit height because button grid items can otherwise collapse to 0px',
+  );
+  assert.match(
+    css,
     /\.financial-ops__shop-visual\s*>\s*img\s*\{[^}]*position:\s*absolute;[^}]*inset:\s*0;[^}]*object-fit:\s*cover;/,
   );
 });
