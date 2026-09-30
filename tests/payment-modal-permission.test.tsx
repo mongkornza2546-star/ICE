@@ -56,13 +56,21 @@ describe('PaymentModal collection capability', () => {
       onPaymentMethodChange={vi.fn()}
       onPrintReceipt={vi.fn()}
       onRecordPayment={onRecordPayment}
+      onClearChargeSelection={vi.fn()}
+      onConfirmSelectionReview={vi.fn()}
+      onSelectAllCharges={vi.fn()}
+      onSelectTodayCharges={vi.fn()}
+      onToggleCharge={vi.fn()}
       onReferenceChange={vi.fn()}
       onRequestDueDate={onRequestDueDate}
       paymentReady
       receipt={null}
       reference=""
       remainingAmount={0}
+      selectedChargeIds={['charge-1']}
+      selectedOutstandingAmount={120}
       selectedShop={selectedShop}
+      selectionReviewRequired={false}
       serviceDate="2026-08-27"
     />);
 
@@ -100,12 +108,19 @@ describe('PaymentModal collection capability', () => {
       onPaymentMethodChange={vi.fn()}
       onPrintReceipt={vi.fn()}
       onRecordPayment={vi.fn()}
+      onClearChargeSelection={vi.fn()}
+      onConfirmSelectionReview={vi.fn()}
+      onSelectAllCharges={vi.fn()}
+      onSelectTodayCharges={vi.fn()}
+      onToggleCharge={vi.fn()}
       onReferenceChange={vi.fn()}
       onRequestDueDate={vi.fn()}
       paymentReady
       receipt={null}
       reference=""
       remainingAmount={0}
+      selectedChargeIds={['charge-prior', 'charge-latest']}
+      selectedOutstandingAmount={150}
       selectedShop={{
         ...selectedShop,
         outstanding_amount: 150,
@@ -121,13 +136,14 @@ describe('PaymentModal collection capability', () => {
           },
         ],
       }}
+      selectionReviewRequired={false}
       serviceDate="2026-08-27"
     />);
 
     const summary = screen.getByRole('region', { name: 'สรุปยอดหลังส่งรอบล่าสุด' });
     expect(summary.textContent).toContain('ยอดค้างก่อนหน้า฿120.00');
     expect(summary.textContent).toContain('ยอดส่งรอบล่าสุด฿30.00');
-    expect(summary.textContent).toContain('ยอดรับชำระทั้งหมด฿150.00');
+    expect(summary.textContent).toContain('ยอดบิลที่เลือก฿150.00');
   });
 
   it('shows zero prior balance when the latest delivery is the only unpaid charge', () => {
@@ -149,13 +165,21 @@ describe('PaymentModal collection capability', () => {
       onPaymentMethodChange={vi.fn()}
       onPrintReceipt={vi.fn()}
       onRecordPayment={vi.fn()}
+      onClearChargeSelection={vi.fn()}
+      onConfirmSelectionReview={vi.fn()}
+      onSelectAllCharges={vi.fn()}
+      onSelectTodayCharges={vi.fn()}
+      onToggleCharge={vi.fn()}
       onReferenceChange={vi.fn()}
       onRequestDueDate={vi.fn()}
       paymentReady
       receipt={null}
       reference=""
       remainingAmount={0}
+      selectedChargeIds={['charge-1']}
+      selectedOutstandingAmount={120}
       selectedShop={selectedShop}
+      selectionReviewRequired={false}
       serviceDate="2026-08-27"
     />);
 

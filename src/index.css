@@ -1875,15 +1875,13 @@ input:disabled, select:disabled, textarea:disabled { background: #f2f5f8; color:
 .financial-ops__inline-panel .financial-ops__payment-card h2 { font-size: .84rem; }.financial-ops__inline-panel .financial-ops__payment-card header small { display: block; font-size: .68rem; }.financial-ops__inline-panel .financial-ops__payment-card header b { color: #74869a; font-size: .68rem; font-weight: 500; }.financial-ops__inline-panel .financial-ops__payment-card header > button { width: 30px; height: 30px; border: 0; }
 .financial-ops__inline-panel .financial-ops__payment { min-height: 526px; align-content: start; gap: 10px; }
 .financial-ops__inline-panel .financial-ops__amount-due { padding: 10px 12px; border-radius: 9px; background: #fff; }.financial-ops__inline-panel .financial-ops__amount-due span { font-size: .75rem; }.financial-ops__inline-panel .financial-ops__amount-due strong { font-size: 1.15rem; }
-.financial-ops__inline-panel .financial-ops__charge-list { max-height: 190px; overflow-y: auto; gap: 5px; padding: 8px; border: 0; border-radius: 0; background: #fff; }.financial-ops__inline-panel .financial-ops__charge-list > strong { font-size: .68rem; }.financial-ops__inline-panel .financial-ops__charge-list > article { padding: 7px; }.financial-ops__inline-panel .financial-ops__due-date-request { display: none; }
+.financial-ops__inline-panel .financial-ops__charge-list { max-height: 250px; overflow-y: auto; gap: 5px; padding: 8px; border: 0; border-radius: 0; background: #fff; }.financial-ops__inline-panel .financial-ops__charge-list-title > strong { font-size: .68rem; }.financial-ops__inline-panel .financial-ops__charge-list > article { padding: 7px; }.financial-ops__inline-panel .financial-ops__due-date-request { display: none; }
 .financial-ops__inline-panel .financial-ops__payment-methods h3, .financial-ops__inline-panel .financial-ops__payment > label > span:first-child { font-size: .75rem; }
 .financial-ops__inline-panel .financial-ops__payment-methods button { min-height: 48px; padding: 6px; font-size: .72rem; }
 .financial-ops__inline-panel .financial-ops__received-box { grid-template-columns: minmax(0, 1.2fr) minmax(130px, .8fr); gap: 8px; padding: 10px; border: 1px solid #dce7f0; border-radius: 10px; background: #fbfdff; }
 .financial-ops__inline-panel .financial-ops__payment-amount input { height: 46px; border-width: 1px; font-size: .95rem; }
 .financial-ops__inline-panel .financial-ops__currency { height: 46px; }
 .financial-ops__inline-datetime { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }.financial-ops__inline-datetime label { display: grid; gap: 5px; color: #294867; font-size: .68rem; font-weight: 700; }.financial-ops__inline-datetime input { min-width: 0; width: 100%; height: 38px; padding: 0 9px; border: 1px solid #d3dfeb; border-radius: 7px; color: #52677f; background: #fff; font: inherit; font-size: .68rem; }
-.financial-ops__quick-exact { grid-column: 1 / -1; min-height: 36px; border: 1px solid #75b2f2; border-radius: 8px; color: #065ec0; background: #eef6ff; font: inherit; font-size: .78rem; font-weight: 800; cursor: pointer; transition: all 120ms ease; }
-.financial-ops__quick-exact:hover:not(:disabled) { background: #deedff; border-color: #3b93ee; color: #034ca0; }
 .financial-ops__inline-panel .financial-ops__payment-reference input { min-height: 38px; }.financial-ops__inline-panel .financial-ops__dropzone { min-height: 52px; }
 .financial-ops__inline-panel .financial-ops__payment-actions { grid-template-columns: 1fr; align-self: end; margin: auto 0 0; padding: 0; border: 0; }.financial-ops__inline-panel .financial-ops__payment-actions button { min-height: 42px; }.financial-ops__inline-panel .financial-ops__payment-actions button:first-child { display: none; }
 .financial-ops__secondary { display: grid; gap: 16px; padding-top: 50px; }
@@ -2004,14 +2002,25 @@ input:disabled, select:disabled, textarea:disabled { background: #f2f5f8; color:
 .financial-ops__payment-image { width: 56px; height: 56px; display: grid; overflow: hidden; border-radius: 12px; place-items: center; color: #237ce7; background: #edf6ff; }
 .financial-ops__payment-image img { width: 100%; height: 100%; object-fit: cover; }
 .financial-ops__charge-list { display: grid; gap: 7px; padding: 12px; border: 1px solid #dce8f1; border-radius: 12px; background: #f8fbfe; }
-.financial-ops__charge-list > strong { display: flex; align-items: center; gap: 6px; color: #365873; font-size: .75rem; }
+.financial-ops__charge-list-title { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.financial-ops__charge-list-title > strong { display: flex; align-items: center; gap: 6px; color: #365873; font-size: .75rem; }
+.financial-ops__charge-list-title > small { flex: 0 0 auto; }
+.financial-ops__charge-selection-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.financial-ops__charge-selection-actions button, .financial-ops__selection-warning button { min-height: 32px; padding: 5px 8px; border: 1px solid #b9d2e8; border-radius: 7px; color: #0869c7; background: #fff; font: inherit; font-size: .66rem; font-weight: 800; }
+.financial-ops__charge-selection-actions button:disabled, .financial-ops__selection-warning button:disabled { cursor: not-allowed; opacity: .52; }
+.financial-ops__selection-warning { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 9px 10px; border: 1px solid #efc46d; border-radius: 8px; color: #774b00; background: #fff8e7; font-size: .68rem; font-weight: 700; }
+.financial-ops__selection-warning button { flex: 0 0 auto; border-color: #d69a25; color: #774b00; }
+.financial-ops__selection-empty { margin: 0; padding: 8px 10px; border-radius: 7px; color: #8b4e00; background: #fff3dc; font-size: .69rem; font-weight: 700; text-align: center; }
 .financial-ops__charge-list > article { display: grid; gap: 8px; padding: 11px; border: 1px solid #e1ebf3; border-radius: 9px; background: #fff; }
 .financial-ops__charge-list > article.is-prior-balance { border-color: #f0d9aa; background: #fffaf0; }
-.financial-ops__charge-list article > header, .financial-ops__charge-toggle { display: flex; align-items: start; justify-content: space-between; gap: 12px; }
-.financial-ops__charge-list article > header > span, .financial-ops__charge-toggle > span { display: grid; gap: 2px; }
+.financial-ops__charge-list > article.is-selected { border-color: #6baaf0; box-shadow: inset 3px 0 #167cf0; }
+.financial-ops__charge-heading { display: flex; align-items: center; gap: 8px; }
+.financial-ops__charge-selector { min-width: 0; flex: 1; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: start; gap: 9px; cursor: pointer; }
+.financial-ops__charge-selector > input { width: 18px; height: 18px; margin: 2px 0 0; accent-color: #0875db; }
+.financial-ops__charge-selector > span { min-width: 0; display: grid; gap: 2px; }
 .financial-ops__charge-total { flex: 0 0 auto; text-align: right; }
-.financial-ops__charge-toggle { width: 100%; padding: 0; border: 0; color: inherit; background: transparent; font: inherit; text-align: left; cursor: pointer; }
-.financial-ops__charge-toggle:hover b, .financial-ops__charge-toggle:focus-visible b { color: #0869c7; }
+.financial-ops__charge-toggle { width: 30px; height: 30px; flex: 0 0 auto; display: grid; padding: 0; border: 0; border-radius: 6px; place-items: center; color: inherit; background: transparent; font: inherit; cursor: pointer; }
+.financial-ops__charge-toggle:hover, .financial-ops__charge-toggle:focus-visible { color: #0869c7; background: #edf6ff; }
 .financial-ops__charge-toggle:focus-visible { border-radius: 5px; outline: 2px solid #69aef0; outline-offset: 3px; }
 .financial-ops__charge-caret { flex: 0 0 auto; align-self: center; color: #6d8499; transition: transform .16s ease; }
 .financial-ops__charge-list article.is-expanded .financial-ops__charge-caret { transform: rotate(180deg); }
@@ -2057,7 +2066,7 @@ input:disabled, select:disabled, textarea:disabled { background: #f2f5f8; color:
 .financial-ops__quick-amounts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 9px; }
 .financial-ops__quick-amounts button { min-height: 33px; border: 1px solid #d5e1ec; border-radius: 8px; color: #0872e8; background: #fff; font: inherit; font-size: .78rem; font-weight: 700; }
 .financial-ops__quick-amounts button:hover { border-color: #75b2f2; background: #f0f8ff; }
-.financial-ops__payment-summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 10px 0; border: 1px solid #e1ebf3; border-radius: 9px; background: #f2faff; }
+.financial-ops__payment-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); padding: 10px 0; border: 1px solid #e1ebf3; border-radius: 9px; background: #f2faff; }
 .financial-ops__payment-summary > span { min-width: 0; display: grid; gap: 1px; padding: 0 13px; text-align: center; }
 .financial-ops__payment-summary > span + span { border-left: 1px dashed #c7ddec; }
 .financial-ops__payment-summary small { color: #5e7890; font-size: .69rem; font-weight: 700; }

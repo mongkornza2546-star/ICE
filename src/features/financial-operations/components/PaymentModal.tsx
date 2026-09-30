@@ -33,6 +33,9 @@ export function PaymentModal({
   allocatedAmount,
   changeAmount,
   remainingAmount,
+  selectedChargeIds,
+  selectedOutstandingAmount,
+  selectionReviewRequired,
   evidenceRequired,
   paymentReady,
   dialogRef,
@@ -43,6 +46,11 @@ export function PaymentModal({
   onEvidenceChange,
   onReferenceChange,
   onRecordPayment,
+  onToggleCharge,
+  onSelectAllCharges,
+  onSelectTodayCharges,
+  onClearChargeSelection,
+  onConfirmSelectionReview,
   onEditCharge,
   onPrintReceipt,
   onRequestDueDate,
@@ -62,6 +70,9 @@ export function PaymentModal({
   allocatedAmount: number;
   changeAmount: number;
   remainingAmount: number;
+  selectedChargeIds: string[];
+  selectedOutstandingAmount: number;
+  selectionReviewRequired: boolean;
   evidenceRequired: boolean;
   paymentReady: boolean;
   dialogRef: RefObject<HTMLDivElement>;
@@ -72,6 +83,11 @@ export function PaymentModal({
   onEvidenceChange: (file: File | null) => void;
   onReferenceChange: (reference: string) => void;
   onRecordPayment: () => void;
+  onToggleCharge: (chargeId: string) => void;
+  onSelectAllCharges: () => void;
+  onSelectTodayCharges: () => void;
+  onClearChargeSelection: () => void;
+  onConfirmSelectionReview: () => void;
   onEditCharge?: (charge: QueueShop['charges'][number]) => void;
   onPrintReceipt: (receipt: PaymentReceipt) => void;
   onRequestDueDate: (charge: QueueShop['charges'][number]) => void;
@@ -85,6 +101,7 @@ export function PaymentModal({
     ? Math.max(Number(selectedShop.outstanding_amount) - Number(focusedCharge.outstanding_amount), 0)
     : 0;
   const identity = formatCollectionShopIdentity(selectedShop);
+  const selectedChargeIdSet = new Set(selectedChargeIds);
   return (
     <div
       aria-label={`รับเงิน ${identity.title}`}
@@ -141,15 +158,15 @@ export function PaymentModal({
         ) : (
           <div className="financial-ops__payment">
             <section className="financial-ops__amount-due" aria-label="ยอดที่ต้องชำระ">
-              <span>ยอดที่ต้องชำระ</span>
-              <strong>{money.format(selectedShop.outstanding_amount)}</strong>
+              <span>ยอดบิลที่เลือก</span>
+              <strong>{money.format(selectedOutstandingAmount)}</strong>
             </section>
 
             {focusedCharge ? (
               <section className="financial-ops__payment-breakdown" aria-label="สรุปยอดหลังส่งรอบล่าสุด">
                 <span><small>ยอดค้างก่อนหน้า</small><b>{money.format(priorOutstandingAmount)}</b></span>
                 <span><small>ยอดส่งรอบล่าสุด</small><b>{money.format(focusedCharge.outstanding_amount)}</b></span>
-                <span><small>ยอดรับชำระทั้งหมด</small><strong>{money.format(selectedShop.outstanding_amount)}</strong></span>
+                <span><small>ยอดบิลที่เลือก</small><strong>{money.format(selectedOutstandingAmount)}</strong></span>
               </section>
             ) : null}
 
@@ -158,10 +175,28 @@ export function PaymentModal({
             ) : null}
 
             <section className="financial-ops__charge-list" aria-label="รายละเอียดบิลและรายการที่สั่ง">
-              <strong><ListNumbers aria-hidden="true" size={18} /> รายละเอียดบิลและรายการที่สั่ง</strong>
+              <div className="financial-ops__charge-list-title">
+                <strong><ListNumbers aria-hidden="true" size={18} /> เลือกบิลที่ต้องการรับชำระ</strong>
+                <small>เลือกแล้ว {selectedChargeIds.length} จาก {selectedShop.charges.length} บิล</small>
+              </div>
+              <div className="financial-ops__charge-selection-actions" aria-label="คำสั่งเลือกบิล">
+                <button disabled={busy || !canRecordPayment} onClick={onSelectAllCharges} type="button">เลือกทั้งหมด</button>
+                <button disabled={busy || !canRecordPayment} onClick={onSelectTodayCharges} type="button">เฉพาะบิลวันนี้</button>
+                <button disabled={busy || !canRecordPayment} onClick={onClearChargeSelection} type="button">ล้างการเลือก</button>
+              </div>
+              {selectionReviewRequired ? (
+                <div className="financial-ops__selection-warning" role="alert">
+                  <span>ยอดหรือรายการบิลเปลี่ยนจากข้อมูลที่เปิดไว้ กรุณาตรวจสอบยอดก่อนบันทึก</span>
+                  <button disabled={busy || !canRecordPayment} onClick={onConfirmSelectionReview} type="button">ตรวจสอบแล้ว</button>
+                </div>
+              ) : null}
+              {selectedChargeIds.length === 0 ? (
+                <p className="financial-ops__selection-empty" role="status">กรุณาเลือกอย่างน้อย 1 บิลเพื่อรับชำระ</p>
+              ) : null}
               {selectedShop.charges.map((charge) => {
                 const isPriorBalance = charge.service_date !== serviceDate;
                 const isExpanded = !isPanel || expandedChargeId === charge.charge_id;
+                const isSelected = selectedChargeIdSet.has(charge.charge_id);
                 const chargeHeader = <>
                   <span>
                     <em>{isPriorBalance ? 'ยอดค้างจากวันอื่น' : 'บิลวันนี้'}</em>
@@ -171,18 +206,29 @@ export function PaymentModal({
                   <span className="financial-ops__charge-total"><small>ยอดค้างบิลนี้</small><b>{money.format(charge.outstanding_amount)}</b></span>
                 </>;
                 return (
-                  <article className={`${isPriorBalance ? 'is-prior-balance ' : ''}${isExpanded ? 'is-expanded' : ''}`.trim()} key={charge.charge_id}>
-                    {isPanel ? <button
-                      aria-controls={`financial-charge-items-${charge.charge_id}`}
-                      aria-expanded={isExpanded}
-                      aria-label={`ดูรายละเอียดบิลส่งของ ${charge.charge_number ?? 'ขายสด'}`}
-                      className="financial-ops__charge-toggle"
-                      onClick={() => setExpandedChargeId((current) => current === charge.charge_id ? null : charge.charge_id)}
-                      type="button"
-                    >
-                      {chargeHeader}
-                      <CaretDown aria-hidden="true" className="financial-ops__charge-caret" size={17} weight="bold" />
-                    </button> : <header>{chargeHeader}</header>}
+                  <article className={`${isPriorBalance ? 'is-prior-balance ' : ''}${isExpanded ? 'is-expanded ' : ''}${isSelected ? 'is-selected' : ''}`.trim()} key={charge.charge_id}>
+                    <div className="financial-ops__charge-heading">
+                      <label className="financial-ops__charge-selector">
+                        <input
+                          aria-label={`เลือกบิล ${charge.charge_number ?? 'ขายสด'}`}
+                          checked={isSelected}
+                          disabled={busy || !canRecordPayment}
+                          onChange={() => onToggleCharge(charge.charge_id)}
+                          type="checkbox"
+                        />
+                        {chargeHeader}
+                      </label>
+                      {isPanel ? <button
+                        aria-controls={`financial-charge-items-${charge.charge_id}`}
+                        aria-expanded={isExpanded}
+                        aria-label={`ดูรายละเอียดบิลส่งของ ${charge.charge_number ?? 'ขายสด'}`}
+                        className="financial-ops__charge-toggle"
+                        onClick={() => setExpandedChargeId((current) => current === charge.charge_id ? null : charge.charge_id)}
+                        type="button"
+                      >
+                        <CaretDown aria-hidden="true" className="financial-ops__charge-caret" size={17} weight="bold" />
+                      </button> : null}
+                    </div>
                     <div
                       aria-label={`รายการส่งของบิล ${charge.charge_number ?? 'ขายสด'}`}
                       className="financial-ops__charge-items"
@@ -229,7 +275,7 @@ export function PaymentModal({
                     <button
                       aria-pressed={method === allowedMethod}
                       className={method === allowedMethod ? 'is-selected' : ''}
-                      disabled={!canRecordPayment}
+                      disabled={busy || !canRecordPayment}
                       key={allowedMethod}
                       onClick={() => onPaymentMethodChange(allowedMethod)}
                       type="button"
@@ -248,7 +294,7 @@ export function PaymentModal({
                 <span className="financial-ops__currency" aria-hidden="true">฿</span>
                 <input
                   aria-label="ยอดรับเงินจริง"
-                  disabled={!canRecordPayment}
+                  disabled={busy || !canRecordPayment}
                   inputMode="decimal"
                   min="0.01"
                   onChange={(event) => onAmountChange(event.target.value)}
@@ -275,16 +321,8 @@ export function PaymentModal({
 
             {method === 'cash' ? (
               <div className="financial-ops__quick-amounts" aria-label="เลือกยอดรับเงินด่วน">
-                <button
-                  className="financial-ops__quick-exact"
-                  disabled={!canRecordPayment}
-                  onClick={() => onAmountChange(Number(selectedShop.outstanding_amount).toFixed(2))}
-                  type="button"
-                >
-                  จ่ายพอดี
-                </button>
                 {[100, 200, 500, 1000].map((value) => (
-                  <button disabled={!canRecordPayment} key={value} onClick={() => onAmountChange(value.toFixed(2))} type="button">
+                  <button disabled={busy || !canRecordPayment} key={value} onClick={() => onAmountChange(value.toFixed(2))} type="button">
                     {value.toLocaleString('th-TH')}
                   </button>
                 ))}
@@ -292,8 +330,9 @@ export function PaymentModal({
             ) : null}
 
             <section className="financial-ops__payment-summary" aria-label="สรุปยอดรับเงิน">
-              <span><small>ตัดยอด</small><strong>{money.format(allocatedAmount)}</strong></span>
-              <span><small>คงเหลือหลังรายการ</small><b>{money.format(remainingAmount)}</b></span>
+              <span><small>ยอดบิลที่เลือก</small><strong>{money.format(selectedOutstandingAmount)}</strong></span>
+              <span><small>ยอดรับชำระ</small><strong>{money.format(allocatedAmount)}</strong></span>
+              <span><small>ยอดค้างทั้งหมดหลังรับเงิน</small><b>{money.format(remainingAmount)}</b></span>
             </section>
 
             {(method !== 'cash' || evidenceRequired) ? (
@@ -302,7 +341,7 @@ export function PaymentModal({
                 <input
                   accept="image/jpeg,image/png,image/webp,application/pdf"
                   aria-label="หลักฐานการชำระ"
-                  disabled={!canRecordPayment}
+                  disabled={busy || !canRecordPayment}
                   onChange={(event) => onEvidenceChange(event.target.files?.[0] ?? null)}
                   required={evidenceRequired}
                   type="file"
@@ -320,7 +359,7 @@ export function PaymentModal({
               <span>หมายเหตุ <small>(ไม่บังคับ)</small></span>
               <input
                 aria-label="หมายเหตุ"
-                disabled={!canRecordPayment}
+                disabled={busy || !canRecordPayment}
                 onChange={(event) => onReferenceChange(event.target.value)}
                 placeholder="เช่น ลูกค้าจ่ายแบงก์ใหญ่"
                 value={reference}

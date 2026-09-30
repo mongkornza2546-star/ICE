@@ -30,8 +30,11 @@ import type {
 } from './features/financial-operations/types';
 import {
   allocateOldestFirst,
+  isPaymentAmountValidForSelection,
   methodRequires,
+  reconcileChargeSelection,
   receiptFromSnapshot,
+  sumChargeOutstanding,
   withPublicShopImages,
 } from './features/financial-operations/utils';
 import type { AppRole, CollectionCloseResult, CollectionFocusRequest, CreditDueRule, PaymentMethod } from './types/app';
@@ -137,6 +140,10 @@ export function FinancialOperations({
   const [evidence, setEvidence] = useState<File | null>(null);
   const [evidenceError, setEvidenceError] = useState<string | null>(null);
   const [selectedShop, setSelectedShop] = useState<QueueShop | null>(initialDemoShop);
+  const [selectedChargeIds, setSelectedChargeIds] = useState<string[]>(
+    () => initialDemoShop?.charges.map((charge) => charge.charge_id) ?? [],
+  );
+  const [selectionReviewRequired, setSelectionReviewRequired] = useState(false);
   const [receipt, setReceipt] = useState<PaymentReceipt | null>(null);
   const [historyReceipt, setHistoryReceipt] = useState<HistoryReceiptDetail | null>(null);
   const [correctionEventId, setCorrectionEventId] = useState<string | null>(null);
@@ -155,6 +162,7 @@ export function FinancialOperations({
   const historyRequestRef = useRef(0);
   const autoRefreshRunningRef = useRef(false);
   const selectedShopRef = useRef<QueueShop | null>(selectedShop);
+  const selectedChargeIdsRef = useRef(selectedChargeIds);
   const busyRef = useRef(busy);
   const receiptRef = useRef<PaymentReceipt | null>(receipt);
   const handledFocusRequestIdRef = useRef<string | null>(null);
@@ -162,9 +170,14 @@ export function FinancialOperations({
   busyRef.current = busy;
   receiptRef.current = receipt;
   selectedShopRef.current = selectedShop;
+  selectedChargeIdsRef.current = selectedChargeIds;
 
   const resetPaymentForm = useCallback((shop: QueueShop) => {
+    const chargeIds = shop.charges.map((charge) => charge.charge_id);
     setReceipt(null);
+    setSelectedChargeIds(chargeIds);
+    selectedChargeIdsRef.current = chargeIds;
+    setSelectionReviewRequired(false);
     setMethod(shop.payment_profile.default_payment_method);
     setAmount(Number(shop.outstanding_amount).toFixed(2));
     setReference('');
@@ -254,10 +267,32 @@ export function FinancialOperations({
       if (nextSelectedShop && (preferredShop
         || queueIdentity(nextSelectedShop) !== (currentShop && queueIdentity(currentShop)))) {
         resetPaymentForm(nextSelectedShop);
+      } else if (nextSelectedShop && currentShop) {
+        const reconciled = reconcileChargeSelection(
+          currentShop.charges,
+          nextSelectedShop.charges,
+          selectedChargeIdsRef.current,
+        );
+        if (reconciled.changed) {
+          const selected = new Set(reconciled.selectedChargeIds);
+          const selectedOutstanding = sumChargeOutstanding(nextSelectedShop.charges
+            .filter((charge) => selected.has(charge.charge_id)));
+          setSelectedChargeIds(reconciled.selectedChargeIds);
+          selectedChargeIdsRef.current = reconciled.selectedChargeIds;
+          setAmount(selectedOutstanding.toFixed(2));
+          setSelectionReviewRequired(true);
+        }
+      } else if (!nextSelectedShop) {
+        setSelectedChargeIds([]);
+        selectedChargeIdsRef.current = [];
+        setSelectionReviewRequired(false);
       }
     } else {
       setQueue([]);
       setSelectedShop(null);
+      setSelectedChargeIds([]);
+      selectedChargeIdsRef.current = [];
+      setSelectionReviewRequired(false);
       if (preferredQueueKey) throw new Error('ไม่พบร้านนี้ในคิวรับเงินล่าสุด');
     }
 
@@ -328,6 +363,9 @@ export function FinancialOperations({
     }
     setReceipt(null);
     setSelectedShop(null);
+    setSelectedChargeIds([]);
+    selectedChargeIdsRef.current = [];
+    setSelectionReviewRequired(false);
     if (closingFocusedCollection && focusRequest) onFocusedCollectionClose?.({
       status: recordedReceipt ? 'completed' : 'cancelled',
       requestId: focusRequest.requestId,
@@ -491,10 +529,34 @@ export function FinancialOperations({
     if (!selectedShop || nextMethod === method) return;
     if (!selectedShop.payment_profile.allowed_payment_methods.includes(nextMethod)) return;
     setMethod(nextMethod);
-    setAmount(Number(selectedShop.outstanding_amount).toFixed(2));
+    const selected = new Set(selectedChargeIds);
+    const selectedOutstanding = sumChargeOutstanding(selectedShop.charges
+      .filter((charge) => selected.has(charge.charge_id)));
+    setAmount(selectedOutstanding.toFixed(2));
     setReference('');
     setEvidence(null);
     setEvidenceError(null);
+  };
+
+  const changeSelectedCharges = (nextChargeIds: string[]) => {
+    if (!selectedShop || busy) return;
+    const requested = new Set(nextChargeIds);
+    const chargeIds = selectedShop.charges
+      .filter((charge) => requested.has(charge.charge_id))
+      .map((charge) => charge.charge_id);
+    const selected = new Set(chargeIds);
+    const selectedOutstanding = sumChargeOutstanding(selectedShop.charges
+      .filter((charge) => selected.has(charge.charge_id)));
+    setSelectedChargeIds(chargeIds);
+    selectedChargeIdsRef.current = chargeIds;
+    setAmount(selectedOutstanding.toFixed(2));
+  };
+
+  const toggleSelectedCharge = (chargeId: string) => {
+    const selected = new Set(selectedChargeIds);
+    if (selected.has(chargeId)) selected.delete(chargeId);
+    else selected.add(chargeId);
+    changeSelectedCharges([...selected]);
   };
 
   const openChargeCorrection = (charge: QueueShop['charges'][number]) => {
@@ -502,8 +564,15 @@ export function FinancialOperations({
   };
 
   const receivedAmount = Number(amount);
+  const selectedChargeIdSet = useMemo(() => new Set(selectedChargeIds), [selectedChargeIds]);
+  const selectedCharges = useMemo(
+    () => selectedShop?.charges.filter((charge) => selectedChargeIdSet.has(charge.charge_id)) ?? [],
+    [selectedChargeIdSet, selectedShop],
+  );
+  const selectedOutstandingAmount = sumChargeOutstanding(selectedCharges);
   const allocatedAmount = selectedShop
-    ? Math.min(Number.isFinite(receivedAmount) ? receivedAmount : 0, Number(selectedShop.outstanding_amount))
+    ? Math.min(Number.isFinite(receivedAmount) ? Math.round(receivedAmount * 100) : 0,
+      Math.round(selectedOutstandingAmount * 100)) / 100
     : 0;
   const evidenceRequired = selectedShop
     ? methodRequires(selectedShop.payment_profile, method, 'evidence')
@@ -511,20 +580,21 @@ export function FinancialOperations({
   const paymentReady = Boolean(
     canCollectShopPayments
     && selectedShop
-    && Number.isFinite(receivedAmount)
-    && receivedAmount > 0
-    && (method === 'cash' || receivedAmount <= selectedShop.outstanding_amount)
+    && selectedChargeIds.length > 0
+    && !selectionReviewRequired
+    && isPaymentAmountValidForSelection(method, receivedAmount, selectedOutstandingAmount)
     && (!evidenceRequired || evidence),
   );
   const allocations = useMemo(
-    () => selectedShop ? allocateOldestFirst(selectedShop.charges, allocatedAmount) : [],
-    [allocatedAmount, selectedShop],
+    () => allocateOldestFirst(selectedCharges, allocatedAmount),
+    [allocatedAmount, selectedCharges],
   );
   const changeAmount = selectedShop && method === 'cash'
-    ? Math.max(0, (Number.isFinite(receivedAmount) ? receivedAmount : 0) - Number(selectedShop.outstanding_amount))
+    ? Math.max(0, (Number.isFinite(receivedAmount) ? Math.round(receivedAmount * 100) : 0)
+      - Math.round(selectedOutstandingAmount * 100)) / 100
     : 0;
   const remainingAmount = selectedShop
-    ? Math.max(0, Number(selectedShop.outstanding_amount) - allocatedAmount)
+    ? Math.max(0, Math.round(Number(selectedShop.outstanding_amount) * 100) - Math.round(allocatedAmount * 100)) / 100
     : 0;
 
   const getReceiptCharges = async (paymentId: string) => {
@@ -1001,8 +1071,18 @@ export function FinancialOperations({
           receipt={receipt}
           reference={reference}
           remainingAmount={remainingAmount}
+          selectedChargeIds={selectedChargeIds}
+          selectedOutstandingAmount={selectedOutstandingAmount}
           selectedShop={selectedShop}
+          selectionReviewRequired={selectionReviewRequired}
           serviceDate={serviceDate}
+          onClearChargeSelection={() => changeSelectedCharges([])}
+          onConfirmSelectionReview={() => setSelectionReviewRequired(false)}
+          onSelectAllCharges={() => changeSelectedCharges(selectedShop.charges.map((charge) => charge.charge_id))}
+          onSelectTodayCharges={() => changeSelectedCharges(selectedShop.charges
+            .filter((charge) => charge.service_date === serviceDate)
+            .map((charge) => charge.charge_id))}
+          onToggleCharge={toggleSelectedCharge}
         />,
         document.body,
       ) : null}

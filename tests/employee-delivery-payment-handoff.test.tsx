@@ -545,7 +545,7 @@ describe('employee delivery to collection handoff', () => {
     expect(breakdownSection.textContent).toContain('ยอดค้างก่อนหน้า');
     expect(breakdownSection.textContent).toContain('50.00');
     expect(breakdownSection.textContent).toContain('ยอดส่งรอบล่าสุด');
-    expect(breakdownSection.textContent).toContain('ยอดรับชำระทั้งหมด');
+    expect(breakdownSection.textContent).toContain('ยอดบิลที่เลือก');
 
     // Input default payment amount is pre-filled with the total 100.00
     const paymentInput = screen.getByRole('spinbutton', { name: 'ยอดรับเงินจริง' }) as HTMLInputElement;

@@ -162,16 +162,55 @@ export function methodRequires(profile: PaymentProfile, method: PaymentMethod, f
   return profile[`qr_${field}_required`];
 }
 
+export function sumChargeOutstanding(charges: QueueShop['charges']) {
+  return charges.reduce((sum, charge) => sum + Math.round(Number(charge.outstanding_amount) * 100), 0) / 100;
+}
+
 export function allocateOldestFirst(charges: QueueShop['charges'], amount: number) {
-  let remaining = amount;
+  let remaining = Math.round(amount * 100);
   const allocations: Array<{ charge_id: string; amount: number }> = [];
   for (const charge of charges) {
     if (remaining <= 0) break;
-    const allocated = Math.min(remaining, Number(charge.outstanding_amount));
-    if (allocated > 0) allocations.push({ charge_id: charge.charge_id, amount: allocated });
+    const allocated = Math.min(remaining, Math.round(Number(charge.outstanding_amount) * 100));
+    if (allocated > 0) allocations.push({ charge_id: charge.charge_id, amount: allocated / 100 });
     remaining -= allocated;
   }
   return allocations;
+}
+
+export function isPaymentAmountValidForSelection(
+  method: PaymentMethod,
+  receivedAmount: number,
+  selectedOutstandingAmount: number,
+) {
+  const receivedSatang = Math.round(receivedAmount * 100);
+  const outstandingSatang = Math.round(selectedOutstandingAmount * 100);
+  return Number.isFinite(receivedAmount)
+    && receivedSatang > 0
+    && outstandingSatang > 0
+    && (method === 'cash' || receivedSatang <= outstandingSatang);
+}
+
+function chargeSelectionFingerprint(charges: QueueShop['charges']) {
+  return charges.map((charge) => [
+    charge.charge_id,
+    Number(charge.outstanding_amount).toFixed(2),
+  ]);
+}
+
+export function reconcileChargeSelection(
+  previousCharges: QueueShop['charges'],
+  nextCharges: QueueShop['charges'],
+  selectedChargeIds: string[],
+) {
+  const selected = new Set(selectedChargeIds);
+  return {
+    changed: JSON.stringify(chargeSelectionFingerprint(previousCharges))
+      !== JSON.stringify(chargeSelectionFingerprint(nextCharges)),
+    selectedChargeIds: nextCharges
+      .filter((charge) => selected.has(charge.charge_id))
+      .map((charge) => charge.charge_id),
+  };
 }
 
 export async function withPublicShopImages<T extends PublicImagePathItem>(items: T[]): Promise<T[]> {
