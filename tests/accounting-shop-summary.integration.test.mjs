@@ -948,3 +948,149 @@ test('migration requests a PostgREST schema reload', async (t) => {
 
   assert.deepEqual(payloads, ['reload schema']);
 });
+
+
+// Reproduce the registry used by both the screen and paginated Excel export.
+async function createEventAccountingDatabase(t) {
+  const db = await createDatabase(t);
+  await db.exec(`
+    create table public.event_jobs (
+      id uuid primary key, start_date date, end_date date, status text
+    );
+    alter table public.shops add column event_job_id uuid references public.event_jobs(id);
+    create table public.event_participations (
+      event_job_id uuid references public.event_jobs(id),
+      shop_id uuid references public.shops(id), start_date date, end_date date, status text
+    );
+    create table public.casual_transactions (
+      sale_amount numeric, status text, transaction_kind text, service_date date, recorded_at timestamptz
+    );
+    create table public.casual_refund_confirmations (refunded_amount numeric, confirmed_at timestamptz);
+    alter function public.get_accounting_shop_summary(date,date,jsonb,integer,integer)
+      rename to get_accounting_shop_summary_without_casual;
+  `);
+  const casualMigration = readFileSync(new URL(
+    '../supabase/migrations/0154_casual_measured_transactions.sql', import.meta.url), 'utf8');
+  await db.exec(casualMigration.match(/create function public\.get_accounting_shop_summary\([\s\S]*?\n\$\$;/)[0]);
+  await db.exec(readFileSync(new URL(
+    '../supabase/migrations/0199_accounting_event_date_scope.sql', import.meta.url), 'utf8'));
+  return db;
+}
+
+const EVENT_JOB_ID = 'b0000000-0000-4000-8000-000000000001';
+async function makeEventShop(db, { start = '2026-07-01', end = '2026-07-31', status = 'published' } = {}) {
+  await db.query(`insert into public.event_jobs values ($1, $2, $3, $4)`, [EVENT_JOB_ID, start, end, status]);
+  await db.exec(`
+    update public.shops set event_job_id = '${EVENT_JOB_ID}' where id = '${SHOP_ID}';
+    insert into public.event_participations
+      select id, '${SHOP_ID}', start_date, end_date, 'active' from public.event_jobs;
+  `);
+}
+
+test('expired event booths disappear from report rows, facets, groups and Excel pagination', async (t) => {
+  const db = await createEventAccountingDatabase(t);
+  await makeEventShop(db);
+  for (const limit of ['100', '500']) {
+    const summary = await getSummary(db, '{}', limit);
+    assert.equal(summary.total_count, 0);
+    assert.deepEqual(summary.rows, []);
+    assert.deepEqual(summary.groups, []);
+    assert.deepEqual(summary.facets, { shops: [], buildings: [], zones: [] });
+  }
+});
+
+
+test('event date scope follows report dates inclusively and respects participation dates and status', async (t) => {
+  const db = await createEventAccountingDatabase(t);
+  await makeEventShop(db, { end: '2026-08-01' });
+  assert.equal((await getSummary(db)).total_count, 1, 'last event day remains visible');
+  await db.exec(`update public.event_participations set end_date = '2026-07-31'`);
+  assert.equal((await getSummary(db)).total_count, 0, 'expired participation is hidden');
+  await db.exec(`update public.event_participations set end_date = '2026-08-01', start_date = '2026-08-01'`);
+  assert.equal((await getSummary(db)).total_count, 1, 'first participation day remains visible');
+  await db.exec(`update public.event_participations set status = 'cancelled'`);
+  assert.equal((await getSummary(db)).total_count, 0);
+  await db.exec(`update public.event_participations set status = 'active'`);
+  for (const status of ['draft', 'cancelled']) {
+    await db.query(`update public.event_jobs set status = $1`, [status]);
+    assert.equal((await getSummary(db)).total_count, 0, status);
+  }
+  await db.exec(`update public.event_jobs set status = 'published', start_date = '2026-08-02', end_date = '2026-08-03';
+    update public.event_participations set start_date = '2026-08-02', end_date = '2026-08-03'`);
+  assert.equal((await getSummary(db)).total_count, 0, 'future event is hidden');
+  const history = await db.query(`select public.get_accounting_shop_summary('2026-08-02', '2026-08-03') as summary`);
+  assert.equal(history.rows[0].summary.total_count, 1, 'a report covering the event still includes it');
+});
+
+test('event scope preserves open debt, historical invoices and Bangkok-date receipts after the event ends', async (t) => {
+  const db = await createEventAccountingDatabase(t);
+  await makeEventShop(db);
+  await db.exec(`
+    insert into public.delivery_events values
+      ('${OLD_EVENT_ID}', '${STOP_ID}', '${USER_ID}', 'active', '2026-07-31T03:00:00Z');
+    insert into public.delivery_charges values
+      ('${OLD_CHARGE_ID}', '${OLD_EVENT_ID}', '${SHOP_ID}', '2026-07-31',
+        'credit', '2026-07-31', 90, 'active');
+  `);
+  assert.equal((await getSummary(db)).totals.cumulative_outstanding_amount, 90);
+  await db.exec(`
+    insert into public.payments (id, shop_id, allocated_amount, status, recorded_at)
+      values ('${PAYMENT_ID}', '${SHOP_ID}', 90, 'active', '2026-07-31T17:00:00Z');
+    insert into public.payment_allocations values ('${PAYMENT_ID}', '${OLD_CHARGE_ID}', 90);
+  `);
+  const receiptDay = await getSummary(db);
+  assert.equal(receiptDay.total_count, 1);
+  assert.equal(receiptDay.totals.cash_received_in_period, 90);
+  assert.equal(receiptDay.totals.cumulative_outstanding_amount, 0);
+  await db.exec(`update public.payments set recorded_at = '2026-08-01T17:00:00Z'`);
+  assert.equal((await getSummary(db)).total_count, 0, 'settled event without period activity disappears');
+  await db.exec(`update public.event_jobs set status = 'cancelled'`);
+  const history = await db.query(`select public.get_accounting_shop_summary('2026-07-31', '2026-07-31') as summary`);
+  assert.equal(history.rows[0].summary.totals.sales_amount, 90, 'cancellation does not erase invoices');
+  await db.exec(`update public.payments set status = 'voided'`);
+  assert.equal((await getSummary(db)).totals.cumulative_outstanding_amount, 90, 'void receipts do not settle debt');
+  await db.exec(`update public.delivery_events set status = 'voided'`);
+  assert.equal((await getSummary(db)).total_count, 0, 'void deliveries do not retain expired booths');
+});
+
+test('event scope keeps regular shops and casual totals and can be reapplied safely', async (t) => {
+  const db = await createEventAccountingDatabase(t);
+  await db.exec(readFileSync(new URL(
+    '../supabase/migrations/0199_accounting_event_date_scope.sql', import.meta.url), 'utf8'));
+  await db.exec(`insert into public.casual_transactions values (50, 'active', 'paid', '2026-08-01', '2026-08-01T03:00:00Z')`);
+  const summary = await getSummary(db);
+  assert.equal(summary.total_count, 1);
+  assert.equal(summary.rows[0].shop_id, SHOP_ID);
+  assert.equal(summary.totals.casual_sales_amount, 50);
+  assert.equal(summary.totals.casual_received_amount, 50);
+});
+
+
+test('event scope filters before pagination and keeps area counts consistent for mixed regular and event shops', async (t) => {
+  const db = await createEventAccountingDatabase(t);
+  await makeEventShop(db);
+  await db.exec(`
+    insert into public.shops (id, code, name, building_id, zone_id) values
+      ('20000000-0000-4000-8000-000000000002', 'S002', 'Regular shop', '${OLD_BUILDING_ID}', '${OLD_ZONE_ID}'),
+      ('20000000-0000-4000-8000-000000000003', 'S003', 'Current booth', '${OLD_BUILDING_ID}', '${OLD_ZONE_ID}');
+    insert into public.event_jobs values ('b0000000-0000-4000-8000-000000000002', '2026-08-01', '2026-08-03', 'published');
+    update public.shops set event_job_id = 'b0000000-0000-4000-8000-000000000002'
+      where code = 'S003';
+    insert into public.event_participations values (
+      'b0000000-0000-4000-8000-000000000002', '20000000-0000-4000-8000-000000000003',
+      '2026-08-01', '2026-08-03', 'active');
+  `);
+  const first = await getSummary(db, '{}', '1', '0');
+  const second = await getSummary(db, '{}', '1', '1');
+  const exported = await getSummary(db, '{}', '500');
+  assert.equal(first.total_count, 2);
+  assert.equal(first.rows[0].shop_code, 'S002');
+  assert.equal(second.rows[0].shop_code, 'S003');
+  assert.deepEqual(exported.rows, [...first.rows, ...second.rows]);
+  assert.equal(exported.facets.buildings[0].count, 2);
+  assert.equal(exported.facets.zones[0].count, 2);
+  assert.equal(exported.groups[0].total_shop_count, 2);
+  assert.equal(exported.facets.shops.length, 2);
+  const range = await db.query(`select public.get_accounting_shop_summary('2026-07-31', '2026-08-01') as summary`);
+  assert.equal(range.rows[0].summary.total_count, 3, 'overlapping historical range includes both events');
+});
