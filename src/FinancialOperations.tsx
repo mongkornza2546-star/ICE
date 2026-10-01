@@ -18,6 +18,7 @@ import { DeliveryCorrectionDialog } from './features/delivery-corrections/Delive
 import { AccountingPage } from './features/accounting/AccountingPage';
 import type {
   Approval,
+  BillingStatement,
   DueDateRequest,
   HistoryReceiptDetail,
   PaymentHistoryItem,
@@ -654,6 +655,16 @@ export function FinancialOperations({
         p_collection_run_id: runId,
         p_expected_outstanding_amount: selectedShop.outstanding_amount,
         p_idempotency_key: request.key,
+      } : selectedShop.billing_statement_id ? {
+        p_billing_statement_id: selectedShop.billing_statement_id,
+        p_allocations: allocations,
+        p_payment_method: method,
+        p_received_amount: receivedAmount,
+        p_reference_number: reference.trim() || null,
+        p_evidence_path: evidencePath,
+        p_collection_run_id: runId,
+        p_expected_outstanding_amount: selectedShop.outstanding_amount,
+        p_idempotency_key: request.key,
       } : {
         p_shop_id: selectedShop.shop_id,
         p_allocations: allocations,
@@ -668,7 +679,9 @@ export function FinancialOperations({
       };
       const paymentRpc = selectedShop.destination_kind === 'event'
         ? 'record_event_payment'
-        : 'record_payment';
+        : selectedShop.billing_statement_id
+          ? 'record_billing_statement_payment'
+          : 'record_regular_collection_payment';
       const { data, error: rpcError } = await supabase.rpc(paymentRpc, paymentArgs);
       if (rpcError) {
         invalidateCurrentCollectionContext(true);
@@ -907,20 +920,59 @@ export function FinancialOperations({
         name: item.name,
         unit: item.unit,
       }])).values()];
-      return { charges: receivable.charges, payments: receivable.payments ?? [], ice_types: iceTypes };
+      return { charges: receivable.charges, payments: receivable.payments ?? [], ice_types: iceTypes, billing_statements: [] };
     }
     if (!supabase) throw new Error('ไม่พบการเชื่อมต่อฐานข้อมูล');
-    const response = await supabase.rpc('get_credit_receivable_detail', {
-      p_as_of_date: serviceDate,
-      p_shop_id: receivable.shop_id,
-    });
-    if (response.error) throw response.error;
-    const detail = response.data as Partial<ReceivableDetail> | null;
-    return { charges: detail?.charges ?? [], payments: detail?.payments ?? [], ice_types: detail?.ice_types ?? [] };
+    const [detailResponse, statementResponse] = await Promise.all([
+      supabase.rpc('get_credit_receivable_detail', {
+        p_as_of_date: serviceDate,
+        p_shop_id: receivable.shop_id,
+      }),
+      supabase.rpc('get_billing_statements', { p_shop_id: receivable.shop_id }),
+    ]);
+    if (detailResponse.error) throw detailResponse.error;
+    if (statementResponse.error) throw statementResponse.error;
+    const detail = detailResponse.data as Partial<ReceivableDetail> | null;
+    return {
+      charges: detail?.charges ?? [],
+      payments: detail?.payments ?? [],
+      ice_types: detail?.ice_types ?? [],
+      billing_statements: (statementResponse.data ?? []) as BillingStatement[],
+    };
   }, [demoData, serviceDate]);
 
-  const openReceivableCollection = async (receivable: Receivable) => {
-    await load(`regular:${receivable.shop_id}`);
+  const createBillingStatement = async (receivable: Receivable, chargeIds: string[]) => {
+    if (!supabase) throw new Error('ไม่พบการเชื่อมต่อฐานข้อมูล');
+    const response = await supabase.rpc('create_billing_statement', {
+      p_shop_id: receivable.shop_id,
+      p_charge_ids: chargeIds,
+      p_issued_service_date: serviceDate,
+    });
+    if (response.error) throw response.error;
+    invalidateCurrentCollectionContext(true);
+    publishDataChange(['payment', 'receivable']);
+    setSuccess(`ออกใบวางบิล ${response.data.statement_number} แล้ว`);
+    return response.data as BillingStatement;
+  };
+
+  const voidBillingStatement = async (
+    _receivable: Receivable,
+    statement: BillingStatement,
+    reason: string,
+  ) => {
+    if (!supabase) throw new Error('ไม่พบการเชื่อมต่อฐานข้อมูล');
+    const response = await supabase.rpc('void_billing_statement', {
+      p_billing_statement_id: statement.id,
+      p_reason: reason,
+    });
+    if (response.error) throw response.error;
+    invalidateCurrentCollectionContext(true);
+    publishDataChange(['payment', 'receivable']);
+    setSuccess(`ยกเลิกใบวางบิล ${statement.statement_number} แล้ว`);
+  };
+
+  const openReceivableCollection = async (receivable: Receivable, queueKey?: string) => {
+    await load(queueKey ?? `regular:${receivable.shop_id}`);
     onManagerPageChange?.('collection');
   };
 
@@ -1035,10 +1087,12 @@ export function FinancialOperations({
         dueDateRequests={dueDateRequests}
         onDecide={decide}
         onDecideDueDateRequest={decideDueDateRequest}
+        onCreateBillingStatement={createBillingStatement}
         onLoadDetail={loadCreditReceivableDetail}
-        onOpenCollection={(receivable) => { void openReceivableCollection(receivable).catch((openError: unknown) => setError(getErrorMessage(openError))); }}
+        onOpenCollection={(receivable, queueKey) => { void openReceivableCollection(receivable, queueKey).catch((openError: unknown) => setError(getErrorMessage(openError))); }}
         onRefreshReceivables={() => load()}
         onUpdateCreditSettings={updateCreditSettings}
+        onVoidBillingStatement={voidBillingStatement}
         receivables={receivables}
         serviceDate={serviceDate}
         userRole={userRole}

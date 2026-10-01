@@ -136,6 +136,7 @@ export function PaymentModal({
               selectedShop.event_location,
               selectedShop.event_zone,
             ].filter(Boolean).join(' · ')}</small> : null}
+            {selectedShop.billing_statement_number ? <small>ใบวางบิล {selectedShop.billing_statement_number}</small> : null}
           </span>
           <button
             aria-label="ปิดหน้ารับเงิน"

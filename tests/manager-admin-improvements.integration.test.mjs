@@ -90,14 +90,20 @@ test('dashboard groups adjusted sales by every building and the events for that 
       ('50000000-0000-4000-8000-000000000002', 'งานวันอื่น', 'published', '2026-09-07', '2026-09-07', null),
       ('50000000-0000-4000-8000-000000000003', 'งานร่าง', 'draft', '2026-09-06', '2026-09-06', null),
       ('50000000-0000-4000-8000-000000000004', 'งานยกเลิก', 'cancelled', '2026-09-06', '2026-09-06', null),
-      ('50000000-0000-4000-8000-000000000005', 'งานยังไม่ขาย', 'published', '2026-09-06', '2026-09-06', null);
-    insert into public.event_participations values ('${participation}', '${event}');
-    insert into public.event_settlement_contexts values ('${context}', '${participation}');
+      ('50000000-0000-4000-8000-000000000005', 'งานยังไม่ขาย', 'published', '2026-09-06', '2026-09-06', null),
+      ('50000000-0000-4000-8000-000000000006', 'งานหมดอายุ', 'published', '2026-09-01', '2026-09-05', null);
+    insert into public.event_participations values
+      ('${participation}', '${event}'),
+      ('60000000-0000-4000-8000-000000000002', '50000000-0000-4000-8000-000000000006');
+    insert into public.event_settlement_contexts values
+      ('${context}', '${participation}'),
+      ('70000000-0000-4000-8000-000000000002', '60000000-0000-4000-8000-000000000002');
     insert into public.delivery_charge_adjustments values ('${charge}', -200, 'active');
     insert into public.delivery_charges(id, shop_id, service_date, status, original_amount, event_settlement_context_id) values
       ('30000000-0000-4000-8000-000000000002', '${shop}', '2026-09-06', 'active', 300, '${context}'),
       ('30000000-0000-4000-8000-000000000003', '${shop}', '2026-09-06', 'voided', 900, '${context}'),
-      ('30000000-0000-4000-8000-000000000004', '${shop}', '2026-09-07', 'active', 700, '${context}');
+      ('30000000-0000-4000-8000-000000000004', '${shop}', '2026-09-07', 'active', 700, '${context}'),
+      ('30000000-0000-4000-8000-000000000006', '${shop}', '2026-09-06', 'active', 120, '70000000-0000-4000-8000-000000000002');
     insert into public.round_stops(id, building_id_snapshot, event_participation_id)
       values ('80000000-0000-4000-8000-000000000001', '${building}', '${participation}');
     insert into public.delivery_events(id, round_stop_id) values
@@ -107,6 +113,7 @@ test('dashboard groups adjusted sales by every building and the events for that 
   `);
   await db.exec(readMigration('0174_manager_dashboard_effective_sales.sql'));
   await db.exec(readMigration('0195_dashboard_location_sales.sql'));
+  await db.exec(readMigration('0200_dashboard_hide_expired_event_locations.sql'));
   const { rows } = await db.query(`select public.get_daily_work_dashboard('2026-09-06') as dashboard`);
   const sales = rows[0].dashboard.salesSummary;
   assert.deepEqual(sales.locationSales, [
@@ -115,7 +122,9 @@ test('dashboard groups adjusted sales by every building and the events for that 
     { id: '50000000-0000-4000-8000-000000000005', kind: 'event', name: 'งานยังไม่ขาย', netSalesValue: 0, saleCount: 0 },
     { id: event, kind: 'event', name: 'งานวันนี้', netSalesValue: 350, saleCount: 2 },
   ]);
-  assert.equal(sales.locationSales.reduce((sum, point) => sum + point.netSalesValue, 0), sales.netSalesValue);
+  assert.equal(sales.locationSales.some((point) => point.name === 'งานหมดอายุ'), false);
+  assert.equal(sales.locationSales.reduce((sum, point) => sum + point.netSalesValue, 0), 1150);
+  assert.equal(sales.netSalesValue, 1270);
   const later = await db.query(`select public.daily_work_location_sales('2026-09-08') as points`);
   assert.equal(later.rows[0].points.filter((point) => point.kind === 'event').length, 0);
   await db.exec(`set test.role = 'courier'`);

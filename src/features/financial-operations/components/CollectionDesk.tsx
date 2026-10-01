@@ -42,6 +42,7 @@ type CollectionRow = {
 };
 
 function dueLabel(shop: QueueShop, serviceDate: string) {
+  if (shop.billing_statement_id) return { label: 'ตามใบวางบิล', tone: 'today' as const };
   const accountableDate = (charge: QueueShop['charges'][number]) => (
     charge.payment_term === 'credit' ? charge.due_date ?? charge.service_date : charge.service_date
   );
@@ -53,6 +54,7 @@ function dueLabel(shop: QueueShop, serviceDate: string) {
 }
 
 function outstandingType(shop: QueueShop) {
+  if (shop.billing_statement_number) return `ใบวางบิล ${shop.billing_statement_number}`;
   const hasCredit = shop.charges.some((charge) => charge.payment_term === 'credit');
   const hasNonCredit = shop.charges.some((charge) => charge.payment_term !== 'credit');
   if (hasCredit && hasNonCredit) return 'ค้างชำระ (ผสม)';
@@ -174,7 +176,7 @@ export function CollectionDesk({
   const visibleRows = useMemo(() => {
     const shopRows: CollectionRow[] = queue
       .filter((shop) => {
-        const matchesQuery = !normalizedQuery || `${shop.shop_code} ${shop.shop_name} ${shop.event_name ?? ''} ${shop.event_location ?? ''} ${shop.event_zone ?? ''} ${shop.event_booth ?? ''} ${shop.charges.map((charge) => charge.charge_number).join(' ')}`
+        const matchesQuery = !normalizedQuery || `${shop.shop_code} ${shop.shop_name} ${shop.billing_statement_number ?? ''} ${shop.event_name ?? ''} ${shop.event_location ?? ''} ${shop.event_zone ?? ''} ${shop.event_booth ?? ''} ${shop.charges.map((charge) => charge.charge_number).join(' ')}`
           .toLocaleLowerCase().includes(normalizedQuery);
         const matchesBuilding = !buildingId || shop.building_id === buildingId;
         const matchesZone = !zoneId || shop.zone_id === zoneId;
@@ -197,9 +199,11 @@ export function CollectionDesk({
           avatarText: identity.avatarText,
           transactionType: outstandingType(shop),
           amount: Number(shop.outstanding_amount),
-          document: latest?.charge_number ?? '—',
+          document: shop.billing_statement_number ?? latest?.charge_number ?? '—',
           latestDate: latest?.service_date ? serviceDateTime.format(new Date(`${latest.service_date}T12:00:00+07:00`)) : '—',
-          contextLabel: eventContextLabel(shop, identity.isEventOnly),
+          contextLabel: shop.billing_statement_number
+            ? `เก็บตามใบวางบิล ${shop.billing_statement_number}`
+            : eventContextLabel(shop, identity.isEventOnly),
           status: dueLabel(shop, serviceDate),
           shop,
         };

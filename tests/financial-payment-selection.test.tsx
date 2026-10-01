@@ -94,7 +94,7 @@ it('records only today selected bill while keeping expected outstanding for the 
   expect(screen.getByText('เงินทอน').parentElement?.textContent).toContain('฿25.00');
   fireEvent.click(screen.getByRole('button', { name: 'บันทึกรับเงินทันที' }));
 
-  await waitFor(() => expect(supabaseMock.rpc).toHaveBeenCalledWith('record_payment', expect.objectContaining({
+  await waitFor(() => expect(supabaseMock.rpc).toHaveBeenCalledWith('record_regular_collection_payment', expect.objectContaining({
     p_allocations: [{
       charge_id: '10000000-0000-4000-8000-000000000002',
       amount: 75,
@@ -157,7 +157,7 @@ it.each(['โอนเงิน', 'QR'])('accepts exact decimal payments with %s
   expect(record.hasAttribute('disabled')).toBe(true);
   fireEvent.change(amount, { target: { value: '30.60' } });
   fireEvent.click(record);
-  await waitFor(() => expect(supabaseMock.rpc).toHaveBeenCalledWith('record_payment', expect.objectContaining({
+  await waitFor(() => expect(supabaseMock.rpc).toHaveBeenCalledWith('record_regular_collection_payment', expect.objectContaining({
     p_allocations: [
       { charge_id: shop.charges[0].charge_id, amount: 10.20 },
       { charge_id: shop.charges[1].charge_id, amount: 20.40 },

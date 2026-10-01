@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Coins, Package, Storefront } from '@phosphor-icons/react';
+import { CalendarBlank, Coins, Package, Storefront } from '@phosphor-icons/react';
 import {
   EmployeeDeliveryWorkspace,
   type EmployeeDeliveryGateway,
@@ -915,11 +915,15 @@ export function LocalDemoApp() {
         <nav aria-label="งานพนักงาน" className="employee-task-tabs">
           <button aria-current="page" type="button">
             <Package aria-hidden="true" size={22} weight="duotone" />
-            <span>เบิก</span>
+            <span>เติม / คืน / ละลาย</span>
           </button>
           <button type="button">
             <Storefront aria-hidden="true" size={22} weight="duotone" />
             <span>POS</span>
+          </button>
+          <button type="button">
+            <CalendarBlank aria-hidden="true" size={22} weight="duotone" />
+            <span>อีเวนต์</span>
           </button>
           <button type="button">
             <Coins aria-hidden="true" size={22} weight="duotone" />

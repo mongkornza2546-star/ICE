@@ -21,6 +21,7 @@ import type { AppRole, CreditDueRule } from '../../../types/app';
 import { CREDIT_COLLECTION_WEEKDAY_OPTIONS, formatCreditCollectionCycle } from '../../../lib/creditCollectionCycle';
 import type {
   Approval,
+  BillingStatement,
   DueDateRequest,
   Receivable,
   ReceivableCharge,
@@ -29,6 +30,7 @@ import type {
 } from '../types';
 import { money, paymentMethodLabel, receiptDateTime } from '../utils';
 import { DeliveryCorrectionDialog } from '../../delivery-corrections/DeliveryCorrectionDialog';
+import { BillingStatementsSection } from './BillingStatementsSection';
 
 export type CreditAccountStatus = 'normal' | 'near_limit' | 'at_limit' | 'over_limit' | 'overdue' | 'suspended';
 
@@ -51,8 +53,10 @@ export type CreditReceivablesManagerProps = {
   onDecide: (approvalId: string, decision: 'approved' | 'rejected') => void;
   onDecideDueDateRequest: (requestId: string, decision: 'approved' | 'rejected') => void;
   onLoadDetail?: (receivable: Receivable) => Promise<ReceivableDetail>;
+  onCreateBillingStatement?: (receivable: Receivable, chargeIds: string[]) => Promise<BillingStatement>;
+  onVoidBillingStatement?: (receivable: Receivable, statement: BillingStatement, reason: string) => Promise<void>;
   onRefreshReceivables?: () => Promise<void>;
-  onOpenCollection?: (receivable: Receivable) => void;
+  onOpenCollection?: (receivable: Receivable, queueKey?: string) => void;
   onUpdateCreditSettings?: (receivable: Receivable, changes: CreditChanges) => Promise<void> | void;
 };
 
@@ -150,10 +154,12 @@ function ReceivableDrawer({
   busy,
   canAdminister,
   onLoadDetail,
+  onCreateBillingStatement,
   onClose,
   onOpenCollection,
   onRefreshReceivables,
   onUpdateCreditSettings,
+  onVoidBillingStatement,
   receivable,
   serviceDate,
   userRole,
@@ -161,10 +167,12 @@ function ReceivableDrawer({
   busy: boolean;
   canAdminister: boolean;
   onLoadDetail?: (receivable: Receivable) => Promise<ReceivableDetail>;
+  onCreateBillingStatement?: (receivable: Receivable, chargeIds: string[]) => Promise<BillingStatement>;
   onClose: () => void;
-  onOpenCollection?: (receivable: Receivable) => void;
+  onOpenCollection?: (receivable: Receivable, queueKey?: string) => void;
   onRefreshReceivables?: () => Promise<void>;
   onUpdateCreditSettings?: (receivable: Receivable, changes: CreditChanges) => Promise<void> | void;
+  onVoidBillingStatement?: (receivable: Receivable, statement: BillingStatement, reason: string) => Promise<void>;
   receivable: Receivable;
   serviceDate: string;
   userRole: AppRole;
@@ -186,7 +194,11 @@ function ReceivableDrawer({
   });
   const [detailLoading, setDetailLoading] = useState(Boolean(onLoadDetail));
   const charges = detail.charges.filter((charge) => billFilter === 'all' || charge.payment_status !== 'paid');
-  const hasCollectibleBalance = detail.charges.some((charge) => charge.outstanding_amount > 0 && charge.due_date <= serviceDate);
+  const activeStatement = detail.billing_statements?.find((statement) => (
+    statement.status === 'active' && Number(statement.outstanding_amount) > 0
+  ));
+  const hasCollectibleBalance = Boolean(activeStatement)
+    || detail.charges.some((charge) => charge.outstanding_amount > 0 && charge.due_date <= serviceDate);
 
   useEffect(() => {
     if (!onLoadDetail) return;
@@ -274,6 +286,10 @@ function ReceivableDrawer({
     setSelectedCharge(null);
   };
 
+  const refreshDetail = async () => {
+    if (onLoadDetail) setDetail(await onLoadDetail(receivable));
+  };
+
   return <div className="credit-ar__drawer-layer">
     <button aria-label="ปิดรายละเอียดร้าน" className="credit-ar__drawer-backdrop" onClick={onClose} type="button" />
     <aside aria-label={`รายละเอียดลูกหนี้ ${receivable.shop_code}`} aria-modal="true" className="credit-ar__drawer" role="dialog">
@@ -289,7 +305,7 @@ function ReceivableDrawer({
           <button disabled={busy || actionBusy} onClick={openCycleEditor} type="button"><CalendarBlank size={16} />แก้รอบเก็บเงิน</button>
           <button className={receivable.credit_suspended ? 'is-positive' : 'is-danger'} disabled={busy || actionBusy} onClick={toggleSuspension} type="button">{receivable.credit_suspended ? <Play size={16} /> : <Prohibit size={16} />}{receivable.credit_suspended ? 'เปิดใช้เครดิต' : 'ระงับเครดิต'}</button>
         </> : null}
-        <button disabled={detailLoading || !onOpenCollection || !hasCollectibleBalance} onClick={() => onOpenCollection?.(receivable)} type="button"><Coins size={16} />บันทึกรับเงิน</button>
+        <button disabled={detailLoading || !onOpenCollection || !hasCollectibleBalance} onClick={() => onOpenCollection?.(receivable, activeStatement ? `billing:${activeStatement.id}` : undefined)} type="button"><Coins size={16} />บันทึกรับเงิน</button>
       </div>
       {actionError ? <p className="credit-ar__action-error" role="alert">{actionError}</p> : null}
 
@@ -321,6 +337,22 @@ function ReceivableDrawer({
         {receivable.credit_suspended && receivable.credit_suspension_reason ? <p className="credit-ar__suspension-reason"><Prohibit size={16} />เหตุผลที่ระงับ: {receivable.credit_suspension_reason}</p> : null}
       </section>
 
+      {canAdminister && onCreateBillingStatement && onVoidBillingStatement ? <BillingStatementsSection
+        busy={busy || actionBusy}
+        charges={detail.charges}
+        onCreate={async (chargeIds) => {
+          const statement = await onCreateBillingStatement(receivable, chargeIds);
+          await refreshDetail();
+          return statement;
+        }}
+        onVoid={async (statement, reason) => {
+          await onVoidBillingStatement(receivable, statement, reason);
+          await refreshDetail();
+        }}
+        serviceDate={serviceDate}
+        statements={detail.billing_statements ?? []}
+      /> : null}
+
       <section className="credit-ar__drawer-section">
         <div className="credit-ar__drawer-section-title"><span><Receipt size={18} /><h3>บิลเครดิต</h3></span><select aria-label="กรองบิลในรายละเอียดร้าน" onChange={(event) => setBillFilter(event.target.value as typeof billFilter)} value={billFilter}><option value="open">บิลที่ยังค้าง</option><option value="all">บิลทั้งหมด</option></select></div>
         {detailLoading ? <p className="financial-ops__empty">กำลังโหลดรายละเอียดบิล...</p> : <div className="credit-ar__bill-table-wrap"><table className="credit-ar__bill-table">
@@ -348,9 +380,11 @@ export function CreditReceivablesManager({
   onDecide,
   onDecideDueDateRequest,
   onLoadDetail,
+  onCreateBillingStatement,
   onOpenCollection,
   onRefreshReceivables,
   onUpdateCreditSettings,
+  onVoidBillingStatement,
   receivables,
   serviceDate = new Date().toISOString().slice(0, 10),
   userRole = 'round_lead',
@@ -422,6 +456,6 @@ export function CreditReceivablesManager({
 
     {activeView === 'aging' ? <section className="financial-ops__section credit-ar__aging-report"><div className="financial-ops__title"><div><ChartBar /><span><h2>รายงานอายุลูกหนี้</h2><p>คำนวณจากยอดคงเหลือหลังหักการรับชำระแล้ว</p></span></div></div><div className="credit-ar__aging-summary credit-ar__aging-summary--five">{agingBuckets.map((bucket) => <article className={`credit-ar__aging-summary-card credit-ar__aging-summary-card--${bucket.tone}`} key={bucket.label}><span>{bucket.label}</span><strong>{money.format(bucket.amount)}</strong><small>{totalOutstanding ? `${(bucket.amount / totalOutstanding * 100).toFixed(0)}% ของยอดค้าง` : 'ไม่มีรายการ'}</small></article>)}</div><div className="credit-ar__report-heading"><span><WarningCircle size={18} /><h2>ยอดค้างชำระเกินกำหนด</h2></span><b>{money.format(totalOverdue)}</b></div>{overdueReceivables.length === 0 ? <p className="financial-ops__empty">ไม่มีรายการค้างชำระเกินกำหนด</p> : <div className="financial-ops__receivable-charges">{overdueReceivables.map((item) => <article key={item.shop_id}><span><strong>{item.shop_code} · {item.shop_name}</strong><small>ครบกำหนดเก่าสุด {formatDate(item.oldest_due_date, serviceDate)} · {overdueChargeCount(item)} บิล</small></span><b>{money.format(item.overdue_amount)}</b><button onClick={() => setSelectedId(item.shop_id)} type="button">เปิดรายละเอียด</button></article>)}</div>}</section> : null}
 
-    {selected ? <ReceivableDrawer busy={busy} canAdminister={userRole === 'admin'} key={selected.shop_id} onClose={() => setSelectedId(null)} onLoadDetail={onLoadDetail} onOpenCollection={onOpenCollection} onRefreshReceivables={onRefreshReceivables} onUpdateCreditSettings={onUpdateCreditSettings} receivable={selected} serviceDate={serviceDate} userRole={userRole} /> : null}
+    {selected ? <ReceivableDrawer busy={busy} canAdminister={userRole === 'admin'} key={selected.shop_id} onClose={() => setSelectedId(null)} onCreateBillingStatement={onCreateBillingStatement} onLoadDetail={onLoadDetail} onOpenCollection={onOpenCollection} onRefreshReceivables={onRefreshReceivables} onUpdateCreditSettings={onUpdateCreditSettings} onVoidBillingStatement={onVoidBillingStatement} receivable={selected} serviceDate={serviceDate} userRole={userRole} /> : null}
   </section>;
 }

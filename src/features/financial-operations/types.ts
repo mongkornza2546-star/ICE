@@ -32,6 +32,8 @@ export type QueueCharge = {
 export type QueueShop = {
   queue_key?: string;
   destination_kind?: 'regular' | 'event';
+  billing_statement_id?: string | null;
+  billing_statement_number?: string | null;
   event_settlement_context_id?: string | null;
   event_participation_id?: string | null;
   settlement_service_date?: string | null;
@@ -90,6 +92,34 @@ export type ReceivableDetail = {
   charges: ReceivableCharge[];
   payments: ReceivablePayment[];
   ice_types?: IceTypeOption[];
+  billing_statements?: BillingStatement[];
+};
+
+export type BillingStatementItem = {
+  charge_id: string;
+  charge_number: string | null;
+  service_date: string;
+  due_date: string;
+  billed_amount: number;
+  outstanding_amount: number;
+};
+
+export type BillingStatement = {
+  id: string;
+  statement_number: string;
+  shop_id: string;
+  shop_code: string;
+  shop_name: string;
+  shop_location: string | null;
+  status: 'active' | 'voided';
+  issued_service_date: string;
+  issued_at: string;
+  created_by_name: string | null;
+  voided_at: string | null;
+  void_reason: string | null;
+  total_amount: number;
+  outstanding_amount: number;
+  items: BillingStatementItem[];
 };
 
 export type CreditBillRevision = {
