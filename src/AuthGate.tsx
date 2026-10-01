@@ -169,10 +169,17 @@ async function signInWithNickname(nickname: string, password: string) {
   const { data, error: invokeError } = await supabase.functions.invoke('nickname-password-sign-in', {
     body: { nickname, password },
   });
-  const session = data?.session;
-  if (invokeError || !session) {
-    return { error: invokeError ?? new Error('ชื่อเล่นหรือรหัสผ่านไม่ถูกต้อง') };
+  if (invokeError) {
+    const response = 'context' in invokeError ? invokeError.context : null;
+    const body = response instanceof Response ? await response.json().catch(() => null) : null;
+    const message = body && typeof body === 'object' && 'error' in body && typeof body.error === 'string'
+      ? body.error
+      : invokeError.message;
+    return { error: new Error(message) };
   }
+
+  const session = data?.session;
+  if (!session) return { error: new Error('ระบบเข้าสู่ระบบไม่ส่งข้อมูล session กลับมา') };
   return supabase.auth.setSession({
     access_token: session.access_token,
     refresh_token: session.refresh_token,

@@ -1,4 +1,4 @@
-import { act, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AuthChangeEvent, Session } from '@supabase/supabase-js';
 import type { UserProfile } from '../src/types/app';
@@ -12,6 +12,7 @@ const authMock = vi.hoisted(() => {
   return {
     state,
     client: {
+      functions: { invoke: vi.fn() },
       auth: {
         getSession: vi.fn(async () => ({ data: { session: state.session }, error: null })),
         onAuthStateChange: vi.fn((listener: (event: AuthChangeEvent, session: Session | null) => void) => {
@@ -69,5 +70,28 @@ describe('AuthGate profile cache cleanup', () => {
 
     expect(readCachedUserProfile(profile.id)).toBeNull();
     expect(screen.getByText('เข้าสู่ระบบหน้างาน')).not.toBeNull();
+  });
+});
+
+describe('nickname sign-in errors', () => {
+  it('shows the Edge Function response instead of the SDK status message', async () => {
+    authMock.state.session = null;
+    authMock.client.functions.invoke.mockResolvedValueOnce({
+      data: null,
+      error: {
+        message: 'Edge Function returned a non-2xx status code',
+        context: new Response(JSON.stringify({ error: 'ชื่อเล่นหรือรหัสผ่านไม่ถูกต้อง' }), {
+          status: 401,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      },
+    });
+
+    render(<AuthGate />);
+    fireEvent.change(await screen.findByLabelText('ชื่อเล่นหรืออีเมล'), { target: { value: 'super' } });
+    fireEvent.change(screen.getByLabelText('รหัสผ่าน'), { target: { value: 'wrong-password' } });
+    fireEvent.click(screen.getByRole('button', { name: 'เข้าสู่ระบบ' }));
+
+    expect(await screen.findByText('ชื่อเล่นหรือรหัสผ่านไม่ถูกต้อง')).not.toBeNull();
   });
 });
