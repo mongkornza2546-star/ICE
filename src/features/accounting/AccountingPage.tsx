@@ -206,6 +206,7 @@ export function AccountingPage({ userRole = 'round_lead', demoMode = false }: { 
   const [correctionTargets, setCorrectionTargets] = useState<Array<{ charge_id: string; charge_number: string; delivery_event_id: string }>>([]);
   const [correctionEventId, setCorrectionEventId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [resolvingIssueId, setResolvingIssueId] = useState<string | null>(null);
   const [resolutionItem, setResolutionItem] = useState<AccountingReviewResponse['rows'][number] | null>(null);
@@ -218,6 +219,9 @@ export function AccountingPage({ userRole = 'round_lead', demoMode = false }: { 
   const reviewCountRequestId = useRef(0);
   const drawerRequestId = useRef(0);
   const shopHistoryRequestId = useRef(0);
+  const loadedQuery = useRef<string | null>(null);
+  const queryKey = JSON.stringify([demoMode, tab, fromDate, toDate, serviceDate, page, filters, shopFilters, sort]);
+  const unavailable = Boolean(error) && loadedQuery.current !== queryKey;
 
   const validateRange = useCallback(() => {
     const { error: rangeError } = getDateRange(fromDate, toDate);
@@ -227,22 +231,29 @@ export function AccountingPage({ userRole = 'round_lead', demoMode = false }: { 
   const load = useCallback(async () => {
     const requestId = loadRequestId.current + 1;
     loadRequestId.current = requestId;
-    setLoading(true);
+    // Realtime invalidates data, not the user's workspace. Keep a successful
+    // report mounted until its replacement is ready for this same query.
+    const background = loadedQuery.current === queryKey;
+    setLoading(!background);
+    setRefreshing(background);
     setError(null);
-    if (tab === 'shops') {
-      setShopSummary((current) => ({ ...emptyShopSummary(), facets: current.facets }));
-      setShopDaily(emptyShopDaily());
-      shopHistoryRequestId.current += 1;
-      setSelectedShop(null);
-      setShopHistory([]);
-      setShopHistoryError(null);
-      setShopHistoryLoading(false);
-    } else if (tab === 'reconciliation') {
-      setReconciliation(null);
-    } else if (tab === 'transactions') {
-      setTransactions((current) => ({ ...emptyTransactions(), facets: current.facets }));
-    } else {
-      setReviews({ rows: [], total_count: 0 });
+    if (!background) {
+      loadedQuery.current = null;
+      if (tab === 'shops') {
+        setShopSummary((current) => ({ ...emptyShopSummary(), facets: current.facets }));
+        setShopDaily(emptyShopDaily());
+        shopHistoryRequestId.current += 1;
+        setSelectedShop(null);
+        setShopHistory([]);
+        setShopHistoryError(null);
+        setShopHistoryLoading(false);
+      } else if (tab === 'reconciliation') {
+        setReconciliation(null);
+      } else if (tab === 'transactions') {
+        setTransactions((current) => ({ ...emptyTransactions(), facets: current.facets }));
+      } else {
+        setReviews({ rows: [], total_count: 0 });
+      }
     }
     try {
       if (demoMode) {
@@ -252,6 +263,7 @@ export function AccountingPage({ userRole = 'round_lead', demoMode = false }: { 
         setShopDaily(emptyShopDaily());
         setTransactions(emptyTransactions());
         setReviews({ rows: [], total_count: 0 });
+        loadedQuery.current = queryKey;
         setLastUpdated(new Date().toISOString());
         return;
       }
@@ -317,13 +329,17 @@ export function AccountingPage({ userRole = 'round_lead', demoMode = false }: { 
           setReviews(reviewData);
         }
       }
+      loadedQuery.current = queryKey;
       setLastUpdated(new Date().toISOString());
     } catch (loadError) {
       if (loadRequestId.current === requestId) setError(getErrorMessage(loadError));
     } finally {
-      if (loadRequestId.current === requestId) setLoading(false);
+      if (loadRequestId.current === requestId) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
-  }, [demoMode, filters, fromDate, page, serviceDate, setPage, shopFilters, sort, tab, toDate, validateRange]);
+  }, [demoMode, filters, fromDate, page, queryKey, serviceDate, setPage, shopFilters, sort, tab, toDate, validateRange]);
 
   const loadReviewCount = useCallback(async () => {
     const requestId = reviewCountRequestId.current + 1;
@@ -332,7 +348,6 @@ export function AccountingPage({ userRole = 'round_lead', demoMode = false }: { 
       setReviewCount(0);
       return;
     }
-    setReviewCount(null);
     if (!supabase) return;
     try {
       validateRange();
@@ -346,7 +361,11 @@ export function AccountingPage({ userRole = 'round_lead', demoMode = false }: { 
     }
   }, [demoMode, fromDate, toDate, validateRange]);
 
-  useEffect(() => { void load(); }, [load, refreshToken]);
+  useEffect(() => {
+    void load();
+    return () => { loadRequestId.current += 1; };
+  }, [load, refreshToken]);
+  useEffect(() => { setReviewCount(null); }, [loadReviewCount]);
   useEffect(() => {
     void loadReviewCount();
     return () => { reviewCountRequestId.current += 1; };
@@ -583,7 +602,7 @@ export function AccountingPage({ userRole = 'round_lead', demoMode = false }: { 
   return <section className="accounting-page">
     <header className="financial-ops__header accounting-page__header">
       <div><h1>บัญชี / เอกสารและการเงิน</h1><span>ตรวจสอบยอดและเอกสาร · แก้ไขที่ต้นทาง</span></div>
-      <div className="accounting-header-actions"><small>{loading ? 'กำลังอัปเดต…' : lastUpdated ? `โหลดล่าสุด ${accountingDateTime(lastUpdated)}` : 'ยังไม่ได้โหลดข้อมูล'}{error ? ' · โหลดครั้งล่าสุดไม่สำเร็จ' : ''}</small><div><button disabled={loading} onClick={() => setRefreshToken((value) => value + 1)} type="button"><ArrowClockwise size={18} />รีเฟรช</button>{tab === 'shops' || tab === 'transactions' ? <button disabled={loading || exporting || Boolean(error)} onClick={() => void (tab === 'shops' ? exportShopDaily() : exportRows())} type="button"><DownloadSimple size={18} />{exporting ? 'กำลังส่งออก...' : 'ส่งออก Excel'}</button> : null}</div></div>
+      <div className="accounting-header-actions"><small>{loading || refreshing ? 'กำลังอัปเดต…' : lastUpdated ? `โหลดล่าสุด ${accountingDateTime(lastUpdated)}` : 'ยังไม่ได้โหลดข้อมูล'}{error ? ' · โหลดครั้งล่าสุดไม่สำเร็จ' : ''}</small><div><button disabled={loading || refreshing} onClick={() => setRefreshToken((value) => value + 1)} type="button"><ArrowClockwise size={18} />รีเฟรช</button>{tab === 'shops' || tab === 'transactions' ? <button disabled={loading || refreshing || exporting || Boolean(error)} onClick={() => void (tab === 'shops' ? exportShopDaily() : exportRows())} type="button"><DownloadSimple size={18} />{exporting ? 'กำลังส่งออก...' : 'ส่งออก Excel'}</button> : null}</div></div>
     </header>
     <nav aria-label="แท็บบัญชี" className="accounting-tabs">
       {([['shops', 'สรุปรายร้าน'], ['reconciliation', 'สรุปเทียบยอด'], ['transactions', 'เอกสารและการเงิน'], ['review', 'รายการต้องตรวจสอบ']] as const).map(([value, label]) => <button aria-current={tab === value ? 'page' : undefined} key={value} onClick={() => changeTab(value)} type="button">{label}{value === 'review' && reviewCount ? <span>{reviewCount}</span> : null}</button>)}
@@ -596,7 +615,7 @@ export function AccountingPage({ userRole = 'round_lead', demoMode = false }: { 
         filters={shopFilters}
         fromDate={fromDate}
         loading={loading}
-        unavailable={Boolean(error)}
+        unavailable={unavailable}
         view={shopView}
         onViewChange={setShopView}
         onClearFilters={() => { setShopFilters({}); setPage(0); }}
@@ -611,7 +630,7 @@ export function AccountingPage({ userRole = 'round_lead', demoMode = false }: { 
         updateFilter={updateShopFilter}
         windowMode={shopWindowMode}
       />
-      {!loading && !error ? <AccountingPagination page={page} pageSize={PAGE_SIZE} setPage={setPage} totalCount={totalCount} /> : null}
+      {!loading && !unavailable ? <AccountingPagination page={page} pageSize={PAGE_SIZE} setPage={setPage} totalCount={totalCount} /> : null}
       {selectedShop ? createPortal(
         <div className="accounting-shop-detail-layer">
           <button aria-label="ปิดหน้าต่างรายละเอียดร้าน" className="accounting-shop-detail-backdrop" onClick={closeShopInvoices} type="button" />
@@ -642,10 +661,10 @@ export function AccountingPage({ userRole = 'round_lead', demoMode = false }: { 
         {Object.values(filters).some(Boolean) ? <button onClick={() => { (tab === 'review' ? setReviewFilters : setTransactionFilters)({}); setPage(0); }} type="button">ล้างตัวกรอง</button> : null}
       </div>
       <p className="accounting-context-note">{getDateRange(fromDate, toDate).error ?? `${accountingDate.format(new Date(`${fromDate}T12:00:00+07:00`))} – ${accountingDate.format(new Date(`${toDate}T12:00:00+07:00`))}`}{tab === 'review' ? ' · ประเด็นทั้งหมดในช่วง ไม่ตามตัวกรองร้านของแท็บสรุป' : ' · แสดงรายการตามเอกสารต้นทาง'}</p>
-      {loading ? <AccountingLoading /> : error ? null : tab === 'transactions' ? <TransactionsTable onOpen={(row) => void openRow(row)} rows={transactions.rows} setSort={setSort} sort={sort} /> : <ReviewQueue onOpenSource={openReviewSource} onResolve={(item) => { setResolutionError(null); setResolutionItem(item); }} resolvingIssueId={resolvingIssueId} rows={reviews.rows} />}
-      {!loading && !error ? <AccountingPagination page={page} pageSize={PAGE_SIZE} setPage={setPage} totalCount={totalCount} /> : null}
+      {loading ? <AccountingLoading /> : unavailable ? null : tab === 'transactions' ? <TransactionsTable onOpen={(row) => void openRow(row)} rows={transactions.rows} setSort={setSort} sort={sort} /> : <ReviewQueue onOpenSource={openReviewSource} onResolve={(item) => { setResolutionError(null); setResolutionItem(item); }} resolvingIssueId={resolvingIssueId} rows={reviews.rows} />}
+      {!loading && !unavailable ? <AccountingPagination page={page} pageSize={PAGE_SIZE} setPage={setPage} totalCount={totalCount} /> : null}
     </>}
-    {error ? <div className="accounting-error" role="alert"><WarningCircle size={18} /><span>{error}</span><button disabled={loading} onClick={() => setRefreshToken((value) => value + 1)} type="button">ลองใหม่</button></div> : null}
+    {error ? <div className="accounting-error" role="alert"><WarningCircle size={18} /><span>{error}</span><button disabled={loading || refreshing} onClick={() => setRefreshToken((value) => value + 1)} type="button">ลองใหม่</button></div> : null}
     {selected ? <TransactionDrawer correctionTargets={correctionTargets} onClose={() => {
       drawerRequestId.current += 1;
       setSelected(null);

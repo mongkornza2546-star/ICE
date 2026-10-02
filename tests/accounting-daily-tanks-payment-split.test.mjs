@@ -127,4 +127,46 @@ test('the database reader combines tank sources and payment channels without los
     transfer_received: 100,
     transfer_refunded: 15,
   });
+
+  const original = await db.query(`
+    select oid, prosrc from pg_proc
+    where oid = 'public.get_accounting_shop_daily_matrix_before_tank_payment_split(date,date,uuid[])'::regprocedure
+  `);
+  for (const [scenario, setup] of [
+    ['reapplying the migration', null],
+    ['replacing an outdated wrapper', `
+      create or replace function public.get_accounting_shop_daily_matrix(
+        p_from_date date, p_to_date date, p_shop_ids uuid[]
+      ) returns jsonb language sql stable security definer set search_path = public as $$
+        select '{"outdated": true}'::jsonb
+      $$;
+    `],
+    ['recovering an install interrupted after the rename', `
+      drop function public.get_accounting_shop_daily_matrix(date, date, uuid[]);
+    `],
+  ]) {
+    await t.test(`${scenario} preserves the original reader and results`, async () => {
+      if (setup) await db.exec(setup);
+      await db.exec(migration);
+      const repeated = await db.query(`
+        select public.get_accounting_shop_daily_matrix(
+          '2026-10-01', '2026-10-01',
+          array['10000000-0000-4000-8000-000000000001']::uuid[]
+        ) as result
+      `);
+      assert.deepEqual(repeated.rows[0].result, result);
+      const preserved = await db.query(`
+        select oid, prosrc from pg_proc
+        where oid = 'public.get_accounting_shop_daily_matrix_before_tank_payment_split(date,date,uuid[])'::regprocedure
+      `);
+      assert.deepEqual(preserved.rows, original.rows);
+      const privileges = await db.query(`
+        select has_function_privilege('authenticated',
+          'public.get_accounting_shop_daily_matrix(date,date,uuid[])', 'EXECUTE') as wrapper,
+          has_function_privilege('authenticated',
+          'public.get_accounting_shop_daily_matrix_before_tank_payment_split(date,date,uuid[])', 'EXECUTE') as original
+      `);
+      assert.deepEqual(privileges.rows[0], { wrapper: true, original: false });
+    });
+  }
 });

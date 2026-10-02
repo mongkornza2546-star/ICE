@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AccountingPage } from '../src/features/accounting/AccountingPage';
+import { publishDataChange } from '../src/lib/dataChange';
 
 const { rpcMock, writeXlsxFileMock } = vi.hoisted(() => ({ rpcMock: vi.fn(), writeXlsxFileMock: vi.fn() }));
 
@@ -146,6 +147,84 @@ beforeEach(() => {
 });
 
 describe('accounting shop summary', () => {
+  it('keeps the daily table and open shop detail mounted while delivery changes update totals', async () => {
+    mockSuccessfulShopSummary();
+    const user = userEvent.setup();
+    render(<AccountingPage />);
+    await user.click(await screen.findByRole('button', { name: 'ตารางรายวัน' }));
+    await user.selectOptions(screen.getByRole('combobox', { name: 'อาคาร' }), 'building-1');
+    await user.click(await screen.findByRole('button', { name: 'S001 · ร้านสมใจ' }));
+    await screen.findByText('INV2608-00001');
+    const dialog = screen.getByRole('dialog');
+    const table = screen.getAllByRole('table')[0];
+    const scrollContainer = table.parentElement!;
+    scrollContainer.scrollLeft = 400;
+    const focusedElement = document.activeElement;
+    const fromDate = (screen.getByLabelText('จาก') as HTMLInputElement).value;
+    const originalRpc = rpcMock.getMockImplementation()!;
+    let finish!: (value: unknown) => void;
+    rpcMock.mockImplementation((name, ...args) => name === 'get_accounting_shop_summary'
+      ? new Promise((resolve) => { finish = resolve; })
+      : originalRpc(name, ...args));
+
+    act(() => publishDataChange(['pos', 'stock', 'accounting']));
+    expect(screen.queryByRole('dialog')).toBe(dialog);
+    expect(screen.getAllByRole('table')[0]).toBe(table);
+    expect(scrollContainer.scrollLeft).toBe(400);
+    expect(document.activeElement).toBe(focusedElement);
+    expect(screen.queryByText('ยอดขายรายร้านในช่วง')).not.toBeNull();
+    expect(screen.getByRole('button', { name: /รายการต้องตรวจสอบ.*2/ })).toBeTruthy();
+
+    await act(async () => finish({ data: {
+      ...populatedSummary,
+      totals: { ...populatedSummary.totals, sales_amount: 1_500 },
+    }, error: null }));
+    expect(screen.getByText('฿1,500.00')).toBeTruthy();
+    expect(screen.getByRole('dialog')).toBe(dialog);
+    expect(screen.getAllByRole('table')[0]).toBe(table);
+    expect(scrollContainer.scrollLeft).toBe(400);
+    expect(document.activeElement).toBe(focusedElement);
+    expect((screen.getByRole('combobox', { name: 'อาคาร' }) as HTMLSelectElement).value).toBe('building-1');
+    expect((screen.getByLabelText('จาก') as HTMLInputElement).value).toBe(fromDate);
+  });
+
+  it('keeps the last successful report usable when a realtime refresh fails', async () => {
+    mockSuccessfulShopSummary();
+    render(<AccountingPage />);
+    await screen.findByText('ยอดขายรายร้านในช่วง');
+    const table = screen.getByRole('table');
+    rpcMock.mockResolvedValue({ data: null, error: { message: 'เครือข่ายขัดข้อง' } });
+
+    act(() => publishDataChange(['accounting']));
+    await screen.findByRole('alert');
+    expect(screen.queryByRole('table')).toBe(table);
+    expect(screen.queryByText('ยอดขายรายร้านในช่วง')).not.toBeNull();
+    expect(screen.getByRole('button', { name: 'S001 · ร้านสมใจ' })).toBeTruthy();
+  });
+
+  it('ignores a late realtime response after the user changes report filters', async () => {
+    mockSuccessfulShopSummary();
+    const user = userEvent.setup();
+    render(<AccountingPage />);
+    await screen.findByText('ยอดขายรายร้านในช่วง');
+    const originalRpc = rpcMock.getMockImplementation()!;
+    let finish!: (value: unknown) => void;
+    rpcMock.mockImplementation((name, args) => {
+      if (name !== 'get_accounting_shop_summary') return originalRpc(name, args);
+      if (!args.p_filters.building_id) return new Promise((resolve) => { finish = resolve; });
+      return Promise.resolve({ data: {
+        ...populatedSummary, totals: { ...populatedSummary.totals, sales_amount: 2_000 },
+      }, error: null });
+    });
+
+    act(() => publishDataChange(['accounting']));
+    await user.selectOptions(screen.getByRole('combobox', { name: 'อาคาร' }), 'building-1');
+    await screen.findByText('฿2,000.00');
+    await act(async () => finish({ data: populatedSummary, error: null }));
+    expect(screen.getByText('฿2,000.00')).toBeTruthy();
+    expect((screen.getByRole('combobox', { name: 'อาคาร' }) as HTMLSelectElement).value).toBe('building-1');
+  });
+
   it('shows casual stock and money with no shops and exports them once', async () => {
     const user = userEvent.setup();
     const date = bangkokDate();

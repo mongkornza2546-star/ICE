@@ -1,7 +1,8 @@
-import { render, screen, within, waitFor, fireEvent } from '@testing-library/react';
+import { act, render, screen, within, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AccountingPage } from '../src/features/accounting/AccountingPage';
+import { publishDataChange } from '../src/lib/dataChange';
 import type { AccountingTransaction, AccountingReviewItem } from '../src/features/accounting/types';
 const { rpc } = vi.hoisted(() => ({ rpc: vi.fn() }));
 vi.mock('../src/lib/supabase', () => ({ supabase: { rpc } }));
@@ -23,6 +24,36 @@ function baseRpc(name: string, args: Record<string, any>) {
 beforeEach(() => { rpc.mockReset(); rpc.mockImplementation(async (name, args) => baseRpc(name, args)); });
 
 describe('accounting workspace interactions', () => {
+  it('keeps document rows and focus during realtime bursts and uses the newest response', async () => {
+    const user = userEvent.setup();
+    render(<AccountingPage />);
+    await user.click(screen.getByRole('button', { name: 'เอกสารและการเงิน', exact: true }));
+    await screen.findByRole('button', { name: 'REC-001', exact: true });
+    const search = screen.getByRole('textbox', { name: 'ค้นเอกสาร' });
+    await user.type(search, 'REC');
+    await screen.findByRole('button', { name: 'REC-001', exact: true });
+    const table = screen.getByRole('table');
+    const pending: Array<(value: unknown) => void> = [];
+    rpc.mockImplementation((name, args) => name === 'get_accounting_transactions'
+      ? new Promise((resolve) => pending.push(resolve))
+      : Promise.resolve(baseRpc(name, args)));
+
+    act(() => publishDataChange(['accounting']));
+    act(() => publishDataChange(['accounting']));
+    expect(pending).toHaveLength(2);
+    expect(screen.queryByRole('table')).toBe(table);
+    expect(document.activeElement).toBe(search);
+    expect((search as HTMLInputElement).value).toBe('REC');
+
+    const addedReceipt = { ...receipt, group_id: 'payment-2', source_id: 'payment-2', payment_id: 'payment-2', document_number: 'REC-002' };
+    await act(async () => pending[1](ok({ ...transactions, rows: [addedReceipt, receipt], total_count: 2 })));
+    expect(screen.getByRole('button', { name: 'REC-002', exact: true })).toBeTruthy();
+    await act(async () => pending[0](ok(transactions)));
+    expect(screen.getByRole('button', { name: 'REC-002', exact: true })).toBeTruthy();
+    expect(screen.getByRole('table')).toBe(table);
+    expect(document.activeElement).toBe(search);
+  });
+
   it('isolates document and review searches and keeps the badge scoped to the full period', async () => {
     const user = userEvent.setup();
     render(<AccountingPage />);

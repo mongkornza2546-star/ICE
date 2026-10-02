@@ -2,10 +2,18 @@
 -- Preserve the existing sales, invoice counts and statuses so the matrix stays
 -- consistent with the shop summary, invoice detail and Excel export validation.
 
-alter function public.get_accounting_shop_daily_matrix(date, date, uuid[])
-  rename to get_accounting_shop_daily_matrix_before_tank_payment_split;
+-- Keep the original reader on first install; subsequent SQL Editor runs must
+-- replace only the wrapper, never rename it over the original reader.
+do $$
+begin
+  if to_regprocedure('public.get_accounting_shop_daily_matrix_before_tank_payment_split(date,date,uuid[])') is null then
+    alter function public.get_accounting_shop_daily_matrix(date, date, uuid[])
+      rename to get_accounting_shop_daily_matrix_before_tank_payment_split;
+  end if;
+end;
+$$;
 
-create function public.get_accounting_shop_daily_matrix(
+create or replace function public.get_accounting_shop_daily_matrix(
   p_from_date date,
   p_to_date date,
   p_shop_ids uuid[]
