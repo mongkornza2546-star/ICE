@@ -163,8 +163,10 @@ export type AccountingShopDailyCell = {
   service_date: string;
   status: AccountingShopDailyStatus;
   items: Array<{ ice_type_id: string; quantity: number }>;
+  tank_quantity?: number;
   sales_amount: number;
   cash_received: number;
+  transfer_received?: number;
   invoice_count: number;
 };
 
@@ -185,7 +187,9 @@ export type AccountingCasualDailyCell = {
   items: Array<{ ice_type_id: string; quantity: number; automatic_quantity: number; remainder_amount: number; unconverted_amount?: number; free_quantity: number; loose_count: number; loose_sales_amount: number }>;
   sales_amount: number;
   cash_received: number;
+  transfer_received?: number;
   cash_refunded: number;
+  transfer_refunded?: number;
   transaction_count: number;
 };
 

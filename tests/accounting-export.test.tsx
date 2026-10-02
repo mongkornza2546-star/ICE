@@ -100,13 +100,13 @@ describe('daily accounting workbook export', () => {
           shop_id: 'shop-1', payment_condition: '@credit', days: [{
             service_date: '2026-08-01', status: 'purchased',
             items: [{ ice_type_id: 'ice-b', quantity: 2 }, { ice_type_id: 'ice-a', quantity: 1.5 }],
-            sales_amount: 100.25, cash_received: 80.05, invoice_count: 1,
+            tank_quantity: 3, sales_amount: 100.25, cash_received: 80.05, transfer_received: 20, invoice_count: 1,
           }],
         },
         {
           shop_id: 'shop-2', payment_condition: 'credit', days: [{
             service_date: '2026-08-01', status: recordedNoSaleStatus, items: [],
-            sales_amount: 0, cash_received: 5.15, invoice_count: 0,
+            sales_amount: 0, cash_received: 5.15, transfer_received: 4.85, invoice_count: 0,
           }],
         },
       ],
@@ -120,9 +120,9 @@ describe('daily accounting workbook export', () => {
     const secondRow = data[0][4];
     const totals = data[0][5];
 
-    expect(header.slice(4, 8).map((cell) => cell.value)).toEqual([
+    expect(header.slice(4, 10).map((cell) => cell.value)).toEqual([
       '2026-08-01 · น้ำแข็ง A', '2026-08-01 · น้ำแข็ง B',
-      '2026-08-01 · ยอดขาย', '2026-08-01 · รับเงินจริง',
+      '2026-08-01 · ถัง', '2026-08-01 · ยอดขาย', '2026-08-01 · เงินสด', '2026-08-01 · โอน',
     ]);
     expect(firstRow[0]).toMatchObject({ value: 3, format: '#,##0' });
     expect(firstRow[1].value).toBe("'=S001");
@@ -130,24 +130,29 @@ describe('daily accounting workbook export', () => {
     expect(firstRow[3].value).toBe("'@credit");
     expect(firstRow[4]).toMatchObject({ value: 1.5, format: '#,##0.0' });
     expect(firstRow[5]).toMatchObject({ value: 2, format: '#,##0.0' });
-    expect(firstRow[6]).toMatchObject({ value: 100.25, format: '#,##0.00' });
-    expect(firstRow[7]).toMatchObject({ value: 80.05, format: '#,##0.00' });
-    expect(firstRow[8]).toMatchObject({ value: 100.25, format: '#,##0.00' });
+    expect(firstRow[6]).toMatchObject({ value: 3, format: '#,##0' });
+    expect(firstRow[7]).toMatchObject({ value: 100.25, format: '#,##0.00' });
+    expect(firstRow[8]).toMatchObject({ value: 80.05, format: '#,##0.00' });
+    expect(firstRow[9]).toMatchObject({ value: 20, format: '#,##0.00' });
+    expect(firstRow[10]).toMatchObject({ value: 100.25, format: '#,##0.00' });
     expect(secondRow[4].value).toBe('มีบันทึกแต่ไม่มีการขาย');
 
     expect(totals).toHaveLength(header.length);
     expect(totals[0].value).toBe('รวม');
     expect(totals[4]).toMatchObject({ value: 1.5, format: '#,##0.0' });
     expect(totals[5]).toMatchObject({ value: 2, format: '#,##0.0' });
-    expect(totals[6]).toMatchObject({ value: 100.25, format: '#,##0.00' });
-    expect(Number(totals[7].value)).toBeCloseTo(85.2);
-    expect(totals[8]).toMatchObject({ value: 100.25, format: '#,##0.00' });
-    expect(Number(totals[9].value)).toBeCloseTo(85.2);
-    expect(totals[10].value).toBe(26);
-    expect(totals[11].value).toBe(45.75);
-    expect(totals[12].value).toBe(14.6);
-    expect(totals[13].value).toBe('');
-    expect(totals[14].value).toBe('');
+    expect(totals[6]).toMatchObject({ value: 3, format: '#,##0' });
+    expect(totals[7]).toMatchObject({ value: 100.25, format: '#,##0.00' });
+    expect(Number(totals[8].value)).toBeCloseTo(85.2);
+    expect(Number(totals[9].value)).toBeCloseTo(24.85);
+    expect(totals[10]).toMatchObject({ value: 100.25, format: '#,##0.00' });
+    expect(Number(totals[11].value)).toBeCloseTo(85.2);
+    expect(Number(totals[12].value)).toBeCloseTo(24.85);
+    expect(totals[13].value).toBe(26);
+    expect(totals[14].value).toBe(45.75);
+    expect(totals[15].value).toBe(14.6);
+    expect(totals[16].value).toBe('');
+    expect(totals[17].value).toBe('');
   });
 
   it('marks missing daily coverage and dependent totals as unavailable', async () => {
@@ -165,10 +170,14 @@ describe('daily accounting workbook export', () => {
     expect(row[4].value).toBe('ไม่มีข้อมูล');
     expect(row[5].value).toBe('ไม่มีข้อมูล');
     expect(row[6].value).toBe('ไม่มีข้อมูล');
+    expect(row[7].value).toBe('ไม่มีข้อมูล');
     expect(row[8].value).toBe('ไม่มีข้อมูล');
     expect(totals[4].value).toBe('ไม่มีข้อมูล');
     expect(totals[5].value).toBe('ไม่มีข้อมูล');
     expect(totals[6].value).toBe('ไม่มีข้อมูล');
+    expect(totals[7].value).toBe('ไม่มีข้อมูล');
     expect(totals[8].value).toBe('ไม่มีข้อมูล');
+    expect(totals[10].value).toBe('ไม่มีข้อมูล');
+    expect(totals[11].value).toBe('ไม่มีข้อมูล');
   });
 });

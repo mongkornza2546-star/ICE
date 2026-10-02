@@ -165,12 +165,13 @@ describe('accounting shop summary', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'ตารางรายวัน' }));
     await waitFor(() => expect(screen.getByLabelText(`ลูกค้าขาจร ${date} หลอดเล็ก`).textContent).toContain('รวมจากยอดเงิน 1 ถุง'));
     expect(screen.getByLabelText(`ลูกค้าขาจร ${date} หลอดเล็ก`).textContent).toContain('รวมแจกฟรี 0.5 ถุง');
-    expect(screen.getByLabelText(`ลูกค้าขาจร ${date} รับเงินจริง`).textContent).toContain('สุทธิ ฿100.00');
+    expect(screen.getByLabelText(`ลูกค้าขาจร ${date} เงินสด`).textContent).toContain('สุทธิ ฿100.00');
+    expect(screen.getByLabelText(`ลูกค้าขาจร ${date} โอน`).textContent).toContain('0.00');
     await user.click(screen.getByRole('button', { name: 'ส่งออก Excel' }));
     await waitFor(() => expect(writeXlsxFileMock).toHaveBeenCalledTimes(1));
     const [sheets, options] = writeXlsxFileMock.mock.calls[0];
     expect(options.sheets).toEqual(['สรุปทุกพื้นที่', 'ลูกค้าขาจร']);
-    expect(sheets[1][2].map((cell: { value: unknown }) => cell.value).slice(8)).toEqual([110, 110, 10, 100]);
+    expect(sheets[1][2].map((cell: { value: unknown }) => cell.value).slice(8)).toEqual([110, 110, 10, 100, 0, 0, 0]);
     expect(sheets[1][3].map((cell: { value: unknown }) => cell.value).slice(2, 8)).toEqual([1.5, 1, 0.5, 2, 110, 10]);
   });
 
@@ -261,9 +262,10 @@ describe('accounting shop summary', () => {
     const toDate = (screen.getByLabelText('ถึง') as HTMLInputElement).value;
 
     expect(screen.queryByRole('button', { name: `S001 ${toDate} ยอดขาย` })).toBeNull();
-    expect(screen.queryByRole('button', { name: `S001 ${toDate} รับเงินจริง` })).toBeNull();
+    expect(screen.queryByRole('button', { name: `S001 ${toDate} เงินสด` })).toBeNull();
     expect(screen.getByLabelText(`S001 ${toDate} ยอดขาย ไม่มีข้อมูล`).textContent).toBe('—');
-    expect(screen.getByLabelText(`S001 ${toDate} รับเงินจริง ไม่มีข้อมูล`).textContent).toBe('—');
+    expect(screen.getByLabelText(`S001 ${toDate} เงินสด ไม่มีข้อมูล`).textContent).toBe('—');
+    expect(screen.getByLabelText(`S001 ${toDate} โอน ไม่มีข้อมูล`).textContent).toBe('—');
   });
 
   it('opens as the default accounting view with business-level KPIs', async () => {
@@ -365,7 +367,7 @@ describe('accounting shop summary', () => {
             days: dates.map((date) => date === toDate ? {
               service_date: date, status: 'purchased',
               items: [{ ice_type_id: 'ice-mill', quantity: 4 }, { ice_type_id: 'ice-small', quantity: 2 }],
-              sales_amount: 360, cash_received: 0, invoice_count: 2,
+              tank_quantity: 2, sales_amount: 360, cash_received: 0, transfer_received: 40, invoice_count: 2,
             } : { service_date: date, status: date === fromDate ? 'recorded_no_sale' : 'not_recorded', items: [], sales_amount: 0, cash_received: 0, invoice_count: 0 }),
           }],
         }, error: null };
@@ -383,10 +385,12 @@ describe('accounting shop summary', () => {
     const millCell = await screen.findByRole('button', { name: `S001 ${toDate} โม่` });
     expect(millCell.textContent).toBe('4');
     expect(screen.getByRole('button', { name: `S001 ${toDate} เล็ก` }).textContent).toBe('2');
+    expect(screen.getByLabelText(`S001 ${toDate} ถัง`).textContent).toBe('2');
     expect(screen.getByRole('button', { name: `S001 ${toDate} ยอดขาย` }).textContent).toMatch(/360\.00.*2 บิล/);
     expect(screen.queryByRole('columnheader', { name: 'ยอดขายรวม' })).toBeNull();
-    expect(screen.getByLabelText(`S001 ${toDate} รับเงินจริง`).textContent).toMatch(/0\.00/);
-    expect(screen.queryByRole('button', { name: `S001 ${toDate} รับเงินจริง` })).toBeNull();
+    expect(screen.getByLabelText(`S001 ${toDate} เงินสด`).textContent).toMatch(/0\.00/);
+    expect(screen.getByLabelText(`S001 ${toDate} โอน`).textContent).toMatch(/40\.00/);
+    expect(screen.queryByRole('button', { name: `S001 ${toDate} เงินสด` })).toBeNull();
     expect(screen.getByLabelText(`S001 ${fromDate} สถานะ มีบันทึกแต่ไม่มีการขาย`)).toBeTruthy();
     expect(screen.getAllByText('มีบันทึกแต่ไม่มีการขาย').length).toBeGreaterThan(0);
     expect(screen.queryByRole('button', { name: `S001 ${fromDate} โม่` })).toBeNull();

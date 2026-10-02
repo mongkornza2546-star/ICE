@@ -114,9 +114,9 @@ export async function exportAccountingShopDaily(
     'ลำดับส่ง', 'รหัสร้าน', 'ชื่อร้าน', 'เงื่อนไขชำระ',
     ...dates.flatMap((date) => [
       ...iceTypes.map((iceType) => `${date} · ${iceType.name}`),
-      `${date} · ยอดขาย`, `${date} · รับเงินจริง`,
+      `${date} · ถัง`, `${date} · ยอดขาย`, `${date} · เงินสด`, `${date} · โอน`,
     ]),
-    'ยอดขายรวม', 'รับเงินจริงรวม', 'ค้างของบิลช่วงนี้', 'ค้างสะสม', 'เกินกำหนด', 'สถานะชำระ', 'หมายเหตุ',
+    'ยอดขายรวม', 'เงินสดรวม', 'โอนรวม', 'ค้างของบิลช่วงนี้', 'ค้างสะสม', 'เกินกำหนด', 'สถานะชำระ', 'หมายเหตุ',
   ];
   const paymentStatusLabels = { paid: 'ชำระครบ', outstanding: 'รอชำระ', overdue: 'เกินกำหนด' } as const;
 
@@ -130,6 +130,9 @@ export async function exportAccountingShopDaily(
       const cashReceived = hasCompleteDays
         ? dates.reduce((sum, date) => sum + Number(days.get(date)?.cash_received ?? 0), 0)
         : null;
+      const transferReceived = hasCompleteDays
+        ? dates.reduce((sum, date) => sum + Number(days.get(date)?.transfer_received ?? 0), 0)
+        : null;
       const cells = [
         shop.delivery_sequence == null ? textCell('') : numberCell(shop.delivery_sequence, '#,##0'),
         textCell(isEventCode(shop.shop_code) ? '' : shop.shop_code), textCell(shop.shop_name, true), textCell(dailyRow?.payment_condition ?? unavailableLabel),
@@ -138,7 +141,7 @@ export async function exportAccountingShopDaily(
         const day = days.get(date);
         if (!day) {
           iceTypes.forEach((_, index) => cells.push(textCell(index === 0 ? unavailableLabel : '—')));
-          cells.push(textCell(unavailableLabel), textCell(unavailableLabel));
+          cells.push(textCell(unavailableLabel), textCell(unavailableLabel), textCell(unavailableLabel), textCell(unavailableLabel));
           return;
         }
         iceTypes.forEach((iceType, index) => {
@@ -149,14 +152,17 @@ export async function exportAccountingShopDaily(
             cells.push(quantity ? numberCell(quantity, '#,##0.0') : textCell('—'));
           }
         });
+        cells.push(Number(day.tank_quantity) ? numberCell(Number(day.tank_quantity), '#,##0') : textCell('—'));
         cells.push(numberCell(Number(day.sales_amount), '#,##0.00'));
         cells.push(numberCell(Number(day.cash_received), '#,##0.00'));
+        cells.push(numberCell(Number(day.transfer_received ?? 0), '#,##0.00'));
       });
       const note = shop.delivery_sequence == null ? 'ยังไม่ได้กำหนดลำดับส่ง'
         : shop.historical_zone_name && shop.current_zone_name && shop.historical_zone_name !== shop.current_zone_name
           ? 'พื้นที่ล่าสุดต่างจากพื้นที่ประจำ' : '';
       cells.push(numberCell(Number(shop.sales_amount), '#,##0.00'));
       cells.push(cashReceived == null ? textCell(unavailableLabel) : numberCell(cashReceived, '#,##0.00'));
+      cells.push(transferReceived == null ? textCell(unavailableLabel) : numberCell(transferReceived, '#,##0.00'));
       cells.push(numberCell(Number(shop.outstanding_amount), '#,##0.00'));
       cells.push(numberCell(Number(shop.cumulative_outstanding_amount), '#,##0.00'));
       cells.push(numberCell(Number(shop.cumulative_overdue_amount), '#,##0.00'));
@@ -169,6 +175,10 @@ export async function exportAccountingShopDaily(
       ? rowContexts.reduce((sum, { days }) => sum
         + dates.reduce((daySum, date) => daySum + Number(days.get(date)?.cash_received ?? 0), 0), 0)
       : null;
+    const transferTotal = rowContexts.every(({ hasCompleteDays }) => hasCompleteDays)
+      ? rowContexts.reduce((sum, { days }) => sum
+        + dates.reduce((daySum, date) => daySum + Number(days.get(date)?.transfer_received ?? 0), 0), 0)
+      : null;
     const titleRow = [{ value: safeSpreadsheetText(title), type: String, fontWeight: 'bold' as const, fontSize: 15, color: '#173F32', span: headings.length }];
     const periodRow = [{ value: `ช่วงวันที่ ${fromDate} ถึง ${toDate}`, color: '#526B61', span: headings.length }];
     const totalsRow: Array<ReturnType<typeof totalTextCell> | ReturnType<typeof totalNumberCell>> = [
@@ -177,7 +187,7 @@ export async function exportAccountingShopDaily(
     dates.forEach((date) => {
       if (!rowContexts.every(({ days }) => days.has(date))) {
         iceTypes.forEach(() => totalsRow.push(totalTextCell(unavailableLabel)));
-        totalsRow.push(totalTextCell(unavailableLabel), totalTextCell(unavailableLabel));
+        totalsRow.push(totalTextCell(unavailableLabel), totalTextCell(unavailableLabel), totalTextCell(unavailableLabel), totalTextCell(unavailableLabel));
         return;
       }
       iceTypes.forEach((iceType) => {
@@ -185,11 +195,14 @@ export async function exportAccountingShopDaily(
           + Number(days.get(date)?.items.find((item) => item.ice_type_id === iceType.ice_type_id)?.quantity ?? 0), 0);
         totalsRow.push(totalNumberCell(quantity, '#,##0.0'));
       });
+      totalsRow.push(totalNumberCell(rowContexts.reduce((sum, { days }) => sum + Number(days.get(date)?.tank_quantity ?? 0), 0), '#,##0'));
       totalsRow.push(totalNumberCell(rowContexts.reduce((sum, { days }) => sum + Number(days.get(date)?.sales_amount ?? 0), 0), '#,##0.00'));
       totalsRow.push(totalNumberCell(rowContexts.reduce((sum, { days }) => sum + Number(days.get(date)?.cash_received ?? 0), 0), '#,##0.00'));
+      totalsRow.push(totalNumberCell(rowContexts.reduce((sum, { days }) => sum + Number(days.get(date)?.transfer_received ?? 0), 0), '#,##0.00'));
     });
     totalsRow.push(totalNumberCell(salesTotal, '#,##0.00'));
     totalsRow.push(cashTotal == null ? totalTextCell(unavailableLabel) : totalNumberCell(cashTotal, '#,##0.00'));
+    totalsRow.push(transferTotal == null ? totalTextCell(unavailableLabel) : totalNumberCell(transferTotal, '#,##0.00'));
     totalsRow.push(totalNumberCell(rowContexts.reduce((sum, { shop }) => sum + Number(shop.outstanding_amount), 0), '#,##0.00'));
     totalsRow.push(totalNumberCell(rowContexts.reduce((sum, { shop }) => sum + Number(shop.cumulative_outstanding_amount), 0), '#,##0.00'));
     totalsRow.push(totalNumberCell(rowContexts.reduce((sum, { shop }) => sum + Number(shop.cumulative_overdue_amount), 0), '#,##0.00'));
@@ -231,14 +244,15 @@ export async function exportAccountingShopDaily(
     sheets.push(safeSheetName('ลูกค้าขาจร', usedNames));
     data.push([
       [textCell('ลูกค้าขาจร · รวมทุกจุดถือครอง ไม่ขึ้นกับตัวกรองร้านหรือโซน')],
-      ['วันที่', 'ชนิดน้ำแข็ง', 'จำนวนออกทั้งหมด', 'รวมจากยอดเงิน', 'จำนวนแจกฟรี', 'แบ่งขาย/แจก (ครั้ง)', 'ยอดแบ่งขาย', 'เศษยังไม่ครบถุง', 'ยอดขายรวม', 'รับเงินจริง', 'คืนเงินจริง', 'เงินสุทธิ', 'ยอดเดิมยังไม่แปลงเป็นถุง'].map((value) => ({ ...textCell(value), ...headerStyle })),
+      ['วันที่', 'ชนิดน้ำแข็ง', 'จำนวนออกทั้งหมด', 'รวมจากยอดเงิน', 'จำนวนแจกฟรี', 'แบ่งขาย/แจก (ครั้ง)', 'ยอดแบ่งขาย', 'เศษยังไม่ครบถุง', 'ยอดขายรวม', 'เงินสด', 'คืนเงินสด', 'เงินสดสุทธิ', 'โอน', 'คืนเงินโอน', 'โอนสุทธิ', 'ยอดเดิมยังไม่แปลงเป็นถุง'].map((value) => ({ ...textCell(value), ...headerStyle })),
       ...daily.casual_days.flatMap((day) => [
         [textCell(day.service_date), textCell('รวมเงินประจำวัน'), ...Array.from({ length: 6 }, () => textCell('')),
-          numberCell(day.sales_amount, '#,##0.00'), numberCell(day.cash_received, '#,##0.00'), numberCell(day.cash_refunded, '#,##0.00'), numberCell(day.cash_received - day.cash_refunded, '#,##0.00')],
+          numberCell(day.sales_amount, '#,##0.00'), numberCell(day.cash_received, '#,##0.00'), numberCell(day.cash_refunded, '#,##0.00'), numberCell(day.cash_received - day.cash_refunded, '#,##0.00'),
+          numberCell(day.transfer_received ?? 0, '#,##0.00'), numberCell(day.transfer_refunded ?? 0, '#,##0.00'), numberCell((day.transfer_received ?? 0) - (day.transfer_refunded ?? 0), '#,##0.00')],
         ...day.items.map((item) => [textCell(day.service_date), textCell(iceTypes.find((ice) => ice.ice_type_id === item.ice_type_id)?.name ?? item.ice_type_id),
           numberCell(item.quantity, '#,##0.0'), numberCell(item.automatic_quantity, '#,##0.0'), numberCell(item.free_quantity, '#,##0.0'), numberCell(item.loose_count, '0'),
           numberCell(item.loose_sales_amount, '#,##0.00'), numberCell(item.remainder_amount, '#,##0.00'),
-          ...Array.from({ length: 4 }, () => textCell('')), numberCell(item.unconverted_amount ?? 0, '#,##0.00')]),
+          ...Array.from({ length: 7 }, () => textCell('')), numberCell(item.unconverted_amount ?? 0, '#,##0.00')]),
       ]),
     ]);
   }

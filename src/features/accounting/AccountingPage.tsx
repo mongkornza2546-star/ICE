@@ -842,15 +842,17 @@ function ShopDailyMatrix({ collapsedGroups, daily, data, fromDate, grouped, onOp
     const key = shopGroupKey(row);
     groups.set(key, [...(groups.get(key) ?? []), row]);
   });
-  const dayColumnCount = daily.ice_types.length + 2;
+  const dayColumnCount = daily.ice_types.length + 4;
   const totalColumnCount = 2 + dates.length * dayColumnCount;
-  const tableWidth = 262 + dates.length * (daily.ice_types.length * 110 + 236);
+  const tableWidth = 262 + dates.length * (daily.ice_types.length * 110 + 444);
 
   const renderDayCells = (shop: AccountingShopSummaryRow, day: AccountingShopDailyCell | undefined, date: string) => {
     if (!day) return <Fragment key={date}>
       {daily.ice_types.map((iceType) => <td className="accounting-daily-matrix__quantity" key={iceType.ice_type_id}><span aria-label={`${shop.shop_code} ${date} ${iceType.name} ไม่มีข้อมูล`}>—</span></td>)}
+      <td className="accounting-daily-matrix__quantity"><span aria-label={`${shop.shop_code} ${date} ถัง ไม่มีข้อมูล`}>—</span></td>
       <td className="accounting-daily-matrix__money"><span aria-label={`${shop.shop_code} ${date} ยอดขาย ไม่มีข้อมูล`}>—</span></td>
-      <td className="accounting-daily-matrix__money accounting-daily-matrix__received"><span aria-label={`${shop.shop_code} ${date} รับเงินจริง ไม่มีข้อมูล`}>—</span></td>
+      <td className="accounting-daily-matrix__money"><span aria-label={`${shop.shop_code} ${date} เงินสด ไม่มีข้อมูล`}>—</span></td>
+      <td className="accounting-daily-matrix__money accounting-daily-matrix__received"><span aria-label={`${shop.shop_code} ${date} โอน ไม่มีข้อมูล`}>—</span></td>
     </Fragment>;
 
     const interactive = day.status === 'purchased';
@@ -865,11 +867,13 @@ function ShopDailyMatrix({ collapsedGroups, daily, data, fromDate, grouped, onOp
             : <span aria-label={`${shop.shop_code} ${date} ${index === 0 ? `สถานะ ${dailyStatusLabels[day.status]}` : iceType.name}`}>{content}</span>}
         </td>;
       })}
+      <td className="accounting-daily-matrix__quantity"><span aria-label={`${shop.shop_code} ${date} ถัง`}>{Number(day.tank_quantity) ? number.format(Number(day.tank_quantity)) : '—'}</span></td>
       <td className="accounting-daily-matrix__money">
         {interactive ? <button aria-label={`${shop.shop_code} ${date} ยอดขาย`} onClick={() => onOpenShop(shop, date)} type="button"><strong>{money.format(Number(day.sales_amount))}</strong>{day.invoice_count > 1 ? <small>{day.invoice_count} บิล</small> : null}</button>
           : <span aria-label={`${shop.shop_code} ${date} ยอดขาย สถานะ ${dailyStatusLabels[day.status]}`}><strong>{money.format(Number(day.sales_amount))}</strong>{!daily.ice_types.length ? <span className={`accounting-daily-status accounting-daily-status--${day.status}`}>{dailyStatusLabels[day.status]}</span> : null}</span>}
       </td>
-      <td className="accounting-daily-matrix__money accounting-daily-matrix__received"><span aria-label={`${shop.shop_code} ${date} รับเงินจริง`}>{money.format(Number(day.cash_received))}</span></td>
+      <td className="accounting-daily-matrix__money"><span aria-label={`${shop.shop_code} ${date} เงินสด`}>{money.format(Number(day.cash_received))}</span></td>
+      <td className="accounting-daily-matrix__money accounting-daily-matrix__received"><span aria-label={`${shop.shop_code} ${date} โอน`}>{money.format(Number(day.transfer_received ?? 0))}</span></td>
     </Fragment>;
   };
 
@@ -897,8 +901,10 @@ function ShopDailyMatrix({ collapsedGroups, daily, data, fromDate, grouped, onOp
         <col className="accounting-daily-matrix__col-sequence" /><col className="accounting-daily-matrix__col-shop" />
         {dates.flatMap((date) => [
           ...daily.ice_types.map((iceType) => <col className="accounting-daily-matrix__col-quantity" key={`${date}:${iceType.ice_type_id}`} />),
+          <col className="accounting-daily-matrix__col-tank" key={`${date}:tank`} />,
           <col className="accounting-daily-matrix__col-money" key={`${date}:sales`} />,
           <col className="accounting-daily-matrix__col-money" key={`${date}:cash`} />,
+          <col className="accounting-daily-matrix__col-money" key={`${date}:transfer`} />,
         ])}
       </colgroup>
       <thead>
@@ -907,7 +913,8 @@ function ShopDailyMatrix({ collapsedGroups, daily, data, fromDate, grouped, onOp
         </tr>
         <tr>{dates.flatMap((date) => [
           ...daily.ice_types.map((iceType) => <th key={`${date}:${iceType.ice_type_id}`} title={iceType.name}>{iceType.name}</th>),
-          <th key={`${date}:sales`}>ยอดขาย</th>, <th key={`${date}:cash`}>รับเงินจริง</th>,
+          <th key={`${date}:tank`}>ถัง</th>, <th key={`${date}:sales`}>ยอดขาย</th>,
+          <th key={`${date}:cash`}>เงินสด</th>, <th key={`${date}:transfer`}>โอน</th>,
         ])}</tr>
       </thead>
       <tbody>
@@ -928,8 +935,10 @@ function ShopDailyMatrix({ collapsedGroups, daily, data, fromDate, grouped, onOp
                   {Number(item?.unconverted_amount) > 0 ? <small>ยังไม่แปลงเป็นถุง {money.format(item!.unconverted_amount!)} · รายการเดิมปิดวันแล้วหรือไม่มีราคากลาง</small> : null}
                 </td>;
               })}
+              <td className="accounting-daily-matrix__quantity" aria-label={`ลูกค้าขาจร ${date} ถัง`}>—</td>
               <td className="accounting-daily-matrix__money" aria-label={`ลูกค้าขาจร ${date} ยอดขาย`}>{day ? money.format(day.sales_amount) : '—'}</td>
-              <td className="accounting-daily-matrix__money" aria-label={`ลูกค้าขาจร ${date} รับเงินจริง`}>{day ? money.format(day.cash_received) : '—'}{day && day.cash_refunded > 0 ? <small>คืนเงิน {money.format(day.cash_refunded)} · สุทธิ {money.format(day.cash_received - day.cash_refunded)}</small> : null}</td>
+              <td className="accounting-daily-matrix__money" aria-label={`ลูกค้าขาจร ${date} เงินสด`}>{day ? money.format(day.cash_received) : '—'}{day && day.cash_refunded > 0 ? <small>คืนเงิน {money.format(day.cash_refunded)} · สุทธิ {money.format(day.cash_received - day.cash_refunded)}</small> : null}</td>
+              <td className="accounting-daily-matrix__money accounting-daily-matrix__received" aria-label={`ลูกค้าขาจร ${date} โอน`}>{day ? money.format(day.transfer_received ?? 0) : '—'}{day && Number(day.transfer_refunded) > 0 ? <small>คืนเงิน {money.format(day.transfer_refunded!)} · สุทธิ {money.format(Number(day.transfer_received ?? 0) - day.transfer_refunded!)}</small> : null}</td>
             </Fragment>;
           })}
         </tr>
@@ -942,13 +951,13 @@ function ShopDailyMatrix({ collapsedGroups, daily, data, fromDate, grouped, onOp
             return dates.every((date) => dailyRow?.days.some((day) => day.service_date === date));
           });
           const groupDayCells = groupDailyRows.flatMap((row) => dates.map((date) => row?.days.find((day) => day.service_date === date)).filter((day): day is AccountingShopDailyCell => Boolean(day)));
-          const groupCash = groupDailyComplete ? groupDayCells.reduce((sum, day) => sum + Number(day.cash_received), 0) : null;
+          const groupReceived = groupDailyComplete ? groupDayCells.reduce((sum, day) => sum + Number(day.cash_received) + Number(day.transfer_received ?? 0), 0) : null;
           const statusCounts = groupDayCells.reduce((counts, day) => {
             counts[day.status] += 1;
             return counts;
           }, { purchased: 0, recorded_no_sale: 0, no_purchase: 0, closed_shop: 0, not_recorded: 0, not_scheduled: 0, skipped: 0 } as Record<AccountingShopDailyStatus, number>);
           return <Fragment key={key}>
-            <tr className="accounting-shop-group accounting-daily-matrix__group"><th colSpan={totalColumnCount}><button aria-expanded={!collapsed} onClick={() => onToggleGroup(key)} type="button"><span aria-hidden="true">{collapsed ? '▶' : '▼'}</span><strong>{formatAccountingGroupTitle(group.building_name, group.current_zone_name)}</strong><span>หน้านี้ {group.total_shop_count.toLocaleString('th-TH')} ร้าน</span>{groupDailyComplete ? <><span>ซื้อแล้ว {statusCounts.purchased.toLocaleString('th-TH')}</span>{statusCounts.recorded_no_sale ? <span>มีบันทึกแต่ไม่มีการขาย {statusCounts.recorded_no_sale.toLocaleString('th-TH')}</span> : null}<span>ไม่ซื้อ {statusCounts.no_purchase.toLocaleString('th-TH')}</span><span>ยังไม่บันทึก {statusCounts.not_recorded.toLocaleString('th-TH')}</span></> : <span>ข้อมูลรายวันไม่ครบ</span>}<span>ยอดขาย {money.format(group.sales_amount)}</span><span>รับจริงเฉพาะร้านในหน้านี้ {groupCash == null ? '—' : money.format(groupCash)}</span><span>ค้าง {money.format(group.cumulative_outstanding_amount)}</span></button></th></tr>
+            <tr className="accounting-shop-group accounting-daily-matrix__group"><th colSpan={totalColumnCount}><button aria-expanded={!collapsed} onClick={() => onToggleGroup(key)} type="button"><span aria-hidden="true">{collapsed ? '▶' : '▼'}</span><strong>{formatAccountingGroupTitle(group.building_name, group.current_zone_name)}</strong><span>หน้านี้ {group.total_shop_count.toLocaleString('th-TH')} ร้าน</span>{groupDailyComplete ? <><span>ซื้อแล้ว {statusCounts.purchased.toLocaleString('th-TH')}</span>{statusCounts.recorded_no_sale ? <span>มีบันทึกแต่ไม่มีการขาย {statusCounts.recorded_no_sale.toLocaleString('th-TH')}</span> : null}<span>ไม่ซื้อ {statusCounts.no_purchase.toLocaleString('th-TH')}</span><span>ยังไม่บันทึก {statusCounts.not_recorded.toLocaleString('th-TH')}</span></> : <span>ข้อมูลรายวันไม่ครบ</span>}<span>ยอดขาย {money.format(group.sales_amount)}</span><span>รับจริงเฉพาะร้านในหน้านี้ {groupReceived == null ? '—' : money.format(groupReceived)}</span><span>ค้าง {money.format(group.cumulative_outstanding_amount)}</span></button></th></tr>
             {collapsed ? null : <>
               {rows.map(renderShopRow)}
               <tr className="accounting-daily-matrix__totals"><th colSpan={2}>รวมร้านในหน้านี้ {formatAccountingGroupTitle(group.building_name, group.current_zone_name)}</th>
@@ -957,8 +966,10 @@ function ShopDailyMatrix({ collapsedGroups, daily, data, fromDate, grouped, onOp
                   const complete = dayCells.every(Boolean);
                   return <Fragment key={date}>
                     {daily.ice_types.map((iceType) => <td key={iceType.ice_type_id}>{complete ? number.format(dayCells.reduce((sum, day) => sum + dayItemQuantity(day, iceType.ice_type_id), 0)) : '—'}</td>)}
+                    <td>{complete ? number.format(dayCells.reduce((sum, day) => sum + Number(day?.tank_quantity ?? 0), 0)) : '—'}</td>
                     <td>{complete ? money.format(dayCells.reduce((sum, day) => sum + Number(day?.sales_amount), 0)) : '—'}</td>
                     <td>{complete ? money.format(dayCells.reduce((sum, day) => sum + Number(day?.cash_received), 0)) : '—'}</td>
+                    <td>{complete ? money.format(dayCells.reduce((sum, day) => sum + Number(day?.transfer_received ?? 0), 0)) : '—'}</td>
                   </Fragment>;
                 })}
               </tr>

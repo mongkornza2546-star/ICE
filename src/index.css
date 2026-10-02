@@ -160,6 +160,7 @@
 .accounting-daily-matrix__col-sequence { width: 52px; }
 .accounting-daily-matrix__col-shop { width: 210px; }
 .accounting-daily-matrix__col-quantity { width: 110px; }
+.accounting-daily-matrix__col-tank { width: 90px; }
 .accounting-daily-matrix__col-money { width: 118px; }
 .accounting-daily-matrix__table th, .accounting-daily-matrix__table td { height: 48px; padding: 7px 8px; text-align: center; }
 .accounting-daily-matrix__table thead tr:nth-child(2) th { overflow-wrap: anywhere; line-height: 1.2; }

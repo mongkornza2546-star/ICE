@@ -1094,3 +1094,72 @@ test('event scope filters before pagination and keeps area counts consistent for
   const range = await db.query(`select public.get_accounting_shop_summary('2026-07-31', '2026-08-01') as summary`);
   assert.equal(range.rows[0].summary.total_count, 3, 'overlapping historical range includes both events');
 });
+
+test('tank handoffs preserve matrix sales and invoice totals used by Excel export', async (t) => {
+  const db = await createDatabase(t);
+  await db.exec(`
+    create role anon;
+    alter table public.shop_payment_profiles
+      add column credit_due_rule text,
+      add column credit_collection_weekday integer,
+      add column credit_days integer;
+    alter table public.ice_types add column is_active boolean not null default true;
+    alter table public.delivery_charges alter column delivery_event_id drop not null;
+    alter table public.delivery_charges
+      add column tank_rental_id uuid unique,
+      add column event_tank_rental_id uuid unique;
+    create table public.shop_rented_tanks (shop_id uuid, rented_at date);
+    create table public.shop_tank_rentals (id uuid primary key, shop_id uuid, quantity integer, handed_out_on date);
+    create table public.event_participations (id uuid primary key, shop_id uuid);
+    create table public.event_tank_register (
+      id uuid primary key, event_participation_id uuid, movement_kind text,
+      quantity integer, service_date date, rental_start_date date
+    );
+    create table public.casual_transactions (
+      transaction_kind text, payment_method public.payment_method,
+      sale_amount numeric, recorded_at timestamptz
+    );
+    create table public.casual_refund_confirmations (
+      refund_method public.payment_method, refunded_amount numeric, confirmed_at timestamptz
+    );
+    insert into public.shop_tank_rentals values
+      ('a0000000-0000-4000-8000-000000000010', '${SHOP_ID}', 2, '2026-08-01');
+    insert into public.event_participations values
+      ('a0000000-0000-4000-8000-000000000020', '${SHOP_ID}');
+    -- Event preparation hands tanks out before the invoice service date.
+    insert into public.event_tank_register values
+      ('a0000000-0000-4000-8000-000000000030', 'a0000000-0000-4000-8000-000000000020',
+        'handoff', 3, '2026-07-31', '2026-08-01'),
+      ('a0000000-0000-4000-8000-000000000031', 'a0000000-0000-4000-8000-000000000020',
+        'return', 1, '2026-08-01', null);
+    insert into public.delivery_charges (
+      id, shop_id, service_date, payment_term, original_amount, status, tank_rental_id, event_tank_rental_id
+    ) values
+      ('a0000000-0000-4000-8000-000000000040', '${SHOP_ID}', '2026-08-01', 'end_of_day', 200, 'active',
+        'a0000000-0000-4000-8000-000000000010', null),
+      ('a0000000-0000-4000-8000-000000000050', '${SHOP_ID}', '2026-08-01', 'end_of_day', 300, 'active',
+        null, 'a0000000-0000-4000-8000-000000000030');
+  `);
+  await db.exec(readFileSync(new URL(
+    '../supabase/migrations/0146_accounting_shop_daily_matrix.sql', import.meta.url,
+  ), 'utf8'));
+  await db.exec(readFileSync(new URL(
+    '../supabase/migrations/0201_accounting_daily_tanks_payment_split.sql', import.meta.url,
+  ), 'utf8'));
+
+  for (const [date, tankQuantity] of [['2026-07-31', 3], ['2026-08-01', 2]]) {
+    const { rows: [result] } = await db.query(`
+      select public.get_accounting_shop_summary('${date}', '${date}') as summary,
+        public.get_accounting_shop_daily_matrix('${date}', '${date}', array['${SHOP_ID}']::uuid[]) as daily,
+        public.get_accounting_shop_daily_matrix_before_tank_payment_split(
+          '${date}', '${date}', array['${SHOP_ID}']::uuid[]
+        ) as previous
+    `);
+    const day = result.daily.rows[0].days[0];
+    assert.equal(day.tank_quantity, tankQuantity, `${date}: count handoffs on their physical date`);
+    assert.equal(day.sales_amount, result.summary.rows[0].sales_amount, `${date}: export sales must reconcile`);
+    assert.equal(day.invoice_count, result.summary.rows[0].invoice_count, `${date}: export invoice counts must reconcile`);
+    const { tank_quantity, transfer_received, ...priorFields } = day;
+    assert.deepEqual(priorFields, result.previous.rows[0].days[0], `${date}: preserve existing sales and status`);
+  }
+});
