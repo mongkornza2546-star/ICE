@@ -7,7 +7,6 @@ import {
   IceCream,
   MapPin,
   Money,
-  QrCode,
   Storefront,
   Trash,
   UploadSimple,
@@ -30,6 +29,7 @@ import { formatShortTime, isBoothSameAsName, renderTotals, sortPaymentTerms, sta
 import { PROBLEM_STATUSES, STATUS_LABELS } from './constants';
 import { DeliveryCorrectionDialog } from '../delivery-corrections/DeliveryCorrectionDialog';
 import { AutoRefreshShopImage } from '../financial-operations/components/AutoRefreshShopImage';
+import { visiblePaymentMethods } from '../../lib/paymentMethods';
 
 const TERM_LABELS: Record<PaymentTerm, string> = {
   immediate: 'ส่งและรับชำระ',
@@ -40,7 +40,7 @@ const TERM_LABELS: Record<PaymentTerm, string> = {
 const METHOD_LABELS: Record<PaymentMethod, string> = {
   cash: 'เงินสด',
   bank_transfer: 'โอนเงิน',
-  qr: 'QR',
+  qr: 'โอนเงิน',
 };
 
 const money = new Intl.NumberFormat('th-TH', {
@@ -237,7 +237,7 @@ export function EmployeeDeliveryReview({
 
   if (paymentOpen && paymentResult) {
     const profile = posContext?.payment_profile;
-    const availablePaymentMethods = profile?.allowed_payment_methods ?? ['cash', 'bank_transfer', 'qr'];
+    const availablePaymentMethods = visiblePaymentMethods(profile?.allowed_payment_methods ?? ['cash', 'bank_transfer']);
     const totalDue = paymentResult.total_amount ?? 0;
     const receivedAmount = Number(paymentAmount) || 0;
     const allocatedAmount = receivedAmount >= totalDue ? totalDue : receivedAmount;
@@ -320,7 +320,7 @@ export function EmployeeDeliveryReview({
                 gridTemplateColumns: `repeat(${availablePaymentMethods.length}, minmax(0, 1fr))`,
               }}>
                 {availablePaymentMethods.map((method) => {
-                  const Icon = method === 'cash' ? Money : method === 'bank_transfer' ? Bank : QrCode;
+                  const Icon = method === 'cash' ? Money : Bank;
                   return (
                     <button
                       aria-pressed={paymentMethod === method}

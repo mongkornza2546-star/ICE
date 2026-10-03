@@ -7,7 +7,6 @@ import {
   ListNumbers,
   Money,
   Printer,
-  QrCode,
   Storefront,
   UploadSimple,
   X,
@@ -16,6 +15,8 @@ import type { PaymentMethod } from '../../../types/app';
 import type { PaymentReceipt, QueueShop } from '../types';
 import { formatCollectionShopIdentity, formatServiceDate, money, paymentMethodLabel } from '../utils';
 import { AutoRefreshShopImage } from './AutoRefreshShopImage';
+import { toBangkokDateString } from '../../../lib/serviceDate';
+import { visiblePaymentMethods } from '../../../lib/paymentMethods';
 
 export function PaymentModal({
   presentation = 'modal',
@@ -24,6 +25,10 @@ export function PaymentModal({
   serviceDate,
   busy,
   canRecordPayment = true,
+  canBackdatePayment = false,
+  receivedDate = toBangkokDateString(),
+  today = toBangkokDateString(),
+  onReceivedDateChange,
   method,
   amount,
   reference,
@@ -61,6 +66,10 @@ export function PaymentModal({
   serviceDate: string;
   busy: boolean;
   canRecordPayment?: boolean;
+  canBackdatePayment?: boolean;
+  receivedDate?: string;
+  today?: string;
+  onReceivedDateChange?: (date: string) => void;
   method: PaymentMethod;
   amount: string;
   reference: string;
@@ -101,6 +110,7 @@ export function PaymentModal({
     ? Math.max(Number(selectedShop.outstanding_amount) - Number(focusedCharge.outstanding_amount), 0)
     : 0;
   const identity = formatCollectionShopIdentity(selectedShop);
+  const availablePaymentMethods = visiblePaymentMethods(selectedShop.payment_profile.allowed_payment_methods);
   const selectedChargeIdSet = new Set(selectedChargeIds);
   return (
     <div
@@ -268,10 +278,10 @@ export function PaymentModal({
             <section className="financial-ops__payment-methods" aria-labelledby="payment-method-label">
               <h3 id="payment-method-label">รูปแบบการชำระ</h3>
               <div style={{
-                gridTemplateColumns: `repeat(${selectedShop.payment_profile.allowed_payment_methods.length}, minmax(0, 1fr))`,
+                gridTemplateColumns: `repeat(${availablePaymentMethods.length}, minmax(0, 1fr))`,
               }}>
-                {selectedShop.payment_profile.allowed_payment_methods.map((allowedMethod) => {
-                  const Icon = allowedMethod === 'cash' ? Money : allowedMethod === 'bank_transfer' ? Bank : QrCode;
+                {availablePaymentMethods.map((allowedMethod) => {
+                  const Icon = allowedMethod === 'cash' ? Money : Bank;
                   return (
                     <button
                       aria-pressed={method === allowedMethod}
@@ -313,10 +323,21 @@ export function PaymentModal({
               ) : null}
             </section>
 
-            {isPanel ? (
+            {canBackdatePayment || isPanel ? (
               <section className="financial-ops__inline-datetime" aria-label="วันและเวลาที่รับเงิน">
-                <label><span>วันที่รับเงิน</span><input readOnly value={formatServiceDate(serviceDate)} /></label>
-                <label><span>เวลา</span><input readOnly value={new Intl.DateTimeFormat('th-TH', { hour: '2-digit', minute: '2-digit' }).format(new Date())} /></label>
+                <label><span>วันที่รับเงิน</span>{canBackdatePayment ? (
+                  <input
+                    disabled={busy || !canRecordPayment}
+                    max={today}
+                    onChange={(event) => onReceivedDateChange?.(event.target.value)}
+                    required
+                    type="date"
+                    value={receivedDate}
+                  />
+                ) : <input readOnly value={formatServiceDate(today)} />}</label>
+                {canBackdatePayment ? <small>เลือกวันที่เงินเข้าจริง ระบบเก็บเวลาที่บันทึกแยกไว้ให้อัตโนมัติ</small> : (
+                  <label><span>เวลา</span><input readOnly value={new Intl.DateTimeFormat('th-TH', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Bangkok' }).format(new Date())} /></label>
+                )}
               </section>
             ) : null}
 

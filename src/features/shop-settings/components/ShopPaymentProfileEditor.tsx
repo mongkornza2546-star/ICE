@@ -4,6 +4,7 @@ import type { ShopPaymentProfileSetting, PaymentTerm, PaymentMethod, CreditDueRu
 import { CREDIT_COLLECTION_WEEKDAY_OPTIONS, formatCreditCollectionCycle } from '../../../lib/creditCollectionCycle';
 import { loadShopPaymentProfile, saveShopPaymentProfile, getErrorMessage } from '../../admin-reference-settings/adminReferenceSettingsService';
 import { sortPaymentTerms } from '../../employee-delivery/utils';
+import { normalizePaymentMethod, normalizePaymentMethods } from '../../../lib/paymentMethods';
 
 interface ShopPaymentProfileEditorProps {
   shopId: string;
@@ -15,7 +16,7 @@ const defaultProfile = (shop_id: string): ShopPaymentProfileSetting => ({
   shop_id,
   allowed_payment_terms: ['immediate'],
   default_payment_term: 'immediate',
-  allowed_payment_methods: ['cash', 'bank_transfer', 'qr'],
+  allowed_payment_methods: ['cash', 'bank_transfer'],
   default_payment_method: 'cash',
   cash_reference_required: false,
   cash_evidence_required: false,
@@ -48,7 +49,11 @@ export function ShopPaymentProfileEditor({ shopId, shopName, onSaved }: ShopPaym
     try {
       const data = await loadShopPaymentProfile(shopId);
       if (data) {
-        setProfile(data);
+        setProfile({
+          ...data,
+          allowed_payment_methods: normalizePaymentMethods(data.allowed_payment_methods),
+          default_payment_method: normalizePaymentMethod(data.default_payment_method),
+        });
       } else {
         setProfile(defaultProfile(shopId));
       }
@@ -116,7 +121,11 @@ export function ShopPaymentProfileEditor({ shopId, shopName, onSaved }: ShopPaym
     setSuccess(null);
 
     try {
-      const saved = await saveShopPaymentProfile(profile);
+      const saved = await saveShopPaymentProfile({
+        ...profile,
+        allowed_payment_methods: normalizePaymentMethods(profile.allowed_payment_methods),
+        default_payment_method: normalizePaymentMethod(profile.default_payment_method),
+      });
       setProfile(saved);
       setSuccess('บันทึกเงื่อนไขการชำระเงินของร้านแล้ว');
       await onSaved?.();
@@ -205,14 +214,6 @@ export function ShopPaymentProfileEditor({ shopId, shopName, onSaved }: ShopPaym
                 />
                 โอนเงิน (Transfer)
               </label>
-              <label className="inline-check">
-                <input
-                  checked={profile.allowed_payment_methods.includes('qr')}
-                  onChange={() => toggleMethod('qr')}
-                  type="checkbox"
-                />
-                สแกน QR
-              </label>
             </div>
           </div>
 
@@ -224,7 +225,7 @@ export function ShopPaymentProfileEditor({ shopId, shopName, onSaved }: ShopPaym
             >
               {profile.allowed_payment_methods.map((method) => (
                 <option key={method} value={method}>
-                  {method === 'cash' ? 'เงินสด' : method === 'bank_transfer' ? 'โอนเงิน' : 'สแกน QR'}
+                  {method === 'cash' ? 'เงินสด' : 'โอนเงิน'}
                 </option>
               ))}
             </select>

@@ -1,7 +1,7 @@
 import type { RefObject } from 'react';
 import { Coins, ListNumbers, Printer, X } from '@phosphor-icons/react';
 import type { HistoryReceiptDetail, PaymentCorrectionTarget } from '../types';
-import { formatCollectionShopIdentity, money, paymentMethodLabel, receiptDateTime } from '../utils';
+import { formatCollectionShopIdentity, money, paymentMethodLabel, formatPaymentReceivedAt, receiptDateTime } from '../utils';
 
 export function HistoryReceiptModal({
   historyReceipt,
@@ -57,7 +57,8 @@ export function HistoryReceiptModal({
         </header>
 
         <section className="financial-ops__receipt-summary" aria-label="ข้อมูลการรับเงิน">
-          <span><small>วันที่รับเงิน</small><strong>{receiptDateTime.format(new Date(historyReceipt.payment.recorded_at))}</strong></span>
+          <span><small>วันที่รับเงิน</small><strong>{formatPaymentReceivedAt(historyReceipt.payment)}</strong></span>
+          {historyReceipt.payment.entered_at ? <span><small>บันทึกเมื่อ</small><strong>{receiptDateTime.format(new Date(historyReceipt.payment.entered_at))}</strong></span> : null}
           <span><small>วิธีรับเงิน</small><strong>{paymentMethodLabel(historyReceipt.payment.payment_method)}</strong></span>
           <span><small>ยอดชำระ</small><b>{money.format(historyReceipt.payment.allocated_amount)}</b></span>
           {historyReceipt.payment.change_amount > 0 ? (

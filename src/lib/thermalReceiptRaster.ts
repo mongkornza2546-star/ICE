@@ -218,7 +218,12 @@ export async function renderSalesDocumentRaster(payload: SalesDocumentPayload) {
     receipt.text('Super Ice', { align: 'center', bold: true, size: 27 });
     receipt.text('ใบเสร็จรับเงิน / RECEIPT', { align: 'center', bold: true, size: 22 });
     receipt.text(`เลขที่เอกสาร: ${payload.documentNumber}`);
-    receipt.text(`วันที่ออกเอกสาร: ${formatReceiptDateTime(payload.issuedAt)}`);
+    if (payload.receivedDate) {
+      receipt.text(`วันที่รับเงิน: ${formatReceiptDate(payload.receivedDate)}`);
+      if (payload.enteredAt) receipt.text(`บันทึกเมื่อ: ${formatReceiptDateTime(payload.enteredAt)}`);
+    } else {
+      receipt.text(`วันที่ออกเอกสาร: ${formatReceiptDateTime(payload.issuedAt)}`);
+    }
     if (payload.serviceDate) receipt.text(`วันที่จัดส่ง: ${formatReceiptDate(payload.serviceDate)}`);
     if (payload.status === 'voided') receipt.text(`ยกเลิก · ${payload.voidInfo?.reason ?? 'ไม่ระบุเหตุ'}`, { align: 'center', bold: true });
     receipt.rule();

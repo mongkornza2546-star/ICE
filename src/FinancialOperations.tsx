@@ -138,6 +138,7 @@ export function FinancialOperations({
   const [method, setMethod] = useState<PaymentMethod>(initialDemoShop?.payment_profile.default_payment_method ?? 'cash');
   const [amount, setAmount] = useState(initialDemoShop ? Number(initialDemoShop.outstanding_amount).toFixed(2) : '');
   const [reference, setReference] = useState('');
+  const [receivedDate, setReceivedDate] = useState<string | null>(null);
   const [evidence, setEvidence] = useState<File | null>(null);
   const [evidenceError, setEvidenceError] = useState<string | null>(null);
   const [selectedShop, setSelectedShop] = useState<QueueShop | null>(initialDemoShop);
@@ -182,6 +183,7 @@ export function FinancialOperations({
     setMethod(shop.payment_profile.default_payment_method);
     setAmount(Number(shop.outstanding_amount).toFixed(2));
     setReference('');
+    setReceivedDate(null);
     setEvidence(null);
     setEvidenceError(null);
     setError(null);
@@ -264,36 +266,43 @@ export function FinancialOperations({
         ? nextQueue.find((shop) => queueIdentity(shop) === queueIdentity(currentShop)) ?? null
         : null);
       setQueue(nextQueue);
-      setSelectedShop(nextSelectedShop);
-      if (nextSelectedShop && (preferredShop
-        || queueIdentity(nextSelectedShop) !== (currentShop && queueIdentity(currentShop)))) {
-        resetPaymentForm(nextSelectedShop);
-      } else if (nextSelectedShop && currentShop) {
-        const reconciled = reconcileChargeSelection(
-          currentShop.charges,
-          nextSelectedShop.charges,
-          selectedChargeIdsRef.current,
-        );
-        if (reconciled.changed) {
-          const selected = new Set(reconciled.selectedChargeIds);
-          const selectedOutstanding = sumChargeOutstanding(nextSelectedShop.charges
-            .filter((charge) => selected.has(charge.charge_id)));
-          setSelectedChargeIds(reconciled.selectedChargeIds);
-          selectedChargeIdsRef.current = reconciled.selectedChargeIds;
-          setAmount(selectedOutstanding.toFixed(2));
-          setSelectionReviewRequired(true);
+      // A paid shop can disappear from the live queue while its receipt is open
+      // (for example, when returning from printing). Keep the receipt's shop and
+      // charges until dismissal so the completion action can still return to POS.
+      if (preferredShop || !receiptRef.current) {
+        setSelectedShop(nextSelectedShop);
+        if (nextSelectedShop && (preferredShop
+          || queueIdentity(nextSelectedShop) !== (currentShop && queueIdentity(currentShop)))) {
+          resetPaymentForm(nextSelectedShop);
+        } else if (nextSelectedShop && currentShop) {
+          const reconciled = reconcileChargeSelection(
+            currentShop.charges,
+            nextSelectedShop.charges,
+            selectedChargeIdsRef.current,
+          );
+          if (reconciled.changed) {
+            const selected = new Set(reconciled.selectedChargeIds);
+            const selectedOutstanding = sumChargeOutstanding(nextSelectedShop.charges
+              .filter((charge) => selected.has(charge.charge_id)));
+            setSelectedChargeIds(reconciled.selectedChargeIds);
+            selectedChargeIdsRef.current = reconciled.selectedChargeIds;
+            setAmount(selectedOutstanding.toFixed(2));
+            setSelectionReviewRequired(true);
+          }
+        } else if (!nextSelectedShop) {
+          setSelectedChargeIds([]);
+          selectedChargeIdsRef.current = [];
+          setSelectionReviewRequired(false);
         }
-      } else if (!nextSelectedShop) {
+      }
+    } else {
+      setQueue([]);
+      if (!receiptRef.current) {
+        setSelectedShop(null);
         setSelectedChargeIds([]);
         selectedChargeIdsRef.current = [];
         setSelectionReviewRequired(false);
       }
-    } else {
-      setQueue([]);
-      setSelectedShop(null);
-      setSelectedChargeIds([]);
-      selectedChargeIdsRef.current = [];
-      setSelectionReviewRequired(false);
       if (preferredQueueKey) throw new Error('ไม่พบร้านนี้ในคิวรับเงินล่าสุด');
     }
 
@@ -578,8 +587,14 @@ export function FinancialOperations({
   const evidenceRequired = selectedShop
     ? methodRequires(selectedShop.payment_profile, method, 'evidence')
     : false;
+  const today = toBangkokDateString();
+  const paymentDate = userRole === 'admin' ? receivedDate ?? today : today;
+  const paymentDateValid = /^\d{4}-\d{2}-\d{2}$/.test(paymentDate)
+    && Number.isFinite(Date.parse(`${paymentDate}T00:00:00+07:00`))
+    && paymentDate <= today;
   const paymentReady = Boolean(
     canCollectShopPayments
+    && paymentDateValid
     && selectedShop
     && selectedChargeIds.length > 0
     && !selectionReviewRequired
@@ -633,6 +648,7 @@ export function FinancialOperations({
         allocations,
         method,
         receivedAmount,
+        receivedDate: paymentDate < today ? paymentDate : null,
         reference: reference.trim() || null,
         evidence: evidence ? {
           name: evidence.name,
@@ -682,7 +698,13 @@ export function FinancialOperations({
         : selectedShop.billing_statement_id
           ? 'record_billing_statement_payment'
           : 'record_regular_collection_payment';
-      const { data, error: rpcError } = await supabase.rpc(paymentRpc, paymentArgs);
+      const { data, error: rpcError } = paymentDate < today
+        ? await supabase.rpc('record_backdated_collection_payment', {
+          p_payment_kind: paymentRpc,
+          p_received_date: paymentDate,
+          p_payment_args: paymentArgs,
+        })
+        : await supabase.rpc(paymentRpc, paymentArgs);
       if (rpcError) {
         invalidateCurrentCollectionContext(true);
         throw rpcError;
@@ -701,6 +723,8 @@ export function FinancialOperations({
         allocatedAmount: Number(data.allocated_amount),
         changeAmount: Number(data.change_amount),
         recordedAt: data.recorded_at,
+        receivedDate: data.received_date_override ?? null,
+        enteredAt: data.entered_at ?? null,
         charges: [],
       };
       setReceipt(nextReceipt);
@@ -726,6 +750,8 @@ export function FinancialOperations({
       title: targetReceipt.title ?? 'ใบเสร็จรับเงิน',
       status: targetReceipt.status ?? 'active',
       issuedAt: targetReceipt.recordedAt,
+      receivedDate: targetReceipt.receivedDate ?? null,
+      enteredAt: targetReceipt.enteredAt ?? null,
       serviceDate: targetReceipt.serviceDate ?? null,
       shop: {
         code: targetReceipt.shopCode,
@@ -1104,6 +1130,10 @@ export function FinancialOperations({
           amount={amount}
           busy={busy}
           canRecordPayment={canCollectShopPayments}
+          canBackdatePayment={userRole === 'admin'}
+          receivedDate={paymentDate}
+          today={today}
+          onReceivedDateChange={(date) => setReceivedDate(date === today ? null : date)}
           changeAmount={changeAmount}
           closeButtonRef={closeButtonRef}
           dialogRef={dialogRef}

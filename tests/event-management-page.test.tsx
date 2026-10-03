@@ -161,8 +161,8 @@ describe('EventManagementPage', () => {
     await user.type(screen.getByLabelText('ผู้ติดต่อหลัก'), 'คุณบี');
     await user.type(screen.getByLabelText('เบอร์โทร'), '0899999999');
     await user.click(screen.getByText('ตั้งค่าการชำระเงิน (ไม่จำเป็นต้องกรอก)'));
+    expect(screen.queryByLabelText('QR')).toBeNull();
     await user.click(screen.getByLabelText('โอนธนาคาร'));
-    await user.click(screen.getByLabelText('QR'));
     await user.selectOptions(screen.getByLabelText('วิธีรับเงินเริ่มต้น'), 'cash');
     await user.click(screen.getByRole('button', { name: 'บันทึกงาน' }));
 

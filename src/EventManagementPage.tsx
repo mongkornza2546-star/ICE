@@ -17,6 +17,7 @@ import { EventPreparationPanel } from './features/event-management/EventPreparat
 import { EventExcelImportDialog } from './features/event-management/EventExcelImportDialog';
 import { parseBoothRanges } from './features/event-management/boothRanges';
 import { toBangkokDateString } from './lib/serviceDate';
+import { normalizePaymentMethod, normalizePaymentMethods } from './lib/paymentMethods';
 import type { PaymentMethod } from './types/app';
 import { eventManagementGateway } from './features/event-management/eventManagementGateway';
 import type {
@@ -77,7 +78,6 @@ interface CancelTarget {
 const PAYMENT_METHODS: Array<{ value: PaymentMethod; label: string }> = [
   { value: 'cash', label: 'เงินสด' },
   { value: 'bank_transfer', label: 'โอนธนาคาร' },
-  { value: 'qr', label: 'QR' },
 ];
 const PAYMENT_RULE_KEYS: Record<PaymentMethod, {
   reference: 'cashReferenceRequired' | 'bankTransferReferenceRequired' | 'qrReferenceRequired';
@@ -110,7 +110,7 @@ function emptyEventDraft(): EventDraft {
     endDate: today,
     notes: '',
     tankRentalUnitPrice: '100',
-    allowedPaymentMethods: ['cash', 'bank_transfer', 'qr'],
+    allowedPaymentMethods: ['cash', 'bank_transfer'],
     defaultPaymentMethod: 'cash',
     cashReferenceRequired: false,
     cashEvidenceRequired: false,
@@ -134,8 +134,8 @@ function eventDraftFrom(job: EventJob, configuration: EventConfiguration | null)
     endDate: job.end_date,
     notes: job.notes ?? '',
     tankRentalUnitPrice: String(configuration?.tank_rental_unit_price ?? 100),
-    allowedPaymentMethods: configuration?.allowed_payment_methods ?? [],
-    defaultPaymentMethod: configuration?.default_payment_method ?? '',
+    allowedPaymentMethods: normalizePaymentMethods(configuration?.allowed_payment_methods ?? []),
+    defaultPaymentMethod: configuration ? normalizePaymentMethod(configuration.default_payment_method) : '',
     cashReferenceRequired: configuration?.cash_reference_required ?? false,
     cashEvidenceRequired: configuration?.cash_evidence_required ?? false,
     bankTransferReferenceRequired: configuration?.bank_transfer_reference_required ?? true,
@@ -177,7 +177,7 @@ function displayStatus(job: EventJob) {
 }
 
 function paymentLabel(method: PaymentMethod) {
-  return PAYMENT_METHODS.find((option) => option.value === method)?.label ?? method;
+  return method === 'cash' ? 'เงินสด' : 'โอนธนาคาร';
 }
 
 function useModalLock(open: boolean, busy: boolean, close: () => void) {
@@ -808,7 +808,7 @@ function EventDetail({
 
       <section className="event-config-summary">
         <header><h3>นโยบายการชำระเงิน</h3>{profileRole === 'round_lead' ? <span>อ่านอย่างเดียว</span> : null}</header>
-        {configuration ? <dl><div><dt>วิธีรับเงิน</dt><dd>{configuration.allowed_payment_methods.map(paymentLabel).join(', ')}</dd></div><div><dt>วิธีเริ่มต้น</dt><dd>{paymentLabel(configuration.default_payment_method)}</dd></div><div><dt>เงื่อนไข</dt><dd>ชำระสิ้นวัน</dd></div><div><dt>Config version</dt><dd>v{configuration.version_no}</dd></div></dl> : <p className="event-config-missing"><WarningCircle size={18} />รอแอดมินตั้งค่า config</p>}
+        {configuration ? <dl><div><dt>วิธีรับเงิน</dt><dd>{normalizePaymentMethods(configuration.allowed_payment_methods).map(paymentLabel).join(', ')}</dd></div><div><dt>วิธีเริ่มต้น</dt><dd>{paymentLabel(configuration.default_payment_method)}</dd></div><div><dt>เงื่อนไข</dt><dd>ชำระสิ้นวัน</dd></div><div><dt>Config version</dt><dd>v{configuration.version_no}</dd></div></dl> : <p className="event-config-missing"><WarningCircle size={18} />รอแอดมินตั้งค่า config</p>}
       </section>
 
       {preparationPanel}

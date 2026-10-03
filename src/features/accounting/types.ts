@@ -232,6 +232,8 @@ export type AccountingShopInvoiceDetailEntry = {
     payment_method: 'cash' | 'bank_transfer' | 'qr';
     amount: number;
     recorded_at: string;
+    received_date_override?: string | null;
+    entered_at?: string | null;
   }>;
   adjustments: Array<{
     id: string;

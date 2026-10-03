@@ -1,3 +1,4 @@
+import { formatReceiptDate } from '../../lib/salesDocumentPresentation';
 import { useEffect, useRef, useState } from 'react';
 import { X } from '@phosphor-icons/react';
 import type { StoredSalesDocument } from '../../lib/salesDocumentPrint';
@@ -53,7 +54,7 @@ export function ReceiptPreview({ receipt }: { receipt: StoredSalesDocument }) {
   const items = receipt.items ?? (receipt.charges ?? []).flatMap((charge) => charge.items ?? []);
   const amount = receipt.total_amount ?? receipt.allocated_amount;
   return <section className="accounting-receipt"><h3>สำเนาใบเสร็จเดิม</h3>
-    <dl><div><dt>เลขใบเสร็จ</dt><dd>{receipt.document_number ?? '—'}</dd></div><div><dt>วันเวลารับเงิน</dt><dd>{accountingDateTime(receipt.issued_at ?? receipt.recorded_at)}</dd></div><div><dt>ช่องทาง</dt><dd>{receipt.payment_method ? methods[receipt.payment_method] : '—'}</dd></div><div><dt>ผู้บันทึก</dt><dd>{receipt.recorded_by_name ?? '—'}</dd></div></dl>
+    <dl><div><dt>เลขใบเสร็จ</dt><dd>{receipt.document_number ?? '—'}</dd></div><div><dt>{receipt.received_date_override ? 'วันที่รับเงิน' : 'วันเวลารับเงิน'}</dt><dd>{receipt.received_date_override ? formatReceiptDate(receipt.received_date_override) : accountingDateTime(receipt.issued_at ?? receipt.recorded_at)}</dd></div>{receipt.entered_at ? <div><dt>บันทึกเมื่อ</dt><dd>{accountingDateTime(receipt.entered_at)}</dd></div> : null}<div><dt>ช่องทาง</dt><dd>{receipt.payment_method ? methods[receipt.payment_method] : '—'}</dd></div><div><dt>ผู้บันทึก</dt><dd>{receipt.recorded_by_name ?? '—'}</dd></div></dl>
     {items.length ? <ul>{items.map((item, index) => <li key={index}><span>{item.ice_type_name}<small>{Number(item.quantity).toLocaleString('th-TH')} {item.ice_type_unit}{item.unit_price != null ? ` × ${money.format(Number(item.unit_price))}` : ''}</small></span><strong>{money.format(Number(item.line_total))}</strong></li>)}</ul> : null}
     {receipt.charges?.length ? <section><h4>จัดสรรเข้าบิล</h4><ul>{receipt.charges.map((charge, index) => <li key={index}><span>{charge.charge_number ?? 'ไม่ระบุเลขบิล'}</span><strong>{money.format(Number(charge.received_amount))}</strong></li>)}</ul></section> : null}
     <dl><div><dt>ยอดใบเสร็จ</dt><dd>{amount == null ? '—' : money.format(Number(amount))}</dd></div><div><dt>เงินที่รับ</dt><dd>{receipt.received_amount == null ? '—' : money.format(Number(receipt.received_amount))}</dd></div><div><dt>เงินทอน</dt><dd>{receipt.change_amount == null ? '—' : money.format(Number(receipt.change_amount))}</dd></div></dl>

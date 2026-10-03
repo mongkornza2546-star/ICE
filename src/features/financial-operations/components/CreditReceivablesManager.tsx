@@ -28,7 +28,7 @@ import type {
   ReceivableDetail,
   ReceivablePayment,
 } from '../types';
-import { money, paymentMethodLabel, receiptDateTime } from '../utils';
+import { money, paymentMethodLabel, formatPaymentReceivedAt, receiptDateTime } from '../utils';
 import { DeliveryCorrectionDialog } from '../../delivery-corrections/DeliveryCorrectionDialog';
 import { BillingStatementsSection } from './BillingStatementsSection';
 
@@ -365,7 +365,7 @@ function ReceivableDrawer({
 
       <section className="credit-ar__drawer-section">
         <div className="credit-ar__drawer-section-title"><span><Coins size={18} /><h3>ประวัติการรับชำระ</h3></span></div>
-        {detailLoading ? <p className="financial-ops__empty">กำลังโหลดประวัติรับชำระ...</p> : detail.payments.length === 0 ? <p className="financial-ops__empty">ยังไม่มีประวัติรับชำระ</p> : <div className="credit-ar__payment-list">{detail.payments.map((payment) => <button key={payment.id} onClick={() => setSelectedPayment(payment)} type="button"><span><strong>{payment.receipt_number}</strong><small>{receiptDateTime.format(new Date(payment.recorded_at))} · {paymentMethodLabel(payment.payment_method)} · ผู้รับ {payment.recorded_by ?? '—'}</small></span><b>{money.format(payment.received_amount)}</b><em className={payment.status === 'active' ? 'is-active' : ''}>{payment.status === 'active' ? 'สำเร็จ' : 'ยกเลิก'}</em><CaretRight size={16} /></button>)}</div>}
+        {detailLoading ? <p className="financial-ops__empty">กำลังโหลดประวัติรับชำระ...</p> : detail.payments.length === 0 ? <p className="financial-ops__empty">ยังไม่มีประวัติรับชำระ</p> : <div className="credit-ar__payment-list">{detail.payments.map((payment) => <button key={payment.id} onClick={() => setSelectedPayment(payment)} type="button"><span><strong>{payment.receipt_number}</strong><small>{formatPaymentReceivedAt(payment)} · {paymentMethodLabel(payment.payment_method)} · ผู้รับ {payment.recorded_by ?? '—'}</small>{payment.entered_at ? <small>บันทึกเมื่อ {receiptDateTime.format(new Date(payment.entered_at))}</small> : null}</span><b>{money.format(payment.received_amount)}</b><em className={payment.status === 'active' ? 'is-active' : ''}>{payment.status === 'active' ? 'สำเร็จ' : 'ยกเลิก'}</em><CaretRight size={16} /></button>)}</div>}
         {selectedPayment ? <div className="credit-ar__allocation-detail"><header><span><Receipt size={17} /><strong>การจัดสรร {selectedPayment.receipt_number}</strong></span><button aria-label="ปิดรายละเอียดการจัดสรร" onClick={() => setSelectedPayment(null)} type="button"><X size={16} /></button></header>{selectedPayment.allocations.map((allocation) => <div key={`${selectedPayment.id}-${allocation.charge_id}`}><span>{allocation.charge_number}</span><b>{money.format(allocation.amount)}</b></div>)}</div> : null}
       </section>
       {selectedCharge?.delivery_event_id ? <DeliveryCorrectionDialog eventId={selectedCharge.delivery_event_id} onClose={() => setSelectedCharge(null)} onSuccess={refreshAfterCorrection} userRole={userRole} /> : selectedCharge ? <p className="credit-ar__action-error">ไม่พบรายการส่งต้นทางของบิลนี้</p> : null}

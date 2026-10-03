@@ -20,7 +20,7 @@ import type { Approval, DueDateRequest, PaymentHistoryItem, QueueShop, Receivabl
 
 const collectionServiceDate = '2026-07-31';
 const collectionPaymentProfile = {
-  allowed_payment_methods: ['cash', 'bank_transfer', 'qr'] as const,
+  allowed_payment_methods: ['cash', 'bank_transfer'] as const,
   default_payment_method: 'cash' as const,
   cash_reference_required: false,
   cash_evidence_required: false,
@@ -656,7 +656,7 @@ function buildDemoGateway(): EmployeeDeliveryGateway & { reset(): void } {
         payment_profile: {
           allowed_payment_terms: ['immediate', 'end_of_day', 'credit'] as const,
           default_payment_term: 'immediate' as const,
-          allowed_payment_methods: ['cash', 'bank_transfer', 'qr'] as const,
+          allowed_payment_methods: ['cash', 'bank_transfer'] as const,
           default_payment_method: 'cash' as const,
           cash_reference_required: false,
           cash_evidence_required: false,

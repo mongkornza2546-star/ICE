@@ -138,6 +138,8 @@ export type ReceivablePayment = {
   payment_method: PaymentMethod;
   status: 'active' | 'voided';
   recorded_at: string;
+  received_date_override?: string | null;
+  entered_at?: string | null;
   recorded_by: string | null;
   allocations: Array<{
     charge_id: string;
@@ -214,6 +216,8 @@ export type PaymentHistoryItem = {
   payment_method: PaymentMethod;
   status: 'active' | 'voided';
   recorded_at: string;
+  received_date_override?: string | null;
+  entered_at?: string | null;
   recorded_by?: string | null;
   void_reason: string | null;
   destination_kind?: 'regular' | 'event';
@@ -271,6 +275,8 @@ export type PaymentReceipt = {
   allocatedAmount: number;
   changeAmount: number;
   recordedAt: string;
+  receivedDate?: string | null;
+  enteredAt?: string | null;
   title?: string;
   status?: 'active' | 'voided';
   serviceDate?: string | null;
@@ -290,6 +296,8 @@ export type PaymentReceiptSnapshot = {
   allocated_amount: number | string;
   change_amount: number | string;
   recorded_at: string;
+  received_date_override?: string | null;
+  entered_at?: string | null;
   document_title?: string;
   status?: 'active' | 'voided';
   service_date?: string | null;

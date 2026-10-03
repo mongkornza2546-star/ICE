@@ -46,6 +46,19 @@ const receipt: SalesDocumentPayload = {
   voidInfo: null,
 };
 
+it('prints a backdated receipt with date-only receipt day and actual entry time', async () => {
+  await renderSalesDocumentRaster({
+    ...receipt,
+    issuedAt: '2026-09-30T00:00:00+07:00',
+    receivedDate: '2026-09-30',
+    enteredAt: '2026-10-03T13:43:00+07:00',
+  });
+  const text = drawnText.join('');
+  expect(text).toContain('วันที่รับเงิน: 30/09/2026');
+  expect(text).toContain('บันทึกเมื่อ: 03/10/2026 13:43');
+  expect(text).not.toContain('00:00');
+});
+
 beforeEach(() => {
   drawnText.length = 0;
   vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(context as unknown as CanvasRenderingContext2D);

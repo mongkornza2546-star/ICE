@@ -20,6 +20,6 @@ it('previews and sends only selected setting groups, preserving evidence require
   fireEvent.click(screen.getByRole('button', { name: /ยืนยันตั้งค่า/ }));
   await waitFor(() => expect(service.bulkSaveShopPaymentProfiles).toHaveBeenCalledWith(['shop-1'], {
     terms: null,
-    methods: { allowed_payment_methods: ['cash', 'bank_transfer', 'qr'], default_payment_method: 'cash' },
+    methods: { allowed_payment_methods: ['cash', 'bank_transfer'], default_payment_method: 'cash' },
   }));
 });

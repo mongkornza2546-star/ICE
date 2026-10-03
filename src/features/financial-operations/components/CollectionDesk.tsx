@@ -16,7 +16,7 @@ import {
 } from '@phosphor-icons/react';
 import { shiftServiceDate } from '../../../lib/serviceDate';
 import type { PaymentHistoryItem, QueueShop } from '../types';
-import { formatCollectionShopIdentity, money, paymentMethodLabel, receiptDateTime } from '../utils';
+import { formatCollectionShopIdentity, money, paymentMethodLabel, formatPaymentReceivedAt, receiptDateTime } from '../utils';
 import { isBoothSameAsName } from '../../employee-delivery/utils';
 import { AutoRefreshShopImage } from './AutoRefreshShopImage';
 
@@ -233,7 +233,7 @@ export function CollectionDesk({
           transactionType: `รับ${paymentMethodLabel(payment.payment_method)}`,
           amount: Number(payment.allocated_amount),
           document: payment.receipt_number,
-          latestDate: receiptDateTime.format(new Date(payment.recorded_at)),
+          latestDate: formatPaymentReceivedAt(payment),
           contextLabel: eventContextLabel(payment, identity.isEventOnly),
           status: payment.status === 'active'
             ? { label: 'รับเงินแล้ว', tone: 'success' as const }
@@ -479,7 +479,7 @@ export function CollectionDesk({
                     <span className="financial-ops__shop-body">
                       <strong>{payment.receipt_number}</strong>
                       <b>{row.shopName || payment.shops?.name || '-'}</b>
-                      <small>{paymentMethodLabel(payment.payment_method)} · {receiptDateTime.format(new Date(payment.recorded_at))}</small>
+                      <small>{paymentMethodLabel(payment.payment_method)} · {formatPaymentReceivedAt(payment)}</small>
                       <em>{money.format(row.amount)}</em>
                     </span>
                     <CaretRight aria-hidden="true" className="financial-ops__shop-arrow" size={20} />
@@ -609,7 +609,8 @@ export function CollectionDesk({
                   <span><small>ยอดรับชำระ</small><strong>{money.format(selectedPayment.allocated_amount)}</strong></span>
                   <span><small>เอกสารล่าสุด</small><b>{selectedPayment.receipt_number}</b></span>
                   <span><small>วิธีรับเงิน</small><b>{paymentMethodLabel(selectedPayment.payment_method)}</b></span>
-                  <span><small>วันที่รับเงิน</small><b>{receiptDateTime.format(new Date(selectedPayment.recorded_at))}</b></span>
+                  <span><small>วันที่รับเงิน</small><b>{formatPaymentReceivedAt(selectedPayment)}</b></span>
+                  {selectedPayment.entered_at ? <span><small>บันทึกเมื่อ</small><b>{receiptDateTime.format(new Date(selectedPayment.entered_at))}</b></span> : null}
                   <span><small>สถานะ</small><em className={`collection-desk__status collection-desk__status--${selectedPayment.status === 'active' ? 'success' : 'voided'}`}>{selectedPayment.status === 'active' ? 'รับเงินแล้ว' : 'ยกเลิกแล้ว'}</em></span>
                 </div>
                 <div className="collection-desk__payment-detail-actions">

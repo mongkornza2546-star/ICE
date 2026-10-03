@@ -15,7 +15,7 @@ import {
 import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { shiftServiceDate } from '../../../lib/serviceDate';
 import type { Approval, DueDateRequest, PaymentHistoryItem, Receivable, ReceivableCharge } from '../types';
-import { formatCollectionShopIdentity, money, paymentMethodLabel, receiptDateTime } from '../utils';
+import { formatCollectionShopIdentity, money, paymentMethodLabel, formatPaymentReceivedAt } from '../utils';
 
 function chargeStatus(charge: ReceivableCharge) {
   if (charge.payment_status === 'paid') return 'ชำระครบแล้ว';
@@ -407,7 +407,7 @@ export function PaymentHistorySection({
                         <small>{[payment.building_name, payment.zone_name].filter(Boolean).join(' · ')}</small>
                       ) : null
                     )}
-                    <small>{payment.receipt_number} · {paymentMethodLabel(payment.payment_method)} · {receiptDateTime.format(new Date(payment.recorded_at))}{payment.status === 'voided' ? ` · ยกเลิก: ${payment.void_reason ?? '—'}` : ''}</small>
+                    <small>{payment.receipt_number} · {paymentMethodLabel(payment.payment_method)} · {formatPaymentReceivedAt(payment)}{payment.status === 'voided' ? ` · ยกเลิก: ${payment.void_reason ?? '—'}` : ''}</small>
                   </span>
                   <span className="financial-ops__history-open-label">ดูบิล <CaretRight aria-hidden="true" size={19} /></span>
                 </button>

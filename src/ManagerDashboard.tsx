@@ -351,7 +351,7 @@ export function ManagerDashboard({
 
       <section className="dashboard-payment-grid" aria-label="สรุปการรับชำระและเครดิตวันนี้">
         <OverviewCard icon={CurrencyDollar} label="เงินสด" value={formatCurrency(paymentSummary.cashReceivedValue)} detail="รับชำระแล้ววันนี้" tone="green" />
-        <OverviewCard icon={CreditCard} label="โอน / QR" value={formatCurrency(paymentSummary.transferReceivedValue)} detail="รับชำระแล้ววันนี้" tone="sky" />
+        <OverviewCard icon={CreditCard} label="โอนเงิน" value={formatCurrency(paymentSummary.transferReceivedValue)} detail="รับชำระแล้ววันนี้" tone="sky" />
         <OverviewCard icon={CreditCard} label="เครดิต" value={formatCurrency(paymentSummary.creditSalesValue)} detail="ยอดขายเครดิตที่บันทึกวันนี้" tone="purple" />
       </section>
 

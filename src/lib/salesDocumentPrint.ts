@@ -30,6 +30,8 @@ export type SalesDocumentPayload = {
   title: string;
   status: 'active' | 'voided';
   issuedAt: string;
+  receivedDate?: string | null;
+  enteredAt?: string | null;
   serviceDate: string | null;
   dueDate?: string | null;
   shop: { code: string; name: string; location: string | null };
@@ -64,6 +66,8 @@ export type StoredSalesDocument = {
   status?: 'active' | 'voided';
   issued_at?: string;
   recorded_at?: string;
+  received_date_override?: string | null;
+  entered_at?: string | null;
   service_date?: string | null;
   due_date?: string | null;
   shop_code: string;
@@ -104,6 +108,8 @@ export function salesDocumentFromStored(document: StoredSalesDocument): SalesDoc
     title: document.document_title,
     status: document.status ?? 'active',
     issuedAt: document.issued_at ?? document.recorded_at ?? new Date().toISOString(),
+    receivedDate: document.received_date_override ?? null,
+    enteredAt: document.entered_at ?? null,
     serviceDate: document.service_date ?? null,
     dueDate: document.due_date ?? null,
     shop: {
@@ -143,7 +149,8 @@ export function printSalesDocument(
   existingPrintWindow?: Window | null,
 ) {
   const heightMm = Math.min(220, Math.max(58, (payload.documentType === 'REC' ? 82 : 48) + payload.items.length * 5
-    + payload.allocations.length * 4 + (payload.voidInfo ? 12 : 0)));
+    + payload.allocations.length * 4 + (payload.voidInfo ? 12 : 0)
+    + (payload.documentType === 'REC' && payload.receivedDate && payload.enteredAt ? 6 : 0)));
   const printWindow = existingPrintWindow
     ?? window.open('', '_blank', `popup,width=360,height=${Math.ceil(heightMm * 3.78)}`);
   if (!printWindow) return false;
@@ -192,7 +199,12 @@ export function printSalesDocument(
     line(supplierName, 'receipt-header');
     line('ใบเสร็จรับเงิน / RECEIPT', 'receipt-title');
     line(`เลขที่เอกสาร: ${payload.documentNumber}`);
-    line(`วันที่ออกเอกสาร: ${formatReceiptDateTime(payload.issuedAt)}`);
+    if (payload.receivedDate) {
+      line(`วันที่รับเงิน: ${formatReceiptDate(payload.receivedDate)}`);
+      if (payload.enteredAt) line(`บันทึกเมื่อ: ${formatReceiptDateTime(payload.enteredAt)}`);
+    } else {
+      line(`วันที่ออกเอกสาร: ${formatReceiptDateTime(payload.issuedAt)}`);
+    }
     if (payload.serviceDate) line(`วันที่จัดส่ง: ${formatReceiptDate(payload.serviceDate)}`);
     if (payload.status === 'voided') {
       line(`ยกเลิก · ${payload.voidInfo?.reason ?? 'ไม่ระบุเหตุ'}`, 'voided');

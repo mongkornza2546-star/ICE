@@ -14,7 +14,7 @@ const newBill = '10000000-0000-4000-8000-000000000002';
 const otherShopBill = '10000000-0000-4000-8000-000000000003';
 const otherRunBill = '10000000-0000-4000-8000-000000000004';
 
-async function createDatabase(t) {
+async function createDatabase(t, { applyDateFix = true } = {}) {
   const db = new PGlite();
   t.after(() => db.close());
   // Minimal surrounding schema; payment/void writers, wrappers, effective
@@ -169,6 +169,27 @@ async function createDatabase(t) {
   ));
   await db.exec(migration('0198_allow_selected_credit_bill_payments'));
   await db.exec(migration('0199_credit_billing_statements'));
+  await db.exec(migration('0202_admin_backdated_collection_payments'));
+  await db.exec(migration('0110_payment_receipt_numbers'));
+  const numbering = migration('0134_monthly_sales_documents_and_atomic_immediate_sales');
+  await db.exec(numbering.slice(0, numbering.indexOf('alter table public.delivery_charges')));
+  await db.exec(numbering.slice(numbering.indexOf('create or replace function public.assign_payment_receipt_number()'), numbering.indexOf('-- Receipt snapshots')));
+  await db.exec(`
+    create table public.ice_types(id uuid, code text, name text, unit text);
+    create table public.delivery_items(delivery_event_id uuid, ice_type_id uuid, quantity numeric, line_total numeric);
+    alter table public.event_settlement_contexts add shop_id uuid;
+  `);
+  await db.exec(migration('0124_payment_receipt_snapshots'));
+  await db.exec(numbering.slice(numbering.indexOf('create or replace function public.get_payment_receipt_snapshot('), numbering.indexOf('create table public.delivery_charge_document_snapshots')));
+  await db.exec(migration('0182_payment_history_shop_image_and_location'));
+  const projections = migration('0129_effective_charge_projections');
+  await db.exec(projections.slice(projections.indexOf('create or replace function public.get_credit_receivable_detail('),
+    projections.indexOf('revoke all on function public.stock_balance_at(')));
+  const accounting = migration('0144_accounting_all_active_shops');
+  await db.exec(accounting.slice(accounting.indexOf('create or replace function public.get_accounting_shop_invoice_detail(')));
+  const eventWriter = migration('0191_allow_event_carry_forward_collections');
+  await db.exec(eventWriter.slice(eventWriter.indexOf('create or replace function public.record_event_payment(')));
+  if (applyDateFix) await db.exec(migration('0204_payment_date_presentation_and_replay'));
   return db;
 }
 
@@ -358,4 +379,144 @@ test('regular and statement balances exclude separate event collections for the 
   assert.equal(remaining.length, 1);
   assert.equal(remaining[0].destination_kind, 'event');
   assert.equal(Number(remaining[0].outstanding_amount), 10);
+});
+
+
+async function backdate(db, { date, statement, key = 1, method = 'cash', evidence = null, amount = 25 } = {}) {
+  return (await db.query(`select public.record_backdated_collection_payment($1, $2::date, $3::jsonb) as result`, [
+    statement ? 'record_billing_statement_payment' : 'record_regular_collection_payment', date,
+    JSON.stringify({
+      p_shop_id: shopId, p_billing_statement_id: statement,
+      p_allocations: [{ charge_id: newBill, amount }], p_payment_method: method,
+      p_received_amount: amount, p_evidence_path: evidence, p_collection_run_id: runId,
+      p_expected_outstanding_amount: statement ? 75 : 125, p_idempotency_key: requestKey(key),
+    }),
+  ])).rows[0].result;
+}
+
+for (const withStatement of [false, true]) {
+  test(`admin backdating preserves entry time, receipt date, and retry identity (statement: ${withStatement})`, async (t) => {
+    const db = await createDatabase(t);
+    const statement = withStatement ? (await issue(db)).id : undefined;
+    const date = (await db.query("select ((clock_timestamp() at time zone 'Asia/Bangkok')::date - 1)::text as date")).rows[0].date;
+    const args = { date, statement };
+    const result = await backdate(db, args);
+    const row = (await db.query(`select entered_at, recorded_at, received_date_override::text,
+      (recorded_at at time zone 'Asia/Bangkok')::date::text as received_day,
+      (entered_at at time zone 'Asia/Bangkok')::date = (clock_timestamp() at time zone 'Asia/Bangkok')::date as entered_today,
+      receipt_number from payments where id=$1`, [result.payment_id])).rows[0];
+    assert.equal(row.received_day, date);
+    assert.equal(row.received_date_override, date);
+    assert.equal(row.entered_today, true);
+    assert.ok(new Date(row.entered_at) > new Date(row.recorded_at));
+    assert.ok(row.receipt_number.startsWith(`REC${date.slice(2, 7).replaceAll('-', '')}-`));
+    const snapshot = (await db.query('select receipt_data from payment_receipt_snapshots where payment_id=$1', [result.payment_id])).rows[0].receipt_data;
+    assert.equal(new Date(snapshot.recorded_at).getTime(), new Date(row.recorded_at).getTime());
+    assert.equal(snapshot.received_date_override, date);
+    assert.equal(new Date(snapshot.entered_at).getTime(), new Date(row.entered_at).getTime());
+    const history = (await db.query('select public.get_payment_history($1::date, $1::date) as result', [date])).rows[0].result;
+    assert.equal(history.items[0].received_date_override, date);
+    assert.equal(new Date(history.items[0].entered_at).getTime(), new Date(row.entered_at).getTime());
+    assert.deepEqual(await backdate(db, args), result);
+    await assert.rejects(pay(db, { statement, expected: withStatement ? 75 : 125 }), /different received date/i);
+    await assert.rejects(backdate(db, { ...args, date: '2020-01-01' }), /different received date/i);
+    await assert.rejects(backdate(db, { ...args, amount: 20 }), /different payment/i);
+    assert.equal((await db.query('select count(*)::int as count from payments')).rows[0].count, 1);
+    // The transaction-local override must not leak into later ordinary entries.
+    await pay(db, { bill: oldBill, expected: withStatement ? 50 : 100, key: 2 });
+    const ordinary = (await db.query('select received_date_override, recorded_at, entered_at from payments where idempotency_key=$1', [requestKey(2)])).rows[0];
+    assert.equal(ordinary.received_date_override, null);
+    assert.ok(Math.abs(new Date(ordinary.entered_at) - new Date(ordinary.recorded_at)) < 5000);
+  });
+}
+
+test('backdating rejects non-admin API calls, future dates and missing required slips', async (t) => {
+  const db = await createDatabase(t);
+  const date = '2020-01-01';
+  await db.exec('set role authenticated');
+  for (const role of ['round_lead', 'courier']) {
+    await db.query("select set_config('test.role', $1, false)", [role]);
+    await assert.rejects(backdate(db, { date }), /เฉพาะแอดมิน/);
+  }
+  await db.exec("set test.role = 'admin'");
+  for (const invalid of [null, 'infinity', '-infinity', '9999-12-31']) {
+    await assert.rejects(backdate(db, { date: invalid }), /ก่อนวันนี้/);
+  }
+  await db.exec('reset role');
+  await db.exec('update shop_payment_profiles set bank_transfer_evidence_required=true');
+  await assert.rejects(backdate(db, { date, method: 'bank_transfer' }), /evidence is required/i);
+  await assert.rejects(backdate(db, { date, method: 'bank_transfer', evidence: 'missing/slip.jpg' }), /evidence does not exist/i);
+  await db.exec("set test.can_collect = 'false'");
+  await assert.rejects(backdate(db, { date }), /cannot collect/i);
+  await db.exec("set test.can_collect = 'true'");
+  const evidence = '50000000-0000-4000-8000-000000000001/slip.jpg';
+  await db.query("insert into storage.objects values ('payment-evidence', $1)", [evidence]);
+  await backdate(db, { date, method: 'bank_transfer', evidence });
+  assert.equal((await db.query('select count(*)::int as count from payments')).rows[0].count, 1);
+});
+
+
+test('backdated event collection retains settlement context and enforces its policy', async (t) => {
+  const db = await createDatabase(t);
+  const contextId = '70000000-0000-4000-8000-000000000001';
+  const participationId = '80000000-0000-4000-8000-000000000001';
+  const date = (await db.query("select ((clock_timestamp() at time zone 'Asia/Bangkok')::date - 1)::text as date")).rows[0].date;
+  await db.query("insert into event_participations(id, allowed_payment_methods_snapshot) values ($1, '{cash}')", [participationId]);
+  await db.query(`insert into event_settlement_contexts(id, event_participation_id, service_date, settlement_policy_fingerprint, shop_id)
+    values ($1, $2, $3, 'policy-1', $4)`, [contextId, participationId, date, shopId]);
+  await db.query('update delivery_charges set event_settlement_context_id=$1 where id=$2', [contextId, newBill]);
+  const args = {
+    p_expected_settlement_context_id: contextId, p_expected_participation_id: participationId,
+    p_expected_service_date: date, p_expected_policy_fingerprint: 'policy-1',
+    p_allocations: [{ charge_id: newBill, amount: 75 }], p_payment_method: 'cash',
+    p_received_amount: 75, p_collection_run_id: runId, p_expected_outstanding_amount: 75,
+    p_idempotency_key: requestKey(1),
+  };
+  const call = (payload = args, receivedDate = date) => db.query(`select public.record_backdated_collection_payment(
+    'record_event_payment', $1::date, $2::jsonb) as result`, [receivedDate, JSON.stringify(payload)]);
+  await assert.rejects(call({ ...args, p_expected_policy_fingerprint: 'stale' }), /context changed/i);
+  await assert.rejects(call({ ...args, p_payment_method: 'bank_transfer' }), /not allowed/i);
+  const result = await call();
+  assert.deepEqual((await call()).rows, result.rows);
+  await assert.rejects(db.query(`select public.record_event_payment($1, $2, $3::date, $4, $5::jsonb, 'cash', 75, null, null, $6, 75, $7)`, [contextId, participationId, date, 'policy-1', JSON.stringify(args.p_allocations), runId, requestKey(1)]), /different received date/i);
+  await assert.rejects(call(args, '2020-01-01'), /different received date/i);
+  const row = (await db.query('select operation_kind, event_settlement_context_id, received_date_override::text from payments')).rows[0];
+  assert.deepEqual(row, { operation_kind: 'event', event_settlement_context_id: contextId, received_date_override: date });
+});
+
+
+test('ordinary and historical retries remain valid, but cannot switch to an explicit received date', async (t) => {
+  const db = await createDatabase(t);
+  const args = { amount: 25, expected: 125 };
+  const ordinary = await pay(db, args);
+  await assert.rejects(backdate(db, { date: '2020-01-01' }), /different received date/i);
+  // Simulate a replay after the original receipt day. A missing override means
+  // ordinary mode, not a comparison against the server's new calendar day.
+  await db.query("update payments set recorded_at='2020-01-01 10:00:00+07' where id=$1", [ordinary.payment_id]);
+  assert.equal((await pay(db, args)).payment_id, ordinary.payment_id);
+  const grants = await db.query("select has_function_privilege('authenticated', 'public.financial_payment_write_response(uuid)', 'EXECUTE') as allowed");
+  assert.equal(grants.rows[0].allowed, false);
+});
+
+test('pre-fix backdated receipts retain their snapshot, replay identity, read privacy and void behavior', async (t) => {
+  const db = await createDatabase(t, { applyDateFix: false });
+  const args = { date: '2020-01-01' };
+  const original = await backdate(db, args);
+  const stored = (await db.query('select receipt_data from payment_receipt_snapshots where payment_id=$1', [original.payment_id])).rows[0].receipt_data;
+  assert.equal(stored.entered_at, undefined);
+  await db.exec(migration('0204_payment_date_presentation_and_replay'));
+  assert.equal((await backdate(db, args)).payment_id, original.payment_id);
+  await assert.rejects(pay(db, { expected: 125 }), /different received date/i);
+  const receipt = (await db.query('select public.get_payment_receipt_snapshot($1) as receipt', [original.payment_id])).rows[0].receipt;
+  assert.equal(receipt.received_date_override, '2020-01-01');
+  assert.ok(receipt.entered_at);
+  assert.deepEqual((await db.query('select receipt_data from payment_receipt_snapshots where payment_id=$1', [original.payment_id])).rows[0].receipt_data, stored);
+  await db.exec("set test.visible = 'false'");
+  await assert.rejects(db.query('select public.get_payment_receipt_snapshot($1)', [original.payment_id]), /cannot be viewed/i);
+  await db.exec("set test.visible = 'true'");
+  await voidPayment(db, original.payment_id);
+  const voided = (await db.query('select public.get_payment_receipt_snapshot($1) as receipt', [original.payment_id])).rows[0].receipt;
+  assert.equal(voided.status, 'voided');
+  assert.equal(voided.void_info.reason, 'Correct payment');
+  assert.equal(voided.entered_at, receipt.entered_at);
 });

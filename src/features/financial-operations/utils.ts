@@ -23,6 +23,7 @@ export const money = new Intl.NumberFormat('th-TH', {
 export const receiptDateTime = new Intl.DateTimeFormat('th-TH', {
   dateStyle: 'short',
   timeStyle: 'short',
+  timeZone: 'Asia/Bangkok',
 });
 
 const serviceDateFormat = new Intl.DateTimeFormat('th-TH', { dateStyle: 'medium' });
@@ -32,8 +33,14 @@ export function formatServiceDate(value: string) {
   return serviceDateFormat.format(new Date(year, month - 1, day));
 }
 
+export function formatPaymentReceivedAt(payment: { recorded_at: string; received_date_override?: string | null }) {
+  return payment.received_date_override
+    ? formatServiceDate(payment.received_date_override)
+    : receiptDateTime.format(new Date(payment.recorded_at));
+}
+
 export function paymentMethodLabel(method: PaymentMethod) {
-  return method === 'cash' ? 'เงินสด' : method === 'bank_transfer' ? 'โอนเงิน' : 'QR';
+  return method === 'cash' ? 'เงินสด' : 'โอนเงิน';
 }
 
 export function initials(code: string) {
@@ -132,6 +139,8 @@ export function receiptFromSnapshot(snapshot: PaymentReceiptSnapshot) {
     allocatedAmount: Number(snapshot.allocated_amount),
     changeAmount: Number(snapshot.change_amount),
     recordedAt: snapshot.recorded_at,
+    receivedDate: snapshot.received_date_override ?? null,
+    enteredAt: snapshot.entered_at ?? null,
     title: snapshot.document_title ?? 'ใบเสร็จรับเงิน',
     status: snapshot.status ?? 'active',
     serviceDate: snapshot.service_date ?? null,

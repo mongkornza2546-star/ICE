@@ -21,7 +21,7 @@ export function BulkPaymentSetupModal({ shops, buildings, zones, onClose, onSucc
   // Profile template
   const [allowedPaymentTerms, setAllowedPaymentTerms] = useState<PaymentTerm[]>(['immediate']);
   const [defaultPaymentTerm, setDefaultPaymentTerm] = useState<PaymentTerm>('immediate');
-  const [allowedPaymentMethods, setAllowedPaymentMethods] = useState<PaymentMethod[]>(['cash', 'bank_transfer', 'qr']);
+  const [allowedPaymentMethods, setAllowedPaymentMethods] = useState<PaymentMethod[]>(['cash', 'bank_transfer']);
   const [defaultPaymentMethod, setDefaultPaymentMethod] = useState<PaymentMethod>('cash');
   const [allowOutstanding, setAllowOutstanding] = useState(false);
   const [creditDueRule, setCreditDueRule] = useState<CreditDueRule>('net_days');
@@ -252,15 +252,6 @@ export function BulkPaymentSetupModal({ shops, buildings, zones, onClose, onSucc
                   />
                   โอน
                 </label>
-                <label className="inline-check">
-                  <input
-                    disabled={!changeMethods}
-                    checked={allowedPaymentMethods.includes('qr')}
-                    onChange={() => togglePaymentMethod('qr')}
-                    type="checkbox"
-                  />
-                  QR
-                </label>
               </div>
             </div>
 
@@ -269,7 +260,7 @@ export function BulkPaymentSetupModal({ shops, buildings, zones, onClose, onSucc
               <select disabled={!changeMethods} onChange={(e) => setDefaultPaymentMethod(e.target.value as PaymentMethod)} value={defaultPaymentMethod}>
                 {allowedPaymentMethods.map((method) => (
                   <option key={method} value={method}>
-                    {method === 'cash' ? 'เงินสด' : method === 'bank_transfer' ? 'โอน' : 'QR'}
+                    {method === 'cash' ? 'เงินสด' : 'โอน'}
                   </option>
                 ))}
               </select>
@@ -350,5 +341,5 @@ function termLabel(term: PaymentTerm) {
 }
 
 function methodLabel(method: PaymentMethod) {
-  return method === 'cash' ? 'เงินสด' : method === 'bank_transfer' ? 'โอน' : 'QR';
+  return method === 'cash' ? 'เงินสด' : 'โอน';
 }

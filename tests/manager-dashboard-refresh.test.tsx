@@ -39,7 +39,7 @@ it('shows the aggregate closure instead of obsolete per-location count warnings'
   expect(screen.queryByText('รอตรวจนับใหม่ก่อนปิดวัน')).toBeNull();
   expect(screen.getAllByText('ปิดยอดรวมแล้ว').length).toBeGreaterThan(0);
   expect(screen.getByText('เงินสด')).not.toBeNull();
-  expect(screen.getByText('โอน / QR')).not.toBeNull();
+  expect(screen.getByText('โอนเงิน')).not.toBeNull();
   expect(screen.getByText('เครดิต')).not.toBeNull();
   expect(screen.getByText('ยอดขายแยกตามประเภทน้ำแข็ง')).not.toBeNull();
   expect(screen.getByText('หลอดเล็ก')).not.toBeNull();
