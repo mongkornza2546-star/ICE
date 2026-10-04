@@ -978,6 +978,30 @@ async function createEventAccountingDatabase(t) {
 }
 
 const EVENT_JOB_ID = 'b0000000-0000-4000-8000-000000000001';
+test('accounting orders numeric shop codes before pagination and retains configured delivery order', async (t) => {
+  const db = await createEventAccountingDatabase(t);
+  const numericOrderMigration = readFileSync(new URL(
+    '../supabase/migrations/0206_accounting_shop_code_numeric_order.sql', import.meta.url), 'utf8');
+  await db.exec(numericOrderMigration);
+  await db.exec(numericOrderMigration);
+  await db.exec(`
+    update public.shops set code = 'BB1' where id = '${SHOP_ID}';
+    insert into public.shops (id, code, name, building_id, zone_id, status) values
+      ('20000000-0000-4000-8000-000000000010', 'BB10', 'Shop ten', '${OLD_BUILDING_ID}', '${OLD_ZONE_ID}', 'active'),
+      ('20000000-0000-4000-8000-000000000011', 'BB2', 'Shop two', '${OLD_BUILDING_ID}', '${OLD_ZONE_ID}', 'active');
+  `);
+  for (const filters of ['{}', '{"shop_sort":"code"}']) {
+    const summary = await getSummary(db, filters);
+    assert.deepEqual(summary.rows.map((row) => row.shop_code), ['BB1', 'BB2', 'BB10']);
+    const page = await getSummary(db, filters, '1', '1');
+    assert.equal(page.rows[0].shop_code, 'BB2');
+    assert.equal(page.total_count, 3);
+  }
+  await db.exec(`update public.shops set delivery_sequence = 1 where code = 'BB10'`);
+  assert.deepEqual((await getSummary(db)).rows.map((row) => row.shop_code), ['BB10', 'BB1', 'BB2']);
+  assert.deepEqual((await getSummary(db, '{"shop_sort":"code"}')).rows.map((row) => row.shop_code), ['BB1', 'BB2', 'BB10']);
+});
+
 async function makeEventShop(db, { start = '2026-07-01', end = '2026-07-31', status = 'published' } = {}) {
   await db.query(`insert into public.event_jobs values ($1, $2, $3, $4)`, [EVENT_JOB_ID, start, end, status]);
   await db.exec(`

@@ -4388,6 +4388,7 @@ fieldset.ref-section {
 .dashboard-location-sale__name strong { color: #263b55; font-size: .85rem; overflow-wrap: anywhere; }
 .dashboard-location-sale__name small { color: #718195; font-size: .72rem; }
 .dashboard-location-sale > b { color: #182b47; font-size: 1rem; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.dashboard-location-sale__quantity { max-width: 56%; color: #315878 !important; font-size: .72rem !important; line-height: 1.45; text-align: right; white-space: normal !important; }
 @media (max-width: 420px) {
   .dashboard-location-sale { flex-wrap: wrap; }
   .dashboard-location-sale > b { width: 100%; text-align: right; }

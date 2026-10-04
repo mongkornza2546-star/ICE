@@ -74,16 +74,16 @@ test('dashboard groups adjusted sales by every building and the events for that 
   const participation = '60000000-0000-4000-8000-000000000001';
   const context = '70000000-0000-4000-8000-000000000001';
   await db.exec(`
-    create table public.buildings(id uuid primary key, name text, is_active boolean, sort_order integer);
+    create table public.buildings(id uuid primary key, name text, is_active boolean, sort_order integer, code text);
     create table public.event_jobs(id uuid primary key, name text, status text, start_date date, end_date date, preparation_start_date date);
     create table public.event_participations(id uuid primary key, event_job_id uuid);
     create table public.event_settlement_contexts(id uuid primary key, event_participation_id uuid);
     alter table public.shops add column building_id uuid;
     alter table public.round_stops add column building_id_snapshot uuid, add column event_participation_id uuid;
     alter table public.delivery_charges add column event_settlement_context_id uuid;
-    insert into public.buildings values
-      ('${building}', 'ตึก A', true, 1), ('${emptyBuilding}', 'ตึก B', true, 2),
-      ('40000000-0000-4000-8000-000000000003', 'ตึกปิด', false, 3);
+    insert into public.buildings(id, name, is_active, sort_order, code) values
+      ('${building}', 'ตึก A', true, 1, 'A'), ('${emptyBuilding}', 'ตึก B', true, 2, 'B'),
+      ('40000000-0000-4000-8000-000000000003', 'ตึกปิด', false, 3, 'C');
     update public.shops set building_id = '${building}';
     insert into public.event_jobs values
       ('${event}', 'งานวันนี้', 'published', '2026-09-06', '2026-09-06', null),
@@ -92,6 +92,12 @@ test('dashboard groups adjusted sales by every building and the events for that 
       ('50000000-0000-4000-8000-000000000004', 'งานยกเลิก', 'cancelled', '2026-09-06', '2026-09-06', null),
       ('50000000-0000-4000-8000-000000000005', 'งานยังไม่ขาย', 'published', '2026-09-06', '2026-09-06', null),
       ('50000000-0000-4000-8000-000000000006', 'งานหมดอายุ', 'published', '2026-09-01', '2026-09-05', null);
+    -- Event provisioning creates active buildings even for jobs that are no
+    -- longer operational. They must not leak through the regular-building list.
+    insert into public.buildings(id, name, is_active, sort_order, code)
+    select md5('event-building-' || id::text)::uuid, name, true, 0,
+      'EVENT-' || id::text
+    from public.event_jobs;
     insert into public.event_participations values
       ('${participation}', '${event}'),
       ('60000000-0000-4000-8000-000000000002', '50000000-0000-4000-8000-000000000006');
@@ -110,10 +116,28 @@ test('dashboard groups adjusted sales by every building and the events for that 
       ('90000000-0000-4000-8000-000000000001', '80000000-0000-4000-8000-000000000001');
     insert into public.delivery_charges(id, shop_id, delivery_event_id, service_date, status, original_amount) values
       ('30000000-0000-4000-8000-000000000005', '${shop}', '90000000-0000-4000-8000-000000000001', '2026-09-06', 'active', 50);
+    insert into public.ice_types values
+      ('a0000000-0000-4000-8000-000000000001', 'หลอดเล็ก', 'SMALL', 'ถุง', true);
+    insert into public.round_stops(id, building_id_snapshot, event_participation_id) values
+      ('80000000-0000-4000-8000-000000000002', '${building}', null),
+      ('80000000-0000-4000-8000-000000000006', null, '60000000-0000-4000-8000-000000000002');
+    update public.delivery_events
+    set round_stop_id = '80000000-0000-4000-8000-000000000002'
+    where id = '${charge}';
+    insert into public.delivery_events(id, round_stop_id) values
+      ('90000000-0000-4000-8000-000000000006', '80000000-0000-4000-8000-000000000006');
+    update public.delivery_charges
+    set delivery_event_id = '90000000-0000-4000-8000-000000000006'
+    where id = '30000000-0000-4000-8000-000000000006';
+    insert into public.delivery_items values
+      ('${charge}', 'a0000000-0000-4000-8000-000000000001', 10),
+      ('90000000-0000-4000-8000-000000000001', 'a0000000-0000-4000-8000-000000000001', 12),
+      ('90000000-0000-4000-8000-000000000006', 'a0000000-0000-4000-8000-000000000001', 9);
   `);
   await db.exec(readMigration('0174_manager_dashboard_effective_sales.sql'));
   await db.exec(readMigration('0195_dashboard_location_sales.sql'));
   await db.exec(readMigration('0200_dashboard_hide_expired_event_locations.sql'));
+  await db.exec(readMigration('0207_dashboard_location_ice_quantities.sql'));
   const { rows } = await db.query(`select public.get_daily_work_dashboard('2026-09-06') as dashboard`);
   const sales = rows[0].dashboard.salesSummary;
   assert.deepEqual(sales.locationSales, [
@@ -123,10 +147,29 @@ test('dashboard groups adjusted sales by every building and the events for that 
     { id: event, kind: 'event', name: 'งานวันนี้', netSalesValue: 350, saleCount: 2 },
   ]);
   assert.equal(sales.locationSales.some((point) => point.name === 'งานหมดอายุ'), false);
+  assert.deepEqual(sales.locationIceTotals, [
+    {
+      id: building,
+      kind: 'building',
+      name: 'ตึก A',
+      iceTotals: [{ ice_type_id: 'a0000000-0000-4000-8000-000000000001', ice_type_name: 'หลอดเล็ก', unit: 'ถุง', quantity: 10 }],
+    },
+    { id: emptyBuilding, kind: 'building', name: 'ตึก B', iceTotals: [] },
+    { id: '50000000-0000-4000-8000-000000000005', kind: 'event', name: 'งานยังไม่ขาย', iceTotals: [] },
+    {
+      id: event,
+      kind: 'event',
+      name: 'งานวันนี้',
+      iceTotals: [{ ice_type_id: 'a0000000-0000-4000-8000-000000000001', ice_type_name: 'หลอดเล็ก', unit: 'ถุง', quantity: 12 }],
+    },
+  ]);
+  assert.equal(sales.locationIceTotals.some((point) => point.name === 'งานหมดอายุ'), false);
   assert.equal(sales.locationSales.reduce((sum, point) => sum + point.netSalesValue, 0), 1150);
   assert.equal(sales.netSalesValue, 1270);
   const later = await db.query(`select public.daily_work_location_sales('2026-09-08') as points`);
-  assert.equal(later.rows[0].points.filter((point) => point.kind === 'event').length, 0);
+  assert.deepEqual(later.rows[0].points.map((point) => point.id), [building, emptyBuilding]);
+  const laterIceTotals = await db.query(`select public.daily_work_location_ice_quantities('2026-09-08') as points`);
+  assert.deepEqual(laterIceTotals.rows[0].points.map((point) => point.id), [building, emptyBuilding]);
   await db.exec(`set test.role = 'courier'`);
   await assert.rejects(db.query(`select public.daily_work_location_sales('2026-09-06')`), /Only a round lead or admin/);
 });

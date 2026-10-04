@@ -3,6 +3,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 const client = vi.hoisted(() => ({ rpc: vi.fn() }));
 vi.mock('../src/lib/supabase', () => ({ supabase: client }));
 import { ManagerDashboard } from '../src/ManagerDashboard';
+import { LocalDemoApp } from '../src/LocalDemoApp';
 
 afterEach(() => vi.useRealTimers());
 
@@ -13,10 +14,10 @@ function setup(status = 'open') {
       deliverySummary: { regularShopCount: 0, eventParticipationCount: 0, activeDeliveryCount: 0 },
       salesSummary: {
         netSalesValue: 800,
-        locationSales: [
-          { id: 'building-a', kind: 'building', name: 'ตึก A', netSalesValue: 500, saleCount: 4 },
-          { id: 'building-b', kind: 'building', name: 'ตึก B', netSalesValue: 0, saleCount: 0 },
-          { id: 'event-today', kind: 'event', name: 'ตลาดวันนี้', netSalesValue: 300, saleCount: 2 },
+        locationIceTotals: [
+          { id: 'building-a', kind: 'building', name: 'ตึก A', iceTotals: [{ ice_type_id: 'small-tube', ice_type_name: 'หลอดเล็ก', unit: 'ถุง', quantity: 42 }] },
+          { id: 'building-b', kind: 'building', name: 'ตึก B', iceTotals: [] },
+          { id: 'event-today', kind: 'event', name: 'ตลาดวันนี้', iceTotals: [{ ice_type_id: 'large-tube', ice_type_name: 'หลอดใหญ่', unit: 'ถุง', quantity: 18 }] },
         ],
         iceTypeSales: [
           { ice_type_id: 'small-tube', ice_type_name: 'หลอดเล็ก', unit: 'ถุง', quantity: 42 },
@@ -46,14 +47,14 @@ it('shows the aggregate closure instead of obsolete per-location count warnings'
   expect(screen.getByText('42')).not.toBeNull();
   expect(screen.getByText('หลอดใหญ่')).not.toBeNull();
   expect(screen.getByText('18')).not.toBeNull();
-  const pointSales = within(screen.getByLabelText('ยอดขายแยกตามตึกและอีเว้น'));
-  expect(pointSales.getByText('ตึก A')).not.toBeNull();
-  expect(pointSales.getByText('ตึก B')).not.toBeNull();
-  expect(pointSales.getByText('ตลาดวันนี้')).not.toBeNull();
-  expect(pointSales.getByText('฿500.00')).not.toBeNull();
-  expect(pointSales.getByText('฿0.00')).not.toBeNull();
-  expect(pointSales.getByText('฿300.00')).not.toBeNull();
-  expect(pointSales.getByText('อีเว้น · 2 รายการขาย')).not.toBeNull();
+  const pointIceTotals = within(screen.getByLabelText('ยอดน้ำแข็งแยกตามตึกและอีเว้น'));
+  expect(pointIceTotals.getByText('ตึก A')).not.toBeNull();
+  expect(pointIceTotals.getByText('ตึก B')).not.toBeNull();
+  expect(pointIceTotals.getByText('ตลาดวันนี้')).not.toBeNull();
+  expect(pointIceTotals.getByText('หลอดเล็ก 42 ถุง')).not.toBeNull();
+  expect(pointIceTotals.getByText('หลอดใหญ่ 18 ถุง')).not.toBeNull();
+  expect(pointIceTotals.getByText('ยังไม่มีรายการส่งน้ำแข็ง')).not.toBeNull();
+  expect(screen.queryByLabelText('ยอดขายแยกตามตึกและอีเว้น')).toBeNull();
   expect(screen.queryByLabelText('เส้นทางกระจายสต๊อก')).toBeNull();
 });
 
@@ -76,4 +77,20 @@ it('refreshes visible dashboards from the server and pauses while inactive', asy
   client.rpc.mockClear();
   await act(async () => { vi.advanceTimersByTime(60_000); });
   expect(client.rpc).not.toHaveBeenCalled();
+});
+
+it('shows per-building ice quantities through the actual demo entry point', async () => {
+  window.history.replaceState(null, '', '/?screen=today-layout');
+  try {
+    render(<LocalDemoApp />);
+    const pointIceTotals = within(await screen.findByLabelText('ยอดน้ำแข็งแยกตามตึกและอีเว้น'));
+    expect(pointIceTotals.getByText('ตึก A')).not.toBeNull();
+    expect(pointIceTotals.getByText('ตึก B')).not.toBeNull();
+    expect(pointIceTotals.getByText('ตึก C')).not.toBeNull();
+    expect(pointIceTotals.getByText('หลอดเล็ก 32 ถุง · หลอดเล็กโม่ 12 ถุง')).not.toBeNull();
+    expect(pointIceTotals.getByText('หลอดเล็ก 40 ถุง · หลอดเล็กโม่ 16 ถุง · เปลือย (หลอดใหญ่) 18 ถุง')).not.toBeNull();
+    expect(pointIceTotals.getByText('ยังไม่มีรายการส่งน้ำแข็ง')).not.toBeNull();
+  } finally {
+    window.history.replaceState(null, '', '/');
+  }
 });

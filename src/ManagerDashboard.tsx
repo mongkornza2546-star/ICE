@@ -275,7 +275,7 @@ export function ManagerDashboard({
     transferReceivedValue: 0,
     creditSalesValue: 0,
   };
-  const locationSales = salesSummary.locationSales ?? [];
+  const locationIceTotals = salesSummary.locationIceTotals ?? [];
   const stockTotals = aggregateStockSummary.items.map((item) => ({
     unit: item.unit,
     quantity: Number(item.available_quantity),
@@ -375,22 +375,25 @@ export function ManagerDashboard({
 
       <div className="dashboard-mid-grid">
         <section className="dashboard-panel">
-          <PanelHeading title="สรุปยอดขายแต่ล่ะจุด" detail="ยอดขายสุทธิแยกตามตึกและอีเว้นในวันนี้" />
-          <div className="dashboard-location-sales" aria-label="ยอดขายแยกตามตึกและอีเว้น">
-            {locationSales.map((location) => {
+          <PanelHeading title="สรุปยอดน้ำแข็งแต่ละจุด" detail="จำนวนที่ส่งแยกตามตึกและอีเว้นในวันนี้" />
+          <div className="dashboard-location-sales" aria-label="ยอดน้ำแข็งแยกตามตึกและอีเว้น">
+            {locationIceTotals.map((location) => {
               const LocationIcon = location.kind === 'event' ? CalendarBlank : Buildings;
+              const quantityDetail = location.iceTotals.length > 0
+                ? location.iceTotals.map((item) => `${item.ice_type_name} ${formatQuantity(item.quantity)} ${item.unit}`).join(' · ')
+                : 'ยังไม่มีรายการส่งน้ำแข็ง';
               return (
                 <article className="dashboard-location-sale" key={`${location.kind}-${location.id}`}>
                   <span className={`dashboard-location-sale__icon dashboard-location-sale__icon--${location.kind}`}><LocationIcon size={24} weight="duotone" /></span>
                   <div className="dashboard-location-sale__name">
                     <strong>{location.name}</strong>
-                    <small>{location.kind === 'event' ? 'อีเว้น' : 'ตึก'} · {location.saleCount.toLocaleString('th-TH')} รายการขาย</small>
+                    <small>{location.kind === 'event' ? 'อีเว้น' : 'ตึก'}</small>
                   </div>
-                  <b>{formatCurrency(location.netSalesValue)}</b>
+                  <b className="dashboard-location-sale__quantity">{quantityDetail}</b>
                 </article>
               );
             })}
-            {locationSales.length === 0 ? <p className="dashboard-product-sales-empty">ยังไม่มีข้อมูลยอดขายแยกตามจุดสำหรับวันนี้</p> : null}
+            {locationIceTotals.length === 0 ? <p className="dashboard-product-sales-empty">ยังไม่มีข้อมูลยอดน้ำแข็งแยกตามจุดสำหรับวันนี้</p> : null}
           </div>
         </section>
 

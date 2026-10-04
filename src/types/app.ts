@@ -677,6 +677,12 @@ export interface DailyWorkSalesSummary {
     netSalesValue: number;
     saleCount: number;
   }>;
+  locationIceTotals?: Array<{
+    id: string;
+    kind: 'building' | 'event';
+    name: string;
+    iceTotals: DailyWorkIceTypeSale[];
+  }>;
   iceTypeSales: DailyWorkIceTypeSale[];
   cashReceivedValue?: number;
   transferReceivedValue?: number;

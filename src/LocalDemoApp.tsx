@@ -536,6 +536,24 @@ const managerDashboardDemo: DailyWorkDashboard = {
       { id: 'building-b', kind: 'building', name: 'ตึก B', netSalesValue: 2060, saleCount: 26 },
       { id: 'building-c', kind: 'building', name: 'ตึก C', netSalesValue: 0, saleCount: 0 },
     ],
+    locationIceTotals: [
+      {
+        id: 'building-a', kind: 'building', name: 'ตึก A',
+        iceTotals: [
+          { ice_type_id: 'ice-block', ice_type_name: 'หลอดเล็ก', unit: 'ถุง', quantity: 32 },
+          { ice_type_id: 'ice-small', ice_type_name: 'หลอดเล็กโม่', unit: 'ถุง', quantity: 12 },
+        ],
+      },
+      {
+        id: 'building-b', kind: 'building', name: 'ตึก B',
+        iceTotals: [
+          { ice_type_id: 'ice-block', ice_type_name: 'หลอดเล็ก', unit: 'ถุง', quantity: 40 },
+          { ice_type_id: 'ice-small', ice_type_name: 'หลอดเล็กโม่', unit: 'ถุง', quantity: 16 },
+          { ice_type_id: 'ice-tube', ice_type_name: 'เปลือย (หลอดใหญ่)', unit: 'ถุง', quantity: 18 },
+        ],
+      },
+      { id: 'building-c', kind: 'building', name: 'ตึก C', iceTotals: [] },
+    ],
     cashReceivedValue: 1400,
     transferReceivedValue: 1600,
     creditSalesValue: 860,
