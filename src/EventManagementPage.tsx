@@ -198,16 +198,20 @@ function useModalLock(open: boolean, busy: boolean, close: () => void) {
 
 export function EventManagementPage({
   gateway = eventManagementGateway,
+  initialSelectedId = null,
   isActive = true,
+  onSelectedIdChange,
   profileRole,
 }: {
   gateway?: EventManagementGateway;
+  initialSelectedId?: string | null;
   isActive?: boolean;
+  onSelectedIdChange?: (eventId: string | null) => void;
   profileRole: ManagerRole;
 }) {
   const [importOpen, setImportOpen] = useState(false);
   const [events, setEvents] = useState<EventOverview[]>([]);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(() => initialSelectedId);
   const [detail, setDetail] = useState<EventManagementDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -252,6 +256,7 @@ export function EventManagementPage({
             ?? nextEvents[0]?.id
             ?? null;
       setSelectedId(nextSelectedId);
+      onSelectedIdChange?.(nextSelectedId);
       if (!nextSelectedId) {
         setDetail(null);
         return;
@@ -270,7 +275,7 @@ export function EventManagementPage({
         setDetailLoading(false);
       }
     }
-  }, [gateway, isActive, selectedId]);
+  }, [gateway, isActive, onSelectedIdChange, selectedId]);
 
   useEffect(() => {
     if (isActive) void loadPage();
@@ -280,6 +285,7 @@ export function EventManagementPage({
     if (eventId === selectedId && detail) return;
     const requestId = ++loadRequest.current;
     setSelectedId(eventId);
+    onSelectedIdChange?.(eventId);
     setDetailLoading(true);
     setActionError(null);
     try {
@@ -585,7 +591,7 @@ export function EventManagementPage({
               busyAction={busyAction}
               detail={detail}
               onImport={() => setImportOpen(true)}
-              onBack={() => { ++loadRequest.current; setSelectedId(null); setDetail(null); setActionError(null); }}
+              onBack={() => { ++loadRequest.current; setSelectedId(null); onSelectedIdChange?.(null); setDetail(null); setActionError(null); }}
               onAddParticipation={() => void openParticipationEditor()}
               onCancelEvent={() => { setActionError(null); setCancelTarget({ kind: 'event', id: detail.event.id, label: detail.event.name }); }}
               onCancelParticipation={(participation) => { setActionError(null); setCancelTarget({ kind: 'participation', id: participation.id, label: `${participation.shop_code} ${participation.shop_name}` }); }}

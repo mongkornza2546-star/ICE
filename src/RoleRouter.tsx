@@ -72,6 +72,7 @@ export function RoleRouter({
   const [focusedCollectionServiceDate, setFocusedCollectionServiceDate] = useState<string | null>(null);
   const [collectionCloseResult, setCollectionCloseResult] = useState<CollectionCloseResult | null>(null);
   const [billingServiceDate, setBillingServiceDate] = useState(() => toBangkokDateString());
+  const [selectedEventJobId, setSelectedEventJobId] = useState<string | null>(null);
   const [currentBangkokDate, setCurrentBangkokDate] = useState(() => toBangkokDateString());
   const [deliveryDraftState, setDeliveryDraftState] = useState({ dirty: false, submitting: false });
   const navigationOwner = useRef<string | null>(null);
@@ -174,11 +175,18 @@ export function RoleRouter({
       setActiveView(saved?.activeView ? saved.activeView as AdminView : 'manager_overview');
       setFinancialPage(saved?.financialPage === 'transactions' || saved?.financialPage === 'credit' ? saved.financialPage : 'collection');
       setCourierView(saved?.courierView ?? 'pos');
+      setSelectedEventJobId(saved?.eventJobId ?? null);
       setBillingServiceDate(currentBangkokDate);
       return;
     }
-    writeNavigation(profile.id, { activeView, financialPage, courierView, billingServiceDate });
-  }, [activeView, billingServiceDate, courierView, currentBangkokDate, financialPage, profile]);
+    writeNavigation(profile.id, {
+      activeView,
+      financialPage,
+      courierView,
+      billingServiceDate,
+      eventJobId: selectedEventJobId,
+    });
+  }, [activeView, billingServiceDate, courierView, currentBangkokDate, financialPage, profile, selectedEventJobId]);
 
   useEffect(() => {
     if (courierView === 'collection') setCourierCollectionVisited(true);
@@ -312,20 +320,6 @@ export function RoleRouter({
             <span>POS</span>
           </button>
           <button
-            aria-current={courierView === 'events' ? 'page' : undefined}
-            disabled={deliveryDraftState.submitting}
-            onClick={() => {
-              if (courierView !== 'events' && !confirmLeavingDelivery()) return;
-              clearPosCollectionReturn(profile.id);
-              setCourierCollectionFocus(null);
-              setCourierView('events');
-            }}
-            type="button"
-          >
-            <CalendarBlank aria-hidden="true" size={22} weight="duotone" />
-            <span>อีเวนต์</span>
-          </button>
-          <button
             aria-current={courierView === 'collection' ? 'page' : undefined}
             disabled={deliveryDraftState.submitting}
             onClick={() => {
@@ -339,6 +333,20 @@ export function RoleRouter({
           >
             <Coins aria-hidden="true" size={22} weight="duotone" />
             <span>เก็บเงิน</span>
+          </button>
+          <button
+            aria-current={courierView === 'events' ? 'page' : undefined}
+            disabled={deliveryDraftState.submitting}
+            onClick={() => {
+              if (courierView !== 'events' && !confirmLeavingDelivery()) return;
+              clearPosCollectionReturn(profile.id);
+              setCourierCollectionFocus(null);
+              setCourierView('events');
+            }}
+            type="button"
+          >
+            <CalendarBlank aria-hidden="true" size={22} weight="duotone" />
+            <span>อีเวนต์</span>
           </button>
         </nav>
         <KeepAlive active={courierView === 'withdrawal' || courierView === 'pos'}>
@@ -483,7 +491,9 @@ export function RoleRouter({
       {visitedViews.has('events') && (
         <KeepAlive active={currentView === 'events'}>
           <EventManagementPage
+            initialSelectedId={selectedEventJobId}
             isActive={currentView === 'events'}
+            onSelectedIdChange={setSelectedEventJobId}
             profileRole={profile.role === 'admin' ? 'admin' : 'round_lead'}
           />
         </KeepAlive>

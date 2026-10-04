@@ -128,6 +128,25 @@ describe('EventManagementPage', () => {
     vi.restoreAllMocks();
   });
 
+  it('restores the selected event after the page is remounted', async () => {
+    const eventC = { ...event, id: 'event-c', name: 'C' };
+    const selectedEvent = { ...event, id: 'event-selected', name: 'งานที่เลือก' };
+    const api = gateway({ ...detail(), event: selectedEvent });
+    vi.mocked(api.loadOverview).mockResolvedValue([eventC, selectedEvent]);
+
+    render(
+      <EventManagementPage
+        gateway={api}
+        initialSelectedId="event-selected"
+        profileRole="admin"
+      />,
+    );
+
+    expect(await screen.findByRole('heading', { name: 'งานที่เลือก' })).not.toBeNull();
+    expect(api.loadDetail).toHaveBeenCalledWith('event-selected');
+    expect(api.loadDetail).not.toHaveBeenCalledWith('event-c');
+  });
+
   it('shows actionable readiness and blocks publish until every check passes', async () => {
     const blockedGateway = gateway(detail(false));
     render(<EventManagementPage gateway={blockedGateway} profileRole="admin" />);

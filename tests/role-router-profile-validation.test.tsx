@@ -5,6 +5,7 @@ import type { Session } from '@supabase/supabase-js';
 import type { UserProfile } from '../src/types/app';
 import { USER_PROFILE_REVALIDATE_MS, writeCachedUserProfile } from '../src/lib/userProfileCache';
 import { COLLECTION_PROFILE_REFRESH_EVENT } from '../src/lib/collectionContext';
+import { writeNavigation } from '../src/lib/recoveryStorage';
 
 const supabaseMock = vi.hoisted(() => {
   const maybeSingle = vi.fn();
@@ -44,6 +45,11 @@ vi.mock('../src/LocationManagementSettings', () => ({ LocationManagementSettings
 vi.mock('../src/ShopSettings', () => ({ ShopSettings: () => null }));
 vi.mock('../src/RoundWorkspace', () => ({ RoundWorkspace: () => null }));
 vi.mock('../src/ManagerStockAudit', () => ({ ManagerStockAudit: () => null }));
+vi.mock('../src/EventManagementPage', () => ({
+  EventManagementPage: ({ initialSelectedId }: { initialSelectedId?: string | null }) => (
+    <div data-selected-event={initialSelectedId ?? ''} data-testid="event-management-page" />
+  ),
+}));
 vi.mock('../src/FinancialOperations', () => ({
   FinancialOperations: ({ canCollectShopPayments }: { canCollectShopPayments?: boolean }) => (
     <div data-can-collect={String(canCollectShopPayments)} data-testid="financial-operations" />
@@ -196,5 +202,17 @@ describe('RoleRouter profile validation', () => {
     expect(await screen.findByTestId('admin-layout')).not.toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'ไปหน้าการเงิน' }));
     expect((await screen.findByTestId('financial-operations')).getAttribute('data-can-collect')).toBe('true');
+  });
+
+  it('restores the selected event with the events navigation state after refresh', async () => {
+    writeNavigation('user-1', { activeView: 'events', eventJobId: 'event-selected' });
+    supabaseMock.maybeSingle.mockResolvedValueOnce({
+      data: { ...courierProfile, role: 'admin' },
+      error: null,
+    });
+
+    render(<RoleRouter onRecoverableSessionError={vi.fn().mockResolvedValue(false)} session={session} />);
+
+    expect((await screen.findByTestId('event-management-page')).getAttribute('data-selected-event')).toBe('event-selected');
   });
 });

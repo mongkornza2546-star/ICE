@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { supabase } from './lib/supabase';
+import { isEventLocationCode } from './lib/eventLocationCode';
 import type {
   BuildingOption,
   RoundMemberOption,
@@ -85,12 +86,20 @@ export function StockLocationSettings() {
       setError(firstError.message);
     } else {
       const nextLocations = (locationsResponse.data ?? []) as StockLocationSetting[];
-      setLocations(nextLocations);
-      setBuildings((buildingsResponse.data ?? []) as BuildingOption[]);
+      const nextBuildings = (buildingsResponse.data ?? []) as BuildingOption[];
+      const eventBuildingIds = new Set(nextBuildings.filter((building) => isEventLocationCode(building.code)).map((building) => building.id));
+      const visibleLocations = nextLocations.filter((location) => !(location.kind === 'work_site'
+        && location.holds_inventory === false
+        && (isEventLocationCode(location.code) || eventBuildingIds.has(location.building_id ?? ''))));
+      setLocations(visibleLocations);
+      setBuildings(nextBuildings);
       setMembers((membersResponse.data ?? []) as RoundMemberOption[]);
       if (preferredId) {
-        const selected = nextLocations.find((location) => location.id === preferredId);
+        const selected = visibleLocations.find((location) => location.id === preferredId);
         if (selected) chooseLocation(selected);
+        else setDraft(EMPTY_DRAFT);
+      } else {
+        setDraft((current) => current.id && !visibleLocations.some((location) => location.id === current.id) ? EMPTY_DRAFT : current);
       }
     }
     setLoading(false);
@@ -147,6 +156,9 @@ export function StockLocationSettings() {
 
   if (loading) return <p className="empty-text">กำลังโหลดจุดถือครองสต๊อก...</p>;
 
+  const permanentBuildings = buildings.filter((building) => !isEventLocationCode(building.code));
+  const legacyEventBuilding = buildings.find((building) => building.id === draft.buildingId && isEventLocationCode(building.code));
+
   return (
     <div className="location-settings">
       <section className="panel stack">
@@ -160,6 +172,7 @@ export function StockLocationSettings() {
           </button>
         </div>
         <p className="muted">เพิ่ม แก้ไข และพักใช้งานรถบรรทุก จุดปฏิบัติงาน หรือจุดถือครองอื่นได้จากหน้านี้</p>
+        <p className="muted">จัดการงานชั่วคราวและจุดรายงานอีเวนต์ในเมนูงานอีเวนต์</p>
         <div className="settings-list">
           {locations.map((location) => (
             <button
@@ -208,7 +221,8 @@ export function StockLocationSettings() {
               ตึกที่เกี่ยวข้อง (ถ้ามี)
               <select value={draft.buildingId} onChange={(event) => setDraft({ ...draft, buildingId: event.target.value })}>
                 <option value="">ไม่ผูกกับตึก</option>
-                {buildings.map((building) => <option key={building.id} value={building.id}>{building.code} · {building.name}</option>)}
+                {legacyEventBuilding ? <option disabled value={legacyEventBuilding.id}>{legacyEventBuilding.name} · อีเวนต์ (ความสัมพันธ์เดิม)</option> : null}
+                {permanentBuildings.map((building) => <option key={building.id} value={building.id}>{building.code} · {building.name}</option>)}
               </select>
             </label>
             <label>

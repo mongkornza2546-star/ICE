@@ -1,13 +1,16 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { supabase } from './lib/supabase';
+import { isEventLocationCode } from './lib/eventLocationCode';
 import type { BuildingOption, BuildingZoneOption } from './types/app';
+
+const emptyDraft = (sort_order = 1) => ({ id: '', code: '', name: '', sort_order, is_active: true });
 
 export function LocationSettings() {
   const [buildings, setBuildings] = useState<BuildingOption[]>([]);
   const [zones, setZones] = useState<BuildingZoneOption[]>([]);
   const [selectedBuildingId, setSelectedBuildingId] = useState('');
-  const [buildingDraft, setBuildingDraft] = useState({ id: '', code: '', name: '', sort_order: 1, is_active: true });
-  const [zoneDraft, setZoneDraft] = useState({ id: '', code: '', name: '', sort_order: 1, is_active: true });
+  const [buildingDraft, setBuildingDraft] = useState(emptyDraft);
+  const [zoneDraft, setZoneDraft] = useState(emptyDraft);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<'building' | 'zone' | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -29,19 +32,33 @@ export function LocationSettings() {
       setError(firstError.message);
     } else {
       const nextBuildings = (buildingResponse.data ?? []) as BuildingOption[];
+      const nextZones = (zoneResponse.data ?? []) as BuildingZoneOption[];
+      const permanentBuildings = nextBuildings.filter((building) => !isEventLocationCode(building.code));
+      const permanentBuildingIds = new Set(permanentBuildings.map((building) => building.id));
+      const requestedId = preferredBuildingId || selectedBuildingId;
+      const nextSelectedId = permanentBuildingIds.has(requestedId) ? requestedId : permanentBuildings[0]?.id || '';
+      const nextZoneOrder = Math.max(0, ...nextZones.filter((zone) => zone.building_id === nextSelectedId).map((zone) => zone.sort_order)) + 1;
       setBuildings(nextBuildings);
-      setZones((zoneResponse.data ?? []) as BuildingZoneOption[]);
-      setSelectedBuildingId((current) => preferredBuildingId || current || nextBuildings[0]?.id || '');
+      setZones(nextZones);
+      setSelectedBuildingId(nextSelectedId);
+      setBuildingDraft((current) => current.id && !permanentBuildingIds.has(current.id)
+        ? emptyDraft(Math.max(0, ...nextBuildings.map((building) => building.sort_order ?? 0)) + 1)
+        : current);
+      setZoneDraft((current) => current.id && nextZones.some((zone) => zone.id === current.id
+        && zone.building_id === nextSelectedId && !isEventLocationCode(zone.code))
+        ? current : emptyDraft(nextZoneOrder));
     }
     setLoading(false);
   }
 
-  const selectedBuilding = buildings.find((item) => item.id === selectedBuildingId) ?? null;
+  const permanentBuildings = useMemo(() => buildings.filter((building) => !isEventLocationCode(building.code)), [buildings]);
+  const selectedBuilding = permanentBuildings.find((item) => item.id === selectedBuildingId) ?? null;
   const buildingZones = useMemo(
-    () => zones.filter((zone) => zone.building_id === selectedBuildingId),
+    () => zones.filter((zone) => zone.building_id === selectedBuildingId && !isEventLocationCode(zone.code)),
     [zones, selectedBuildingId],
   );
-  const nextZoneSortOrder = Math.max(0, ...buildingZones.map((zone) => zone.sort_order)) + 1;
+  // Hidden compatibility zones still occupy their sort orders in the database.
+  const nextZoneSortOrder = Math.max(0, ...zones.filter((zone) => zone.building_id === selectedBuildingId).map((zone) => zone.sort_order)) + 1;
   const nextBuildingSortOrder = Math.max(0, ...buildings.map((building) => building.sort_order ?? 0)) + 1;
 
   const chooseBuilding = (building: BuildingOption) => {
@@ -113,13 +130,15 @@ export function LocationSettings() {
           <div><p className="eyebrow">ขั้นที่ 1</p><h2>ตั้งค่าตึก</h2></div>
           <button className="ghost-button" onClick={() => setBuildingDraft({ id: '', code: '', name: '', sort_order: nextBuildingSortOrder, is_active: true })} type="button">+ ตึกใหม่</button>
         </div>
+        <p className="muted">จัดการตึกและโซนถาวรที่นี่ · จัดการงานชั่วคราวในเมนูงานอีเวนต์</p>
         <div className="settings-list">
-          {buildings.map((building) => (
+          {permanentBuildings.map((building) => (
             <button className={`round-item ${selectedBuildingId === building.id ? 'round-item--selected' : ''}`} key={building.id} onClick={() => chooseBuilding(building)} type="button">
               <span>{building.sort_order ?? '—'}. {building.code} · {building.name}</span>
-              <small>{building.is_active ? 'ใช้งาน' : 'พักใช้งาน'} · {zones.filter((zone) => zone.building_id === building.id).length} โซนย่อย</small>
+              <small>{building.is_active ? 'ใช้งาน' : 'พักใช้งาน'} · {zones.filter((zone) => zone.building_id === building.id && !isEventLocationCode(zone.code)).length} โซนย่อย</small>
             </button>
           ))}
+          {permanentBuildings.length === 0 ? <p className="empty-text">ยังไม่มีตึกถาวร กรุณาเพิ่มตึก</p> : null}
         </div>
         <form className="settings-form" onSubmit={saveBuilding}>
           <div className="field-grid field-grid--three">

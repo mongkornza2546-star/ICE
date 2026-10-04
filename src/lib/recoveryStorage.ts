@@ -15,6 +15,7 @@ export interface PersistedNavigation {
   financialPage?: 'collection' | 'transactions' | 'credit';
   courierView?: 'withdrawal' | 'pos' | 'events' | 'collection';
   billingServiceDate?: string;
+  eventJobId?: string | null;
 }
 
 function readJson<T>(key: string): T | null {
