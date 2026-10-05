@@ -1,4 +1,4 @@
-import { useState, type RefObject } from 'react';
+import { useEffect, useState, type RefObject } from 'react';
 import {
   Bank,
   CaretDown,
@@ -103,6 +103,18 @@ export function PaymentModal({
 }) {
   const isPanel = presentation === 'panel';
   const [expandedChargeId, setExpandedChargeId] = useState<string | null>(null);
+  const [evidencePreviewUrl, setEvidencePreviewUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!evidence || evidenceError || !evidence.type.startsWith('image/')) {
+      setEvidencePreviewUrl(null);
+      return;
+    }
+    const url = URL.createObjectURL(evidence);
+    setEvidencePreviewUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [evidence, evidenceError]);
+
   const focusedCharge = focusedChargeId
     ? selectedShop.charges.find((charge) => charge.charge_id === focusedChargeId) ?? null
     : null;
@@ -369,8 +381,19 @@ export function PaymentModal({
                   type="file"
                 />
                 <span className="financial-ops__dropzone">
-                  <UploadSimple aria-hidden="true" size={25} weight="duotone" />
+                  {evidencePreviewUrl ? (
+                    <img className="financial-ops__evidence-preview" src={evidencePreviewUrl} alt="ภาพตัวอย่างสลิปที่แนบ" />
+                  ) : (
+                    <UploadSimple aria-hidden="true" size={25} weight="duotone" />
+                  )}
+                  {evidence && !evidenceError ? (
+                    <span className="financial-ops__evidence-attached" role="status">
+                      <CheckCircle aria-hidden="true" size={18} weight="fill" />
+                      {evidence.type === 'application/pdf' ? 'แนบไฟล์ PDF แล้ว' : 'แนบสลิปแล้ว'}
+                    </span>
+                  ) : null}
                   <b>{evidence ? evidence.name : 'อัปโหลดรูปสลิป'}</b>
+                  {evidence && !evidenceError ? <small>แตะเพื่อเปลี่ยนไฟล์ · กดบันทึกรับเงินเพื่อยืนยัน</small> : null}
                   <small>JPG, PNG, WebP หรือ PDF ไม่เกิน 5 MB</small>
                 </span>
                 {evidenceError ? <small className="financial-ops__evidence-error" role="alert">{evidenceError}</small> : null}

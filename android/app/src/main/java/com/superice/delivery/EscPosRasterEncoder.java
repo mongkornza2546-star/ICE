@@ -15,19 +15,34 @@ final class EscPosRasterEncoder {
             bitmap = Bitmap.createScaledBitmap(source, targetWidth, scaledHeight, true);
         }
 
-        int width = bitmap.getWidth();
-        int height = bitmap.getHeight();
-        int widthBytes = (width + 7) / 8;
-        ByteArrayOutputStream output = new ByteArrayOutputStream(8 + widthBytes * height);
-        output.write(rasterHeader(width, height));
-
-        int[] pixels = new int[width];
-        for (int y = 0; y < height; y++) {
-            bitmap.getPixels(pixels, 0, width, 0, y, width, 1);
-            output.write(packRow(pixels, width));
+        try {
+            Bitmap raster = bitmap;
+            return encodeRows(raster.getWidth(), raster.getHeight(), (y, pixels) ->
+                raster.getPixels(pixels, 0, pixels.length, 0, y, pixels.length, 1));
+        } finally {
+            if (bitmap != source) bitmap.recycle();
         }
+    }
 
-        if (bitmap != source) bitmap.recycle();
+    interface PixelRowReader {
+        void read(int y, int[] pixels);
+    }
+
+    static byte[] encodeRows(int width, int height, PixelRowReader reader) throws IOException {
+        // Small complete raster commands let portable printers start before the
+        // whole receipt arrives and avoid their per-image height/buffer limits.
+        final int bandHeight = 24;
+        int widthBytes = (width + 7) / 8;
+        ByteArrayOutputStream output = new ByteArrayOutputStream(widthBytes * height + 8 * ((height + bandHeight - 1) / bandHeight));
+        int[] pixels = new int[width];
+        for (int startY = 0; startY < height; startY += bandHeight) {
+            int rows = Math.min(bandHeight, height - startY);
+            output.write(rasterHeader(width, rows));
+            for (int y = startY; y < startY + rows; y++) {
+                reader.read(y, pixels);
+                output.write(packRow(pixels, width));
+            }
+        }
         return output.toByteArray();
     }
 

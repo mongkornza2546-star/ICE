@@ -2080,6 +2080,9 @@ input:disabled, select:disabled, textarea:disabled { background: #f2f5f8; color:
 .financial-ops__payment-evidence > input { position: absolute; width: 1px; height: 1px; overflow: hidden; opacity: 0; }
 .financial-ops__dropzone { min-height: 72px; display: grid; justify-items: center; align-content: center; gap: 1px; padding: 10px; border: 2px dashed #80b3ff; border-radius: 9px; color: #1075eb; background: #fbfdff; text-align: center; }
 .financial-ops__dropzone b { font-size: .76rem; }
+.financial-ops__dropzone > b { max-width: 100%; overflow-wrap: anywhere; }
+.financial-ops__evidence-preview { display: block; width: 100%; max-height: 260px; margin-bottom: 8px; border-radius: 6px; object-fit: contain; }
+.financial-ops__evidence-attached { display: inline-flex; align-items: center; gap: 5px; margin: 4px 0; color: #148651; font-size: .76rem; }
 .financial-ops__dropzone small { color: #72859a; font-size: .62rem; font-weight: 600; }
 .financial-ops__evidence-error { color: #bd3741; font-size: .68rem; }
 .financial-ops__payment-actions { display: grid; grid-template-columns: 1fr 2.35fr; gap: 12px; margin: 2px -22px -22px; padding: 16px 22px 22px; border-top: 1px solid #e3eaf1; background: #fff; }

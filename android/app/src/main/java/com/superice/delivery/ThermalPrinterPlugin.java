@@ -41,11 +41,19 @@ import java.util.concurrent.Executors;
 public class ThermalPrinterPlugin extends Plugin {
     private static final UUID SERIAL_PORT_UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB");
     private static final int PRINT_WIDTH_DOTS = 384;
+    private static final int WRITE_CHUNK_BYTES = 512;
+    // Leave headroom for the serial bridge used by small 58 mm printers.
+    private static final int BYTES_PER_SECOND = 10 * 1024;
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
+    private volatile BluetoothSocket printerSocket;
+    private String printerAddress;
+    private volatile boolean destroyed;
 
     @Override
     protected void handleOnDestroy() {
+        destroyed = true;
         executor.shutdownNow();
+        closePrinterConnection();
         super.handleOnDestroy();
     }
 
@@ -131,7 +139,7 @@ public class ThermalPrinterPlugin extends Plugin {
     }
 
     private void printImageInBackground(PluginCall call, String address, String imageBase64) {
-        BluetoothSocket socket = null;
+        Bitmap bitmap = null;
         try {
             BluetoothAdapter adapter = getBluetoothAdapter();
             if (adapter == null || !adapter.isEnabled()) {
@@ -140,19 +148,20 @@ public class ThermalPrinterPlugin extends Plugin {
             }
             BluetoothDevice device = adapter.getRemoteDevice(address);
             byte[] imageBytes = Base64.decode(stripDataUrlPrefix(imageBase64), Base64.DEFAULT);
-            Bitmap bitmap = BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.length);
+            bitmap = BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.length);
             if (bitmap == null) {
                 call.reject("ไม่สามารถอ่านภาพใบเสร็จได้", "INVALID_IMAGE");
                 return;
             }
-            socket = device.createRfcommSocketToServiceRecord(SERIAL_PORT_UUID);
-            socket.connect();
-            OutputStream output = socket.getOutputStream();
+            byte[] raster = EscPosRasterEncoder.toEscPosRaster(bitmap, PRINT_WIDTH_DOTS);
+            OutputStream output = connectPrinter(device, address).getOutputStream();
             output.write(new byte[] { 0x1b, 0x40 });
-            output.write(EscPosRasterEncoder.toEscPosRaster(bitmap, PRINT_WIDTH_DOTS));
+            writePaced(output, raster);
             output.write(new byte[] { 0x0a, 0x0a, 0x0a });
             output.flush();
-            bitmap.recycle();
+            // flush() is not an acknowledgement from the printer. Keep the
+            // socket open and allow the final feed to leave the serial bridge.
+            Thread.sleep(200);
 
             JSObject result = new JSObject();
             result.put("printed", true);
@@ -160,17 +169,59 @@ public class ThermalPrinterPlugin extends Plugin {
         } catch (IllegalArgumentException exception) {
             call.reject("ที่อยู่ Bluetooth หรือข้อมูลภาพไม่ถูกต้อง", "INVALID_ARGUMENT", exception);
         } catch (SecurityException exception) {
+            closePrinterConnection();
             call.reject("ไม่มีสิทธิ์เชื่อมต่อ Bluetooth", "PERMISSION_REQUIRED", exception);
         } catch (IOException exception) {
-            call.reject("เชื่อมต่อเครื่องพิมพ์ไม่สำเร็จ กรุณาตรวจว่าเปิดเครื่องและจับคู่แล้ว", "CONNECTION_FAILED", exception);
+            // Never replay a failed write automatically: part of the receipt
+            // may already have printed. The next user request can reconnect.
+            closePrinterConnection();
+            call.reject("ส่งข้อมูลไปเครื่องพิมพ์ไม่สำเร็จ กรุณาตรวจเครื่องและตรวจใบที่พิมพ์ก่อนลองใหม่", "CONNECTION_FAILED", exception);
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            closePrinterConnection();
+            call.reject("การพิมพ์ถูกหยุด กรุณาตรวจใบที่พิมพ์ก่อนลองใหม่", "PRINT_INTERRUPTED", exception);
         } finally {
-            if (socket != null) {
-                try {
-                    socket.close();
-                } catch (IOException ignored) {
-                    // The print attempt has already completed or failed.
-                }
-            }
+            if (bitmap != null) bitmap.recycle();
+        }
+    }
+
+    private BluetoothSocket connectPrinter(BluetoothDevice device, String address) throws IOException {
+        BluetoothSocket existing = printerSocket;
+        if (existing != null && address.equals(printerAddress) && existing.isConnected()) return existing;
+        closePrinterConnection();
+        BluetoothSocket socket = device.createRfcommSocketToServiceRecord(SERIAL_PORT_UUID);
+        printerSocket = socket;
+        printerAddress = address;
+        if (destroyed) {
+            closePrinterConnection();
+            throw new IOException("Printer plugin is destroyed");
+        }
+        socket.connect();
+        return socket;
+    }
+
+    private void writePaced(OutputStream output, byte[] bytes) throws IOException, InterruptedException {
+        for (int offset = 0; offset < bytes.length; offset += WRITE_CHUNK_BYTES) {
+            if (Thread.currentThread().isInterrupted()) throw new InterruptedException();
+            int length = Math.min(WRITE_CHUNK_BYTES, bytes.length - offset);
+            long started = System.nanoTime();
+            output.write(bytes, offset, length);
+            // Count time blocked in write toward pacing rather than adding a
+            // second full delay on an already slow Bluetooth connection.
+            long remaining = length * 1_000_000_000L / BYTES_PER_SECOND - (System.nanoTime() - started);
+            if (remaining > 0) java.util.concurrent.TimeUnit.NANOSECONDS.sleep(remaining);
+        }
+    }
+
+    private synchronized void closePrinterConnection() {
+        BluetoothSocket socket = printerSocket;
+        printerSocket = null;
+        printerAddress = null;
+        if (socket == null) return;
+        try {
+            socket.close();
+        } catch (IOException ignored) {
+            // The connection has already been detached from the next print.
         }
     }
 
