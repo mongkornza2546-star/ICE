@@ -41,7 +41,7 @@ describe('receipt printing', () => {
     expect(text).toContain('Super Ice');
     expect(text).toContain('ใบเสร็จรับเงิน / RECEIPT');
     expect(text).toContain('เลขที่เอกสาร: REC2608-00006');
-    expect(text).toContain('วันที่ออกเอกสาร: 21/08/2026 13:36');
+    expect(text).not.toContain('ออกเอกสาร');
     expect(text).toContain('วันที่จัดส่ง: 21/08/2026');
     expect(text).toContain('ลูกค้า: BB61 · Fuku matcha');
     expect(text).toContain('สาขา: B · Food World');

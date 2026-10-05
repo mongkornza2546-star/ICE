@@ -221,8 +221,6 @@ export async function renderSalesDocumentRaster(payload: SalesDocumentPayload) {
     if (payload.receivedDate) {
       receipt.text(`วันที่รับเงิน: ${formatReceiptDate(payload.receivedDate)}`);
       if (payload.enteredAt) receipt.text(`บันทึกเมื่อ: ${formatReceiptDateTime(payload.enteredAt)}`);
-    } else {
-      receipt.text(`วันที่ออกเอกสาร: ${formatReceiptDateTime(payload.issuedAt)}`);
     }
     if (payload.serviceDate) receipt.text(`วันที่จัดส่ง: ${formatReceiptDate(payload.serviceDate)}`);
     if (payload.status === 'voided') receipt.text(`ยกเลิก · ${payload.voidInfo?.reason ?? 'ไม่ระบุเหตุ'}`, { align: 'center', bold: true });
@@ -264,7 +262,6 @@ export async function renderSalesDocumentRaster(payload: SalesDocumentPayload) {
     if (payload.status === 'voided') receipt.text(`ยกเลิก · ${payload.voidInfo?.reason ?? 'ไม่ระบุเหตุ'}`, { align: 'center', bold: true });
     receipt.text(`${payload.shop.code} · ${payload.shop.name}`, { bold: true });
     if (payload.shop.location) receipt.text(payload.shop.location);
-    receipt.text(`ออกเอกสาร ${dateTime.format(new Date(payload.issuedAt))}`);
     if (payload.serviceDate) receipt.text(`วันที่ส่ง ${payload.serviceDate}`);
     if (payload.dueDate) receipt.text(`ครบกำหนด ${payload.dueDate}`);
     if (payload.paymentMethod) {
@@ -300,15 +297,6 @@ export async function renderDailyCreditRaster(payload: DailyCreditAcknowledgemen
   receipt.text(`ฉบับที่ ${payload.version} · ${payload.service_date}`, { align: 'center' });
   receipt.text(`${payload.shop_code} · ${payload.shop_name}`, { bold: true });
   if (payload.shop_location) receipt.text(payload.shop_location);
-  receipt.text(`สร้างเอกสาร ${dateTime.format(new Date(payload.generated_at))}`);
-  for (const invoice of payload.invoices) {
-    receipt.rule();
-    receipt.row(`${dateTime.format(new Date(invoice.recorded_at))} · ${invoice.document_number}`, money.format(Number(invoice.total_amount)), { bold: true });
-    receipt.text(`ผู้ส่ง ${invoice.recorded_by}${invoice.due_date ? ` · ครบกำหนด ${invoice.due_date}` : ''}`, { size: 18 });
-    for (const item of invoice.items) {
-      receipt.row(`${item.ice_type_name} × ${Number(item.quantity)} ${item.ice_type_unit}${item.unit_price == null ? '' : ` @ ${money.format(Number(item.unit_price))}`}`, money.format(Number(item.line_total)), { size: 18 });
-    }
-  }
   receipt.rule();
   receipt.text('รวมสินค้าวันนี้', { bold: true });
   for (const item of payload.item_totals) receipt.row(`${item.name} ${Number(item.quantity)} ${item.unit}`, money.format(Number(item.line_total)));

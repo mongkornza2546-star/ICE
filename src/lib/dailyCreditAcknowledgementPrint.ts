@@ -41,18 +41,11 @@ const money = new Intl.NumberFormat('th-TH', {
   minimumFractionDigits: 2,
 });
 
-const dateTime = new Intl.DateTimeFormat('th-TH', {
-  dateStyle: 'short',
-  timeStyle: 'short',
-  timeZone: 'Asia/Bangkok',
-});
-
 export function printDailyCreditAcknowledgement(
   payload: DailyCreditAcknowledgementDocument,
   existingPrintWindow?: Window | null,
 ) {
-  const itemCount = payload.invoices.reduce((total, invoice) => total + invoice.items.length, 0);
-  const heightMm = Math.max(70, 45 + payload.invoices.length * 8 + itemCount * 5 + payload.item_totals.length * 4);
+  const heightMm = Math.max(70, 45 + payload.item_totals.length * 4);
   const printWindow = existingPrintWindow
     ?? window.open('', '_blank', `popup,width=360,height=${Math.ceil(heightMm * 3.78)}`);
   if (!printWindow) return false;
@@ -70,11 +63,8 @@ export function printDailyCreditAcknowledgement(
     p { margin: 0; }
     small { font-size: 6.5pt; }
     .center { text-align: center; }
-    .invoice, .totals, .grand-total { border-top: .25mm dashed #000; padding-top: .8mm; }
-    .invoice-head, .row, .grand-total { display: flex; justify-content: space-between; gap: 1mm; }
-    .invoice-head { align-items: baseline; }
-    .item { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 1mm; margin-top: .45mm; }
-    .item span:last-child { white-space: nowrap; }
+    .totals, .grand-total { border-top: .25mm dashed #000; padding-top: .8mm; }
+    .row, .grand-total { display: flex; justify-content: space-between; gap: 1mm; }
     .grand-total { font-size: 9pt; font-weight: 700; }
   `;
   printDocument.head.replaceChildren(style);
@@ -92,35 +82,6 @@ export function printDailyCreditAcknowledgement(
   line(`ฉบับที่ ${payload.version} · ${payload.service_date}`, 'center');
   line(`${payload.shop_code} · ${payload.shop_name}`);
   if (payload.shop_location) line(payload.shop_location, undefined, 'small');
-  line(`สร้างเอกสาร ${dateTime.format(new Date(payload.generated_at))}`, undefined, 'small');
-
-  for (const invoice of payload.invoices) {
-    const section = printDocument.createElement('section');
-    section.className = 'invoice';
-    const heading = printDocument.createElement('div');
-    heading.className = 'invoice-head';
-    const invoiceTitle = printDocument.createElement('h2');
-    invoiceTitle.textContent = `${dateTime.format(new Date(invoice.recorded_at))} · ${invoice.document_number}`;
-    const invoiceTotal = printDocument.createElement('strong');
-    invoiceTotal.textContent = money.format(Number(invoice.total_amount));
-    heading.append(invoiceTitle, invoiceTotal);
-    section.append(heading);
-
-    const employee = printDocument.createElement('small');
-    employee.textContent = `ผู้ส่ง ${invoice.recorded_by}${invoice.due_date ? ` · ครบกำหนด ${invoice.due_date}` : ''}`;
-    section.append(employee);
-    for (const item of invoice.items) {
-      const row = printDocument.createElement('div');
-      row.className = 'item';
-      const label = printDocument.createElement('span');
-      label.textContent = `${item.ice_type_name} × ${Number(item.quantity)} ${item.ice_type_unit}${item.unit_price == null ? '' : ` @ ${money.format(Number(item.unit_price))}`}`;
-      const amount = printDocument.createElement('span');
-      amount.textContent = money.format(Number(item.line_total));
-      row.append(label, amount);
-      section.append(row);
-    }
-    root.append(section);
-  }
 
   const totals = printDocument.createElement('section');
   totals.className = 'totals';

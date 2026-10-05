@@ -202,8 +202,6 @@ export function printSalesDocument(
     if (payload.receivedDate) {
       line(`วันที่รับเงิน: ${formatReceiptDate(payload.receivedDate)}`);
       if (payload.enteredAt) line(`บันทึกเมื่อ: ${formatReceiptDateTime(payload.enteredAt)}`);
-    } else {
-      line(`วันที่ออกเอกสาร: ${formatReceiptDateTime(payload.issuedAt)}`);
     }
     if (payload.serviceDate) line(`วันที่จัดส่ง: ${formatReceiptDate(payload.serviceDate)}`);
     if (payload.status === 'voided') {
@@ -306,7 +304,6 @@ export function printSalesDocument(
   }
   line(`${payload.shop.code} · ${payload.shop.name}`);
   if (payload.shop.location) line(payload.shop.location, undefined, 'small');
-  line(`ออกเอกสาร ${dateTime.format(new Date(payload.issuedAt))}`, undefined, 'small');
   if (payload.serviceDate) line(`วันที่ส่ง ${payload.serviceDate}`, undefined, 'small');
   if (payload.dueDate) line(`ครบกำหนด ${payload.dueDate}`, undefined, 'small');
   if (payload.paymentMethod) line(`วิธีชำระ ${methodLabels[payload.paymentMethod]}`, undefined, 'small');
