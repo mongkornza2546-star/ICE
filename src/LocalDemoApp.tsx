@@ -12,6 +12,9 @@ import { AdminLayout } from './AdminLayout';
 import { AdminReferenceSettings } from './AdminReferenceSettings';
 import { ManagerStockControl } from './ManagerStockControl';
 import { ManagerDashboard } from './ManagerDashboard';
+import { ExecutiveReportsPage } from './features/reports/ExecutiveReportsPage';
+import { presetDates } from './features/reports/reportDates';
+import type { ExecutiveReport, ReportMetric, ReportRow } from './features/reports/types';
 import { ShopSettings } from './ShopSettings';
 import { FinancialOperations } from './FinancialOperations';
 import type { DailyWorkDashboard, DeliveryRound, EmployeeStockState, IceTypeOption, ShopCard, ShopCardHistoryEntry, StockControlSummary, UserProfile } from './types/app';
@@ -893,6 +896,40 @@ export function LocalDemoApp() {
     return page === 'transactions' || page === 'credit' ? page : 'collection';
   });
   const gateway = useMemo(() => buildDemoGateway(), [gatewayVersion]);
+
+  if (new URLSearchParams(window.location.search).get('screen') === 'executive-report') {
+    const { from, to } = presetDates('month');
+    const report: ExecutiveReport = {
+      from, to, asOf: new Date().toISOString(), previousFrom: from, previousTo: to,
+      sales: 188500, receipts: 147200, refunds: 1200, netReceipts: 146000,
+      previousSales: 165000, previousNetReceipts: 135000,
+      outstanding: 73200, overdue: 18400, debtors: 12, deliveryCount: 283,
+      trend: [
+        { date: from, sales: 54000, receipts: 42000, refunds: 0 },
+        { date: to, sales: 134500, receipts: 105200, refunds: 1200 },
+      ],
+      areas: [
+        { kind: 'building', id: 'demo-a', name: 'อาคาร A', sales: 95500 },
+        { kind: 'building', id: 'demo-b', name: 'อาคาร B', sales: 68500 },
+        { kind: 'event', id: 'demo-event', name: 'งานประชุมประจำปี', sales: 14500 },
+        { kind: 'casual', id: null, name: 'ขายหน้ารถ', sales: 10000 },
+      ],
+      shops: [{ id: 'demo-shop', name: 'ร้านกาแฟลานเล่า', sales: 28000 }],
+      products: [
+        { id: 'demo-small', name: 'น้ำแข็งหลอดเล็ก', unit: 'ถุง', delivered: 1450, damaged: 12 },
+        { id: 'demo-large', name: 'น้ำแข็งหลอดใหญ่', unit: 'ถุง', delivered: 680, damaged: 4 },
+      ],
+    };
+    const demoRows: Partial<Record<ReportMetric, ReportRow[]>> = {
+      sales: [{ id: 'demo-sale', day: to, label: 'ร้านกาแฟลานเล่า', amount: 28000, area: 'อาคาร A', shopId: 'demo-shop' }],
+      receipts: [{ id: 'demo-payment', day: to, label: 'ร้านกาแฟลานเล่า', amount: 12000, method: 'cash' }],
+      refunds: [{ id: 'demo-refund', day: to, label: 'คืนเงินร้านกาแฟลานเล่า', amount: 1200 }],
+      debt: [{ id: 'demo-debt', day: to, label: 'ร้านกาแฟลานเล่า', amount: 4800, dueDate: to, shopId: 'demo-shop' }],
+      overdue: [{ id: 'demo-overdue', day: to, label: 'ร้านกาแฟลานเล่า', amount: 1500, dueDate: from, shopId: 'demo-shop' }],
+    };
+    return <AdminLayout activeView="executive_reports" allowedViews={['manager_overview', 'executive_reports']}
+      onNavigate={() => undefined} profileLabel="ผู้บริหาร · Demo"><ExecutiveReportsPage demoReport={report} demoRows={demoRows} isActive /></AdminLayout>;
+  }
 
   if (new URLSearchParams(window.location.search).get('screen') === 'collection-layout') {
     return (

@@ -3,6 +3,7 @@ import { Session } from '@supabase/supabase-js';
 import { supabase } from './lib/supabase';
 import { AdminLayout, type AdminView, type FinancialPage } from './AdminLayout';
 import { ManagerDashboard } from './ManagerDashboard';
+import { ExecutiveReportsPage } from './features/reports/ExecutiveReportsPage';
 import { FactoryOrderPage } from './FactoryOrderPage';
 import { AdminReferenceSettings } from './AdminReferenceSettings';
 import { EmployeeLayout } from './EmployeeLayout';
@@ -172,7 +173,8 @@ export function RoleRouter({
         }
         return;
       }
-      setActiveView(saved?.activeView ? saved.activeView as AdminView : 'manager_overview');
+      setActiveView(saved?.activeView && (saved.activeView !== 'executive_reports' || profile.role === 'admin')
+        ? saved.activeView as AdminView : 'manager_overview');
       setFinancialPage(saved?.financialPage === 'transactions' || saved?.financialPage === 'credit' ? saved.financialPage : 'collection');
       setCourierView(saved?.courierView ?? 'pos');
       setSelectedEventJobId(saved?.eventJobId ?? null);
@@ -396,7 +398,9 @@ export function RoleRouter({
   }
 
   const canManageRounds = profile.role === 'admin' || profile.role === 'round_lead';
-  const currentView = canManageRounds ? activeView : 'delivery';
+  const currentView = canManageRounds
+    ? (activeView === 'executive_reports' && profile.role !== 'admin' ? 'manager_overview' : activeView)
+    : 'delivery';
 
   // Mark the current view as visited (lazy mount)
   if (!visitedViews.has(currentView)) {
@@ -411,6 +415,7 @@ export function RoleRouter({
     ? profile.role === 'admin'
       ? [
           'manager_overview',
+          'executive_reports',
           'events',
           'factory_order',
           'delivery',
@@ -486,6 +491,11 @@ export function RoleRouter({
             onNavigate={setActiveView}
             profileRole={profile.role === 'admin' ? 'admin' : 'round_lead'}
           />
+        </KeepAlive>
+      )}
+      {profile.role === 'admin' && visitedViews.has('executive_reports') && (
+        <KeepAlive active={currentView === 'executive_reports'}>
+          <ExecutiveReportsPage isActive={currentView === 'executive_reports'} />
         </KeepAlive>
       )}
       {visitedViews.has('events') && (

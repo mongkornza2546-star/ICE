@@ -4,6 +4,7 @@ import {
   Bell,
   CalendarBlank,
   CalendarDots,
+  ChartBar,
   CaretDown,
   ClockCounterClockwise,
   Gear,
@@ -22,6 +23,7 @@ import { toBangkokDateString } from './lib/serviceDate';
 
 export type AdminView =
   | 'manager_overview'
+  | 'executive_reports'
   | 'events'
   | 'factory_order'
   | 'delivery'
@@ -36,6 +38,7 @@ export type FinancialPage = 'collection' | 'transactions' | 'credit';
 
 const viewMeta: Record<AdminView, { label: string; shortLabel: string; icon: typeof Truck }> = {
   manager_overview: { label: 'งานวันนี้', shortLabel: 'งานวันนี้', icon: ClipboardText },
+  executive_reports: { label: 'รายงานผู้บริหาร', shortLabel: 'รายงาน', icon: ChartBar },
   events: { label: 'งานอีเวนต์', shortLabel: 'อีเวนต์', icon: CalendarDots },
   factory_order: { label: 'สั่งน้ำแข็งจากโรงงาน', shortLabel: 'สั่งน้ำแข็ง', icon: ShoppingCart },
   delivery: { label: 'บันทึกส่งน้ำแข็ง', shortLabel: 'บันทึกส่ง', icon: Truck },

@@ -14,7 +14,7 @@ const newBill = '10000000-0000-4000-8000-000000000002';
 const otherShopBill = '10000000-0000-4000-8000-000000000003';
 const otherRunBill = '10000000-0000-4000-8000-000000000004';
 
-async function createDatabase(t, { applyDateFix = true } = {}) {
+async function createDatabase(t, { applyDateFix = true, applyCreditHistoryFix = true } = {}) {
   const db = new PGlite();
   t.after(() => db.close());
   // Minimal surrounding schema; payment/void writers, wrappers, effective
@@ -190,6 +190,7 @@ async function createDatabase(t, { applyDateFix = true } = {}) {
   const eventWriter = migration('0191_allow_event_carry_forward_collections');
   await db.exec(eventWriter.slice(eventWriter.indexOf('create or replace function public.record_event_payment(')));
   if (applyDateFix) await db.exec(migration('0204_payment_date_presentation_and_replay'));
+  if (applyCreditHistoryFix) await db.exec(migration('0208_preserve_former_credit_customer_history'));
   return db;
 }
 
@@ -519,4 +520,104 @@ test('pre-fix backdated receipts retain their snapshot, replay identity, read pr
   assert.equal(voided.status, 'voided');
   assert.equal(voided.void_info.reason, 'Correct payment');
   assert.equal(voided.entered_at, receipt.entered_at);
+});
+
+async function prepareCreditHistory(db) {
+  await db.exec(`
+    alter table shop_payment_profiles add allowed_payment_terms text[] default '{credit}';
+    alter table ice_types add is_active boolean default true;
+    alter table delivery_events add note text, add recorded_at timestamptz default now(), add recorded_by uuid;
+    alter table audit_logs add occurred_at timestamptz default now();
+    alter table delivery_charge_adjustments add idempotency_key uuid, add scope text,
+      add corrected_total numeric, add reason text, add created_at timestamptz default now();
+    alter table refund_obligations add id uuid, add reason text, add created_at timestamptz default now();
+    create table collection_run_credit_charges (charge_id uuid, collection_run_id uuid);
+    insert into delivery_rounds values ('${runId}', 'open', '2026-10-05');
+    insert into round_stops(id, round_id) values ('${runId}', '${runId}');
+    insert into delivery_events(id, round_stop_id, recorded_by)
+      values ('${oldBill}', '${runId}', auth.uid()), ('${newBill}', '${runId}', auth.uid());
+    update delivery_charges set delivery_event_id=id, charge_number=id::text;
+  `);
+}
+
+async function creditDetail(db, id = shopId) {
+  return (await db.query('select public.get_credit_receivable_detail($1, $2::date) as detail',
+    [id, '2026-10-05'])).rows[0].detail;
+}
+
+test('credit history survives changing a customer to ordinary payment terms', async (t) => {
+  const db = await createDatabase(t);
+  await prepareCreditHistory(db);
+  await pay(db, { bill: oldBill, amount: 50, expected: 125 });
+  const statement = await issue(db);
+  await pay(db, { statement: statement.id, amount: 25, expected: 75, key: 2 });
+  const before = await creditDetail(db);
+  assert.equal(before.charges.length, 2);
+  assert.deepEqual(before.charges.map(charge => charge.payment_status).sort(), ['paid', 'partial']);
+  assert.equal(before.payments.length, 2);
+  assert.ok(before.payments.every(payment => payment.entered_at));
+  const statementsBefore = (await db.query('select get_billing_statements($1) as items', [shopId])).rows[0].items;
+  for (const terms of ['{immediate}', '{end_of_day}']) {
+    await db.query('update shop_payment_profiles set allowed_payment_terms=$1::text[]', [terms]);
+    assert.deepEqual(await creditDetail(db), before);
+    assert.deepEqual((await db.query('select get_billing_statements($1) as items', [shopId])).rows[0].items, statementsBefore);
+  }
+});
+
+
+test('credit history upgrade fixes the profile guard without changing financial records', async (t) => {
+  const db = await createDatabase(t, { applyCreditHistoryFix: false });
+  await prepareCreditHistory(db);
+  await pay(db, { amount: 25, expected: 125 });
+  await issue(db);
+  const before = await creditDetail(db);
+  const records = async () => (await db.query(`select
+    (select jsonb_agg(to_jsonb(c) order by id) from delivery_charges c) as charges,
+    (select jsonb_agg(to_jsonb(p) order by id) from payments p) as payments,
+    get_billing_statements($1) as statements`, [shopId])).rows[0];
+  const storedBefore = await records();
+  await db.exec("update shop_payment_profiles set allowed_payment_terms='{immediate}'");
+  await assert.rejects(creditDetail(db), /does not have a credit account/);
+  assert.deepEqual(await records(), storedBefore);
+  await db.exec("update shop_payment_profiles set allowed_payment_terms='{credit}'");
+  assert.deepEqual(await creditDetail(db), before);
+  await db.exec("update shop_payment_profiles set allowed_payment_terms='{immediate}'");
+  await db.exec(migration('0208_preserve_former_credit_customer_history'));
+  assert.deepEqual(await creditDetail(db), before);
+  assert.deepEqual(await records(), storedBefore);
+});
+
+test('former credit history retains role, shop and credit-charge boundaries after settlement', async (t) => {
+  const db = await createDatabase(t);
+  await prepareCreditHistory(db);
+  await pay(db, { bill: oldBill, amount: 50, expected: 125 });
+  await pay(db, { amount: 75, expected: 75, key: 2 });
+  await db.exec("update shop_payment_profiles set allowed_payment_terms='{immediate}'");
+  const settled = await creditDetail(db);
+  assert.equal(settled.charges.length, 2);
+  assert.ok(settled.charges.every(charge => charge.payment_status === 'paid' && charge.outstanding_amount === 0));
+  assert.equal(settled.payments.length, 2);
+  await db.exec("set test.role = 'round_lead'");
+  assert.deepEqual(await creditDetail(db), settled);
+  await db.exec("set test.role = 'courier'");
+  await assert.rejects(creditDetail(db), /Only a round lead or admin/);
+  await db.exec("set test.role = 'admin'");
+  await db.exec('create or replace function public.is_active_user() returns boolean language sql as $$ select false $$');
+  await assert.rejects(creditDetail(db), /Only a round lead or admin/);
+  await db.exec('create or replace function public.is_active_user() returns boolean language sql as $$ select true $$');
+  await assert.rejects(creditDetail(db, null), /does not have a credit account/);
+  await assert.rejects(creditDetail(db, '20000000-0000-4000-8000-000000000002'), /does not have a credit account/);
+  // Current credit accounts with no history still return empty arrays.
+  await db.exec(`insert into shop_payment_profiles(shop_id, allowed_payment_terms)
+    values ('20000000-0000-4000-8000-000000000002', '{credit}')`);
+  assert.deepEqual(await creditDetail(db, '20000000-0000-4000-8000-000000000002'),
+    { charges: [], payments: [], ice_types: [] });
+  await db.exec(`update shop_payment_profiles set allowed_payment_terms='{immediate}'
+    where shop_id='20000000-0000-4000-8000-000000000002'`);
+  await assert.rejects(creditDetail(db, '20000000-0000-4000-8000-000000000002'), /does not have a credit account/);
+  await db.query(`insert into delivery_charges(id, shop_id, payment_term, due_date, created_at,
+    outstanding_amount, original_amount, delivery_event_id, service_date)
+    values ($1, $2, 'immediate', '2026-10-05', now(), 10, 10, $3, '2026-10-05')`,
+  [otherRunBill, shopId, oldBill]);
+  assert.deepEqual(await creditDetail(db), settled);
 });
