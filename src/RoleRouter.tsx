@@ -175,7 +175,7 @@ export function RoleRouter({
       }
       setActiveView(saved?.activeView && (saved.activeView !== 'executive_reports' || profile.role === 'admin')
         ? saved.activeView as AdminView : 'manager_overview');
-      setFinancialPage(saved?.financialPage === 'transactions' || saved?.financialPage === 'credit' ? saved.financialPage : 'collection');
+      setFinancialPage(saved?.financialPage === 'transactions' || saved?.financialPage === 'credit' || saved?.financialPage === 'credit_signoff' ? saved.financialPage : 'collection');
       setCourierView(saved?.courierView ?? 'pos');
       setSelectedEventJobId(saved?.eventJobId ?? null);
       setBillingServiceDate(currentBangkokDate);

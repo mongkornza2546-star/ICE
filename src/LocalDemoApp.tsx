@@ -891,9 +891,9 @@ function buildDemoGateway(): EmployeeDeliveryGateway & { reset(): void } {
 export function LocalDemoApp() {
   const [gatewayVersion, setGatewayVersion] = useState(0);
   const [draftState, setDraftState] = useState({ dirty: false, submitting: false });
-  const [financialPage, setFinancialPage] = useState<'collection' | 'transactions' | 'credit'>(() => {
+  const [financialPage, setFinancialPage] = useState<'collection' | 'transactions' | 'credit' | 'credit_signoff'>(() => {
     const page = new URLSearchParams(window.location.search).get('page');
-    return page === 'transactions' || page === 'credit' ? page : 'collection';
+    return page === 'transactions' || page === 'credit' || page === 'credit_signoff' ? page : 'collection';
   });
   const gateway = useMemo(() => buildDemoGateway(), [gatewayVersion]);
 

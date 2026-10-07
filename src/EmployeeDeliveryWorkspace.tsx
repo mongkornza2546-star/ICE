@@ -124,6 +124,8 @@ export interface EmployeeDeliveryGateway {
   loadReferenceData(serviceDate: string): Promise<{ rounds: DeliveryRound[]; iceTypes: IceTypeOption[] }>;
   loadShopCards(roundId: string, options?: {
     forceRefresh?: boolean;
+    /** Set false to retain the capability TTL when only sales data changed. */
+    refreshCapability?: boolean;
     onBaseCards?: (cards: ShopCard[]) => void;
   }): Promise<ShopCard[]>;
   loadCollectionOutstanding?(serviceDate: string): Promise<CollectionOutstandingSummary[]>;
@@ -297,10 +299,11 @@ function formatEmployeeServiceDate(serviceDate: string) {
 export function createSupabaseGateway(): EmployeeDeliveryGateway {
   const referenceRequests = new Map<string, Promise<{ rounds: DeliveryRound[]; iceTypes: IceTypeOption[] }>>();
   const shopCardRequests = new Map<string, Promise<ShopCard[]>>();
+  const shopImageRequests = new Map<string, ReturnType<typeof getR2ObjectUrls>>();
   const stockRequests = new Map<string, Promise<EmployeeStockState>>();
   const posContextRequests = new Map<string, Promise<DeliveryPosContext>>();
   const posContextMemoryCache = new Map<string, CachedPosContext>();
-  const shopCardBurstCache = new Map<string, { cachedAt: number; cards: ShopCard[] }>();
+  const shopCardBurstCache = new Map<string, { cachedAt: number; cards: ShopCard[]; imagesResolved: boolean }>();
   const eventCardLoadErrors = new Map<string, string>();
   let destinationSyncCapabilityRequest: Promise<EventDeliveryCapability | null> | null = null;
   let eventCapabilityCachedAt: number | null = null;
@@ -369,13 +372,18 @@ export function createSupabaseGateway(): EmployeeDeliveryGateway {
         const inFlight = shopCardRequests.get(roundId);
         if (inFlight) await inFlight.catch(() => undefined);
         shopCardBurstCache.delete(roundId);
-        destinationSyncCapabilityRequest = null;
-        eventCapabilityCachedAt = null;
+        if (options.refreshCapability !== false) {
+          destinationSyncCapabilityRequest = null;
+          eventCapabilityCachedAt = null;
+        }
         eventCardLoadErrors.delete(roundId);
       }
       const cached = shopCardBurstCache.get(roundId);
-      if (cached && Date.now() - cached.cachedAt < SHOP_CARDS_BURST_CACHE_MS) return cached.cards;
-      return singleFlight(shopCardRequests, roundId, async () => {
+      const freshCache = cached && Date.now() - cached.cachedAt < SHOP_CARDS_BURST_CACHE_MS ? cached : null;
+      if (freshCache?.imagesResolved) return freshCache.cards;
+      // Share only the data request. Slow photo signing must not hold up a later
+      // post-save refresh or cause it to reuse shop data from before that save.
+      const baseCards = freshCache?.cards ?? await singleFlight(shopCardRequests, roundId, async () => {
         const client = supabase;
         if (!client) throw new Error('ยังไม่ได้ตั้งค่า Supabase');
         const eventCapability = await loadEventCapability();
@@ -468,15 +476,26 @@ export function createSupabaseGateway(): EmployeeDeliveryGateway {
             event_delivery_enabled: Number(eventCapability?.schema_version) >= 7
               && Boolean(card.event_delivery_enabled),
           }));
-        options?.onBaseCards?.([...baseCards, ...eventCards]);
-        const cards = await withAsyncPublicImageUrls(
-          baseCards,
-          (paths) => getR2ObjectUrls('shop-images', paths.filter(isR2Path)),
-        );
-        const destinationCards = [...cards, ...eventCards];
-        shopCardBurstCache.set(roundId, { cachedAt: Date.now(), cards: destinationCards });
+        const destinationCards = [...baseCards, ...eventCards];
+        shopCardBurstCache.set(roundId, { cachedAt: Date.now(), cards: destinationCards, imagesResolved: false });
         return destinationCards;
       });
+      options?.onBaseCards?.(baseCards);
+      const cards = await withAsyncPublicImageUrls(
+        baseCards,
+        (paths) => {
+          const r2Paths = [...new Set(paths.filter(isR2Path))].sort();
+          // Share URLs, not cards: a newer data snapshot can use the same photos.
+          return singleFlight(shopImageRequests, JSON.stringify(r2Paths), () => (
+            getR2ObjectUrls('shop-images', r2Paths)
+          ));
+        },
+      );
+      const currentCache = shopCardBurstCache.get(roundId);
+      if (currentCache?.cards === baseCards) {
+        shopCardBurstCache.set(roundId, { ...currentCache, cards, imagesResolved: true });
+      }
+      return cards;
     },
     async loadCollectionOutstanding(collectionServiceDate) {
       const { queue } = await loadCurrentCollectionQueue(collectionServiceDate);

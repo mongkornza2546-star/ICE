@@ -1,10 +1,17 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { MagnifyingGlass, Buildings, MapPin, Storefront, CaretRight, WarningCircle, X } from '@phosphor-icons/react';
 import type { ShopCard, EmployeeStockState } from '../../types/app';
 import { FilterChips } from './FilterChips';
 import { EmployeeState } from './EmployeeState';
 import { isBoothSameAsName, statusTone } from './utils';
 import { STATUS_LABELS } from './constants';
+
+const outstandingFormatter = new Intl.NumberFormat('th-TH', {
+  style: 'currency',
+  currency: 'THB',
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 2,
+});
 
 function RegularShopVisual({
   card,
@@ -164,6 +171,86 @@ export function EmployeeShopPicker({
     if (trigger) window.requestAnimationFrame(() => trigger.focus());
   };
 
+  const shopTiles = useMemo(() => filteredCards.map((card) => {
+    const isEvent = card.destination_kind === 'event';
+    const boothText = card.booth_number ? `บูธ ${card.booth_number}` : '';
+    const sameAsBooth = isEvent && isBoothSameAsName(card.shop_name, card.booth_number);
+    const eventPrimaryHeading = boothText || card.shop_name || 'ไม่ระบุบูธ';
+    const eventSecondaryHeading = sameAsBooth ? null : card.shop_name;
+    const buttonAriaLabel = isEvent
+      ? `เลือกร้าน ${[boothText, card.shop_name].filter(Boolean).join(' ')}`
+      : `เลือกร้าน ${card.shop_code} ${card.shop_name}`;
+    const outstandingAmount = collectionOutstanding === null
+      ? undefined
+      : collectionOutstanding[card.shop_id] ?? 0;
+    const outstandingLabel = collectionOutstandingError
+      ? 'โหลดยอดรอรับชำระไม่สำเร็จ'
+      : outstandingAmount === undefined
+        ? collectionOutstandingLoading ? 'กำลังโหลดยอดรอรับชำระ…' : 'ตรวจยอดเมื่อเปิดร้าน'
+        : `ยอดรอรับชำระ ${outstandingFormatter.format(outstandingAmount)}`;
+
+    return (
+      <article
+        className="employee-shop-tile"
+        key={card.round_stop_id}
+      >
+        {isEvent ? (
+          <span className="employee-shop-tile__visual employee-shop-tile__visual--booth">
+            <span className="employee-shop-tile__booth"><small>บูธ</small><strong>{card.booth_number || 'ไม่ระบุ'}</strong></span>
+            <span className={`employee-status employee-status--${statusTone(card.stop_status)}`}>
+              {STATUS_LABELS[card.stop_status]}
+            </span>
+          </span>
+        ) : (
+          <RegularShopVisual
+            card={card}
+            onPreview={(event, imageUrl) => setPreviewImage({
+              name: `${card.shop_code} · ${card.shop_name}`,
+              url: imageUrl,
+              trigger: event.currentTarget,
+            })}
+            refreshImageUrl={refreshShopImageUrl}
+          />
+        )}
+        <button
+          aria-label={buttonAriaLabel}
+          className="employee-shop-tile__select"
+          disabled={(enableAssignedStockFlow && !stockState)
+            || (isEvent && (!card.event_delivery_enabled || !card.is_operational))}
+          onClick={() => openCard(card)}
+          ref={(node) => {
+            if (node) shopButtonRefs.current.set(card.round_stop_id, node);
+            else shopButtonRefs.current.delete(card.round_stop_id);
+          }}
+          type="button"
+        >
+          <span className="employee-shop-tile__body">
+            {isEvent ? (
+              <>
+                <strong>{eventPrimaryHeading}</strong>
+                {eventSecondaryHeading ? <b>{eventSecondaryHeading}</b> : null}
+              </>
+            ) : (
+              <>
+                <strong>{card.shop_code}</strong>
+                <b>{card.shop_name}</b>
+              </>
+            )}
+            <small>{isEvent
+              ? `${card.event_name} · ${card.event_location}${card.event_zone ? ` · โซน ${card.event_zone}` : ''}`
+              : `${card.building_name} · ${card.floor_or_zone}`}</small>
+            {!isEvent ? <span className="employee-shop-tile__outstanding">{outstandingLabel}</span> : null}
+            {isEvent && !card.event_delivery_enabled
+              ? <span>ยังไม่เปิดบันทึกส่งน้ำแข็ง</span>
+              : null}
+          </span>
+          <CaretRight aria-hidden="true" className="employee-shop-tile__arrow" size={20} />
+        </button>
+      </article>
+    );
+  }), [filteredCards, collectionOutstanding, collectionOutstandingError, collectionOutstandingLoading,
+    enableAssignedStockFlow, stockState, refreshShopImageUrl, openCard, shopButtonRefs]);
+
   return (
     <section className="employee-entry-section employee-task-section" aria-labelledby="employee-shop-step">
       <div className="employee-entry-section__heading">
@@ -243,89 +330,7 @@ export function EmployeeShopPicker({
             <span>{filteredCards.length} ร้าน</span>
           </div>
           <div className="employee-shop-grid">
-            {filteredCards.map((card) => {
-              const isEvent = card.destination_kind === 'event';
-              const boothText = card.booth_number ? `บูธ ${card.booth_number}` : '';
-              const sameAsBooth = isEvent && isBoothSameAsName(card.shop_name, card.booth_number);
-              const eventPrimaryHeading = boothText || card.shop_name || 'ไม่ระบุบูธ';
-              const eventSecondaryHeading = sameAsBooth ? null : card.shop_name;
-              const buttonAriaLabel = isEvent
-                ? `เลือกร้าน ${[boothText, card.shop_name].filter(Boolean).join(' ')}`
-                : `เลือกร้าน ${card.shop_code} ${card.shop_name}`;
-              const outstandingAmount = collectionOutstanding === null
-                ? undefined
-                : collectionOutstanding[card.shop_id] ?? 0;
-              const outstandingLabel = collectionOutstandingError
-                ? 'โหลดยอดรอรับชำระไม่สำเร็จ'
-                : outstandingAmount === undefined
-                  ? collectionOutstandingLoading ? 'กำลังโหลดยอดรอรับชำระ…' : 'ตรวจยอดเมื่อเปิดร้าน'
-                  : `ยอดรอรับชำระ ${new Intl.NumberFormat('th-TH', {
-                    style: 'currency',
-                    currency: 'THB',
-                    minimumFractionDigits: 0,
-                    maximumFractionDigits: 2,
-                  }).format(outstandingAmount)}`;
-
-              return (
-                <article
-                  className="employee-shop-tile"
-                  key={card.round_stop_id}
-                >
-                  {isEvent ? (
-                    <span className="employee-shop-tile__visual employee-shop-tile__visual--booth">
-                      <span className="employee-shop-tile__booth"><small>บูธ</small><strong>{card.booth_number || 'ไม่ระบุ'}</strong></span>
-                      <span className={`employee-status employee-status--${statusTone(card.stop_status)}`}>
-                        {STATUS_LABELS[card.stop_status]}
-                      </span>
-                    </span>
-                  ) : (
-                    <RegularShopVisual
-                      card={card}
-                      onPreview={(event, imageUrl) => setPreviewImage({
-                        name: `${card.shop_code} · ${card.shop_name}`,
-                        url: imageUrl,
-                        trigger: event.currentTarget,
-                      })}
-                      refreshImageUrl={refreshShopImageUrl}
-                    />
-                  )}
-                  <button
-                    aria-label={buttonAriaLabel}
-                    className="employee-shop-tile__select"
-                    disabled={(enableAssignedStockFlow && !stockState)
-                      || (isEvent && (!card.event_delivery_enabled || !card.is_operational))}
-                    onClick={() => openCard(card)}
-                    ref={(node) => {
-                      if (node) shopButtonRefs.current.set(card.round_stop_id, node);
-                      else shopButtonRefs.current.delete(card.round_stop_id);
-                    }}
-                    type="button"
-                  >
-                    <span className="employee-shop-tile__body">
-                      {isEvent ? (
-                        <>
-                          <strong>{eventPrimaryHeading}</strong>
-                          {eventSecondaryHeading ? <b>{eventSecondaryHeading}</b> : null}
-                        </>
-                      ) : (
-                        <>
-                          <strong>{card.shop_code}</strong>
-                          <b>{card.shop_name}</b>
-                        </>
-                      )}
-                      <small>{isEvent
-                        ? `${card.event_name} · ${card.event_location}${card.event_zone ? ` · โซน ${card.event_zone}` : ''}`
-                        : `${card.building_name} · ${card.floor_or_zone}`}</small>
-                      {!isEvent ? <span className="employee-shop-tile__outstanding">{outstandingLabel}</span> : null}
-                      {isEvent && !card.event_delivery_enabled
-                        ? <span>ยังไม่เปิดบันทึกส่งน้ำแข็ง</span>
-                        : null}
-                    </span>
-                    <CaretRight aria-hidden="true" className="employee-shop-tile__arrow" size={20} />
-                  </button>
-                </article>
-              );
-            })}
+            {shopTiles}
           </div>
         </section>
       )}

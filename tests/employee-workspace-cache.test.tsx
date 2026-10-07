@@ -69,3 +69,30 @@ it('treats disabled browser storage as a cache miss', () => {
     spy.mockRestore();
   }
 });
+
+it('does not reread the saved catalog on each quantity change', () => {
+  const serviceDate = '2026-10-06';
+  writeCachedEmployeeReferenceData('interaction', serviceDate, {
+    rounds: [{ id: 'r', service_date: serviceDate, name: 'Daily', status: 'open', opened_at: '' }],
+    iceTypes: [{ id: 'ice', code: 'ICE', name: 'Ice', unit: 'bag' }],
+  });
+  writeCachedEmployeeShopCards('interaction', serviceDate, 'r', []);
+  const gateway = {
+    loadReferenceData: vi.fn(() => new Promise(() => {})),
+    loadShopCards: vi.fn(() => new Promise(() => {})),
+  } as unknown as EmployeeDeliveryGateway;
+  const { result } = renderHook(() => useEmployeeDeliveryData({
+    gateway, requestScope: 'interaction', serviceDate,
+  }));
+  const reads = vi.spyOn(Storage.prototype, 'getItem');
+  try {
+    for (let quantity = 1; quantity <= 10; quantity += 1) {
+      act(() => result.current.setDeliveryQuantity('ice', quantity));
+    }
+    const catalogReads = reads.mock.calls.filter(([key]) => key.startsWith('ice-employee-workspace'));
+    expect(catalogReads).toHaveLength(0);
+    expect(result.current.deliveryQuantities.ice).toBe(10);
+  } finally {
+    reads.mockRestore();
+  }
+});

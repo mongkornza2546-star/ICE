@@ -34,7 +34,7 @@ export type AdminView =
   | 'shops'
   | 'reference_settings';
 
-export type FinancialPage = 'collection' | 'transactions' | 'credit';
+export type FinancialPage = 'collection' | 'transactions' | 'credit' | 'credit_signoff';
 
 const viewMeta: Record<AdminView, { label: string; shortLabel: string; icon: typeof Truck }> = {
   manager_overview: { label: 'งานวันนี้', shortLabel: 'งานวันนี้', icon: ClipboardText },
@@ -182,6 +182,15 @@ export function AdminLayout({
                         }}
                         type="button"
                       >ลูกหนี้เครดิต</button>
+                      <button
+                        aria-current={activeView === view && financialPage === 'credit_signoff' ? 'page' : undefined}
+                        onClick={() => {
+                          onNavigate(view);
+                          onFinancialPageChange?.('credit_signoff');
+                          if (!isDesktopLayout) setNavigationExpanded(false);
+                        }}
+                        type="button"
+                      >ใบเซ็นเครดิต</button>
                     </div>
                   ) : null}
                 </div>

@@ -22,7 +22,7 @@ const shop: ShopCard = {
   today_totals: {},
 };
 
-function renderPicker(openCard = vi.fn(), selectedRoundId = 'round-1') {
+function renderPicker(openCard = vi.fn(), selectedRoundId = 'round-1', shopButtons = new Map<string, HTMLButtonElement>()) {
   render(<EmployeeShopPicker
     casualCustomerEntryVisible
     enableAssignedStockFlow={false}
@@ -48,12 +48,25 @@ function renderPicker(openCard = vi.fn(), selectedRoundId = 'round-1') {
     openCasualCustomer={vi.fn()}
     openCard={openCard}
     stockState={null}
-    shopButtonRefs={{ current: new Map<string, HTMLButtonElement>() }}
+    shopButtonRefs={{ current: shopButtons }}
   />);
   return openCard;
 }
 
 describe('employee shop picker image preview', () => {
+  it('keeps the shop list intact while opening and closing a photo', () => {
+    const shopButtons = new Map<string, HTMLButtonElement>();
+    renderPicker(vi.fn(), 'round-1', shopButtons);
+    const registerButton = vi.spyOn(shopButtons, 'set');
+    const removeButton = vi.spyOn(shopButtons, 'delete');
+    fireEvent.click(screen.getByRole('button', { name: 'ดูรูปร้าน BB16 ร้านเล่าซา' }));
+    expect(screen.getByRole('dialog')).toBeTruthy();
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(registerButton).not.toHaveBeenCalled();
+    expect(removeButton).not.toHaveBeenCalled();
+  });
+
   it('opens the shop photo without selecting the shop, then closes it', async () => {
     const user = userEvent.setup();
     const openCard = renderPicker();

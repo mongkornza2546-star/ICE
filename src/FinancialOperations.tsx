@@ -107,8 +107,8 @@ export function FinancialOperations({
   currentUserId?: string;
   demoData?: FinancialOperationsDemoData;
   isActive?: boolean;
-  managerPage?: 'collection' | 'transactions' | 'credit';
-  onManagerPageChange?: (page: 'collection' | 'transactions' | 'credit') => void;
+  managerPage?: 'collection' | 'transactions' | 'credit' | 'credit_signoff';
+  onManagerPageChange?: (page: 'collection' | 'transactions' | 'credit' | 'credit_signoff') => void;
   focusRequest?: CollectionFocusRequest | null;
   onFocusedCollectionClose?: (result: CollectionCloseResult) => void;
   serviceDate?: string;
@@ -225,7 +225,7 @@ export function FinancialOperations({
     if (!supabase) return;
     setError(null);
 
-    if (!preferredQueueKey && isManager && managerPage === 'transactions') return;
+    if (!preferredQueueKey && isManager && (managerPage === 'transactions' || managerPage === 'credit_signoff')) return;
     if (!preferredQueueKey && isManager && managerPage === 'credit') {
       const [receivablesResponse, approvalsResponse, dueDateRequestsResponse] = await Promise.all([
         supabase.rpc('get_credit_receivables', { p_as_of_date: serviceDate }),
@@ -1106,6 +1106,8 @@ export function FinancialOperations({
       /> : null}
 
       {isManager && managerPage === 'transactions' ? <AccountingPage userRole={userRole} demoMode={Boolean(demoData)} /> : null}
+
+      {isManager && managerPage === 'credit_signoff' ? <DailyCreditAcknowledgementPanel serviceDate={serviceDate} /> : null}
 
       {isManager && managerPage === 'credit' ? <ManagerFinancialSections
         approvals={approvals}

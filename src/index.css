@@ -1720,10 +1720,9 @@ input:disabled, select:disabled, textarea:disabled { background: #f2f5f8; color:
 .daily-credit-signoff__warning { display: inline-flex; align-items: center; gap: 5px; margin: 0; color: #8a6010; font-size: .7rem; font-weight: 700; }
 .daily-credit-signoff__list footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding-top: 9px; border-top: 1px solid #e5edf4; color: #5e7189; font-size: .7rem; }
 .daily-credit-signoff__list footer > div { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
-.daily-credit-signoff__list footer button, .daily-credit-signoff__upload { min-height: 34px; display: inline-flex; align-items: center; gap: 5px; padding: 6px 9px; border: 1px solid #cbdbea; border-radius: 8px; color: #31536f; background: #fff; font: inherit; font-size: .7rem; font-weight: 800; cursor: pointer; }
+.daily-credit-signoff__list footer button { min-height: 34px; display: inline-flex; align-items: center; gap: 5px; padding: 6px 9px; border: 1px solid #cbdbea; border-radius: 8px; color: #31536f; background: #fff; font: inherit; font-size: .7rem; font-weight: 800; cursor: pointer; }
 .daily-credit-signoff__list footer button:first-child { border-color: #0875db; color: #fff; background: #0870e8; }
-.daily-credit-signoff__list footer button:disabled, .daily-credit-signoff__upload:has(input:disabled) { opacity: .55; cursor: default; }
-.daily-credit-signoff__upload input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.daily-credit-signoff__list footer button:disabled { opacity: .55; cursor: default; }
 .daily-credit-signoff__list .is-stale { color: #a76008; font-weight: 800; }
 .collection-desk { display: grid; gap: 18px; }
 .collection-desk__header { display: flex; align-items: center; justify-content: space-between; gap: 20px; }

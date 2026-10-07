@@ -124,9 +124,7 @@ export function DeliveryCorrectionDialog({
 
   const cancelBill = async () => {
     if (!context || !canCancel || submitting || !reason.trim()) return setError('กรุณาระบุเหตุผลก่อนยกเลิกบิล');
-    const cancellationEffect = Number(context.allocated_amount) > 0
-      ? `หลังยืนยันใบส่งจะถูกยกเลิก และสร้างยอดรอคืนเงิน ${money.format(Number(context.allocated_amount))} ใบเสร็จเดิมยังคงอยู่`
-      : 'หลังยืนยันใบส่งจะถูกยกเลิกและคืนสต๊อก จากนั้นสามารถบันทึกส่งใหม่ได้';
+    const cancellationEffect = 'หลังยืนยันใบส่งจะถูกยกเลิกและคืนสต๊อก จากนั้นสามารถบันทึกส่งใหม่ได้';
     if (!window.confirm(`ยืนยันยกเลิกบิล ${context.charge_number ?? ''} หรือไม่\n${cancellationEffect}`)) return;
     setSubmitting(true);
     setError(null);
@@ -157,8 +155,9 @@ export function DeliveryCorrectionDialog({
   };
 
   const immediateSale = context?.payment_term === 'immediate';
+  const hasPayment = Number(context?.allocated_amount) > 0;
   const canCancel = Boolean(context?.can_cancel && (!isClosed || immediateSale)
-    && (!immediateSale || Number(context?.allocated_amount) === 0));
+    && Number(context?.allocated_amount) === 0);
 
   return <div className="modal-backdrop delivery-correction-layer">
     <form aria-label={`ยกเลิกใบส่งน้ำแข็ง ${context?.charge_number ?? ''}`} aria-modal="true" className="modal-card delivery-correction-dialog" onSubmit={(event) => { event.preventDefault(); void cancelBill(); }} role="dialog">
@@ -173,10 +172,9 @@ export function DeliveryCorrectionDialog({
           <span><small>รับชำระแล้ว</small><strong>{money.format(Number(context.allocated_amount))}</strong></span>
         </div>
         {isClosed && !canCancel ? <p className="delivery-correction-dialog__notice"><WarningCircle size={18} />รอบหรือวันนี้ปิดแล้ว ไม่สามารถยกเลิกใบส่งนี้ได้</p> : null}
-        {immediateSale ? <p className="delivery-correction-dialog__notice"><WarningCircle size={18} />{Number(context.allocated_amount) > 0
-          ? 'ให้หัวหน้าหรือแอดมินยกเลิกใบเสร็จรับเงินก่อน แล้วจึงยกเลิกรายการส่งและบันทึกขายใหม่'
-          : 'รายการนี้ไม่มียอดรับชำระที่ยังใช้งานอยู่ ให้ยกเลิกรายการส่งก่อนบันทึกขายใหม่'}</p> : null}
-        <p className="muted">หากบันทึกผิด ให้ยกเลิกใบส่งนี้ แล้วบันทึกส่งใหม่</p>
+        {hasPayment ? <p className="delivery-correction-dialog__notice"><WarningCircle size={18} />บิลนี้รับชำระแล้วทั้งหมดหรือบางส่วน จึงยกเลิกใบส่งไม่ได้ ให้หัวหน้าหรือแอดมินตรวจสอบรายการรับเงินก่อน หากบันทึกรับเงินผิด ให้ยกเลิกใบเสร็จที่ผิดก่อนดำเนินการต่อ</p>
+          : immediateSale ? <p className="delivery-correction-dialog__notice"><WarningCircle size={18} />รายการนี้ไม่มียอดรับชำระที่ยังใช้งานอยู่ ให้ยกเลิกรายการส่งก่อนบันทึกขายใหม่</p> : null}
+        {canCancel ? <p className="muted">หากบันทึกผิด ให้ยกเลิกใบส่งนี้ แล้วบันทึกส่งใหม่</p> : null}
         <div className="delivery-correction-dialog__stock-impact">
           <strong>รายการที่จะยกเลิก</strong>
           {context.items.map((ice) => <span key={ice.ice_type_id}>{ice.name} {Number(ice.quantity ?? 0).toLocaleString('th-TH')} {ice.unit}</span>)}

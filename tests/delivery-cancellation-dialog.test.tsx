@@ -19,12 +19,12 @@ beforeEach(() => {
   vi.spyOn(window, 'confirm').mockReturnValue(true);
 });
 
-function setup(overrides = {}, destination = 'regular') {
+function setup(overrides = {}, destination = 'regular', role: 'courier' | 'round_lead' | 'admin' = 'courier') {
   rpc.mockImplementation(async (name: string) => ({ data: name === 'get_delivery_correction_route'
     ? { destination_kind: destination } : { ...context, destination_kind: destination, ...overrides }, error: null }));
   const onClose = vi.fn();
   const onSuccess = vi.fn();
-  render(<DeliveryCorrectionDialog eventId="event-1" onClose={onClose} onSuccess={onSuccess} userRole="courier" />);
+  render(<DeliveryCorrectionDialog eventId="event-1" onClose={onClose} onSuccess={onSuccess} userRole={role} />);
   return { onClose, onSuccess };
 }
 
@@ -48,6 +48,8 @@ it.each([
   { can_cancel: false, blocker_reason: 'ไม่ใช่รายการล่าสุด' },
   { round_status: 'closed' },
   { payment_term: 'immediate', allocated_amount: 60 },
+  { payment_term: 'end_of_day', allocated_amount: 60 },
+  { payment_term: 'credit', allocated_amount: 30 },
 ])('does not allow cancellation when blocked: %j', async (blocked) => {
   setup(blocked);
   await screen.findByText('หลอดเล็ก 1 ถุง');
@@ -63,4 +65,15 @@ it('leaves the slip unchanged if the user declines confirmation', async () => {
   await user.click(screen.getByRole('button', { name: 'ยืนยันยกเลิกใบส่งน้ำแข็ง' }));
   expect(rpc).toHaveBeenCalledTimes(2);
   expect(onClose).not.toHaveBeenCalled();
+});
+
+it.each(['courier', 'round_lead', 'admin'] as const)('blocks paid slips for %s even with stale server eligibility', async (role) => {
+  const user = userEvent.setup();
+  setup({ can_cancel: true, payment_term: 'credit', allocated_amount: 30 }, 'event', role);
+  await screen.findByText(/บิลนี้รับชำระแล้วทั้งหมดหรือบางส่วน/);
+  expect(screen.queryByRole('button', { name: 'ยืนยันยกเลิกใบส่งน้ำแข็ง' })).toBeNull();
+  expect((screen.getByLabelText('เหตุผล') as HTMLInputElement).disabled).toBe(true);
+  await user.type(screen.getByLabelText('เหตุผล'), 'ส่งผิด{enter}');
+  expect(rpc).toHaveBeenCalledTimes(2);
+  expect(publish).not.toHaveBeenCalled();
 });

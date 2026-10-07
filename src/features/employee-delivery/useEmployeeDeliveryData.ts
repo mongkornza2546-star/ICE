@@ -133,16 +133,16 @@ export function useEmployeeDeliveryData({
   const recoveryMode = enableAssignedStockFlow ? 'withdrawal' : 'pos';
   const recoveryScope = `${requestScope}:${serviceDate}:${recoveryMode}`;
 
-  const storedReturnContext = useRef(readPosCollectionReturn(requestScope)).current;
+  const [storedReturnContext] = useState(() => readPosCollectionReturn(requestScope));
   const matchingReturnContext = storedReturnContext?.posServiceDate === serviceDate
     ? storedReturnContext
     : null;
-  const initialReferenceCache = useRef(readCachedEmployeeReferenceData(requestScope, serviceDate)).current;
+  const [initialReferenceCache] = useState(() => readCachedEmployeeReferenceData(requestScope, serviceDate));
   const initialRoundId = matchingReturnContext?.selectedRoundId
     ?? automaticRoundId(initialReferenceCache?.rounds ?? []);
-  const initialCards = initialRoundId
+  const [initialCards] = useState(() => initialRoundId
     ? readCachedEmployeeShopCards(requestScope, serviceDate, initialRoundId) ?? []
-    : [];
+    : []);
 
   const [rounds, setRounds] = useState<DeliveryRound[]>(initialReferenceCache?.rounds ?? []);
   const [iceTypes, setIceTypes] = useState<IceTypeOption[]>(initialReferenceCache?.iceTypes ?? []);
@@ -387,7 +387,7 @@ export function useEmployeeDeliveryData({
     if (selectedRoundStillExists) setSelectedRoundId(saved.selectedRoundId);
   }, [iceTypes, loadedReferenceServiceDate, loadingReference, recoveryMode, recoveryScope, requestScope, rounds, serviceDate]);
 
-  const loadCards = useCallback(async (roundId: string, options?: { forceRefresh?: boolean }) => {
+  const loadCards = useCallback(async (roundId: string, options?: { forceRefresh?: boolean; refreshCapability?: boolean }) => {
     if (!roundId) {
       cardsRequestId.current += 1;
       activeRoundId.current = '';
@@ -416,34 +416,46 @@ export function useEmployeeDeliveryData({
     }
     setLoadingCards(!hasLoadedCardsForRound);
     setError(null);
-    try {
-      const nextCards = await gateway.loadShopCards(
-        roundId,
-        gateway.supportsProgressiveShopCardLoading ? {
-          ...options,
-          onBaseCards: (baseCards) => {
-            if (requestId !== cardsRequestId.current || activeRoundId.current !== roundId) return;
-            loadedCardsRoundId.current = roundId;
-            setCards(baseCards);
-            writeCachedEmployeeShopCards(requestScope, serviceDate, roundId, baseCards);
-            setLoadingCards(false);
-          },
-        } : options,
-      );
-      if (requestId !== cardsRequestId.current || activeRoundId.current !== roundId) return false;
-      loadedCardsRoundId.current = roundId;
-      setCards(nextCards);
-      writeCachedEmployeeShopCards(requestScope, serviceDate, roundId, nextCards);
-      setEventCardsError(gateway.getEventCardsLoadError?.(roundId) ?? null);
-      setLoadingCards(false);
-      return true;
-    } catch (loadError) {
-      if (requestId !== cardsRequestId.current || activeRoundId.current !== roundId) return false;
-      if (!hasLoadedCardsForRound) loadedCardsRoundId.current = '';
-      setError(employeeErrorMessage(loadError));
-      setLoadingCards(false);
-      return false;
-    }
+    // Navigation needs current shop data; optional photo signing can finish later.
+    let baseCardsReady = false;
+    let resolveBaseCards!: (ready: boolean) => void;
+    const baseCardsPromise = new Promise<boolean>((resolve) => { resolveBaseCards = resolve; });
+    const completeCardsPromise = (async () => {
+      try {
+        const nextCards = await gateway.loadShopCards(
+          roundId,
+          gateway.supportsProgressiveShopCardLoading ? {
+            ...options,
+            onBaseCards: (baseCards) => {
+              if (requestId !== cardsRequestId.current || activeRoundId.current !== roundId) return;
+              hasLoadedCardsForRound = true;
+              loadedCardsRoundId.current = roundId;
+              setCards(baseCards);
+              writeCachedEmployeeShopCards(requestScope, serviceDate, roundId, baseCards);
+              setEventCardsError(gateway.getEventCardsLoadError?.(roundId) ?? null);
+              setLoadingCards(false);
+              baseCardsReady = true;
+              resolveBaseCards(true);
+            },
+          } : options,
+        );
+        if (requestId !== cardsRequestId.current || activeRoundId.current !== roundId) return false;
+        loadedCardsRoundId.current = roundId;
+        setCards(nextCards);
+        writeCachedEmployeeShopCards(requestScope, serviceDate, roundId, nextCards);
+        setEventCardsError(gateway.getEventCardsLoadError?.(roundId) ?? null);
+        setLoadingCards(false);
+        return true;
+      } catch (loadError) {
+        if (requestId !== cardsRequestId.current || activeRoundId.current !== roundId) return false;
+        if (baseCardsReady) return true;
+        if (!hasLoadedCardsForRound) loadedCardsRoundId.current = '';
+        setError(employeeErrorMessage(loadError));
+        setLoadingCards(false);
+        return false;
+      }
+    })();
+    return Promise.race([baseCardsPromise, completeCardsPromise]);
   }, [gateway, requestScope, serviceDate]);
 
   const loadStockState = useCallback(async (roundId: string) => {
@@ -862,7 +874,7 @@ export function useEmployeeDeliveryData({
 
   const handleRecorded = async (wasDelivery: boolean, result?: DeliveryFinancialResult | void) => {
     const [cardsRefreshed, stockRefreshed] = await Promise.all([
-      loadCards(selectedRoundId),
+      loadCards(selectedRoundId, { forceRefresh: true, refreshCapability: false }),
       loadStockState(selectedRoundId),
     ]);
     if (wasDelivery || enableAssignedStockFlow) {

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { EmployeeDeliveryGateway } from '../src/EmployeeDeliveryWorkspace';
@@ -104,5 +104,31 @@ describe('employee delivery browse position', () => {
 
     await screen.findByRole('button', { name: 'เลือกร้าน BB15' });
     await waitFor(() => expect(scrollY).toBe(1_400));
+  });
+
+  it('returns to the shop list after a confirmed save without waiting for photo URLs', async () => {
+    const gateway = createGateway();
+    gateway.supportsProgressiveShopCardLoading = true;
+    let finishPhotos!: (cards: ShopCard[]) => void;
+    const photos = new Promise<ShopCard[]>((resolve) => { finishPhotos = resolve; });
+    const savedShop: ShopCard = { ...shop, stop_status: 'delivered' };
+    gateway.loadShopCards = vi.fn()
+      .mockResolvedValueOnce([shop])
+      .mockImplementationOnce((_round, options) => {
+        options.onBaseCards([savedShop]);
+        return photos;
+      });
+    render(<DeliveryHarness gateway={gateway} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'เลือกร้าน BB15' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'ใส่จำนวน' }));
+    fireEvent.click(screen.getByRole('button', { name: 'ยืนยันส่งร้านนี้' }));
+
+    try {
+      await screen.findByRole('button', { name: 'เลือกร้าน BB15' });
+      expect(gateway.recordDelivery).toHaveBeenCalledTimes(1);
+      expect(gateway.loadShopCards).toHaveBeenLastCalledWith('round-1', expect.objectContaining({ forceRefresh: true, refreshCapability: false }));
+    } finally {
+      await act(async () => finishPhotos([{ ...savedShop, image_url: 'https://example.test/photo.webp' }]));
+    }
   });
 });

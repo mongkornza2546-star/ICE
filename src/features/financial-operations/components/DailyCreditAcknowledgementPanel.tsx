@@ -1,6 +1,5 @@
-import { Camera, FileText, Printer, WarningCircle } from '@phosphor-icons/react';
+import { FileText, Printer, WarningCircle } from '@phosphor-icons/react';
 import { useCallback, useEffect, useState } from 'react';
-import { uploadDailyCreditAcknowledgementEvidence } from '../../../lib/dailyCreditAcknowledgementEvidence';
 import { withAsyncPublicImageUrls } from '../../../lib/publicImageUrls';
 import { getHybridObjectUrl, getHybridObjectUrls } from '../../../lib/r2Storage';
 import { printDailyCreditAcknowledgementForCurrentPlatform, type DailyCreditAcknowledgementDocument } from '../../../lib/dailyCreditAcknowledgementPrint';
@@ -100,30 +99,6 @@ export function DailyCreditAcknowledgementPanel({ serviceDate }: { serviceDate: 
     }
   };
 
-  const uploadEvidence = async (item: DailyCreditAcknowledgementSummary, file: File | null) => {
-    if (!file) return;
-    if (!item.document_id) {
-      setError('กรุณาพิมพ์ใบสรุปก่อนแนบรูปใบเซ็น');
-      return;
-    }
-    setBusyShopId(item.shop_id);
-    setError(null);
-    try {
-      if (!supabase) throw new Error('ยังไม่ได้ตั้งค่า Supabase');
-      const path = await uploadDailyCreditAcknowledgementEvidence(file, item.document_id);
-      const { error: attachError } = await supabase.rpc('attach_daily_credit_acknowledgement_evidence', {
-        p_document_id: item.document_id,
-        p_storage_path: path,
-      });
-      if (attachError) throw attachError;
-      await load();
-    } catch (uploadError) {
-      setError(getErrorMessage(uploadError));
-    } finally {
-      setBusyShopId(null);
-    }
-  };
-
   const viewEvidence = async (item: DailyCreditAcknowledgementSummary) => {
     if (!item.latest_evidence_path || !supabase) return;
     const client = supabase;
@@ -172,7 +147,6 @@ export function DailyCreditAcknowledgementPanel({ serviceDate }: { serviceDate: 
             <span className={item.is_stale ? 'is-stale' : ''}>{label}{item.evidence_count ? ` · มีรูปใบเซ็น ${item.evidence_count} รูป` : ''}</span>
             <div>
               <button disabled={busy} onClick={() => void print(item)} type="button"><Printer size={17} />{item.document_id && !item.is_stale ? 'พิมพ์ซ้ำ' : 'พิมพ์ใบรวม'}</button>
-              <label className="daily-credit-signoff__upload"><Camera size={17} />แนบรูป<input accept="image/jpeg,image/png,image/webp" disabled={busy} onChange={(event) => { void uploadEvidence(item, event.currentTarget.files?.[0] ?? null); event.currentTarget.value = ''; }} type="file" /></label>
               {item.latest_evidence_path ? <button disabled={busy} onClick={() => void viewEvidence(item)} type="button">ดูรูป</button> : null}
             </div>
           </footer>
