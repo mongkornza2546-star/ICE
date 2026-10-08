@@ -293,19 +293,20 @@ export async function renderSalesDocumentRaster(payload: SalesDocumentPayload) {
 export async function renderDailyCreditRaster(payload: DailyCreditAcknowledgementDocument) {
   await loadReceiptFonts();
   const receipt = new ReceiptRaster();
-  receipt.text(payload.document_title, { align: 'center', bold: true, size: 27 });
-  receipt.text(payload.service_date, { align: 'center' });
-  receipt.text(`${payload.shop_code} · ${payload.shop_name}`, { bold: true });
-  if (payload.shop_location) receipt.text(payload.shop_location);
-  if (payload.printed_by_nickname?.trim()) receipt.text(`พนักงาน: ${payload.printed_by_nickname.trim()}`);
+  receipt.text('Super Ice', { align: 'center', bold: true, size: 31 });
+  receipt.text('ใบสรุปส่งของเครดิตประจำวัน', { align: 'center', bold: true, size: 26 });
+  receipt.text(`วันที่ ${payload.service_date}`, { align: 'center', size: 22 });
+  receipt.text(`${payload.shop_code} · ${payload.shop_name}`, { bold: true, size: 23 });
+  if (payload.shop_location) receipt.text(`จุดส่ง: ${payload.shop_location}`, { size: 21 });
+  if (payload.printed_by_nickname?.trim()) receipt.text(`พนักงาน: ${payload.printed_by_nickname.trim()}`, { size: 22 });
   receipt.rule();
-  receipt.text('รวมสินค้าวันนี้', { bold: true });
+  receipt.text('รวมสินค้าวันนี้', { bold: true, size: 23 });
   for (const item of payload.item_totals) receipt.row(`${item.name} ${Number(item.quantity)} ${item.unit}`, money.format(Number(item.line_total)), { size: 25 });
   receipt.rule();
-  receipt.row('ยอดเครดิตวันนี้', money.format(Number(payload.total_amount)), { bold: true, size: 23 });
-  receipt.text('ร้านได้รับสินค้าตามรายการและรับทราบยอดเครดิตข้างต้น', { size: 18 });
+  receipt.row('ยอดเครดิตวันนี้', money.format(Number(payload.total_amount)), { bold: true, size: 26 });
+  receipt.text('ร้านได้รับสินค้าตามรายการและรับทราบยอดเครดิตข้างต้น', { size: 20 });
   receipt.gap(20);
-  receipt.text('ชื่อผู้รับ ____________________', { align: 'center' });
+  receipt.text('ชื่อผู้รับ ____________________', { align: 'center', size: 22 });
   return receipt.finish();
 }
 

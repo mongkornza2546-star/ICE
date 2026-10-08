@@ -46,7 +46,7 @@ export function printDailyCreditAcknowledgement(
   payload: DailyCreditAcknowledgementDocument,
   existingPrintWindow?: Window | null,
 ) {
-  const heightMm = Math.max(75, 53 + payload.item_totals.length * 8);
+  const heightMm = Math.max(85, 63 + payload.item_totals.length * 8);
   const printWindow = existingPrintWindow
     ?? window.open('', '_blank', `popup,width=360,height=${Math.ceil(heightMm * 3.78)}`);
   if (!printWindow) return false;
@@ -57,19 +57,20 @@ export function printDailyCreditAcknowledgement(
     @page { size: 57mm ${heightMm}mm; margin: 0; }
     * { box-sizing: border-box; }
     html, body { width: 57mm; min-height: ${heightMm}mm; margin: 0; }
-    body { padding: 2mm 2.5mm; color: #000; background: #fff; font-family: "Noto Sans Thai", Tahoma, sans-serif; font-size: 7.5pt; line-height: 1.18; }
+    body { padding: 2mm 2.5mm; color: #000; background: #fff; font-family: "Noto Sans Thai", Tahoma, sans-serif; font-size: 8.5pt; line-height: 1.22; }
     main { display: grid; gap: .9mm; }
-    h1 { margin: 0; font-size: 10pt; text-align: center; }
-    h2 { margin: 0; font-size: 8pt; }
+    h1 { margin: 0; font-size: 12pt; text-align: center; }
+    h2 { margin: 0; font-size: 9pt; }
     p { margin: 0; }
-    small { font-size: 6.5pt; }
+    small { font-size: 8pt; }
     .center { text-align: center; }
+    .document-title { font-size: 10pt; font-weight: 700; line-height: 1.25; }
     .totals, .grand-total { border-top: .25mm dashed #000; padding-top: .8mm; }
     .row, .grand-total { display: flex; justify-content: space-between; gap: 1mm; }
     .totals .row { font-size: 9.5pt; line-height: 1.3; }
     .totals .row span:first-child { min-width: 0; }
     .totals .row span:last-child { flex-shrink: 0; }
-    .grand-total { font-size: 9pt; font-weight: 700; }
+    .grand-total { font-size: 10pt; font-weight: 700; }
   `;
   printDocument.head.replaceChildren(style);
 
@@ -81,11 +82,12 @@ export function printDailyCreditAcknowledgement(
     root.append(element);
   };
   const title = printDocument.createElement('h1');
-  title.textContent = payload.document_title;
+  title.textContent = 'Super Ice';
   root.append(title);
-  line(payload.service_date, 'center');
+  line('ใบสรุปส่งของเครดิตประจำวัน', 'center document-title');
+  line(`วันที่ ${payload.service_date}`, 'center');
   line(`${payload.shop_code} · ${payload.shop_name}`);
-  if (payload.shop_location) line(payload.shop_location, undefined, 'small');
+  if (payload.shop_location) line(`จุดส่ง: ${payload.shop_location}`, undefined, 'small');
   if (payload.printed_by_nickname?.trim()) line(`พนักงาน: ${payload.printed_by_nickname.trim()}`);
 
   const totals = printDocument.createElement('section');

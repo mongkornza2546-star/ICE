@@ -29,13 +29,16 @@ describe('daily credit delivery slip printing', () => {
 
     const text = printDocument.body.textContent ?? '';
     expect(printed).toBe(true);
-    expect(text).toContain('ใบส่งของ');
-    expect(text).toContain('2026-09-24');
+    expect(text).toContain('Super Ice');
+    expect(text).toContain('ใบสรุปส่งของเครดิตประจำวัน');
+    expect(text).toContain('วันที่ 2026-09-24');
     expect(text).not.toContain('ฉบับที่ 1');
     expect(text).toContain('หลอดเล็ก 2 ถุง');
     expect(text).toContain('พนักงาน: นิด');
     expect(text).not.toContain('ผู้พิมพ์:');
-    expect(text.indexOf('B · ซุ้มโดม 1')).toBeLessThan(text.indexOf('พนักงาน: นิด'));
+    expect(text).toContain('จุดส่ง: B · ซุ้มโดม 1');
+    expect(text.indexOf('Super Ice')).toBeLessThan(text.indexOf('ใบสรุปส่งของเครดิตประจำวัน'));
+    expect(text.indexOf('จุดส่ง: B · ซุ้มโดม 1')).toBeLessThan(text.indexOf('พนักงาน: นิด'));
     expect(text.indexOf('พนักงาน: นิด')).toBeLessThan(text.indexOf('รวมสินค้าวันนี้'));
     expect(printDocument.querySelector('style')?.textContent).toContain('.totals .row { font-size: 9.5pt;');
     expect(text).toContain('ชื่อผู้รับ ____________________');

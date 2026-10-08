@@ -131,12 +131,15 @@ describe('thermal receipt raster', () => {
 
     await renderDailyCreditRaster(daily);
 
-    expect(drawnText).toContain('ใบส่งของ');
-    expect(drawnText).toContain('2026-08-21');
+    expect(drawnText).toContain('Super Ice');
+    expect(drawnText.join('')).toContain('ใบสรุปส่งของเครดิตประจำวัน');
+    expect(drawnText).toContain('วันที่ 2026-08-21');
     expect(drawnText.join('')).not.toContain('ฉบับที่ 1');
     expect(drawnText).toContain('พนักงาน: นิด');
     expect(drawnText).not.toContain('ผู้พิมพ์: นิด');
-    expect(drawnText.indexOf('B · ซุ้มโดม 1')).toBeLessThan(drawnText.indexOf('พนักงาน: นิด'));
+    expect(drawnText).toContain('จุดส่ง: B · ซุ้มโดม 1');
+    expect(drawnText.indexOf('Super Ice')).toBeLessThan(drawnText.indexOf('วันที่ 2026-08-21'));
+    expect(drawnText.indexOf('จุดส่ง: B · ซุ้มโดม 1')).toBeLessThan(drawnText.indexOf('พนักงาน: นิด'));
     expect(drawnText.indexOf('พนักงาน: นิด')).toBeLessThan(drawnText.indexOf('รวมสินค้าวันนี้'));
     expect(drawnFonts.find(({ text }) => text.includes('หลอดเล็ก'))?.font).toContain('25px');
     expect(drawnText).toContain('ชื่อผู้รับ ____________________');
