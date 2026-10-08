@@ -94,6 +94,7 @@ export function FinancialOperations({
   userRole = 'round_lead',
   canCollectShopPayments = true,
   currentUserId,
+  printerName,
   demoData,
   isActive = true,
   managerPage = 'collection',
@@ -105,6 +106,7 @@ export function FinancialOperations({
   userRole?: AppRole;
   canCollectShopPayments?: boolean;
   currentUserId?: string;
+  printerName?: string;
   demoData?: FinancialOperationsDemoData;
   isActive?: boolean;
   managerPage?: 'collection' | 'transactions' | 'credit' | 'credit_signoff';
@@ -1082,7 +1084,7 @@ export function FinancialOperations({
             onVoidPayment={voidPayment}
             paymentHistory={paymentHistory}
             serviceDate={serviceDate}
-          /> : <DailyCreditAcknowledgementPanel serviceDate={serviceDate} />}
+          /> : <DailyCreditAcknowledgementPanel printerName={printerName} serviceDate={serviceDate} />}
         </div>
       </div> : null}
 
@@ -1107,7 +1109,7 @@ export function FinancialOperations({
 
       {isManager && managerPage === 'transactions' ? <AccountingPage userRole={userRole} demoMode={Boolean(demoData)} /> : null}
 
-      {isManager && managerPage === 'credit_signoff' ? <DailyCreditAcknowledgementPanel serviceDate={serviceDate} /> : null}
+      {isManager && managerPage === 'credit_signoff' ? <DailyCreditAcknowledgementPanel printerName={printerName} serviceDate={serviceDate} /> : null}
 
       {isManager && managerPage === 'credit' ? <ManagerFinancialSections
         approvals={approvals}

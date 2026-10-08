@@ -294,17 +294,18 @@ export async function renderDailyCreditRaster(payload: DailyCreditAcknowledgemen
   await loadReceiptFonts();
   const receipt = new ReceiptRaster();
   receipt.text(payload.document_title, { align: 'center', bold: true, size: 27 });
-  receipt.text(`ฉบับที่ ${payload.version} · ${payload.service_date}`, { align: 'center' });
+  receipt.text(payload.service_date, { align: 'center' });
   receipt.text(`${payload.shop_code} · ${payload.shop_name}`, { bold: true });
   if (payload.shop_location) receipt.text(payload.shop_location);
   receipt.rule();
   receipt.text('รวมสินค้าวันนี้', { bold: true });
-  for (const item of payload.item_totals) receipt.row(`${item.name} ${Number(item.quantity)} ${item.unit}`, money.format(Number(item.line_total)));
+  for (const item of payload.item_totals) receipt.row(`${item.name} ${Number(item.quantity)} ${item.unit}`, money.format(Number(item.line_total)), { size: 25 });
   receipt.rule();
   receipt.row('ยอดเครดิตวันนี้', money.format(Number(payload.total_amount)), { bold: true, size: 23 });
   receipt.text('ร้านได้รับสินค้าตามรายการและรับทราบยอดเครดิตข้างต้น', { size: 18 });
   receipt.gap(20);
   receipt.text('ชื่อผู้รับ ____________________', { align: 'center' });
+  if (payload.printed_by_nickname?.trim()) receipt.text(`ผู้พิมพ์: ${payload.printed_by_nickname.trim()}`);
   return receipt.finish();
 }
 

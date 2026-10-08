@@ -106,7 +106,7 @@ export function RoleRouter({
       request = (async () => {
         const { data, error } = await supabase
           .from('users')
-          .select('id, code, display_name, phone, role, is_active, can_collect_shop_payments')
+          .select('id, code, display_name, nickname, phone, role, is_active, can_collect_shop_payments')
           .eq('id', session.user.id)
           .maybeSingle();
 
@@ -380,6 +380,7 @@ export function RoleRouter({
             <FinancialOperations
               canCollectShopPayments={canCollectPayments}
               currentUserId={profile.id}
+              printerName={profile.nickname?.trim() || profile.display_name}
               focusRequest={courierCollectionFocus}
               isActive={courierView === 'collection'}
               onFocusedCollectionClose={(result) => {
@@ -566,6 +567,7 @@ export function RoleRouter({
           <FinancialOperations
             canCollectShopPayments={canCollectPayments}
             currentUserId={profile.id}
+            printerName={profile.nickname?.trim() || profile.display_name}
             focusRequest={adminCollectionFocus}
             isActive={currentView === 'financial_operations'}
             managerPage={financialPage}

@@ -8,12 +8,16 @@ import {
 } from '../src/lib/thermalReceiptRaster';
 
 const drawnText: string[] = [];
+const drawnFonts: Array<{ text: string; font: string }> = [];
 
 const context = {
   beginPath: vi.fn(),
   drawImage: vi.fn(),
   fillRect: vi.fn(),
-  fillText: vi.fn((value: string) => drawnText.push(value)),
+  fillText: vi.fn((value: string) => {
+    drawnText.push(value);
+    drawnFonts.push({ text: value, font: context.font });
+  }),
   lineTo: vi.fn(),
   measureText: vi.fn((value: string) => ({ width: [...value].length * 10 })),
   moveTo: vi.fn(),
@@ -61,6 +65,7 @@ it('prints a backdated receipt with date-only receipt day and actual entry time'
 
 beforeEach(() => {
   drawnText.length = 0;
+  drawnFonts.length = 0;
   vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(context as unknown as CanvasRenderingContext2D);
   vi.spyOn(HTMLCanvasElement.prototype, 'toDataURL').mockReturnValue('data:image/png;base64,test');
 });
@@ -108,7 +113,7 @@ describe('thermal receipt raster', () => {
     expect(text).toContain('สอง');
   });
 
-  it('prints the daily delivery slip with only the recipient name field', async () => {
+  it('prints the daily delivery slip with a larger item row and printer nickname', async () => {
     const daily: DailyCreditAcknowledgementDocument = {
       document_id: 'document-1',
       document_title: 'ใบส่งของ',
@@ -118,13 +123,18 @@ describe('thermal receipt raster', () => {
       shop_code: 'BB61',
       shop_name: 'Fuku matcha',
       invoices: [],
-      item_totals: [],
-      total_amount: 0,
+      item_totals: [{ name: 'หลอดเล็ก', unit: 'ถุง', quantity: 2, line_total: 120 }],
+      total_amount: 120,
+      printed_by_nickname: 'นิด',
     };
 
     await renderDailyCreditRaster(daily);
 
     expect(drawnText).toContain('ใบส่งของ');
+    expect(drawnText).toContain('2026-08-21');
+    expect(drawnText.join('')).not.toContain('ฉบับที่ 1');
+    expect(drawnText).toContain('ผู้พิมพ์: นิด');
+    expect(drawnFonts.find(({ text }) => text.includes('หลอดเล็ก'))?.font).toContain('25px');
     expect(drawnText).toContain('ชื่อผู้รับ ____________________');
     expect(drawnText).not.toContain('ลายเซ็นร้าน ____________________');
     expect(drawnText).not.toContain('วันที่ / เวลา ____________________');

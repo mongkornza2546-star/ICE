@@ -33,6 +33,7 @@ export type DailyCreditAcknowledgementDocument = {
     line_total: number | string;
   }>;
   total_amount: number | string;
+  printed_by_nickname?: string | null;
 };
 
 const money = new Intl.NumberFormat('th-TH', {
@@ -45,7 +46,7 @@ export function printDailyCreditAcknowledgement(
   payload: DailyCreditAcknowledgementDocument,
   existingPrintWindow?: Window | null,
 ) {
-  const heightMm = Math.max(70, 45 + payload.item_totals.length * 4);
+  const heightMm = Math.max(75, 53 + payload.item_totals.length * 8);
   const printWindow = existingPrintWindow
     ?? window.open('', '_blank', `popup,width=360,height=${Math.ceil(heightMm * 3.78)}`);
   if (!printWindow) return false;
@@ -65,6 +66,9 @@ export function printDailyCreditAcknowledgement(
     .center { text-align: center; }
     .totals, .grand-total { border-top: .25mm dashed #000; padding-top: .8mm; }
     .row, .grand-total { display: flex; justify-content: space-between; gap: 1mm; }
+    .totals .row { font-size: 9.5pt; line-height: 1.3; }
+    .totals .row span:first-child { min-width: 0; }
+    .totals .row span:last-child { flex-shrink: 0; }
     .grand-total { font-size: 9pt; font-weight: 700; }
   `;
   printDocument.head.replaceChildren(style);
@@ -79,7 +83,7 @@ export function printDailyCreditAcknowledgement(
   const title = printDocument.createElement('h1');
   title.textContent = payload.document_title;
   root.append(title);
-  line(`ฉบับที่ ${payload.version} · ${payload.service_date}`, 'center');
+  line(payload.service_date, 'center');
   line(`${payload.shop_code} · ${payload.shop_name}`);
   if (payload.shop_location) line(payload.shop_location, undefined, 'small');
 
@@ -111,6 +115,7 @@ export function printDailyCreditAcknowledgement(
   line('ร้านได้รับสินค้าตามรายการและรับทราบยอดเครดิตข้างต้น', undefined, 'small');
 
   line('ชื่อผู้รับ ____________________', 'center');
+  if (payload.printed_by_nickname?.trim()) line(`ผู้พิมพ์: ${payload.printed_by_nickname.trim()}`);
 
   printDocument.body.replaceChildren(root);
   printWindow.addEventListener('afterprint', () => printWindow.close(), { once: true });

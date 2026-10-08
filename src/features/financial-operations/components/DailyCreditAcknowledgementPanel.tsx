@@ -34,7 +34,7 @@ const dateTime = new Intl.DateTimeFormat('th-TH', {
   timeZone: 'Asia/Bangkok',
 });
 
-export function DailyCreditAcknowledgementPanel({ serviceDate }: { serviceDate: string }) {
+export function DailyCreditAcknowledgementPanel({ serviceDate, printerName }: { serviceDate: string; printerName?: string }) {
   const [selectedDate, setSelectedDate] = useState(serviceDate);
   const [items, setItems] = useState<DailyCreditAcknowledgementSummary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -87,7 +87,10 @@ export function DailyCreditAcknowledgementPanel({ serviceDate }: { serviceDate: 
         p_service_date: selectedDate,
       });
       if (printError) throw printError;
-      if (!await printDailyCreditAcknowledgementForCurrentPlatform(data as DailyCreditAcknowledgementDocument, printWindow)) {
+      if (!await printDailyCreditAcknowledgementForCurrentPlatform({
+        ...(data as DailyCreditAcknowledgementDocument),
+        printed_by_nickname: printerName,
+      }, printWindow)) {
         throw new Error('ไม่สามารถเปิดหน้าต่างพิมพ์ได้');
       }
       await load();
