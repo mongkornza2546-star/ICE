@@ -20,6 +20,7 @@ describe('daily credit delivery slip printing', () => {
       service_date: '2026-09-24',
       shop_code: 'B-ISO-01',
       shop_name: 'วิน',
+      shop_location: 'B · ซุ้มโดม 1',
       invoices: [],
       item_totals: [{ name: 'หลอดเล็ก', unit: 'ถุง', quantity: 2, line_total: 120 }],
       total_amount: 120,
@@ -32,7 +33,10 @@ describe('daily credit delivery slip printing', () => {
     expect(text).toContain('2026-09-24');
     expect(text).not.toContain('ฉบับที่ 1');
     expect(text).toContain('หลอดเล็ก 2 ถุง');
-    expect(text).toContain('ผู้พิมพ์: นิด');
+    expect(text).toContain('พนักงาน: นิด');
+    expect(text).not.toContain('ผู้พิมพ์:');
+    expect(text.indexOf('B · ซุ้มโดม 1')).toBeLessThan(text.indexOf('พนักงาน: นิด'));
+    expect(text.indexOf('พนักงาน: นิด')).toBeLessThan(text.indexOf('รวมสินค้าวันนี้'));
     expect(printDocument.querySelector('style')?.textContent).toContain('.totals .row { font-size: 9.5pt;');
     expect(text).toContain('ชื่อผู้รับ ____________________');
     expect(text).not.toContain('ลายเซ็นร้าน');

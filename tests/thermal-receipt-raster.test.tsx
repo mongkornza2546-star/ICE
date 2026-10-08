@@ -122,6 +122,7 @@ describe('thermal receipt raster', () => {
       service_date: '2026-08-21',
       shop_code: 'BB61',
       shop_name: 'Fuku matcha',
+      shop_location: 'B · ซุ้มโดม 1',
       invoices: [],
       item_totals: [{ name: 'หลอดเล็ก', unit: 'ถุง', quantity: 2, line_total: 120 }],
       total_amount: 120,
@@ -133,7 +134,10 @@ describe('thermal receipt raster', () => {
     expect(drawnText).toContain('ใบส่งของ');
     expect(drawnText).toContain('2026-08-21');
     expect(drawnText.join('')).not.toContain('ฉบับที่ 1');
-    expect(drawnText).toContain('ผู้พิมพ์: นิด');
+    expect(drawnText).toContain('พนักงาน: นิด');
+    expect(drawnText).not.toContain('ผู้พิมพ์: นิด');
+    expect(drawnText.indexOf('B · ซุ้มโดม 1')).toBeLessThan(drawnText.indexOf('พนักงาน: นิด'));
+    expect(drawnText.indexOf('พนักงาน: นิด')).toBeLessThan(drawnText.indexOf('รวมสินค้าวันนี้'));
     expect(drawnFonts.find(({ text }) => text.includes('หลอดเล็ก'))?.font).toContain('25px');
     expect(drawnText).toContain('ชื่อผู้รับ ____________________');
     expect(drawnText).not.toContain('ลายเซ็นร้าน ____________________');

@@ -86,6 +86,7 @@ export function printDailyCreditAcknowledgement(
   line(payload.service_date, 'center');
   line(`${payload.shop_code} · ${payload.shop_name}`);
   if (payload.shop_location) line(payload.shop_location, undefined, 'small');
+  if (payload.printed_by_nickname?.trim()) line(`พนักงาน: ${payload.printed_by_nickname.trim()}`);
 
   const totals = printDocument.createElement('section');
   totals.className = 'totals';
@@ -115,7 +116,6 @@ export function printDailyCreditAcknowledgement(
   line('ร้านได้รับสินค้าตามรายการและรับทราบยอดเครดิตข้างต้น', undefined, 'small');
 
   line('ชื่อผู้รับ ____________________', 'center');
-  if (payload.printed_by_nickname?.trim()) line(`ผู้พิมพ์: ${payload.printed_by_nickname.trim()}`);
 
   printDocument.body.replaceChildren(root);
   printWindow.addEventListener('afterprint', () => printWindow.close(), { once: true });
