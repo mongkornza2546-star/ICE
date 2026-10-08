@@ -4,6 +4,7 @@ import { supabase } from '../../lib/supabase';
 import { subscribeToDataChange } from '../../lib/dataChange';
 import { toBangkokDateString } from '../../lib/serviceDate';
 import { exportExecutiveReport } from './exportExecutiveReport';
+import { ReportSections, ReportTabs, type ReportSection } from './ExecutiveReportSections';
 import { formatReportDate, presetDates, reportRangeError, type Preset } from './reportDates';
 import type { DetailQuery, ExecutiveReport, ReportInvoice, ReportMetric, ReportRow } from './types';
 import './executiveReports.css';
@@ -23,7 +24,7 @@ const presetNames: Record<Exclude<Preset, 'custom'>, string> = {
 };
 
 function comparison(current: number, previous: number) {
-  if (!previous) return 'ไม่มีฐานเปรียบเทียบ';
+  if (previous <= 0) return 'ไม่มีฐานเปรียบเทียบ';
   const percent = Math.abs((current - previous) / previous * 100);
   return `${current >= previous ? 'เพิ่ม' : 'ลด'} ${number(percent)}% จากช่วงก่อน`;
 }
@@ -40,11 +41,13 @@ async function fetchDetails(from: string, to: string, query: DetailQuery, offset
   return data as { total: number; rows: ReportRow[] };
 }
 
-function MetricCard({ title, value, note, onClick, tone }: {
-  title: string; value: number; note: string; onClick: () => void; tone?: string;
+function MetricCard({ title, value, note, previous, onClick, tone }: {
+  title: string; value: number; note?: string; previous?: number; onClick: (trigger: HTMLButtonElement) => void; tone?: string;
 }) {
   return <button className={`executive-metric ${tone ? `executive-metric--${tone}` : ''}`}
-    onClick={onClick} type="button"><span>{title}</span><strong>{baht(value)}</strong><small>{note}</small></button>;
+    onClick={(event) => onClick(event.currentTarget)} type="button"><span>{title}</span><strong>{baht(value)}</strong>
+    {previous !== undefined ? <small>ช่วงก่อน {baht(previous)} · {comparison(value, previous)}</small> : note ? <small>{note}</small> : null}
+    <span className="executive-metric__action">ดูรายการ ›</span></button>;
 }
 
 export function ExecutiveReportsPage({ isActive, demoReport, demoRows }: {
@@ -61,7 +64,9 @@ export function ExecutiveReportsPage({ isActive, demoReport, demoRows }: {
   const [refreshKey, setRefreshKey] = useState(0);
   const [trendMetric, setTrendMetric] = useState<'sales' | 'receipts'>('sales');
   const [showTrendTable, setShowTrendTable] = useState(false);
+  const [section, setSection] = useState<ReportSection>('overview');
   const [detail, setDetail] = useState<DetailQuery | null>(null);
+  const [detailLabel, setDetailLabel] = useState<string | null>(null);
   const [detailPage, setDetailPage] = useState(0);
   const [detailData, setDetailData] = useState<{ total: number; rows: ReportRow[] } | null>(null);
   const [detailError, setDetailError] = useState<string | null>(null);
@@ -99,6 +104,10 @@ export function ExecutiveReportsPage({ isActive, demoReport, demoRows }: {
       if (request !== reportRequest.current) return;
       if (rpcError) setError(rpcError.message);
       else setReport(data as ExecutiveReport);
+      setLoading(false);
+    }, (cause: unknown) => {
+      if (request !== reportRequest.current) return;
+      setError(cause instanceof Error ? cause.message : 'โหลดรายงานไม่สำเร็จ');
       setLoading(false);
     });
     return () => { reportRequest.current += 1; };
@@ -146,7 +155,7 @@ export function ExecutiveReportsPage({ isActive, demoReport, demoRows }: {
     }
     void fetchDetails(from, to, detail, detailPage * 50).then((result) => {
       if (request === detailRequest.current) setDetailData(result);
-    }).catch((cause: unknown) => {
+    }, (cause: unknown) => {
       if (request === detailRequest.current) setDetailError(cause instanceof Error ? cause.message : 'โหลดรายการไม่สำเร็จ');
     });
     return () => { detailRequest.current += 1; };
@@ -169,6 +178,8 @@ export function ExecutiveReportsPage({ isActive, demoReport, demoRows }: {
       if (rpcError) setInvoiceError(rpcError.message);
       else if (!data) setInvoiceError('ไม่พบบิลนี้แล้ว');
       else setInvoice(data as ReportInvoice);
+    }, (cause: unknown) => {
+      if (request === invoiceRequest.current) setInvoiceError(cause instanceof Error ? cause.message : 'โหลดบิลไม่สำเร็จ');
     });
     return () => { invoiceRequest.current += 1; };
   }, [invoiceId, demoReport, to]);
@@ -182,13 +193,13 @@ export function ExecutiveReportsPage({ isActive, demoReport, demoRows }: {
     const dates = presetDates(next);
     setPreset(next); setFrom(dates.from); setTo(dates.to); setDetail(null);
   };
-  const openDetail = (query: DetailQuery) => {
-    if (!detail) detailTrigger.current = document.activeElement as HTMLElement | null;
-    setDetail(query); setDetailPage(0); setInvoiceId(null);
+  const openDetail = (query: DetailQuery, label?: string, trigger?: HTMLElement) => {
+    if (!detail) detailTrigger.current = trigger ?? document.activeElement as HTMLElement | null;
+    setDetail(query); setDetailPage(0); setInvoiceId(null); setDetailLabel(label ?? null);
     if (!query.shopId) setDebtorName(null);
   };
   const closeDetail = () => {
-    setDetail(null);
+    setDetail(null); setInvoiceId(null); setDetailLabel(null); setDebtorName(null);
     window.requestAnimationFrame(() => detailTrigger.current?.focus());
   };
   const backDetail = () => {
@@ -197,6 +208,7 @@ export function ExecutiveReportsPage({ isActive, demoReport, demoRows }: {
       setDetail({ metric: detail.metric });
       setDetailPage(debtorListPage.current);
       setDebtorName(null);
+      setDetailLabel(null);
       return;
     }
     closeDetail();
@@ -241,11 +253,9 @@ export function ExecutiveReportsPage({ isActive, demoReport, demoRows }: {
   const receiptPoint = detail?.bucket ? shownReport?.trend.find((row) => row.date === detail.bucket) : null;
   const receiptGross = detail?.bucket ? receiptPoint?.receipts ?? 0 : shownReport?.receipts ?? 0;
   const receiptRefunds = detail?.bucket ? receiptPoint?.refunds ?? 0 : shownReport?.refunds ?? 0;
-  const maxTrend = Math.max(1, ...((shownReport?.trend ?? []).map((row) => trendMetric === 'sales' ? row.sales : row.receipts - row.refunds)));
-  const maxArea = Math.max(1, ...((shownReport?.areas ?? []).map((row) => row.sales)));
   return <div className="executive-report">
     <header className="executive-report__heading">
-      <div><h1>รายงานผู้บริหาร</h1><p>ภาพรวมยอดขาย เงินรับ และลูกหนี้</p></div>
+      <div><h1>รายงานผู้บริหาร</h1><p>ยอดขาย เงินรับ ลูกหนี้ และปริมาณส่ง</p></div>
       <div className="executive-report__actions">
         <button aria-label="รีเฟรชรายงาน" disabled={loading || Boolean(rangeError)} onClick={refresh} type="button"><ArrowClockwise size={19} /> รีเฟรช</button>
         <button disabled={!shownReport || loading || exporting || Boolean(error)} onClick={() => void handleExport()} type="button"><DownloadSimple size={19} /> {exporting ? 'กำลังสร้าง Excel…' : 'ส่งออก Excel'}</button>
@@ -253,10 +263,10 @@ export function ExecutiveReportsPage({ isActive, demoReport, demoRows }: {
     </header>
 
     <section className="executive-filters" aria-label="เลือกช่วงเวลารายงาน">
-      <div className="executive-presets">{(Object.keys(presetNames) as Array<Exclude<Preset, 'custom'>>).map((key) =>
+      <div className="executive-filter-controls"><div aria-label="ช่วงวันที่ลัด" className="executive-presets">{(Object.keys(presetNames) as Array<Exclude<Preset, 'custom'>>).map((key) =>
         <button aria-pressed={preset === key} key={key} onClick={() => choosePreset(key)} type="button">{presetNames[key]}</button>)}</div>
       <div className="executive-dates"><label>จาก<input max={toBangkokDateString()} onChange={(event) => { setPreset('custom'); setFrom(event.target.value); setDetail(null); }} type="date" value={from} /></label>
-        <label>ถึง<input max={toBangkokDateString()} onChange={(event) => { setPreset('custom'); setTo(event.target.value); setDetail(null); }} type="date" value={to} /></label></div>
+        <label>ถึง<input max={toBangkokDateString()} onChange={(event) => { setPreset('custom'); setTo(event.target.value); setDetail(null); }} type="date" value={to} /></label></div></div>
       {rangeError ? <p className="executive-error" role="alert">{rangeError}</p> : null}
       {shownReport ? <p className="executive-asof">ข้อมูล ณ {new Date(shownReport.asOf).toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' })} · {formatReportDate(from)} – {formatReportDate(to)}{to === toBangkokDateString() ? ' · วันนี้ยังไม่สิ้นสุด' : ''}</p> : null}
     </section>
@@ -265,44 +275,17 @@ export function ExecutiveReportsPage({ isActive, demoReport, demoRows }: {
     {loading && !shownReport ? <p className="executive-status" role="status">กำลังโหลดรายงาน…</p> : null}
     {shownReport ? <>
       <section className="executive-metrics" aria-label="ตัวเลขสำคัญ">
-        <MetricCard title="ยอดขายสุทธิช่วงนี้" value={shownReport.sales} note={comparison(shownReport.sales, shownReport.previousSales)} onClick={() => openDetail({ metric: 'sales' })} />
-        <MetricCard title="เงินรับสุทธิช่วงนี้" value={shownReport.netReceipts} note={`${comparison(shownReport.netReceipts, shownReport.previousNetReceipts)} · คืน ${baht(shownReport.refunds)}`} onClick={() => openDetail({ metric: 'receipts' })} />
-        <MetricCard title="หนี้ค้างปัจจุบัน" value={shownReport.outstanding} note={`${number(shownReport.debtors)} ร้าน · ณ ${formatReportDate(toBangkokDateString())}`} tone="amber" onClick={() => openDetail({ metric: 'debt' })} />
-        <MetricCard title="เกินกำหนดปัจจุบัน" value={shownReport.overdue} note="แตะเพื่อดูบิลที่ต้องติดตาม" tone="red" onClick={() => openDetail({ metric: 'overdue' })} />
+        <MetricCard title="ยอดขายสุทธิช่วงนี้" value={shownReport.sales} previous={shownReport.previousSales} onClick={(trigger) => openDetail({ metric: 'sales' }, undefined, trigger)} />
+        <MetricCard title="เงินรับสุทธิช่วงนี้" value={shownReport.netReceipts} previous={shownReport.previousNetReceipts} onClick={(trigger) => openDetail({ metric: 'receipts' }, undefined, trigger)} />
+        <MetricCard title="หนี้ค้างปัจจุบัน" value={shownReport.outstanding} note={`${number(shownReport.debtors)} ร้าน · ณ ${formatReportDate(toBangkokDateString())}`} tone="amber" onClick={(trigger) => openDetail({ metric: 'debt' }, undefined, trigger)} />
+        <MetricCard title="เกินกำหนดปัจจุบัน" value={shownReport.overdue} note="บิลที่ต้องติดตาม" tone="red" onClick={(trigger) => openDetail({ metric: 'overdue' }, undefined, trigger)} />
       </section>
-      {shownReport.refunds > 0 ? <button className="executive-text-button" onClick={() => openDetail({ metric: 'refunds' })} type="button">ดูรายการคืนเงินจริง {baht(shownReport.refunds)}</button> : null}
+      <p className="executive-period-note">ยอดขายและเงินรับอิงช่วงวันที่เลือก · หนี้ค้างและเกินกำหนดเป็นยอดปัจจุบัน</p>
 
-      <div className="executive-report__grid">
-        <section className="executive-panel" aria-label="แนวโน้มยอดขายและเงินรับ">
-          <div className="executive-panel__head"><div><h2>แนวโน้ม</h2><p>แตะแท่งเพื่อดูรายการในช่วงนั้น</p></div><div className="executive-segment"><button aria-pressed={trendMetric === 'sales'} onClick={() => setTrendMetric('sales')} type="button">ยอดขาย</button><button aria-pressed={trendMetric === 'receipts'} onClick={() => setTrendMetric('receipts')} type="button">เงินรับสุทธิ</button></div></div>
-          {shownReport.trend.length ? <>
-            <div className="executive-chart" role="group" aria-label={`กราฟ${trendMetric === 'sales' ? 'ยอดขาย' : 'เงินรับสุทธิ'}`}>
-              {shownReport.trend.map((point) => {
-                const value = trendMetric === 'sales' ? point.sales : point.receipts - point.refunds;
-                return <button aria-label={`${formatReportDate(point.date)} ${baht(value)}`} className="executive-chart__item" key={point.date}
-                  onClick={() => openDetail({ metric: trendMetric, bucket: point.date })} title={`${formatReportDate(point.date)}: ${baht(value)}`} type="button">
-                  <span className="executive-chart__bar" style={{ height: `${Math.max(3, Math.max(0, value) / maxTrend * 100)}%` }} />
-                  <small>{shownReport.trend.length <= 10 ? formatReportDate(point.date) : point.date.slice(5)}</small>
-                </button>;
-              })}
-            </div>
-            <button className="executive-text-button" onClick={() => setShowTrendTable((value) => !value)} type="button">{showTrendTable ? 'ซ่อนตารางตัวเลข' : 'ดูตารางตัวเลข'}</button>
-            {showTrendTable ? <div className="executive-table-scroll"><table><thead><tr><th>ช่วง</th><th>ยอดขาย</th><th>เงินรับจริง</th><th>คืนเงินจริง</th></tr></thead><tbody>{shownReport.trend.map((row) => <tr key={row.date}><td>{formatReportDate(row.date)}</td><td>{baht(row.sales)}</td><td>{baht(row.receipts)}</td><td>{baht(row.refunds)}</td></tr>)}</tbody></table></div> : null}
-          </> : <p className="executive-empty">ยังไม่มีรายการในช่วงนี้</p>}
-        </section>
-
-        <section className="executive-panel" aria-label="ยอดขายตามพื้นที่"><div className="executive-panel__head"><div><h2>ยอดขายตามพื้นที่</h2><p>อาคาร อีเวนต์ และขายหน้ารถ</p></div></div>
-          {shownReport.areas.length ? <div className="executive-rank-list">{shownReport.areas.map((area) => <button key={`${area.kind}-${area.id ?? 'casual'}`} onClick={() => openDetail({ metric: 'sales', areaKind: area.kind, areaId: area.id })} type="button"><span><strong>{area.name}</strong><small>{area.kind === 'event' ? 'อีเวนต์' : area.kind === 'casual' ? 'ขายหน้ารถ' : 'อาคาร'}</small></span><b>{baht(area.sales)}</b><i style={{ width: `${Math.max(2, area.sales / maxArea * 100)}%` }} /></button>)}</div> : <p className="executive-empty">ยังไม่มียอดขายตามพื้นที่</p>}
-        </section>
-
-        <section className="executive-panel" aria-label="ร้านค้ายอดขายสูงสุด"><div className="executive-panel__head"><div><h2>ร้านค้ายอดขายสูงสุด</h2><p>10 อันดับในช่วงที่เลือก</p></div></div>
-          {shownReport.shops.length ? <div className="executive-shop-list">{shownReport.shops.map((shop, index) => <button key={shop.id} onClick={() => openDetail({ metric: 'sales', shopId: shop.id })} type="button"><span><em>{index + 1}</em>{shop.name}</span><strong>{baht(shop.sales)}</strong></button>)}</div> : <p className="executive-empty">ยังไม่มีร้านที่มียอดขาย</p>}
-        </section>
-
-        <section className="executive-panel" aria-label="ปริมาณงานและน้ำแข็ง"><div className="executive-panel__head"><div><h2>ปริมาณงาน</h2><p>{number(shownReport.deliveryCount)} รายการส่งร้าน · แยกชนิดและหน่วย</p></div></div>
-          {shownReport.products.length ? <div className="executive-product-list">{shownReport.products.map((product) => <div key={product.id}><strong>{product.name}</strong><span>ส่ง {number(product.delivered)} {product.unit}</span><small>เสียหาย {number(product.damaged)} {product.unit}</small></div>)}</div> : <p className="executive-empty">ยังไม่มีปริมาณน้ำแข็งในช่วงนี้</p>}
-        </section>
-      </div>
+      <ReportTabs active={section} onChange={setSection} />
+      <ReportSections section={section} report={shownReport} trendMetric={trendMetric}
+        setTrendMetric={setTrendMetric} showTrendTable={showTrendTable}
+        toggleTrendTable={() => setShowTrendTable((value) => !value)} openDetail={openDetail} />
     </> : null}
 
     {detail ? <div className="executive-detail-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeDetail(); }}><section aria-label={invoiceId ? 'รายละเอียดบิล' : `รายละเอียด${metricNames[detail.metric]}`} aria-modal="true" className="executive-detail" onKeyDown={(event) => {
@@ -313,7 +296,7 @@ export function ExecutiveReportsPage({ isActive, demoReport, demoRows }: {
       if (event.shiftKey && (document.activeElement === focusable[0] || document.activeElement === dialogRef.current)) { event.preventDefault(); focusable[focusable.length - 1].focus(); }
       else if (!event.shiftKey && document.activeElement === focusable[focusable.length - 1]) { event.preventDefault(); focusable[0].focus(); }
     }} ref={dialogRef} role="dialog" tabIndex={-1}>
-      <header><button aria-label={invoiceId || detail.shopId ? 'กลับไปยังรายการ' : 'ย้อนกลับไปยังรายงาน'} onClick={backDetail} type="button"><CaretLeft size={21} /></button><div><h2>{invoiceId ? (invoice?.number ?? 'รายละเอียดบิล') : debtorName ?? metricNames[detail.metric]}</h2><p>{invoiceId ? invoice?.shop : detail.metric === 'debt' || detail.metric === 'overdue' ? 'ยอดปัจจุบัน' : `${formatReportDate(from)} – ${formatReportDate(to)}`}{!invoiceId && detail.metric === 'receipts' ? ' · ก่อนหักเงินคืน' : ''}</p></div><button aria-label="ปิดรายละเอียด" onClick={closeDetail} type="button"><X size={21} /></button></header>
+      <header><button aria-label={invoiceId || detail.shopId ? 'กลับไปยังรายการ' : 'ย้อนกลับไปยังรายงาน'} onClick={backDetail} type="button"><CaretLeft size={21} /></button><div><h2>{invoiceId ? (invoice?.number ?? 'รายละเอียดบิล') : debtorName ?? detailLabel ?? metricNames[detail.metric]}</h2><p>{invoiceId ? invoice?.shop : detail.metric === 'debt' || detail.metric === 'overdue' ? 'ยอดปัจจุบัน' : `${formatReportDate(from)} – ${formatReportDate(to)}`}{!invoiceId && detail.metric === 'receipts' ? ' · ก่อนหักเงินคืน' : ''}</p></div><button aria-label="ปิดรายละเอียด" onClick={closeDetail} type="button"><X size={21} /></button></header>
       {invoiceId ? <>
         {invoiceError ? <p className="executive-error" role="alert">{invoiceError}</p> : null}
         {!invoice && !invoiceError ? <p className="executive-status">กำลังโหลดบิล…</p> : null}

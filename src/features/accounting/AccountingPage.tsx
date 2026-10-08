@@ -4,6 +4,7 @@ import { createPortal } from 'react-dom';
 import { ArrowClockwise, CaretLeft, CaretRight, DownloadSimple, Funnel, MagnifyingGlass, WarningCircle, X } from '@phosphor-icons/react';
 import { DeliveryCorrectionDialog } from '../delivery-corrections/DeliveryCorrectionDialog';
 import { supabase } from '../../lib/supabase';
+import { getHybridObjectUrl } from '../../lib/r2Storage';
 import { getErrorMessage } from '../../lib/errorMessage';
 import { publishDataChange, subscribeToDataChange } from '../../lib/dataChange';
 import { toBangkokDateString } from '../../lib/serviceDate';
@@ -146,7 +147,7 @@ function emptyShopSummary(): AccountingShopSummaryResponse {
       sales_amount: 0, paid_amount: 0, outstanding_amount: 0, overdue_amount: 0,
       outstanding_shop_count: 0, cumulative_outstanding_amount: 0,
       cumulative_overdue_amount: 0, cumulative_outstanding_shop_count: 0,
-      cash_received_in_period: 0,
+      cash_received_in_period: 0, cash_in_period: 0, transfer_in_period: 0,
     },
     facets: { shops: [], buildings: [], zones: [] },
   };
@@ -743,7 +744,7 @@ function ShopSummaryPanel({ daily, data, loading, unavailable, view, onViewChang
     {loading ? <AccountingLoading /> : unavailable || rangeError ? null : <>
       <div className="accounting-overview" aria-label="สรุปยอดการเงิน">
         <article className="accounting-metric accounting-metric--sales"><span>ยอดขายรายร้านในช่วง</span><strong>{money.format(totals.sales_amount)}</strong><div className="accounting-metric__breakdown"><span>รับชำระแล้ว <b>{money.format(totals.paid_amount)}</b></span><span>ค้างของบิลช่วงนี้ <b>{money.format(totals.outstanding_amount)}</b></span></div><small>รับชำระและค้างเป็นยอดปัจจุบัน รวมการชำระหลังช่วงรายงาน</small></article>
-        <article className="accounting-metric accounting-metric--received"><span>เงินรับจริงจากร้านในช่วง</span><strong>{money.format(totals.cash_received_in_period)}</strong><small>ตามวันที่รับเงิน รวมรับหนี้เก่าและร้านปิดใช้งาน</small><small>ตามร้าน/พื้นที่ · ไม่ตามสถานะหรือเงื่อนไขชำระ</small></article>
+        <article className="accounting-metric accounting-metric--received"><span>เงินรับจริงจากร้านในช่วง</span><strong>{money.format(totals.cash_received_in_period)}</strong><div className="accounting-metric__breakdown"><span>เงินสด <b>{money.format(totals.cash_in_period ?? 0)}</b></span><span>โอน <b>{money.format(totals.transfer_in_period ?? 0)}</b></span></div><small>ตามวันที่รับเงิน รวมรับหนี้เก่าและร้านปิดใช้งาน</small><small>ตามร้าน/พื้นที่ · ไม่ตามสถานะหรือเงื่อนไขชำระ</small></article>
         <article className="accounting-metric accounting-metric--debt"><span>ยอดค้างสะสมของร้าน</span><strong>{money.format(totals.cumulative_outstanding_amount)}</strong><div className="accounting-metric__breakdown"><span>{totals.cumulative_outstanding_shop_count.toLocaleString('th-TH')} ร้าน <b>เกินกำหนด {money.format(totals.cumulative_overdue_amount)}</b></span></div><small>หนี้ปัจจุบันทุกวันที่ขาย · เกินกำหนดรวมอยู่ในยอดค้าง</small></article>
         <button className="accounting-metric accounting-metric--review" aria-label="เปิดหน้ารายการตรวจสอบ" onClick={onOpenReview} type="button"><span>รายการต้องตรวจสอบ</span><strong>{reviewCount == null ? '—' : reviewCount.toLocaleString('th-TH')}<small> รายการ</small></strong><small>ทั้งช่วงวันที่ · ไม่ตามตัวกรองร้าน</small><b>เปิดรายการตรวจสอบ →</b></button>
       </div>
@@ -1040,11 +1041,34 @@ function ShopInvoiceDetail({ entries, error, fromDate, loading, onClose, onOpenD
   shop: AccountingShopSummaryRow; toDate: string;
 }) {
   const ref = useAccountingDialog(onClose);
+  const [slipError, setSlipError] = useState<string | null>(null);
+  const openSlip = async (path: string) => {
+    const client = supabase;
+    if (!client) return;
+    const slipWindow = window.open('', '_blank');
+    if (!slipWindow) {
+      setSlipError('เบราว์เซอร์บล็อกหน้าต่างสลิป กรุณาอนุญาตป๊อปอัปแล้วลองใหม่');
+      return;
+    }
+    setSlipError(null);
+    try {
+      const url = await getHybridObjectUrl('payment-evidence', path, async () => {
+        const { data, error: urlError } = await client.storage.from('payment-evidence').createSignedUrl(path, 3600);
+        if (urlError || !data?.signedUrl) throw urlError ?? new Error('ไม่สามารถเปิดสลิปได้');
+        return data.signedUrl;
+      });
+      slipWindow.location.href = url;
+    } catch (viewError) {
+      slipWindow.close();
+      setSlipError(getErrorMessage(viewError));
+    }
+  };
   const inPeriod = entries.filter((entry) => entry.service_date >= fromDate && entry.service_date <= toDate);
   const outsidePeriod = entries.filter((entry) => entry.service_date < fromDate || entry.service_date > toDate);
   return <section ref={ref} tabIndex={-1} aria-label={`รายละเอียดบิลของ ${formatAccountingShopTitle(shop)}`} aria-modal="true" className="accounting-shop-detail" role="dialog">
     <header><div><p className="eyebrow">รายละเอียดตามใบส่งของ / ใบแจ้งหนี้</p><h2>{formatAccountingShopTitle(shop)}</h2><span>ช่วงสรุปและบิลค้างนอกช่วง: {accountingDate.format(new Date(`${fromDate}T12:00:00+07:00`))} – {accountingDate.format(new Date(`${toDate}T12:00:00+07:00`))}</span><small>ยอดรับแล้วและยอดค้างเป็นยอดปัจจุบัน จึงรวมการรับชำระหลังช่วงสรุป</small></div><button aria-label="ปิดรายละเอียดร้าน" onClick={onClose} type="button"><X size={19} /></button></header>
     <div className="accounting-invoice-scroll">
+      {slipError ? <p className="credit-ar__action-error" role="alert">{slipError}</p> : null}
       <div className="accounting-invoice-overview"><span>ค้างสะสมปัจจุบันของร้าน <strong>{money.format(shop.cumulative_outstanding_amount)}</strong></span><span>ในจำนวนนี้เกินกำหนด <strong>{money.format(shop.cumulative_overdue_amount)}</strong></span></div>
       {loading ? <AccountingLoading /> : error ? <p className="credit-ar__action-error" role="alert">{error}</p> : entries.length ? ([['บิลในช่วงที่เลือก', inPeriod], ['บิลค้างนอกช่วง', outsidePeriod]] as const).map(([heading, group]) => group.length ? <section className="accounting-invoice-group" key={heading}><h3>{heading} <small>{group.length} รายการ</small></h3>{group.map((entry) => {
         const status = entry.delivery_status === 'replaced' ? 'ถูกแทนที่แล้ว' : entry.delivery_status === 'cancelled' || entry.charge_status === 'voided' ? 'ยกเลิกแล้ว' : entry.payment_status ? invoicePaymentStatusLabels[entry.payment_status] : 'ข้อมูลเดิม';
@@ -1059,7 +1083,7 @@ function ShopInvoiceDetail({ entries, error, fromDate, loading, onClose, onOpenD
           <p>พื้นที่ ณ เวลาขาย: {[entry.building_name, entry.historical_zone_name].filter(Boolean).join(' / ') || '—'} · ผู้บันทึก: {entry.recorded_by_name || '—'} · {accountingDateTime(entry.recorded_at)}</p>
           {entry.event_name ? <p>งาน {entry.event_name} · {[entry.event_location, entry.event_zone, entry.event_booth].filter(Boolean).join(' / ')}</p> : null}
           <div className="accounting-invoice-sections"><section><h4>สินค้าและราคา</h4>{entry.items.length ? <ul>{entry.items.map((item) => <li key={item.ice_type_id}><span>{item.name} {Number(item.quantity).toLocaleString('th-TH')} {item.unit}<small>ราคาต่อหน่วย {item.unit_price == null ? '—' : money.format(Number(item.unit_price))}</small></span><strong>{item.line_total == null ? '—' : money.format(Number(item.line_total))}</strong></li>)}</ul> : <p>ไม่มีรายละเอียดสินค้า</p>}</section>
-          <section><h4>ประวัติรับชำระ</h4>{entry.payments.length ? <ul>{entry.payments.map((payment) => <li key={payment.payment_id}><span>{paymentMethodLabels[payment.payment_method]}<small>{payment.received_date_override ? formatReceiptDate(payment.received_date_override) : accountingDateTime(payment.recorded_at)}</small>{payment.entered_at ? <small>บันทึกเมื่อ {accountingDateTime(payment.entered_at)}</small> : null}</span><strong>{money.format(Number(payment.amount))}</strong></li>)}</ul> : <p>ยังไม่มีการรับชำระ</p>}</section></div>
+          <section><h4>ประวัติรับชำระ</h4>{entry.payments.length ? <ul>{entry.payments.map((payment) => <li key={payment.payment_id}><span>{paymentMethodLabels[payment.payment_method]}<small>{payment.received_date_override ? formatReceiptDate(payment.received_date_override) : accountingDateTime(payment.recorded_at)}</small>{payment.entered_at ? <small>บันทึกเมื่อ {accountingDateTime(payment.entered_at)}</small> : null}{payment.payment_method !== 'cash' && payment.evidence_path ? <button className="accounting-payment-slip" onClick={() => void openSlip(payment.evidence_path!)} type="button">ดูสลิป</button> : null}</span><strong>{money.format(Number(payment.amount))}</strong></li>)}</ul> : <p>ยังไม่มีการรับชำระ</p>}</section></div>
           {entry.adjustments.length ? <section><h4>ประวัติปรับปรุง</h4><div className="accounting-shop-detail__adjustments">{entry.adjustments.map((adjustment) => <div key={adjustment.id}><strong>{adjustment.reason}</strong><small>{accountingDateTime(adjustment.created_at)}</small>{adjustment.items.map((item) => <p key={item.ice_type_id}>{`${item.name} ${Number(item.original_quantity).toLocaleString('th-TH')} ${item.unit} → แก้เป็น ${Number(item.corrected_quantity).toLocaleString('th-TH')} ${item.unit} (เปลี่ยน ${Number(item.quantity_delta).toLocaleString('th-TH')})`}</p>)}<p>ยอดปรับ {money.format(Number(adjustment.amount_delta))}</p><p>ยอดหลังปรับ {adjustment.corrected_total == null ? '—' : money.format(Number(adjustment.corrected_total))}</p></div>)}</div></section> : null}
           {entry.charge_number ? <button className="accounting-source-button" type="button" onClick={() => onOpenDocument(entry.charge_number!, entry.service_date)}>ดูเอกสารต้นทาง {entry.charge_number}</button> : <small>รายการเดิมไม่มีเลขเอกสารอ้างอิง</small>}
         </div></details>;

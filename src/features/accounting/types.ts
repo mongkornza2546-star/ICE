@@ -137,6 +137,8 @@ export type AccountingShopSummaryResponse = {
     cumulative_overdue_amount: number;
     cumulative_outstanding_shop_count: number;
     cash_received_in_period: number;
+    cash_in_period?: number;
+    transfer_in_period?: number;
     casual_sales_amount?: number;
     casual_received_amount?: number;
     casual_refunded_amount?: number;
@@ -230,6 +232,7 @@ export type AccountingShopInvoiceDetailEntry = {
   payments: Array<{
     payment_id: string;
     payment_method: 'cash' | 'bank_transfer' | 'qr';
+    evidence_path?: string | null;
     amount: number;
     recorded_at: string;
     received_date_override?: string | null;

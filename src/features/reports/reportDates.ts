@@ -25,3 +25,22 @@ export function formatReportDate(date: string) {
   return new Intl.DateTimeFormat('th-TH', { day: 'numeric', month: 'short', year: 'numeric' })
     .format(new Date(`${date}T12:00:00+07:00`));
 }
+
+
+export function reportBucketLabels(date: string, from: string, to: string) {
+  // Match the RPC: ranges over 30 days apart are grouped by month.
+  const monthly = (Date.parse(to) - Date.parse(from)) / 86400000 > 30;
+  if (!monthly) return { label: formatReportDate(date), axisLabel: date.slice(5) };
+
+  const month = new Intl.DateTimeFormat('th-TH', {
+    month: 'short', year: 'numeric', timeZone: 'Asia/Bangkok',
+  }).format(new Date(`${date}T12:00:00+07:00`));
+  const [year, monthNumber] = date.split('-').map(Number);
+  const monthEnd = new Date(Date.UTC(year, monthNumber, 0)).toISOString().slice(0, 10);
+  const start = from > date ? from : date;
+  const end = to < monthEnd ? to : monthEnd;
+  const label = start !== date || end !== monthEnd
+    ? `${month} (${formatReportDate(start)} – ${formatReportDate(end)})`
+    : month;
+  return { label, axisLabel: month };
+}

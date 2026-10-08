@@ -4,10 +4,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AccountingPage } from '../src/features/accounting/AccountingPage';
 import { publishDataChange } from '../src/lib/dataChange';
 
-const { rpcMock, writeXlsxFileMock } = vi.hoisted(() => ({ rpcMock: vi.fn(), writeXlsxFileMock: vi.fn() }));
+const { rpcMock, signedUrlMock, writeXlsxFileMock } = vi.hoisted(() => ({ rpcMock: vi.fn(), signedUrlMock: vi.fn(), writeXlsxFileMock: vi.fn() }));
 
 vi.mock('../src/lib/supabase', () => ({
-  supabase: { rpc: rpcMock },
+  supabase: { rpc: rpcMock, storage: { from: () => ({ createSignedUrl: signedUrlMock }) } },
 }));
 vi.mock('write-excel-file', () => ({ default: writeXlsxFileMock }));
 
@@ -72,6 +72,8 @@ const populatedSummary = {
     cumulative_overdue_amount: 400,
     cumulative_outstanding_shop_count: 1,
     cash_received_in_period: 1_100,
+    cash_in_period: 800,
+    transfer_in_period: 300,
   },
   facets: {
     shops: [{ value: 'shop-1', label: 'S001 · ร้านสมใจ', count: 1 }],
@@ -104,12 +106,12 @@ const purchaseHistory = [{
   adjustments: [],
 }];
 
-function mockSuccessfulShopSummary() {
+function mockSuccessfulShopSummary(history = purchaseHistory) {
   rpcMock.mockImplementation(async (name: string) => {
     if (name === 'get_accounting_shop_summary') return { data: populatedSummary, error: null };
     if (name === 'get_accounting_shop_daily_matrix') return { data: emptyDailyMatrix, error: null };
     if (name === 'get_accounting_review_queue') return { data: { rows: [], total_count: 2 }, error: null };
-    if (name === 'get_accounting_shop_invoice_detail') return { data: purchaseHistory, error: null };
+    if (name === 'get_accounting_shop_invoice_detail') return { data: history, error: null };
     throw new Error(`Unexpected RPC: ${name}`);
   });
 }
@@ -142,11 +144,38 @@ function completeDailyMatrix(args: Record<string, unknown>, rows = populatedSumm
 
 beforeEach(() => {
   rpcMock.mockReset();
+  signedUrlMock.mockReset();
   writeXlsxFileMock.mockReset();
   writeXlsxFileMock.mockResolvedValue(undefined);
 });
 
 describe('accounting shop summary', () => {
+  it('opens the stored slip for a bank transfer in the invoice payment history', async () => {
+    const evidencePath = 'employee-1/transfer-slip.jpg';
+    mockSuccessfulShopSummary([{ ...purchaseHistory[0], payments: [
+      purchaseHistory[0].payments[0],
+      { payment_id: 'payment-2', payment_method: 'bank_transfer', amount: 180,
+        recorded_at: `${historyServiceDate}T18:05:00+07:00`, evidence_path: evidencePath },
+    ] }]);
+    signedUrlMock.mockResolvedValue({ data: { signedUrl: 'https://example.test/signed-slip' }, error: null });
+    const slipWindow = { location: { href: '' }, close: vi.fn() } as unknown as Window;
+    const openWindow = vi.spyOn(window, 'open').mockReturnValue(slipWindow);
+    try {
+      const user = userEvent.setup();
+      render(<AccountingPage />);
+      await user.click(await screen.findByRole('button', { name: 'S001 · ร้านสมใจ' }));
+      await screen.findByText('INV2608-00001');
+      fireEvent.click(screen.getByText('INV2608-00001'));
+      await user.click(screen.getByRole('button', { name: 'ดูสลิป' }));
+      expect(openWindow).toHaveBeenCalledWith('', '_blank');
+      await waitFor(() => expect(slipWindow.location.href).toBe('https://example.test/signed-slip'));
+      expect(signedUrlMock).toHaveBeenCalledWith(evidencePath, 3600);
+      expect(screen.getAllByText('เงินสด')).toHaveLength(2);
+    } finally {
+      openWindow.mockRestore();
+    }
+  });
+
   it('keeps the daily table and open shop detail mounted while delivery changes update totals', async () => {
     mockSuccessfulShopSummary();
     const user = userEvent.setup();
@@ -358,6 +387,8 @@ describe('accounting shop summary', () => {
     expect(screen.getByText('ยอดค้างสะสมของร้าน', { selector: 'article span' })).toBeTruthy();
     const broadReceipts = screen.getByText('เงินรับจริงจากร้านในช่วง', { selector: 'article span' }).closest('article');
     expect(broadReceipts?.textContent).toMatch(/ร้านปิดใช้งาน.*ไม่ตามสถานะหรือเงื่อนไขชำระ/);
+    expect(screen.getByText(/เงินสด/, { selector: '.accounting-metric--received .accounting-metric__breakdown span' })).toBeTruthy();
+    expect(screen.getByText(/โอน/, { selector: '.accounting-metric--received .accounting-metric__breakdown span' })).toBeTruthy();
     expect(screen.getByRole('columnheader', { name: 'ร้าน' })).toBeTruthy();
     expect(screen.getByRole('columnheader', { name: 'ค้างของบิลช่วงนี้' })).toBeTruthy();
     expect(screen.getByRole('columnheader', { name: 'ค้างสะสม' })).toBeTruthy();

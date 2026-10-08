@@ -15,7 +15,15 @@ const areaGroupsMigration = readFileSync(
   new URL('../supabase/migrations/0145_accounting_shop_summary_area_groups.sql', import.meta.url),
   'utf8',
 );
-const migration = `${accountingMigration}\n${activeShopsMigration}\n${areaGroupsMigration}`;
+const paymentSlipMigration = readFileSync(
+  new URL('../supabase/migrations/0211_accounting_payment_slip.sql', import.meta.url),
+  'utf8',
+);
+const receivedSplitMigration = readFileSync(
+  new URL('../supabase/migrations/0212_accounting_received_cash_transfer_split.sql', import.meta.url),
+  'utf8',
+);
+const migration = `${accountingMigration}\n${activeShopsMigration}\n${areaGroupsMigration}\n${receivedSplitMigration}`;
 
 const USER_ID = '10000000-0000-4000-8000-000000000001';
 const SHOP_ID = '20000000-0000-4000-8000-000000000001';
@@ -128,7 +136,8 @@ async function createDatabase(t, { applyMigration = true } = {}) {
       allocated_amount numeric(12,2) not null,
       status public.financial_record_status not null,
       recorded_at timestamptz not null,
-      payment_method public.payment_method not null default 'cash'
+      payment_method public.payment_method not null default 'cash',
+      evidence_path text
     );
     create table public.payment_allocations (
       payment_id uuid not null references public.payments(id),
@@ -658,6 +667,7 @@ test('invoice detail server-filters the exact term, historical building, and cur
 
 test('invoice detail returns original items plus active adjustment and payment payloads', async (t) => {
   const db = await createDatabase(t);
+  await db.exec(paymentSlipMigration);
   await db.exec(`
     insert into public.ice_types values ('${ICE_ID}', 'ICE', 'Bag ice', 'bag');
     insert into public.delivery_events values
@@ -678,11 +688,11 @@ test('invoice detail returns original items plus active adjustment and payment p
     insert into public.delivery_adjustment_items values
       ('${ADJUSTMENT_ID}', '${ICE_ID}', 10, 7, -3, 20);
     insert into public.payments (
-      id, shop_id, allocated_amount, status, recorded_at, payment_method
+      id, shop_id, allocated_amount, status, recorded_at, payment_method, evidence_path
     ) values
-      ('${PAYMENT_ID}', '${SHOP_ID}', 50, 'active', '2026-08-02T04:00:00Z', 'bank_transfer'),
+      ('${PAYMENT_ID}', '${SHOP_ID}', 50, 'active', '2026-08-02T04:00:00Z', 'bank_transfer', '${USER_ID}/transfer.jpg'),
       ('80000000-0000-4000-8000-000000000004', '${SHOP_ID}', 25, 'voided',
-        '2026-08-02T05:00:00Z', 'cash');
+        '2026-08-02T05:00:00Z', 'cash', null);
     insert into public.payment_allocations values
       ('${PAYMENT_ID}', '${CREDIT_CHARGE_ID}', 50),
       ('80000000-0000-4000-8000-000000000004', '${CREDIT_CHARGE_ID}', 25);
@@ -717,6 +727,7 @@ test('invoice detail returns original items plus active adjustment and payment p
   }]);
   assert.equal(invoice.payments.length, 1);
   assert.equal(invoice.payments[0].payment_method, 'bank_transfer');
+  assert.equal(invoice.payments[0].evidence_path, `${USER_ID}/transfer.jpg`);
   assert.equal(invoice.payments[0].amount, 50);
   assert.equal(
     new Date(invoice.payments[0].recorded_at).toISOString(),

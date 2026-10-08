@@ -112,6 +112,7 @@
 .accounting-invoice-body ul, .accounting-receipt ul { list-style: none; margin: 0; padding: 0; }
 .accounting-invoice-body li, .accounting-receipt li { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid #e5ebf1; }
 .accounting-invoice-body small, .accounting-receipt li small { display: block; color: #526476; }
+.accounting-payment-slip { min-height: 36px; margin-top: 4px; padding: 4px 10px; border: 1px solid #c9d7e3; border-radius: 6px; background: white; color: #155fa9; font: inherit; cursor: pointer; }
 .accounting-invoice-body .accounting-source-button { justify-self: start; }
 .accounting-drawer[role="dialog"] { width: min(640px, 100%); color: #273d51; }
 .accounting-drawer[role="dialog"] > header button { min-height: 44px; min-width: 44px; }
