@@ -119,7 +119,6 @@ export function EmployeeCasualCustomerPage({
   const [iceTypeId, setIceTypeId] = useState('');
   const [quantityInput, setQuantityInput] = useState('');
   const quantity = Number(quantityInput || 0);
-  const [quantityEditorOpen, setQuantityEditorOpen] = useState(false);
   const [kind, setKind] = useState<CasualTransactionKind>('paid');
   const [saleAmount, setSaleAmount] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
@@ -210,7 +209,6 @@ export function EmployeeCasualCustomerPage({
     () => context?.items.find((item) => item.ice_type_id === iceTypeId) ?? null,
     [context, iceTypeId],
   );
-  const editingItem = selectedItem && quantityEditorOpen;
   const available = Number(selectedItem?.available_quantity ?? 0);
   const quantityError = quantity !== 0 && selectedItem
     ? !Number.isFinite(quantity) || quantity < 0.5 || !Number.isInteger(quantity * 2)
@@ -229,7 +227,6 @@ export function EmployeeCasualCustomerPage({
   const resetForm = () => {
     setIceTypeId('');
     setQuantityInput('');
-    setQuantityEditorOpen(false);
     setSaleAmount('');
     setEvidence(null);
     setNote('');
@@ -411,7 +408,6 @@ export function EmployeeCasualCustomerPage({
                   onClick={() => {
                     if (iceTypeId !== item.ice_type_id) setQuantityInput('');
                     setIceTypeId(item.ice_type_id);
-                    setQuantityEditorOpen(false);
                   }}
                   type="button"
                 >
@@ -428,12 +424,7 @@ export function EmployeeCasualCustomerPage({
 
           <section className="employee-entry-section employee-casual-form" aria-labelledby="casual-kind-title">
             <div className="employee-casual-form__title"><span>2</span><div><h2 id="casual-kind-title">เลือกประเภท</h2></div></div>
-            <div className="employee-casual-selection">
-              <div><strong>{selectedItem?.name ?? 'เลือกน้ำแข็งก่อนบันทึก'}</strong><span>{quantity > 0 && selectedItem ? `${quantity.toLocaleString('th-TH')} ${selectedItem.unit}` : 'ไม่ระบุจำนวน'}</span></div>
-              <button disabled={!selectedItem || busy} onClick={() => setQuantityEditorOpen(true)} type="button">{quantity > 0 ? 'แก้ไขจำนวน' : 'ระบุจำนวน'}</button>
-            </div>
-            {editingItem ? <section aria-label="แป้นใส่จำนวน" className="employee-pos-keypad">
-              <button aria-label="ปิดแป้นใส่จำนวน" className="employee-pos-keypad-backdrop" onClick={() => setQuantityEditorOpen(false)} type="button" />
+            {selectedItem ? <section aria-label="แป้นใส่จำนวน" className="employee-pos-keypad">
               <div className="employee-pos-quantity">
                 <span>{selectedItem.name}</span>
                 <strong aria-live="polite">{quantityInput || '0'} {selectedItem.unit}</strong>
@@ -441,14 +432,13 @@ export function EmployeeCasualCustomerPage({
               </div>
               {quantityError ? <p className="employee-error" role="alert">{quantityError}</p> : null}
               <div className="employee-keypad">
-                {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((digit) => <button disabled={busy} key={digit} onClick={() => setQuantityInput((current) => `${current}${digit}`)} type="button">{digit}</button>)}
+                {['7', '8', '9', '4', '5', '6', '1', '2', '3'].map((digit) => <button disabled={busy} key={digit} onClick={() => setQuantityInput((current) => `${current}${digit}`)} type="button">{digit}</button>)}
                 <button aria-label="ล้างจำนวน" disabled={busy} onClick={() => setQuantityInput('')} type="button">ล้าง</button>
                 <button aria-label={`เพิ่มครึ่ง${selectedItem.unit}`} disabled={busy || Boolean(quantityError) || quantity + 0.5 > available} onClick={() => setQuantityInput(String(quantity + 0.5))} type="button">½ {selectedItem.unit}</button>
                 <button disabled={busy} onClick={() => setQuantityInput((current) => `${current}0`)} type="button">0</button>
                 <button aria-label="ลบหนึ่งหลัก" disabled={busy} onClick={() => setQuantityInput((current) => current.slice(0, -1))} type="button"><Backspace aria-hidden="true" size={24} /></button>
               </div>
-              <button className="employee-pos-add-item" disabled={busy || Boolean(quantityError)} onClick={() => setQuantityEditorOpen(false)} type="button">{quantity === 0 ? 'ไม่ระบุจำนวน' : 'ใช้จำนวนนี้'}</button>
-            </section> : quantityError ? <p className="employee-error" role="alert">{quantityError}</p> : null}
+            </section> : <p className="employee-casual-help">เลือกน้ำแข็งเพื่อกรอกจำนวน</p>}
             <div className="employee-casual-kind">
               <button className={kind === 'paid' ? 'is-selected' : ''} onClick={() => setKind('paid')} type="button"><Money size={24} /><strong>จ่ายทันที</strong></button>
               <button className={kind === 'free' ? 'is-selected' : ''} onClick={() => setKind('free')} type="button"><Gift size={24} /><strong>แจกฟรี</strong></button>

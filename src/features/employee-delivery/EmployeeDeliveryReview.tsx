@@ -579,7 +579,7 @@ export function EmployeeDeliveryReview({
                     </small>
                   </div>
                   <div className="employee-keypad">
-                    {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((digit) => (
+                    {['7', '8', '9', '4', '5', '6', '1', '2', '3'].map((digit) => (
                       <button key={digit} onClick={() => enterDigit(digit)} type="button">{digit}</button>
                     ))}
                     <button

@@ -25,10 +25,11 @@ async function selectIce(user: ReturnType<typeof userEvent.setup>) {
 }
 
 describe('casual customer form', () => {
-  it('records a small cash sale without opening a quantity editor', async () => {
+  it('shows the keypad on selection and records a small cash sale with no quantity', async () => {
     const { user, record } = setup();
     await selectIce(user);
-    expect(screen.queryByRole('region', { name: 'แป้นใส่จำนวน' })).toBeNull();
+    expect(screen.getByRole('region', { name: 'แป้นใส่จำนวน' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'ระบุจำนวน' })).toBeNull();
     await user.type(screen.getByLabelText('ยอดขาย (บาท)'), '5');
     await user.click(screen.getByRole('button', { name: 'ยืนยันขายและรับเงิน' }));
     await waitFor(() => expect(record).toHaveBeenCalledWith(expect.objectContaining({ quantity: 0, saleAmount: 5, receivedAmount: 5, transactionKind: 'paid' })));
@@ -46,7 +47,6 @@ describe('casual customer form', () => {
   it('keeps an over-stock quantity visible and blocks submission until corrected', async () => {
     const { user, record } = setup(5);
     await selectIce(user);
-    await user.click(screen.getByRole('button', { name: 'ระบุจำนวน' }));
     await user.click(screen.getByRole('button', { name: '8', exact: true }));
     expect(document.querySelector('.employee-pos-quantity strong')?.textContent).toBe('8 ถุง');
     expect(screen.getByRole('alert').textContent).toContain('จำนวนเกินสต๊อกคงเหลือ 5 ถุง');
@@ -55,7 +55,6 @@ describe('casual customer form', () => {
     expect(record).not.toHaveBeenCalled();
     await user.click(screen.getByRole('button', { name: 'ลบหนึ่งหลัก' }));
     await user.click(screen.getByRole('button', { name: '4', exact: true }));
-    await user.click(screen.getByRole('button', { name: 'ใช้จำนวนนี้' }));
     await user.click(screen.getByRole('button', { name: 'ยืนยันขายและรับเงิน' }));
     await waitFor(() => expect(record).toHaveBeenCalledWith(expect.objectContaining({ quantity: 4 })));
   });
@@ -63,11 +62,9 @@ describe('casual customer form', () => {
   it('keeps half a bag when zero is appended and submits the same quantity', async () => {
     const { user, record } = setup(10);
     await selectIce(user);
-    await user.click(screen.getByRole('button', { name: 'ระบุจำนวน' }));
     await user.click(screen.getByRole('button', { name: 'เพิ่มครึ่งถุง' }));
     await user.click(screen.getByRole('button', { name: '0', exact: true }));
     expect(document.querySelector('.employee-pos-quantity strong')?.textContent).toBe('0.50 ถุง');
-    await user.click(screen.getByRole('button', { name: 'ใช้จำนวนนี้' }));
     await user.click(screen.getByRole('button', { name: 'แจกฟรี', exact: true }));
     await user.click(screen.getByRole('button', { name: 'ยืนยันแจกฟรี' }));
     await waitFor(() => expect(record).toHaveBeenCalledWith(expect.objectContaining({ quantity: 0.5, transactionKind: 'free' })));
@@ -76,7 +73,6 @@ describe('casual customer form', () => {
   it('does not round an invalid fractional quantity into a valid sale', async () => {
     const { user, record } = setup();
     await selectIce(user);
-    await user.click(screen.getByRole('button', { name: 'ระบุจำนวน' }));
     await user.click(screen.getByRole('button', { name: 'เพิ่มครึ่งถุง' }));
     await user.click(screen.getByRole('button', { name: '2', exact: true }));
     expect(document.querySelector('.employee-pos-quantity strong')?.textContent).toBe('0.52 ถุง');

@@ -4,6 +4,7 @@ import {
   CaretDown,
   CheckCircle,
   FloppyDisk,
+  Info,
   ListNumbers,
   Money,
   Printer,
@@ -335,9 +336,10 @@ export function PaymentModal({
               ) : null}
             </section>
 
-            {canBackdatePayment || isPanel ? (
-              <section className="financial-ops__inline-datetime" aria-label="วันและเวลาที่รับเงิน">
-                <label><span>วันที่รับเงิน</span>{canBackdatePayment ? (
+            {canBackdatePayment ? (
+              <section className="financial-ops__backdate-payment" aria-label="วันและเวลาที่รับเงิน">
+                <label>
+                  <span>วันที่รับเงิน</span>
                   <input
                     disabled={busy || !canRecordPayment}
                     max={today}
@@ -346,10 +348,16 @@ export function PaymentModal({
                     type="date"
                     value={receivedDate}
                   />
-                ) : <input readOnly value={formatServiceDate(today)} />}</label>
-                {canBackdatePayment ? <small>เลือกวันที่เงินเข้าจริง ระบบเก็บเวลาที่บันทึกแยกไว้ให้อัตโนมัติ</small> : (
-                  <label><span>เวลา</span><input readOnly value={new Intl.DateTimeFormat('th-TH', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Bangkok' }).format(new Date())} /></label>
-                )}
+                </label>
+                <small className="financial-ops__backdate-hint">
+                  <Info aria-hidden="true" size={14} weight="bold" />
+                  <span>เลือกวันที่เงินเข้าจริง ระบบเก็บเวลาที่บันทึกแยกไว้ให้อัตโนมัติ</span>
+                </small>
+              </section>
+            ) : isPanel ? (
+              <section className="financial-ops__inline-datetime" aria-label="วันและเวลาที่รับเงิน">
+                <label><span>วันที่รับเงิน</span><input readOnly value={formatServiceDate(today)} /></label>
+                <label><span>เวลา</span><input readOnly value={new Intl.DateTimeFormat('th-TH', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Bangkok' }).format(new Date())} /></label>
               </section>
             ) : null}
 

@@ -66,6 +66,15 @@ test('dashboard uses adjusted sales and recent amounts without changing original
   await assert.rejects(db.query(`select public.get_daily_work_dashboard('2026-09-06')`), /Only a round lead or admin/);
 });
 
+test('legacy event building migration tolerates absent dashboard helpers', async (t) => {
+  const db = await database(t);
+  await db.exec(readMigration('0213_hide_legacy_event_buildings_from_dashboard.sql'));
+  const { rows } = await db.query(`select
+    to_regprocedure('public.daily_work_location_sales(date)') as sales,
+    to_regprocedure('public.daily_work_location_ice_quantities(date)') as quantities`);
+  assert.deepEqual(rows, [{ sales: null, quantities: null }]);
+});
+
 test('dashboard groups adjusted sales by every building and the events for that day', async (t) => {
   const db = await database(t);
   const building = '40000000-0000-4000-8000-000000000001';
@@ -83,7 +92,8 @@ test('dashboard groups adjusted sales by every building and the events for that 
     alter table public.delivery_charges add column event_settlement_context_id uuid;
     insert into public.buildings(id, name, is_active, sort_order, code) values
       ('${building}', 'ตึก A', true, 1, 'A'), ('${emptyBuilding}', 'ตึก B', true, 2, 'B'),
-      ('40000000-0000-4000-8000-000000000003', 'ตึกปิด', false, 3, 'C');
+      ('40000000-0000-4000-8000-000000000003', 'ตึกปิด', false, 3, 'C'),
+      ('40000000-0000-4000-8000-000000000004', 'ตึก B', true, 4, ' EVENT-JOB ');
     update public.shops set building_id = '${building}';
     insert into public.event_jobs values
       ('${event}', 'งานวันนี้', 'published', '2026-09-06', '2026-09-06', null),
@@ -138,6 +148,14 @@ test('dashboard groups adjusted sales by every building and the events for that 
   await db.exec(readMigration('0195_dashboard_location_sales.sql'));
   await db.exec(readMigration('0200_dashboard_hide_expired_event_locations.sql'));
   await db.exec(readMigration('0207_dashboard_location_ice_quantities.sql'));
+  // A missing sales helper must not prevent the quantity helper being patched.
+  await db.exec('alter function public.daily_work_location_sales(date) rename to saved_location_sales');
+  await db.exec(readMigration('0213_hide_legacy_event_buildings_from_dashboard.sql'));
+  const partial = await db.query(`select public.daily_work_location_ice_quantities('2026-09-08') as points`);
+  assert.deepEqual(partial.rows[0].points.map((point) => point.id), [building, emptyBuilding]);
+  await db.exec('alter function public.saved_location_sales(date) rename to daily_work_location_sales');
+  await db.exec(readMigration('0213_hide_legacy_event_buildings_from_dashboard.sql'));
+  await db.exec(readMigration('0213_hide_legacy_event_buildings_from_dashboard.sql'));
   const { rows } = await db.query(`select public.get_daily_work_dashboard('2026-09-06') as dashboard`);
   const sales = rows[0].dashboard.salesSummary;
   assert.deepEqual(sales.locationSales, [

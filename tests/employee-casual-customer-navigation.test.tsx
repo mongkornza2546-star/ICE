@@ -128,7 +128,7 @@ describe('casual-customer POS navigation', () => {
     await user.click(await screen.findByRole('button', { name: 'บันทึกลูกค้าขาจร' }));
     await user.click(document.querySelector('.employee-pos-product-grid button') as HTMLButtonElement);
     expect(document.querySelector('.employee-pos-product-grid button small')?.textContent).toBe('ไม่ระบุจำนวน');
-    await user.click(screen.getByRole('button', { name: 'ระบุจำนวน' }));
+    expect(screen.getByRole('region', { name: 'แป้นใส่จำนวน' })).toBeTruthy();
     await user.click(screen.getByRole('button', { name: 'เพิ่มครึ่งแถว' }));
     expect(document.querySelector('.employee-pos-quantity strong')?.textContent).toBe('0.5 แถว');
   });
