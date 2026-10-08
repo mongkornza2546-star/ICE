@@ -46,7 +46,7 @@ export function printDailyCreditAcknowledgement(
   payload: DailyCreditAcknowledgementDocument,
   existingPrintWindow?: Window | null,
 ) {
-  const heightMm = Math.max(85, 63 + payload.item_totals.length * 8);
+  const heightMm = Math.max(90, 70 + payload.item_totals.length * 9);
   const printWindow = existingPrintWindow
     ?? window.open('', '_blank', `popup,width=360,height=${Math.ceil(heightMm * 3.78)}`);
   if (!printWindow) return false;
@@ -57,20 +57,20 @@ export function printDailyCreditAcknowledgement(
     @page { size: 57mm ${heightMm}mm; margin: 0; }
     * { box-sizing: border-box; }
     html, body { width: 57mm; min-height: ${heightMm}mm; margin: 0; }
-    body { padding: 2mm 2.5mm; color: #000; background: #fff; font-family: "Noto Sans Thai", Tahoma, sans-serif; font-size: 8.5pt; line-height: 1.22; }
-    main { display: grid; gap: .9mm; }
-    h1 { margin: 0; font-size: 12pt; text-align: center; }
-    h2 { margin: 0; font-size: 9pt; }
+    body { padding: 2.5mm 2.5mm; color: #000; background: #fff; font-family: "Noto Sans Thai", Tahoma, sans-serif; font-size: 8.5pt; line-height: 1.45; }
+    main { display: grid; gap: 1.4mm; }
+    h1 { margin: 0; font-size: 12pt; text-align: center; line-height: 1.35; }
+    h2 { margin: 0; font-size: 9pt; line-height: 1.35; }
     p { margin: 0; }
-    small { font-size: 8pt; }
+    small { font-size: 8pt; line-height: 1.4; }
     .center { text-align: center; }
-    .document-title { font-size: 10pt; font-weight: 700; line-height: 1.25; }
-    .totals, .grand-total { border-top: .25mm dashed #000; padding-top: .8mm; }
+    .document-title { font-size: 10pt; font-weight: 700; line-height: 1.4; }
+    .totals, .grand-total { border-top: .25mm dashed #000; padding-top: 1.3mm; margin-top: .5mm; }
     .row, .grand-total { display: flex; justify-content: space-between; gap: 1mm; }
-    .totals .row { font-size: 9.5pt; line-height: 1.3; }
+    .totals .row { font-size: 9.5pt; line-height: 1.45; }
     .totals .row span:first-child { min-width: 0; }
     .totals .row span:last-child { flex-shrink: 0; }
-    .grand-total { font-size: 10pt; font-weight: 700; }
+    .grand-total { font-size: 10pt; font-weight: 700; line-height: 1.35; }
   `;
   printDocument.head.replaceChildren(style);
 

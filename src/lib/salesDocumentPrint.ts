@@ -148,9 +148,9 @@ export function printSalesDocument(
   payload: SalesDocumentPayload,
   existingPrintWindow?: Window | null,
 ) {
-  const heightMm = Math.min(220, Math.max(58, (payload.documentType === 'REC' ? 82 : 48) + payload.items.length * 5
-    + payload.allocations.length * 4 + (payload.voidInfo ? 12 : 0)
-    + (payload.documentType === 'REC' && payload.receivedDate && payload.enteredAt ? 6 : 0)));
+  const heightMm = Math.min(240, Math.max(65, (payload.documentType === 'REC' ? 92 : 55) + payload.items.length * 6
+    + payload.allocations.length * 5 + (payload.voidInfo ? 14 : 0)
+    + (payload.documentType === 'REC' && payload.receivedDate && payload.enteredAt ? 7 : 0)));
   const printWindow = existingPrintWindow
     ?? window.open('', '_blank', `popup,width=360,height=${Math.ceil(heightMm * 3.78)}`);
   if (!printWindow) return false;
@@ -161,28 +161,29 @@ export function printSalesDocument(
     @page { size: 57mm ${heightMm}mm; margin: 0; }
     * { box-sizing: border-box; }
     html, body { width: 57mm; min-height: ${heightMm}mm; margin: 0; }
-    body { padding: 2mm 2.5mm; color: #000; background: #fff; font-family: "Noto Sans Thai", Tahoma, sans-serif; font-size: 7.5pt; line-height: 1.18; }
-    main { display: grid; gap: .8mm; }
-    h1 { margin: 0; font-size: 10pt; text-align: center; }
+    body { padding: 2mm 2.5mm; color: #000; background: #fff; font-family: "Noto Sans Thai", Tahoma, sans-serif; font-size: 7.5pt; line-height: 1.4; }
+    main { display: grid; gap: 1.2mm; }
+    h1 { margin: 0; font-size: 10pt; text-align: center; line-height: 1.35; }
     p { margin: 0; }
     .center { text-align: center; }
     .voided { border: .4mm solid #000; padding: 1mm; font-weight: 700; text-align: center; }
-    .items, .allocations, .total { border-top: .25mm dashed #000; padding-top: .8mm; }
-    .row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 1mm; }
-    .total { display: flex; justify-content: space-between; font-size: 9pt; font-weight: 700; }
-    .signature { margin-top: 5mm; padding-top: 1mm; border-top: .25mm solid #000; text-align: center; }
-    .receipt-header { border-top: .35mm solid #000; border-bottom: .35mm solid #000; padding: 1mm 0; text-align: center; }
-    .receipt-title { font-size: 9pt; font-weight: 700; text-align: center; }
-    .receipt-customer { border-top: .25mm dashed #000; padding-top: .8mm; }
-    .receipt-items { border-top: .25mm dashed #000; border-bottom: .25mm dashed #000; padding: .8mm 0; }
-    .receipt-items__header, .receipt-items__row { display: grid; grid-template-columns: minmax(0, 1fr) auto 17mm; gap: 1mm; }
+    .items, .allocations, .total { border-top: .25mm dashed #000; padding-top: 1.2mm; margin-top: .4mm; }
+    .items, .allocations { display: grid; gap: 1mm; }
+    .row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 1mm; line-height: 1.4; }
+    .total { display: flex; justify-content: space-between; font-size: 9pt; font-weight: 700; line-height: 1.35; }
+    .signature { margin-top: 6mm; padding-top: 1.2mm; border-top: .25mm solid #000; text-align: center; }
+    .receipt-header { border-top: .35mm solid #000; border-bottom: .35mm solid #000; padding: 1.2mm 0; text-align: center; }
+    .receipt-title { font-size: 9pt; font-weight: 700; text-align: center; line-height: 1.35; }
+    .receipt-customer { border-top: .25mm dashed #000; padding-top: 1.2mm; margin-top: .4mm; }
+    .receipt-items { display: grid; gap: 1mm; border-top: .25mm dashed #000; border-bottom: .25mm dashed #000; padding: 1.2mm 0; margin: .4mm 0; }
+    .receipt-items__header, .receipt-items__row { display: grid; grid-template-columns: minmax(0, 1fr) auto 17mm; gap: 1mm; line-height: 1.4; }
     .receipt-items__header { font-weight: 700; }
     .receipt-items__quantity, .receipt-items__amount { text-align: right; white-space: nowrap; }
-    .receipt-reference { margin-top: .6mm; font-size: 6.5pt; }
-    .receipt-totals { display: grid; gap: .4mm; }
-    .receipt-total-row { display: flex; justify-content: space-between; gap: 1mm; }
-    .receipt-total-row:first-child { font-size: 9pt; font-weight: 700; }
-    .receipt-signature { border-top: .25mm dashed #000; margin-top: .6mm; padding-top: 5mm; text-align: center; }
+    .receipt-reference { margin-top: .8mm; font-size: 6.5pt; line-height: 1.35; }
+    .receipt-totals { display: grid; gap: .6mm; margin-top: .4mm; }
+    .receipt-total-row { display: flex; justify-content: space-between; gap: 1mm; line-height: 1.4; }
+    .receipt-total-row:first-child { font-size: 9pt; font-weight: 700; line-height: 1.35; }
+    .receipt-signature { border-top: .25mm dashed #000; margin-top: .8mm; padding-top: 6mm; text-align: center; }
     small { font-size: 6.5pt; }
   `;
   printDocument.head.replaceChildren(style);
