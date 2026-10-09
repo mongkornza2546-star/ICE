@@ -40,6 +40,9 @@ it('merges a legacy QR option into bank transfer and never renders QR as a choic
 
   expect((await screen.findByLabelText('โอนเงิน (Transfer)') as HTMLInputElement).checked).toBe(true);
   expect(screen.queryByLabelText('สแกน QR')).toBeNull();
+  expect(screen.queryByLabelText('ค่าเริ่มต้น (Default Term)')).toBeNull();
+  expect(screen.queryByLabelText('จ่ายทันที (Immediate)')).toBeNull();
+  expect(screen.queryByLabelText('เก็บท้ายวัน (End of Day)')).toBeNull();
   expect((screen.getByLabelText('ช่องทางเริ่มต้น (Default Method)') as HTMLSelectElement).value).toBe('bank_transfer');
 
   fireEvent.click(screen.getByRole('button', { name: 'บันทึกโปรไฟล์การชำระเงิน' }));
@@ -47,5 +50,7 @@ it('merges a legacy QR option into bank transfer and never renders QR as a choic
   await waitFor(() => expect(service.saveShopPaymentProfile).toHaveBeenCalledWith(expect.objectContaining({
     allowed_payment_methods: ['cash', 'bank_transfer'],
     default_payment_method: 'bank_transfer',
+    allowed_payment_terms: ['end_of_day', 'immediate'],
+    default_payment_term: 'end_of_day',
   })));
 });

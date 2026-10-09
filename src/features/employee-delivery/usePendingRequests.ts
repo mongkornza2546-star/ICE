@@ -7,6 +7,7 @@ const PENDING_REQUEST_MAX_AGE_MS = 48 * 60 * 60 * 1000;
 export interface PendingRequestIdentity {
   key: string;
   clientRecordedAt: string;
+  payloadSignature?: string;
   evidencePath?: string | null;
 }
 
@@ -31,21 +32,32 @@ function writePendingRequests(requests: Record<string, PendingRequestIdentity>) 
 }
 
 export function usePendingRequests() {
-  const getOrCreatePendingRequest = useCallback((signature: string) => {
-    const stored = readPendingRequests()[signature] ?? pendingRequestFallback.get(signature);
-    if (stored) return stored;
+  const getPendingRequest = useCallback((storageSignature: string) => (
+    readPendingRequests()[storageSignature] ?? pendingRequestFallback.get(storageSignature)
+  ), []);
 
-    const request: PendingRequestIdentity = {
+  const getOrCreatePendingRequest = useCallback((
+    signature: string,
+    storageSignature = signature,
+    originalRequest?: PendingRequestIdentity,
+  ) => {
+    const stored = getPendingRequest(storageSignature);
+    if (stored) return originalRequest ?? stored;
+
+    const request: PendingRequestIdentity = originalRequest ?? {
       key: crypto.randomUUID(),
       clientRecordedAt: new Date().toISOString(),
+      payloadSignature: signature,
     };
-    pendingRequestFallback.set(signature, request);
-    writePendingRequests({ ...readPendingRequests(), [signature]: request });
+    pendingRequestFallback.set(storageSignature, request);
+    writePendingRequests({ ...readPendingRequests(), [storageSignature]: request });
     return request;
-  }, []);
+  }, [getPendingRequest]);
 
   const clearPendingRequest = useCallback((signature: string, key: string) => {
-    pendingRequestFallback.delete(signature);
+    if (pendingRequestFallback.get(signature)?.key === key) {
+      pendingRequestFallback.delete(signature);
+    }
     const requests = readPendingRequests();
     if (requests[signature]?.key !== key) return;
     delete requests[signature];
@@ -61,5 +73,5 @@ export function usePendingRequests() {
     writePendingRequests({ ...requests, [signature]: next });
   }, []);
 
-  return { getOrCreatePendingRequest, clearPendingRequest, setPendingRequestEvidencePath };
+  return { getPendingRequest, getOrCreatePendingRequest, clearPendingRequest, setPendingRequestEvidencePath };
 }

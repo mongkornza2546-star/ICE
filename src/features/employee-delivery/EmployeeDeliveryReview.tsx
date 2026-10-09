@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent, type KeyboardEvent } from 'react';
 import {
   ArrowLeft,
   Bank,
@@ -7,6 +7,7 @@ import {
   IceCream,
   MapPin,
   Money,
+  MagnifyingGlass,
   Storefront,
   Trash,
   UploadSimple,
@@ -25,17 +26,11 @@ import type {
   ShopRoundStatus,
 } from '../../types/app';
 import { MAX_PAYMENT_EVIDENCE_SIZE } from '../../lib/paymentEvidence';
-import { formatShortTime, isBoothSameAsName, renderTotals, sortPaymentTerms, statusTone, stockQuantity, toTotals } from './utils';
+import { formatShortTime, isBoothSameAsName, renderTotals, statusTone, stockQuantity, toTotals } from './utils';
 import { PROBLEM_STATUSES, STATUS_LABELS } from './constants';
 import { DeliveryCorrectionDialog } from '../delivery-corrections/DeliveryCorrectionDialog';
 import { AutoRefreshShopImage } from '../financial-operations/components/AutoRefreshShopImage';
 import { visiblePaymentMethods } from '../../lib/paymentMethods';
-
-const TERM_LABELS: Record<PaymentTerm, string> = {
-  immediate: 'ส่งและรับชำระ',
-  end_of_day: 'ส่งอย่างเดียว',
-  credit: 'เครดิต',
-};
 
 const METHOD_LABELS: Record<PaymentMethod, string> = {
   cash: 'เงินสด',
@@ -59,7 +54,6 @@ export function EmployeeDeliveryReview({
   posContext,
   posContextError,
   loadingPosContext,
-  paymentTerm,
   paymentResult,
   paymentOpen,
   paymentMethod,
@@ -87,7 +81,9 @@ export function EmployeeDeliveryReview({
   onChooseProblemStatus,
   onSetQuantity,
   onClearCart,
-  onPaymentTermChange,
+  onConfirmDelivery,
+  hasPendingDelivery = false,
+  onRetryDelivery,
   onPaymentMethodChange,
   onPaymentAmountChange,
   onPaymentReferenceChange,
@@ -109,7 +105,6 @@ export function EmployeeDeliveryReview({
   posContext: DeliveryPosContext | null;
   posContextError: string | null;
   loadingPosContext: boolean;
-  paymentTerm: PaymentTerm;
   paymentResult: DeliveryFinancialResult | null;
   paymentOpen: boolean;
   paymentMethod: PaymentMethod;
@@ -137,7 +132,9 @@ export function EmployeeDeliveryReview({
   onChooseProblemStatus: (status: Exclude<ShopRoundStatus, 'pending' | 'delivered'>) => void;
   onSetQuantity: (iceTypeId: string, quantity: number) => void;
   onClearCart: () => void;
-  onPaymentTermChange: (term: PaymentTerm) => void;
+  onConfirmDelivery: (term: PaymentTerm) => void;
+  hasPendingDelivery?: boolean;
+  onRetryDelivery?: () => void;
   onPaymentMethodChange: (method: PaymentMethod) => void;
   onPaymentAmountChange: (amount: string) => void;
   onPaymentReferenceChange: (reference: string) => void;
@@ -151,6 +148,10 @@ export function EmployeeDeliveryReview({
   onCorrectionSuccess: (message: string) => void | Promise<void>;
 }) {
   const [selectedIceTypeId, setSelectedIceTypeId] = useState('');
+  const [shopSearch, setShopSearch] = useState('');
+  const [quantityInput, setQuantityInput] = useState('');
+  const quantityInputRef = useRef<HTMLInputElement>(null);
+  const layoutRef = useRef<HTMLFormElement>(null);
   const [mobileStep, setMobileStep] = useState<'items' | 'review'>('items');
   const [paymentEvidenceError, setPaymentEvidenceError] = useState<string | null>(null);
   const [correctionEventId, setCorrectionEventId] = useState<string | null>(null);
@@ -167,6 +168,15 @@ export function EmployeeDeliveryReview({
     price_source_id: null,
   }));
   const selectedItem = contextItems.find((item) => item.ice_type_id === selectedIceTypeId);
+  const selectedQuantity = selectedItem ? deliveryQuantities[selectedItem.ice_type_id] ?? 0 : 0;
+  const canEditQuantity = !submitting && round.status !== 'closed';
+  const shopQuery = shopSearch.trim().toLocaleLowerCase('th-TH');
+  const inputQuantity = Number(quantityInput);
+  const hasUncommittedQuantity = Boolean(selectedItem)
+    && (quantityInput.trim() === '' || !Number.isFinite(inputQuantity) || inputQuantity !== selectedQuantity);
+  const visibleShopCards = shopCards.filter((card) => [
+    card.shop_code, card.shop_name, card.booth_number, card.building_name, card.floor_or_zone,
+  ].some((value) => value?.toLocaleLowerCase('th-TH').includes(shopQuery)));
   const totalAmount = useMemo(() => items.reduce((total, item) => {
     const product = contextItems.find((candidate) => candidate.ice_type_id === item.ice_type_id);
     return total + item.quantity * (product?.unit_price ?? 0);
@@ -174,12 +184,14 @@ export function EmployeeDeliveryReview({
   const missingPrice = items.some((item) => (
     contextItems.find((candidate) => candidate.ice_type_id === item.ice_type_id)?.unit_price == null
   ));
-  const exceedsCredit = paymentTerm === 'credit'
+  const isCreditShop = Boolean(posContext?.payment_profile?.allowed_payment_terms.includes('credit'));
+  const exceedsCredit = isCreditShop
     && posContext?.payment_profile?.credit_remaining != null
     && totalAmount > posContext.payment_profile.credit_remaining;
   const financialContextRequired = loadingPosContext || Boolean(posContextError) || Boolean(posContext);
   const canSubmit = !submitting
     && round.status !== 'closed'
+    && !hasUncommittedQuantity
     && (!isDelivery || (
       !financialContextRequired
       || (
@@ -188,7 +200,6 @@ export function EmployeeDeliveryReview({
         && !posContextError
         && posContext?.payment_profile
         && !missingPrice
-        && (paymentTerm !== 'immediate' || canCollectImmediatePayment)
         && (!exceedsCredit || Boolean(approvalId))
       )
     ));
@@ -207,21 +218,74 @@ export function EmployeeDeliveryReview({
   }, [shopCard.round_stop_id]);
 
   useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      const target = event.target as HTMLElement | null;
-      if (target?.matches('input, textarea, select, [contenteditable="true"]')) return;
-      if (/^[0-9]$/.test(event.key)) {
-        event.preventDefault();
-        enterDigit(event.key);
-      } else if (event.key === 'Backspace' && selectedItem) {
-        event.preventDefault();
-        const current = String(deliveryQuantities[selectedItem.ice_type_id] ?? 0);
-        onSetQuantity(selectedItem.ice_type_id, Number(current.slice(0, -1) || '0'));
-      }
+    setQuantityInput(String(selectedQuantity));
+  }, [selectedIceTypeId, selectedQuantity]);
+
+  useEffect(() => {
+    const input = quantityInputRef.current;
+    if (input && input.getClientRects().length > 0) {
+      input.focus({ preventScroll: true });
+      input.select();
+    }
+  }, [selectedIceTypeId]);
+
+  useEffect(() => {
+    const layout = layoutRef.current;
+    if (!layout || paymentOpen || problemOpen) return;
+    const updateHeight = () => {
+      // Keep the work area inside the viewport, including any notices above it.
+      const top = layout.getBoundingClientRect().top + window.scrollY;
+      layout.style.setProperty('--employee-pos-height', `${Math.max(0, window.innerHeight - top - 16)}px`);
     };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  });
+    updateHeight();
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(updateHeight);
+    observer?.observe(layout.parentElement!);
+    window.addEventListener('resize', updateHeight);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener('resize', updateHeight);
+    };
+  }, [paymentOpen, problemOpen, loadingPosContext, posContextError]);
+
+  const finishQuantity = () => {
+    if (!selectedItem || !canEditQuantity) return;
+    if (quantityInputRef.current && !quantityInputRef.current.checkValidity()) {
+      quantityInputRef.current.reportValidity();
+      return;
+    }
+    if (!Number.isFinite(inputQuantity) || inputQuantity <= 0) return;
+    onSetQuantity(selectedItem.ice_type_id, inputQuantity);
+    layoutRef.current?.querySelector<HTMLButtonElement>('.employee-pos-product-grid button[aria-pressed="true"]')?.focus({ preventScroll: true });
+    setSelectedIceTypeId('');
+  };
+
+  const handleQuantityInput = (event: ChangeEvent<HTMLInputElement>) => {
+    const value = event.currentTarget.value;
+    setQuantityInput(value);
+  };
+
+  const handleQuantityKeyDown = (event: KeyboardEvent<HTMLFormElement>) => {
+    if (event.nativeEvent.isComposing || event.altKey || event.ctrlKey || event.metaKey) return;
+    const target = event.target as HTMLElement;
+    if (event.key === 'Enter' && target.matches('input')) {
+      // An input's Enter must never implicitly submit the delivery form.
+      event.preventDefault();
+      if (target === quantityInputRef.current) finishQuantity();
+      return;
+    }
+    if (!canEditQuantity || !selectedItem || !target.closest('.employee-pos-entry')
+      || target.matches('input, textarea, select, [contenteditable="true"]')) return;
+    if (/^[0-9]$/.test(event.key)) {
+      event.preventDefault();
+      enterDigit(event.key);
+    } else if (event.key === 'Backspace') {
+      event.preventDefault();
+      onSetQuantity(selectedItem.ice_type_id, Number(String(selectedQuantity).slice(0, -1) || '0'));
+    } else if (event.key === 'Enter' && target.closest('.employee-pos-product-grid')) {
+      event.preventDefault();
+      finishQuantity();
+    }
+  };
 
   const handlePaymentEvidenceChange = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.currentTarget.files?.[0] ?? null;
@@ -446,7 +510,8 @@ export function EmployeeDeliveryReview({
   }
 
   return (
-    <div className="employee-pos">
+    <div className={`employee-pos ${problemOpen ? '' : 'employee-pos--desktop-layout'}`}>
+      <div className="employee-pos-toolbar">
       <button autoFocus className="employee-back" disabled={submitting} onClick={onBack} type="button">
         <ArrowLeft aria-hidden="true" size={24} />
         <span>กลับไปเลือกร้าน</span>
@@ -455,7 +520,7 @@ export function EmployeeDeliveryReview({
       <nav aria-label="ขั้นตอนบันทึกส่ง" className="employee-pos-mobile-steps">
         <button disabled={submitting} onClick={onBack} type="button"><span>1</span> ร้าน</button>
         <button aria-current={mobileStep === 'items' ? 'step' : undefined} onClick={() => setMobileStep('items')} type="button"><span>2</span> รายการ</button>
-        <button aria-current={mobileStep === 'review' ? 'step' : undefined} disabled={items.length === 0} onClick={() => setMobileStep('review')} type="button"><span>3</span> ตรวจ</button>
+        <button aria-current={mobileStep === 'review' ? 'step' : undefined} disabled={submitting || items.length === 0 || hasUncommittedQuantity} onClick={() => setMobileStep('review')} type="button"><span>3</span> ตรวจ</button>
       </nav>
 
       <header className="employee-pos-shop">
@@ -485,6 +550,7 @@ export function EmployeeDeliveryReview({
           {STATUS_LABELS[shopCard.stop_status]}
         </span>
       </header>
+      </div>
 
       {loadingPosContext ? <p className="employee-pos-notice">กำลังโหลดราคา สต๊อก และเงื่อนไขชำระ…</p> : null}
       {posContext?.client_cache?.stale ? (
@@ -494,19 +560,25 @@ export function EmployeeDeliveryReview({
       ) : null}
       {posContextError ? <p className="employee-error" role="alert">{posContextError}</p> : null}
 
-      <form className="employee-pos-layout" onSubmit={onSubmit}>
+      <form className="employee-pos-layout" onKeyDown={handleQuantityKeyDown} onSubmit={onSubmit} ref={layoutRef}>
         {!problemOpen ? (
           <>
             <section aria-label="เลือกร้านอื่น" className="employee-pos-shops">
               <div className="employee-pos-heading"><div><p>ร้าน</p><h2>ร้านในรอบ</h2></div><span>{shopCards.length} ร้าน</span></div>
+              <label className="employee-search employee-pos-shop-search">
+                <MagnifyingGlass aria-hidden="true" size={18} />
+                <input aria-label="ค้นหาร้านในรอบ" disabled={submitting} onChange={(event) => setShopSearch(event.target.value)} placeholder="รหัส / ชื่อร้าน" type="search" value={shopSearch} />
+              </label>
               <div className="employee-pos-shop-list">
-                {shopCards.map((card) => {
+                {visibleShopCards.length === 0 ? <p className="employee-pos-no-shops">ไม่พบร้านที่ค้นหา</p> : null}
+                {visibleShopCards.map((card) => {
                   const isEvent = card.destination_kind === 'event';
                   const boothText = card.booth_number ? `บูธ ${card.booth_number}` : '';
                   const sameBooth = isEvent && isBoothSameAsName(card.shop_name, card.booth_number);
                   return (
                     <button
                       aria-current={card.round_stop_id === shopCard.round_stop_id ? 'true' : undefined}
+                      disabled={submitting}
                       key={card.round_stop_id}
                       onClick={() => onChangeShop(card)}
                       type="button"
@@ -518,6 +590,7 @@ export function EmployeeDeliveryReview({
                 })}
               </div>
             </section>
+            <div className="employee-pos-entry">
             <section className={`employee-pos-products ${mobileStep === 'items' ? '' : 'employee-pos-mobile--hidden'}`} aria-labelledby="employee-delivery-items">
               <div className="employee-pos-heading">
                 <div>
@@ -571,12 +644,35 @@ export function EmployeeDeliveryReview({
                   />
                   <div className="employee-pos-quantity">
                     <span>{selectedItem.name}</span>
-                    <strong aria-live="polite">
+                    <strong aria-live="polite" className="employee-pos-quantity-display">
                       {deliveryQuantities[selectedItem.ice_type_id] ?? 0}
                     </strong>
                     <small>
                       คงเหลือ {selectedItem.stock_quantity === Number.MAX_SAFE_INTEGER ? '—' : selectedItem.stock_quantity} {selectedItem.unit}
                     </small>
+                  </div>
+                  <label className="employee-pos-quantity-input">
+                    <span>จำนวน ({selectedItem.unit})</span>
+                    <input
+                      aria-label={`จำนวน${selectedItem.name}`}
+                      disabled={!canEditQuantity}
+                      inputMode="decimal"
+                      min="0"
+                      max={selectedItem.stock_quantity === Number.MAX_SAFE_INTEGER ? undefined : selectedItem.stock_quantity}
+                      onChange={handleQuantityInput}
+                      ref={quantityInputRef}
+                      step="0.5"
+                      type="number"
+                      value={quantityInput}
+                    />
+                    <small>กด Enter เพื่อเพิ่มรายการ</small>
+                  </label>
+                  <div className="employee-pos-quick-quantities" role="group" aria-label="เลือกจำนวนด่วน">
+                    {[0.5, 1, 2, 3].map((quantity) => (
+                      <button disabled={!canEditQuantity} key={quantity} onClick={() => onSetQuantity(selectedItem.ice_type_id, quantity)} type="button">
+                        {quantity === 0.5 ? '½' : quantity}
+                      </button>
+                    ))}
                   </div>
                   <div className="employee-keypad">
                     {['7', '8', '9', '4', '5', '6', '1', '2', '3'].map((digit) => (
@@ -597,7 +693,7 @@ export function EmployeeDeliveryReview({
                       )}
                       type="button"
                     >
-                      ½ กระสอบ
+                      <span>½ <span className="employee-keypad-half-unit">กระสอบ</span></span>
                     </button>
                     <button onClick={() => enterDigit('0')} type="button">0</button>
                     <button
@@ -613,12 +709,20 @@ export function EmployeeDeliveryReview({
                   </div>
                   <button
                     className="employee-pos-add-item"
-                    disabled={(deliveryQuantities[selectedItem.ice_type_id] ?? 0) === 0}
-                    onClick={() => setSelectedIceTypeId('')}
+                    disabled={!canEditQuantity || !Number.isFinite(inputQuantity) || inputQuantity <= 0}
+                    onClick={finishQuantity}
                     type="button"
                   >
                     เพิ่มรายการ
                   </button>
+                  {hasUncommittedQuantity ? (
+                    <button className="employee-text-button" disabled={!canEditQuantity} onClick={() => {
+                      setQuantityInput(String(selectedQuantity));
+                      setSelectedIceTypeId('');
+                    }} type="button">
+                      ยกเลิกการแก้จำนวน
+                    </button>
+                  ) : null}
                 </>
               ) : (
                 <div className="employee-pos-keypad-empty">
@@ -628,6 +732,7 @@ export function EmployeeDeliveryReview({
                 </div>
               )}
             </section>
+            </div>
 
             <section aria-label="สรุปตะกร้า" className={`employee-pos-cart ${mobileStep === 'review' ? '' : 'employee-pos-mobile--hidden'}`}>
               <button className="employee-pos-mobile-back" onClick={() => setMobileStep('items')} type="button">
@@ -654,35 +759,11 @@ export function EmployeeDeliveryReview({
               {items.length > 0 ? (
                 <button className="employee-text-button employee-cart-clear" disabled={submitting} onClick={onClearCart} type="button">ล้างตะกร้า</button>
               ) : null}
-              {posContext?.payment_profile ? (
-                <fieldset className="employee-payment-terms">
-                  <legend>เงื่อนไขชำระ</legend>
-                  {sortPaymentTerms(shopCard.destination_kind === 'event' && canCollectImmediatePayment
-                    ? [...posContext.payment_profile.allowed_payment_terms, 'immediate']
-                    : posContext.payment_profile.allowed_payment_terms).map((term) => (
-                    <button
-                      aria-pressed={paymentTerm === term}
-                      disabled={term === 'immediate' && !canCollectImmediatePayment}
-                      key={term}
-                      onClick={() => onPaymentTermChange(term)}
-                      type="button"
-                    >
-                      {TERM_LABELS[term]}
-                    </button>
-                  ))}
-                  {paymentTerm === 'credit' ? (
-                    <small>
-                      วงเงินคงเหลือ {posContext.payment_profile.credit_remaining == null
-                        ? 'ไม่จำกัด'
-                        : money.format(posContext.payment_profile.credit_remaining)} · {formatCreditCollectionCycle(posContext.payment_profile)}
-                    </small>
-                  ) : paymentTerm === 'immediate' && !canCollectImmediatePayment ? (
-                    <small>บัญชีนี้ยังไม่ได้รับสิทธิ์รับชำระเงิน</small>
-                  ) : paymentTerm === 'immediate' ? (
-                    <small>หลังยืนยัน ระบบจะเปิดหน้ารับชำระของลูกค้ารายนี้</small>
-                  ) : null}
-                </fieldset>
-              ) : financialContextRequired && !loadingPosContext ? (
+              {isCreditShop && posContext?.payment_profile ? (
+                <p className="employee-credit-note">ร้านเครดิต · วงเงินคงเหลือ {posContext.payment_profile.credit_remaining == null
+                  ? 'ไม่จำกัด'
+                  : money.format(posContext.payment_profile.credit_remaining)} · {formatCreditCollectionCycle(posContext.payment_profile)}</p>
+              ) : !posContext?.payment_profile && financialContextRequired && !loadingPosContext ? (
                 <p className="employee-error">ร้านนี้ยังไม่มีเงื่อนไขการชำระ</p>
               ) : null}
               <div className="employee-cart-total">
@@ -708,9 +789,24 @@ export function EmployeeDeliveryReview({
                 </div>
               ) : null}
               {entryError ? <p className="employee-error" role="alert"><WarningCircle aria-hidden="true" />{entryError}</p> : null}
-              <button className="employee-submit" disabled={!canSubmit} type="submit">
-                {round.status === 'closed' ? 'รอบนี้ปิดแล้ว' : submitting ? 'กำลังบันทึก...' : 'ยืนยันส่งร้านนี้'}
-              </button>
+              <div className="employee-delivery-actions">
+                <button className="employee-submit" disabled={!canSubmit || hasPendingDelivery} onClick={() => onConfirmDelivery(isCreditShop ? 'credit' : 'end_of_day')} type="button">
+                  {submitting ? 'กำลังบันทึก...' : 'ส่งอย่างเดียว'}
+                </button>
+                <button className="employee-submit" disabled={!canSubmit || hasPendingDelivery || !canCollectImmediatePayment || isCreditShop} onClick={() => onConfirmDelivery('immediate')} type="button">
+                  {submitting ? 'กำลังบันทึก...' : 'ส่งและรับชำระ'}
+                </button>
+              </div>
+              {hasPendingDelivery && !submitting ? (
+                <div>
+                  <small className="employee-delivery-action-note">คำขอก่อนหน้ายังไม่ทราบผล ตรวจผลรายการเดิมก่อนส่งใหม่</small>
+                  <button className="employee-submit" disabled={submitting} onClick={onRetryDelivery} type="button">
+                    ตรวจผล / ลองคำขอเดิมอีกครั้ง
+                  </button>
+                </div>
+              ) : null}
+              {hasUncommittedQuantity ? <small className="employee-delivery-action-note">กดเพิ่มรายการหรือยกเลิกการแก้จำนวนก่อนส่ง</small> : null}
+              {!canCollectImmediatePayment && !isCreditShop ? <small className="employee-delivery-action-note">บัญชีนี้ยังไม่ได้รับสิทธิ์รับชำระเงิน</small> : null}
             </section>
           </>
         ) : (
@@ -745,7 +841,7 @@ export function EmployeeDeliveryReview({
       {!problemOpen && mobileStep === 'items' ? (
         <button
           className="employee-pos-review-toggle"
-          disabled={submitting || items.length === 0}
+          disabled={submitting || items.length === 0 || hasUncommittedQuantity}
           onClick={() => setMobileStep('review')}
           type="button"
         >

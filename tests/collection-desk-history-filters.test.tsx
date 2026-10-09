@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -15,14 +15,14 @@ const payments: PaymentHistoryItem[] = [
   },
   {
     id: 'payment-b', receipt_number: 'REC-B', received_amount: 200, allocated_amount: 200,
-    change_amount: 0, payment_method: 'cash', status: 'active',
+    change_amount: 0, payment_method: 'transfer', status: 'active',
     recorded_at: '2026-09-24T09:00:00.000Z', void_reason: null,
     building_id: 'building-b', building_name: 'ตึก B', zone_id: 'zone-b1', zone_name: 'โซน 1',
     shops: { code: 'B1', name: 'ร้าน B' },
   },
   {
     id: 'payment-b2', receipt_number: 'REC-B2', received_amount: 300, allocated_amount: 300,
-    change_amount: 0, payment_method: 'cash', status: 'active',
+    change_amount: 0, payment_method: 'cash', status: 'voided',
     recorded_at: '2026-09-24T10:00:00.000Z', void_reason: null,
     building_id: 'building-b', building_name: 'ตึก B', zone_id: 'zone-b2', zone_name: 'โซน 2',
     shops: { code: 'B2', name: 'ร้าน B2' },
@@ -55,6 +55,12 @@ describe('CollectionDesk history filters', () => {
     const building = screen.getByLabelText('เลือกตึก') as HTMLSelectElement;
     const zone = screen.getByLabelText('เลือกโซน') as HTMLSelectElement;
     expect(screen.getByRole('option', { name: 'ตึก B' })).toBeTruthy();
+    expect(zone.disabled).toBe(false);
+    expect(screen.getByRole('option', { name: 'โซน 2 · ตึก B' })).toBeTruthy();
+    await user.selectOptions(zone, 'zone-b2');
+    expect(screen.queryByText('REC-A')).toBeNull();
+    expect(screen.getByText('REC-B2')).toBeTruthy();
+    await user.selectOptions(zone, '');
     await user.selectOptions(building, 'building-b');
     expect(screen.queryByText('REC-A')).toBeNull();
     expect(screen.getByText('REC-B')).toBeTruthy();
@@ -72,5 +78,47 @@ describe('CollectionDesk history filters', () => {
     await user.selectOptions(building, 'building-a');
     expect(screen.getByText('REC-A')).toBeTruthy();
     expect(screen.queryByText('REC-B')).toBeNull();
+  });
+
+  it('shows the latest receipt first and filters history by method and status', async () => {
+    const user = userEvent.setup();
+    render(<CollectionDesk
+      busy={false}
+      historyDate="2026-09-24"
+      onClearShop={vi.fn()}
+      onHistoryDateChange={vi.fn()}
+      onOpenReceipt={vi.fn()}
+      onPrintReceipt={vi.fn()}
+      onRefresh={vi.fn()}
+      onSelectShop={vi.fn()}
+      onVoidPayment={vi.fn()}
+      paymentHistory={payments}
+      paymentPanel={null}
+      queue={[]}
+      runId={null}
+      selectedShop={null}
+      serviceDate="2026-09-24"
+      todayPayments={payments}
+    />);
+
+    await user.click(screen.getByRole('tab', { name: /ประวัติรับเงิน/ }));
+    expect((screen.getByLabelText('เรียงรายการ') as HTMLSelectElement).value).toBe('recent');
+    expect(screen.getAllByRole('button', { name: /เลือกรายการ/ }).map((button) => button.textContent?.match(/REC-[A-Z0-9]+/)?.[0]))
+      .toEqual(['REC-B2', 'REC-B', 'REC-A']);
+
+    await user.selectOptions(screen.getByLabelText('กรองวิธีรับเงิน'), 'transfer');
+    expect(screen.getByText('REC-B')).toBeTruthy();
+    expect(screen.queryByText('REC-A')).toBeNull();
+    expect(screen.queryByText('REC-B2')).toBeNull();
+
+    await user.selectOptions(screen.getByLabelText('กรองวิธีรับเงิน'), 'all');
+    await user.selectOptions(screen.getByLabelText('กรองสถานะรับเงิน'), 'voided');
+    expect(screen.getByText('REC-B2')).toBeTruthy();
+    expect(screen.queryByText('REC-B')).toBeNull();
+    expect(within(screen.getByText('REC-B2').closest('button')!).getByText('ยกเลิกแล้ว')).toBeTruthy();
+
+    await user.selectOptions(screen.getByLabelText('กรองสถานะรับเงิน'), 'all');
+    await user.selectOptions(screen.getByLabelText('เรียงรายการ'), 'high');
+    expect((screen.getByLabelText('เรียงรายการ') as HTMLSelectElement).value).toBe('high');
   });
 });

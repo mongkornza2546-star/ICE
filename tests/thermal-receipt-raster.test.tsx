@@ -79,6 +79,8 @@ describe('thermal receipt raster', () => {
     expect(compactText).toContain('อ้างอิงใบสั่งซื้อ: INV2608-00035');
     expect(text).toContain('รับเงินสด (Cash Received)');
     expect(text).toContain('เงินทอน (Change)');
+    expect(drawnFonts.find(({ text }) => text === 'Super Ice')?.font).toContain('31px');
+    expect(drawnFonts.find(({ text }) => text.includes('หลอดเล็ก'))?.font).toContain('25px');
   });
 
   it('keeps invoice payment, allocation, operator, received, change, and void audit fields', async () => {

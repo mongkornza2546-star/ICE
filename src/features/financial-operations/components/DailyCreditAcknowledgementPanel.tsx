@@ -1,5 +1,5 @@
-import { FileText, Printer, WarningCircle } from '@phosphor-icons/react';
-import { useCallback, useEffect, useState } from 'react';
+import { CaretDown, CaretUp, FileText, Printer, WarningCircle } from '@phosphor-icons/react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { withAsyncPublicImageUrls } from '../../../lib/publicImageUrls';
 import { getHybridObjectUrl, getHybridObjectUrls } from '../../../lib/r2Storage';
 import { printDailyCreditAcknowledgementForCurrentPlatform, type DailyCreditAcknowledgementDocument } from '../../../lib/dailyCreditAcknowledgementPrint';
@@ -15,6 +15,10 @@ type DailyCreditAcknowledgementSummary = {
   shop_code: string;
   shop_name: string;
   shop_location: string | null;
+  building_id: string | null;
+  building_name: string | null;
+  zone_id: string | null;
+  zone_name: string | null;
   image_path: string | null;
   image_url?: string | null;
   invoice_count: number;
@@ -28,6 +32,8 @@ type DailyCreditAcknowledgementSummary = {
   latest_evidence_path: string | null;
 };
 
+type CreditInvoice = DailyCreditAcknowledgementDocument['invoices'][number];
+
 const dateTime = new Intl.DateTimeFormat('th-TH', {
   dateStyle: 'short',
   timeStyle: 'short',
@@ -39,13 +45,37 @@ export function DailyCreditAcknowledgementPanel({ serviceDate, printerName }: { 
   const [items, setItems] = useState<DailyCreditAcknowledgementSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyShopId, setBusyShopId] = useState<string | null>(null);
+  const [buildingId, setBuildingId] = useState('');
+  const [zoneId, setZoneId] = useState('');
+  const [detail, setDetail] = useState<{ shopId: string; invoices: CreditInvoice[] | null; error: string | null } | null>(null);
+  const detailRequest = useRef(0);
   const [error, setError] = useState<string | null>(null);
   const today = toBangkokDateString();
 
+  const buildings = useMemo(() => [...new Map(items.filter((item) => item.building_id && item.building_name)
+    .map((item) => [item.building_id!, item.building_name!] as const)).entries()]
+    .sort((left, right) => left[1].localeCompare(right[1], 'th')), [items]);
+  const zones = useMemo(() => [...new Map(items.filter((item) => item.zone_id && item.zone_name && (!buildingId || item.building_id === buildingId))
+    .map((item) => [item.zone_id!, { name: item.zone_name!, buildingName: item.building_name }] as const)).entries()]
+    .sort((left, right) => left[1].name.localeCompare(right[1].name, 'th')), [buildingId, items]);
+  const filteredItems = useMemo(() => items.filter((item) =>
+    (!buildingId || item.building_id === buildingId) && (!zoneId || item.zone_id === zoneId)), [buildingId, items, zoneId]);
+
   useEffect(() => setSelectedDate(serviceDate), [serviceDate]);
+  useEffect(() => {
+    if (buildingId && !buildings.some(([id]) => id === buildingId)) {
+      setBuildingId('');
+      setZoneId('');
+    }
+  }, [buildingId, buildings]);
+  useEffect(() => {
+    if (zoneId && !zones.some(([id]) => id === zoneId)) setZoneId('');
+  }, [zoneId, zones]);
 
   const load = useCallback(async () => {
     if (!supabase) return;
+    detailRequest.current += 1;
+    setDetail(null);
     setLoading(true);
     setError(null);
     try {
@@ -70,6 +100,31 @@ export function DailyCreditAcknowledgementPanel({ serviceDate, printerName }: { 
 
   useEffect(() => { void load(); }, [load]);
   useEffect(() => subscribeToDataChange(['receivable'], () => { void load(); }), [load]);
+
+  const openDetail = async (item: DailyCreditAcknowledgementSummary) => {
+    const request = ++detailRequest.current;
+    setDetail({ shopId: item.shop_id, invoices: null, error: null });
+    try {
+      if (!supabase) throw new Error('ยังไม่ได้ตั้งค่า Supabase');
+      const { data, error: detailError } = await supabase.rpc('get_daily_credit_acknowledgement_details', {
+        p_shop_id: item.shop_id,
+        p_service_date: selectedDate,
+      });
+      if (detailError) throw detailError;
+      if (request === detailRequest.current) setDetail({ shopId: item.shop_id, invoices: (data ?? []) as CreditInvoice[], error: null });
+    } catch (detailError) {
+      if (request === detailRequest.current) setDetail({ shopId: item.shop_id, invoices: null, error: getErrorMessage(detailError) });
+    }
+  };
+
+  const toggleDetail = (item: DailyCreditAcknowledgementSummary) => {
+    if (detail?.shopId === item.shop_id) {
+      detailRequest.current += 1;
+      setDetail(null);
+    } else {
+      void openDetail(item);
+    }
+  };
 
   const print = async (item: DailyCreditAcknowledgementSummary) => {
     const nativeAndroid = isAndroidApp();
@@ -130,26 +185,57 @@ export function DailyCreditAcknowledgementPanel({ serviceDate, printerName }: { 
       <div><FileText /><span><h2 id="daily-credit-signoff-title">ใบเซ็นเครดิตรายวัน</h2><p>รวมทุกใบ INV ของร้านในวันเดียว เพื่อให้ร้านตรวจและเซ็นครั้งเดียว</p></span></div>
       <label>วันที่<input max={today} onChange={(event) => setSelectedDate(event.target.value)} type="date" value={selectedDate} /></label>
     </div>
+    <div className="daily-credit-signoff__filters">
+      <label>ตึก
+        <select onChange={(event) => { setBuildingId(event.target.value); setZoneId(''); }} value={buildingId}>
+          <option value="">ทุกตึก</option>
+          {buildings.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+        </select>
+      </label>
+      <label>โซน
+        <select onChange={(event) => setZoneId(event.target.value)} value={zoneId}>
+          <option value="">ทุกโซน</option>
+          {zones.map(([id, zone]) => <option key={id} value={id}>{zone.name}{!buildingId && zone.buildingName ? ` · ${zone.buildingName}` : ''}</option>)}
+        </select>
+      </label>
+    </div>
     {error ? <p className="credit-ar__action-error" role="alert"><WarningCircle size={18} />{error}</p> : null}
     {loading ? <p className="financial-ops__empty">กำลังโหลดใบเครดิต...</p> : null}
     {!loading && items.length === 0 ? <p className="financial-ops__empty">วันนี้ยังไม่มีรายการส่งร้านเครดิต</p> : null}
+    {!loading && items.length > 0 && filteredItems.length === 0 ? <p className="financial-ops__empty">ไม่มีร้านในตึกและโซนที่เลือก</p> : null}
     <div className="daily-credit-signoff__list">
-      {items.map((item) => {
+      {!loading && filteredItems.map((item) => {
         const busy = busyShopId === item.shop_id;
+        const expanded = detail?.shopId === item.shop_id;
         const label = item.is_stale ? 'ยอดเปลี่ยน · พิมพ์ฉบับใหม่' : item.document_id ? `ฉบับที่ ${item.document_version}` : 'ยังไม่ได้สร้างใบ';
         return <article key={item.shop_id}>
           <div className="daily-credit-signoff__summary">
             <div className="daily-credit-signoff__shop">
               {item.image_url ? <img alt={`รูปร้าน ${item.shop_code} · ${item.shop_name}`} decoding="async" loading="lazy" src={item.image_url} /> : null}
-              <span><strong>{item.shop_code} · {item.shop_name}</strong><small>{item.shop_location ?? '—'} · {item.invoice_count} INV · ส่งล่าสุด {dateTime.format(new Date(item.latest_delivery_at))}</small></span>
+              <span><strong>{item.shop_code} · {item.shop_name}</strong><small>{item.building_name && item.zone_name ? `${item.building_name} · ${item.zone_name} · ` : ''}{item.shop_location ?? '—'} · {item.invoice_count} INV · ส่งล่าสุด {dateTime.format(new Date(item.latest_delivery_at))}</small></span>
             </div>
             <b>{money.format(Number(item.total_amount))}</b>
           </div>
           {item.open_round_count > 0 ? <p className="daily-credit-signoff__warning"><WarningCircle size={15} />ยังมีรอบส่งเปิดอยู่ ยอดอาจเพิ่มได้</p> : null}
+          {expanded ? <div className="daily-credit-signoff__details" id={`credit-details-${item.shop_id}`}>
+            <h3>รายละเอียดของ {item.shop_name}</h3>
+            {!detail?.invoices && !detail?.error ? <p role="status">กำลังโหลดรายละเอียด...</p> : null}
+            {detail?.error ? <p role="alert">{detail.error} <button onClick={() => void openDetail(item)} type="button">ลองอีกครั้ง</button></p> : null}
+            {detail?.invoices?.map((invoice) => <div className="daily-credit-signoff__invoice" key={invoice.document_number}>
+              <div><strong>{invoice.document_number}</strong><b>{money.format(Number(invoice.total_amount))}</b></div>
+              <small>ส่ง {dateTime.format(new Date(invoice.recorded_at))}{invoice.recorded_by ? ` · ${invoice.recorded_by}` : ''}</small>
+              <ul>{invoice.items.map((line, index) => <li key={`${line.ice_type_name}-${index}`}>
+                <span>{line.ice_type_name} · {Number(line.quantity)} {line.ice_type_unit}{line.unit_price == null ? '' : ` × ${money.format(Number(line.unit_price))}`}</span>
+                <b>{money.format(Number(line.line_total))}</b>
+              </li>)}</ul>
+            </div>)}
+            {detail?.invoices ? <div className="daily-credit-signoff__detail-total"><strong>รวม {detail.invoices.length} INV</strong><b>{money.format(detail.invoices.reduce((sum, invoice) => sum + Number(invoice.total_amount), 0))}</b></div> : null}
+          </div> : null}
           <footer>
             <span className={item.is_stale ? 'is-stale' : ''}>{label}{item.evidence_count ? ` · มีรูปใบเซ็น ${item.evidence_count} รูป` : ''}</span>
             <div>
               <button disabled={busy} onClick={() => void print(item)} type="button"><Printer size={17} />{item.document_id && !item.is_stale ? 'พิมพ์ซ้ำ' : 'พิมพ์ใบรวม'}</button>
+              <button aria-controls={expanded ? `credit-details-${item.shop_id}` : undefined} aria-expanded={expanded} disabled={busy} onClick={() => toggleDetail(item)} type="button">{expanded ? <CaretUp size={18} /> : <CaretDown size={18} />}{expanded ? 'ซ่อนรายละเอียด' : 'ดูรายละเอียดยอด'}</button>
               {item.latest_evidence_path ? <button disabled={busy} onClick={() => void viewEvidence(item)} type="button">ดูรูป</button> : null}
             </div>
           </footer>

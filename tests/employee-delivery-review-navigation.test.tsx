@@ -1,4 +1,5 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
+import { useState, type ComponentProps } from 'react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { EmployeeDeliveryReview } from '../src/features/employee-delivery/EmployeeDeliveryReview';
@@ -77,18 +78,21 @@ const posContext: DeliveryPosContext = {
   },
 };
 
-function renderReview(canCollectImmediatePayment = true, card = shopCard) {
-  render(<EmployeeDeliveryReview
+function renderReview(canCollectImmediatePayment = true, card = shopCard, overrides: Partial<ComponentProps<typeof EmployeeDeliveryReview>> = {}) {
+  const onSubmit = vi.fn((event) => event.preventDefault());
+  const onConfirmDelivery = vi.fn();
+  function ReviewWithQuantities() {
+    const [quantities, setQuantities] = useState<Record<string, number>>({ 'ice-1': 2 });
+    return <EmployeeDeliveryReview
     round={round}
     shopCard={card}
     atomicImmediateSale={false}
     canCollectImmediatePayment={canCollectImmediatePayment}
     assignedStockState={null}
-    deliveryQuantities={{ 'ice-1': 2 }}
+    deliveryQuantities={quantities}
     posContext={posContext}
     posContextError={null}
     loadingPosContext={false}
-    paymentTerm="immediate"
     paymentResult={null}
     paymentOpen={false}
     paymentMethod="cash"
@@ -102,7 +106,7 @@ function renderReview(canCollectImmediatePayment = true, card = shopCard) {
     approvalSubmitting={false}
     enableAssignedStockFlow={false}
     iceTypes={[]}
-    items={[{ ice_type_id: 'ice-1', quantity: 2 }]}
+    items={Object.entries(quantities).filter(([, quantity]) => quantity > 0).map(([ice_type_id, quantity]) => ({ ice_type_id, quantity }))}
     status="delivered"
     stockSourceLabel="สต๊อกรวมประจำวัน"
     shopCards={[card]}
@@ -112,11 +116,10 @@ function renderReview(canCollectImmediatePayment = true, card = shopCard) {
     entryError={null}
     onBack={vi.fn()}
     onChangeShop={vi.fn()}
-    onSubmit={vi.fn()}
+    onSubmit={onSubmit}
     onChooseProblemStatus={vi.fn()}
-    onSetQuantity={vi.fn()}
     onClearCart={vi.fn()}
-    onPaymentTermChange={vi.fn()}
+    onConfirmDelivery={onConfirmDelivery}
     onPaymentMethodChange={vi.fn()}
     onPaymentAmountChange={vi.fn()}
     onPaymentReferenceChange={vi.fn()}
@@ -128,18 +131,143 @@ function renderReview(canCollectImmediatePayment = true, card = shopCard) {
     onNoteChange={vi.fn()}
     onReturnToDelivery={vi.fn()}
     onCorrectionSuccess={vi.fn()}
-  />);
+    {...overrides}
+    onSetQuantity={(id, quantity) => {
+      overrides.onSetQuantity?.(id, quantity);
+      setQuantities((current) => ({ ...current, [id]: Math.min(167, Math.max(0, Math.round(quantity * 2) / 2)) }));
+    }}
+  />;
+  }
+  render(<ReviewWithQuantities />);
+  return { onSubmit, onConfirmDelivery };
 }
 
 describe('employee delivery review navigation', () => {
-  it('describes the delivery-first collection choices from the employee perspective', () => {
-    renderReview();
+  it.each(['', '1.1', '3', '168'])('blocks delivery and review while quantity %s is uncommitted', async (value) => {
+    const user = userEvent.setup();
+    const { onConfirmDelivery } = renderReview();
+    await user.click(screen.getByRole('button', { name: /หลอดเล็ก.*คงเหลือ/ }));
+    const input = screen.getByRole('spinbutton', { name: 'จำนวนหลอดเล็ก' });
+    await user.clear(input);
+    if (value) await user.type(input, value);
+
+    for (const name of ['ส่งอย่างเดียว', 'ส่งและรับชำระ', 'ตรวจรายการ (1)', '3 ตรวจ']) {
+      const button = screen.getByRole('button', { name });
+      expect(button.hasAttribute('disabled')).toBe(true);
+      await user.click(button);
+    }
+    expect(onConfirmDelivery).not.toHaveBeenCalled();
+    expect(screen.getByText('2 ถุง × ฿60.00')).toBeTruthy();
+  });
+
+  it('allows delivery with the original cart after cancelling a quantity edit', async () => {
+    const user = userEvent.setup();
+    const { onConfirmDelivery } = renderReview();
+    await user.click(screen.getByRole('button', { name: /หลอดเล็ก.*คงเหลือ/ }));
+    await user.clear(screen.getByRole('spinbutton', { name: 'จำนวนหลอดเล็ก' }));
+    await user.click(screen.getByRole('button', { name: 'ยกเลิกการแก้จำนวน' }));
+    expect(screen.getByText('2 ถุง × ฿60.00')).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: 'ส่งอย่างเดียว' }));
+    expect(onConfirmDelivery).toHaveBeenCalledWith('end_of_day');
+  });
+
+  it('offers only the frozen-request retry when a delivery is unresolved, even without a valid new cart', async () => {
+    const user = userEvent.setup();
+    const onRetryDelivery = vi.fn();
+    const { onConfirmDelivery } = renderReview(true, shopCard, {
+      hasPendingDelivery: true, onRetryDelivery, items: [], posContext: null,
+      posContextError: 'โหลดเงื่อนไขไม่สำเร็จ',
+    });
+    expect(screen.getByRole('button', { name: 'ส่งอย่างเดียว' }).hasAttribute('disabled')).toBe(true);
+    expect(screen.getByRole('button', { name: 'ส่งและรับชำระ' }).hasAttribute('disabled')).toBe(true);
+    await user.click(screen.getByRole('button', { name: 'ตรวจผล / ลองคำขอเดิมอีกครั้ง' }));
+    expect(onRetryDelivery).toHaveBeenCalledTimes(1);
+    expect(onConfirmDelivery).not.toHaveBeenCalled();
+  });
+
+  it('types a half-unit quantity and uses Enter to finish entry without submitting delivery', async () => {
+    const user = userEvent.setup();
+    const { onSubmit, onConfirmDelivery } = renderReview();
+    await user.click(screen.getByRole('button', { name: /หลอดเล็ก.*คงเหลือ/ }));
+    const quantity = screen.getByRole('spinbutton', { name: 'จำนวนหลอดเล็ก' });
+    await user.clear(quantity);
+    await user.type(quantity, '2.5');
+    await user.keyboard('{Enter}');
+    expect(screen.getByText('2.5 ถุง × ฿60.00')).toBeTruthy();
+    expect(screen.queryByRole('spinbutton', { name: 'จำนวนหลอดเล็ก' })).toBeNull();
+    expect(onSubmit).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: 'ส่งอย่างเดียว' }));
+    expect(onConfirmDelivery).toHaveBeenCalledWith('end_of_day');
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it.each([[ '½', 0.5 ], [ '1', 1 ], [ '2', 2 ], [ '3', 3 ]])('sets the quick quantity %s without appending digits', async (label, quantity) => {
+    const user = userEvent.setup();
+    const onSetQuantity = vi.fn();
+    renderReview(true, shopCard, { onSetQuantity });
+    await user.click(screen.getByRole('button', { name: /หลอดเล็ก.*คงเหลือ/ }));
+    const quick = screen.getByRole('group', { name: 'เลือกจำนวนด่วน' });
+    await user.click(within(quick).getByRole('button', { name: String(label), exact: true }));
+    expect(onSetQuantity).toHaveBeenLastCalledWith('ice-1', quantity);
+    expect((screen.getByRole('spinbutton', { name: 'จำนวนหลอดเล็ก' }) as HTMLInputElement).value).toBe(String(quantity));
+  });
+
+  it('does not finish a zero quantity or submit the delivery when Enter is pressed', async () => {
+    const user = userEvent.setup();
+    const { onSubmit } = renderReview();
+    await user.click(screen.getByRole('button', { name: /หลอดเล็ก.*คงเหลือ/ }));
+    await user.clear(screen.getByRole('spinbutton', { name: 'จำนวนหลอดเล็ก' }));
+    await user.keyboard('{Enter}');
+    expect(screen.getByRole('button', { name: 'เพิ่มรายการ' }).hasAttribute('disabled')).toBe(true);
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it.each(['0.1', '1.1'])('keeps invalid fractional quantity %s open and out of the cart', async (value) => {
+    const user = userEvent.setup();
+    const { onSubmit } = renderReview();
+    await user.click(screen.getByRole('button', { name: /หลอดเล็ก.*คงเหลือ/ }));
+    const quantity = screen.getByRole('spinbutton', { name: 'จำนวนหลอดเล็ก' });
+    await user.clear(quantity);
+    await user.type(quantity, value);
+    await user.keyboard('{Enter}');
+    expect(screen.getByRole('spinbutton', { name: 'จำนวนหลอดเล็ก' })).toBeTruthy();
+    expect(screen.getByText('2 ถุง × ฿60.00')).toBeTruthy();
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it('filters the round shops by code, name and booth without Enter submitting delivery', async () => {
+    const user = userEvent.setup();
+    const onChangeShop = vi.fn();
+    const otherCard = { ...shopCard, round_stop_id: 'stop-2', shop_code: 'SW-03', shop_name: 'ร้านน้ำปั่น', booth_number: 'C12' };
+    const { onSubmit } = renderReview(true, shopCard, { shopCards: [shopCard, otherCard], onChangeShop });
+    const search = screen.getByRole('searchbox', { name: 'ค้นหาร้านในรอบ' });
+    for (const query of ['sw-03', 'น้ำปั่น', 'c12']) {
+      await user.clear(search);
+      await user.type(search, query);
+      expect(screen.queryByRole('button', { name: /BB2 ร้านผัด/ })).toBeNull();
+      expect(screen.getByRole('button', { name: 'SW-03 ร้านน้ำปั่น' })).toBeTruthy();
+    }
+    await user.keyboard('{Enter}');
+    expect(onSubmit).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: 'SW-03 ร้านน้ำปั่น' }));
+    expect(onChangeShop).toHaveBeenCalledWith(otherCard);
+    await user.clear(search);
+    await user.type(search, 'ไม่มีร้านนี้');
+    expect(screen.getByText('ไม่พบร้านที่ค้นหา')).toBeTruthy();
+  });
+
+  it('offers two direct delivery actions without a preselected payment term', async () => {
+    const user = userEvent.setup();
+    const { onConfirmDelivery } = renderReview();
 
     const paymentButtons = screen.getAllByRole('button', { name: /(ส่งอย่างเดียว|ส่งและรับชำระ)/ });
     expect(paymentButtons).toHaveLength(2);
     expect(paymentButtons[0].textContent).toContain('ส่งอย่างเดียว');
     expect(paymentButtons[1].textContent).toContain('ส่งและรับชำระ');
-    expect(screen.getByText('หลังยืนยัน ระบบจะเปิดหน้ารับชำระของลูกค้ารายนี้')).not.toBeNull();
+    expect(screen.queryByText('เงื่อนไขชำระ')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'ยืนยันส่งร้านนี้' })).toBeNull();
+    await user.click(paymentButtons[1]);
+    expect(onConfirmDelivery).toHaveBeenCalledWith('immediate');
   });
 
   it('removes the review toggle after entering the confirmation step', async () => {
@@ -156,8 +284,20 @@ describe('employee delivery review navigation', () => {
     renderReview(false);
 
     expect(screen.getByRole('button', { name: 'ส่งและรับชำระ' }).hasAttribute('disabled')).toBe(true);
-    expect(screen.getByRole('button', { name: 'ยืนยันส่งร้านนี้' }).hasAttribute('disabled')).toBe(true);
+    expect(screen.getByRole('button', { name: 'ส่งอย่างเดียว' }).hasAttribute('disabled')).toBe(false);
     expect(screen.getByText('บัญชีนี้ยังไม่ได้รับสิทธิ์รับชำระเงิน')).not.toBeNull();
+  });
+
+  it('sends credit customers through their credit billing term', async () => {
+    const user = userEvent.setup();
+    const { onConfirmDelivery } = renderReview(true, shopCard, {
+      posContext: { ...posContext, payment_profile: {
+        ...posContext.payment_profile!, allowed_payment_terms: ['credit'], default_payment_term: 'credit',
+      } },
+    });
+    expect(screen.getByRole('button', { name: 'ส่งและรับชำระ' }).hasAttribute('disabled')).toBe(true);
+    await user.click(screen.getByRole('button', { name: 'ส่งอย่างเดียว' }));
+    expect(onConfirmDelivery).toHaveBeenCalledWith('credit');
   });
 
   it('opens cancellation for an eligible event delivery in employee history', async () => {

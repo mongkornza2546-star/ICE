@@ -827,6 +827,7 @@ describe('employee live shop loading', () => {
 
   it('queues a catalog refresh received while a stock submission is pending', async () => {
     const user = userEvent.setup();
+    const onStockReceived = vi.fn();
     let resolveTransfer!: (value: EmployeeStockState) => void;
     const transfer = new Promise<EmployeeStockState>((resolve) => {
       resolveTransfer = resolve;
@@ -858,6 +859,7 @@ describe('employee live shop loading', () => {
       requestScope="employee-submitting"
       serviceDate="2026-08-11"
       viewMode="withdrawal"
+      onStockReceived={onStockReceived}
     />);
 
     await user.click(await screen.findByRole('button', { name: 'เพิ่มน้ำแข็งอีกครึ่ง' }));
@@ -868,6 +870,7 @@ describe('employee live shop loading', () => {
 
     await act(async () => resolveTransfer(stockState));
 
+    expect(onStockReceived).toHaveBeenCalledTimes(1);
     await waitFor(() => expect(loadShopCards).toHaveBeenCalledTimes(2));
     expect(loadShopCards).toHaveBeenNthCalledWith(2, 'round-1', { forceRefresh: true });
   });

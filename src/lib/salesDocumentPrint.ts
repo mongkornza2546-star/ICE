@@ -148,7 +148,7 @@ export function printSalesDocument(
   payload: SalesDocumentPayload,
   existingPrintWindow?: Window | null,
 ) {
-  const heightMm = Math.min(240, Math.max(65, (payload.documentType === 'REC' ? 92 : 55) + payload.items.length * 6
+  const heightMm = Math.min(240, Math.max(65, (payload.documentType === 'REC' ? 110 : 55) + payload.items.length * (payload.documentType === 'REC' ? 9 : 6)
     + payload.allocations.length * 5 + (payload.voidInfo ? 14 : 0)
     + (payload.documentType === 'REC' && payload.receivedDate && payload.enteredAt ? 7 : 0)));
   const printWindow = existingPrintWindow
@@ -163,6 +163,7 @@ export function printSalesDocument(
     html, body { width: 57mm; min-height: ${heightMm}mm; margin: 0; }
     body { padding: 2mm 2.5mm; color: #000; background: #fff; font-family: "Noto Sans Thai", Tahoma, sans-serif; font-size: 7.5pt; line-height: 1.4; }
     main { display: grid; gap: 1.2mm; }
+    main.receipt-document { font-size: 8.5pt; line-height: 1.45; gap: 1.4mm; }
     h1 { margin: 0; font-size: 10pt; text-align: center; line-height: 1.35; }
     p { margin: 0; }
     .center { text-align: center; }
@@ -172,23 +173,26 @@ export function printSalesDocument(
     .row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 1mm; line-height: 1.4; }
     .total { display: flex; justify-content: space-between; font-size: 9pt; font-weight: 700; line-height: 1.35; }
     .signature { margin-top: 6mm; padding-top: 1.2mm; border-top: .25mm solid #000; text-align: center; }
-    .receipt-header { border-top: .35mm solid #000; border-bottom: .35mm solid #000; padding: 1.2mm 0; text-align: center; }
-    .receipt-title { font-size: 9pt; font-weight: 700; text-align: center; line-height: 1.35; }
+    .receipt-header { border-top: .35mm solid #000; border-bottom: .35mm solid #000; padding: 1.2mm 0; font-size: 12pt; font-weight: 700; text-align: center; }
+    .receipt-title { font-size: 10pt; font-weight: 700; text-align: center; line-height: 1.4; }
     .receipt-customer { border-top: .25mm dashed #000; padding-top: 1.2mm; margin-top: .4mm; }
     .receipt-items { display: grid; gap: 1mm; border-top: .25mm dashed #000; border-bottom: .25mm dashed #000; padding: 1.2mm 0; margin: .4mm 0; }
-    .receipt-items__header, .receipt-items__row { display: grid; grid-template-columns: minmax(0, 1fr) auto 17mm; gap: 1mm; line-height: 1.4; }
+    .receipt-items__header, .receipt-items__row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 1mm; line-height: 1.45; }
     .receipt-items__header { font-weight: 700; }
-    .receipt-items__quantity, .receipt-items__amount { text-align: right; white-space: nowrap; }
-    .receipt-reference { margin-top: .8mm; font-size: 6.5pt; line-height: 1.35; }
+    .receipt-items__row { font-size: 9.5pt; }
+    .receipt-items__amount { text-align: right; white-space: nowrap; }
+    .receipt-reference { margin-top: .8mm; font-size: 8pt; line-height: 1.4; }
     .receipt-totals { display: grid; gap: .6mm; margin-top: .4mm; }
     .receipt-total-row { display: flex; justify-content: space-between; gap: 1mm; line-height: 1.4; }
-    .receipt-total-row:first-child { font-size: 9pt; font-weight: 700; line-height: 1.35; }
+    .receipt-total-row:first-child { font-size: 10pt; font-weight: 700; line-height: 1.35; }
+    main.receipt-document small { font-size: 8pt; }
     .receipt-signature { border-top: .25mm dashed #000; margin-top: .8mm; padding-top: 6mm; text-align: center; }
     small { font-size: 6.5pt; }
   `;
   printDocument.head.replaceChildren(style);
 
   const root = printDocument.createElement('main');
+  if (payload.documentType === 'REC') root.className = 'receipt-document';
   const line = (text: string, className?: string, tag: 'p' | 'small' = 'p') => {
     const element = printDocument.createElement(tag);
     element.textContent = text;
@@ -222,8 +226,7 @@ export function printSalesDocument(
     const itemTotal = receiptItems.reduce((total, item) => total + item.lineTotal, 0);
     const showsAllocationRows = Math.abs(itemTotal - payload.totals.total) >= 0.005;
     for (const [text, className] of [
-      [showsAllocationRows ? 'รายการรับชำระ' : 'รายการสินค้า', ''],
-      ['จำนวน', 'receipt-items__quantity'],
+      [showsAllocationRows ? 'รายการรับชำระ' : 'รายการสินค้า / จำนวน', ''],
       ['รวม(฿)', 'receipt-items__amount'],
     ]) {
       const heading = printDocument.createElement('span');
@@ -235,12 +238,10 @@ export function printSalesDocument(
     const itemRows = showsAllocationRows
       ? payload.allocations.map((allocation) => ({
         name: allocation.documentNumber ? `รับชำระ ${allocation.documentNumber}` : 'รับชำระ',
-        quantity: '—',
         amount: allocation.amount,
       }))
       : receiptItems.map((item) => ({
-        name: item.name,
-        quantity: `${item.quantity} ${item.unit}`,
+        name: `${item.name} ${item.quantity} ${item.unit}`,
         amount: item.lineTotal,
       }));
     for (const item of itemRows) {
@@ -248,13 +249,10 @@ export function printSalesDocument(
       row.className = 'receipt-items__row';
       const name = printDocument.createElement('span');
       name.textContent = item.name;
-      const quantity = printDocument.createElement('span');
-      quantity.className = 'receipt-items__quantity';
-      quantity.textContent = item.quantity;
       const amount = printDocument.createElement('span');
       amount.className = 'receipt-items__amount';
       amount.textContent = item.amount.toFixed(2);
-      row.append(name, quantity, amount);
+      row.append(name, amount);
       itemSection.append(row);
     }
     const documentNumbers = compactDocumentNumbers(payload.allocations

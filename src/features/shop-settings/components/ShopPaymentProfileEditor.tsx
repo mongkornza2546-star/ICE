@@ -1,9 +1,8 @@
 import { type FormEvent, useEffect, useState } from 'react';
 import { CreditCard } from '@phosphor-icons/react';
-import type { ShopPaymentProfileSetting, PaymentTerm, PaymentMethod, CreditDueRule } from '../../../types/app';
+import type { ShopPaymentProfileSetting, PaymentMethod, CreditDueRule } from '../../../types/app';
 import { CREDIT_COLLECTION_WEEKDAY_OPTIONS, formatCreditCollectionCycle } from '../../../lib/creditCollectionCycle';
 import { loadShopPaymentProfile, saveShopPaymentProfile, getErrorMessage } from '../../admin-reference-settings/adminReferenceSettingsService';
-import { sortPaymentTerms } from '../../employee-delivery/utils';
 import { normalizePaymentMethod, normalizePaymentMethods } from '../../../lib/paymentMethods';
 
 interface ShopPaymentProfileEditorProps {
@@ -14,8 +13,8 @@ interface ShopPaymentProfileEditorProps {
 
 const defaultProfile = (shop_id: string): ShopPaymentProfileSetting => ({
   shop_id,
-  allowed_payment_terms: ['immediate'],
-  default_payment_term: 'immediate',
+  allowed_payment_terms: ['end_of_day', 'immediate'],
+  default_payment_term: 'end_of_day',
   allowed_payment_methods: ['cash', 'bank_transfer'],
   default_payment_method: 'cash',
   cash_reference_required: false,
@@ -64,32 +63,13 @@ export function ShopPaymentProfileEditor({ shopId, shopName, onSaved }: ShopPaym
     }
   }
 
-  function toggleTerm(term: PaymentTerm) {
-    let nextTerms: PaymentTerm[];
-    if (term === 'credit') {
-      // Credit is exclusive mode
-      nextTerms = ['credit'];
-    } else {
-      const filtered = profile.allowed_payment_terms.filter((t) => t !== 'credit');
-      if (filtered.includes(term)) {
-        if (filtered.length > 1) {
-          nextTerms = filtered.filter((t) => t !== term);
-        } else {
-          nextTerms = filtered; // keep at least one
-        }
-      } else {
-        nextTerms = sortPaymentTerms([...filtered, term]);
-      }
-    }
-
-    const defaultTerm = nextTerms.includes(profile.default_payment_term) ? profile.default_payment_term : nextTerms[0];
-
-    const isCredit = nextTerms.includes('credit');
+  function toggleCredit() {
+    const isCredit = !profile.allowed_payment_terms.includes('credit');
     const creditRule = isCredit ? (profile.credit_due_rule ?? 'net_days') : null;
     setProfile({
       ...profile,
-      allowed_payment_terms: nextTerms,
-      default_payment_term: defaultTerm,
+      allowed_payment_terms: isCredit ? ['credit'] : ['end_of_day', 'immediate'],
+      default_payment_term: isCredit ? 'credit' : 'end_of_day',
       allow_outstanding: isCredit ? true : profile.allow_outstanding,
       credit_due_rule: creditRule,
       credit_days: creditRule === 'net_days' ? (profile.credit_days ?? 30) : null,
@@ -123,6 +103,8 @@ export function ShopPaymentProfileEditor({ shopId, shopName, onSaved }: ShopPaym
     try {
       const saved = await saveShopPaymentProfile({
         ...profile,
+        allowed_payment_terms: isCredit ? ['credit'] : ['end_of_day', 'immediate'],
+        default_payment_term: isCredit ? 'credit' : 'end_of_day',
         allowed_payment_methods: normalizePaymentMethods(profile.allowed_payment_methods),
         default_payment_method: normalizePaymentMethod(profile.default_payment_method),
       });
@@ -148,49 +130,10 @@ export function ShopPaymentProfileEditor({ shopId, shopName, onSaved }: ShopPaym
       </div>
 
       <form onSubmit={handleSave}>
-        <div className="field-grid" style={{ marginBottom: '1rem' }}>
-          <div>
-            <label>รูปแบบการชำระเงินที่อนุญาต (Payment Terms)</label>
-            <div style={{ display: 'flex', gap: '1rem', marginTop: '0.5rem' }}>
-              <label className="inline-check">
-                <input
-                  checked={profile.allowed_payment_terms.includes('immediate')}
-                  onChange={() => toggleTerm('immediate')}
-                  type="checkbox"
-                />
-                จ่ายทันที (Immediate)
-              </label>
-              <label className="inline-check">
-                <input
-                  checked={profile.allowed_payment_terms.includes('end_of_day')}
-                  onChange={() => toggleTerm('end_of_day')}
-                  type="checkbox"
-                />
-                เก็บท้ายวัน (End of Day)
-              </label>
-              <label className="inline-check">
-                <input
-                  checked={profile.allowed_payment_terms.includes('credit')}
-                  onChange={() => toggleTerm('credit')}
-                  type="checkbox"
-                />
-                ร้านเครดิต (Credit)
-              </label>
-            </div>
-          </div>
-
-          <label>
-            ค่าเริ่มต้น (Default Term)
-            <select
-              onChange={(e) => setProfile({ ...profile, default_payment_term: e.target.value as PaymentTerm })}
-              value={profile.default_payment_term}
-            >
-              {sortPaymentTerms(profile.allowed_payment_terms).map((term) => (
-                <option key={term} value={term}>
-                  {term === 'immediate' ? 'จ่ายทันที' : term === 'end_of_day' ? 'เก็บท้ายวัน' : 'เครดิต'}
-                </option>
-              ))}
-            </select>
+        <div style={{ marginBottom: '1rem' }}>
+          <label className="inline-check">
+            <input checked={isCredit} onChange={toggleCredit} type="checkbox" />
+            ร้านเครดิต (Credit)
           </label>
         </div>
 

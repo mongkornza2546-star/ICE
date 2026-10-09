@@ -46,7 +46,10 @@ describe('receipt printing', () => {
     expect(text).toContain('ลูกค้า: BB61 · Fuku matcha');
     expect(text).toContain('สาขา: B · Food World');
     expect(text).toContain('วิธีชำระ: เงินสด (Cash)');
-    expect(text).toContain('หลอดเล็ก5 ถุง300.00');
+    expect(text).toContain('หลอดเล็ก 5 ถุง300.00');
+    expect(printDocument.querySelectorAll('.receipt-items__row')[0]?.children).toHaveLength(2);
+    expect(printDocument.querySelector('style')?.textContent).toContain('main.receipt-document { font-size: 8.5pt;');
+    expect(printDocument.querySelector('style')?.textContent).toContain('.receipt-items__row { font-size: 9.5pt; }');
     expect(text).toContain('(อ้างอิงใบสั่งซื้อ: INV2608-00035, 00045, 00051, 00054)');
     expect(text).toContain('ยอดรวมสุทธิ (Total)฿300.00');
     expect(text).toContain('รับเงินสด (Cash Received)฿300.00');
@@ -83,7 +86,7 @@ describe('receipt printing', () => {
 
     const text = printDocument.body.textContent ?? '';
     expect(text).toContain('รายการรับชำระ');
-    expect(text).toContain('รับชำระ INV2608-00035—100.00');
+    expect(text).toContain('รับชำระ INV2608-00035100.00');
     expect(text).not.toContain('หลอดเล็ก');
     expect(text).toContain('ยอดรวมสุทธิ (Total)฿100.00');
   });

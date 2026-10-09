@@ -112,7 +112,9 @@ export function CollectionDesk({
   const [query, setQuery] = useState('');
   const [buildingId, setBuildingId] = useState('');
   const [zoneId, setZoneId] = useState('');
-  const [sort, setSort] = useState<'high' | 'low'>('high');
+  const [sort, setSort] = useState<'recent' | 'oldest' | 'high' | 'low'>('high');
+  const [paymentMethod, setPaymentMethod] = useState<'all' | 'cash' | 'transfer'>('all');
+  const [paymentStatus, setPaymentStatus] = useState<'all' | 'active' | 'voided'>('all');
   const [page, setPage] = useState(0);
   const [selectedPayment, setSelectedPayment] = useState<PaymentHistoryItem | null>(null);
   const [previewImage, setPreviewImage] = useState<{ name: string; url: string } | null>(null);
@@ -135,14 +137,15 @@ export function CollectionDesk({
   }, [filter, paymentHistory, queue]);
 
   const zones = useMemo(() => {
-    const found = new Map<string, string>();
+    const found = new Map<string, { name: string; buildingName: string | null }>();
     const items = filter === 'outstanding' ? queue : filter === 'collected' ? paymentHistory : [...queue, ...paymentHistory];
     items.forEach((item) => {
-      if (item.building_id === buildingId && item.zone_id && item.zone_name) {
-        found.set(item.zone_id, item.zone_name);
+      if ((!buildingId || item.building_id === buildingId) && item.zone_id && item.zone_name) {
+        found.set(item.zone_id, { name: item.zone_name, buildingName: item.building_name ?? null });
       }
     });
-    return [...found].map(([id, name]) => ({ id, name })).sort((left, right) => left.name.localeCompare(right.name, 'th'));
+    return [...found].map(([id, zone]) => ({ id, ...zone }))
+      .sort((left, right) => left.name.localeCompare(right.name, 'th') || (left.buildingName ?? '').localeCompare(right.buildingName ?? '', 'th'));
   }, [buildingId, filter, paymentHistory, queue]);
 
   useEffect(() => {
@@ -153,7 +156,7 @@ export function CollectionDesk({
   }, [buildingId, buildings]);
 
   useEffect(() => {
-    if (zoneId && (!buildingId || !zones.some((zone) => zone.id === zoneId))) {
+    if (zoneId && !zones.some((zone) => zone.id === zoneId)) {
       setZoneId('');
     }
   }, [buildingId, zoneId, zones]);
@@ -214,7 +217,9 @@ export function CollectionDesk({
           .toLocaleLowerCase().includes(normalizedQuery);
         const matchesBuilding = !buildingId || payment.building_id === buildingId;
         const matchesZone = !zoneId || payment.zone_id === zoneId;
-        return matchesQuery && matchesBuilding && matchesZone;
+        const matchesMethod = filter !== 'collected' || paymentMethod === 'all' || payment.payment_method === paymentMethod;
+        const matchesStatus = filter !== 'collected' || paymentStatus === 'all' || payment.status === paymentStatus;
+        return matchesQuery && matchesBuilding && matchesZone && matchesMethod && matchesStatus;
       })
       .map((payment) => {
         const identity = formatCollectionShopIdentity({
@@ -244,8 +249,14 @@ export function CollectionDesk({
     const rows = filter === 'outstanding' ? shopRows
       : filter === 'collected' ? paymentRows
         : [...shopRows, ...paymentRows];
-    return rows.sort((left, right) => (sort === 'high' ? 1 : -1) * (right.amount - left.amount));
-  }, [buildingId, filter, normalizedQuery, paymentHistory, queue, serviceDate, sort, zoneId]);
+    return rows.sort((left, right) => {
+      if (sort === 'recent' || sort === 'oldest') {
+        const byTime = (right.payment?.recorded_at ?? '').localeCompare(left.payment?.recorded_at ?? '');
+        return (sort === 'recent' ? 1 : -1) * byTime || right.id.localeCompare(left.id);
+      }
+      return (sort === 'high' ? 1 : -1) * (right.amount - left.amount);
+    });
+  }, [buildingId, filter, normalizedQuery, paymentHistory, paymentMethod, paymentStatus, queue, serviceDate, sort, zoneId]);
 
   const totalCount = visibleRows.length;
   const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
@@ -265,6 +276,7 @@ export function CollectionDesk({
 
   const changeFilter = (nextFilter: QueueFilter) => {
     setFilter(nextFilter);
+    setSort(nextFilter === 'collected' ? 'recent' : 'high');
     setPage(0);
     if (nextFilter === 'outstanding') setSelectedPayment(null);
     if (nextFilter === 'collected') onClearShop();
@@ -335,12 +347,11 @@ export function CollectionDesk({
             <label>โซน
               <select
                 aria-label="เลือกโซน"
-                disabled={!buildingId}
                 onChange={(event) => { setZoneId(event.target.value); setPage(0); }}
                 value={zoneId}
               >
                 <option value="">ทุกโซน {zones.length > 0 ? `(${zones.length})` : ''}</option>
-                {zones.map((z) => <option key={z.id} value={z.id}>{z.name}</option>)}
+                {zones.map((z) => <option key={z.id} value={z.id}>{z.name}{!buildingId && z.buildingName ? ` · ${z.buildingName}` : ''}</option>)}
               </select>
             </label>
           </div>
@@ -352,9 +363,25 @@ export function CollectionDesk({
               <button aria-selected={filter === 'all'} onClick={() => changeFilter('all')} role="tab" type="button">ทั้งหมด</button>
             </div>
             <div className="collection-desk__subfilters">
-              <select aria-label="เรียงรายการ" onChange={(event) => { setSort(event.target.value as 'high' | 'low'); setPage(0); }} value={sort}>
-                <option value="high">เรียง: ยอดค้างมาก - น้อย</option>
-                <option value="low">เรียง: ยอดค้างน้อย - มาก</option>
+              {filter === 'collected' ? <>
+                <select aria-label="กรองวิธีรับเงิน" onChange={(event) => { setPaymentMethod(event.target.value as typeof paymentMethod); setPage(0); }} value={paymentMethod}>
+                  <option value="all">ทุกวิธีรับเงิน</option>
+                  <option value="cash">เงินสด</option>
+                  <option value="transfer">โอนเงิน</option>
+                </select>
+                <select aria-label="กรองสถานะรับเงิน" onChange={(event) => { setPaymentStatus(event.target.value as typeof paymentStatus); setPage(0); }} value={paymentStatus}>
+                  <option value="all">ทุกสถานะ</option>
+                  <option value="active">รับเงินแล้ว</option>
+                  <option value="voided">ยกเลิกแล้ว</option>
+                </select>
+              </> : null}
+              <select aria-label="เรียงรายการ" onChange={(event) => { setSort(event.target.value as typeof sort); setPage(0); }} value={sort}>
+                {filter === 'collected' ? <>
+                  <option value="recent">เรียง: รับเงินล่าสุดก่อน</option>
+                  <option value="oldest">เรียง: รับเงินเก่าสุดก่อน</option>
+                </> : null}
+                <option value="high">เรียง: {filter === 'collected' ? 'ยอดรับ' : 'ยอดค้าง'}มาก - น้อย</option>
+                <option value="low">เรียง: {filter === 'collected' ? 'ยอดรับ' : 'ยอดค้าง'}น้อย - มาก</option>
               </select>
               {filter === 'outstanding' ? (
                 <div className="collection-desk__view-toggle" aria-label="เลือกมุมมอง">
@@ -475,6 +502,7 @@ export function CollectionDesk({
                         imageUrl={payment.image_url}
                         loading="lazy"
                       />
+                      {payment.status === 'voided' ? <small className="financial-ops__shop-status financial-ops__shop-status--voided">ยกเลิกแล้ว</small> : null}
                     </span>
                     <span className="financial-ops__shop-body">
                       <strong>{payment.receipt_number}</strong>

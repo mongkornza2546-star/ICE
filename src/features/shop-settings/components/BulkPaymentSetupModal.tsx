@@ -3,7 +3,6 @@ import { X } from '@phosphor-icons/react';
 import type { ShopSetting, BuildingOption, BuildingZoneOption, PaymentTerm, PaymentMethod, CreditDueRule } from '../../../types/app';
 import { bulkSaveShopPaymentProfiles, getErrorMessage } from '../../admin-reference-settings/adminReferenceSettingsService';
 import { CREDIT_COLLECTION_WEEKDAY_OPTIONS, formatCreditCollectionCycle } from '../../../lib/creditCollectionCycle';
-import { sortPaymentTerms } from '../../employee-delivery/utils';
 
 interface BulkPaymentSetupModalProps {
   shops: ShopSetting[];
@@ -19,8 +18,9 @@ export function BulkPaymentSetupModal({ shops, buildings, zones, onClose, onSucc
   const [selectedShopIds, setSelectedShopIds] = useState<string[]>([]);
 
   // Profile template
-  const [allowedPaymentTerms, setAllowedPaymentTerms] = useState<PaymentTerm[]>(['immediate']);
-  const [defaultPaymentTerm, setDefaultPaymentTerm] = useState<PaymentTerm>('immediate');
+  const [isCredit, setIsCredit] = useState(false);
+  const allowedPaymentTerms: PaymentTerm[] = isCredit ? ['credit'] : ['end_of_day', 'immediate'];
+  const defaultPaymentTerm: PaymentTerm = isCredit ? 'credit' : 'end_of_day';
   const [allowedPaymentMethods, setAllowedPaymentMethods] = useState<PaymentMethod[]>(['cash', 'bank_transfer']);
   const [defaultPaymentMethod, setDefaultPaymentMethod] = useState<PaymentMethod>('cash');
   const [allowOutstanding, setAllowOutstanding] = useState(false);
@@ -40,25 +40,6 @@ export function BulkPaymentSetupModal({ shops, buildings, zones, onClose, onSucc
     if (selectedZoneId && s.zone_id !== selectedZoneId) return false;
     return s.status === 'active';
   });
-
-  function togglePaymentTerm(term: PaymentTerm) {
-    if (term === 'credit') {
-      setAllowedPaymentTerms(['credit']);
-      setDefaultPaymentTerm('credit');
-      setAllowOutstanding(true);
-      return;
-    }
-
-    const nonCreditTerms = allowedPaymentTerms.filter((value) => value !== 'credit');
-    const nextTerms: PaymentTerm[] = nonCreditTerms.includes(term)
-      ? nonCreditTerms.filter((value) => value !== term)
-      : [...nonCreditTerms, term];
-    if (nextTerms.length === 0) return;
-
-    const sortedTerms = sortPaymentTerms(nextTerms);
-    setAllowedPaymentTerms(sortedTerms);
-    if (!sortedTerms.includes(defaultPaymentTerm)) setDefaultPaymentTerm(sortedTerms[0]);
-  }
 
   function togglePaymentMethod(method: PaymentMethod) {
     const nextMethods = allowedPaymentMethods.includes(method)
@@ -187,48 +168,9 @@ export function BulkPaymentSetupModal({ shops, buildings, zones, onClose, onSucc
           <p className="muted">คงเงื่อนไขหลักฐานและเลขอ้างอิงเดิมของแต่ละร้านไว้ ร้านที่ยังไม่เคยตั้งค่าต้องเลือกทั้งสองกลุ่ม</p>
 
           <div className="field-grid" style={{ marginTop: '0.5rem' }}>
-            <div>
-              <label>รูปแบบชำระเงิน</label>
-              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginTop: '0.25rem' }}>
-                <label className="inline-check">
-                  <input
-                    disabled={!changeTerms}
-                    checked={allowedPaymentTerms.includes('immediate')}
-                    onChange={() => togglePaymentTerm('immediate')}
-                    type="checkbox"
-                  />
-                  จ่ายทันที
-                </label>
-                <label className="inline-check">
-                  <input
-                    disabled={!changeTerms}
-                    checked={allowedPaymentTerms.includes('end_of_day')}
-                    onChange={() => togglePaymentTerm('end_of_day')}
-                    type="checkbox"
-                  />
-                  เก็บท้ายวัน
-                </label>
-                <label className="inline-check">
-                  <input
-                    disabled={!changeTerms}
-                    checked={allowedPaymentTerms.includes('credit')}
-                    onChange={() => togglePaymentTerm('credit')}
-                    type="checkbox"
-                  />
-                  เครดิต
-                </label>
-              </div>
-            </div>
-
-            <label>
-              รูปแบบเริ่มต้น
-              <select disabled={!changeTerms} onChange={(e) => setDefaultPaymentTerm(e.target.value as PaymentTerm)} value={defaultPaymentTerm}>
-                {allowedPaymentTerms.map((term) => (
-                  <option key={term} value={term}>
-                    {term === 'immediate' ? 'จ่ายทันที' : term === 'end_of_day' ? 'เก็บท้ายวัน' : 'เครดิต'}
-                  </option>
-                ))}
-              </select>
+            <label className="inline-check">
+              <input disabled={!changeTerms} checked={isCredit} onChange={(event) => setIsCredit(event.target.checked)} type="checkbox" />
+              ร้านเครดิต
             </label>
 
             <div>
@@ -317,7 +259,7 @@ export function BulkPaymentSetupModal({ shops, buildings, zones, onClose, onSucc
           <section aria-label="สรุปก่อนบันทึก" style={{ margin: '1rem 0' }}>
             <h3>สรุปก่อนบันทึก</h3>
             <p>ร้านที่จะเปลี่ยน: {shops.filter((shop) => selectedShopIds.includes(shop.id)).map((shop) => `${shop.code} · ${shop.name}`).join(', ')}</p>
-            {changeTerms ? <p>รูปแบบชำระเงิน: {allowedPaymentTerms.map(termLabel).join(', ')} · เริ่มต้น {termLabel(defaultPaymentTerm)} · อนุญาตยอดค้าง {allowedPaymentTerms.includes('credit') || allowOutstanding ? 'ใช่' : 'ไม่'}
+            {changeTerms ? <p>รูปแบบชำระเงิน: {isCredit ? 'เครดิต' : 'เลือกวิธีส่งที่หน้าพนักงาน'} · อนุญาตยอดค้าง {isCredit || allowOutstanding ? 'ใช่' : 'ไม่'}
               {allowedPaymentTerms.includes('credit') ? ` · ${formatCreditCollectionCycle({ credit_due_rule: creditDueRule, credit_days: creditDays, credit_collection_weekday: creditCollectionWeekday })} · วงเงิน ${creditLimit == null ? 'ไม่จำกัด' : `${creditLimit} บาท`}` : ''}
             </p> : <p>รูปแบบชำระเงินและเครดิต: คงค่าเดิม</p>}
             {changeMethods ? <p>ช่องทางการเงิน: {allowedPaymentMethods.map(methodLabel).join(', ')} · เริ่มต้น {methodLabel(defaultPaymentMethod)}</p> : <p>ช่องทางการเงิน: คงค่าเดิม</p>}
@@ -334,10 +276,6 @@ export function BulkPaymentSetupModal({ shops, buildings, zones, onClose, onSucc
       </section>
     </div>
   );
-}
-
-function termLabel(term: PaymentTerm) {
-  return term === 'immediate' ? 'จ่ายทันที' : term === 'end_of_day' ? 'เก็บท้ายวัน' : 'เครดิต';
 }
 
 function methodLabel(method: PaymentMethod) {

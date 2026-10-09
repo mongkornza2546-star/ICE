@@ -23,3 +23,21 @@ it('previews and sends only selected setting groups, preserving evidence require
     methods: { allowed_payment_methods: ['cash', 'bank_transfer'], default_payment_method: 'cash' },
   }));
 });
+
+it('offers delivery actions for non-credit shops without term defaults in bulk setup', async () => {
+  service.bulkSaveShopPaymentProfiles.mockClear();
+  render(<BulkPaymentSetupModal shops={[{ id: 'shop-1', code: 'A', name: 'ร้าน A', status: 'active' } as ShopSetting]}
+    buildings={[]} zones={[]} onClose={vi.fn()} onSuccess={vi.fn()} />);
+  expect(screen.queryByLabelText('จ่ายทันที')).toBeNull();
+  expect(screen.queryByLabelText('เก็บท้ายวัน')).toBeNull();
+  expect(screen.queryByLabelText('รูปแบบเริ่มต้น')).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'เลือกทั้งหมด' }));
+  fireEvent.click(screen.getByRole('button', { name: /ตรวจสอบการเปลี่ยนแปลง/ }));
+  fireEvent.click(screen.getByRole('button', { name: /ยืนยันตั้งค่า/ }));
+  await waitFor(() => expect(service.bulkSaveShopPaymentProfiles).toHaveBeenCalledWith(['shop-1'], expect.objectContaining({
+    terms: expect.objectContaining({
+      allowed_payment_terms: ['end_of_day', 'immediate'],
+      default_payment_term: 'end_of_day',
+    }),
+  })));
+});

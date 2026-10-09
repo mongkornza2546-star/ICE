@@ -366,6 +366,7 @@ export function RoleRouter({
               setCourierView('collection');
             }}
             onOpenEvents={() => setCourierView('events')}
+            onStockReceived={() => setCourierView('pos')}
             requestScope={profile.id}
             collectionReturnOrigin="courier-pos"
             collectionCloseResult={collectionCloseResult}

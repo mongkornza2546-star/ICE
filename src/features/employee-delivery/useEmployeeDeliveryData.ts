@@ -12,7 +12,7 @@ import type {
   ShopCard,
   ShopRoundStatus,
 } from '../../types/app';
-import type { EmployeeDeliveryGateway, EmployeeDeliveryDraftState } from '../../EmployeeDeliveryWorkspace';
+import type { EmployeeDeliveryGateway, EmployeeDeliveryDraftState, EmployeeDeliveryPayload } from '../../EmployeeDeliveryWorkspace';
 import { usePendingRequests, type PendingRequestIdentity } from './usePendingRequests';
 import { compareShopCodes, normalizeSearch, stockQuantity, employeeErrorMessage } from './utils';
 import { clearRecovery, readRecovery, writeRecovery } from '../../lib/recoveryStorage';
@@ -104,6 +104,9 @@ interface ImmediateSaleRetry extends PendingRequestIdentity {
   evidencePath: string | null;
 }
 
+type DeliveryRequestPayload = Pick<EmployeeDeliveryPayload,
+  'destinationKind' | 'roundStopId' | 'items' | 'status' | 'note' | 'paymentTerm' | 'approvalId'>;
+
 export function useEmployeeDeliveryData({
   canCollectShopPayments = true,
   gateway,
@@ -114,6 +117,7 @@ export function useEmployeeDeliveryData({
   stockSourceLabel = 'สต๊อกรวมประจำวัน',
   onDraftStateChange,
   onOpenCollection,
+  onStockReceived,
   collectionReturnOrigin = 'courier-pos',
   collectionCloseResult = null,
 }: {
@@ -126,10 +130,11 @@ export function useEmployeeDeliveryData({
   stockSourceLabel?: string;
   onDraftStateChange?: (state: EmployeeDeliveryDraftState) => void;
   onOpenCollection?: (request: CollectionFocusRequest) => void;
+  onStockReceived?: () => void;
   collectionReturnOrigin?: PosCollectionReturnContext['origin'];
   collectionCloseResult?: CollectionCloseResult | null;
 }) {
-  const { getOrCreatePendingRequest, clearPendingRequest } = usePendingRequests();
+  const { getPendingRequest, getOrCreatePendingRequest, clearPendingRequest } = usePendingRequests();
   const recoveryMode = enableAssignedStockFlow ? 'withdrawal' : 'pos';
   const recoveryScope = `${requestScope}:${serviceDate}:${recoveryMode}`;
 
@@ -168,7 +173,7 @@ export function useEmployeeDeliveryData({
   const [posContext, setPosContext] = useState<DeliveryPosContext | null>(null);
   const [loadingPosContext, setLoadingPosContext] = useState(false);
   const [posContextError, setPosContextError] = useState<string | null>(null);
-  const [paymentTerm, setPaymentTerm] = useState<PaymentTerm>('immediate');
+  const [paymentTerm, setPaymentTerm] = useState<PaymentTerm>('end_of_day');
   const [paymentResult, setPaymentResult] = useState<DeliveryFinancialResult | null>(null);
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
@@ -219,6 +224,7 @@ export function useEmployeeDeliveryData({
   const pendingReturnContextId = useRef<string | null>(matchingReturnContext?.request.returnContextId ?? null);
   const shopButtonRefs = useRef(new Map<string, HTMLButtonElement>());
   const submissionRequestId = useRef(0);
+  const submissionInFlight = useRef(false);
   const transferRequestId = useRef(0);
   const recoveryHydratedScope = useRef<string | null>(null);
   const returnFiltersRoundId = useRef(matchingReturnContext?.selectedRoundId ?? null);
@@ -520,6 +526,9 @@ export function useEmployeeDeliveryData({
 
   const selectedRound = rounds.find((round) => round.id === selectedRoundId) ?? null;
   const selectedCard = cards.find((card) => card.round_stop_id === selectedCardId) ?? null;
+  const pendingDeliveryRequest = selectedCard && selectedRound
+    ? getPendingRequest(`${requestScope}:delivery:${selectedRound.service_date}:${selectedCard.round_stop_id}`)
+    : undefined;
   const taskChoiceCard = cards.find((card) => card.round_stop_id === taskChoiceCardId) ?? null;
   const items = useMemo(() => iceTypes
     .map((iceType) => ({ ice_type_id: iceType.id, quantity: deliveryQuantities[iceType.id] ?? 0 }))
@@ -735,16 +744,8 @@ export function useEmployeeDeliveryData({
             return [iceType.id, Math.min(intended, available)];
           }),
         ));
-        const requestedPaymentTerm = recovery?.paymentTerm
-          ?? context.payment_profile?.default_payment_term
-          ?? 'immediate';
-        const resolvedPaymentTerm = onOpenCollection
-          && !canCollectShopPayments
-          && requestedPaymentTerm === 'immediate'
-          ? context.payment_profile?.allowed_payment_terms.find((term) => term !== 'immediate')
-            ?? requestedPaymentTerm
-          : requestedPaymentTerm;
-        setPaymentTerm(resolvedPaymentTerm);
+        setPaymentTerm(recovery?.paymentTerm
+          ?? (context.payment_profile?.allowed_payment_terms.includes('credit') ? 'credit' : 'end_of_day'));
         if (!recovery) {
           setPaymentMethod(context.payment_profile?.default_payment_method ?? 'cash');
         }
@@ -1057,6 +1058,7 @@ export function useEmployeeDeliveryData({
         : stockTransferMode === 'damage'
           ? `บันทึกน้ำแข็งละลายจาก ${nextState.holding_location.name} แล้ว`
           : `เติมน้ำแข็งเข้า ${nextState.holding_location.name} แล้ว`);
+      if (stockTransferMode === 'receive') onStockReceived?.();
     } catch (transferError) {
       if (requestId !== transferRequestId.current || activeStockRoundId.current !== selectedRound.id) return;
       setStockError(employeeErrorMessage(transferError));
@@ -1065,22 +1067,44 @@ export function useEmployeeDeliveryData({
     }
   };
 
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!selectedCard || !selectedRound || submitting) return;
+  const handleSubmit = async (
+    event: FormEvent<HTMLFormElement> | null,
+    selectedPaymentTerm: PaymentTerm = paymentTerm,
+    retryPayload?: DeliveryRequestPayload,
+  ) => {
+    event?.preventDefault();
+    if (!selectedCard || !selectedRound || submitting || submissionInFlight.current) return;
     const trimmedNote = note.trim();
-    const isDelivery = status === 'delivered';
-    if (isDelivery && items.length === 0) {
+    const payload: DeliveryRequestPayload = retryPayload ?? {
+      destinationKind: selectedCard.destination_kind ?? 'regular',
+      roundStopId: selectedCard.round_stop_id,
+      items: status === 'delivered' ? items : [],
+      status,
+      note: trimmedNote || null,
+      paymentTerm: status === 'delivered' ? selectedPaymentTerm : null,
+      approvalId,
+    };
+    const isDelivery = payload.status === 'delivered';
+    const signature = `${requestScope}:${JSON.stringify(payload)}`;
+    // A lost response leaves one unresolved operation for this stop, even if
+    // the user changes the delivery action or edits the cart before retrying.
+    const storageSignature = `${requestScope}:delivery:${selectedRound.service_date}:${selectedCard.round_stop_id}`;
+    const pendingRequest = getPendingRequest(storageSignature);
+    if (pendingRequest && pendingRequest.payloadSignature !== signature) {
+      setEntryError('คำขอก่อนหน้ายังไม่ทราบผล กรุณาใช้รายการและวิธีส่งเดิมเพื่อลองอีกครั้ง');
+      return;
+    }
+    if (!retryPayload && isDelivery && items.length === 0) {
       setEntryError(enableAssignedStockFlow
         ? 'ใส่จำนวนน้ำแข็งที่ส่งอย่างน้อย 1 รายการ'
         : `ใส่จำนวนน้ำแข็งที่หยิบออกจาก${stockSourceLabel}อย่างน้อย 1 รายการ`);
       return;
     }
-    if (!isDelivery && !trimmedNote) {
+    if (!retryPayload && !isDelivery && !trimmedNote) {
       setEntryError('ใส่หมายเหตุว่าเกิดอะไรขึ้นกับร้าน');
       return;
     }
-    if (isDelivery && gateway.loadDeliveryPosContext) {
+    if (!retryPayload && isDelivery && gateway.loadDeliveryPosContext) {
       if (!posContext?.payment_profile) {
         setEntryError('ร้านนี้ยังไม่มีเงื่อนไขการชำระเงิน จึงยังบันทึกส่งไม่ได้');
         return;
@@ -1093,7 +1117,7 @@ export function useEmployeeDeliveryData({
         setEntryError(`${iceType?.name ?? 'สินค้าที่เลือก'} ยังไม่มีราคาในวันที่ส่ง`);
         return;
       }
-      if (paymentTerm === 'credit'
+      if (selectedPaymentTerm === 'credit'
         && posContext.payment_profile.credit_remaining != null
         && items.reduce((total, item) => {
           const contextItem = posContext.items.find((candidate) => candidate.ice_type_id === item.ice_type_id);
@@ -1104,15 +1128,16 @@ export function useEmployeeDeliveryData({
         return;
       }
     }
-    if (isDelivery && paymentTerm === 'immediate' && onOpenCollection && !canCollectShopPayments) {
+    if (!retryPayload && isDelivery && selectedPaymentTerm === 'immediate' && onOpenCollection && !canCollectShopPayments) {
       setEntryError('บัญชีนี้ยังไม่ได้รับสิทธิ์รับชำระเงิน กรุณาเลือกส่งอย่างเดียวหรือเครดิต');
       return;
     }
-    if (isDelivery && paymentTerm === 'immediate' && selectedCard.destination_kind === 'event' && !onOpenCollection) {
+    if (!retryPayload && isDelivery && selectedPaymentTerm === 'immediate' && selectedCard.destination_kind === 'event' && !onOpenCollection) {
       setEntryError('การรับชำระบูธอีเวนต์ต้องเปิดผ่านหน้ารับชำระ');
       return;
     }
-    if (isDelivery && paymentTerm === 'immediate' && selectedCard.destination_kind !== 'event' && gateway.recordImmediateSale && !onOpenCollection) {
+    if (!retryPayload && isDelivery && selectedPaymentTerm === 'immediate' && selectedCard.destination_kind !== 'event' && gateway.recordImmediateSale && !onOpenCollection) {
+      setPaymentTerm(selectedPaymentTerm);
       const totalAmount = items.reduce((total, item) => {
         const contextItem = posContext?.items.find((candidate) => candidate.ice_type_id === item.ice_type_id);
         return total + item.quantity * (contextItem?.unit_price ?? 0);
@@ -1141,6 +1166,7 @@ export function useEmployeeDeliveryData({
         }),
       };
       persistRecoveryNow({
+        paymentTerm: selectedPaymentTerm,
         paymentResult: draftResult,
         paymentOpen: true,
         paymentAmount: String(totalAmount),
@@ -1157,39 +1183,33 @@ export function useEmployeeDeliveryData({
       setEntryError(null);
       return;
     }
-    const signature = `${requestScope}:${JSON.stringify({
-      roundStopId: selectedCard.round_stop_id,
-      items: isDelivery ? items : [],
-      status,
-      note: trimmedNote || null,
-      paymentTerm: isDelivery ? paymentTerm : null,
-      approvalId,
-    })}`;
-    const request = getOrCreatePendingRequest(signature);
+    // A stale retry button must still replay its original key if another
+    // workspace has already acknowledged and cleared the pending operation.
+    const request = getOrCreatePendingRequest(
+      signature, storageSignature, retryPayload ? pendingDeliveryRequest : undefined,
+    );
+    const isRetry = Boolean(pendingRequest || retryPayload);
     const requestId = ++submissionRequestId.current;
+    let recorded = false;
+    submissionInFlight.current = true;
+    setPaymentTerm(selectedPaymentTerm);
+    persistRecoveryNow({ paymentTerm: selectedPaymentTerm });
     setSubmitting(true);
     setEntryError(null);
     try {
       const result = await gateway.recordDelivery({
-        destinationKind: selectedCard.destination_kind ?? 'regular',
-        roundStopId: selectedCard.round_stop_id,
-        items: isDelivery ? items : [],
-        status,
-        note: trimmedNote || null,
+        ...payload,
         clientRecordedAt: request.clientRecordedAt,
         idempotencyKey: request.key,
-        paymentTerm: isDelivery ? paymentTerm : null,
-        approvalId,
       });
+      recorded = true;
       publishDataChange(['accounting', 'stock', 'pos', 'receivable']);
       if (requestId !== submissionRequestId.current) return;
-      // Event charges keep their end-of-day settlement term; this choice opens collection immediately.
-      if (result && isDelivery && result.charge_id
-        && (result.payment_term === 'immediate'
-          || (selectedCard.destination_kind === 'event' && paymentTerm === 'immediate'))) {
+      // Event charges keep their end-of-day settlement term; the chosen action opens collection.
+      if (result && isDelivery && result.charge_id && selectedPaymentTerm === 'immediate') {
         if (onOpenCollection) {
           clearRecovery(requestScope, serviceDate, recoveryMode);
-          clearPendingRequest(signature, request.key);
+          clearPendingRequest(storageSignature, request.key);
           await handleRecorded(true, result);
           if (requestId !== submissionRequestId.current) return;
           setSubmitting(false);
@@ -1214,13 +1234,14 @@ export function useEmployeeDeliveryData({
         }
         const nextPaymentAmount = String(result.total_amount ?? '');
         persistRecoveryNow({
+          paymentTerm: selectedPaymentTerm,
           paymentResult: result,
           paymentOpen: true,
           paymentAmount: nextPaymentAmount,
           approvalId: null,
           approvalReason: '',
         });
-        clearPendingRequest(signature, request.key);
+        clearPendingRequest(storageSignature, request.key);
         setPaymentResult(result);
         setPaymentOpen(true);
         setPaymentAmount(nextPaymentAmount);
@@ -1230,14 +1251,36 @@ export function useEmployeeDeliveryData({
         return;
       }
       clearRecovery(requestScope, serviceDate, recoveryMode);
-      clearPendingRequest(signature, request.key);
+      clearPendingRequest(storageSignature, request.key);
       await handleRecorded(isDelivery, result);
       if (requestId === submissionRequestId.current) setSubmitting(false);
     } catch (submitError) {
+      const code = typeof submitError === 'object' && submitError && 'code' in submitError
+        ? String(submitError.code)
+        : '';
+      // A SQL error rejects this attempt. On a retry it does not establish
+      // whether the earlier attempt committed, so retain its original key.
+      if (!recorded && !isRetry && /^(?:[0-9][0-9A-Z]|P0|XX)[0-9A-Z]{3}$/.test(code) && !code.startsWith('08')) {
+        clearPendingRequest(storageSignature, request.key);
+      }
       if (requestId !== submissionRequestId.current) return;
       setEntryError(employeeErrorMessage(submitError));
       setSubmitting(false);
+    } finally {
+      submissionInFlight.current = false;
     }
+  };
+
+  const submitDeliveryChoice = (term: PaymentTerm) => {
+    void handleSubmit(null, term);
+  };
+
+  const retryPendingDelivery = () => {
+    if (!pendingDeliveryRequest?.payloadSignature) return;
+    const payload = JSON.parse(pendingDeliveryRequest.payloadSignature.slice(requestScope.length + 1)) as DeliveryRequestPayload;
+    // Replay the frozen payload: stock, prices, or credit exposure may have
+    // changed because the first attempt already committed on the server.
+    void handleSubmit(null, payload.paymentTerm ?? paymentTerm, payload);
   };
 
   const handleRequestApproval = async () => {
@@ -1470,13 +1513,6 @@ export function useEmployeeDeliveryData({
     setEntryError(null);
   };
 
-  const changePaymentTerm = (term: PaymentTerm) => {
-    setPaymentTerm(term);
-    setApprovalId(null);
-    setApprovalReason('');
-    setEntryError(null);
-  };
-
   const clearDeliveryQuantities = () => {
     if (submitting || selectedRound?.status === 'closed') return;
     setDeliveryQuantities(Object.fromEntries(iceTypes.map((iceType) => [iceType.id, 0])));
@@ -1568,6 +1604,7 @@ export function useEmployeeDeliveryData({
     buildingOptions,
     eventOptions,
     zoneOptions,
+    roundCards: cards,
     filteredCards,
     shopButtonRefs,
     PAD_VALUES,
@@ -1580,7 +1617,6 @@ export function useEmployeeDeliveryData({
     setQuery,
     setSelectedIceTypeId,
     setNote,
-    setPaymentTerm: changePaymentTerm,
     setPaymentMethod,
     setPaymentAmount: changePaymentAmount,
     setPaymentReference,
@@ -1601,6 +1637,9 @@ export function useEmployeeDeliveryData({
     clearDeliveryQuantities,
     handleStockTransfer,
     handleSubmit,
+    submitDeliveryChoice,
+    hasPendingDelivery: Boolean(pendingDeliveryRequest),
+    retryPendingDelivery,
     handlePaymentSubmit,
     cancelImmediateSaleDraft,
     handleRequestApproval,

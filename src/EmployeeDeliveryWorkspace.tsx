@@ -747,6 +747,7 @@ export function EmployeeDeliveryWorkspace({
   onDraftStateChange,
   onOpenCollection,
   onOpenEvents,
+  onStockReceived,
   collectionReturnOrigin = 'courier-pos',
   collectionCloseResult = null,
   requestScope = 'default',
@@ -762,6 +763,7 @@ export function EmployeeDeliveryWorkspace({
   onDraftStateChange?: (state: EmployeeDeliveryDraftState) => void;
   onOpenCollection?: (request: CollectionFocusRequest) => void;
   onOpenEvents?: () => void;
+  onStockReceived?: () => void;
   collectionReturnOrigin?: 'courier-pos' | 'admin-delivery';
   collectionCloseResult?: CollectionCloseResult | null;
   requestScope?: string;
@@ -796,6 +798,7 @@ export function EmployeeDeliveryWorkspace({
     stockSourceLabel,
     onDraftStateChange: setDeliveryDraftState,
     onOpenCollection,
+    onStockReceived,
     collectionReturnOrigin,
     collectionCloseResult,
   });
@@ -939,7 +942,6 @@ export function EmployeeDeliveryWorkspace({
         posContext={data.posContext}
         posContextError={data.posContextError}
         loadingPosContext={data.loadingPosContext}
-        paymentTerm={data.paymentTerm}
         paymentResult={data.paymentResult}
         paymentOpen={data.paymentOpen}
         paymentMethod={data.paymentMethod}
@@ -961,7 +963,9 @@ export function EmployeeDeliveryWorkspace({
         onChooseProblemStatus={data.chooseProblemStatus}
         onSetQuantity={data.setDeliveryQuantity}
         onClearCart={data.clearDeliveryQuantities}
-        onPaymentTermChange={data.setPaymentTerm}
+        onConfirmDelivery={data.submitDeliveryChoice}
+        hasPendingDelivery={data.hasPendingDelivery}
+        onRetryDelivery={data.retryPendingDelivery}
         onPaymentMethodChange={data.setPaymentMethod}
         onPaymentAmountChange={data.setPaymentAmount}
         onPaymentReferenceChange={data.setPaymentReference}
@@ -977,7 +981,7 @@ export function EmployeeDeliveryWorkspace({
         problemOpen={data.problemOpen}
         round={data.selectedRound}
         shopCard={data.selectedCard}
-        shopCards={data.filteredCards}
+        shopCards={data.roundCards}
         status={data.status}
         stockSourceLabel={stockSourceLabel}
           submitting={data.submitting}

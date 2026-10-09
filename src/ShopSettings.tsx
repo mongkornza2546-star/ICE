@@ -839,8 +839,8 @@ export function ShopSettings({
             ? []
             : [{
               shop_id: shop.id,
-              allowed_payment_terms: ['immediate'],
-              default_payment_term: 'immediate',
+              allowed_payment_terms: ['end_of_day', 'immediate'],
+              default_payment_term: 'end_of_day',
               credit_due_rule: null,
               credit_days: null,
               credit_collection_weekday: null,

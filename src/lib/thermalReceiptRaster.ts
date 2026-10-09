@@ -161,23 +161,6 @@ class ReceiptRaster {
     }
   }
 
-  itemRow(name: string, quantity: string, amount: string, bold = false) {
-    const size = 18;
-    this.setFont(size, bold);
-    const nameWidth = 190;
-    const lines = this.wrap(name, nameWidth);
-    const lineHeight = Math.ceil(size * DEFAULT_LINE_HEIGHT_RATIO);
-    this.assertSpace(lines.length * lineHeight);
-    this.context.textAlign = 'right';
-    this.context.fillText(quantity, 290, this.y);
-    this.context.fillText(amount, PRINT_WIDTH - PADDING, this.y);
-    this.context.textAlign = 'left';
-    for (const line of lines) {
-      this.context.fillText(line, PADDING, this.y);
-      this.y += lineHeight;
-    }
-  }
-
   finish() {
     this.assertSpace(24);
     const height = Math.max(80, this.y + 24);
@@ -219,42 +202,42 @@ export async function renderSalesDocumentRaster(payload: SalesDocumentPayload) {
   await loadReceiptFonts();
   const receipt = new ReceiptRaster();
   if (payload.documentType === 'REC') {
-    receipt.text('Super Ice', { align: 'center', bold: true, size: 27 });
-    receipt.text('ใบเสร็จรับเงิน / RECEIPT', { align: 'center', bold: true, size: 22 });
+    receipt.text('Super Ice', { align: 'center', bold: true, size: 31 });
+    receipt.text('ใบเสร็จรับเงิน / RECEIPT', { align: 'center', bold: true, size: 26 });
     receipt.gap(6);
-    receipt.text(`เลขที่เอกสาร: ${payload.documentNumber}`, { size: 20 });
+    receipt.text(`เลขที่เอกสาร: ${payload.documentNumber}`, { size: 22 });
     if (payload.receivedDate) {
-      receipt.text(`วันที่รับเงิน: ${formatReceiptDate(payload.receivedDate)}`, { size: 20 });
-      if (payload.enteredAt) receipt.text(`บันทึกเมื่อ: ${formatReceiptDateTime(payload.enteredAt)}`, { size: 19 });
+      receipt.text(`วันที่รับเงิน: ${formatReceiptDate(payload.receivedDate)}`, { size: 22 });
+      if (payload.enteredAt) receipt.text(`บันทึกเมื่อ: ${formatReceiptDateTime(payload.enteredAt)}`, { size: 21 });
     }
-    if (payload.serviceDate) receipt.text(`วันที่จัดส่ง: ${formatReceiptDate(payload.serviceDate)}`, { size: 20 });
+    if (payload.serviceDate) receipt.text(`วันที่จัดส่ง: ${formatReceiptDate(payload.serviceDate)}`, { size: 22 });
     if (payload.status === 'voided') {
       receipt.gap(4);
-      receipt.text(`ยกเลิก · ${payload.voidInfo?.reason ?? 'ไม่ระบุเหตุ'}`, { align: 'center', bold: true, size: 21 });
+      receipt.text(`ยกเลิก · ${payload.voidInfo?.reason ?? 'ไม่ระบุเหตุ'}`, { align: 'center', bold: true, size: 23 });
     }
     receipt.rule();
-    receipt.text('[ข้อมูลลูกค้า / ผู้รับของ]', { bold: true, size: 21 });
+    receipt.text('[ข้อมูลลูกค้า / ผู้รับของ]', { bold: true, size: 23 });
     receipt.gap(4);
-    receipt.text(`ลูกค้า: ${payload.shop.code} · ${payload.shop.name}`, { size: 21 });
-    receipt.text(`สาขา: ${payload.shop.location ?? '—'}`, { size: 20 });
+    receipt.text(`ลูกค้า: ${payload.shop.code} · ${payload.shop.name}`, { size: 23 });
+    receipt.text(`สาขา: ${payload.shop.location ?? '—'}`, { size: 21 });
     if (payload.paymentMethod) {
-      receipt.text(`วิธีชำระ: ${receiptMethodLabels[payload.paymentMethod]}`, { size: 20 });
+      receipt.text(`วิธีชำระ: ${receiptMethodLabels[payload.paymentMethod]}`, { size: 21 });
     }
     receipt.rule();
 
     const items = consolidatedReceiptItems(payload.items);
     const itemTotal = items.reduce((total, item) => total + item.lineTotal, 0);
     const allocationsOnly = Math.abs(itemTotal - payload.totals.total) >= 0.005;
-    receipt.itemRow(allocationsOnly ? 'รายการรับชำระ' : 'รายการสินค้า', 'จำนวน', 'รวม(฿)', true);
+    receipt.row(allocationsOnly ? 'รายการรับชำระ' : 'รายการสินค้า / จำนวน', 'รวม(฿)', { bold: true, size: 23 });
     receipt.gap(5);
     if (allocationsOnly) {
       for (const allocation of payload.allocations) {
-        receipt.itemRow(allocation.documentNumber ? `รับชำระ ${allocation.documentNumber}` : 'รับชำระ', '—', allocation.amount.toFixed(2));
+        receipt.row(allocation.documentNumber ? `รับชำระ ${allocation.documentNumber}` : 'รับชำระ', allocation.amount.toFixed(2), { size: 25 });
         receipt.gap(3);
       }
     } else {
       for (const item of items) {
-        receipt.itemRow(item.name, `${item.quantity} ${item.unit}`, item.lineTotal.toFixed(2));
+        receipt.row(`${item.name} ${item.quantity} ${item.unit}`, item.lineTotal.toFixed(2), { size: 25 });
         receipt.gap(3);
       }
     }
@@ -262,16 +245,16 @@ export async function renderSalesDocumentRaster(payload: SalesDocumentPayload) {
       .flatMap((allocation) => allocation.documentNumber ? [allocation.documentNumber] : []));
     if (!allocationsOnly && documentNumbers.length > 0) {
       receipt.gap(4);
-      receipt.text(`(อ้างอิงใบสั่งซื้อ: ${documentNumbers.join(', ')})`, { size: 18 });
+      receipt.text(`(อ้างอิงใบสั่งซื้อ: ${documentNumbers.join(', ')})`, { size: 20 });
     }
     receipt.rule();
-    receipt.row('ยอดรวมสุทธิ (Total)', money.format(payload.totals.total), { bold: true, size: 22 });
+    receipt.row('ยอดรวมสุทธิ (Total)', money.format(payload.totals.total), { bold: true, size: 26 });
     receipt.gap(4);
-    receipt.row(payload.paymentMethod ? receiptReceivedLabels[payload.paymentMethod] : 'รับเงิน (Received)', money.format(payload.totals.received ?? payload.totals.total), { size: 20 });
-    receipt.row('เงินทอน (Change)', money.format(payload.totals.change ?? 0), { size: 20 });
+    receipt.row(payload.paymentMethod ? receiptReceivedLabels[payload.paymentMethod] : 'รับเงิน (Received)', money.format(payload.totals.received ?? payload.totals.total), { size: 22 });
+    receipt.row('เงินทอน (Change)', money.format(payload.totals.change ?? 0), { size: 22 });
     if (payload.voidInfo) {
       receipt.gap(6);
-      receipt.text(`ยกเลิกเมื่อ ${dateTime.format(new Date(payload.voidInfo.voidedAt))}${payload.voidInfo.voidedBy ? ` · ${payload.voidInfo.voidedBy}` : ''}`, { size: 18 });
+      receipt.text(`ยกเลิกเมื่อ ${dateTime.format(new Date(payload.voidInfo.voidedAt))}${payload.voidInfo.voidedBy ? ` · ${payload.voidInfo.voidedBy}` : ''}`, { size: 20 });
     }
   } else {
     receipt.text(payload.title, { align: 'center', bold: true, size: 27 });
