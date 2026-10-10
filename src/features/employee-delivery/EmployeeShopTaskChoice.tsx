@@ -1,5 +1,5 @@
 import { translateUi, useLanguage } from '../../i18n';
-import { ArrowLeft, Coins, Package, WarningCircle } from '@phosphor-icons/react';
+import { ArrowLeft, Coins, FileText, Package, WarningCircle } from '@phosphor-icons/react';
 import type { ShopCard } from '../../types/app';
 import { STATUS_LABELS } from './constants';
 
@@ -20,6 +20,10 @@ export function EmployeeShopTaskChoice({
   onRetry,
   onSend,
   onCollect,
+  onOpenCreditSignoff,
+  creditEligibilityError,
+  creditEligibilityLoading,
+  onRetryCreditEligibility,
 }: {
   card: ShopCard;
   outstandingAmount: number | undefined;
@@ -30,6 +34,10 @@ export function EmployeeShopTaskChoice({
   onRetry: () => void;
   onSend: () => void;
   onCollect: () => void;
+  onOpenCreditSignoff?: () => void;
+  creditEligibilityError?: string | null;
+  creditEligibilityLoading?: boolean;
+  onRetryCreditEligibility?: () => void;
 }) {
   useLanguage();
   const balanceReady = outstandingAmount !== undefined && !outstandingError;
@@ -78,6 +86,17 @@ export function EmployeeShopTaskChoice({
           <Coins aria-hidden="true" size={21} weight="duotone" />{translateUi(' รับชำระ')}</button>
       </div>
       {disabledReason ? <p className="employee-task-choice__hint">{disabledReason}</p> : null}
+      {creditEligibilityLoading ? <p role="status">{translateUi('กำลังโหลดโปรไฟล์การชำระเงิน...')}</p> : null}
+      {creditEligibilityError ? <div className="employee-task-choice__load-error" role="alert">
+        <WarningCircle aria-hidden="true" size={20} weight="fill" />
+        <span>{translateUi('ใบเซ็นเครดิต')}: {translateUi(creditEligibilityError)}</span>
+        <button disabled={creditEligibilityLoading} onClick={onRetryCreditEligibility} type="button">{translateUi('ลองใหม่')}</button>
+      </div> : null}
+      {onOpenCreditSignoff ? <div className="employee-task-choice__actions">
+        <button className="employee-secondary-action employee-task-choice__credit-signoff" onClick={onOpenCreditSignoff} type="button">
+          <FileText aria-hidden="true" size={21} weight="duotone" />{translateUi('ใบเซ็นเครดิต')}
+        </button>
+      </div> : null}
     </section>
   );
 }

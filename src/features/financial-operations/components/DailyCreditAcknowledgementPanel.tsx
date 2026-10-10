@@ -41,7 +41,12 @@ const dateTime = uiDateTimeFormat({
   timeZone: 'Asia/Bangkok',
 });
 
-export function DailyCreditAcknowledgementPanel({ serviceDate, printerName }: { serviceDate: string; printerName?: string }) {
+export function DailyCreditAcknowledgementPanel({ serviceDate, printerName, shopId, onBack }: {
+  serviceDate: string;
+  printerName?: string;
+  shopId?: string;
+  onBack?: () => void;
+}) {
   useLanguage();
   const [selectedDate, setSelectedDate] = useState(serviceDate);
   const [items, setItems] = useState<DailyCreditAcknowledgementSummary[]>([]);
@@ -49,7 +54,8 @@ export function DailyCreditAcknowledgementPanel({ serviceDate, printerName }: { 
   const [busyShopId, setBusyShopId] = useState<string | null>(null);
   const [buildingId, setBuildingId] = useState('');
   const [zoneId, setZoneId] = useState('');
-  const [selectedShopId, setSelectedShopId] = useState<string | null>(null);
+  const [internalShopId, setSelectedShopId] = useState<string | null>(null);
+  const selectedShopId = shopId ?? internalShopId;
   const [detail, setDetail] = useState<{ shopId: string; invoices: CreditInvoice[] | null; error: string | null } | null>(null);
   const detailRequest = useRef(0);
   const sectionRef = useRef<HTMLElement>(null);
@@ -241,7 +247,7 @@ export function DailyCreditAcknowledgementPanel({ serviceDate, printerName }: { 
 
   return <section className="financial-ops__section daily-credit-signoff" aria-labelledby={selectedShopId ? 'daily-credit-shop-title' : 'daily-credit-signoff-title'} ref={sectionRef} tabIndex={-1}>
     {selectedShopId ? <>
-      <button className="daily-credit-signoff__back" onClick={closeShop} type="button"><ArrowLeft size={20} />{translateUi('กลับรายชื่อร้าน')}</button>
+      <button className="daily-credit-signoff__back" onClick={onBack ?? closeShop} type="button"><ArrowLeft size={20} />{translateUi(onBack ? 'กลับ POS' : 'กลับรายชื่อร้าน')}</button>
       {selectedShop ? <>
         <div className="daily-credit-signoff__shop-header">
           <div className="daily-credit-signoff__shop">
@@ -273,7 +279,10 @@ export function DailyCreditAcknowledgementPanel({ serviceDate, printerName }: { 
             {selectedShop.latest_evidence_path ? <button disabled={busyShopId === selectedShopId} onClick={() => void viewEvidence(selectedShop)} type="button">{translateUi('ดูรูป')}</button> : null}
           </div>
         </div>
-      </> : <p className="financial-ops__empty" id="daily-credit-shop-title">{translateUi('ไม่มีร้านในตึกและโซนที่เลือก')}</p>}
+      </> : <>
+        {error ? <p className="credit-ar__action-error" role="alert">{translateUi(error)} <button onClick={() => void load()} type="button">{translateUi('ลองอีกครั้ง')}</button></p> : null}
+        {!error ? <p className="financial-ops__empty" id="daily-credit-shop-title">{translateUi(loading ? 'กำลังโหลดใบเครดิต...' : shopId ? 'วันนี้ยังไม่มีรายการส่งร้านเครดิต' : 'ไม่มีร้านในตึกและโซนที่เลือก')}</p> : null}
+      </>}
     </> : <>
     <div className="financial-ops__title">
       <div><FileText /><span><h2 id="daily-credit-signoff-title">{translateUi('ใบเซ็นเครดิตรายวัน')}</h2><p>{translateUi('รวมทุกใบ INV ของร้านในวันเดียว เพื่อให้ร้านตรวจและเซ็นครั้งเดียว')}</p></span></div>

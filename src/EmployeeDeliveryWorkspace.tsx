@@ -25,6 +25,7 @@ import { EmployeeState } from './features/employee-delivery/EmployeeState';
 import { EmployeeStockTransferSection } from './features/employee-delivery/EmployeeStockTransferSection';
 import { EmployeeShopPicker } from './features/employee-delivery/EmployeeShopPicker';
 import { EmployeeShopTaskChoice } from './features/employee-delivery/EmployeeShopTaskChoice';
+import { DailyCreditAcknowledgementPanel } from './features/financial-operations/components/DailyCreditAcknowledgementPanel';
 import { EmployeeCasualCustomerPage } from './features/employee-delivery/EmployeeCasualCustomerPage';
 import { EmployeeDeliveryReview } from './features/employee-delivery/EmployeeDeliveryReview';
 import { useEmployeeDeliveryData } from './features/employee-delivery/useEmployeeDeliveryData';
@@ -130,6 +131,7 @@ export interface EmployeeDeliveryGateway {
     onBaseCards?: (cards: ShopCard[]) => void;
   }): Promise<ShopCard[]>;
   loadCollectionOutstanding?(serviceDate: string): Promise<CollectionOutstandingSummary[]>;
+  loadShopCreditEligibility?(shopId: string): Promise<boolean>;
   getEventCardsLoadError?(roundId: string): string | null;
   loadDeliveryPosContext?(roundStopId: string, options: {
     destinationKind: NonNullable<ShopCard['destination_kind']>;
@@ -508,6 +510,16 @@ export function createSupabaseGateway(): EmployeeDeliveryGateway {
           outstandingAmount: Number(shop.outstanding_amount),
         }));
     },
+    async loadShopCreditEligibility(shopId) {
+      if (!supabase) throw new Error('ยังไม่ได้ตั้งค่า Supabase');
+      const { data, error } = await supabase
+        .from('shop_payment_profiles')
+        .select('allowed_payment_terms')
+        .eq('shop_id', shopId)
+        .maybeSingle();
+      if (error) throw error;
+      return Boolean(data?.allowed_payment_terms?.includes('credit'));
+    },
     getEventCardsLoadError(roundId) {
       return eventCardLoadErrors.get(roundId) ?? null;
     },
@@ -758,6 +770,7 @@ export function EmployeeDeliveryWorkspace({
   collectionReturnOrigin = 'courier-pos',
   collectionCloseResult = null,
   requestScope = 'default',
+  printerName,
   serviceDate = toBangkokDateString(),
   stockSourceLabel = 'สต๊อกรวมประจำวัน',
   viewMode,
@@ -774,6 +787,7 @@ export function EmployeeDeliveryWorkspace({
   collectionReturnOrigin?: 'courier-pos' | 'admin-delivery';
   collectionCloseResult?: CollectionCloseResult | null;
   requestScope?: string;
+  printerName?: string;
   serviceDate?: string;
   stockSourceLabel?: string;
   viewMode?: 'pos' | 'withdrawal';
@@ -791,6 +805,11 @@ export function EmployeeDeliveryWorkspace({
   });
   const [casualCapabilityAvailable, setCasualCapabilityAvailable] = useState(false);
   const [casualCustomerOpen, setCasualCustomerOpen] = useState(false);
+  const [taskChoiceIsCredit, setTaskChoiceIsCredit] = useState(false);
+  const [creditEligibilityLoading, setCreditEligibilityLoading] = useState(false);
+  const [creditEligibilityError, setCreditEligibilityError] = useState<string | null>(null);
+  const [creditEligibilityRetry, setCreditEligibilityRetry] = useState(0);
+  const [creditSignoffOpen, setCreditSignoffOpen] = useState(false);
   const casualCustomerButtonRef = useRef<HTMLButtonElement>(null);
   const casualCustomerBrowseScrollY = useRef(0);
   const casualCustomerReturnFocusPending = useRef(false);
@@ -812,6 +831,25 @@ export function EmployeeDeliveryWorkspace({
   });
   const anySubmittingRef = useRef(data.anySubmitting);
   anySubmittingRef.current = data.anySubmitting;
+
+  useEffect(() => {
+    let cancelled = false;
+    setTaskChoiceIsCredit(false);
+    setCreditSignoffOpen(false);
+    setCreditEligibilityError(null);
+    setCreditEligibilityLoading(false);
+    const card = data.taskChoiceCard;
+    if (!isActive || !card || card.destination_kind === 'event' || !gateway.loadShopCreditEligibility) return;
+    setCreditEligibilityLoading(true);
+    void gateway.loadShopCreditEligibility(card.shop_id).then((isCredit) => {
+      if (!cancelled) setTaskChoiceIsCredit(isCredit);
+    }).catch((error: unknown) => {
+      if (!cancelled) setCreditEligibilityError(getErrorMessage(error));
+    }).finally(() => {
+      if (!cancelled) setCreditEligibilityLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [data.taskChoiceCard?.round_stop_id, data.taskChoiceCard?.shop_id, gateway, isActive, serviceDate, creditEligibilityRetry]);
 
   useEffect(() => {
     setCasualCustomerOpen(false);
@@ -930,11 +968,20 @@ export function EmployeeDeliveryWorkspace({
   if (data.taskChoiceCard) {
     return (
       <div className="employee-workspace">
-        <EmployeeShopTaskChoice
+        {creditSignoffOpen ? <DailyCreditAcknowledgementPanel
+          onBack={() => setCreditSignoffOpen(false)}
+          printerName={printerName}
+          serviceDate={serviceDate}
+          shopId={data.taskChoiceCard.shop_id}
+        /> : <EmployeeShopTaskChoice
           canCollect={canCollectShopPayments}
           card={data.taskChoiceCard}
+          creditEligibilityError={creditEligibilityError}
+          creditEligibilityLoading={creditEligibilityLoading}
+          onRetryCreditEligibility={() => setCreditEligibilityRetry((attempt) => attempt + 1)}
           onBack={data.returnFromTaskChoice}
           onCollect={data.openCollectionFromTaskChoice}
+          onOpenCreditSignoff={taskChoiceIsCredit ? () => setCreditSignoffOpen(true) : undefined}
           onRetry={() => void data.refreshCollectionOutstanding()}
           onSend={data.sendFromTaskChoice}
           outstandingAmount={data.collectionOutstanding === null
@@ -942,7 +989,7 @@ export function EmployeeDeliveryWorkspace({
             : data.collectionOutstanding[data.taskChoiceCard.shop_id] ?? 0}
           outstandingError={data.collectionOutstandingError}
           outstandingLoading={data.collectionOutstandingLoading}
-        />
+        />}
       </div>
     );
   }

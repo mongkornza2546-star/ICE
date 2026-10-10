@@ -17,15 +17,20 @@ const supabaseMock = vi.hoisted(() => {
 });
 
 vi.mock('../src/lib/supabase', () => ({ supabase: supabaseMock.client }));
+vi.mock('../src/lib/dailyCreditAcknowledgementPrint', () => ({
+  printDailyCreditAcknowledgementForCurrentPlatform: vi.fn().mockResolvedValue(true),
+}));
 
 import { DailyCreditAcknowledgementPanel } from '../src/features/financial-operations/components/DailyCreditAcknowledgementPanel';
 import { publishDataChange } from '../src/lib/dataChange';
+import { printDailyCreditAcknowledgementForCurrentPlatform } from '../src/lib/dailyCreditAcknowledgementPrint';
 
 beforeEach(() => {
   window.history.replaceState(null, '');
   supabaseMock.client.rpc.mockReset();
   supabaseMock.client.storage.from.mockClear();
   supabaseMock.getPublicUrl.mockClear();
+  vi.mocked(printDailyCreditAcknowledgementForCurrentPlatform).mockClear();
 });
 
 it('shows the shop image on the daily credit acknowledgement card', async () => {
@@ -187,4 +192,42 @@ it('closes the detail history entry when the service date changes', async () => 
   expect(screen.queryByRole('heading', { name: 'BB27 · ร้านทดสอบ' })).toBeNull();
   act(() => window.history.back());
   await waitFor(() => expect(window.history.state).toBeNull());
+});
+
+it('opens the requested POS shop directly with its date and returns to POS', async () => {
+  const document = { id: 'credit-document-1', shop_id: 'shop-1', service_date: '2026-08-21' };
+  supabaseMock.client.rpc.mockImplementation(async (name: string) => ({
+    data: name === 'list_daily_credit_acknowledgements' ? navigationShops
+      : name === 'prepare_daily_credit_acknowledgement' ? document : [], error: null,
+  }));
+  const printWindow = window;
+  const openWindow = vi.spyOn(window, 'open').mockReturnValue(printWindow);
+  const user = userEvent.setup();
+  const onBack = vi.fn();
+  render(<DailyCreditAcknowledgementPanel shopId="shop-1" serviceDate="2026-08-21" printerName="พนักงานทดสอบ" onBack={onBack} />);
+  expect(await screen.findByRole('heading', { name: 'BB27 · ร้านทดสอบ' })).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'พิมพ์ใบรวม' })).toBeTruthy();
+  await waitFor(() => expect(supabaseMock.client.rpc).toHaveBeenCalledWith('get_daily_credit_acknowledgement_details', {
+    p_shop_id: 'shop-1', p_service_date: '2026-08-21',
+  }));
+  expect(screen.queryByLabelText('ตึก')).toBeNull();
+  await user.click(screen.getByRole('button', { name: 'พิมพ์ใบรวม' }));
+  await waitFor(() => expect(printDailyCreditAcknowledgementForCurrentPlatform).toHaveBeenCalledWith({
+    ...document, printed_by_nickname: 'พนักงานทดสอบ',
+  }, printWindow));
+  expect(supabaseMock.client.rpc).toHaveBeenCalledWith('prepare_daily_credit_acknowledgement', {
+    p_shop_id: 'shop-1', p_service_date: '2026-08-21',
+  });
+  openWindow.mockRestore();
+  await user.click(screen.getByRole('button', { name: 'กลับ POS' }));
+  expect(onBack).toHaveBeenCalledOnce();
+  expect(window.history.state).toBeNull();
+});
+
+it('keeps a POS shortcut scoped to its shop when that shop has no credit deliveries', async () => {
+  supabaseMock.client.rpc.mockResolvedValue({ data: navigationShops, error: null });
+  render(<DailyCreditAcknowledgementPanel shopId="another-shop" serviceDate="2026-08-21" onBack={vi.fn()} />);
+  expect(await screen.findByText('วันนี้ยังไม่มีรายการส่งร้านเครดิต')).toBeTruthy();
+  expect(screen.queryByRole('button', { name: 'พิมพ์ใบรวม' })).toBeNull();
+  expect(screen.getByRole('button', { name: 'กลับ POS' })).toBeTruthy();
 });

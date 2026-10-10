@@ -7,6 +7,15 @@ import { readPosCollectionReturn } from '../src/lib/posCollectionReturn';
 import { toBangkokDateString } from '../src/lib/serviceDate';
 import type { CollectionCloseResult, CollectionFocusRequest, ShopCard } from '../src/types/app';
 
+vi.mock('../src/features/financial-operations/components/DailyCreditAcknowledgementPanel', () => ({
+  DailyCreditAcknowledgementPanel: ({ shopId, serviceDate, printerName, onBack }: {
+    shopId: string; serviceDate: string; printerName: string; onBack: () => void;
+  }) => <section aria-label="Credit print page">
+    <p>{shopId} / {serviceDate} / {printerName}</p>
+    <button onClick={onBack}>กลับ POS</button>
+  </section>,
+}));
+
 const deliveredShop: ShopCard = {
   round_stop_id: 'stop-bb44',
   shop_id: 'shop-bb44',
@@ -129,6 +138,45 @@ describe('POS payment shortcut', () => {
     expect(screen.getByText('ไม่มียอดถึงกำหนด')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'รับชำระ' }).hasAttribute('disabled')).toBe(true);
     expect(screen.getByRole('button', { name: 'ส่งเพิ่ม' }).hasAttribute('disabled')).toBe(false);
+  });
+
+  it.each([true, false])('shows the credit print shortcut only for credit shops (credit: %s)', async (credit) => {
+    const user = userEvent.setup();
+    const gateway = createGateway(0);
+    gateway.loadShopCreditEligibility = vi.fn().mockResolvedValue(credit);
+    gateway.loadDeliveryPosContext = vi.fn().mockRejectedValue(new Error('No assigned holding location'));
+    render(<EmployeeDeliveryWorkspace gateway={gateway} printerName="พนักงานทดสอบ"
+      serviceDate="2026-09-25" viewMode="pos" />);
+    await user.click(await screen.findByRole('button', { name: 'เลือกร้าน BB44 ร้านใหม่น้ำปั่น (ปุ้ย)' }));
+    await waitFor(() => expect(gateway.loadShopCreditEligibility).toHaveBeenCalledWith('shop-bb44'));
+    expect(gateway.loadDeliveryPosContext).not.toHaveBeenCalled();
+    if (!credit) {
+      expect(screen.queryByRole('button', { name: 'ใบเซ็นเครดิต' })).toBeNull();
+      return;
+    }
+    await user.click(await screen.findByRole('button', { name: 'ใบเซ็นเครดิต' }));
+    expect(screen.getByRole('region', { name: 'Credit print page' }).textContent)
+      .toContain('shop-bb44 / 2026-09-25 / พนักงานทดสอบ');
+    await user.click(screen.getByRole('button', { name: 'กลับ POS' }));
+    expect(screen.getByRole('heading', { name: deliveredShop.shop_name })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'รับชำระ' }).hasAttribute('disabled')).toBe(true);
+    expect(gateway.recordDelivery).not.toHaveBeenCalled();
+    expect(gateway.recordImmediateSale).not.toHaveBeenCalled();
+  });
+
+  it('reports credit lookup failures and retries without leaving the shop', async () => {
+    const user = userEvent.setup();
+    const gateway = createGateway(0);
+    gateway.loadShopCreditEligibility = vi.fn()
+      .mockRejectedValueOnce(new Error('Network unavailable'))
+      .mockResolvedValueOnce(true);
+    render(<EmployeeDeliveryWorkspace gateway={gateway} serviceDate="2026-09-25" viewMode="pos" />);
+    await user.click(await screen.findByRole('button', { name: 'เลือกร้าน BB44 ร้านใหม่น้ำปั่น (ปุ้ย)' }));
+    expect((await screen.findByRole('alert')).textContent).toContain('Network unavailable');
+    await user.click(screen.getByRole('button', { name: 'ลองใหม่' }));
+    expect(await screen.findByRole('button', { name: 'ใบเซ็นเครดิต' })).toBeTruthy();
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(gateway.loadShopCreditEligibility).toHaveBeenCalledTimes(2);
   });
 
   it.each([

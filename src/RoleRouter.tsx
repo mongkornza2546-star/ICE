@@ -371,6 +371,7 @@ export function RoleRouter({
             }}
             onOpenEvents={() => setCourierView('events')}
             onStockReceived={() => setCourierView('pos')}
+            printerName={profile.nickname?.trim() || profile.display_name}
             requestScope={profile.id}
             collectionReturnOrigin="courier-pos"
             collectionCloseResult={collectionCloseResult}
@@ -564,6 +565,7 @@ export function RoleRouter({
             collectionCloseResult={collectionCloseResult}
             serviceDate={profile.role === 'admin' ? billingServiceDate : undefined}
             stockSourceLabel="สต๊อกรวมประจำวัน"
+            printerName={profile.nickname?.trim() || profile.display_name}
           />
         </KeepAlive>
       )}

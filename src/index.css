@@ -1447,6 +1447,7 @@ input:disabled, select:disabled, textarea:disabled { background: #f2f5f8; color:
 .employee-task-choice__load-error { min-height: 48px; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 9px; padding: 10px 12px; border: 1px solid #efbcc0; border-radius: 11px; color: #a82d36; background: #fff2f3; font-size: .75rem; }
 .employee-task-choice__load-error button { min-height: 40px; padding: 0 12px; border: 1px solid #d8737b; border-radius: 8px; color: #982731; background: #fff; font: inherit; font-weight: 800; }
 .employee-task-choice__actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.employee-task-choice__credit-signoff { grid-column: 1 / -1; }
 .employee-task-choice__actions button { min-height: 52px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 0 14px; font: inherit; font-size: .84rem; font-weight: 900; touch-action: manipulation; }
 .employee-secondary-action { border: 1px solid #1870d9; border-radius: 11px; color: #0963c8; background: #edf6ff; }
 .employee-secondary-action:disabled { cursor: not-allowed; border-color: #c9d5e1; color: #8494a5; background: #f2f5f8; }
