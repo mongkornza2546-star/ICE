@@ -1,3 +1,4 @@
+import { uiDateTimeFormat, translateUi, useLanguage } from './i18n';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowClockwise, Package, Scales } from '@phosphor-icons/react';
 import { supabase } from './lib/supabase';
@@ -19,7 +20,7 @@ function todayIsoDate() {
 }
 
 function formatStockTime(value: string) {
-  return new Intl.DateTimeFormat('th-TH', { hour: '2-digit', minute: '2-digit' }).format(new Date(value));
+  return uiDateTimeFormat({ hour: '2-digit', minute: '2-digit' }).format(new Date(value));
 }
 
 interface StockAuditMovement extends StockMovementEntry {
@@ -38,6 +39,7 @@ interface CountHistoryResponse {
 
 /** Read-only record of stock movements and count snapshots. */
 export function ManagerStockAudit() {
+  useLanguage();
   const [serviceDate, setServiceDate] = useState(todayIsoDate);
   const [movements, setMovements] = useState<StockAuditMovement[]>([]);
   const [movementTotal, setMovementTotal] = useState(0);
@@ -125,57 +127,56 @@ export function ManagerStockAudit() {
         <div className="panel-header">
           <div>
             <p className="eyebrow">Audit log</p>
-            <h1>ประวัติการจัดการสต็อก</h1>
-            <p className="muted">ดูรายการย้อนหลังแบบอ่านอย่างเดียว แยกจากหน้าทำรายการสต็อก</p>
+            <h1>{translateUi('ประวัติการจัดการสต็อก')}</h1>
+            <p className="muted">{translateUi('ดูรายการย้อนหลังแบบอ่านอย่างเดียว แยกจากหน้าทำรายการสต็อก')}</p>
           </div>
           <button className="secondary-button" disabled={loading} onClick={() => void loadAudit()} type="button">
-            <ArrowClockwise size={18} /> {loading ? 'กำลังโหลด...' : 'รีเฟรช'}
+            <ArrowClockwise size={18} /> {loading ? translateUi('กำลังโหลด...') : translateUi('รีเฟรช')}
           </button>
         </div>
         <div className="audit-toolbar">
           <label>
-            วันที่ทำรายการ
-            <input max={todayIsoDate()} onChange={(event) => changeServiceDate(event.target.value)} required type="date" value={serviceDate} />
+            {translateUi('วันที่ทำรายการ')}<input max={todayIsoDate()} onChange={(event) => changeServiceDate(event.target.value)} required type="date" value={serviceDate} />
           </label>
-          {loadedAt ? <small className="muted">อัปเดต {formatStockTime(loadedAt)} น.</small> : null}
+          {loadedAt ? <small className="muted">{translateUi('อัปเดต ')}{formatStockTime(loadedAt)}{translateUi(' น.')}</small> : null}
         </div>
       </section>
 
-      {error ? <section className="panel error-panel"><p className="eyebrow">โหลด Audit ไม่สำเร็จ</p><h2>{error}</h2></section> : null}
-      {!error && loading && !loadedAt ? <section className="panel center-panel"><p className="eyebrow">กำลังโหลด</p><h2>กำลังดึงประวัติการทำรายการ</h2></section> : null}
+      {error ? <section className="panel error-panel"><p className="eyebrow">{translateUi('โหลด Audit ไม่สำเร็จ')}</p><h2>{translateUi(error)}</h2></section> : null}
+      {!error && loading && !loadedAt ? <section className="panel center-panel"><p className="eyebrow">{translateUi('กำลังโหลด')}</p><h2>{translateUi('กำลังดึงประวัติการทำรายการ')}</h2></section> : null}
 
       {!error && loadedAt ? (
         <>
           <section className="stock-ledger audit-section">
             <div className="panel-header">
-              <div><p className="eyebrow">Stock movements</p><h2><Package size={22} /> รายการเคลื่อนไหว</h2></div>
-              <span className="status-badge status-badge--neutral">{movementTotal} รายการ</span>
+              <div><p className="eyebrow">Stock movements</p><h2><Package size={22} />{translateUi(' รายการเคลื่อนไหว')}</h2></div>
+              <span className="status-badge status-badge--neutral">{movementTotal}{translateUi(' รายการ')}</span>
             </div>
             <div className="stock-ledger-list">
               {movements.map((movement) => (
                 <article className="stock-ledger-item" key={movement.id}>
                   <div className="panel-header">
                     <div className="audit-movement-title">
-                      <strong>{MOVEMENT_LABELS[movement.kind] ?? movement.kind}</strong>
-                      {movement.status === 'cancelled' ? <span className="status-badge status-badge--danger">ยกเลิกแล้ว</span> : null}
+                      <strong>{translateUi(MOVEMENT_LABELS[movement.kind] ?? movement.kind)}</strong>
+                      {movement.status === 'cancelled' ? <span className="status-badge status-badge--danger">{translateUi('ยกเลิกแล้ว')}</span> : null}
                     </div>
-                    <time>{formatStockTime(movement.recorded_at)} น.</time>
+                    <time>{formatStockTime(movement.recorded_at)}{translateUi(' น.')}</time>
                   </div>
-                  <p>{movement.from_location_name ?? 'โรงงาน'} {' → '} {movement.to_location_name ?? (movement.kind === 'damage' ? 'เสียหาย' : 'โรงงาน')}</p>
+                  <p>{movement.from_location_name ?? translateUi('โรงงาน')} {' → '} {movement.to_location_name ?? (movement.kind === 'damage' ? translateUi('เสียหาย') : translateUi('โรงงาน'))}</p>
                   <small>{movement.items.map((item) => `${item.ice_type_name} ${item.quantity} ${item.unit}`).join(' · ')}</small>
                   <small>{movement.recorded_by}{movement.note ? ` · ${movement.note}` : ''}</small>
                   {movement.status === 'cancelled' ? (
                     <small className="audit-cancellation">
-                      ยกเลิกโดย {movement.cancelled_by ?? '-'}
-                      {movement.cancelled_at ? ` เมื่อ ${formatStockTime(movement.cancelled_at)} น.` : ''}
+                      {translateUi('ยกเลิกโดย ')}{movement.cancelled_by ?? '-'}
+                      {movement.cancelled_at ? translateUi(' เมื่อ {0} น.', { 0: formatStockTime(movement.cancelled_at) }) : ''}
                       {movement.cancellation_reason ? ` · ${movement.cancellation_reason}` : ''}
                     </small>
                   ) : null}
-                  {movement.original_movement_id ? <small>แก้ไขจากรายการ {movement.original_movement_id}</small> : null}
-                  {movement.replacement_movement_id ? <small>รายการทดแทน {movement.replacement_movement_id}</small> : null}
+                  {movement.original_movement_id ? <small>{translateUi('แก้ไขจากรายการ ')}{movement.original_movement_id}</small> : null}
+                  {movement.replacement_movement_id ? <small>{translateUi('รายการทดแทน ')}{movement.replacement_movement_id}</small> : null}
                 </article>
               ))}
-              {movements.length === 0 ? <p className="empty-text">ยังไม่มีรายการสต็อกในวันที่เลือก</p> : null}
+              {movements.length === 0 ? <p className="empty-text">{translateUi('ยังไม่มีรายการสต็อกในวันที่เลือก')}</p> : null}
             </div>
             {movementTotal > PAGE_SIZE ? (
               <AuditPagination
@@ -192,18 +193,18 @@ export function ManagerStockAudit() {
 
           <section className="stock-ledger audit-section">
             <div className="panel-header">
-              <div><p className="eyebrow">Count snapshots</p><h2><Scales size={22} /> ประวัติการตรวจนับ</h2></div>
-              <span className="status-badge status-badge--neutral">{countTotal} ครั้ง</span>
+              <div><p className="eyebrow">Count snapshots</p><h2><Scales size={22} />{translateUi(' ประวัติการตรวจนับ')}</h2></div>
+              <span className="status-badge status-badge--neutral">{countTotal}{translateUi(' ครั้ง')}</span>
             </div>
             <div className="stock-ledger-list">
               {countHistory.map((snapshot) => (
                 <article className="stock-ledger-item" key={snapshot.id}>
-                  <div className="panel-header"><strong>{snapshot.location_name}</strong><time>{formatStockTime(snapshot.counted_at)} น.</time></div>
-                  <small>{snapshot.items.map((item) => `${item.ice_type_name}: ระบบ ${item.system_quantity} / นับ ${item.actual_quantity} / ต่าง ${item.variance_quantity}`).join(' · ')}</small>
+                  <div className="panel-header"><strong>{snapshot.location_name}</strong><time>{formatStockTime(snapshot.counted_at)}{translateUi(' น.')}</time></div>
+                  <small>{snapshot.items.map((item) => translateUi('{0}: ระบบ {1} / นับ {2} / ต่าง {3}', { 0: item.ice_type_name, 1: item.system_quantity, 2: item.actual_quantity, 3: item.variance_quantity })).join(' · ')}</small>
                   <small>{snapshot.counted_by}{snapshot.note ? ` · ${snapshot.note}` : ''}</small>
                 </article>
               ))}
-              {countHistory.length === 0 ? <p className="empty-text">ยังไม่มีประวัติการตรวจนับในวันที่เลือก</p> : null}
+              {countHistory.length === 0 ? <p className="empty-text">{translateUi('ยังไม่มีประวัติการตรวจนับในวันที่เลือก')}</p> : null}
             </div>
             {countTotal > PAGE_SIZE ? (
               <AuditPagination
@@ -240,28 +241,27 @@ function AuditPagination({
   sectionLabel: string;
   total: number;
 }) {
+  useLanguage();
   return (
     <div className="audit-pagination">
-      <small className="muted">แสดง {offset + 1}-{offset + count} จาก {total} {itemLabel}</small>
+      <small className="muted">{translateUi('แสดง ')}{offset + 1}-{offset + count}{translateUi(' จาก ')}{total} {itemLabel}</small>
       <div>
         <button
-          aria-label={`หน้าก่อนหน้าของ${sectionLabel}`}
+          aria-label={translateUi('หน้าก่อนหน้าของ{0}', { 0: sectionLabel })}
           className="secondary-button"
           disabled={loading || offset === 0}
           onClick={() => onOffsetChange(Math.max(0, offset - PAGE_SIZE))}
           type="button"
         >
-          ‹ ก่อนหน้า
-        </button>
+          {translateUi('‹ ก่อนหน้า')}</button>
         <button
-          aria-label={`หน้าถัดไปของ${sectionLabel}`}
+          aria-label={translateUi('หน้าถัดไปของ{0}', { 0: sectionLabel })}
           className="secondary-button"
           disabled={loading || offset + count >= total}
           onClick={() => onOffsetChange(offset + PAGE_SIZE)}
           type="button"
         >
-          ถัดไป ›
-        </button>
+          {translateUi('ถัดไป ›')}</button>
       </div>
     </div>
   );

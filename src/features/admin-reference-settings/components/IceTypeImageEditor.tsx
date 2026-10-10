@@ -1,3 +1,4 @@
+import { translateUi, useLanguage } from '../../../i18n';
 import { type ChangeEvent, type FormEvent, useEffect, useState } from 'react';
 import { ImageSquare, Trash, UploadSimple } from '@phosphor-icons/react';
 import { ALLOWED_ICE_TYPE_IMAGE_TYPES, MAX_ICE_TYPE_IMAGE_SIZE, type IceTypeSetting } from '../types';
@@ -20,6 +21,7 @@ interface IceTypeImageEditorProps {
 }
 
 export function IceTypeImageEditor({ iceType, onIceTypeSaved, onPendingFileChange, pendingFile, readOnly = false }: IceTypeImageEditorProps) {
+  useLanguage();
   const [iceTypePreviewUrl, setIceTypePreviewUrl] = useState<string | null>(null);
   const [iceTypePreviewLoading, setIceTypePreviewLoading] = useState(false);
   const [iceTypeUploadFile, setIceTypeUploadFile] = useState<File | null>(null);
@@ -201,7 +203,7 @@ export function IceTypeImageEditor({ iceType, onIceTypeSaved, onPendingFileChang
   return (
     <div className="ref-section">
       <div className="ref-section-title">
-        <h3><span className="ref-section-title__index">B.</span> รูปสินค้า</h3>
+        <h3><span className="ref-section-title__index">B.</span>{translateUi(' รูปสินค้า')}</h3>
       </div>
       {iceType ? (
         <form className="ref-image-editor-body" onSubmit={saveIceTypeImage}>
@@ -217,19 +219,19 @@ export function IceTypeImageEditor({ iceType, onIceTypeSaved, onPendingFileChang
             </div>
             <div className="ref-image-meta">
               <span className="ref-image-filename">
-                {iceTypeUploadFile ? iceTypeUploadFile.name : (iceType.image_path ? `${iceType.code.toLowerCase()}-${iceType.name.toLowerCase().replace(/\s+/g, '-')}.webp` : 'ไม่มีรูปในระบบ')}
+                {iceTypeUploadFile ? iceTypeUploadFile.name : (iceType.image_path ? `${iceType.code.toLowerCase()}-${iceType.name.toLowerCase().replace(/\s+/g, '-')}.webp` : translateUi('ไม่มีรูปในระบบ'))}
               </span>
               {iceTypeUploadFile ? (
                 <span className="ref-image-filesize">{(iceTypeUploadFile.size / 1024).toFixed(0)} KB</span>
               ) : iceTypePreviewLoading ? (
-                <span className="ref-image-filesize">กำลังโหลด...</span>
+                <span className="ref-image-filesize">{translateUi('กำลังโหลด...')}</span>
               ) : null}
             </div>
 
             <div className="ref-image-preview-actions">
               <label className="secondary-button ref-upload-btn">
                 <UploadSimple size={16} />
-                <span>{iceType.image_path || iceTypeUploadFile ? 'อัปโหลดใหม่' : 'อัปโหลดรูป'}</span>
+                <span>{iceType.image_path || iceTypeUploadFile ? translateUi('อัปโหลดใหม่') : translateUi('อัปโหลดรูป')}</span>
                 <input accept="image/jpeg,image/png,image/webp" onChange={chooseIceTypeImageFile} type="file" />
               </label>
               <button
@@ -242,7 +244,7 @@ export function IceTypeImageEditor({ iceType, onIceTypeSaved, onPendingFileChang
                     void removeIceTypeImage();
                   }
                 }}
-                title="ลบรูป"
+                title={translateUi('ลบรูป')}
                 type="button"
               >
                 <Trash size={16} />
@@ -250,12 +252,12 @@ export function IceTypeImageEditor({ iceType, onIceTypeSaved, onPendingFileChang
             </div>
           </div>
 
-          {iceTypeImageError ? <p className="error-text" role="alert">{iceTypeImageError}</p> : null}
-          {iceTypeImageSuccess ? <p aria-live="polite" className="success-text">{iceTypeImageSuccess}</p> : null}
+          {iceTypeImageError ? <p className="error-text" role="alert">{translateUi(iceTypeImageError)}</p> : null}
+          {iceTypeImageSuccess ? <p aria-live="polite" className="success-text">{translateUi(iceTypeImageSuccess)}</p> : null}
           {iceTypeUploadFile ? (
             <div className="ref-image-submit-row">
               <button className="primary-button" disabled={savingIceTypeImage} type="submit">
-                {savingIceTypeImage ? 'กำลังบันทึก...' : 'บันทึกรูปสินค้าใหม่'}
+                {savingIceTypeImage ? translateUi('กำลังบันทึก...') : translateUi('บันทึกรูปสินค้าใหม่')}
               </button>
             </div>
           ) : null}
@@ -266,7 +268,7 @@ export function IceTypeImageEditor({ iceType, onIceTypeSaved, onPendingFileChang
           <div className="ref-image-preview-card">
             <div className="ref-image-preview-box">
               {pendingPreviewUrl ? (
-                <img alt="ตัวอย่างรูปสินค้า" src={pendingPreviewUrl} />
+                <img alt={translateUi('ตัวอย่างรูปสินค้า')} src={pendingPreviewUrl} />
               ) : (
                 <div className="ref-image-placeholder">
                   <ImageSquare size={36} />
@@ -275,18 +277,18 @@ export function IceTypeImageEditor({ iceType, onIceTypeSaved, onPendingFileChang
             </div>
             <div className="ref-image-meta">
               <span className="ref-image-filename">
-                {pendingFile ? pendingFile.name : 'ยังไม่เลือกรูป'}
+                {pendingFile ? pendingFile.name : translateUi('ยังไม่เลือกรูป')}
               </span>
             </div>
             <div className="ref-image-preview-actions">
               <label className="secondary-button ref-upload-btn" style={{ flex: 1 }}>
                 <UploadSimple size={16} />
-                <span>{pendingFile ? 'อัปโหลดใหม่' : 'อัปโหลดรูป'}</span>
+                <span>{pendingFile ? translateUi('อัปโหลดใหม่') : translateUi('อัปโหลดรูป')}</span>
                 <input accept="image/jpeg,image/png,image/webp" onChange={chooseIceTypeImageFile} type="file" />
               </label>
             </div>
           </div>
-          {iceTypeImageError ? <p className="error-text" role="alert">{iceTypeImageError}</p> : null}
+          {iceTypeImageError ? <p className="error-text" role="alert">{translateUi(iceTypeImageError)}</p> : null}
         </div>
       )}
     </div>

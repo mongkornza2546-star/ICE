@@ -1,3 +1,4 @@
+import { uiDateTimeFormat, translateUi, useLanguage } from './i18n';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ManagerRoundControl } from './ManagerRoundControl';
 import { ManagerStockControl } from './ManagerStockControl';
@@ -11,6 +12,7 @@ export function todayIsoDate() {
 }
 
 export function RoundWorkspace({ isActive }: { isActive: boolean }) {
+  useLanguage();
   const {
     rounds,
     selectedRoundId,
@@ -53,8 +55,8 @@ export function RoundWorkspace({ isActive }: { isActive: boolean }) {
   if (loadingRounds && rounds.length === 0 && stockRefreshId === 0) {
     return (
       <section className="panel center-panel">
-        <p className="eyebrow">กำลังโหลดข้อมูลงาน</p>
-        <h2>ดึงข้อมูลงานและชนิดน้ำแข็ง</h2>
+        <p className="eyebrow">{translateUi('กำลังโหลดข้อมูลงาน')}</p>
+        <h2>{translateUi('ดึงข้อมูลงานและชนิดน้ำแข็ง')}</h2>
       </section>
     );
   }
@@ -63,23 +65,23 @@ export function RoundWorkspace({ isActive }: { isActive: boolean }) {
     <div className="workspace-grid" style={{ gridTemplateColumns: '1fr' }}>
       {workspaceError ? (
         <section className="panel error-panel">
-          <p className="eyebrow">มีข้อผิดพลาด</p>
-          <h2>{workspaceError}</h2>
+          <p className="eyebrow">{translateUi('มีข้อผิดพลาด')}</p>
+          <h2>{translateUi(workspaceError)}</h2>
         </section>
       ) : null}
       <section className="stack stack--wide">
-        <p className="muted" role="status">วันที่ทำรายการสต๊อก {stockServiceDate} (เวลาไทย)</p>
+        <p className="muted" role="status">{translateUi('วันที่ทำรายการสต๊อก ')}{stockServiceDate}{translateUi(' (เวลาไทย)')}</p>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             {legacyOpenRounds.length > 0 ? (
               <section className="panel">
                 <div className="panel-header">
                   <div>
-                    <p className="eyebrow">ข้อมูลเดิมก่อนเปลี่ยนระบบ</p>
-                    <h2>รายการเดิมที่ต้องจัดการก่อนปิดสต๊อก</h2>
+                    <p className="eyebrow">{translateUi('ข้อมูลเดิมก่อนเปลี่ยนระบบ')}</p>
+                    <h2>{translateUi('รายการเดิมที่ต้องจัดการก่อนปิดสต๊อก')}</h2>
                   </div>
-                  <span className="status-badge status-badge--warning">{legacyOpenRounds.length} รายการ</span>
+                  <span className="status-badge status-badge--warning">{legacyOpenRounds.length}{translateUi(' รายการ')}</span>
                 </div>
-                <p className="muted">ปิดหรือยกเลิกรายการเดิมให้เรียบร้อยก่อนปิดสต๊อกของวันนี้</p>
+                <p className="muted">{translateUi('ปิดหรือยกเลิกรายการเดิมให้เรียบร้อยก่อนปิดสต๊อกของวันนี้')}</p>
                 <div className="round-list">
                   {legacyOpenRounds.map((round) => (
                     <button
@@ -88,8 +90,8 @@ export function RoundWorkspace({ isActive }: { isActive: boolean }) {
                       onClick={() => setSelectedRoundId(round.id)}
                       type="button"
                     >
-                      <span>{round.name} — กำลังดำเนินการ</span>
-                      <small>{round.service_date} · เริ่ม {formatRoundTime(round.opened_at)}</small>
+                      <span>{round.name}{translateUi(' — กำลังดำเนินการ')}</span>
+                      <small>{round.service_date}{translateUi(' · เริ่ม ')}{formatRoundTime(round.opened_at)}</small>
                     </button>
                   ))}
                 </div>
@@ -110,7 +112,7 @@ export function RoundWorkspace({ isActive }: { isActive: boolean }) {
 
 function formatRoundTime(value?: string | null) {
   if (!value) return '-';
-  return new Intl.DateTimeFormat('th-TH', {
+  return uiDateTimeFormat({
     hour: '2-digit',
     minute: '2-digit',
   }).format(new Date(value));

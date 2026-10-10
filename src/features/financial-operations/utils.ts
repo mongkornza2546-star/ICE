@@ -1,3 +1,4 @@
+import { uiDateTimeFormat } from '../../i18n';
 import { supabase } from '../../lib/supabase';
 import { withAsyncPublicImageUrls, type PublicImagePathItem } from '../../lib/publicImageUrls';
 import { getHybridObjectUrls } from '../../lib/r2Storage';
@@ -20,17 +21,16 @@ export const money = new Intl.NumberFormat('th-TH', {
   minimumFractionDigits: 2,
 });
 
-export const receiptDateTime = new Intl.DateTimeFormat('th-TH', {
+export const receiptDateTime = uiDateTimeFormat({
   dateStyle: 'short',
   timeStyle: 'short',
   timeZone: 'Asia/Bangkok',
 });
 
-const serviceDateFormat = new Intl.DateTimeFormat('th-TH', { dateStyle: 'medium' });
+const serviceDateFormat = uiDateTimeFormat({ dateStyle: 'medium' });
 
 export function formatServiceDate(value: string) {
-  const [year, month, day] = value.split('-').map(Number);
-  return serviceDateFormat.format(new Date(year, month - 1, day));
+  return serviceDateFormat.format(new Date(`${value}T12:00:00+07:00`));
 }
 
 export function formatPaymentReceivedAt(payment: { recorded_at: string; received_date_override?: string | null }) {

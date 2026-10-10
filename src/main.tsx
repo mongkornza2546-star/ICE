@@ -7,14 +7,17 @@ import { env } from './lib/env';
 import { PwaUpdatePrompt } from './PwaUpdatePrompt';
 import { ThermalPrinterSetup } from './ThermalPrinterSetup';
 import { shouldUsePwaExperience } from './pwaUpdateSafety';
+import { LanguageProvider } from './i18n';
 import './index.css';
 
 const usePwaExperience = shouldUsePwaExperience(Capacitor.isNativePlatform());
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    {env.isDemoMode ? <LocalDemoApp /> : <App />}
-    {usePwaExperience ? <PwaUpdatePrompt /> : null}
-    <ThermalPrinterSetup />
+    <LanguageProvider>
+      {env.isDemoMode ? <LocalDemoApp /> : <App />}
+      {usePwaExperience ? <PwaUpdatePrompt /> : null}
+      <ThermalPrinterSetup />
+    </LanguageProvider>
   </React.StrictMode>,
 );

@@ -1,3 +1,4 @@
+import { translateUi, useLanguage } from '../../i18n';
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import type { FormEvent, ReactNode } from 'react';
 import { createPortal } from 'react-dom';
@@ -12,6 +13,7 @@ export function EmployeeEventDialog({ title, context, busy, onClose, onSubmit, c
   children: ReactNode;
   submitLabel: string;
 }) {
+  useLanguage();
   const titleId = useId();
   const dialogRef = useRef<HTMLFormElement>(null);
   const layerRef = useRef<HTMLDivElement>(null);
@@ -79,9 +81,9 @@ export function EmployeeEventDialog({ title, context, busy, onClose, onSubmit, c
     <div className="employee-event-dialog" ref={layerRef} style={viewport ? { top: viewport.top, height: viewport.height, bottom: 'auto' } : undefined}>
       <div aria-hidden="true" className="employee-event-dialog__backdrop" onClick={() => { if (!busy) onClose(); }} />
       <form aria-labelledby={titleId} aria-modal="true" className="employee-event-dialog__panel" onSubmit={onSubmit} ref={dialogRef} role="dialog" tabIndex={-1}>
-        <header><div><p>{context}</p><h2 id={titleId}>{title}</h2></div><button aria-label="ปิดหน้าต่าง" disabled={busy} onClick={onClose} type="button"><X size={22} /></button></header>
+        <header><div><p>{context}</p><h2 id={titleId}>{title}</h2></div><button aria-label={translateUi('ปิดหน้าต่าง')} disabled={busy} onClick={onClose} type="button"><X size={22} /></button></header>
         <div className="employee-event-dialog__body">{children}</div>
-        <footer><button className="secondary-button" disabled={busy} onClick={onClose} type="button">ยกเลิก</button><button className="primary-button" disabled={busy} type="submit">{busy ? 'กำลังบันทึก…' : submitLabel}</button></footer>
+        <footer><button className="secondary-button" disabled={busy} onClick={onClose} type="button">{translateUi('ยกเลิก')}</button><button className="primary-button" disabled={busy} type="submit">{busy ? translateUi('กำลังบันทึก…') : submitLabel}</button></footer>
       </form>
     </div>, document.body,
   );

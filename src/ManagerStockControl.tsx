@@ -1,3 +1,4 @@
+import { translateUi, uiDateTimeFormat, useLanguage } from './i18n';
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Check,
@@ -50,6 +51,7 @@ export function ManagerStockControl({
   demoSummary?: StockControlSummary;
   refreshId?: number;
 }) {
+  useLanguage();
   const isRoundSnapshot = round?.status === 'closed';
   const actionRound = operationRound ?? round;
   const [summary, setSummary] = useState<StockControlSummary | null>(demoSummary ?? null);
@@ -367,10 +369,10 @@ export function ManagerStockControl({
   };
 
   if (loading && !summary) {
-    return <p className="empty-text">กำลังรวมยอดสต๊อกทุกจุด...</p>;
+    return <p className="empty-text">{translateUi('กำลังรวมยอดสต๊อกทุกจุด...')}</p>;
   }
   if (!summary) {
-    return <p className="error-text">{error ?? 'ไม่พบข้อมูลสต๊อก'}</p>;
+    return <p className="error-text">{error ?? translateUi('ไม่พบข้อมูลสต๊อก')}</p>;
   }
   const requiresSource = true;
   const requiresDestination = kind === 'transfer';
@@ -403,12 +405,12 @@ export function ManagerStockControl({
       {activeTab !== 'transfer' ? <div className="stock-layout-panel stock-current-summary-panel">
         <div className="stock-layout-header">
           <h3 className="stock-layout-title">
-            {isRoundSnapshot ? 'สต๊อกทั้งวัน ณ เวลาปิดงาน' : 'สต๊อกปัจจุบันของวัน'}
+            {isRoundSnapshot ? translateUi('สต๊อกทั้งวัน ณ เวลาปิดงาน') : translateUi('สต๊อกปัจจุบันของวัน')}
           </h3>
           <div className="stock-layout-subtitle">
-            <span>{isRoundSnapshot ? 'ข้อมูล ณ' : 'โหลดล่าสุด'} {stockTimestamp ? formatStockTime(stockTimestamp) : '-'} น.</span>
+            <span>{isRoundSnapshot ? translateUi('ข้อมูล ณ') : translateUi('โหลดล่าสุด')} {stockTimestamp ? formatStockTime(stockTimestamp) : '-'}{translateUi(' น.')}</span>
             <button
-              aria-label="รีเฟรชข้อมูลสต๊อก"
+              aria-label={translateUi('รีเฟรชข้อมูลสต๊อก')}
               className="stock-refresh-button"
               disabled={loading}
               onClick={() => void loadSummary(serviceDate, round?.id ?? null)}
@@ -420,7 +422,7 @@ export function ManagerStockControl({
         </div>
 
         {isRoundSnapshot ? (
-          <p className="muted" style={{ marginBottom: 16 }}>ยอดนี้หยุดที่ {summary.snapshot_at ? formatStockDateTime(summary.snapshot_at) : 'เวลาปิดงาน'} และจะไม่เปลี่ยนตามรายการปัจจุบัน</p>
+          <p className="muted" style={{ marginBottom: 16 }}>{translateUi('ยอดนี้หยุดที่ ')}{summary.snapshot_at ? formatStockDateTime(summary.snapshot_at) : translateUi('เวลาปิดงาน')}{translateUi(' และจะไม่เปลี่ยนตามรายการปัจจุบัน')}</p>
         ) : null}
 
         <div className="stock-location-grid-custom">
@@ -435,10 +437,10 @@ export function ManagerStockControl({
                   {formatHolderName(location)}
                 </div>
                 {!isRoundSnapshot && location.kind === 'work_site' && (location.assigned_employees?.length ?? 0) > 0 ? (
-                  <p className="stock-location-responsibility">ผู้ดูแล: {location.assigned_employees?.map(formatEmployeeName).join(', ')}</p>
+                  <p className="stock-location-responsibility">{translateUi('ผู้ดูแล: ')}{location.assigned_employees?.map(formatEmployeeName).join(', ')}</p>
                 ) : null}
                 {!isRoundSnapshot && location.assigned_employee ? (
-                  <p className="stock-location-responsibility">ผู้รับผิดชอบ: {formatLocationResponsibility(location)}</p>
+                  <p className="stock-location-responsibility">{translateUi('ผู้รับผิดชอบ: ')}{formatLocationResponsibility(location)}</p>
                 ) : null}
                 <div className="stock-location-card-custom-body">
                   {location.balances.map((balance) => (
@@ -448,7 +450,7 @@ export function ManagerStockControl({
                     </div>
                   ))}
                 </div>
-                {hasNegative ? <p className="error-text" style={{ marginTop: 8 }}>ยอดติดลบ</p> : null}
+                {hasNegative ? <p className="error-text" style={{ marginTop: 8 }}>{translateUi('ยอดติดลบ')}</p> : null}
               </section>
             );
           })}
@@ -464,8 +466,7 @@ export function ManagerStockControl({
               type="button"
             >
               <svg fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/></svg>
-              โอนระหว่างจุด
-            </button>
+              {translateUi('โอนระหว่างจุด')}</button>
 
             <button
               className={`action-tab ${activeTab === 'damage' ? 'active' : ''}`}
@@ -473,16 +474,14 @@ export function ManagerStockControl({
               type="button"
             >
               <svg fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M12 2.69l5.66 5.66a8 8 0 11-11.31 0z"/></svg>
-              เสียหาย / ละลาย
-            </button>
+              {translateUi('เสียหาย / ละลาย')}</button>
             <button
               className={`action-tab ${activeTab === 'count' ? 'active' : ''}`}
               onClick={() => selectMovementKind('count')}
               type="button"
             >
               <svg fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/></svg>
-              ตรวจนับจริง
-            </button>
+              {translateUi('ตรวจนับจริง')}</button>
           </div>
 
           {activeTab === 'transfer' || activeTab === 'damage' ? (
@@ -492,16 +491,16 @@ export function ManagerStockControl({
                   <div className="holder-pos__section-heading">
                     <span>1.</span>
                     <h3 id="holder-step-title">
-                      {isDamageOperation
+                      {translateUi(isDamageOperation
                         ? 'เลือกจุดที่เกิดความเสียหาย'
-                        : isReturningToTruck ? 'เลือกผู้คืนของและรถบรรทุก' : 'เลือกต้นทางและจุดรับสต๊อก'}
+                        : isReturningToTruck ? 'เลือกผู้คืนของและรถบรรทุก' : 'เลือกต้นทางและจุดรับสต๊อก')}
                     </h3>
                   </div>
                   {!isDamageOperation ? <>
                     <div className="holder-pos__source-control">
                       <Truck aria-hidden="true" size={18} weight="fill" />
                       <LocationSelect
-                        label={isReturningToTruck ? 'คืนจาก (ผู้รับผิดชอบ)' : 'ต้นทาง (จาก)'}
+                        label={translateUi(isReturningToTruck ? 'คืนจาก (ผู้รับผิดชอบ)' : 'ต้นทาง (จาก)')}
                         locations={sourceLocations}
                         onChange={(nextSourceId) => {
                           setFromLocationId(nextSourceId);
@@ -542,29 +541,29 @@ export function ManagerStockControl({
                             </span>
                             <span className="holder-card__identity">
                               <strong>{formatHolderName(location)}</strong>
-                              {location.assigned_employee ? <small>ผู้รับผิดชอบ: {formatEmployeeName(location.assigned_employee)}</small> : null}
+                              {location.assigned_employee ? <small>{translateUi('ผู้รับผิดชอบ: ')}{formatEmployeeName(location.assigned_employee)}</small> : null}
                               {(location.assigned_work_sites?.length ?? 0) > 0 ? <small>{location.assigned_work_sites?.map((site) => site.name).join(', ')}</small> : null}
                             </span>
                             <span className={`holder-card__balance ${totalBalance === 0 ? 'holder-card__balance--empty' : ''}`}>
-                              {isReturningToTruck ? 'คงเหลือบนรถ' : 'คงเหลือที่จุดรับ'} <strong>{formatStockQuantity(totalBalance)}</strong> หน่วย
+                              {translateUi(isReturningToTruck ? 'คงเหลือบนรถ' : 'คงเหลือที่จุดรับ')} <strong>{formatStockQuantity(totalBalance)}</strong> {translateUi('หน่วย')}
                             </span>
                           </button>
                         );
                       })}
                       {recipientLocations.length === 0 ? (
-                        <p className="holder-pos__empty">ยังไม่มีจุดรับสต๊อกที่พร้อมรับสินค้า</p>
+                        <p className="holder-pos__empty">{translateUi('ยังไม่มีจุดรับสต๊อกที่พร้อมรับสินค้า')}</p>
                       ) : null}
                     </div>
 
                     <div className="holder-pos__return-action">
                       <button
-                        aria-label={isReturningToTruck ? 'กลับไปโอนของปกติ' : 'คืนของ'}
+                        aria-label={translateUi(isReturningToTruck ? 'กลับไปโอนของปกติ' : 'คืนของ')}
                         className="holder-pos__return-btn"
                         type="button"
                         onClick={isReturningToTruck ? () => selectMovementKind('transfer') : startReturnToTruck}
                       >
                         <svg width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14l-5-5 5-5"/><path d="M4 9h10.5a5.5 5.5 0 010 11H11"/></svg>
-                        {isReturningToTruck ? 'กลับไปโอนของปกติ' : 'คืนของเข้ารถบรรทุก'}
+                        {translateUi(isReturningToTruck ? 'กลับไปโอนของปกติ' : 'คืนของเข้ารถบรรทุก')}
                       </button>
                     </div>
                   </> : (
@@ -594,12 +593,11 @@ export function ManagerStockControl({
                             </span>
                             <span className="holder-card__identity">
                               <strong>{formatHolderName(location)}</strong>
-                              {location.assigned_employee ? <small>ผู้รับผิดชอบ: {formatEmployeeName(location.assigned_employee)}</small> : null}
+                              {location.assigned_employee ? <small>{translateUi('ผู้รับผิดชอบ: ')}{formatEmployeeName(location.assigned_employee)}</small> : null}
                               {(location.assigned_work_sites?.length ?? 0) > 0 ? <small>{location.assigned_work_sites?.map((site) => site.name).join(', ')}</small> : null}
                             </span>
                             <span className={`holder-card__balance ${totalBalance === 0 ? 'holder-card__balance--empty' : ''}`}>
-                              คงเหลือ <strong>{formatStockQuantity(totalBalance)}</strong> หน่วย
-                            </span>
+                              {translateUi('คงเหลือ ')}<strong>{formatStockQuantity(totalBalance)}</strong>{translateUi(' หน่วย')}</span>
                           </button>
                         );
                       })}
@@ -610,7 +608,7 @@ export function ManagerStockControl({
                 <section className="holder-pos__section" aria-labelledby="product-step-title">
                   <div className="holder-pos__section-heading">
                     <span>2.</span>
-                    <h3 id="product-step-title">เลือกชนิดและจำนวน</h3>
+                    <h3 id="product-step-title">{translateUi('เลือกชนิดและจำนวน')}</h3>
                   </div>
                   <div className="product-card-grid">
                     {movementIceTypes.map((ice, index) => {
@@ -624,7 +622,7 @@ export function ManagerStockControl({
                             <span className="product-quantity-card__icon">
                               {ice.image_path && imageUrls[ice.image_path] && !failedImagePaths.has(ice.image_path) ? (
                                 <button
-                                  aria-label={`ดูรูป ${ice.ice_type_name} ขนาดใหญ่`}
+                                  aria-label={translateUi('ดูรูป {0} ขนาดใหญ่', { 0: ice.ice_type_name })}
                                   className="product-quantity-card__image-button"
                                   onClick={() => setPreviewImage({ name: ice.ice_type_name, url: imageUrls[ice.image_path!] })}
                                   type="button"
@@ -639,12 +637,12 @@ export function ManagerStockControl({
                             </span>
                             <span>
                               <strong>{ice.ice_type_name}</strong>
-                              <small>{isDamageOperation ? 'คงเหลือที่จุดนี้' : isReturningToTruck ? 'คงเหลือกับผู้คืน' : 'บนรถ'} {formatStockQuantity(ice.quantity)} {ice.unit}</small>
+                              <small>{translateUi(isDamageOperation ? 'คงเหลือที่จุดนี้' : isReturningToTruck ? 'คงเหลือกับผู้คืน' : 'บนรถ')} {formatStockQuantity(ice.quantity)} {ice.unit}</small>
                             </span>
                           </div>
                           <div className="quantity-stepper">
                             <button
-                              aria-label={`ลด ${ice.ice_type_name}`}
+                              aria-label={`${translateUi('ลด')} ${ice.ice_type_name}`}
                               disabled={quantity <= 0 || closeState?.is_closed}
                               onClick={() => updateQuantity(ice.ice_type_id, quantity - 0.5, ice.quantity)}
                               type="button"
@@ -652,7 +650,7 @@ export function ManagerStockControl({
                               <Minus size={18} weight="bold" />
                             </button>
                             <input
-                              aria-label={`จำนวน ${ice.ice_type_name}`}
+                              aria-label={translateUi('จำนวน {0}', { 0: ice.ice_type_name })}
                               disabled={closeState?.is_closed}
                               inputMode="decimal"
                               max={ice.quantity}
@@ -664,7 +662,7 @@ export function ManagerStockControl({
                               value={quantity || ''}
                             />
                             <button
-                              aria-label={`เพิ่ม ${ice.ice_type_name}`}
+                              aria-label={`${translateUi('เพิ่ม')} ${ice.ice_type_name}`}
                               disabled={quantity >= ice.quantity || closeState?.is_closed}
                               onClick={() => updateQuantity(ice.ice_type_id, quantity + 0.5, ice.quantity)}
                               type="button"
@@ -672,7 +670,7 @@ export function ManagerStockControl({
                               <Plus size={18} weight="bold" />
                             </button>
                           </div>
-                          <div className="quantity-quick-actions" aria-label={`ปุ่มลัด ${ice.ice_type_name}`}>
+                          <div className="quantity-quick-actions" aria-label={`${translateUi('ปุ่มลัด')} ${ice.ice_type_name}`}>
                             {[1, 5, 10].map((amount) => (
                               <button
                                 disabled={quantity >= ice.quantity || closeState?.is_closed}
@@ -691,11 +689,11 @@ export function ManagerStockControl({
                 </section>
 
                 <label className="holder-pos__note">
-                  <span>หมายเหตุเพิ่มเติม (ถ้ามี)</span>
+                  <span>{translateUi('หมายเหตุเพิ่มเติม (ถ้ามี)')}</span>
                   <textarea
                     disabled={closeState?.is_closed}
                     onChange={(event) => setNote(event.target.value)}
-                    placeholder={isDamageOperation ? 'เช่น ถุงแตกหรือละลายระหว่างรอส่ง' : 'ระบุหมายเหตุเพิ่มเติม...'}
+                    placeholder={translateUi(isDamageOperation ? 'เช่น ถุงแตกหรือละลายระหว่างรอส่ง' : 'ระบุหมายเหตุเพิ่มเติม...')}
                     rows={3}
                     value={note}
                   />
@@ -703,14 +701,14 @@ export function ManagerStockControl({
               </div>
 
               <aside className="holder-cart" aria-labelledby="cart-title">
-                <h3 id="cart-title">3. {isDamageOperation ? 'สรุปรายการเสียหาย' : isReturningToTruck ? 'สรุปรายการคืน' : 'สรุปรายการเบิก'}</h3>
+                <h3 id="cart-title">3. {translateUi(isDamageOperation ? 'สรุปรายการเสียหาย' : isReturningToTruck ? 'สรุปรายการคืน' : 'สรุปรายการเบิก')}</h3>
                 {isDamageOperation && selectedSource ? (
                   <div className="holder-cart__recipient holder-cart__recipient--damage">
                     <span className="holder-cart__recipient-avatar" aria-hidden="true"><Warning size={42} weight="duotone" /></span>
                     <span>
-                      <small>ตัดออกจากสต๊อก:</small>
+                      <small>{translateUi('ตัดออกจากสต๊อก:')}</small>
                       <strong>{formatHolderName(selectedSource)}</strong>
-                      {selectedSource.assigned_employee ? <small>ผู้รับผิดชอบ: {formatEmployeeName(selectedSource.assigned_employee)}</small> : null}
+                      {selectedSource.assigned_employee ? <small>{translateUi('ผู้รับผิดชอบ: ')}{formatEmployeeName(selectedSource.assigned_employee)}</small> : null}
                     </span>
                   </div>
                 ) : selectedRecipient ? (
@@ -727,14 +725,14 @@ export function ManagerStockControl({
                         ) : <UserCircle size={50} weight="duotone" />}
                     </span>
                     <span>
-                      <small>{isReturningToTruck ? 'กำลังคืนเข้ารถ:' : 'กำลังโอนไปยัง:'}</small>
+                      <small>{isReturningToTruck ? translateUi('กำลังคืนเข้ารถ:') : translateUi('กำลังโอนไปยัง:')}</small>
                       <strong>{formatHolderName(selectedRecipient)}</strong>
-                      {selectedRecipient.assigned_employee ? <small>ผู้รับผิดชอบ: {formatEmployeeName(selectedRecipient.assigned_employee)}</small> : null}
+                      {selectedRecipient.assigned_employee ? <small>{translateUi('ผู้รับผิดชอบ: ')}{formatEmployeeName(selectedRecipient.assigned_employee)}</small> : null}
                       {(selectedRecipient.assigned_work_sites?.length ?? 0) > 0 ? <small>{selectedRecipient.assigned_work_sites?.map((site) => site.name).join(', ')}</small> : null}
                     </span>
                   </div>
                 ) : (
-                  <div className="holder-cart__placeholder">{isDamageOperation ? 'เลือกจุดที่เกิดความเสียหายเพื่อเริ่มรายการ' : isReturningToTruck ? 'เลือกรถบรรทุกเพื่อเริ่มรายการคืน' : 'เลือกจุดรับสต๊อกเพื่อเริ่มรายการ'}</div>
+                  <div className="holder-cart__placeholder">{translateUi(isDamageOperation ? 'เลือกจุดที่เกิดความเสียหายเพื่อเริ่มรายการ' : isReturningToTruck ? 'เลือกรถบรรทุกเพื่อเริ่มรายการคืน' : 'เลือกจุดรับสต๊อกเพื่อเริ่มรายการ')}</div>
                 )}
 
                 <div className="holder-cart__items" aria-live="polite">
@@ -748,40 +746,40 @@ export function ManagerStockControl({
                       </div>
                     );
                   })}
-                  {cartItems.length === 0 ? <p>ยังไม่ได้เลือกสินค้า</p> : null}
+                  {cartItems.length === 0 ? <p>{translateUi('ยังไม่ได้เลือกสินค้า')}</p> : null}
                 </div>
 
                 <div className="holder-cart__totals">
-                  <span>รวมรายการ <strong>{cartItems.length} ชนิด</strong></span>
-                  <span>รวมจำนวน <strong>{formatStockQuantity(cartTotal)} หน่วย</strong></span>
+                  <span>{translateUi('รวมรายการ ')}<strong>{cartItems.length}{translateUi(' ชนิด')}</strong></span>
+                  <span>{translateUi('รวมจำนวน ')}<strong>{formatStockQuantity(cartTotal)}{translateUi(' หน่วย')}</strong></span>
                 </div>
 
                 <div className="holder-cart__notice">
                   <Info aria-hidden="true" size={21} weight="fill" />
                   <span>{isDamageOperation
-                    ? `หลังยืนยัน ระบบจะตัดออกจากสต๊อกของ ${selectedSource ? formatHolderName(selectedSource) : 'จุดที่เลือก'} และบันทึกเป็นรายการเสียหาย / ละลายทันที`
-                    : `หลังยืนยัน ระบบจะตัดจาก ${selectedSource ? formatHolderName(selectedSource) : isReturningToTruck ? 'ผู้รับผิดชอบ' : 'รถหลัก'} และเพิ่มเข้าสู่สต๊อกของ ${selectedRecipient ? formatHolderName(selectedRecipient) : isReturningToTruck ? 'รถบรรทุก' : 'ผู้รับ'} ทันที`}</span>
+                    ? `${translateUi('หลังยืนยัน ระบบจะตัดออกจากสต๊อกของ')} ${selectedSource ? formatHolderName(selectedSource) : translateUi('จุดที่เลือก')} ${translateUi('และบันทึกเป็นรายการเสียหาย / ละลายทันที')}`
+                    : `${translateUi('หลังยืนยัน ระบบจะตัดจาก')} ${selectedSource ? formatHolderName(selectedSource) : translateUi(isReturningToTruck ? 'ผู้รับผิดชอบ' : 'รถหลัก')} ${translateUi('และเพิ่มเข้าสู่สต๊อกของ')} ${selectedRecipient ? formatHolderName(selectedRecipient) : translateUi(isReturningToTruck ? 'รถบรรทุก' : 'ผู้รับ')} ${translateUi('ทันที')}`}</span>
                 </div>
 
-                {stockMovementAction.error ? <p className="holder-cart__feedback error-text" role="alert">{stockMovementAction.error}</p> : null}
-                {stockMovementAction.success ? <p className="holder-cart__feedback success-text" role="status">{stockMovementAction.success}</p> : null}
+                {stockMovementAction.error ? <p className="holder-cart__feedback error-text" role="alert">{translateUi(stockMovementAction.error)}</p> : null}
+                {stockMovementAction.success ? <p className="holder-cart__feedback success-text" role="status">{translateUi(stockMovementAction.success)}</p> : null}
 
                 <button
-                  aria-label={isDamageOperation ? 'ยืนยัน เสียหาย / ละลาย' : isReturningToTruck ? 'ยืนยัน คืนของเข้ารถบรรทุก' : 'ยืนยัน โอนระหว่างจุด'}
+                  aria-label={translateUi(isDamageOperation ? 'ยืนยัน เสียหาย / ละลาย' : isReturningToTruck ? 'ยืนยัน คืนของเข้ารถบรรทุก' : 'ยืนยัน โอนระหว่างจุด')}
                   className="primary-button holder-cart__confirm"
                   disabled={!actionRound || (isDamageOperation ? !selectedSource : !selectedRecipient) || cartItems.length === 0 || stockMovementAction.isSubmitting || closeState?.is_closed}
                   type="submit"
                 >
                   <Check size={19} weight="bold" />
                   {closeState?.is_closed
-                    ? 'ปิดสต๊อกวันนี้แล้ว'
+                    ? translateUi('ปิดสต๊อกวันนี้แล้ว')
                     : stockMovementAction.isSubmitting
-                      ? 'กำลังบันทึก...'
+                      ? translateUi('กำลังบันทึก...')
                       : isDamageOperation
-                        ? 'ยืนยัน เสียหาย / ละลาย'
+                        ? translateUi('ยืนยัน เสียหาย / ละลาย')
                       : isReturningToTruck
-                        ? `ยืนยันคืนเข้ารถ ${selectedRecipient ? formatHolderName(selectedRecipient) : ''}`
-                        : `ยืนยันโอนไป${selectedRecipient ? formatHolderName(selectedRecipient) : 'จุดรับ'}`}
+                        ? `${translateUi('ยืนยันคืนเข้ารถ')} ${selectedRecipient ? formatHolderName(selectedRecipient) : ''}`
+                        : `${translateUi('ยืนยันโอนไป')}${selectedRecipient ? formatHolderName(selectedRecipient) : translateUi('จุดรับ')}`}
                 </button>
                 <button
                   className="holder-cart__clear"
@@ -795,8 +793,7 @@ export function ManagerStockControl({
                   type="button"
                 >
                   <Trash size={18} />
-                  ล้างรายการ
-                </button>
+                  {translateUi('ล้างรายการ')}</button>
               </aside>
             </form>
           ) : activeTab !== 'count' ? (
@@ -804,7 +801,7 @@ export function ManagerStockControl({
               <div className={`action-form-grid ${requiresSource && requiresDestination ? '' : 'action-form-grid--single'}`}>
                 {requiresSource ? <div>
                   <LocationSelect
-                    label="ต้นทาง (จาก)"
+                    label={translateUi('ต้นทาง (จาก)')}
                     locations={sourceLocations}
                     onChange={setFromLocationId}
                     value={fromLocationId}
@@ -815,7 +812,7 @@ export function ManagerStockControl({
                 </div> : null}
                 {requiresDestination ? <div>
                   <LocationSelect
-                    label="ปลายทาง (ไปยัง)"
+                    label={translateUi('ปลายทาง (ไปยัง)')}
                     locations={destinationLocations}
                     onChange={setToLocationId}
                     value={toLocationId}
@@ -824,7 +821,7 @@ export function ManagerStockControl({
               </div>
 
               <div style={{ marginTop: 24 }}>
-                <p className="eyebrow" style={{ color: '#1a2332', fontWeight: 600, fontSize: '0.95rem', marginBottom: 12 }}>ชนิดและจำนวน</p>
+                <p className="eyebrow" style={{ color: '#1a2332', fontWeight: 600, fontSize: '0.95rem', marginBottom: 12 }}>{translateUi('ชนิดและจำนวน')}</p>
                 <div className="inputs-2col">
                   {iceTypes.map((ice) => (
                     <div className="input-row" key={ice.ice_type_id}>
@@ -851,24 +848,24 @@ export function ManagerStockControl({
               </div>
 
               <div style={{ marginTop: 24 }}>
-                <p className="eyebrow" style={{ color: '#1a2332', fontWeight: 600, fontSize: '0.95rem', marginBottom: 12 }}>หมายเหตุ (ถ้ามี)</p>
+                <p className="eyebrow" style={{ color: '#1a2332', fontWeight: 600, fontSize: '0.95rem', marginBottom: 12 }}>{translateUi('หมายเหตุ (ถ้ามี)')}</p>
                 <textarea
                   disabled={closeState?.is_closed}
                   onChange={(event) => setNote(event.target.value)}
-                  placeholder={kind === 'damage' ? 'เช่น ถุงแตกหรือละลายระหว่างรอส่ง' : 'ระบุรายละเอียดเพิ่มเติม (ถ้ามี)'}
+                  placeholder={kind === 'damage' ? translateUi('เช่น ถุงแตกหรือละลายระหว่างรอส่ง') : translateUi('ระบุรายละเอียดเพิ่มเติม (ถ้ามี)')}
                   rows={2}
                   value={note}
                   style={{ width: '100%' }}
                 />
               </div>
 
-              {stockMovementAction.error ? <p className="error-text" style={{ marginTop: 16 }}>{stockMovementAction.error}</p> : null}
-              {stockMovementAction.success ? <p className="success-text" style={{ marginTop: 16 }}>{stockMovementAction.success}</p> : null}
+              {stockMovementAction.error ? <p className="error-text" style={{ marginTop: 16 }}>{translateUi(stockMovementAction.error)}</p> : null}
+              {stockMovementAction.success ? <p className="success-text" style={{ marginTop: 16 }}>{translateUi(stockMovementAction.success)}</p> : null}
 
               <div className="submit-btn-container">
                 <button className="primary-button" disabled={!actionRound || stockMovementAction.isSubmitting || closeState?.is_closed} type="submit">
                   <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
-                  {closeState?.is_closed ? 'ปิดสต๊อกวันนี้แล้ว' : stockMovementAction.isSubmitting ? 'กำลังบันทึก...' : `ยืนยัน ${MOVEMENT_LABELS[kind]}`}
+                  {closeState?.is_closed ? translateUi('ปิดสต๊อกวันนี้แล้ว') : stockMovementAction.isSubmitting ? translateUi('กำลังบันทึก...') : translateUi('ยืนยัน {0}', { 0: translateUi(MOVEMENT_LABELS[kind]) })}
                 </button>
               </div>
             </form>
@@ -893,8 +890,8 @@ export function ManagerStockControl({
         }} role="presentation">
           <section aria-labelledby="image-preview-title" aria-modal="true" className="image-preview-dialog" role="dialog">
             <div className="image-preview-dialog__header">
-              <h2 id="image-preview-title">รูป {previewImage.name}</h2>
-              <button aria-label="ปิดรูปภาพ" className="image-preview-dialog__close" onClick={() => setPreviewImage(null)} type="button">
+              <h2 id="image-preview-title">{translateUi('รูป ')}{previewImage.name}</h2>
+              <button aria-label={translateUi('ปิดรูปภาพ')} className="image-preview-dialog__close" onClick={() => setPreviewImage(null)} type="button">
                 <X size={22} weight="bold" />
               </button>
             </div>
@@ -917,11 +914,12 @@ function LocationSelect({
   value: string;
   onChange: (value: string) => void;
 }) {
+  useLanguage();
   return (
     <label>
       {label}
       <select required value={value} onChange={(event) => onChange(event.target.value)}>
-        <option value="">เลือกจุด</option>
+        <option value="">{translateUi('เลือกจุด')}</option>
         {locations.map((location) => (
           <option key={location.id} value={location.id}>{formatLocationOption(location)}</option>
         ))}
@@ -931,14 +929,14 @@ function LocationSelect({
 }
 
 function formatStockTime(value: string) {
-  return new Intl.DateTimeFormat('th-TH', {
+  return uiDateTimeFormat({
     hour: '2-digit',
     minute: '2-digit',
   }).format(new Date(value));
 }
 
 function formatStockDateTime(value: string) {
-  return new Intl.DateTimeFormat('th-TH', {
+  return uiDateTimeFormat({
     dateStyle: 'medium',
     timeStyle: 'short',
   }).format(new Date(value));

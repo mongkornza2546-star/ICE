@@ -1,3 +1,4 @@
+import { translateUi, useLanguage } from '../../i18n';
 import { useEffect, useRef, useState } from 'react';
 import { Printer, WarningCircle, X } from '@phosphor-icons/react';
 import { supabase } from '../../lib/supabase';
@@ -58,6 +59,7 @@ export function DeliveryCorrectionDialog({
   onSuccess: (message: string) => void | Promise<void>;
   userRole?: AppRole;
 }) {
+  useLanguage();
   const [context, setContext] = useState<CorrectionContext | null>(null);
   const [reason, setReason] = useState('');
   const [loading, setLoading] = useState(true);
@@ -160,32 +162,32 @@ export function DeliveryCorrectionDialog({
     && Number(context?.allocated_amount) === 0);
 
   return <div className="modal-backdrop delivery-correction-layer">
-    <form aria-label={`ยกเลิกใบส่งน้ำแข็ง ${context?.charge_number ?? ''}`} aria-modal="true" className="modal-card delivery-correction-dialog" onSubmit={(event) => { event.preventDefault(); void cancelBill(); }} role="dialog">
+    <form aria-label={translateUi('ยกเลิกใบส่งน้ำแข็ง {0}', { 0: context?.charge_number ?? '' })} aria-modal="true" className="modal-card delivery-correction-dialog" onSubmit={(event) => { event.preventDefault(); void cancelBill(); }} role="dialog">
       <div className="panel-header">
-        <div><p className="eyebrow">ยกเลิกใบส่งน้ำแข็ง</p><h2>{context?.charge_number ?? 'รายการขายสด'}</h2></div>
-        <button aria-label="ปิด" className="ghost-button" disabled={submitting} onClick={onClose} type="button"><X size={20} /></button>
+        <div><p className="eyebrow">{translateUi('ยกเลิกใบส่งน้ำแข็ง')}</p><h2>{context?.charge_number ?? translateUi('รายการขายสด')}</h2></div>
+        <button aria-label={translateUi('ปิด')} className="ghost-button" disabled={submitting} onClick={onClose} type="button"><X size={20} /></button>
       </div>
-      {loading ? <p className="muted">กำลังโหลดข้อมูลบิล...</p> : context ? <>
+      {loading ? <p className="muted">{translateUi('กำลังโหลดข้อมูลบิล...')}</p> : context ? <>
         <div className="delivery-correction-dialog__summary">
-          <span><small>ร้าน</small><strong>{context.shop_name}</strong></span>
-          <span><small>ยอดปัจจุบัน</small><strong>{money.format(Number(context.effective_amount))}</strong></span>
-          <span><small>รับชำระแล้ว</small><strong>{money.format(Number(context.allocated_amount))}</strong></span>
+          <span><small>{translateUi('ร้าน')}</small><strong>{context.shop_name}</strong></span>
+          <span><small>{translateUi('ยอดปัจจุบัน')}</small><strong>{money.format(Number(context.effective_amount))}</strong></span>
+          <span><small>{translateUi('รับชำระแล้ว')}</small><strong>{money.format(Number(context.allocated_amount))}</strong></span>
         </div>
-        {isClosed && !canCancel ? <p className="delivery-correction-dialog__notice"><WarningCircle size={18} />รอบหรือวันนี้ปิดแล้ว ไม่สามารถยกเลิกใบส่งนี้ได้</p> : null}
-        {hasPayment ? <p className="delivery-correction-dialog__notice"><WarningCircle size={18} />บิลนี้รับชำระแล้วทั้งหมดหรือบางส่วน จึงยกเลิกใบส่งไม่ได้ ให้หัวหน้าหรือแอดมินตรวจสอบรายการรับเงินก่อน หากบันทึกรับเงินผิด ให้ยกเลิกใบเสร็จที่ผิดก่อนดำเนินการต่อ</p>
-          : immediateSale ? <p className="delivery-correction-dialog__notice"><WarningCircle size={18} />รายการนี้ไม่มียอดรับชำระที่ยังใช้งานอยู่ ให้ยกเลิกรายการส่งก่อนบันทึกขายใหม่</p> : null}
-        {canCancel ? <p className="muted">หากบันทึกผิด ให้ยกเลิกใบส่งนี้ แล้วบันทึกส่งใหม่</p> : null}
+        {isClosed && !canCancel ? <p className="delivery-correction-dialog__notice"><WarningCircle size={18} />{translateUi('รอบหรือวันนี้ปิดแล้ว ไม่สามารถยกเลิกใบส่งนี้ได้')}</p> : null}
+        {hasPayment ? <p className="delivery-correction-dialog__notice"><WarningCircle size={18} />{translateUi('บิลนี้รับชำระแล้วทั้งหมดหรือบางส่วน จึงยกเลิกใบส่งไม่ได้ ให้หัวหน้าหรือแอดมินตรวจสอบรายการรับเงินก่อน หากบันทึกรับเงินผิด ให้ยกเลิกใบเสร็จที่ผิดก่อนดำเนินการต่อ')}</p>
+          : immediateSale ? <p className="delivery-correction-dialog__notice"><WarningCircle size={18} />{translateUi('รายการนี้ไม่มียอดรับชำระที่ยังใช้งานอยู่ ให้ยกเลิกรายการส่งก่อนบันทึกขายใหม่')}</p> : null}
+        {canCancel ? <p className="muted">{translateUi('หากบันทึกผิด ให้ยกเลิกใบส่งนี้ แล้วบันทึกส่งใหม่')}</p> : null}
         <div className="delivery-correction-dialog__stock-impact">
-          <strong>รายการที่จะยกเลิก</strong>
+          <strong>{translateUi('รายการที่จะยกเลิก')}</strong>
           {context.items.map((ice) => <span key={ice.ice_type_id}>{ice.name} {Number(ice.quantity ?? 0).toLocaleString('th-TH')} {ice.unit}</span>)}
         </div>
-        <label>เหตุผล<input disabled={!canCancel || submitting} onChange={(event) => setReason(event.target.value)} required value={reason} /></label>
+        <label>{translateUi('เหตุผล')}<input disabled={!canCancel || submitting} onChange={(event) => setReason(event.target.value)} required value={reason} /></label>
         {context.blocker_reason ? <p className="credit-ar__action-error" role="alert">{context.blocker_reason}</p> : null}
       </> : null}
-      {error ? <p className="credit-ar__action-error" role="alert">{error}</p> : null}
+      {error ? <p className="credit-ar__action-error" role="alert">{translateUi(error)}</p> : null}
       <div className="modal-actions">
-        {context?.charge_number ? <button className="ghost-button" disabled={submitting} onClick={() => void printDeliveryDocument()} type="button"><Printer size={18} />พิมพ์เอกสาร</button> : null}
-        {canCancel ? <button className="ghost-button danger-button" disabled={submitting} type="submit">{submitting ? 'กำลังยกเลิก...' : 'ยืนยันยกเลิกใบส่งน้ำแข็ง'}</button> : null}
+        {context?.charge_number ? <button className="ghost-button" disabled={submitting} onClick={() => void printDeliveryDocument()} type="button"><Printer size={18} />{translateUi('พิมพ์เอกสาร')}</button> : null}
+        {canCancel ? <button className="ghost-button danger-button" disabled={submitting} type="submit">{submitting ? translateUi('กำลังยกเลิก...') : translateUi('ยืนยันยกเลิกใบส่งน้ำแข็ง')}</button> : null}
       </div>
     </form>
   </div>;

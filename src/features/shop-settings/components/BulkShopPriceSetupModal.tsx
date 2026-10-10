@@ -1,3 +1,4 @@
+import { translateUi, useLanguage } from '../../../i18n';
 import { useEffect, useState } from 'react';
 import { Tag, X } from '@phosphor-icons/react';
 import type { BuildingOption, BuildingZoneOption, IceTypeOption, ShopSetting } from '../../../types/app';
@@ -14,6 +15,7 @@ interface BulkShopPriceSetupModalProps {
 }
 
 export function BulkShopPriceSetupModal({ shops, buildings, zones, iceTypes, onClose, onSuccess }: BulkShopPriceSetupModalProps) {
+  useLanguage();
   const [selectedBuildingId, setSelectedBuildingId] = useState('');
   const [selectedZoneId, setSelectedZoneId] = useState('');
   const [selectedShopIds, setSelectedShopIds] = useState<string[]>([]);
@@ -88,53 +90,47 @@ export function BulkShopPriceSetupModal({ shops, buildings, zones, iceTypes, onC
       <section aria-modal="true" className="panel" role="dialog" style={{ maxWidth: '640px', width: '90%', maxHeight: '90vh', overflowY: 'auto' }}>
         <div className="panel-header">
           <div>
-            <p className="eyebrow">จัดการหลายร้านค้า</p>
-            <h2>กำหนดราคาน้ำแข็งหลายร้าน</h2>
+            <p className="eyebrow">{translateUi('จัดการหลายร้านค้า')}</p>
+            <h2>{translateUi('กำหนดราคาน้ำแข็งหลายร้าน')}</h2>
           </div>
-          <button aria-label="ปิดหน้าต่างตั้งราคาหลายร้าน" className="ghost-button" onClick={onClose} type="button"><X size={20} /></button>
+          <button aria-label={translateUi('ปิดหน้าต่างตั้งราคาหลายร้าน')} className="ghost-button" onClick={onClose} type="button"><X size={20} /></button>
         </div>
 
-        <p className="muted">กำหนดราคาเดียวให้ร้านที่เลือก แล้วหากร้านใดใช้ราคาไม่เหมือนกัน สามารถเข้าไปตั้งราคาพิเศษเฉพาะร้านได้</p>
+        <p className="muted">{translateUi('กำหนดราคาเดียวให้ร้านที่เลือก แล้วหากร้านใดใช้ราคาไม่เหมือนกัน สามารถเข้าไปตั้งราคาพิเศษเฉพาะร้านได้')}</p>
 
         <div className="field-grid" style={{ margin: '1rem 0' }}>
           <label>
-            กรองตามอาคาร
-            <select onChange={(event) => { setSelectedBuildingId(event.target.value); setSelectedZoneId(''); setSelectedShopIds([]); }} value={selectedBuildingId}>
-              <option value="">ทุกอาคาร ({shops.filter((shop) => shop.status === 'active').length} ร้าน)</option>
+            {translateUi('กรองตามอาคาร')}<select onChange={(event) => { setSelectedBuildingId(event.target.value); setSelectedZoneId(''); setSelectedShopIds([]); }} value={selectedBuildingId}>
+              <option value="">{translateUi('ทุกอาคาร (')}{shops.filter((shop) => shop.status === 'active').length}{translateUi(' ร้าน)')}</option>
               {buildings.map((building) => <option key={building.id} value={building.id}>{building.code} · {building.name}</option>)}
             </select>
           </label>
           <label>
-            กรองตามโซนย่อย
-            <select disabled={!selectedBuildingId} onChange={(event) => { setSelectedZoneId(event.target.value); setSelectedShopIds([]); }} value={selectedZoneId}>
-              <option value="">ทุกโซน</option>
+            {translateUi('กรองตามโซนย่อย')}<select disabled={!selectedBuildingId} onChange={(event) => { setSelectedZoneId(event.target.value); setSelectedShopIds([]); }} value={selectedZoneId}>
+              <option value="">{translateUi('ทุกโซน')}</option>
               {zones.filter((zone) => zone.building_id === selectedBuildingId).map((zone) => <option key={zone.id} value={zone.id}>{zone.code} · {zone.name}</option>)}
             </select>
           </label>
           <label>
-            ชนิดน้ำแข็ง
-            <select onChange={(event) => setSelectedIceTypeId(event.target.value)} value={selectedIceTypeId}>
+            {translateUi('ชนิดน้ำแข็ง')}<select onChange={(event) => setSelectedIceTypeId(event.target.value)} value={selectedIceTypeId}>
               {iceTypes.map((iceType) => <option key={iceType.id} value={iceType.id}>{iceType.code} · {iceType.name} ({iceType.unit})</option>)}
             </select>
           </label>
           <label>
-            ราคา (บาท/หน่วย)
-            <input min="0.01" onChange={(event) => setUnitPrice(event.target.value)} placeholder="เช่น 35.00" step="0.01" type="number" value={unitPrice} />
+            {translateUi('ราคา (บาท/หน่วย)')}<input min="0.01" onChange={(event) => setUnitPrice(event.target.value)} placeholder={translateUi('เช่น 35.00')} step="0.01" type="number" value={unitPrice} />
           </label>
           <label>
-            เริ่มมีผล
-            <input onChange={(event) => setValidFrom(event.target.value)} required type="date" value={validFrom} />
+            {translateUi('เริ่มมีผล')}<input onChange={(event) => setValidFrom(event.target.value)} required type="date" value={validFrom} />
           </label>
           <label>
-            สิ้นสุด (ไม่บังคับ)
-            <input onChange={(event) => setValidTo(event.target.value)} type="date" value={validTo} />
+            {translateUi('สิ้นสุด (ไม่บังคับ)')}<input onChange={(event) => setValidTo(event.target.value)} type="date" value={validTo} />
           </label>
         </div>
 
         <div style={{ border: '1px solid var(--border-color, #eee)', borderRadius: '8px', padding: '0.75rem' }}>
           <div style={{ alignItems: 'center', display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-            <strong>เลือกร้านที่ต้องการตั้งราคา ({selectedShopIds.length}/{filteredShops.length})</strong>
-            <button className="ghost-button" onClick={toggleSelectAll} type="button">{selectedShopIds.length === filteredShops.length ? 'ยกเลิกเลือกทั้งหมด' : 'เลือกทั้งหมด'}</button>
+            <strong>{translateUi('เลือกร้านที่ต้องการตั้งราคา (')}{selectedShopIds.length}/{filteredShops.length})</strong>
+            <button className="ghost-button" onClick={toggleSelectAll} type="button">{selectedShopIds.length === filteredShops.length ? translateUi('ยกเลิกเลือกทั้งหมด') : translateUi('เลือกทั้งหมด')}</button>
           </div>
           <div style={{ display: 'grid', gap: '0.5rem', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', maxHeight: '150px', overflowY: 'auto' }}>
             {filteredShops.map((shop) => (
@@ -146,10 +142,10 @@ export function BulkShopPriceSetupModal({ shops, buildings, zones, iceTypes, onC
           </div>
         </div>
 
-        {error ? <p className="error-text" role="alert">{error}</p> : null}
+        {error ? <p className="error-text" role="alert">{translateUi(error)}</p> : null}
         <button className="primary-button" disabled={saving || selectedShopIds.length === 0} onClick={() => void applyPrice()} style={{ marginTop: '1rem' }} type="button">
           <Tag size={18} weight="bold" />
-          {saving ? 'กำลังบันทึก...' : `ยืนยันตั้งราคา ${selectedShopIds.length} ร้าน`}
+          {saving ? translateUi('กำลังบันทึก...') : translateUi('ยืนยันตั้งราคา {0} ร้าน', { 0: selectedShopIds.length })}
         </button>
       </section>
     </div>

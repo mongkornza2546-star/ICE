@@ -201,6 +201,46 @@ describe('employee delivery review navigation', () => {
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
+  it('uses Enter to save each quantity and continue through other ice types for the same shop', async () => {
+    const user = userEvent.setup();
+    const otherItems = [
+      { ...posContext.items[0], ice_type_id: 'ice-2', code: 'LARGE', name: 'หลอดใหญ่' },
+      { ...posContext.items[0], ice_type_id: 'ice-3', code: 'CRUSHED', name: 'น้ำแข็งบด' },
+    ];
+    const { onSubmit } = renderReview(true, shopCard, {
+      posContext: { ...posContext, items: [...posContext.items, ...otherItems] },
+    });
+
+    await user.click(screen.getByRole('button', { name: /หลอดเล็ก.*คงเหลือ/ }));
+    await user.clear(screen.getByRole('spinbutton', { name: 'จำนวนหลอดเล็ก' }));
+    await user.type(screen.getByRole('spinbutton', { name: 'จำนวนหลอดเล็ก' }), '2.5{Enter}');
+    expect(screen.getByText('2.5 ถุง × ฿60.00')).toBeTruthy();
+    expect(document.activeElement).toBe(screen.getByRole('spinbutton', { name: 'จำนวนหลอดใหญ่' }));
+
+    await user.type(screen.getByRole('spinbutton', { name: 'จำนวนหลอดใหญ่' }), '1{Enter}');
+    expect(screen.getByText('1 ถุง × ฿60.00')).toBeTruthy();
+    expect(document.activeElement).toBe(screen.getByRole('spinbutton', { name: 'จำนวนน้ำแข็งบด' }));
+
+    await user.keyboard('{Enter}');
+    expect(document.activeElement).toBe(screen.getByRole('spinbutton', { name: 'จำนวนหลอดเล็ก' }));
+    expect(screen.getByText('2 รายการ')).toBeTruthy();
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it('skips ice types that cannot be added when Enter advances', async () => {
+    const user = userEvent.setup();
+    const unavailable = { ...posContext.items[0], ice_type_id: 'ice-2', name: 'หลอดใหญ่', unit_price: null };
+    const available = { ...posContext.items[0], ice_type_id: 'ice-3', name: 'น้ำแข็งบด' };
+    renderReview(true, shopCard, {
+      posContext: { ...posContext, items: [posContext.items[0], unavailable, available] },
+    });
+
+    await user.click(screen.getByRole('button', { name: /หลอดเล็ก.*คงเหลือ/ }));
+    await user.click(screen.getByRole('spinbutton', { name: 'จำนวนหลอดเล็ก' }));
+    await user.keyboard('{Enter}');
+    expect(document.activeElement).toBe(screen.getByRole('spinbutton', { name: 'จำนวนน้ำแข็งบด' }));
+  });
+
   it.each([[ '½', 0.5 ], [ '1', 1 ], [ '2', 2 ], [ '3', 3 ]])('sets the quick quantity %s without appending digits', async (label, quantity) => {
     const user = userEvent.setup();
     const onSetQuantity = vi.fn();
@@ -212,13 +252,26 @@ describe('employee delivery review navigation', () => {
     expect((screen.getByRole('spinbutton', { name: 'จำนวนหลอดเล็ก' }) as HTMLInputElement).value).toBe(String(quantity));
   });
 
-  it('does not finish a zero quantity or submit the delivery when Enter is pressed', async () => {
+  it.each(['', '0'])('commits an erased quantity (%s) as zero and advances on Enter', async (value) => {
     const user = userEvent.setup();
-    const { onSubmit } = renderReview();
+    const onSetQuantity = vi.fn();
+    const { onSubmit } = renderReview(true, shopCard, {
+      onSetQuantity,
+      posContext: {
+        ...posContext,
+        items: [...posContext.items, { ...posContext.items[0], ice_type_id: 'ice-2', name: 'หลอดใหญ่' }],
+      },
+    });
     await user.click(screen.getByRole('button', { name: /หลอดเล็ก.*คงเหลือ/ }));
-    await user.clear(screen.getByRole('spinbutton', { name: 'จำนวนหลอดเล็ก' }));
+    const quantity = screen.getByRole('spinbutton', { name: 'จำนวนหลอดเล็ก' });
+    await user.clear(quantity);
+    if (value) await user.type(quantity, value);
+    expect((quantity as HTMLInputElement).checkValidity()).toBe(true);
+    expect(document.activeElement).toBe(quantity);
     await user.keyboard('{Enter}');
-    expect(screen.getByRole('button', { name: 'เพิ่มรายการ' }).hasAttribute('disabled')).toBe(true);
+    expect(onSetQuantity).toHaveBeenLastCalledWith('ice-1', 0);
+    expect(screen.queryByText('2 ถุง × ฿60.00')).toBeNull();
+    expect(document.activeElement).toBe(screen.getByRole('spinbutton', { name: 'จำนวนหลอดใหญ่' }));
     expect(onSubmit).not.toHaveBeenCalled();
   });
 

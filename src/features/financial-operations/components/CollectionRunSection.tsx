@@ -10,6 +10,7 @@ import type { QueueShop } from '../types';
 import { money } from '../utils';
 import { isBoothSameAsName } from '../../employee-delivery/utils';
 import { AutoRefreshShopImage } from './AutoRefreshShopImage';
+import { translateUi, useLanguage } from '../../../i18n';
 
 export function CollectionRunSection({
   runId,
@@ -22,6 +23,7 @@ export function CollectionRunSection({
   showQueue?: boolean;
   onSelectShop: (shop: QueueShop, trigger: HTMLButtonElement) => void;
 }) {
+  useLanguage();
   const [buildingId, setBuildingId] = useState('');
   const [zoneId, setZoneId] = useState('');
   const [query, setQuery] = useState('');
@@ -54,38 +56,36 @@ export function CollectionRunSection({
   return (
     <section className="financial-ops__section">
       <div className="financial-ops__title">
-        <div><Coins /><span><h2>คิวรับเงินร้านค้า</h2><p>รวมยอดที่ถึงกำหนดและยอดค้างโดยอัตโนมัติ</p></span></div>
+        <div><Coins /><span><h2>{translateUi('คิวรับเงินร้านค้า')}</h2><p>{translateUi('รวมยอดที่ถึงกำหนดและยอดค้างโดยอัตโนมัติ')}</p></span></div>
       </div>
-      {showQueue && !runId ? <p className="financial-ops__empty">ไม่สามารถเปิดคิวรับเงินของวันนี้ได้</p> : null}
+      {showQueue && !runId ? <p className="financial-ops__empty">{translateUi('ไม่สามารถเปิดคิวรับเงินของวันนี้ได้')}</p> : null}
       {showQueue && runId && queue.length > 0 ? <div className="financial-ops__queue-filters">
         <label className="financial-ops__queue-search">
           <MagnifyingGlass aria-hidden="true" size={20} />
           <input
-            aria-label="ค้นหาร้านค้า"
+            aria-label={translateUi('ค้นหาร้านค้า')}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="ค้นหารหัสร้าน หรือชื่อร้าน"
+            placeholder={translateUi('ค้นหารหัสร้าน หรือชื่อร้าน')}
             type="search"
             value={query}
           />
         </label>
-        <label>ตึก
-          <select aria-label="เลือกตึก" onChange={(event) => { setBuildingId(event.target.value); setZoneId(''); }} value={buildingId}>
-            <option value="">ทุกตึก</option>
+        <label>{translateUi('ตึก')}<select aria-label={translateUi('เลือกตึก')} onChange={(event) => { setBuildingId(event.target.value); setZoneId(''); }} value={buildingId}>
+            <option value="">{translateUi('ทุกตึก')}</option>
             {buildings.map((building) => <option key={building.id} value={building.id}>{building.name}</option>)}
           </select>
         </label>
-        <label>โซน
-          <select aria-label="เลือกโซน" disabled={!buildingId} onChange={(event) => setZoneId(event.target.value)} value={zoneId}>
-            <option value="">ทุกโซน</option>
+        <label>{translateUi('โซน')}<select aria-label={translateUi('เลือกโซน')} disabled={!buildingId} onChange={(event) => setZoneId(event.target.value)} value={zoneId}>
+            <option value="">{translateUi('ทุกโซน')}</option>
             {zones.map((zone) => <option key={zone.id} value={zone.id}>{zone.name}</option>)}
           </select>
         </label>
       </div> : null}
-      {showQueue && runId && (queue.length === 0 ? <p className="financial-ops__empty">ไม่มียอดค้างที่ต้องเก็บ</p> : visibleQueue.length === 0 ? <p className="financial-ops__empty">{normalizedQuery ? 'ไม่พบร้านค้าที่ค้นหา' : 'ไม่พบยอดค้างในตึกหรือโซนที่เลือก'}</p> : (
+      {showQueue && runId && (queue.length === 0 ? <p className="financial-ops__empty">{translateUi('ไม่มียอดค้างที่ต้องเก็บ')}</p> : visibleQueue.length === 0 ? <p className="financial-ops__empty">{normalizedQuery ? translateUi('ไม่พบร้านค้าที่ค้นหา') : translateUi('ไม่พบยอดค้างในตึกหรือโซนที่เลือก')}</p> : (
         <div className="financial-ops__shop-grid">
           {visibleQueue.map((shop) => (
             <button
-              aria-label={`${shop.shop_code} · ${shop.shop_name} ค้าง ${money.format(shop.outstanding_amount)}`}
+              aria-label={`${shop.shop_code} · ${shop.shop_name} ${translateUi('ค้าง')} ${money.format(shop.outstanding_amount)}`}
               className="financial-ops__shop-card"
               key={shop.queue_key ?? `regular:${shop.shop_id}`}
               onClick={(event) => onSelectShop(shop, event.currentTarget)}
@@ -99,17 +99,17 @@ export function CollectionRunSection({
                   imageUrl={shop.image_url}
                   loading="lazy"
                 />
-                {shop.has_new_charges ? <small>มียอดเพิ่ม</small> : null}
+                {shop.has_new_charges ? <small>{translateUi('มียอดเพิ่ม')}</small> : null}
               </span>
               <span className="financial-ops__shop-body">
                 <strong>{shop.destination_kind === 'event'
-                  ? (shop.event_booth ? `บูธ ${shop.event_booth}` : shop.shop_name)
+                  ? (shop.event_booth ? translateUi('บูธ {0}', { 0: shop.event_booth }) : shop.shop_name)
                   : shop.shop_code}</strong>
                 <b>{shop.destination_kind === 'event' && shop.event_booth && isBoothSameAsName(shop.shop_name, shop.event_booth)
                   ? ''
                   : shop.shop_name}</b>
-                {shop.destination_kind === 'event' ? <small>{[shop.event_name, shop.event_zone && `โซน ${shop.event_zone}`].filter(Boolean).join(' · ')}</small> : null}
-                <small><ListNumbers aria-hidden="true" size={15} /> {shop.charge_count} รายการค้าง</small>
+                {shop.destination_kind === 'event' ? <small>{[shop.event_name, shop.event_zone && translateUi('โซน {0}', { 0: shop.event_zone })].filter(Boolean).join(' · ')}</small> : null}
+                <small><ListNumbers aria-hidden="true" size={15} /> {shop.charge_count}{translateUi(' รายการค้าง')}</small>
                 <em>{money.format(shop.outstanding_amount)}</em>
               </span>
               <CaretRight aria-hidden="true" className="financial-ops__shop-arrow" size={20} />

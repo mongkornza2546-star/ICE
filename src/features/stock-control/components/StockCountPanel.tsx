@@ -1,3 +1,4 @@
+import { translateUi, useLanguage } from '../../../i18n';
 import { useState, useEffect } from 'react';
 import { Check, Snowflake } from '@phosphor-icons/react';
 import type { StockLocationBalance } from '../../../types/app';
@@ -17,6 +18,7 @@ export function StockCountPanel({
   error,
   successMessage,
 }: StockCountPanelProps) {
+  useLanguage();
   const [actualCounts, setActualCounts] = useState<Record<string, number>>({});
   const [note, setNote] = useState('');
   const isTruckCount = location.kind === 'truck';
@@ -60,15 +62,15 @@ export function StockCountPanel({
     <form onSubmit={handleSubmit} className="stock-v2-panel stock-count-panel">
       <div className="stock-v2-panel__header">
         <div>
-          <h3>{isTruckCount ? 'นับยอดคงเหลือในรถบรรทุก' : 'ตรวจนับสต๊อกจริง'}</h3>
-          <p className="muted">จุดตรวจนับ: <strong>{location.name}</strong></p>
+          <h3>{isTruckCount ? translateUi('นับยอดคงเหลือในรถบรรทุก') : translateUi('ตรวจนับสต๊อกจริง')}</h3>
+          <p className="muted">{translateUi('จุดตรวจนับ: ')}<strong>{location.name}</strong></p>
         </div>
       </div>
 
       {isTruckCount ? (
         <div className="stock-count-reconciliation-note">
-          <strong>วิธีหายอดขาดหรือเกิน</strong>
-          <span>นับจำนวนจริงที่เหลือบนรถ แล้วเทียบกับยอดที่ระบบคาดว่าควรเหลือหลังหักรายการโอน ส่ง และเสียหาย</span>
+          <strong>{translateUi('วิธีหายอดขาดหรือเกิน')}</strong>
+          <span>{translateUi('นับจำนวนจริงที่เหลือบนรถ แล้วเทียบกับยอดที่ระบบคาดว่าควรเหลือหลังหักรายการโอน ส่ง และเสียหาย')}</span>
         </div>
       ) : null}
 
@@ -80,8 +82,8 @@ export function StockCountPanel({
           const varianceLabel = variance === 0
             ? 'ตรง'
             : variance > 0
-              ? `เกิน ${variance}`
-              : `ขาด ${Math.abs(variance)}`;
+              ? translateUi('เกิน {0}', { 0: variance })
+              : translateUi('ขาด {0}', { 0: Math.abs(variance) });
 
           return (
             <div
@@ -95,7 +97,7 @@ export function StockCountPanel({
                 <div>
                   <strong>{b.ice_type_name}</strong>
                   <p className="muted">
-                    {isTruckCount ? 'ควรเหลือบนรถ' : 'ระบบ'}: <strong>{system} {b.unit}</strong>
+                    {isTruckCount ? translateUi('ควรเหลือบนรถ') : translateUi('ระบบ')}: <strong>{system} {b.unit}</strong>
                   </p>
                 </div>
               </div>
@@ -111,7 +113,7 @@ export function StockCountPanel({
                         : 'stock-variance-badge--negative'
                     }`}
                   >
-                    {varianceLabel}{variance === 0 ? '' : ` ${b.unit}`}
+                    {translateUi(varianceLabel)}{variance === 0 ? '' : ` ${b.unit}`}
                   </span>
                 </div>
 
@@ -161,27 +163,26 @@ export function StockCountPanel({
 
       <div className="stock-count-note">
         <label htmlFor="count-note">
-          บันทึกหมายเหตุเพิ่มเติม:
-        </label>
+          {translateUi('บันทึกหมายเหตุเพิ่มเติม:')}</label>
         <input
           id="count-note"
           type="text"
           value={note}
           onChange={(e) => setNote(e.target.value)}
-          placeholder="ใส่หมายเหตุสำหรับประวัติการนับ..."
+          placeholder={translateUi('ใส่หมายเหตุสำหรับประวัติการนับ...')}
           disabled={loading}
         />
       </div>
 
       {error && (
         <div className="error-text">
-          ⚠️ {error}
+          ⚠️ {translateUi(error)}
         </div>
       )}
 
       {successMessage && (
         <div className="success-text stock-v2-feedback">
-          <Check size={16} /> {successMessage}
+          <Check size={16} /> {translateUi(successMessage)}
         </div>
       )}
 
@@ -190,7 +191,7 @@ export function StockCountPanel({
         disabled={loading}
         className="primary-button"
       >
-        {loading ? 'กำลังบันทึกยอดนับ...' : 'บันทึกผลการนับจริง'}
+        {loading ? translateUi('กำลังบันทึกยอดนับ...') : translateUi('บันทึกผลการนับจริง')}
       </button>
     </form>
   );

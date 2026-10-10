@@ -1,3 +1,4 @@
+import { translateUi, useLanguage } from '../../i18n';
 import { useRef, useState } from 'react';
 import { toBangkokDateString, shiftServiceDate } from '../../lib/serviceDate';
 import { supabase } from '../../lib/supabase';
@@ -12,6 +13,7 @@ export function EventPreparationPanel({ detail, gateway, onSaved }: {
   gateway: EventManagementGateway;
   onSaved: () => Promise<void>;
 }) {
+  useLanguage();
   const { event, participations } = detail;
   const today = toBangkokDateString();
   const latestPreparationDate = shiftServiceDate(event.start_date, -1);
@@ -72,11 +74,11 @@ export function EventPreparationPanel({ detail, gateway, onSaved }: {
     return `${kind === 'handoff' ? 'บันทึกส่งมอบและสร้างบิลค่าเช่า' : 'บันทึกรับคืน'} ${count} ถังแล้ว`;
   });
   return <section className="event-preparation event-participations" id="event-tank-operations">
-    <header><div><h3>เตรียมงาน / ส่งล่วงหน้า</h3><p>วันเปิดงาน {event.start_date} · ค่าเช่าถังเริ่มวันเปิดงาน หรือวันส่งมอบหากส่งหลังเปิดงาน</p></div></header>
-    {error ? <div className="event-feedback event-feedback--error" role="alert">{error}</div> : null}
-    {success ? <div className="event-feedback event-feedback--success" role="status">{success}</div> : null}
+    <header><div><h3>{translateUi('เตรียมงาน / ส่งล่วงหน้า')}</h3><p>{translateUi('วันเปิดงาน ')}{event.start_date}{translateUi(' · ค่าเช่าถังเริ่มวันเปิดงาน หรือวันส่งมอบหากส่งหลังเปิดงาน')}</p></div></header>
+    {error ? <div className="event-feedback event-feedback--error" role="alert">{translateUi(error)}</div> : null}
+    {success ? <div className="event-feedback event-feedback--success" role="status">{translateUi(success)}</div> : null}
     {event.status !== 'cancelled' ? <details>
-      <summary>เลือกร้านที่รับของก่อนวันเปิดงาน</summary>
+      <summary>{translateUi('เลือกร้านที่รับของก่อนวันเปิดงาน')}</summary>
       <form onSubmit={(e) => { e.preventDefault(); void run(async () => {
         if (!selected.length || !date || date >= event.start_date) throw new Error('เลือกร้านและวันที่ก่อนวันเปิดงาน');
         const result = await gateway.prepareShops(event.id, date, selected);
@@ -84,47 +86,47 @@ export function EventPreparationPanel({ detail, gateway, onSaved }: {
         return `เปิดรับของล่วงหน้า ${result.prepared_count} ร้านแล้ว`;
       }); }}>
         <fieldset disabled={busy}>
-          <label>วันเริ่มรับของล่วงหน้า<input type="date" required max={latestPreparationDate} value={date} onChange={(e) => setDate(e.target.value)} /></label>
-          <p>ร้านที่เลือกจะปรากฏในรอบส่งตั้งแต่วันนี้ เมื่อเผยแพร่งานแล้ว เลื่อนวันให้เร็วขึ้นได้ แต่เลื่อนช้าลงไม่ได้เพื่อรักษาประวัติ</p>
-          <label>ค้นหาร้านหรือบูธ<input value={query} onChange={(e) => setQuery(e.target.value)} /></label>
-          <button type="button" className="secondary-button" onClick={() => setSelected(Array.from(new Set([...selected, ...visible.map((row) => row.id)])))}>เลือกทั้งหมดที่แสดง</button>
-          <button type="button" className="secondary-button" onClick={() => setSelected([])}>ล้างที่เลือก</button>
-          <div className="event-preparation-shops">{visible.map((row) => <label key={row.id}><input type="checkbox" checked={selected.includes(row.id)} onChange={(e) => setSelected(e.target.checked ? [...selected, row.id] : selected.filter((id) => id !== row.id))} /><span>บูธ {row.booth_number || '—'} · {row.shop_name}{row.preparation_start_date ? ` · รับของตั้งแต่ ${row.preparation_start_date}` : ''}</span></label>)}</div>
-          <button className="primary-button" type="submit" disabled={!selected.length}>เปิดรับของล่วงหน้า {selected.length} ร้าน</button>
+          <label>{translateUi('วันเริ่มรับของล่วงหน้า')}<input type="date" required max={latestPreparationDate} value={date} onChange={(e) => setDate(e.target.value)} /></label>
+          <p>{translateUi('ร้านที่เลือกจะปรากฏในรอบส่งตั้งแต่วันนี้ เมื่อเผยแพร่งานแล้ว เลื่อนวันให้เร็วขึ้นได้ แต่เลื่อนช้าลงไม่ได้เพื่อรักษาประวัติ')}</p>
+          <label>{translateUi('ค้นหาร้านหรือบูธ')}<input value={query} onChange={(e) => setQuery(e.target.value)} /></label>
+          <button type="button" className="secondary-button" onClick={() => setSelected(Array.from(new Set([...selected, ...visible.map((row) => row.id)])))}>{translateUi('เลือกทั้งหมดที่แสดง')}</button>
+          <button type="button" className="secondary-button" onClick={() => setSelected([])}>{translateUi('ล้างที่เลือก')}</button>
+          <div className="event-preparation-shops">{visible.map((row) => <label key={row.id}><input type="checkbox" checked={selected.includes(row.id)} onChange={(e) => setSelected(e.target.checked ? [...selected, row.id] : selected.filter((id) => id !== row.id))} /><span>{translateUi('บูธ ')}{row.booth_number || '—'} · {row.shop_name}{row.preparation_start_date ? translateUi(' · รับของตั้งแต่ {0}', { 0: row.preparation_start_date }) : ''}</span></label>)}</div>
+          <button className="primary-button" type="submit" disabled={!selected.length}>{translateUi('เปิดรับของล่วงหน้า ')}{selected.length}{translateUi(' ร้าน')}</button>
         </fieldset>
       </form>
-      <p>จากนั้นเลือกวันที่ส่งจริงในเมนูบันทึกส่งน้ำแข็ง แล้วเลือกอีเวนต์นี้ ระบบใช้ราคา สต็อก และยอดขายของวันที่ส่ง</p>
+      <p>{translateUi('จากนั้นเลือกวันที่ส่งจริงในเมนูบันทึกส่งน้ำแข็ง แล้วเลือกอีเวนต์นี้ ระบบใช้ราคา สต็อก และยอดขายของวันที่ส่ง')}</p>
     </details> : null}
     <details data-event-tank-details>
-      <summary>บันทึกตั้งถัง / รับคืนถัง · ค้างทั้งหมด {participations.reduce((sum, row) => sum + balance(row.id), 0)} ถัง</summary>
-      {event.status === 'draft' ? <p>เผยแพร่งานก่อนบันทึกส่งมอบถังจริง</p> : null}
+      <summary>{translateUi('บันทึกตั้งถัง / รับคืนถัง · ค้างทั้งหมด ')}{participations.reduce((sum, row) => sum + balance(row.id), 0)}{translateUi(' ถัง')}</summary>
+      {event.status === 'draft' ? <p>{translateUi('เผยแพร่งานก่อนบันทึกส่งมอบถังจริง')}</p> : null}
       <form onSubmit={(e) => { e.preventDefault(); void saveTanks(); }}><fieldset disabled={busy}>
         <div className="event-form-grid">
-          <label>รายการ<select value={kind} onChange={(e) => { setKind(e.target.value as 'handoff' | 'return'); setTankShop(''); }}><option value="handoff">ส่งมอบถัง</option><option value="return">รับคืนถัง</option></select></label>
-          <label>วันที่ส่งหรือรับคืนจริง<input type="date" required max={today} value={tankDate} onChange={(e) => { setTankDate(e.target.value); setTankShop(''); }} /></label>
-          <label className="event-field--wide">ร้านค้า<select required value={tankShop} onChange={(e) => setTankShop(e.target.value)}><option value="">เลือกร้าน</option>{tankOptions.map((row) => <option value={row.id} key={row.id}>บูธ {row.booth_number || '—'} · {row.shop_name} · ค้าง {balance(row.id)} ถัง</option>)}</select></label>
-          <label>จำนวนถัง<input type="number" required min="1" max={kind === 'return' && tankShop ? balance(tankShop) : 10000} step="1" value={quantity} onChange={(e) => setQuantity(e.target.value)} /></label>
-          <label>หมายเหตุ<input value={note} onChange={(e) => setNote(e.target.value)} /></label>
+          <label>{translateUi('รายการ')}<select value={kind} onChange={(e) => { setKind(e.target.value as 'handoff' | 'return'); setTankShop(''); }}><option value="handoff">{translateUi('ส่งมอบถัง')}</option><option value="return">{translateUi('รับคืนถัง')}</option></select></label>
+          <label>{translateUi('วันที่ส่งหรือรับคืนจริง')}<input type="date" required max={today} value={tankDate} onChange={(e) => { setTankDate(e.target.value); setTankShop(''); }} /></label>
+          <label className="event-field--wide">{translateUi('ร้านค้า')}<select required value={tankShop} onChange={(e) => setTankShop(e.target.value)}><option value="">{translateUi('เลือกร้าน')}</option>{tankOptions.map((row) => <option value={row.id} key={row.id}>{translateUi('บูธ ')}{row.booth_number || '—'} · {row.shop_name}{translateUi(' · ค้าง ')}{balance(row.id)}{translateUi(' ถัง')}</option>)}</select></label>
+          <label>{translateUi('จำนวนถัง')}<input type="number" required min="1" max={kind === 'return' && tankShop ? balance(tankShop) : 10000} step="1" value={quantity} onChange={(e) => setQuantity(e.target.value)} /></label>
+          <label>{translateUi('หมายเหตุ')}<input value={note} onChange={(e) => setNote(e.target.value)} /></label>
         </div>
-        {kind === 'handoff' ? <p>เริ่มค่าเช่า {tankDate > event.start_date ? tankDate : event.start_date}{detail.configuration?.tank_rental_unit_price ? ` · ค่าเช่า ${money(detail.configuration.tank_rental_unit_price)} บาท/ถัง (รวม ${money(Number(quantity || 0) * detail.configuration.tank_rental_unit_price)} บาท)` : ''} · ระบบสร้างบิลค่าเช่าอัตโนมัติ</p> : null}
-        <button className="primary-button" disabled={!tankShop || !tankOptions.length} type="submit">{busy ? 'กำลังบันทึก...' : 'บันทึกรายการถัง'}</button>
+        {kind === 'handoff' ? <p>{translateUi('เริ่มค่าเช่า ')}{tankDate > event.start_date ? tankDate : event.start_date}{detail.configuration?.tank_rental_unit_price ? translateUi(' · ค่าเช่า {0} บาท/ถัง (รวม {1} บาท)', { 0: money(detail.configuration.tank_rental_unit_price), 1: money(Number(quantity || 0) * detail.configuration.tank_rental_unit_price) }) : ''}{translateUi(' · ระบบสร้างบิลค่าเช่าอัตโนมัติ')}</p> : null}
+        <button className="primary-button" disabled={!tankShop || !tankOptions.length} type="submit">{busy ? translateUi('กำลังบันทึก...') : translateUi('บันทึกรายการถัง')}</button>
       </fieldset></form>
-      <div className="event-import-preview"><table><thead><tr><th>วันที่</th><th>ร้าน / บูธ</th><th>รายการ</th><th>จำนวน</th><th>เริ่มค่าเช่า</th><th>บิลค่าเช่า</th><th>การจัดการ</th></tr></thead><tbody>{[...movements].reverse().map((row) => {
+      <div className="event-import-preview"><table><thead><tr><th>{translateUi('วันที่')}</th><th>{translateUi('ร้าน / บูธ')}</th><th>{translateUi('รายการ')}</th><th>{translateUi('จำนวน')}</th><th>{translateUi('เริ่มค่าเช่า')}</th><th>{translateUi('บิลค่าเช่า')}</th><th>{translateUi('การจัดการ')}</th></tr></thead><tbody>{[...movements].reverse().map((row) => {
         const shop = participations.find((p) => p.id === row.event_participation_id);
         return <tr key={row.id}>
           <td>{row.service_date}</td>
           <td>{shop?.booth_number || '—'} · {shop?.shop_name}</td>
-          <td>{row.movement_kind === 'handoff' ? 'ส่งมอบ' : 'รับคืน'}{row.note ? ` · ${row.note}` : ''}</td>
+          <td>{row.movement_kind === 'handoff' ? translateUi('ส่งมอบ') : translateUi('รับคืน')}{row.note ? ` · ${row.note}` : ''}</td>
           <td>{row.quantity}</td>
           <td>{row.rental_start_date ?? '—'}</td>
           <td>
-            {row.charge_number ? <span>{row.charge_number}{row.outstanding_amount != null ? <small style={{ display: 'block', color: Number(row.outstanding_amount) > 0 ? '#b91c1c' : '#15803d' }}>{Number(row.outstanding_amount) > 0 ? `ค้างชำระ ${money(row.outstanding_amount)} บ.` : 'ชำระแล้ว'}</small> : null}</span> : '—'}
+            {row.charge_number ? <span>{row.charge_number}{row.outstanding_amount != null ? <small style={{ display: 'block', color: Number(row.outstanding_amount) > 0 ? '#b91c1c' : '#15803d' }}>{Number(row.outstanding_amount) > 0 ? translateUi('ค้างชำระ {0} บ.', { 0: money(row.outstanding_amount) }) : translateUi('ชำระแล้ว')}</small> : null}</span> : '—'}
           </td>
           <td>
-            {row.charge_id ? <button type="button" className="secondary-button" disabled={busy} onClick={() => void printInvoice(row.charge_id!)}>พิมพ์บิล</button> : '—'}
+            {row.charge_id ? <button type="button" className="secondary-button" disabled={busy} onClick={() => void printInvoice(row.charge_id!)}>{translateUi('พิมพ์บิล')}</button> : '—'}
           </td>
         </tr>;
-      })}</tbody></table>{!movements.length ? <p>ยังไม่มีรายการส่งมอบหรือรับคืนถัง</p> : null}</div>
+      })}</tbody></table>{!movements.length ? <p>{translateUi('ยังไม่มีรายการส่งมอบหรือรับคืนถัง')}</p> : null}</div>
     </details>
   </section>;
 }

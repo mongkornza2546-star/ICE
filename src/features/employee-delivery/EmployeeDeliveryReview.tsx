@@ -1,3 +1,4 @@
+import { translateUi, useLanguage } from '../../i18n';
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent, type KeyboardEvent } from 'react';
 import {
   ArrowLeft,
@@ -147,6 +148,7 @@ export function EmployeeDeliveryReview({
   onReturnToDelivery: () => void;
   onCorrectionSuccess: (message: string) => void | Promise<void>;
 }) {
+  useLanguage();
   const [selectedIceTypeId, setSelectedIceTypeId] = useState('');
   const [shopSearch, setShopSearch] = useState('');
   const [quantityInput, setQuantityInput] = useState('');
@@ -247,14 +249,24 @@ export function EmployeeDeliveryReview({
     };
   }, [paymentOpen, problemOpen, loadingPosContext, posContextError]);
 
-  const finishQuantity = () => {
+  const finishQuantity = (advanceToNext = false) => {
     if (!selectedItem || !canEditQuantity) return;
     if (quantityInputRef.current && !quantityInputRef.current.checkValidity()) {
       quantityInputRef.current.reportValidity();
       return;
     }
-    if (!Number.isFinite(inputQuantity) || inputQuantity <= 0) return;
-    onSetQuantity(selectedItem.ice_type_id, inputQuantity);
+    const nextQuantity = quantityInput.trim() === '' ? 0 : inputQuantity;
+    if (!Number.isFinite(nextQuantity) || nextQuantity < 0 || (nextQuantity === 0 && !advanceToNext)) return;
+    onSetQuantity(selectedItem.ice_type_id, nextQuantity);
+    if (advanceToNext) {
+      const currentIndex = contextItems.findIndex((item) => item.ice_type_id === selectedItem.ice_type_id);
+      const nextItem = [...contextItems.slice(currentIndex + 1), ...contextItems.slice(0, currentIndex)]
+        .find((item) => item.stock_quantity > 0 && (item.unit_price != null || !posContext));
+      if (nextItem && nextItem.ice_type_id !== selectedItem.ice_type_id) {
+        setSelectedIceTypeId(nextItem.ice_type_id);
+        return;
+      }
+    }
     layoutRef.current?.querySelector<HTMLButtonElement>('.employee-pos-product-grid button[aria-pressed="true"]')?.focus({ preventScroll: true });
     setSelectedIceTypeId('');
   };
@@ -270,7 +282,7 @@ export function EmployeeDeliveryReview({
     if (event.key === 'Enter' && target.matches('input')) {
       // An input's Enter must never implicitly submit the delivery form.
       event.preventDefault();
-      if (target === quantityInputRef.current) finishQuantity();
+      if (target === quantityInputRef.current) finishQuantity(true);
       return;
     }
     if (!canEditQuantity || !selectedItem || !target.closest('.employee-pos-entry')
@@ -343,7 +355,7 @@ export function EmployeeDeliveryReview({
         <header>
           <span className="financial-ops__payment-image">
             <AutoRefreshShopImage
-              alt={`ร้าน ${shopCard.shop_name}`}
+              alt={translateUi('ร้าน {0}', { 0: shopCard.shop_name })}
               fallback={<Storefront aria-hidden="true" size={40} weight="duotone" />}
               imagePath={shopCard.image_path}
               imageUrl={shopCard.image_url}
@@ -351,27 +363,27 @@ export function EmployeeDeliveryReview({
           </span>
           <span>
             <small>{shopCard.destination_kind === 'event'
-              ? (shopCard.booth_number ? `บูธ ${shopCard.booth_number}` : '')
+              ? (shopCard.booth_number ? translateUi('บูธ {0}', { 0: shopCard.booth_number }) : '')
               : shopCard.shop_code}</small>
-            <h2>บันทึกรับชำระเงิน</h2>
+            <h2>{translateUi('บันทึกรับชำระเงิน')}</h2>
             <b>{shopCard.shop_name}</b>
           </span>
           <span aria-hidden="true" />
         </header>
         <form onSubmit={onPaymentSubmit}>
           <fieldset disabled={paymentSubmitting}>
-            <section className="financial-ops__amount-due" aria-label="ยอดที่ต้องชำระ">
-              <span>ยอดที่ต้องชำระ</span>
+            <section className="financial-ops__amount-due" aria-label={translateUi('ยอดที่ต้องชำระ')}>
+              <span>{translateUi('ยอดที่ต้องชำระ')}</span>
               <strong>{money.format(totalDue)}</strong>
             </section>
 
-            <section className="financial-ops__current-order" aria-label="รายการที่สั่งในบิลนี้">
-              <strong>รายการที่สั่งในบิลนี้</strong>
+            <section className="financial-ops__current-order" aria-label={translateUi('รายการที่สั่งในบิลนี้')}>
+              <strong>{translateUi('รายการที่สั่งในบิลนี้')}</strong>
               {billedItems.map((item) => {
                 const iceType = contextItems.find((candidate) => candidate.ice_type_id === item.ice_type_id);
                 return (
                   <div key={item.ice_type_id}>
-                    <span>{item.name ?? iceType?.name ?? 'ไม่พบชื่อสินค้า'} × {item.quantity.toLocaleString('th-TH')} {item.unit ?? iceType?.unit ?? ''}</span>
+                    <span>{item.name ?? iceType?.name ?? translateUi('ไม่พบชื่อสินค้า')} × {item.quantity.toLocaleString('th-TH')} {item.unit ?? iceType?.unit ?? ''}</span>
                     <b>{money.format(item.line_total ?? 0)}</b>
                   </div>
                 );
@@ -379,7 +391,7 @@ export function EmployeeDeliveryReview({
             </section>
 
             <section className="financial-ops__payment-methods" aria-labelledby="employee-payment-method-label">
-              <h3 id="employee-payment-method-label">รูปแบบการชำระ</h3>
+              <h3 id="employee-payment-method-label">{translateUi('รูปแบบการชำระ')}</h3>
               <div style={{
                 gridTemplateColumns: `repeat(${availablePaymentMethods.length}, minmax(0, 1fr))`,
               }}>
@@ -394,7 +406,7 @@ export function EmployeeDeliveryReview({
                       type="button"
                     >
                       <Icon aria-hidden="true" size={25} weight="duotone" />
-                      <span>{METHOD_LABELS[method]}</span>
+                      <span>{translateUi(METHOD_LABELS[method])}</span>
                     </button>
                   );
                 })}
@@ -403,10 +415,10 @@ export function EmployeeDeliveryReview({
 
             <section className="financial-ops__received-box">
               <label className="financial-ops__payment-amount">
-                <span>{paymentMethod === 'cash' ? 'รับเงินมา' : 'ยอดเงินที่โอน'}</span>
+                <span>{paymentMethod === 'cash' ? translateUi('รับเงินมา') : translateUi('ยอดเงินที่โอน')}</span>
                 <span className="financial-ops__currency" aria-hidden="true">฿</span>
                 <input
-                  aria-label="ยอดรับเงินจริง"
+                  aria-label={translateUi('ยอดรับเงินจริง')}
                   inputMode="decimal"
                   min="0.01"
                   max={paymentMethod === 'cash' ? undefined : totalDue}
@@ -415,18 +427,18 @@ export function EmployeeDeliveryReview({
                   type="number"
                   value={paymentAmount}
                 />
-                <small>บาท</small>
+                <small>{translateUi('บาท')}</small>
               </label>
               {paymentMethod === 'cash' ? (
                 <div className="financial-ops__change-amount">
-                  <span>เงินทอน</span>
+                  <span>{translateUi('เงินทอน')}</span>
                   <strong>{money.format(changeAmount)}</strong>
                 </div>
               ) : null}
             </section>
 
             {paymentMethod === 'cash' ? (
-              <div className="financial-ops__quick-amounts" aria-label="เลือกยอดรับเงินด่วน">
+              <div className="financial-ops__quick-amounts" aria-label={translateUi('เลือกยอดรับเงินด่วน')}>
                 {[100, 200, 500, 1000].map((value) => (
                   <button key={value} onClick={() => onPaymentAmountChange(value.toFixed(2))} type="button">
                     {value.toLocaleString('th-TH')}
@@ -436,27 +448,27 @@ export function EmployeeDeliveryReview({
             ) : null}
           </fieldset>
 
-          <section className="financial-ops__payment-summary" aria-label="สรุปยอดรับเงิน">
-            <span><small>ตัดยอด</small><strong>{money.format(allocatedAmount)}</strong></span>
-            <span><small>คงเหลือหลังรายการ</small><b>{money.format(remainingAmount)}</b></span>
+          <section className="financial-ops__payment-summary" aria-label={translateUi('สรุปยอดรับเงิน')}>
+            <span><small>{translateUi('ตัดยอด')}</small><strong>{money.format(allocatedAmount)}</strong></span>
+            <span><small>{translateUi('คงเหลือหลังรายการ')}</small><b>{money.format(remainingAmount)}</b></span>
           </section>
 
           <label className="financial-ops__payment-reference">
-            <span>หมายเหตุ <small>(ไม่บังคับ)</small></span>
+            <span>{translateUi('หมายเหตุ ')}<small>{translateUi('(ไม่บังคับ)')}</small></span>
             <input
-              aria-label="หมายเหตุ"
+              aria-label={translateUi('หมายเหตุ')}
               disabled={paymentSubmitting}
               onChange={(event) => onPaymentReferenceChange(event.target.value)}
-              placeholder="เช่น ลูกค้าจ่ายแบงก์ใหญ่"
+              placeholder={translateUi('เช่น ลูกค้าจ่ายแบงก์ใหญ่')}
               value={paymentReference}
             />
           </label>
 
           <label className="financial-ops__payment-evidence">
-            <span>หลักฐานการชำระ <small>({evidenceRequired ? 'บังคับ' : 'ไม่บังคับ'})</small></span>
+            <span>{translateUi('หลักฐานการชำระ ')}<small>({evidenceRequired ? translateUi('บังคับ') : translateUi('ไม่บังคับ')})</small></span>
             <input
               accept="image/jpeg,image/png,image/webp,application/pdf"
-              aria-label="หลักฐานการชำระ"
+              aria-label={translateUi('หลักฐานการชำระ')}
               disabled={paymentSubmitting}
               onChange={handlePaymentEvidenceChange}
               required={evidenceRequired}
@@ -467,41 +479,41 @@ export function EmployeeDeliveryReview({
               <b>{paymentEvidence
                 ? paymentEvidence.name
                 : paymentEvidenceUploaded
-                  ? 'ใช้หลักฐานที่อัปโหลดแล้ว'
-                  : 'อัปโหลดรูปสลิป'}</b>
-              <small>JPG, PNG, WebP หรือ PDF ไม่เกิน 5 MB</small>
+                  ? translateUi('ใช้หลักฐานที่อัปโหลดแล้ว')
+                  : translateUi('อัปโหลดรูปสลิป')}</b>
+              <small>{translateUi('JPG, PNG, WebP หรือ PDF ไม่เกิน 5 MB')}</small>
             </span>
-            {paymentEvidenceError ? <small className="financial-ops__evidence-error" role="alert">{paymentEvidenceError}</small> : null}
+            {paymentEvidenceError ? <small className="financial-ops__evidence-error" role="alert">{translateUi(paymentEvidenceError)}</small> : null}
           </label>
 
-          {cashUnderpayment ? <p className="employee-error" role="alert">ขายสดต้องรับเงินสดครบยอดก่อนบันทึก</p> : null}
-          {nonCashMismatch ? <p className="employee-error" role="alert">ยอดโอนหรือ QR ต้องเท่ากับยอดเรียกเก็บ</p> : null}
-          {nonCashOverpayment ? <p className="employee-error" role="alert">ยอดโอนหรือ QR ต้องไม่เกินยอดเรียกเก็บ</p> : null}
+          {cashUnderpayment ? <p className="employee-error" role="alert">{translateUi('ขายสดต้องรับเงินสดครบยอดก่อนบันทึก')}</p> : null}
+          {nonCashMismatch ? <p className="employee-error" role="alert">{translateUi('ยอดโอนหรือ QR ต้องเท่ากับยอดเรียกเก็บ')}</p> : null}
+          {nonCashOverpayment ? <p className="employee-error" role="alert">{translateUi('ยอดโอนหรือ QR ต้องไม่เกินยอดเรียกเก็บ')}</p> : null}
           {outstandingApprovalRequired ? (
             <div className="employee-approval-request">
               <strong>{approvalId
-                ? `อนุมัติยอดค้าง ${money.format(remainingAmount)} แล้ว`
-                : `ร้านนี้ต้องอนุมัติก่อนค้าง ${money.format(remainingAmount)}`}</strong>
+                ? translateUi('อนุมัติยอดค้าง {0} แล้ว', { 0: money.format(remainingAmount) })
+                : translateUi('ร้านนี้ต้องอนุมัติก่อนค้าง {0}', { 0: money.format(remainingAmount) })}</strong>
               {!approvalId ? (
                 <>
                   <textarea
                     onChange={(event) => onApprovalReasonChange(event.target.value)}
-                    placeholder="เหตุผลที่รับเงินไม่ครบ"
+                    placeholder={translateUi('เหตุผลที่รับเงินไม่ครบ')}
                     rows={2}
                     value={approvalReason}
                   />
                   <button disabled={approvalSubmitting} onClick={onRequestApproval} type="button">
-                    {approvalSubmitting ? 'กำลังตรวจคำขอ...' : 'ขออนุมัติ / ตรวจสถานะ'}
+                    {approvalSubmitting ? translateUi('กำลังตรวจคำขอ...') : translateUi('ขออนุมัติ / ตรวจสถานะ')}
                   </button>
                 </>
               ) : null}
             </div>
           ) : null}
-          {entryError ? <p className="employee-error" role="alert">{entryError}</p> : null}
+          {entryError ? <p className="employee-error" role="alert">{translateUi(entryError)}</p> : null}
           <div className="financial-ops__payment-actions">
-            {atomicImmediateSale ? <button disabled={paymentSubmitting} onClick={onPaymentCancel} type="button">กลับไปแก้รายการ</button> : null}
+            {atomicImmediateSale ? <button disabled={paymentSubmitting} onClick={onPaymentCancel} type="button">{translateUi('กลับไปแก้รายการ')}</button> : null}
             <button disabled={paymentSubmitting || !paymentReady} type="submit">
-              {paymentSubmitting ? 'กำลังบันทึกรับเงิน...' : 'ยืนยันรับเงิน'}
+              {paymentSubmitting ? translateUi('กำลังบันทึกรับเงิน...') : translateUi('ยืนยันรับเงิน')}
             </button>
           </div>
         </form>
@@ -514,13 +526,13 @@ export function EmployeeDeliveryReview({
       <div className="employee-pos-toolbar">
       <button autoFocus className="employee-back" disabled={submitting} onClick={onBack} type="button">
         <ArrowLeft aria-hidden="true" size={24} />
-        <span>กลับไปเลือกร้าน</span>
+        <span>{translateUi('กลับไปเลือกร้าน')}</span>
       </button>
 
-      <nav aria-label="ขั้นตอนบันทึกส่ง" className="employee-pos-mobile-steps">
-        <button disabled={submitting} onClick={onBack} type="button"><span>1</span> ร้าน</button>
-        <button aria-current={mobileStep === 'items' ? 'step' : undefined} onClick={() => setMobileStep('items')} type="button"><span>2</span> รายการ</button>
-        <button aria-current={mobileStep === 'review' ? 'step' : undefined} disabled={submitting || items.length === 0 || hasUncommittedQuantity} onClick={() => setMobileStep('review')} type="button"><span>3</span> ตรวจ</button>
+      <nav aria-label={translateUi('ขั้นตอนบันทึกส่ง')} className="employee-pos-mobile-steps">
+        <button disabled={submitting} onClick={onBack} type="button"><span>1</span>{translateUi(' ร้าน')}</button>
+        <button aria-current={mobileStep === 'items' ? 'step' : undefined} onClick={() => setMobileStep('items')} type="button"><span>2</span>{translateUi(' รายการ')}</button>
+        <button aria-current={mobileStep === 'review' ? 'step' : undefined} disabled={submitting || items.length === 0 || hasUncommittedQuantity} onClick={() => setMobileStep('review')} type="button"><span>3</span>{translateUi(' ตรวจ')}</button>
       </nav>
 
       <header className="employee-pos-shop">
@@ -534,9 +546,9 @@ export function EmployeeDeliveryReview({
           {shopCard.destination_kind === 'event' ? (
             <>
               {shopCard.booth_number && !isBoothSameAsName(shopCard.shop_name, shopCard.booth_number) ? (
-                <p>บูธ {shopCard.booth_number}</p>
+                <p>{translateUi('บูธ ')}{shopCard.booth_number}</p>
               ) : null}
-              <h1>{shopCard.booth_number ? (isBoothSameAsName(shopCard.shop_name, shopCard.booth_number) ? `บูธ ${shopCard.booth_number}` : shopCard.shop_name) : shopCard.shop_name}</h1>
+              <h1>{shopCard.booth_number ? (isBoothSameAsName(shopCard.shop_name, shopCard.booth_number) ? translateUi('บูธ {0}', { 0: shopCard.booth_number }) : shopCard.shop_name) : shopCard.shop_name}</h1>
             </>
           ) : (
             <>
@@ -547,33 +559,32 @@ export function EmployeeDeliveryReview({
           <small><MapPin aria-hidden="true" size={16} />{shopCard.destination_kind === 'event' ? `${shopCard.event_name ?? shopCard.building_name} · ${shopCard.floor_or_zone}` : `${shopCard.building_name} · ${shopCard.floor_or_zone}`}</small>
         </div>
         <span className={`employee-status employee-status--${statusTone(shopCard.stop_status)}`}>
-          {STATUS_LABELS[shopCard.stop_status]}
+          {translateUi(STATUS_LABELS[shopCard.stop_status])}
         </span>
       </header>
       </div>
 
-      {loadingPosContext ? <p className="employee-pos-notice">กำลังโหลดราคา สต๊อก และเงื่อนไขชำระ…</p> : null}
+      {loadingPosContext ? <p className="employee-pos-notice">{translateUi('กำลังโหลดราคา สต๊อก และเงื่อนไขชำระ…')}</p> : null}
       {posContext?.client_cache?.stale ? (
         <p className="employee-pos-notice" role="status">
-          ใช้ราคา สต๊อก และเงื่อนไขที่บันทึกไว้ล่าสุด เนื่องจากเครือข่ายยังไม่พร้อม
-        </p>
+          {translateUi('ใช้ราคา สต๊อก และเงื่อนไขที่บันทึกไว้ล่าสุด เนื่องจากเครือข่ายยังไม่พร้อม')}</p>
       ) : null}
-      {posContextError ? <p className="employee-error" role="alert">{posContextError}</p> : null}
+      {posContextError ? <p className="employee-error" role="alert">{translateUi(posContextError)}</p> : null}
 
       <form className="employee-pos-layout" onKeyDown={handleQuantityKeyDown} onSubmit={onSubmit} ref={layoutRef}>
         {!problemOpen ? (
           <>
-            <section aria-label="เลือกร้านอื่น" className="employee-pos-shops">
-              <div className="employee-pos-heading"><div><p>ร้าน</p><h2>ร้านในรอบ</h2></div><span>{shopCards.length} ร้าน</span></div>
+            <section aria-label={translateUi('เลือกร้านอื่น')} className="employee-pos-shops">
+              <div className="employee-pos-heading"><div><p>{translateUi('ร้าน')}</p><h2>{translateUi('ร้านในรอบ')}</h2></div><span>{shopCards.length}{translateUi(' ร้าน')}</span></div>
               <label className="employee-search employee-pos-shop-search">
                 <MagnifyingGlass aria-hidden="true" size={18} />
-                <input aria-label="ค้นหาร้านในรอบ" disabled={submitting} onChange={(event) => setShopSearch(event.target.value)} placeholder="รหัส / ชื่อร้าน" type="search" value={shopSearch} />
+                <input aria-label={translateUi('ค้นหาร้านในรอบ')} disabled={submitting} onChange={(event) => setShopSearch(event.target.value)} placeholder={translateUi('รหัส / ชื่อร้าน')} type="search" value={shopSearch} />
               </label>
               <div className="employee-pos-shop-list">
-                {visibleShopCards.length === 0 ? <p className="employee-pos-no-shops">ไม่พบร้านที่ค้นหา</p> : null}
+                {visibleShopCards.length === 0 ? <p className="employee-pos-no-shops">{translateUi('ไม่พบร้านที่ค้นหา')}</p> : null}
                 {visibleShopCards.map((card) => {
                   const isEvent = card.destination_kind === 'event';
-                  const boothText = card.booth_number ? `บูธ ${card.booth_number}` : '';
+                  const boothText = card.booth_number ? translateUi('บูธ {0}', { 0: card.booth_number }) : '';
                   const sameBooth = isEvent && isBoothSameAsName(card.shop_name, card.booth_number);
                   return (
                     <button
@@ -594,11 +605,11 @@ export function EmployeeDeliveryReview({
             <section className={`employee-pos-products ${mobileStep === 'items' ? '' : 'employee-pos-mobile--hidden'}`} aria-labelledby="employee-delivery-items">
               <div className="employee-pos-heading">
                 <div>
-                  <p>สินค้า</p>
-                  <h2 id="employee-delivery-items">เลือกน้ำแข็ง</h2>
+                  <p>{translateUi('สินค้า')}</p>
+                  <h2 id="employee-delivery-items">{translateUi('เลือกน้ำแข็ง')}</h2>
                 </div>
-                <span>ตัดจาก {posContext?.stock_source.name ?? (enableAssignedStockFlow
-                  ? assignedStockState?.holding_location.name ?? 'จุดถือครอง'
+                <span>{translateUi('ตัดจาก ')}{posContext?.stock_source.name ?? (enableAssignedStockFlow
+                  ? assignedStockState?.holding_location.name ?? translateUi('จุดถือครอง')
                   : stockSourceLabel)}</span>
               </div>
               <div className="employee-pos-product-grid">
@@ -621,9 +632,9 @@ export function EmployeeDeliveryReview({
                       )}
                       <span className="employee-pos-product-selected">{selected ? <CheckCircle aria-hidden="true" weight="fill" /> : null}</span>
                       <strong>{iceType.name}</strong>
-                      <small>{iceType.unit_price == null ? 'ยังไม่มีราคา' : `${money.format(iceType.unit_price)} / ${iceType.unit}`}</small>
+                      <small>{iceType.unit_price == null ? translateUi('ยังไม่มีราคา') : `${money.format(iceType.unit_price)} / ${iceType.unit}`}</small>
                       <b>{quantity > 0 ? quantity : '—'}</b>
-                      <em>คงเหลือ {iceType.stock_quantity === Number.MAX_SAFE_INTEGER ? '—' : iceType.stock_quantity} {iceType.unit}</em>
+                      <em>{translateUi('คงเหลือ ')}{iceType.stock_quantity === Number.MAX_SAFE_INTEGER ? '—' : iceType.stock_quantity} {iceType.unit}</em>
                     </button>
                   );
                 })}
@@ -631,13 +642,13 @@ export function EmployeeDeliveryReview({
             </section>
 
             <section
-              aria-label={selectedItem ? 'แป้นใส่จำนวน' : 'เลือกชนิดน้ำแข็ง'}
+              aria-label={selectedItem ? translateUi('แป้นใส่จำนวน') : translateUi('เลือกชนิดน้ำแข็ง')}
               className={`employee-pos-keypad ${selectedItem ? '' : 'employee-pos-keypad--empty'} ${mobileStep === 'items' ? '' : 'employee-pos-mobile--hidden'}`}
             >
               {selectedItem ? (
                 <>
                   <button
-                    aria-label="ปิดแป้นใส่จำนวน"
+                    aria-label={translateUi('ปิดแป้นใส่จำนวน')}
                     className="employee-pos-keypad-backdrop"
                     onClick={() => setSelectedIceTypeId('')}
                     type="button"
@@ -648,13 +659,13 @@ export function EmployeeDeliveryReview({
                       {deliveryQuantities[selectedItem.ice_type_id] ?? 0}
                     </strong>
                     <small>
-                      คงเหลือ {selectedItem.stock_quantity === Number.MAX_SAFE_INTEGER ? '—' : selectedItem.stock_quantity} {selectedItem.unit}
+                      {translateUi('คงเหลือ ')}{selectedItem.stock_quantity === Number.MAX_SAFE_INTEGER ? '—' : selectedItem.stock_quantity} {selectedItem.unit}
                     </small>
                   </div>
                   <label className="employee-pos-quantity-input">
-                    <span>จำนวน ({selectedItem.unit})</span>
+                    <span>{translateUi('จำนวน (')}{selectedItem.unit})</span>
                     <input
-                      aria-label={`จำนวน${selectedItem.name}`}
+                      aria-label={translateUi('จำนวน{0}', { 0: selectedItem.name })}
                       disabled={!canEditQuantity}
                       inputMode="decimal"
                       min="0"
@@ -665,9 +676,9 @@ export function EmployeeDeliveryReview({
                       type="number"
                       value={quantityInput}
                     />
-                    <small>กด Enter เพื่อเพิ่มรายการ</small>
+                    <small>{translateUi('กด Enter เพื่อบันทึกและไปสินค้าถัดไป')}</small>
                   </label>
-                  <div className="employee-pos-quick-quantities" role="group" aria-label="เลือกจำนวนด่วน">
+                  <div className="employee-pos-quick-quantities" role="group" aria-label={translateUi('เลือกจำนวนด่วน')}>
                     {[0.5, 1, 2, 3].map((quantity) => (
                       <button disabled={!canEditQuantity} key={quantity} onClick={() => onSetQuantity(selectedItem.ice_type_id, quantity)} type="button">
                         {quantity === 0.5 ? '½' : quantity}
@@ -679,25 +690,24 @@ export function EmployeeDeliveryReview({
                       <button key={digit} onClick={() => enterDigit(digit)} type="button">{digit}</button>
                     ))}
                     <button
-                      aria-label="ล้างจำนวน"
+                      aria-label={translateUi('ล้างจำนวน')}
                       onClick={() => onSetQuantity(selectedItem.ice_type_id, 0)}
                       type="button"
                     >
-                      ล้าง
-                    </button>
+                      {translateUi('ล้าง')}</button>
                     <button
-                      aria-label="เพิ่มครึ่งกระสอบ"
+                      aria-label={translateUi('เพิ่มครึ่งกระสอบ')}
                       onClick={() => onSetQuantity(
                         selectedItem.ice_type_id,
                         (deliveryQuantities[selectedItem.ice_type_id] ?? 0) + 0.5,
                       )}
                       type="button"
                     >
-                      <span>½ <span className="employee-keypad-half-unit">กระสอบ</span></span>
+                      <span>½ <span className="employee-keypad-half-unit">{translateUi('กระสอบ')}</span></span>
                     </button>
                     <button onClick={() => enterDigit('0')} type="button">0</button>
                     <button
-                      aria-label="ลบหนึ่งหลัก"
+                      aria-label={translateUi('ลบหนึ่งหลัก')}
                       onClick={() => {
                         const current = String(deliveryQuantities[selectedItem.ice_type_id] ?? 0);
                         onSetQuantity(selectedItem.ice_type_id, Number(current.slice(0, -1) || '0'));
@@ -710,46 +720,43 @@ export function EmployeeDeliveryReview({
                   <button
                     className="employee-pos-add-item"
                     disabled={!canEditQuantity || !Number.isFinite(inputQuantity) || inputQuantity <= 0}
-                    onClick={finishQuantity}
+                    onClick={() => finishQuantity()}
                     type="button"
                   >
-                    เพิ่มรายการ
-                  </button>
+                    {translateUi('เพิ่มรายการ')}</button>
                   {hasUncommittedQuantity ? (
                     <button className="employee-text-button" disabled={!canEditQuantity} onClick={() => {
                       setQuantityInput(String(selectedQuantity));
                       setSelectedIceTypeId('');
                     }} type="button">
-                      ยกเลิกการแก้จำนวน
-                    </button>
+                      {translateUi('ยกเลิกการแก้จำนวน')}</button>
                   ) : null}
                 </>
               ) : (
                 <div className="employee-pos-keypad-empty">
                   <IceCream aria-hidden="true" size={34} />
-                  <strong>เลือกชนิดน้ำแข็งเพื่อกรอกจำนวน</strong>
-                  <span>แตะสินค้าด้านซ้าย แล้วแป้นตัวเลขจะแสดงที่นี่</span>
+                  <strong>{translateUi('เลือกชนิดน้ำแข็งเพื่อกรอกจำนวน')}</strong>
+                  <span>{translateUi('แตะสินค้าด้านซ้าย แล้วแป้นตัวเลขจะแสดงที่นี่')}</span>
                 </div>
               )}
             </section>
             </div>
 
-            <section aria-label="สรุปตะกร้า" className={`employee-pos-cart ${mobileStep === 'review' ? '' : 'employee-pos-mobile--hidden'}`}>
+            <section aria-label={translateUi('สรุปตะกร้า')} className={`employee-pos-cart ${mobileStep === 'review' ? '' : 'employee-pos-mobile--hidden'}`}>
               <button className="employee-pos-mobile-back" onClick={() => setMobileStep('items')} type="button">
-                กลับไปแก้รายการ
-              </button>
+                {translateUi('กลับไปแก้รายการ')}</button>
               <div className="employee-pos-heading">
-                <div><p>ตะกร้า</p><h2>ตรวจและบันทึก</h2></div>
-                <span>{items.length} รายการ</span>
+                <div><p>{translateUi('ตะกร้า')}</p><h2>{translateUi('ตรวจและบันทึก')}</h2></div>
+                <span>{items.length}{translateUi(' รายการ')}</span>
               </div>
               <div className="employee-cart-lines">
-                {items.length === 0 ? <p>เลือกสินค้าแล้วใส่จำนวน</p> : items.map((item) => {
+                {items.length === 0 ? <p>{translateUi('เลือกสินค้าแล้วใส่จำนวน')}</p> : items.map((item) => {
                   const product = contextItems.find((candidate) => candidate.ice_type_id === item.ice_type_id);
                   return (
                     <div key={item.ice_type_id}>
                       <span><strong>{product?.name}</strong><small>{item.quantity} {product?.unit} × {product?.unit_price == null ? '—' : money.format(product.unit_price)}</small></span>
                       <b>{product?.unit_price == null ? '—' : money.format(item.quantity * product.unit_price)}</b>
-                      <button aria-label={`ลบ${product?.name ?? 'สินค้า'}`} onClick={() => onSetQuantity(item.ice_type_id, 0)} type="button">
+                      <button aria-label={translateUi('ลบ{0}', { 0: product?.name ?? translateUi('สินค้า') })} onClick={() => onSetQuantity(item.ice_type_id, 0)} type="button">
                         <Trash aria-hidden="true" />
                       </button>
                     </div>
@@ -757,62 +764,61 @@ export function EmployeeDeliveryReview({
                 })}
               </div>
               {items.length > 0 ? (
-                <button className="employee-text-button employee-cart-clear" disabled={submitting} onClick={onClearCart} type="button">ล้างตะกร้า</button>
+                <button className="employee-text-button employee-cart-clear" disabled={submitting} onClick={onClearCart} type="button">{translateUi('ล้างตะกร้า')}</button>
               ) : null}
               {isCreditShop && posContext?.payment_profile ? (
-                <p className="employee-credit-note">ร้านเครดิต · วงเงินคงเหลือ {posContext.payment_profile.credit_remaining == null
-                  ? 'ไม่จำกัด'
+                <p className="employee-credit-note">{translateUi('ร้านเครดิต · วงเงินคงเหลือ ')}{posContext.payment_profile.credit_remaining == null
+                  ? translateUi('ไม่จำกัด')
                   : money.format(posContext.payment_profile.credit_remaining)} · {formatCreditCollectionCycle(posContext.payment_profile)}</p>
               ) : !posContext?.payment_profile && financialContextRequired && !loadingPosContext ? (
-                <p className="employee-error">ร้านนี้ยังไม่มีเงื่อนไขการชำระ</p>
+                <p className="employee-error">{translateUi('ร้านนี้ยังไม่มีเงื่อนไขการชำระ')}</p>
               ) : null}
               <div className="employee-cart-total">
-                <span>ยอดรวม</span>
+                <span>{translateUi('ยอดรวม')}</span>
                 <strong>{posContext ? money.format(totalAmount) : renderTotals(toTotals(items), iceTypes)}</strong>
               </div>
               {exceedsCredit ? (
                 <div className="employee-approval-request">
-                  <strong>{approvalId ? 'อนุมัติวงเงินแล้ว' : 'ยอดเกินวงเงินเครดิต'}</strong>
+                  <strong>{approvalId ? translateUi('อนุมัติวงเงินแล้ว') : translateUi('ยอดเกินวงเงินเครดิต')}</strong>
                   {!approvalId ? (
                     <>
                       <textarea
                         onChange={(event) => onApprovalReasonChange(event.target.value)}
-                        placeholder="เหตุผลที่ขออนุมัติ"
+                        placeholder={translateUi('เหตุผลที่ขออนุมัติ')}
                         rows={2}
                         value={approvalReason}
                       />
                       <button disabled={approvalSubmitting} onClick={onRequestApproval} type="button">
-                        {approvalSubmitting ? 'กำลังตรวจคำขอ...' : 'ขออนุมัติ / ตรวจสถานะ'}
+                        {approvalSubmitting ? translateUi('กำลังตรวจคำขอ...') : translateUi('ขออนุมัติ / ตรวจสถานะ')}
                       </button>
                     </>
                   ) : null}
                 </div>
               ) : null}
-              {entryError ? <p className="employee-error" role="alert"><WarningCircle aria-hidden="true" />{entryError}</p> : null}
+              {entryError ? <p className="employee-error" role="alert"><WarningCircle aria-hidden="true" />{translateUi(entryError)}</p> : null}
               <div className="employee-delivery-actions">
                 <button className="employee-submit" disabled={!canSubmit || hasPendingDelivery} onClick={() => onConfirmDelivery(isCreditShop ? 'credit' : 'end_of_day')} type="button">
-                  {submitting ? 'กำลังบันทึก...' : 'ส่งอย่างเดียว'}
+                  {submitting ? translateUi('กำลังบันทึก...') : translateUi('ส่งอย่างเดียว')}
                 </button>
                 <button className="employee-submit" disabled={!canSubmit || hasPendingDelivery || !canCollectImmediatePayment || isCreditShop} onClick={() => onConfirmDelivery('immediate')} type="button">
-                  {submitting ? 'กำลังบันทึก...' : 'ส่งและรับชำระ'}
+                  {submitting ? translateUi('กำลังบันทึก...') : translateUi('ส่งและรับชำระ')}
                 </button>
               </div>
               {hasPendingDelivery && !submitting ? (
                 <div>
-                  <small className="employee-delivery-action-note">คำขอก่อนหน้ายังไม่ทราบผล ตรวจผลรายการเดิมก่อนส่งใหม่</small>
+                  <small className="employee-delivery-action-note">{translateUi('คำขอก่อนหน้ายังไม่ทราบผล ตรวจผลรายการเดิมก่อนส่งใหม่')}</small>
                   <button className="employee-submit" disabled={submitting} onClick={onRetryDelivery} type="button">
-                    ตรวจผล / ลองคำขอเดิมอีกครั้ง
-                  </button>
+                    {translateUi('ตรวจผล / ลองคำขอเดิมอีกครั้ง')}</button>
                 </div>
               ) : null}
-              {hasUncommittedQuantity ? <small className="employee-delivery-action-note">กดเพิ่มรายการหรือยกเลิกการแก้จำนวนก่อนส่ง</small> : null}
-              {!canCollectImmediatePayment && !isCreditShop ? <small className="employee-delivery-action-note">บัญชีนี้ยังไม่ได้รับสิทธิ์รับชำระเงิน</small> : null}
+              {hasUncommittedQuantity ? <small className="employee-delivery-action-note">{translateUi('กดเพิ่มรายการหรือยกเลิกการแก้จำนวนก่อนส่ง')}</small> : null}
+              {!canCollectImmediatePayment && !isCreditShop ? <small className="employee-delivery-action-note">{translateUi('บัญชีนี้ยังไม่ได้รับสิทธิ์รับชำระเงิน')}</small> : null}
             </section>
           </>
         ) : (
           <section className="employee-problem-panel employee-pos-problem">
             <div className="employee-pos-heading">
-              <div><p>งานรอง</p><h2>แจ้งเหตุส่งไม่ได้</h2></div>
+              <div><p>{translateUi('งานรอง')}</p><h2>{translateUi('แจ้งเหตุส่งไม่ได้')}</h2></div>
             </div>
             <div className="employee-problem-options">
               {PROBLEM_STATUSES.map((option) => (
@@ -823,17 +829,17 @@ export function EmployeeDeliveryReview({
                   onClick={() => onChooseProblemStatus(option.value)}
                   type="button"
                 >
-                  {option.label}
+                  {translateUi(option.label)}
                 </button>
               ))}
             </div>
             <label>
-              <span>หมายเหตุที่เกิดขึ้น</span>
+              <span>{translateUi('หมายเหตุที่เกิดขึ้น')}</span>
               <textarea onChange={(event) => onNoteChange(event.target.value)} rows={3} value={note} />
             </label>
-            {entryError ? <p className="employee-error" role="alert">{entryError}</p> : null}
-            <button className="employee-submit" disabled={submitting} type="submit">บันทึกเหตุ</button>
-            <button className="employee-text-button" onClick={onReturnToDelivery} type="button">กลับไปบันทึกส่งร้าน</button>
+            {entryError ? <p className="employee-error" role="alert">{translateUi(entryError)}</p> : null}
+            <button className="employee-submit" disabled={submitting} type="submit">{translateUi('บันทึกเหตุ')}</button>
+            <button className="employee-text-button" onClick={onReturnToDelivery} type="button">{translateUi('กลับไปบันทึกส่งร้าน')}</button>
           </section>
         )}
       </form>
@@ -845,22 +851,22 @@ export function EmployeeDeliveryReview({
           onClick={() => setMobileStep('review')}
           type="button"
         >
-          ตรวจรายการ ({items.length})
+          {translateUi('ตรวจรายการ (')}{items.length})
         </button>
       ) : null}
 
       <section className="employee-history">
         <div className="employee-shop-section__heading">
-          <h2>ประวัติวันนี้</h2><span>{shopCard.today_history.length} รายการ</span>
+          <h2>{translateUi('ประวัติวันนี้')}</h2><span>{shopCard.today_history.length}{translateUi(' รายการ')}</span>
         </div>
-        {shopCard.today_history.length === 0 ? <p className="employee-empty-history">วันนี้ยังไม่มีรายการของร้านนี้</p> : (
+        {shopCard.today_history.length === 0 ? <p className="employee-empty-history">{translateUi('วันนี้ยังไม่มีรายการของร้านนี้')}</p> : (
           <div className="employee-history-list">
             {shopCard.today_history.map((entry) => (
               <article key={entry.event_id}>
                 <div><strong>{formatShortTime(entry.recorded_at)} · {entry.round_name}</strong>
-                {(entry.can_cancel || entry.can_correct) ? <button className="employee-text-button" onClick={() => setCorrectionEventId(entry.event_id)} type="button">ยกเลิกใบส่งน้ำแข็ง</button> : null}</div>
+                {(entry.can_cancel || entry.can_correct) ? <button className="employee-text-button" onClick={() => setCorrectionEventId(entry.event_id)} type="button">{translateUi('ยกเลิกใบส่งน้ำแข็ง')}</button> : null}</div>
                 <span>{entry.stop_status && entry.stop_status !== 'delivered'
-                  ? `${STATUS_LABELS[entry.stop_status]}${entry.note ? ` · ${entry.note}` : ''}`
+                  ? `${translateUi(STATUS_LABELS[entry.stop_status])}${entry.note ? ` · ${entry.note}` : ''}`
                   : renderTotals(entry.items, iceTypes)}</span>
                 <small>{entry.recorded_by}</small>
                 {entry.correction_blocker && !(entry.can_cancel || entry.can_correct) ? <small title={entry.correction_blocker}>{entry.correction_blocker}</small> : null}

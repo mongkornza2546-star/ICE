@@ -1,3 +1,4 @@
+import { uiDateTimeFormat } from '../../i18n';
 import type { EmployeeStockState, IceTypeOption, PaymentTerm, ShopRoundStatus } from '../../types/app';
 
 export const PAYMENT_TERM_ORDER: Record<PaymentTerm, number> = {
@@ -29,7 +30,7 @@ export function statusTone(status: ShopRoundStatus) {
 }
 
 export function formatShortTime(value: string) {
-  return new Intl.DateTimeFormat('th-TH', { hour: '2-digit', minute: '2-digit' }).format(new Date(value));
+  return uiDateTimeFormat({ hour: '2-digit', minute: '2-digit' }).format(new Date(value));
 }
 
 export function renderTotals(totals: Record<string, number>, iceTypes: IceTypeOption[]) {

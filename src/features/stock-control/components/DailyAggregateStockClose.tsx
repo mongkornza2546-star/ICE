@@ -1,3 +1,4 @@
+import { uiDateTimeFormat, translateUi, useLanguage } from '../../../i18n';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { CheckCircle, Cube, Warning } from '@phosphor-icons/react';
 import { supabase } from '../../../lib/supabase';
@@ -80,6 +81,7 @@ export function DailyAggregateStockClose({
   onImageError?: (path: string) => void;
   onPreviewImage?: (image: { name: string; url: string }) => void;
 }) {
+  useLanguage();
   const [summary, setSummary] = useState<AggregateSummary | null>(null);
   const [employees, setEmployees] = useState<DailyCloseEmployee[]>([]);
   const [featureEnabled, setFeatureEnabled] = useState(false);
@@ -245,8 +247,8 @@ export function DailyAggregateStockClose({
     <section aria-labelledby="legacy-refill-history-title" style={{ marginTop: 20 }}>
       <div className="panel-header">
         <div>
-          <p className="eyebrow">สำหรับตรวจสอบข้อมูลก่อนยกเลิกฟีเจอร์เท่านั้น</p>
-          <h3 id="legacy-refill-history-title">รายการเติมน้ำแข็งเดิม</h3>
+          <p className="eyebrow">{translateUi('สำหรับตรวจสอบข้อมูลก่อนยกเลิกฟีเจอร์เท่านั้น')}</p>
+          <h3 id="legacy-refill-history-title">{translateUi('รายการเติมน้ำแข็งเดิม')}</h3>
         </div>
       </div>
       <div className="financial-ops__list">
@@ -259,8 +261,8 @@ export function DailyAggregateStockClose({
                 )).join(' · ')}
               </strong>
               <small>
-                ผู้บันทึก {refill.recorded_by}
-                {' · '}{new Intl.DateTimeFormat('th-TH', {
+                {translateUi('ผู้บันทึก ')}{refill.recorded_by}
+                {' · '}{uiDateTimeFormat({
                   dateStyle: 'short',
                   timeStyle: 'short',
                 }).format(new Date(refill.recorded_at))}
@@ -268,7 +270,7 @@ export function DailyAggregateStockClose({
               </small>
               {refill.status === 'cancelled' ? (
                 <small>
-                  ยกเลิกโดย {refill.cancelled_by ?? '—'} · {refill.cancellation_reason ?? '—'}
+                  {translateUi('ยกเลิกโดย ')}{refill.cancelled_by ?? '—'} · {refill.cancellation_reason ?? '—'}
                 </small>
               ) : null}
             </span>
@@ -278,8 +280,7 @@ export function DailyAggregateStockClose({
                 onClick={() => void cancelLegacyRefill(refill)}
                 type="button"
               >
-                ยกเลิกรายการเดิม
-              </button>
+                {translateUi('ยกเลิกรายการเดิม')}</button>
             ) : null}
           </div>
         ))}
@@ -287,16 +288,15 @@ export function DailyAggregateStockClose({
     </section>
   ) : null;
 
-  if (loading) return <p className="muted">กำลังโหลดยอดสต๊อกรวม...</p>;
-  if (!summary) return <p className="error-text">{error ?? 'โหลดยอดสต๊อกรวมไม่สำเร็จ'}</p>;
+  if (loading) return <p className="muted">{translateUi('กำลังโหลดยอดสต๊อกรวม...')}</p>;
+  if (!summary) return <p className="error-text">{error ?? translateUi('โหลดยอดสต๊อกรวมไม่สำเร็จ')}</p>;
   if (summary.status === 'closed') {
     return (
       <section aria-labelledby="aggregate-closed-title">
         <div className="employee-success" role="status">
           <CheckCircle size={22} weight="fill" />
           <span id="aggregate-closed-title">
-            ปิดสต๊อกรวมวันที่ {serviceDate} แล้ว ยอดพร้อมใช้เป็นศูนย์
-          </span>
+            {translateUi('ปิดสต๊อกรวมวันที่ ')}{serviceDate}{translateUi(' แล้ว ยอดพร้อมใช้เป็นศูนย์')}</span>
         </div>
         <div className="daily-stock-closed-list">
           {summary.items.map((item) => (
@@ -310,8 +310,8 @@ export function DailyAggregateStockClose({
                 onPreviewImage={onPreviewImage}
               />
               <p className="muted">
-                {item.name}: นับจริง {item.actual_quantity ?? 0} {item.unit}
-                {' · '}ส่วนต่าง {Number(item.variance_quantity ?? 0) > 0 ? '+' : ''}
+                {item.name}{translateUi(': นับจริง ')}{item.actual_quantity ?? 0} {item.unit}
+                {' · '}{translateUi('ส่วนต่าง ')}{Number(item.variance_quantity ?? 0) > 0 ? '+' : ''}
                 {item.variance_quantity ?? 0}
               </p>
             </div>
@@ -321,8 +321,8 @@ export function DailyAggregateStockClose({
           <section aria-labelledby="daily-cash-closed-title" className="daily-close-cash" style={{ marginTop: 18 }}>
             <div className="panel-header">
               <div>
-                <p className="eyebrow">Snapshot เงินสดสิ้นวัน</p>
-                <h3 id="daily-cash-closed-title">เงินสดรายพนักงาน</h3>
+                <p className="eyebrow">{translateUi('Snapshot เงินสดสิ้นวัน')}</p>
+                <h3 id="daily-cash-closed-title">{translateUi('เงินสดรายพนักงาน')}</h3>
               </div>
             </div>
             <div className="daily-close-cash__grid">
@@ -332,14 +332,14 @@ export function DailyAggregateStockClose({
                   <article className="daily-close-cash__card" key={employee.employee_id}>
                     <div>
                       <strong>{employee.employee_name}</strong>
-                      {!employee.is_active ? <small>พนักงานที่ยกเลิกแล้ว</small> : null}
+                      {!employee.is_active ? <small>{translateUi('พนักงานที่ยกเลิกแล้ว')}</small> : null}
                     </div>
                     <dl>
-                      <div><dt>ควรส่ง</dt><dd>{formatBaht(employee.expected_cash_amount)}</dd></div>
-                      <div><dt>นับจริง</dt><dd>{formatBaht(employee.actual_cash_amount ?? 0)}</dd></div>
-                      <div><dt>ส่วนต่าง</dt><dd className={variance ? 'daily-close-cash__variance' : ''}>{formatSignedBaht(variance)}</dd></div>
+                      <div><dt>{translateUi('ควรส่ง')}</dt><dd>{formatBaht(employee.expected_cash_amount)}</dd></div>
+                      <div><dt>{translateUi('นับจริง')}</dt><dd>{formatBaht(employee.actual_cash_amount ?? 0)}</dd></div>
+                      <div><dt>{translateUi('ส่วนต่าง')}</dt><dd className={variance ? 'daily-close-cash__variance' : ''}>{formatSignedBaht(variance)}</dd></div>
                     </dl>
-                    {employee.cash_reason ? <p>เหตุผล: {employee.cash_reason}</p> : null}
+                    {employee.cash_reason ? <p>{translateUi('เหตุผล: ')}{employee.cash_reason}</p> : null}
                   </article>
                 );
               })}
@@ -355,14 +355,13 @@ export function DailyAggregateStockClose({
     <section aria-labelledby="aggregate-close-title">
       <div className="panel-header">
         <div>
-          <p className="eyebrow">ยอดรวมจากทุกจุด</p>
-          <h3 id="aggregate-close-title">ตรวจนับและปิดสต๊อกสิ้นวัน</h3>
+          <p className="eyebrow">{translateUi('ยอดรวมจากทุกจุด')}</p>
+          <h3 id="aggregate-close-title">{translateUi('ตรวจนับและปิดสต๊อกสิ้นวัน')}</h3>
         </div>
-        <span className="status-badge status-badge--neutral">พร้อมนับรวม</span>
+        <span className="status-badge status-badge--neutral">{translateUi('พร้อมนับรวม')}</span>
       </div>
       <p className="muted">
-        นับน้ำแข็งที่เหลือรวมจากรถและทุกจุด แล้วกรอกยอดจริงแยกตามชนิด
-      </p>
+        {translateUi('นับน้ำแข็งที่เหลือรวมจากรถและทุกจุด แล้วกรอกยอดจริงแยกตามชนิด')}</p>
       <div className="daily-stock-count-grid" style={{ marginTop: 16 }}>
         {summary.items.map((item) => {
           const actual = counts[item.ice_type_id] ?? '';
@@ -382,19 +381,19 @@ export function DailyAggregateStockClose({
                 <div>
                   <strong>{item.name}</strong>
                   <small>
-                    ตามระบบ {item.available_quantity} {item.unit}
-                    {!counted ? ' · ยังไม่กรอกยอดนับ' : variance ? ` · ต่าง ${variance > 0 ? '+' : ''}${variance}` : ' · ตรง'}
+                    {translateUi('ตามระบบ ')}{item.available_quantity} {item.unit}
+                    {!counted ? translateUi(' · ยังไม่กรอกยอดนับ') : variance ? translateUi(' · ต่าง {0}{1}', { 0: variance > 0 ? '+' : '', 1: variance }) : translateUi(' · ตรง')}
                   </small>
                   <small>
-                    สั่ง {item.ordered_quantity ?? 0}
-                    {' · '}ขาย {item.sold_quantity ?? 0}
-                    {' · '}เสีย {item.damaged_quantity ?? 0}
-                    {' · '}คืน {item.returned_quantity ?? 0}
+                    {translateUi('สั่ง ')}{item.ordered_quantity ?? 0}
+                    {' · '}{translateUi('ขาย ')}{item.sold_quantity ?? 0}
+                    {' · '}{translateUi('เสีย ')}{item.damaged_quantity ?? 0}
+                    {' · '}{translateUi('คืน ')}{item.returned_quantity ?? 0}
                   </small>
                 </div>
               </div>
               <label className="daily-stock-count-card__input">
-                <span>นับจริง</span>
+                <span>{translateUi('นับจริง')}</span>
                 <div className="input-wrapper">
                   <input
                     disabled={submitting}
@@ -418,20 +417,18 @@ export function DailyAggregateStockClose({
       <section aria-labelledby="daily-cash-count-title" className="daily-close-cash" style={{ marginTop: 22 }}>
         <div className="panel-header">
           <div>
-            <p className="eyebrow">ตรวจเงินพร้อมปิดยอด</p>
-            <h3 id="daily-cash-count-title">เงินสดรายพนักงาน</h3>
+            <p className="eyebrow">{translateUi('ตรวจเงินพร้อมปิดยอด')}</p>
+            <h3 id="daily-cash-count-title">{translateUi('เงินสดรายพนักงาน')}</h3>
           </div>
           <span className={`status-badge ${featureEnabled ? 'status-badge--success' : 'status-badge--neutral'}`}>
-            {featureEnabled ? 'ใช้งานจริง' : 'Dark launch'}
+            {featureEnabled ? translateUi('ใช้งานจริง') : 'Dark launch'}
           </span>
         </div>
         <p className="muted">
-          ยอดที่ควรส่งนับเฉพาะเงินสดที่พนักงานรับจริง ไม่รวมเงินทอน โอน QR รายการ void หรือเงินที่หัวหน้ารับเอง
-        </p>
+          {translateUi('ยอดที่ควรส่งนับเฉพาะเงินสดที่พนักงานรับจริง ไม่รวมเงินทอน โอน QR รายการ void หรือเงินที่หัวหน้ารับเอง')}</p>
         {!featureEnabled ? (
           <p className="daily-close-cash__rollout" role="status">
-            กำลังเปรียบเทียบยอดกับรายงานเดิม ช่องเงินสดยังไม่ถูกบันทึกจนกว่าจะเปิดใช้ reconciliation
-          </p>
+            {translateUi('กำลังเปรียบเทียบยอดกับรายงานเดิม ช่องเงินสดยังไม่ถูกบันทึกจนกว่าจะเปิดใช้ reconciliation')}</p>
         ) : null}
         <div className="daily-close-cash__grid">
           {employees.map((employee) => {
@@ -444,13 +441,13 @@ export function DailyAggregateStockClose({
                 <div className="daily-close-cash__identity">
                   <span>
                     <strong>{employee.employee_name}</strong>
-                    <small>{employee.payment_ids.length} รายการเงินสด{!employee.is_active ? ' · พนักงานที่ยกเลิกแล้ว' : ''}</small>
+                    <small>{employee.payment_ids.length}{translateUi(' รายการเงินสด')}{!employee.is_active ? translateUi(' · พนักงานที่ยกเลิกแล้ว') : ''}</small>
                   </span>
-                  <b className={variance ? 'daily-close-cash__variance' : ''}>{counted ? formatSignedBaht(variance) : 'ยังไม่กรอกยอดนับ'}</b>
+                  <b className={variance ? 'daily-close-cash__variance' : ''}>{counted ? formatSignedBaht(variance) : translateUi('ยังไม่กรอกยอดนับ')}</b>
                 </div>
-                <div className="daily-close-cash__expected">ควรส่ง <strong>{formatBaht(expected)}</strong></div>
+                <div className="daily-close-cash__expected">{translateUi('ควรส่ง ')}<strong>{formatBaht(expected)}</strong></div>
                 <label>
-                  <span>หัวหน้านับจริง</span>
+                  <span>{translateUi('หัวหน้านับจริง')}</span>
                   <div className="input-wrapper">
                     <input
                       disabled={!featureEnabled || submitting}
@@ -464,19 +461,19 @@ export function DailyAggregateStockClose({
                       type="number"
                       value={actual}
                     />
-                    <small>บาท</small>
+                    <small>{translateUi('บาท')}</small>
                   </div>
                 </label>
                 {variance !== 0 ? (
                   <label>
-                    <span>เหตุผลส่วนต่าง *</span>
+                    <span>{translateUi('เหตุผลส่วนต่าง *')}</span>
                     <input
                       disabled={!featureEnabled || submitting}
                       onChange={(event) => setCashReasons((current) => ({
                         ...current,
                         [employee.employee_id]: event.target.value,
                       }))}
-                      placeholder="เช่น ลูกค้ายังค้างเงินสด"
+                      placeholder={translateUi('เช่น ลูกค้ายังค้างเงินสด')}
                       type="text"
                       value={cashReasons[employee.employee_id] ?? ''}
                     />
@@ -488,17 +485,17 @@ export function DailyAggregateStockClose({
         </div>
       </section>
       <label style={{ display: 'grid', gap: 6, marginTop: 16 }}>
-        หมายเหตุ{hasVariance ? ' *' : ' (ถ้ามี)'}
+        {translateUi('หมายเหตุ')}{hasVariance ? ' *' : translateUi(' (ถ้ามี)')}
         <textarea
           disabled={submitting}
           onChange={(event) => setNote(event.target.value)}
-          placeholder={hasVariance ? 'เช่น ส่วนต่างยังไม่ทราบสาเหตุ' : ''}
+          placeholder={hasVariance ? translateUi('เช่น ส่วนต่างยังไม่ทราบสาเหตุ') : ''}
           rows={2}
           value={note}
         />
       </label>
-      {hasMissingCounts ? <p className="muted">กรอกยอดนับจริงให้ครบทุกช่อง รวมถึงยอดที่เป็นศูนย์ ก่อนปิดยอด</p> : null}
-      {error ? <p className="error-text" role="alert"><Warning size={18} />{error}</p> : null}
+      {hasMissingCounts ? <p className="muted">{translateUi('กรอกยอดนับจริงให้ครบทุกช่อง รวมถึงยอดที่เป็นศูนย์ ก่อนปิดยอด')}</p> : null}
+      {error ? <p className="error-text" role="alert"><Warning size={18} />{translateUi(error)}</p> : null}
       <button
         className="primary-button"
         disabled={submitting || hasMissingCounts || (hasVariance && !note.trim()) || (featureEnabled && hasMissingCashReason)}
@@ -506,7 +503,7 @@ export function DailyAggregateStockClose({
         style={{ marginTop: 16 }}
         type="button"
       >
-        {submitting ? 'กำลังปิดยอด...' : featureEnabled ? 'ปิดยอดสต๊อกและเงินสดวันนี้' : 'ปิดสต๊อกและจบงานวันนี้'}
+        {submitting ? translateUi('กำลังปิดยอด...') : featureEnabled ? translateUi('ปิดยอดสต๊อกและเงินสดวันนี้') : translateUi('ปิดสต๊อกและจบงานวันนี้')}
       </button>
       {legacyRefillHistory}
     </section>
@@ -528,6 +525,7 @@ function IceTypeImage({
   onImageError?: (path: string) => void;
   onPreviewImage?: (image: { name: string; url: string }) => void;
 }) {
+  useLanguage();
   const imageUrl = imagePath && imageUrls[imagePath] && !failedImagePaths.has(imagePath)
     ? imageUrls[imagePath]
     : null;
@@ -556,7 +554,7 @@ function IceTypeImage({
 
   return onPreviewImage ? (
     <button
-      aria-label={`ดูรูป ${itemName} ขนาดใหญ่`}
+      aria-label={translateUi('ดูรูป {0} ขนาดใหญ่', { 0: itemName })}
       className="daily-stock-count-card__image daily-stock-count-card__image-button"
       onClick={() => onPreviewImage({ name: itemName, url: imageUrl })}
       type="button"

@@ -1,3 +1,4 @@
+import { translateUi, useLanguage } from '../../../i18n';
 import { type ChangeEvent, type FormEvent, useEffect, useMemo, useState } from 'react';
 import {
   Camera,
@@ -82,6 +83,7 @@ function getAvatarBgColor(user: UserProfile) {
 }
 
 function UserAvatar({ path, fallbackInitial, bgColor }: { path?: string | null; fallbackInitial: string; bgColor: string }) {
+  useLanguage();
   const [url, setUrl] = useState<string | null>(null);
 
   useEffect(() => {
@@ -116,6 +118,7 @@ export function UserEditor({
   currentUserId,
   onUserSaved,
 }: UserEditorProps) {
+  useLanguage();
   const [userDraft, setUserDraft] = useState<UserDraft | null>(() => (
     users.length > 0 ? toUserDraft(users[0], workSiteAssignments, workSites) : null
   ));
@@ -325,15 +328,15 @@ export function UserEditor({
             <MagnifyingGlass aria-hidden="true" size={18} />
             <input
               onChange={(event) => setUserQuery(event.target.value)}
-              placeholder="ค้นหาผู้ใช้"
+              placeholder={translateUi('ค้นหาผู้ใช้')}
               value={userQuery}
             />
           </div>
           <button
-            aria-label={`กรองผู้ใช้: ${userFilterLabel}`}
+            aria-label={translateUi('กรองผู้ใช้: {0}', { 0: userFilterLabel })}
             className={`ref-filter-btn ${userFilter !== 'all' ? 'ref-filter-btn--active' : ''}`}
             onClick={() => setUserFilter(nextFilter(userFilter))}
-            title={`กรองผู้ใช้: ${userFilterLabel}`}
+            title={translateUi('กรองผู้ใช้: {0}', { 0: userFilterLabel })}
             type="button"
           >
             <FunnelSimple size={18} />
@@ -341,7 +344,7 @@ export function UserEditor({
         </div>
 
         <div className="ref-list-subhead">
-          <span>ทั้งหมด {filteredUsers.length} รายการ</span>
+          <span>{translateUi('ทั้งหมด ')}{filteredUsers.length}{translateUi(' รายการ')}</span>
         </div>
 
         <div className="ref-item-list">
@@ -355,7 +358,7 @@ export function UserEditor({
             if (user.role === 'admin') {
               sitesText = 'ทุกจุดปฏิบัติงาน';
             } else if (assignedWorkSites.length > 0) {
-              sitesText = `ประจำ ${assignedWorkSites.map((ws) => ws.name).join(', ')}`;
+              sitesText = translateUi('ประจำ {0}', { 0: assignedWorkSites.map((ws) => ws.name).join(', ') });
             }
 
             return (
@@ -380,19 +383,19 @@ export function UserEditor({
                   <div className="ref-user-card__header">
                     <span className="ref-user-card__email">{user.display_name}</span>
                   </div>
-                  <div className="ref-user-card__role">{roleLabel(user.role)}</div>
+                  <div className="ref-user-card__role">{translateUi(roleLabel(user.role))}</div>
                   <div className="ref-user-card__subtext">{sitesText}</div>
                 </div>
 
                 <div className="ref-user-card__badge-wrap">
                   <span className={`ref-pill ${user.is_active ? 'ref-pill--green' : 'ref-pill--amber'}`}>
-                    {user.is_active ? 'ใช้งาน' : 'พักใช้งาน'}
+                    {user.is_active ? translateUi('ใช้งาน') : translateUi('พักใช้งาน')}
                   </span>
                 </div>
               </button>
             );
           })}
-          {filteredUsers.length === 0 ? <p className="empty-text">ไม่พบผู้ใช้ตามคำค้นหรือเงื่อนไขที่เลือก</p> : null}
+          {filteredUsers.length === 0 ? <p className="empty-text">{translateUi('ไม่พบผู้ใช้ตามคำค้นหรือเงื่อนไขที่เลือก')}</p> : null}
         </div>
 
         <div className="ref-pagination-footer">
@@ -405,7 +408,7 @@ export function UserEditor({
       {/* Right Column: User Detail Form */}
       <div className="ref-right-panel">
         <div className="ref-panel-header">
-          <h2>ข้อมูลผู้ใช้</h2>
+          <h2>{translateUi('ข้อมูลผู้ใช้')}</h2>
         </div>
 
         {userDraft ? (
@@ -428,7 +431,7 @@ export function UserEditor({
                 {avatarPreviewUrl ? (
                   <img alt="preview" src={avatarPreviewUrl} className="ref-avatar-img ref-avatar-img--preview" />
                 ) : null}
-                <label className="ref-avatar-camera-btn" title="เปลี่ยนรูปโปรไฟล์">
+                <label className="ref-avatar-camera-btn" title={translateUi('เปลี่ยนรูปโปรไฟล์')}>
                   <Camera size={14} weight="bold" />
                   <input accept="image/jpeg,image/png,image/webp" onChange={chooseAvatarFile} type="file" />
                 </label>
@@ -439,8 +442,7 @@ export function UserEditor({
             <div className="ref-form-grid">
               <div className="ref-form-group">
                 <label>
-                  ชื่อแสดง
-                  <input
+                  {translateUi('ชื่อแสดง')}<input
                     required
                     value={userDraft.displayName}
                     onChange={(event) => setUserDraft({ ...userDraft, displayName: event.target.value })}
@@ -449,9 +451,8 @@ export function UserEditor({
               </div>
               <div className="ref-form-group">
                 <label>
-                  ชื่อเล่น (ใช้เข้าสู่ระบบ)
-                  <input
-                    placeholder="เช่น รี"
+                  {translateUi('ชื่อเล่น (ใช้เข้าสู่ระบบ)')}<input
+                    placeholder={translateUi('เช่น รี')}
                     required
                     value={userDraft.nickname}
                     onChange={(event) => setUserDraft({ ...userDraft, nickname: event.target.value })}
@@ -460,9 +461,8 @@ export function UserEditor({
               </div>
               <div className="ref-form-group">
                 <label>
-                  เบอร์โทร
-                  <input
-                    placeholder="เช่น 081-234-5678"
+                  {translateUi('เบอร์โทร')}<input
+                    placeholder={translateUi('เช่น 081-234-5678')}
                     type="tel"
                     value={userDraft.phone}
                     onChange={(event) => setUserDraft({ ...userDraft, phone: event.target.value })}
@@ -471,8 +471,7 @@ export function UserEditor({
               </div>
               <div className="ref-form-group">
                 <label>
-                  บทบาท
-                  <select
+                  {translateUi('บทบาท')}<select
                     disabled={editingCurrentUser}
                     value={userDraft.role}
                     onChange={(event) => {
@@ -487,7 +486,7 @@ export function UserEditor({
                   >
                     {ROLE_OPTIONS.map((role) => (
                       <option key={role.value} value={role.value}>
-                        {role.label}
+                        {translateUi(role.label)}
                       </option>
                     ))}
                   </select>
@@ -506,22 +505,22 @@ export function UserEditor({
                     })}
                     type="checkbox"
                   />
-                  <span>รับเงินร้านค้าได้</span>
+                  <span>{translateUi('รับเงินร้านค้าได้')}</span>
                 </label>
               ) : (
-                <span className="ref-muted-note">หัวหน้ารอบและแอดมินมีสิทธิ์รับเงินร้านค้าตามบทบาท</span>
+                <span className="ref-muted-note">{translateUi('หัวหน้ารอบและแอดมินมีสิทธิ์รับเงินร้านค้าตามบทบาท')}</span>
               )}
             </div>
 
             {/* Work Sites Section */}
             <div
               className={`ref-section ${userDraft.role !== 'courier' || !userDraft.isActive ? 'ref-section--disabled' : ''}`}
-              aria-label="จุดปฏิบัติงานประจำ"
+              aria-label={translateUi('จุดปฏิบัติงานประจำ')}
               role="group"
             >
               <div className="ref-section-title">
-                <h3>จุดปฏิบัติงานประจำ</h3>
-                <p className="ref-muted-note">เลือกได้มากกว่าหนึ่งจุด ข้อมูลนี้ใช้ระบุว่าพนักงานแต่ละคนดูแลจุดใดบ้าง</p>
+                <h3>{translateUi('จุดปฏิบัติงานประจำ')}</h3>
+                <p className="ref-muted-note">{translateUi('เลือกได้มากกว่าหนึ่งจุด ข้อมูลนี้ใช้ระบุว่าพนักงานแต่ละคนดูแลจุดใดบ้าง')}</p>
               </div>
 
               <div className="ref-worksite-grid">
@@ -559,33 +558,33 @@ export function UserEditor({
                 })}
               </div>
               {userDraft.role !== 'courier' ? (
-                <p className="ref-muted-note">การกำหนดจุดประจำใช้กับบทบาทพนักงานส่งเท่านั้น</p>
+                <p className="ref-muted-note">{translateUi('การกำหนดจุดประจำใช้กับบทบาทพนักงานส่งเท่านั้น')}</p>
               ) : null}
             </div>
 
             {/* Employee Image Section (Optional) */}
             <div className="ref-section">
               <div className="ref-section-title">
-                <h3>รูปพนักงาน (ไม่บังคับ)</h3>
+                <h3>{translateUi('รูปพนักงาน (ไม่บังคับ)')}</h3>
               </div>
 
               <label className="ref-dropzone">
                 <UploadSimple size={26} className="ref-dropzone__icon" />
-                <p>คลิกหรือลากไฟล์เพื่ออัปโหลด</p>
-                <small>รองรับ JPG, PNG, WEBP ขนาดไม่เกิน 5 MB</small>
-                <input aria-label="รูปพนักงาน" accept="image/jpeg,image/png,image/webp" onChange={chooseAvatarFile} type="file" />
+                <p>{translateUi('คลิกหรือลากไฟล์เพื่ออัปโหลด')}</p>
+                <small>{translateUi('รองรับ JPG, PNG, WEBP ขนาดไม่เกิน 5 MB')}</small>
+                <input aria-label={translateUi('รูปพนักงาน')} accept="image/jpeg,image/png,image/webp" onChange={chooseAvatarFile} type="file" />
               </label>
               {avatarFile || userDraft.avatarPath ? (
                 <div className="ref-avatar-delete-row">
                   <button
-                    aria-label="ลบรูปพนักงาน"
+                    aria-label={translateUi('ลบรูปพนักงาน')}
                     className="ref-delete-btn"
                     disabled={deletingAvatar}
                     onClick={() => void removeAvatar()}
                     type="button"
                   >
                     <Trash size={18} />
-                    <span>{deletingAvatar ? 'กำลังลบ...' : 'ลบรูป'}</span>
+                    <span>{deletingAvatar ? translateUi('กำลังลบ...') : translateUi('ลบรูป')}</span>
                   </button>
                 </div>
               ) : null}
@@ -600,10 +599,10 @@ export function UserEditor({
                   onChange={(event) => setUserDraft({ ...userDraft, isActive: event.target.checked })}
                   type="checkbox"
                 />
-                <span>เปิดใช้งานบัญชีนี้</span>
+                <span>{translateUi('เปิดใช้งานบัญชีนี้')}</span>
               </label>
               {editingCurrentUser ? (
-                <small className="ref-muted-note">บัญชีที่กำลังใช้งานเปลี่ยนบทบาทหรือพักใช้งานตัวเองจากหน้านี้ไม่ได้</small>
+                <small className="ref-muted-note">{translateUi('บัญชีที่กำลังใช้งานเปลี่ยนบทบาทหรือพักใช้งานตัวเองจากหน้านี้ไม่ได้')}</small>
               ) : null}
             </div>
 
@@ -611,16 +610,15 @@ export function UserEditor({
 
             <form className="ref-section" onSubmit={resetPassword} aria-labelledby="reset-password-title">
               <div className="ref-section-title">
-                <h3 id="reset-password-title">รีเซ็ตรหัสผ่าน</h3>
-                <p>กำหนดรหัสผ่านใหม่ให้ผู้ใช้นี้โดยตรง ผู้ใช้ควรเปลี่ยนรหัสผ่านอีกครั้งหลังเข้าสู่ระบบ</p>
+                <h3 id="reset-password-title">{translateUi('รีเซ็ตรหัสผ่าน')}</h3>
+                <p>{translateUi('กำหนดรหัสผ่านใหม่ให้ผู้ใช้นี้โดยตรง ผู้ใช้ควรเปลี่ยนรหัสผ่านอีกครั้งหลังเข้าสู่ระบบ')}</p>
               </div>
               {editingCurrentUser ? (
-                <p className="ref-muted-note">บัญชีที่กำลังใช้งานไม่สามารถรีเซ็ตรหัสผ่านจากหน้านี้ได้</p>
+                <p className="ref-muted-note">{translateUi('บัญชีที่กำลังใช้งานไม่สามารถรีเซ็ตรหัสผ่านจากหน้านี้ได้')}</p>
               ) : (
                 <div className="ref-password-reset-grid">
                   <label>
-                    รหัสผ่านใหม่
-                    <input
+                    {translateUi('รหัสผ่านใหม่')}<input
                       autoComplete="new-password"
                       minLength={8}
                       onChange={(event) => setNewPassword(event.target.value)}
@@ -629,8 +627,7 @@ export function UserEditor({
                     />
                   </label>
                   <label>
-                    ยืนยันรหัสผ่านใหม่
-                    <input
+                    {translateUi('ยืนยันรหัสผ่านใหม่')}<input
                       autoComplete="new-password"
                       minLength={8}
                       onChange={(event) => setConfirmedPassword(event.target.value)}
@@ -643,14 +640,14 @@ export function UserEditor({
                     disabled={resettingPassword || !newPassword || !confirmedPassword}
                     type="submit"
                   >
-                    {resettingPassword ? 'กำลังรีเซ็ต...' : 'รีเซ็ตรหัสผ่าน'}
+                    {resettingPassword ? translateUi('กำลังรีเซ็ต...') : translateUi('รีเซ็ตรหัสผ่าน')}
                   </button>
                 </div>
               )}
             </form>
 
-            {userError ? <p className="error-text" role="alert">{userError}</p> : null}
-            {userSuccess ? <p aria-live="polite" className="success-text">{userSuccess}</p> : null}
+            {userError ? <p className="error-text" role="alert">{translateUi(userError)}</p> : null}
+            {userSuccess ? <p aria-live="polite" className="success-text">{translateUi(userSuccess)}</p> : null}
 
             {/* Bottom Actions */}
             <div className="ref-actions-bar">
@@ -669,21 +666,20 @@ export function UserEditor({
                 }}
                 type="button"
               >
-                ยกเลิก
-              </button>
+                {translateUi('ยกเลิก')}</button>
               <button
-                aria-label="บันทึกผู้ใช้"
+                aria-label={translateUi('บันทึกผู้ใช้')}
                 className="primary-button"
                 disabled={savingUser || deletingAvatar}
                 form="user-profile-form"
                 type="submit"
               >
-                {savingUser ? 'กำลังบันทึก...' : 'บันทึกผู้ใช้'}
+                {savingUser ? translateUi('กำลังบันทึก...') : translateUi('บันทึกผู้ใช้')}
               </button>
             </div>
           </div>
         ) : (
-          <p className="empty-text">เลือกผู้ใช้จากรายการเพื่อแก้ไข</p>
+          <p className="empty-text">{translateUi('เลือกผู้ใช้จากรายการเพื่อแก้ไข')}</p>
         )}
       </div>
     </div>

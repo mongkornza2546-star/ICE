@@ -1,3 +1,4 @@
+import { translateUi, useLanguage } from '../../../i18n';
 import { useEffect, useRef, useState } from 'react';
 import { supabase } from '../../../lib/supabase';
 import { isAndroidApp } from '../../../lib/thermalPrinter';
@@ -14,6 +15,7 @@ interface Rental {
 const money = (value: number) => Number(value).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export function ShopTankRentalPanel({ shopId, isActive, shopActive }: { shopId: string; isActive: boolean; shopActive: boolean }) {
+  useLanguage();
   const today = toBangkokDateString();
   const [rows, setRows] = useState<Rental[]>([]);
   const [loading, setLoading] = useState(true);
@@ -89,36 +91,36 @@ export function ShopTankRentalPanel({ shopId, isActive, shopActive }: { shopId: 
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'บันทึกไม่สำเร็จ'); }
     finally { inFlight.current = false; setBusy(false); }
   }
-  return <section className="rented-tank-section" aria-label="เช่าถังรายครั้ง">
-    <div className="panel-header"><div><p className="eyebrow">เช่าถังรายครั้ง</p><h3>ถังค้าง {rows.reduce((sum, row) => sum + Number(row.outstanding_quantity), 0)} ใบ</h3></div>
-      <button className="primary-button" type="button" disabled={busy || !shopActive || loading} onClick={() => { setCreating(true); setReturnId(''); }}>เช่าถังรายครั้ง</button></div>
-    <p className="muted">คิดค่าเช่าครั้งเดียวตามจำนวนถัง รับเงินรวมกับค่าน้ำแข็งได้ที่หน้ารับเงิน</p>
-    {error ? <div role="alert" className="error-text">{error}<button type="button" className="ghost-button" disabled={busy} onClick={() => { setError(''); void load().catch((cause: Error) => setError(cause.message)); }}>โหลดใหม่</button></div> : null}
-    {success ? <p role="status" className="success-text">{success}</p> : null}
-    {!shopActive ? <p className="muted">ร้านพักใช้งานรับคืนถังได้ แต่เปิดรายการเช่าใหม่ไม่ได้</p> : null}
+  return <section className="rented-tank-section" aria-label={translateUi('เช่าถังรายครั้ง')}>
+    <div className="panel-header"><div><p className="eyebrow">{translateUi('เช่าถังรายครั้ง')}</p><h3>{translateUi('ถังค้าง ')}{rows.reduce((sum, row) => sum + Number(row.outstanding_quantity), 0)}{translateUi(' ใบ')}</h3></div>
+      <button className="primary-button" type="button" disabled={busy || !shopActive || loading} onClick={() => { setCreating(true); setReturnId(''); }}>{translateUi('เช่าถังรายครั้ง')}</button></div>
+    <p className="muted">{translateUi('คิดค่าเช่าครั้งเดียวตามจำนวนถัง รับเงินรวมกับค่าน้ำแข็งได้ที่หน้ารับเงิน')}</p>
+    {error ? <div role="alert" className="error-text">{translateUi(error)}<button type="button" className="ghost-button" disabled={busy} onClick={() => { setError(''); void load().catch((cause: Error) => setError(cause.message)); }}>{translateUi('โหลดใหม่')}</button></div> : null}
+    {success ? <p role="status" className="success-text">{translateUi(success)}</p> : null}
+    {!shopActive ? <p className="muted">{translateUi('ร้านพักใช้งานรับคืนถังได้ แต่เปิดรายการเช่าใหม่ไม่ได้')}</p> : null}
     {creating ? <form onSubmit={(e) => { e.preventDefault(); void save('create'); }}><fieldset disabled={busy} className="shop-rental-fields">
-      <label>จำนวนถังรายครั้ง<input type="number" required min="1" max="10000" step="1" value={quantity} onChange={(e) => setQuantity(e.target.value)} /></label>
-      <label>ค่าเช่าต่อถังต่อครั้ง (บาท)<input type="number" required min="0.01" max="999999.99" step="0.01" value={price} onChange={(e) => setPrice(e.target.value)} /></label>
-      <label>วันที่ส่งถัง<input type="date" required max={today} value={date} onChange={(e) => { setDate(e.target.value); if (due < e.target.value) setDue(e.target.value); }} /></label>
-      <label>กำหนดคืนถัง<input type="date" required min={date} value={due} onChange={(e) => setDue(e.target.value)} /></label>
-      <label>หมายเหตุการเช่า<input value={note} onChange={(e) => setNote(e.target.value)} /></label>
-      <strong>ค่าเช่ารวม {money(Number(quantity) * Number(price) || 0)} บาท</strong>
-      <button type="submit" className="primary-button">{busy ? 'กำลังบันทึก...' : 'บันทึกเช่าและออกบิล'}</button>
-      <button type="button" className="secondary-button" onClick={() => setCreating(false)}>ยกเลิก</button>
+      <label>{translateUi('จำนวนถังรายครั้ง')}<input type="number" required min="1" max="10000" step="1" value={quantity} onChange={(e) => setQuantity(e.target.value)} /></label>
+      <label>{translateUi('ค่าเช่าต่อถังต่อครั้ง (บาท)')}<input type="number" required min="0.01" max="999999.99" step="0.01" value={price} onChange={(e) => setPrice(e.target.value)} /></label>
+      <label>{translateUi('วันที่ส่งถัง')}<input type="date" required max={today} value={date} onChange={(e) => { setDate(e.target.value); if (due < e.target.value) setDue(e.target.value); }} /></label>
+      <label>{translateUi('กำหนดคืนถัง')}<input type="date" required min={date} value={due} onChange={(e) => setDue(e.target.value)} /></label>
+      <label>{translateUi('หมายเหตุการเช่า')}<input value={note} onChange={(e) => setNote(e.target.value)} /></label>
+      <strong>{translateUi('ค่าเช่ารวม ')}{money(Number(quantity) * Number(price) || 0)}{translateUi(' บาท')}</strong>
+      <button type="submit" className="primary-button">{busy ? translateUi('กำลังบันทึก...') : translateUi('บันทึกเช่าและออกบิล')}</button>
+      <button type="button" className="secondary-button" onClick={() => setCreating(false)}>{translateUi('ยกเลิก')}</button>
     </fieldset></form> : null}
-    {selected ? <form onSubmit={(e) => { e.preventDefault(); void save('return'); }}><fieldset disabled={busy} className="shop-rental-fields"><strong>รับคืน · {selected.charge_number} · ค้าง {selected.outstanding_quantity} ใบ</strong>
-      <label>จำนวนรับคืน<input type="number" required min="1" max={selected.outstanding_quantity} step="1" value={returnCount} onChange={(e) => setReturnCount(e.target.value)} /></label>
-      <label>วันที่รับคืน<input type="date" required min={selected.handed_out_on} max={today} value={returnDate} onChange={(e) => setReturnDate(e.target.value)} /></label>
-      <button type="submit" className="primary-button">{busy ? 'กำลังบันทึก...' : 'บันทึกรับคืน'}</button><button type="button" className="secondary-button" onClick={() => setReturnId('')}>ยกเลิก</button>
+    {selected ? <form onSubmit={(e) => { e.preventDefault(); void save('return'); }}><fieldset disabled={busy} className="shop-rental-fields"><strong>{translateUi('รับคืน · ')}{selected.charge_number}{translateUi(' · ค้าง ')}{selected.outstanding_quantity}{translateUi(' ใบ')}</strong>
+      <label>{translateUi('จำนวนรับคืน')}<input type="number" required min="1" max={selected.outstanding_quantity} step="1" value={returnCount} onChange={(e) => setReturnCount(e.target.value)} /></label>
+      <label>{translateUi('วันที่รับคืน')}<input type="date" required min={selected.handed_out_on} max={today} value={returnDate} onChange={(e) => setReturnDate(e.target.value)} /></label>
+      <button type="submit" className="primary-button">{busy ? translateUi('กำลังบันทึก...') : translateUi('บันทึกรับคืน')}</button><button type="button" className="secondary-button" onClick={() => setReturnId('')}>{translateUi('ยกเลิก')}</button>
     </fieldset></form> : null}
-    {loading ? <p>กำลังโหลดรายการเช่า...</p> : <div className="shop-rental-list">{rows.map((row) => <article key={row.id} className="shop-rental-card">
-      <strong>{row.charge_number} · {row.outstanding_quantity > 0 ? `ค้าง ${row.outstanding_quantity} ใบ` : 'คืนครบแล้ว'}</strong>
-      <span>ส่ง {row.handed_out_on} · กำหนดคืน {row.due_on}{row.outstanding_quantity > 0 && row.due_on < today ? ' · เกินกำหนดคืน' : ''}</span>
-      <span>{row.quantity} ใบ × {money(row.unit_price)} = {money(row.total_amount)} บาท · ค้างชำระ {money(row.outstanding_amount)} บาท</span>
-      <button type="button" className="secondary-button" disabled={busy} onClick={() => void printInvoice(row.charge_id)}>พิมพ์บิลค่าเช่า</button>
+    {loading ? <p>{translateUi('กำลังโหลดรายการเช่า...')}</p> : <div className="shop-rental-list">{rows.map((row) => <article key={row.id} className="shop-rental-card">
+      <strong>{row.charge_number} · {row.outstanding_quantity > 0 ? translateUi('ค้าง {0} ใบ', { 0: row.outstanding_quantity }) : translateUi('คืนครบแล้ว')}</strong>
+      <span>{translateUi('ส่ง ')}{row.handed_out_on}{translateUi(' · กำหนดคืน ')}{row.due_on}{row.outstanding_quantity > 0 && row.due_on < today ? translateUi(' · เกินกำหนดคืน') : ''}</span>
+      <span>{row.quantity}{translateUi(' ใบ × ')}{money(row.unit_price)} = {money(row.total_amount)}{translateUi(' บาท · ค้างชำระ ')}{money(row.outstanding_amount)}{translateUi(' บาท')}</span>
+      <button type="button" className="secondary-button" disabled={busy} onClick={() => void printInvoice(row.charge_id)}>{translateUi('พิมพ์บิลค่าเช่า')}</button>
       {row.note ? <span>{row.note}</span> : null}
-      {row.returns.map((ret) => <small key={ret.id}>รับคืน {ret.quantity} ใบ · {ret.returned_on}</small>)}
-      {row.outstanding_quantity > 0 ? <button type="button" className="secondary-button" disabled={busy} onClick={() => { setReturnId(row.id); setReturnCount(String(row.outstanding_quantity)); setReturnDate(today); setCreating(false); }}>รับคืนถังรายครั้ง</button> : null}
-    </article>)}{!rows.length ? <p className="muted">ยังไม่มีรายการเช่ารายครั้ง</p> : null}</div>}
+      {row.returns.map((ret) => <small key={ret.id}>{translateUi('รับคืน ')}{ret.quantity}{translateUi(' ใบ · ')}{ret.returned_on}</small>)}
+      {row.outstanding_quantity > 0 ? <button type="button" className="secondary-button" disabled={busy} onClick={() => { setReturnId(row.id); setReturnCount(String(row.outstanding_quantity)); setReturnDate(today); setCreating(false); }}>{translateUi('รับคืนถังรายครั้ง')}</button> : null}
+    </article>)}{!rows.length ? <p className="muted">{translateUi('ยังไม่มีรายการเช่ารายครั้ง')}</p> : null}</div>}
   </section>;
 }

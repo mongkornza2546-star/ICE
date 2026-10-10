@@ -1,3 +1,4 @@
+import { uiDateTimeFormat, translateUi, useLanguage } from './i18n';
 import { FormEvent, useEffect, useRef, useState } from 'react';
 import { supabase } from './lib/supabase';
 import { useRpcAction } from './hooks/useRpcAction';
@@ -20,6 +21,7 @@ export function ManagerRoundControl({
   onClosed: () => Promise<void>;
   onCancelled: () => Promise<void>;
 }) {
+  useLanguage();
   const [summary, setSummary] = useState<RoundControlSummary | null>(null);
   const [cancellationState, setCancellationState] = useState<RoundCancellationState | null>(null);
   const [summaryRoundId, setSummaryRoundId] = useState<string | null>(null);
@@ -148,13 +150,13 @@ export function ManagerRoundControl({
   };
 
   if (!round) {
-    return <p className="empty-text">เลือกรายการเดิมเพื่อดูรายละเอียด</p>;
+    return <p className="empty-text">{translateUi('เลือกรายการเดิมเพื่อดูรายละเอียด')}</p>;
   }
   if (loading) {
-    return <p className="empty-text">กำลังคำนวณยอดรายการเดิม...</p>;
+    return <p className="empty-text">{translateUi('กำลังคำนวณยอดรายการเดิม...')}</p>;
   }
   if (!summary) {
-    return <p className="error-text">{error ?? 'ไม่พบข้อมูลรายการเดิม'}</p>;
+    return <p className="error-text">{error ?? translateUi('ไม่พบข้อมูลรายการเดิม')}</p>;
   }
 
   const canCancel = cancellationState?.can_cancel === true;
@@ -165,7 +167,7 @@ export function ManagerRoundControl({
     <>
       <div className="round-control-actions">
         <span className={`status-badge status-badge--${round.cancelled_at ? 'danger' : round.status === 'open' ? 'warning' : 'success'}`}>
-          {round.cancelled_at ? 'ยกเลิกแล้ว' : round.status === 'open' ? 'กำลังดำเนินการ' : 'ปิดแล้ว'}
+          {round.cancelled_at ? translateUi('ยกเลิกแล้ว') : round.status === 'open' ? translateUi('กำลังดำเนินการ') : translateUi('ปิดแล้ว')}
         </span>
         {round.status === 'open' ? (
           <button
@@ -176,25 +178,24 @@ export function ManagerRoundControl({
             }}
             type="button"
           >
-            ยกเลิกรายการเดิม
-          </button>
+            {translateUi('ยกเลิกรายการเดิม')}</button>
         ) : null}
       </div>
 
       <form className="manager-control" onSubmit={handleClose}>
         <div className="metric-grid">
-          <Metric label="ร้านประจำทั้งหมด" value={regularCounts.total} />
-          <Metric label="ส่งร้านประจำแล้ว" value={regularCounts.delivered} tone="success" />
-          <Metric label="ร้านประจำที่ยังไม่ส่ง" value={regularCounts.pending} />
-          <Metric label="ร้านประจำที่มีปัญหา" value={regularCounts.problem} tone="danger" />
+          <Metric label={translateUi('ร้านประจำทั้งหมด')} value={regularCounts.total} />
+          <Metric label={translateUi('ส่งร้านประจำแล้ว')} value={regularCounts.delivered} tone="success" />
+          <Metric label={translateUi('ร้านประจำที่ยังไม่ส่ง')} value={regularCounts.pending} />
+          <Metric label={translateUi('ร้านประจำที่มีปัญหา')} value={regularCounts.problem} tone="danger" />
         </div>
 
         {eventCounts?.total ? (
-          <div className="metric-grid" aria-label="สรุปจุดส่งอีเวนต์">
-            <Metric label="จุดอีเวนต์ทั้งหมด" value={eventCounts.total} />
-            <Metric label="ส่งจุดอีเวนต์แล้ว" value={eventCounts.delivered} tone="success" />
-            <Metric label="จุดอีเวนต์ที่ยังไม่ส่ง" value={eventCounts.pending} />
-            <Metric label="จุดอีเวนต์ที่มีปัญหา" value={eventCounts.problem} tone="danger" />
+          <div className="metric-grid" aria-label={translateUi('สรุปจุดส่งอีเวนต์')}>
+            <Metric label={translateUi('จุดอีเวนต์ทั้งหมด')} value={eventCounts.total} />
+            <Metric label={translateUi('ส่งจุดอีเวนต์แล้ว')} value={eventCounts.delivered} tone="success" />
+            <Metric label={translateUi('จุดอีเวนต์ที่ยังไม่ส่ง')} value={eventCounts.pending} />
+            <Metric label={translateUi('จุดอีเวนต์ที่มีปัญหา')} value={eventCounts.problem} tone="danger" />
           </div>
         ) : null}
 
@@ -202,24 +203,24 @@ export function ManagerRoundControl({
           {summary.ice_counts.map((item) => (
             <section className="reconciliation-card" key={item.ice_type_id}>
               <div className="panel-header">
-                <div><p className="eyebrow">ยอดขายในรายการเดิม · {item.unit}</p><h3>{item.ice_type_name}</h3></div>
+                <div><p className="eyebrow">{translateUi('ยอดขายในรายการเดิม · ')}{item.unit}</p><h3>{item.ice_type_name}</h3></div>
                 <strong>{item.delivered_quantity}</strong>
               </div>
             </section>
           ))}
         </div>
 
-        {closeRoundAction.error ? <p className="error-text" role="alert">{closeRoundAction.error}</p> : null}
-        {closeRoundAction.success ? <p className="success-text" aria-live="polite">{closeRoundAction.success}</p> : null}
+        {closeRoundAction.error ? <p className="error-text" role="alert">{translateUi(closeRoundAction.error)}</p> : null}
+        {closeRoundAction.success ? <p className="success-text" aria-live="polite">{translateUi(closeRoundAction.success)}</p> : null}
 
         <button
           className="primary-button"
           disabled={closeRoundAction.isSubmitting || round.status === 'closed' || summaryRoundId !== round.id}
           type="submit"
         >
-          {round.cancelled_at ? 'รายการนี้ยกเลิกแล้ว' : round.status === 'closed' ? 'รายการนี้ปิดแล้ว' : closeRoundAction.isSubmitting ? 'กำลังปิดรายการ...' : 'ปิดรายการเดิม'}
+          {round.cancelled_at ? translateUi('รายการนี้ยกเลิกแล้ว') : round.status === 'closed' ? translateUi('รายการนี้ปิดแล้ว') : closeRoundAction.isSubmitting ? translateUi('กำลังปิดรายการ...') : translateUi('ปิดรายการเดิม')}
         </button>
-        <p className="muted">ข้อมูลเดิมนี้ต้องจัดการให้เสร็จก่อนปิดสต๊อกของวัน</p>
+        <p className="muted">{translateUi('ข้อมูลเดิมนี้ต้องจัดการให้เสร็จก่อนปิดสต๊อกของวัน')}</p>
       </form>
 
       {cancelDialogOpen ? (
@@ -232,35 +233,33 @@ export function ManagerRoundControl({
             role="dialog"
           >
             <div>
-              <p className="eyebrow">การจัดการข้อมูลเดิม</p>
-              <h2 id="cancel-round-title">ยกเลิกรายการเดิมนี้?</h2>
+              <p className="eyebrow">{translateUi('การจัดการข้อมูลเดิม')}</p>
+              <h2 id="cancel-round-title">{translateUi('ยกเลิกรายการเดิมนี้?')}</h2>
               <p className="muted">{round.name} · {formatServiceDate(round.service_date)}</p>
             </div>
 
-            <div className="cancel-round-impact" aria-label="สรุปรายการเดิม">
-              <span>รายการส่ง <strong>{summary.stop_counts.delivered}</strong></span>
-              <span>รายการมีปัญหา <strong>{summary.stop_counts.problem}</strong></span>
-              <span>ยอดน้ำแข็งที่ส่ง <strong>{summary.ice_counts.reduce((total, item) => total + item.delivered_quantity, 0)}</strong></span>
+            <div className="cancel-round-impact" aria-label={translateUi('สรุปรายการเดิม')}>
+              <span>{translateUi('รายการส่ง ')}<strong>{summary.stop_counts.delivered}</strong></span>
+              <span>{translateUi('รายการมีปัญหา ')}<strong>{summary.stop_counts.problem}</strong></span>
+              <span>{translateUi('ยอดน้ำแข็งที่ส่ง ')}<strong>{summary.ice_counts.reduce((total, item) => total + item.delivered_quantity, 0)}</strong></span>
             </div>
 
             {!canCancel ? (
               <p className="error-text" role="alert">
-                รายการนี้มีการทำรายการแล้ว ({cancellationBlockerLabel(cancellationState?.blockers ?? [])}) จึงไม่สามารถยกเลิกได้
-              </p>
+                {translateUi('รายการนี้มีการทำรายการแล้ว (')}{cancellationBlockerLabel(cancellationState?.blockers ?? [])}{translateUi(') จึงไม่สามารถยกเลิกได้')}</p>
             ) : (
               <>
-                <p className="info-note">เมื่อยืนยัน รายการนี้จะเปลี่ยนเป็น “ยกเลิกแล้ว” และไม่สามารถใช้บันทึกรายการใหม่ได้</p>
+                <p className="info-note">{translateUi('เมื่อยืนยัน รายการนี้จะเปลี่ยนเป็น “ยกเลิกแล้ว” และไม่สามารถใช้บันทึกรายการใหม่ได้')}</p>
                 <label>
-                  เหตุผลการยกเลิก
-                  <select value={cancelReason} onChange={(event) => setCancelReason(event.target.value)}>
-                    <option>เปิดผิดวันที่หรือเวลา</option>
-                    <option>เลือกรายการผิด</option>
-                    <option>เปิดรายการซ้ำ</option>
-                    <option>อื่น ๆ</option>
+                  {translateUi('เหตุผลการยกเลิก')}<select value={cancelReason} onChange={(event) => setCancelReason(event.target.value)}>
+                    <option value={'เปิดผิดวันที่หรือเวลา'}>{translateUi('เปิดผิดวันที่หรือเวลา')}</option>
+                    <option value={'เลือกรายการผิด'}>{translateUi('เลือกรายการผิด')}</option>
+                    <option value={'เปิดรายการซ้ำ'}>{translateUi('เปิดรายการซ้ำ')}</option>
+                    <option value={'อื่น ๆ'}>{translateUi('อื่น ๆ')}</option>
                   </select>
                 </label>
                 <label>
-                  รายละเอียด{cancelReason === 'อื่น ๆ' ? ' (จำเป็น)' : ' (ถ้ามี)'}
+                  {translateUi('รายละเอียด')}{cancelReason === 'อื่น ๆ' ? translateUi(' (จำเป็น)') : translateUi(' (ถ้ามี)')}
                   <textarea
                     autoFocus
                     onChange={(event) => setCancelDetail(event.target.value)}
@@ -272,7 +271,7 @@ export function ManagerRoundControl({
               </>
             )}
 
-            {cancelRoundAction.error ? <p className="error-text" role="alert">{cancelRoundAction.error}</p> : null}
+            {cancelRoundAction.error ? <p className="error-text" role="alert">{translateUi(cancelRoundAction.error)}</p> : null}
             <div className="modal-actions">
               <button
                 className="secondary-button"
@@ -280,11 +279,10 @@ export function ManagerRoundControl({
                 onClick={() => setCancelDialogOpen(false)}
                 type="button"
               >
-                กลับไปตรวจสอบ
-              </button>
+                {translateUi('กลับไปตรวจสอบ')}</button>
               {canCancel ? (
                 <button className="primary-button destructive-button" disabled={cancelRoundAction.isSubmitting} type="submit">
-                  {cancelRoundAction.isSubmitting ? 'กำลังยกเลิก...' : 'ยืนยันยกเลิกรายการเดิม'}
+                  {cancelRoundAction.isSubmitting ? translateUi('กำลังยกเลิก...') : translateUi('ยืนยันยกเลิกรายการเดิม')}
                 </button>
               ) : null}
             </div>
@@ -302,11 +300,11 @@ function cancellationBlockerLabel(blockers: CancellationBlocker[]) {
     non_pending_stops: 'มีสถานะร้านที่เปลี่ยนแล้ว',
     round_ice_counts: 'มียอดน้ำแข็งที่บันทึกแล้ว',
   };
-  return blockers.map((blocker) => labels[blocker]).join(', ') || 'ไม่สามารถยกเลิกได้';
+  return blockers.map((blocker) => translateUi(labels[blocker])).join(', ') || translateUi('ไม่สามารถยกเลิกได้');
 }
 
 function formatServiceDate(value: string) {
-  return new Intl.DateTimeFormat('th-TH', {
+  return uiDateTimeFormat({
     day: 'numeric',
     month: 'short',
     year: 'numeric',
@@ -314,6 +312,7 @@ function formatServiceDate(value: string) {
 }
 
 function Metric({ label, value, tone }: { label: string; value: number; tone?: 'success' | 'danger' }) {
+  useLanguage();
   return (
     <div className={`metric-card ${tone ? `metric-card--${tone}` : ''}`}>
       <span>{label}</span>

@@ -1,3 +1,4 @@
+import { translateUi, useLanguage } from './i18n';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ArrowLeft, CheckCircle, ClockCounterClockwise, FileText, ListBullets, WarningCircle } from '@phosphor-icons/react';
@@ -115,6 +116,7 @@ export function FinancialOperations({
   onFocusedCollectionClose?: (result: CollectionCloseResult) => void;
   serviceDate?: string;
 }) {
+  useLanguage();
   const serviceDate = demoData?.serviceDate ?? propServiceDate ?? toBangkokDateString();
   const isManager = userRole === 'admin' || userRole === 'round_lead';
   const initialDemoRunId = demoData
@@ -1014,31 +1016,30 @@ export function FinancialOperations({
 
   return (
     <div className="financial-ops" ref={pageRef}>
-      {error ? <p className="employee-error" role="alert"><WarningCircle />{error}</p> : null}
-      {success ? <p className="employee-success"><CheckCircle weight="fill" />{success}</p> : null}
+      {error ? <p className="employee-error" role="alert"><WarningCircle />{translateUi(error)}</p> : null}
+      {success ? <p className="employee-success"><CheckCircle weight="fill" />{translateUi(success)}</p> : null}
       {focusRequest && (focusLoading || focusLoadError) ? (
         <section className="financial-ops__focus-state" aria-live="polite" role={focusLoadError ? 'alert' : 'status'}>
           <WarningCircle aria-hidden="true" size={24} weight={focusLoadError ? 'fill' : 'duotone'} />
           <div>
-            <strong>{focusLoading ? 'กำลังโหลดคิวล่าสุดของร้าน' : 'เปิดยอดรอรับชำระไม่สำเร็จ'}</strong>
-            <span>{focusLoading ? 'ระบบกำลังตรวจยอดก่อนเปิดหน้ารับเงิน' : focusLoadError}</span>
+            <strong>{focusLoading ? translateUi('กำลังโหลดคิวล่าสุดของร้าน') : translateUi('เปิดยอดรอรับชำระไม่สำเร็จ')}</strong>
+            <span>{focusLoading ? translateUi('ระบบกำลังตรวจยอดก่อนเปิดหน้ารับเงิน') : focusLoadError}</span>
           </div>
-          {focusLoadError ? <button disabled={focusLoading} onClick={() => void loadPendingFocus()} type="button">ลองใหม่</button> : null}
+          {focusLoadError ? <button disabled={focusLoading} onClick={() => void loadPendingFocus()} type="button">{translateUi('ลองใหม่')}</button> : null}
           <button className="financial-ops__focus-back" onClick={closeFocusedLoadError} type="button">
-            <ArrowLeft aria-hidden="true" size={18} /> กลับ POS
-          </button>
+            <ArrowLeft aria-hidden="true" size={18} />{translateUi(' กลับ POS')}</button>
         </section>
       ) : null}
 
       {!isManager ? <div className="financial-ops__employee-workspace">
-        <nav aria-label="เมนูเก็บเงิน" className="financial-ops__employee-nav">
+        <nav aria-label={translateUi('เมนูเก็บเงิน')} className="financial-ops__employee-nav">
           <button
             aria-current={employeeView === 'queue' ? 'page' : undefined}
             onClick={() => setEmployeeView('queue')}
             type="button"
           >
             <ListBullets aria-hidden="true" size={21} weight="duotone" />
-            <span>คิวเก็บเงิน</span>
+            <span>{translateUi('คิวเก็บเงิน')}</span>
           </button>
           <button
             aria-current={employeeView === 'history' ? 'page' : undefined}
@@ -1046,7 +1047,7 @@ export function FinancialOperations({
             type="button"
           >
             <ClockCounterClockwise aria-hidden="true" size={21} weight="duotone" />
-            <span>ประวัติรับเงิน</span>
+            <span>{translateUi('ประวัติรับเงิน')}</span>
           </button>
           <button
             aria-current={employeeView === 'credit_signoff' ? 'page' : undefined}
@@ -1054,18 +1055,18 @@ export function FinancialOperations({
             type="button"
           >
             <FileText aria-hidden="true" size={21} weight="duotone" />
-            <span>ใบเซ็นเครดิต</span>
+            <span>{translateUi('ใบเซ็นเครดิต')}</span>
           </button>
         </nav>
 
         <div className="financial-ops__employee-page">
           <header className="financial-ops__header">
             <div>
-              <p className="eyebrow">การเงินหน้าร้าน</p>
-              <h1>{employeeView === 'queue' ? 'คิวเก็บเงินของฉัน' : employeeView === 'history' ? 'ประวัติรับเงินของฉัน' : 'ใบเซ็นเครดิตรายวัน'}</h1>
-              <span>วันที่ธุรกิจ {serviceDate}</span>
+              <p className="eyebrow">{translateUi('การเงินหน้าร้าน')}</p>
+              <h1>{employeeView === 'queue' ? translateUi('คิวเก็บเงินของฉัน') : employeeView === 'history' ? translateUi('ประวัติรับเงินของฉัน') : translateUi('ใบเซ็นเครดิตรายวัน')}</h1>
+              <span>{translateUi('วันที่ธุรกิจ ')}{serviceDate}</span>
             </div>
-            <button disabled={busy} onClick={() => void refreshFinancialData().catch((loadError: unknown) => setError(getErrorMessage(loadError)))} type="button">รีเฟรชยอดล่าสุด</button>
+            <button disabled={busy} onClick={() => void refreshFinancialData().catch((loadError: unknown) => setError(getErrorMessage(loadError)))} type="button">{translateUi('รีเฟรชยอดล่าสุด')}</button>
           </header>
 
           {employeeView === 'queue' ? <CollectionRunSection

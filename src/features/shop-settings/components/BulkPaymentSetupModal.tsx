@@ -1,3 +1,4 @@
+import { translateUi, useLanguage } from '../../../i18n';
 import { useState } from 'react';
 import { X } from '@phosphor-icons/react';
 import type { ShopSetting, BuildingOption, BuildingZoneOption, PaymentTerm, PaymentMethod, CreditDueRule } from '../../../types/app';
@@ -13,6 +14,7 @@ interface BulkPaymentSetupModalProps {
 }
 
 export function BulkPaymentSetupModal({ shops, buildings, zones, onClose, onSuccess }: BulkPaymentSetupModalProps) {
+  useLanguage();
   const [selectedBuildingId, setSelectedBuildingId] = useState<string>('');
   const [selectedZoneId, setSelectedZoneId] = useState<string>('');
   const [selectedShopIds, setSelectedShopIds] = useState<string[]>([]);
@@ -106,13 +108,13 @@ export function BulkPaymentSetupModal({ shops, buildings, zones, onClose, onSucc
 
   return (
     <div className="modal-backdrop" onMouseDown={(e) => { if (e.target === e.currentTarget && !saving) onClose(); }}>
-      <section role="dialog" aria-modal="true" aria-label="ตั้งค่าชำระเงินหลายร้าน" className="panel" style={{ maxWidth: '640px', width: '90%', maxHeight: '90vh', overflowY: 'auto' }}>
+      <section role="dialog" aria-modal="true" aria-label={translateUi('ตั้งค่าชำระเงินหลายร้าน')} className="panel" style={{ maxWidth: '640px', width: '90%', maxHeight: '90vh', overflowY: 'auto' }}>
         <div className="panel-header">
           <div>
-            <p className="eyebrow">จัดการหลายร้านค้า</p>
-            <h2>กำหนดโปรไฟล์ชำระเงินแบบกลุ่ม (Bulk Setup)</h2>
+            <p className="eyebrow">{translateUi('จัดการหลายร้านค้า')}</p>
+            <h2>{translateUi('กำหนดโปรไฟล์ชำระเงินแบบกลุ่ม (Bulk Setup)')}</h2>
           </div>
-          <button aria-label="ปิดหน้าต่าง" disabled={saving} className="ghost-button" onClick={onClose} type="button">
+          <button aria-label={translateUi('ปิดหน้าต่าง')} disabled={saving} className="ghost-button" onClick={onClose} type="button">
             <X size={20} />
           </button>
         </div>
@@ -120,18 +122,16 @@ export function BulkPaymentSetupModal({ shops, buildings, zones, onClose, onSucc
         <fieldset disabled={saving || reviewing} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
         <div className="field-grid" style={{ marginBottom: '1rem' }}>
           <label>
-            กรองตามอาคาร
-            <select onChange={(e) => { setSelectedBuildingId(e.target.value); setSelectedZoneId(''); setSelectedShopIds([]); }} value={selectedBuildingId}>
-              <option value="">ทุกอาคาร ({shops.length} ร้าน)</option>
+            {translateUi('กรองตามอาคาร')}<select onChange={(e) => { setSelectedBuildingId(e.target.value); setSelectedZoneId(''); setSelectedShopIds([]); }} value={selectedBuildingId}>
+              <option value="">{translateUi('ทุกอาคาร (')}{shops.length}{translateUi(' ร้าน)')}</option>
               {buildings.map((b) => (
                 <option key={b.id} value={b.id}>{b.code} · {b.name}</option>
               ))}
             </select>
           </label>
           <label>
-            กรองตามโซนย่อย
-            <select disabled={!selectedBuildingId} onChange={(e) => { setSelectedZoneId(e.target.value); setSelectedShopIds([]); }} value={selectedZoneId}>
-              <option value="">ทุกโซน</option>
+            {translateUi('กรองตามโซนย่อย')}<select disabled={!selectedBuildingId} onChange={(e) => { setSelectedZoneId(e.target.value); setSelectedShopIds([]); }} value={selectedZoneId}>
+              <option value="">{translateUi('ทุกโซน')}</option>
               {zones.filter((z) => z.building_id === selectedBuildingId).map((z) => (
                 <option key={z.id} value={z.id}>{z.code} · {z.name}</option>
               ))}
@@ -141,9 +141,9 @@ export function BulkPaymentSetupModal({ shops, buildings, zones, onClose, onSucc
 
         <div style={{ marginBottom: '1rem', border: '1px solid var(--border-color, #eee)', padding: '0.75rem', borderRadius: '8px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-            <strong>เลือกร้านค้าที่ต้องการตั้งค่า ({selectedShopIds.length}/{filteredShops.length})</strong>
+            <strong>{translateUi('เลือกร้านค้าที่ต้องการตั้งค่า (')}{selectedShopIds.length}/{filteredShops.length})</strong>
             <button className="ghost-button" onClick={toggleSelectAll} type="button">
-              {selectedShopIds.length === filteredShops.length ? 'ยกเลิกเลือกทั้งหมด' : 'เลือกทั้งหมด'}
+              {selectedShopIds.length === filteredShops.length ? translateUi('ยกเลิกเลือกทั้งหมด') : translateUi('เลือกทั้งหมด')}
             </button>
           </div>
 
@@ -162,19 +162,18 @@ export function BulkPaymentSetupModal({ shops, buildings, zones, onClose, onSucc
         </div>
 
         <div style={{ background: 'var(--panel-bg, #f9f9f9)', padding: '1rem', borderRadius: '8px', marginBottom: '1rem' }}>
-          <h4>เลือกข้อมูลที่ต้องการเปลี่ยน</h4>
-          <label className="inline-check"><input type="checkbox" checked={changeTerms} onChange={(event) => setChangeTerms(event.target.checked)} />เปลี่ยนรูปแบบชำระเงินและเครดิต</label>
-          <label className="inline-check"><input type="checkbox" checked={changeMethods} onChange={(event) => setChangeMethods(event.target.checked)} />เปลี่ยนช่องทางการเงิน</label>
-          <p className="muted">คงเงื่อนไขหลักฐานและเลขอ้างอิงเดิมของแต่ละร้านไว้ ร้านที่ยังไม่เคยตั้งค่าต้องเลือกทั้งสองกลุ่ม</p>
+          <h4>{translateUi('เลือกข้อมูลที่ต้องการเปลี่ยน')}</h4>
+          <label className="inline-check"><input type="checkbox" checked={changeTerms} onChange={(event) => setChangeTerms(event.target.checked)} />{translateUi('เปลี่ยนรูปแบบชำระเงินและเครดิต')}</label>
+          <label className="inline-check"><input type="checkbox" checked={changeMethods} onChange={(event) => setChangeMethods(event.target.checked)} />{translateUi('เปลี่ยนช่องทางการเงิน')}</label>
+          <p className="muted">{translateUi('คงเงื่อนไขหลักฐานและเลขอ้างอิงเดิมของแต่ละร้านไว้ ร้านที่ยังไม่เคยตั้งค่าต้องเลือกทั้งสองกลุ่ม')}</p>
 
           <div className="field-grid" style={{ marginTop: '0.5rem' }}>
             <label className="inline-check">
               <input disabled={!changeTerms} checked={isCredit} onChange={(event) => setIsCredit(event.target.checked)} type="checkbox" />
-              ร้านเครดิต
-            </label>
+              {translateUi('ร้านเครดิต')}</label>
 
             <div>
-              <label>ช่องทางการเงินที่อนุญาต</label>
+              <label>{translateUi('ช่องทางการเงินที่อนุญาต')}</label>
               <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginTop: '0.25rem' }}>
                 <label className="inline-check">
                   <input
@@ -183,8 +182,7 @@ export function BulkPaymentSetupModal({ shops, buildings, zones, onClose, onSucc
                     onChange={() => togglePaymentMethod('cash')}
                     type="checkbox"
                   />
-                  เงินสด
-                </label>
+                  {translateUi('เงินสด')}</label>
                 <label className="inline-check">
                   <input
                     disabled={!changeMethods}
@@ -192,17 +190,15 @@ export function BulkPaymentSetupModal({ shops, buildings, zones, onClose, onSucc
                     onChange={() => togglePaymentMethod('bank_transfer')}
                     type="checkbox"
                   />
-                  โอน
-                </label>
+                  {translateUi('โอน')}</label>
               </div>
             </div>
 
             <label>
-              ช่องทางเริ่มต้น
-              <select disabled={!changeMethods} onChange={(e) => setDefaultPaymentMethod(e.target.value as PaymentMethod)} value={defaultPaymentMethod}>
+              {translateUi('ช่องทางเริ่มต้น')}<select disabled={!changeMethods} onChange={(e) => setDefaultPaymentMethod(e.target.value as PaymentMethod)} value={defaultPaymentMethod}>
                 {allowedPaymentMethods.map((method) => (
                   <option key={method} value={method}>
-                    {method === 'cash' ? 'เงินสด' : 'โอน'}
+                    {method === 'cash' ? translateUi('เงินสด') : translateUi('โอน')}
                   </option>
                 ))}
               </select>
@@ -212,26 +208,23 @@ export function BulkPaymentSetupModal({ shops, buildings, zones, onClose, onSucc
           {allowedPaymentTerms.includes('credit') ? (
             <div className="field-grid" style={{ marginTop: '1rem' }}>
               <label>
-                รอบเก็บเงิน
-                <select disabled={!changeTerms} onChange={(e) => setCreditDueRule(e.target.value as CreditDueRule)} value={creditDueRule}>
-                  <option value="weekly">ทุกสัปดาห์</option>
-                  <option value="semi_monthly">รอบครึ่งเดือน (วันที่ 1–15 / 16–สิ้นเดือน)</option>
-                  <option value="end_of_month">ทุกสิ้นเดือน</option>
-                  <option value="net_days">หลังส่งสินค้า X วัน</option>
+                {translateUi('รอบเก็บเงิน')}<select disabled={!changeTerms} onChange={(e) => setCreditDueRule(e.target.value as CreditDueRule)} value={creditDueRule}>
+                  <option value="weekly">{translateUi('ทุกสัปดาห์')}</option>
+                  <option value="semi_monthly">{translateUi('รอบครึ่งเดือน (วันที่ 1–15 / 16–สิ้นเดือน)')}</option>
+                  <option value="end_of_month">{translateUi('ทุกสิ้นเดือน')}</option>
+                  <option value="net_days">{translateUi('หลังส่งสินค้า X วัน')}</option>
                 </select>
               </label>
               {creditDueRule === 'net_days' ? (
                 <label>
-                  จำนวนวันหลังส่งสินค้า
-                  <input disabled={!changeTerms} min="1" onChange={(e) => setCreditDays(Number(e.target.value) || 1)} type="number" value={creditDays} />
+                  {translateUi('จำนวนวันหลังส่งสินค้า')}<input disabled={!changeTerms} min="1" onChange={(e) => setCreditDays(Number(e.target.value) || 1)} type="number" value={creditDays} />
                 </label>
               ) : null}
               {creditDueRule === 'weekly' ? (
                 <label>
-                  วันเก็บเงินประจำสัปดาห์
-                  <select disabled={!changeTerms} onChange={(e) => setCreditCollectionWeekday(Number(e.target.value))} value={creditCollectionWeekday}>
+                  {translateUi('วันเก็บเงินประจำสัปดาห์')}<select disabled={!changeTerms} onChange={(e) => setCreditCollectionWeekday(Number(e.target.value))} value={creditCollectionWeekday}>
                     {CREDIT_COLLECTION_WEEKDAY_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>{option.label}</option>
+                      <option key={option.value} value={option.value}>{translateUi(option.label)}</option>
                     ))}
                   </select>
                 </label>
@@ -242,35 +235,33 @@ export function BulkPaymentSetupModal({ shops, buildings, zones, onClose, onSucc
                 credit_collection_weekday: creditDueRule === 'weekly' ? creditCollectionWeekday : null,
               })}</p>
               <label>
-                วงเงินเครดิต (เว้นว่างหากไม่จำกัด)
-                <input disabled={!changeTerms} min="0" onChange={(e) => setCreditLimit(e.target.value ? Number(e.target.value) : null)} type="number" value={creditLimit ?? ''} />
+                {translateUi('วงเงินเครดิต (เว้นว่างหากไม่จำกัด)')}<input disabled={!changeTerms} min="0" onChange={(e) => setCreditLimit(e.target.value ? Number(e.target.value) : null)} type="number" value={creditLimit ?? ''} />
               </label>
             </div>
           ) : (
             <label className="inline-check" style={{ marginTop: '1rem' }}>
               <input disabled={!changeTerms} checked={allowOutstanding} onChange={(e) => setAllowOutstanding(e.target.checked)} type="checkbox" />
-              อนุญาตยอดค้างชำระ
-            </label>
+              {translateUi('อนุญาตยอดค้างชำระ')}</label>
           )}
         </div>
 
         </fieldset>
         {reviewing ? (
-          <section aria-label="สรุปก่อนบันทึก" style={{ margin: '1rem 0' }}>
-            <h3>สรุปก่อนบันทึก</h3>
-            <p>ร้านที่จะเปลี่ยน: {shops.filter((shop) => selectedShopIds.includes(shop.id)).map((shop) => `${shop.code} · ${shop.name}`).join(', ')}</p>
-            {changeTerms ? <p>รูปแบบชำระเงิน: {isCredit ? 'เครดิต' : 'เลือกวิธีส่งที่หน้าพนักงาน'} · อนุญาตยอดค้าง {isCredit || allowOutstanding ? 'ใช่' : 'ไม่'}
-              {allowedPaymentTerms.includes('credit') ? ` · ${formatCreditCollectionCycle({ credit_due_rule: creditDueRule, credit_days: creditDays, credit_collection_weekday: creditCollectionWeekday })} · วงเงิน ${creditLimit == null ? 'ไม่จำกัด' : `${creditLimit} บาท`}` : ''}
-            </p> : <p>รูปแบบชำระเงินและเครดิต: คงค่าเดิม</p>}
-            {changeMethods ? <p>ช่องทางการเงิน: {allowedPaymentMethods.map(methodLabel).join(', ')} · เริ่มต้น {methodLabel(defaultPaymentMethod)}</p> : <p>ช่องทางการเงิน: คงค่าเดิม</p>}
+          <section aria-label={translateUi('สรุปก่อนบันทึก')} style={{ margin: '1rem 0' }}>
+            <h3>{translateUi('สรุปก่อนบันทึก')}</h3>
+            <p>{translateUi('ร้านที่จะเปลี่ยน: ')}{shops.filter((shop) => selectedShopIds.includes(shop.id)).map((shop) => `${shop.code} · ${shop.name}`).join(', ')}</p>
+            {changeTerms ? <p>{translateUi('รูปแบบชำระเงิน: ')}{isCredit ? translateUi('เครดิต') : translateUi('เลือกวิธีส่งที่หน้าพนักงาน')}{translateUi(' · อนุญาตยอดค้าง ')}{isCredit || allowOutstanding ? translateUi('ใช่') : translateUi('ไม่')}
+              {allowedPaymentTerms.includes('credit') ? translateUi(' · {0} · วงเงิน {1}', { 0: formatCreditCollectionCycle({ credit_due_rule: creditDueRule, credit_days: creditDays, credit_collection_weekday: creditCollectionWeekday }), 1: creditLimit == null ? translateUi('ไม่จำกัด') : translateUi('{0} บาท', { 0: creditLimit }) }) : ''}
+            </p> : <p>{translateUi('รูปแบบชำระเงินและเครดิต: คงค่าเดิม')}</p>}
+            {changeMethods ? <p>{translateUi('ช่องทางการเงิน: ')}{allowedPaymentMethods.map(methodLabel).join(', ')}{translateUi(' · เริ่มต้น ')}{translateUi(methodLabel(defaultPaymentMethod))}</p> : <p>{translateUi('ช่องทางการเงิน: คงค่าเดิม')}</p>}
           </section>
         ) : null}
-        {error ? <p className="error-text" role="alert">{error}</p> : null}
+        {error ? <p className="error-text" role="alert">{translateUi(error)}</p> : null}
 
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
-          <button disabled={saving} className="secondary-button" onClick={reviewing ? () => setReviewing(false) : onClose} type="button">{reviewing ? 'กลับไปแก้ไข' : 'ยกเลิก'}</button>
+          <button disabled={saving} className="secondary-button" onClick={reviewing ? () => setReviewing(false) : onClose} type="button">{reviewing ? translateUi('กลับไปแก้ไข') : translateUi('ยกเลิก')}</button>
           <button className="primary-button" disabled={saving || selectedShopIds.length === 0 || (!changeTerms && !changeMethods)} onClick={() => reviewing ? void handleApply() : setReviewing(true)} type="button">
-            {saving ? 'กำลังตั้งค่า...' : reviewing ? `ยืนยันตั้งค่า ${selectedShopIds.length} ร้าน` : `ตรวจสอบการเปลี่ยนแปลง ${selectedShopIds.length} ร้าน`}
+            {saving ? translateUi('กำลังตั้งค่า...') : reviewing ? translateUi('ยืนยันตั้งค่า {0} ร้าน', { 0: selectedShopIds.length }) : translateUi('ตรวจสอบการเปลี่ยนแปลง {0} ร้าน', { 0: selectedShopIds.length })}
           </button>
         </div>
       </section>

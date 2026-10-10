@@ -1,3 +1,4 @@
+import { translateUi, useLanguage } from '../../i18n';
 import { ArrowLeft, Coins, Package, WarningCircle } from '@phosphor-icons/react';
 import type { ShopCard } from '../../types/app';
 import { STATUS_LABELS } from './constants';
@@ -30,6 +31,7 @@ export function EmployeeShopTaskChoice({
   onSend: () => void;
   onCollect: () => void;
 }) {
+  useLanguage();
   const balanceReady = outstandingAmount !== undefined && !outstandingError;
   const collectDisabled = !canCollect || !balanceReady || outstandingAmount <= 0;
   const balanceText = outstandingError
@@ -52,31 +54,28 @@ export function EmployeeShopTaskChoice({
   return (
     <section className="employee-task-choice" aria-labelledby="employee-task-choice-title">
       <button className="employee-task-choice__back" onClick={onBack} type="button">
-        <ArrowLeft aria-hidden="true" size={19} /> กลับรายชื่อร้าน
-      </button>
+        <ArrowLeft aria-hidden="true" size={19} />{translateUi(' กลับรายชื่อร้าน')}</button>
       <header>
         <span className="employee-task-choice__code">{card.shop_code}</span>
         <h1 id="employee-task-choice-title">{card.shop_name}</h1>
         <p>{card.building_name} · {card.floor_or_zone}</p>
       </header>
       <dl>
-        <div><dt>สถานะวันนี้</dt><dd>{STATUS_LABELS[card.stop_status]}</dd></div>
-        <div><dt>ยอดรอรับชำระ</dt><dd aria-live="polite">{balanceText}</dd></div>
+        <div><dt>{translateUi('สถานะวันนี้')}</dt><dd>{translateUi(STATUS_LABELS[card.stop_status])}</dd></div>
+        <div><dt>{translateUi('ยอดรอรับชำระ')}</dt><dd aria-live="polite">{balanceText}</dd></div>
       </dl>
       {outstandingError ? (
         <div className="employee-task-choice__load-error" role="alert">
           <WarningCircle aria-hidden="true" size={20} weight="fill" />
-          <span>{outstandingError}</span>
-          <button disabled={outstandingLoading} onClick={onRetry} type="button">ลองใหม่</button>
+          <span>{translateUi(outstandingError)}</span>
+          <button disabled={outstandingLoading} onClick={onRetry} type="button">{translateUi('ลองใหม่')}</button>
         </div>
       ) : null}
       <div className="employee-task-choice__actions">
         <button className="employee-primary-action" onClick={onSend} type="button">
-          <Package aria-hidden="true" size={21} weight="duotone" /> ส่งเพิ่ม
-        </button>
+          <Package aria-hidden="true" size={21} weight="duotone" />{translateUi(' ส่งเพิ่ม')}</button>
         <button className="employee-secondary-action" disabled={collectDisabled} onClick={onCollect} type="button">
-          <Coins aria-hidden="true" size={21} weight="duotone" /> รับชำระ
-        </button>
+          <Coins aria-hidden="true" size={21} weight="duotone" />{translateUi(' รับชำระ')}</button>
       </div>
       {disabledReason ? <p className="employee-task-choice__hint">{disabledReason}</p> : null}
     </section>

@@ -1,3 +1,4 @@
+import { translateUi, uiDateTimeFormat, useLanguage } from './i18n';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { Icon } from '@phosphor-icons/react';
 import {
@@ -60,11 +61,11 @@ const QUICK_ACTIONS: Array<{
 ];
 
 function formatServiceDate(value: string) {
-  return new Intl.DateTimeFormat('th-TH', {
+  return uiDateTimeFormat({
     day: 'numeric',
     month: 'long',
     year: 'numeric',
-  }).format(new Date(`${value}T12:00:00`));
+  }).format(new Date(`${value}T12:00:00+07:00`));
 }
 
 function formatCurrency(amount: number) {
@@ -114,6 +115,7 @@ export function ManagerDashboard({
   demoStockSummary?: StockControlSummary;
   demoAggregateStockSummary?: DailyAggregateStockSummary;
 }) {
+  useLanguage();
   const currentServiceDate = useBangkokServiceDate();
   const [loadedAt, setLoadedAt] = useState<Date | null>(null);
   const loadInFlight = useRef(false);
@@ -250,20 +252,20 @@ export function ManagerDashboard({
   const serviceDate = dashboard?.session.service_date ?? currentServiceDate;
 
   if (loading && (!dashboard || dashboard.session.service_date !== currentServiceDate)) {
-    return <DashboardState title="ภาพรวมงานวันนี้" detail={formatServiceDate(serviceDate)} message="กำลังโหลดข้อมูลงานวันนี้..." />;
+    return <DashboardState title={translateUi('ภาพรวมงานวันนี้')} detail={formatServiceDate(serviceDate)} message={translateUi('กำลังโหลดข้อมูลงานวันนี้...')} />;
   }
 
   if (error || !dashboard || !aggregateStockSummary) {
     return (
       <div className="manager-dashboard">
-        <DashboardHeading title="ภาพรวมงานวันนี้" detail={formatServiceDate(serviceDate)} />
+        <DashboardHeading title={translateUi('ภาพรวมงานวันนี้')} detail={formatServiceDate(serviceDate)} />
         <section className="dashboard-state dashboard-state--error" role="alert">
           <WarningCircle size={28} weight="fill" />
           <div>
-            <strong>โหลดข้อมูลไม่สำเร็จ</strong>
-            <p>{error ?? 'ไม่พบข้อมูลงานวันนี้'}</p>
+            <strong>{translateUi('โหลดข้อมูลไม่สำเร็จ')}</strong>
+            <p>{error ?? translateUi('ไม่พบข้อมูลงานวันนี้')}</p>
           </div>
-          <button className="secondary-button" onClick={() => setReloadKey((key) => key + 1)} type="button">ลองโหลดอีกครั้ง</button>
+          <button className="secondary-button" onClick={() => setReloadKey((key) => key + 1)} type="button">{translateUi('ลองโหลดอีกครั้ง')}</button>
         </section>
       </div>
     );
@@ -294,29 +296,29 @@ export function ManagerDashboard({
   const deliveredDestinationCount = deliverySummary.regularShopCount
     + deliverySummary.eventParticipationCount;
   const deliveryBreakdown = deliverySummary.eventParticipationCount > 0
-    ? `${formatQuantity(deliverySummary.regularShopCount)} ร้านประจำ · ${formatQuantity(deliverySummary.eventParticipationCount)} จุดอีเวนต์ · ${formatQuantity(deliverySummary.activeDeliveryCount)} รายการส่ง`
-    : `${formatQuantity(deliverySummary.activeDeliveryCount)} รายการส่ง`;
+    ? `${formatQuantity(deliverySummary.regularShopCount)} ${translateUi('ร้านประจำ')} · ${formatQuantity(deliverySummary.eventParticipationCount)} ${translateUi('จุดอีเวนต์')} · ${formatQuantity(deliverySummary.activeDeliveryCount)} ${translateUi('รายการส่ง')}`
+    : `${formatQuantity(deliverySummary.activeDeliveryCount)} ${translateUi('รายการส่ง')}`;
   const alertItems = [
-    ...(lowStockTotals > 0 ? [{ tone: 'danger' as const, title: 'สต๊อกไม่เพียงพอ', detail: `พบสินค้า ${lowStockTotals} ชนิดที่สต๊อกหมด`, count: `${lowStockTotals} รายการ`, icon: WarningCircle, view: 'stock_operations' as const }] : []),
-    ...(problems.length > 0 ? [{ tone: 'warning' as const, title: 'มีปัญหาหน้างานที่ต้องติดตาม', detail: problems[0].shop_name, count: `${problems.length} รายการ`, icon: User, view: 'delivery' as const }] : []),
-    ...(stockClosePending ? [{ tone: 'amber' as const, title: 'รอตรวจนับและปิดยอดรวมสิ้นวัน', detail: 'นับน้ำแข็งรวมจากรถและทุกจุดก่อนปิดยอด', count: 'รอปิดยอด', icon: ClipboardText, view: 'stock_operations' as const }] : []),
+    ...(lowStockTotals > 0 ? [{ tone: 'danger' as const, title: 'สต๊อกไม่เพียงพอ', detail: `${translateUi('พบสินค้า')} ${lowStockTotals} ${translateUi('ชนิดที่สต๊อกหมด')}`, count: `${lowStockTotals} ${translateUi('รายการ')}`, icon: WarningCircle, view: 'stock_operations' as const }] : []),
+    ...(problems.length > 0 ? [{ tone: 'warning' as const, title: 'มีปัญหาหน้างานที่ต้องติดตาม', detail: problems[0].shop_name, count: `${problems.length} ${translateUi('รายการ')}`, icon: User, view: 'delivery' as const }] : []),
+    ...(stockClosePending ? [{ tone: 'amber' as const, title: 'รอตรวจนับและปิดยอดรวมสิ้นวัน', detail: translateUi('นับน้ำแข็งรวมจากรถและทุกจุดก่อนปิดยอด'), count: translateUi('รอปิดยอด'), icon: ClipboardText, view: 'stock_operations' as const }] : []),
   ];
 
   return (
     <div className="manager-dashboard manager-dashboard--reference">
       <DashboardHeading
-        title="ภาพรวมงานวันนี้"
+        title={translateUi('ภาพรวมงานวันนี้')}
         detail={formatServiceDate(serviceDate)}
-        status={aggregateClosed ? 'ปิดงานแล้ว' : statusLabel[session.status] ?? session.status}
+        status={translateUi(aggregateClosed ? 'ปิดงานแล้ว' : statusLabel[session.status] ?? session.status)}
         statusTone={session.status}
       >
         <div className="dashboard-refresh" style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-          {loadedAt ? <small className="muted">อัปเดตล่าสุด {new Intl.DateTimeFormat('th-TH', { timeZone: 'Asia/Bangkok', hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(loadedAt)} น.</small> : null}
-          <button className="secondary-button" disabled={loading} onClick={() => setReloadKey((key) => key + 1)} type="button"><ArrowClockwise size={18} />{loading ? 'กำลังอัปเดต...' : 'รีเฟรช'}</button>
+          {loadedAt ? <small className="muted">{translateUi('อัปเดตล่าสุด ')}{uiDateTimeFormat({ timeZone: 'Asia/Bangkok', hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(loadedAt)}{translateUi(' น.')}</small> : null}
+          <button className="secondary-button" disabled={loading} onClick={() => setReloadKey((key) => key + 1)} type="button"><ArrowClockwise size={18} />{loading ? translateUi('กำลังอัปเดต...') : translateUi('รีเฟรช')}</button>
         </div>
         {profileRole === 'admin' && session.status === 'in_progress' ? (
           <div className="dashboard-more-menu">
-            <button aria-expanded={showCancelMenu} aria-label="ตัวเลือกเพิ่มเติม" className="dashboard-more-menu__button" onClick={() => setShowCancelMenu((open) => !open)} type="button">
+            <button aria-expanded={showCancelMenu} aria-label={translateUi('ตัวเลือกเพิ่มเติม')} className="dashboard-more-menu__button" onClick={() => setShowCancelMenu((open) => !open)} type="button">
               <DotsThreeVertical size={21} weight="bold" />
             </button>
             {showCancelMenu ? (
@@ -324,11 +326,10 @@ export function ManagerDashboard({
                 <button
                   disabled={!cancellationState.can_cancel}
                   onClick={() => { setShowCancelMenu(false); setShowCancelModal(true); }}
-                  title={cancellationState.blocker_reason ?? 'ยกเลิกงานวันนี้'}
+                  title={cancellationState.blocker_reason ?? translateUi('ยกเลิกงานวันนี้')}
                   type="button"
                 >
-                  <XCircle size={17} /> ยกเลิกงานวันนี้
-                </button>
+                  <XCircle size={17} />{translateUi(' ยกเลิกงานวันนี้')}</button>
                 {!cancellationState.can_cancel && cancellationState.blocker_reason ? <p>{cancellationState.blocker_reason}</p> : null}
               </div>
             ) : null}
@@ -336,27 +337,27 @@ export function ManagerDashboard({
         ) : null}
       </DashboardHeading>
 
-      <section className="dashboard-overview-grid" aria-label="ตัวเลขสรุปวันนี้">
-        <OverviewCard icon={Truck} label="สต๊อกคงเหลือ" value={totalStock.value} unit={totalStock.unit} detail="ยอดรวมประจำวันหลังหักยอดขาย" tone="blue" />
-        <OverviewCard icon={CurrencyDollar} label="ยอดขายสุทธิ" value={formatCurrency(salesSummary.netSalesValue)} detail="ยอดขายที่บันทึกแล้ววันนี้" tone="green" />
-        <OverviewCard icon={Storefront} label="ส่งจุดหมายแล้ว" value={formatQuantity(deliveredDestinationCount)} unit="จุด" detail={deliveryBreakdown} tone="sky" />
+      <section className="dashboard-overview-grid" aria-label={translateUi('ตัวเลขสรุปวันนี้')}>
+        <OverviewCard icon={Truck} label={translateUi('สต๊อกคงเหลือ')} value={totalStock.value} unit={totalStock.unit} detail={translateUi('ยอดรวมประจำวันหลังหักยอดขาย')} tone="blue" />
+        <OverviewCard icon={CurrencyDollar} label={translateUi('ยอดขายสุทธิ')} value={formatCurrency(salesSummary.netSalesValue)} detail={translateUi('ยอดขายที่บันทึกแล้ววันนี้')} tone="green" />
+        <OverviewCard icon={Storefront} label={translateUi('ส่งจุดหมายแล้ว')} value={formatQuantity(deliveredDestinationCount)} unit="จุด" detail={deliveryBreakdown} tone="sky" />
         <OverviewCard
-          detail={aggregateClosed ? 'ปิดยอดรวมแล้ว' : hasStartedWork ? 'ตรวจนับยอดรวมจากรถและทุกจุด' : 'ยังไม่เริ่มงานวันนี้'}
+          detail={aggregateClosed ? translateUi('ปิดยอดรวมแล้ว') : hasStartedWork ? translateUi('ตรวจนับยอดรวมจากรถและทุกจุด') : translateUi('ยังไม่เริ่มงานวันนี้')}
           icon={ClipboardText}
-          label="ปิดยอดสิ้นวัน"
+          label={translateUi('ปิดยอดสิ้นวัน')}
           tone="orange"
           value={aggregateClosed ? 'ปิดแล้ว' : hasStartedWork ? 'รอปิด' : 'ยังไม่เริ่ม'}
         />
       </section>
 
-      <section className="dashboard-payment-grid" aria-label="สรุปการรับชำระและเครดิตวันนี้">
-        <OverviewCard icon={CurrencyDollar} label="เงินสด" value={formatCurrency(paymentSummary.cashReceivedValue)} detail="รับชำระแล้ววันนี้" tone="green" />
-        <OverviewCard icon={CreditCard} label="โอนเงิน" value={formatCurrency(paymentSummary.transferReceivedValue)} detail="รับชำระแล้ววันนี้" tone="sky" />
-        <OverviewCard icon={CreditCard} label="เครดิต" value={formatCurrency(paymentSummary.creditSalesValue)} detail="ยอดขายเครดิตที่บันทึกวันนี้" tone="purple" />
+      <section className="dashboard-payment-grid" aria-label={translateUi('สรุปการรับชำระและเครดิตวันนี้')}>
+        <OverviewCard icon={CurrencyDollar} label={translateUi('เงินสด')} value={formatCurrency(paymentSummary.cashReceivedValue)} detail={translateUi('รับชำระแล้ววันนี้')} tone="green" />
+        <OverviewCard icon={CreditCard} label={translateUi('โอนเงิน')} value={formatCurrency(paymentSummary.transferReceivedValue)} detail={translateUi('รับชำระแล้ววันนี้')} tone="sky" />
+        <OverviewCard icon={CreditCard} label={translateUi('เครดิต')} value={formatCurrency(paymentSummary.creditSalesValue)} detail={translateUi('ยอดขายเครดิตที่บันทึกวันนี้')} tone="purple" />
       </section>
 
-      <section className="dashboard-panel dashboard-product-sales-panel" aria-label="ยอดขายแยกตามประเภทน้ำแข็ง">
-        <PanelHeading title="ยอดขายแยกตามประเภทน้ำแข็ง" detail="จำนวนที่ขายได้วันนี้" />
+      <section className="dashboard-panel dashboard-product-sales-panel" aria-label={translateUi('ยอดขายแยกตามประเภทน้ำแข็ง')}>
+        <PanelHeading title={translateUi('ยอดขายแยกตามประเภทน้ำแข็ง')} detail={translateUi('จำนวนที่ขายได้วันนี้')} />
         <div className="dashboard-product-sales-grid">
           {(salesSummary.iceTypeSales ?? []).map((item) => (
             <article className="dashboard-product-sale" key={item.ice_type_id}>
@@ -368,15 +369,15 @@ export function ManagerDashboard({
             </article>
           ))}
           {(salesSummary.iceTypeSales ?? []).length === 0 ? (
-            <p className="dashboard-product-sales-empty">ยังไม่มียอดขายน้ำแข็งสำหรับวันนี้</p>
+            <p className="dashboard-product-sales-empty">{translateUi('ยังไม่มียอดขายน้ำแข็งสำหรับวันนี้')}</p>
           ) : null}
         </div>
       </section>
 
       <div className="dashboard-mid-grid">
         <section className="dashboard-panel">
-          <PanelHeading title="สรุปยอดน้ำแข็งแต่ละจุด" detail="จำนวนที่ส่งแยกตามตึกและอีเว้นในวันนี้" />
-          <div className="dashboard-location-sales" aria-label="ยอดน้ำแข็งแยกตามตึกและอีเว้น">
+          <PanelHeading title={translateUi('สรุปยอดน้ำแข็งแต่ละจุด')} detail={translateUi('จำนวนที่ส่งแยกตามตึกและอีเว้นในวันนี้')} />
+          <div className="dashboard-location-sales" aria-label={translateUi('ยอดน้ำแข็งแยกตามตึกและอีเว้น')}>
             {locationIceTotals.map((location) => {
               const LocationIcon = location.kind === 'event' ? CalendarBlank : Buildings;
               const quantityDetail = location.iceTotals.length > 0
@@ -387,34 +388,34 @@ export function ManagerDashboard({
                   <span className={`dashboard-location-sale__icon dashboard-location-sale__icon--${location.kind}`}><LocationIcon size={24} weight="duotone" /></span>
                   <div className="dashboard-location-sale__name">
                     <strong>{location.name}</strong>
-                    <small>{location.kind === 'event' ? 'อีเว้น' : 'ตึก'}</small>
+                    <small>{location.kind === 'event' ? translateUi('อีเว้น') : translateUi('ตึก')}</small>
                   </div>
                   <b className="dashboard-location-sale__quantity">{quantityDetail}</b>
                 </article>
               );
             })}
-            {locationIceTotals.length === 0 ? <p className="dashboard-product-sales-empty">ยังไม่มีข้อมูลยอดน้ำแข็งแยกตามจุดสำหรับวันนี้</p> : null}
+            {locationIceTotals.length === 0 ? <p className="dashboard-product-sales-empty">{translateUi('ยังไม่มีข้อมูลยอดน้ำแข็งแยกตามจุดสำหรับวันนี้')}</p> : null}
           </div>
         </section>
 
         <section className="dashboard-panel dashboard-alert-panel">
-          <PanelHeading title="การแจ้งเตือนที่ต้องดำเนินการ" />
+          <PanelHeading title={translateUi('การแจ้งเตือนที่ต้องดำเนินการ')} />
           <div className="dashboard-alert-list">
             {alertItems.map((alert) => {
               const AlertIcon = alert.icon;
-              return <button className={`dashboard-alert dashboard-alert--${alert.tone}`} key={alert.title} onClick={() => onNavigate(alert.view)} type="button"><AlertIcon size={24} weight="fill" /><span><strong>{alert.title}</strong><small>{alert.detail}</small></span><b>{alert.count}</b><CaretRight size={18} /></button>;
+              return <button className={`dashboard-alert dashboard-alert--${alert.tone}`} key={alert.title} onClick={() => onNavigate(alert.view)} type="button"><AlertIcon size={24} weight="fill" /><span><strong>{translateUi(alert.title)}</strong><small>{alert.detail}</small></span><b>{alert.count}</b><CaretRight size={18} /></button>;
             })}
-            {alertItems.length === 0 ? <div className="dashboard-alert dashboard-alert--success"><CheckCircle size={24} weight="fill" /><span><strong>ไม่มีรายการที่ต้องดำเนินการ</strong><small>งานวันนี้พร้อมดำเนินการต่อ</small></span></div> : null}
+            {alertItems.length === 0 ? <div className="dashboard-alert dashboard-alert--success"><CheckCircle size={24} weight="fill" /><span><strong>{translateUi('ไม่มีรายการที่ต้องดำเนินการ')}</strong><small>{translateUi('งานวันนี้พร้อมดำเนินการต่อ')}</small></span></div> : null}
           </div>
         </section>
       </div>
 
       <section className="dashboard-panel dashboard-quick-panel">
-        <PanelHeading title="เมนูด่วน" />
+        <PanelHeading title={translateUi('เมนูด่วน')} />
         <div className="dashboard-quick-grid">
           {QUICK_ACTIONS.map((action) => {
             const ActionIcon = action.icon;
-            return <button className={`dashboard-quick-action dashboard-quick-action--${action.tone}`} key={action.label} onClick={() => onNavigate(action.view)} type="button"><ActionIcon size={29} weight="fill" /><span><strong>{action.label}</strong><small>{action.description}</small></span></button>;
+            return <button className={`dashboard-quick-action dashboard-quick-action--${action.tone}`} key={action.label} onClick={() => onNavigate(action.view)} type="button"><ActionIcon size={29} weight="fill" /><span><strong>{translateUi(action.label)}</strong><small>{translateUi(action.description)}</small></span></button>;
           })}
         </div>
       </section>
@@ -422,15 +423,15 @@ export function ManagerDashboard({
       {showCancelModal ? (
         <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="cancel-modal-title">
           <div className="modal-content dashboard-cancel-modal">
-            <h2 id="cancel-modal-title">ยกเลิกงานวันนี้</h2>
-            <p>ยกเลิกได้หลังยกเลิกคำสั่งจากโรงงานที่ยังใช้งานอยู่แล้วเท่านั้น</p>
-            {cancelError ? <p className="error-text">{cancelError}</p> : null}
-            <label htmlFor="cancel-reason-input">เหตุผลในการยกเลิก <span>*</span>
-              <textarea id="cancel-reason-input" onChange={(event) => setCancelReason(event.target.value)} placeholder="ระบุเหตุผลในการยกเลิกงาน..." rows={3} value={cancelReason} />
+            <h2 id="cancel-modal-title">{translateUi('ยกเลิกงานวันนี้')}</h2>
+            <p>{translateUi('ยกเลิกได้หลังยกเลิกคำสั่งจากโรงงานที่ยังใช้งานอยู่แล้วเท่านั้น')}</p>
+            {cancelError ? <p className="error-text">{translateUi(cancelError)}</p> : null}
+            <label htmlFor="cancel-reason-input">{translateUi('เหตุผลในการยกเลิก ')}<span>*</span>
+              <textarea id="cancel-reason-input" onChange={(event) => setCancelReason(event.target.value)} placeholder={translateUi('ระบุเหตุผลในการยกเลิกงาน...')} rows={3} value={cancelReason} />
             </label>
             <div className="modal-actions">
-              <button className="secondary-button" disabled={cancelSubmitting} onClick={() => { setShowCancelModal(false); setCancelReason(''); setCancelError(null); }} type="button">กลับ</button>
-              <button className="primary-button destructive-button" disabled={cancelSubmitting || !cancelReason.trim()} onClick={handleCancelSession} type="button">{cancelSubmitting ? 'กำลังบันทึก...' : 'ยืนยันยกเลิกงาน'}</button>
+              <button className="secondary-button" disabled={cancelSubmitting} onClick={() => { setShowCancelModal(false); setCancelReason(''); setCancelError(null); }} type="button">{translateUi('กลับ')}</button>
+              <button className="primary-button destructive-button" disabled={cancelSubmitting || !cancelReason.trim()} onClick={handleCancelSession} type="button">{cancelSubmitting ? translateUi('กำลังบันทึก...') : translateUi('ยืนยันยกเลิกงาน')}</button>
             </div>
           </div>
         </div>
@@ -440,17 +441,21 @@ export function ManagerDashboard({
 }
 
 function DashboardState({ title, detail, message }: { title: string; detail: string; message: string }) {
+  useLanguage();
   return <div className="manager-dashboard"><DashboardHeading detail={detail} title={title} /><section className="dashboard-state" aria-busy="true"><Package size={28} weight="fill" /><p>{message}</p></section></div>;
 }
 
 function DashboardHeading({ title, detail, status, statusTone, children }: { title: string; detail: string; status?: string; statusTone?: string; children?: ReactNode }) {
+  useLanguage();
   return <header className="dashboard-heading"><div><h1>{title}</h1><p>{detail}</p></div><div className="dashboard-heading__actions">{status ? <span className={`dashboard-session-status dashboard-session-status--${statusTone}`}><i />{status}</span> : null}{children}</div></header>;
 }
 
 function OverviewCard({ icon: IconComponent, label, value, unit, detail, tone }: { icon: Icon; label: string; value: string; unit?: string; detail: string; tone: 'blue' | 'green' | 'sky' | 'orange' | 'purple' }) {
+  useLanguage();
   return <article className={`dashboard-overview-card dashboard-overview-card--${tone}`}><span className="dashboard-overview-card__icon"><IconComponent size={28} weight="fill" /></span><div><small>{label}</small><strong>{value}</strong>{unit ? <em>{unit}</em> : null}<p>{detail}</p><span className="dashboard-mini-bars" aria-hidden="true"><i /><i /><i /><i /><i /><i /><i /><i /></span></div></article>;
 }
 
 function PanelHeading({ title, detail }: { title: string; detail?: string }) {
+  useLanguage();
   return <div className="dashboard-panel__heading"><div><h2>{title}</h2>{detail ? <p>{detail}</p> : null}</div></div>;
 }

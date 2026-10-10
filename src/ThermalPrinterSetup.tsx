@@ -1,3 +1,4 @@
+import { translateUi, useLanguage } from './i18n';
 import { useCallback, useEffect, useState } from 'react';
 import { Bluetooth, CheckCircle, GearSix, Printer, WarningCircle, X } from '@phosphor-icons/react';
 import {
@@ -14,6 +15,7 @@ import {
 import { renderPrinterTestRaster } from './lib/thermalReceiptRaster';
 
 export function ThermalPrinterSetup() {
+  useLanguage();
   const [open, setOpen] = useState(false);
   const [devices, setDevices] = useState<PairedPrinter[]>([]);
   const [selected, setSelected] = useState<PairedPrinter | null>(() => readSelectedPrinter());
@@ -79,39 +81,39 @@ export function ThermalPrinterSetup() {
   return (
     <>
       <button
-        aria-label="ตั้งค่าเครื่องพิมพ์ Bluetooth"
+        aria-label={translateUi('ตั้งค่าเครื่องพิมพ์ Bluetooth')}
         className={`thermal-printer-fab ${selected ? 'thermal-printer-fab--ready' : ''}`}
         onClick={() => { setOpen(true); setSuccess(null); }}
-        title={selected ? `เครื่องพิมพ์: ${selected.name}` : 'ตั้งค่าเครื่องพิมพ์'}
+        title={selected ? translateUi('เครื่องพิมพ์: {0}', { 0: selected.name }) : translateUi('ตั้งค่าเครื่องพิมพ์')}
         type="button"
       >
         <Printer aria-hidden="true" size={24} weight={selected ? 'fill' : 'regular'} />
-        <span>{selected ? selected.name : 'เครื่องพิมพ์'}</span>
+        <span>{selected ? selected.name : translateUi('เครื่องพิมพ์')}</span>
       </button>
 
       {open ? (
         <div className="thermal-printer-layer" role="presentation">
-          <button aria-label="ปิดตั้งค่าเครื่องพิมพ์" className="thermal-printer-backdrop" onClick={() => setOpen(false)} type="button" />
+          <button aria-label={translateUi('ปิดตั้งค่าเครื่องพิมพ์')} className="thermal-printer-backdrop" onClick={() => setOpen(false)} type="button" />
           <section aria-labelledby="thermal-printer-title" aria-modal="true" className="thermal-printer-dialog" role="dialog">
             <header>
               <span><Bluetooth aria-hidden="true" size={26} weight="bold" /></span>
               <div>
-                <h2 id="thermal-printer-title">เครื่องพิมพ์ Bluetooth</h2>
-                <p>จับคู่ `583-02` ใน Android ก่อน รหัส PIN `0000`</p>
+                <h2 id="thermal-printer-title">{translateUi('เครื่องพิมพ์ Bluetooth')}</h2>
+                <p>{translateUi('จับคู่ `583-02` ใน Android ก่อน รหัส PIN `0000`')}</p>
               </div>
-              <button aria-label="ปิด" className="thermal-printer-close" onClick={() => setOpen(false)} type="button"><X size={21} /></button>
+              <button aria-label={translateUi('ปิด')} className="thermal-printer-close" onClick={() => setOpen(false)} type="button"><X size={21} /></button>
             </header>
 
-            {error ? <div className="thermal-printer-message thermal-printer-message--error" role="alert"><WarningCircle size={19} weight="fill" />{error}</div> : null}
-            {success ? <div className="thermal-printer-message thermal-printer-message--success" role="status"><CheckCircle size={19} weight="fill" />{success}</div> : null}
+            {error ? <div className="thermal-printer-message thermal-printer-message--error" role="alert"><WarningCircle size={19} weight="fill" />{translateUi(error)}</div> : null}
+            {success ? <div className="thermal-printer-message thermal-printer-message--success" role="status"><CheckCircle size={19} weight="fill" />{translateUi(success)}</div> : null}
 
             <div className="thermal-printer-actions">
-              <button onClick={() => { void openBluetoothSettings(); }} type="button"><GearSix size={18} />เปิดตั้งค่า Bluetooth</button>
-              <button disabled={busy} onClick={() => { void loadDevices(); }} type="button">{busy ? 'กำลังโหลด…' : 'โหลดรายชื่อใหม่'}</button>
+              <button onClick={() => { void openBluetoothSettings(); }} type="button"><GearSix size={18} />{translateUi('เปิดตั้งค่า Bluetooth')}</button>
+              <button disabled={busy} onClick={() => { void loadDevices(); }} type="button">{busy ? translateUi('กำลังโหลด…') : translateUi('โหลดรายชื่อใหม่')}</button>
             </div>
 
-            <div className="thermal-printer-list" aria-label="อุปกรณ์ที่จับคู่แล้ว">
-              {devices.length === 0 && !busy ? <p>ยังไม่พบอุปกรณ์ที่จับคู่แล้ว</p> : null}
+            <div className="thermal-printer-list" aria-label={translateUi('อุปกรณ์ที่จับคู่แล้ว')}>
+              {devices.length === 0 && !busy ? <p>{translateUi('ยังไม่พบอุปกรณ์ที่จับคู่แล้ว')}</p> : null}
               {devices.map((device) => {
                 const active = selected?.address === device.address;
                 return (
@@ -125,7 +127,7 @@ export function ThermalPrinterSetup() {
             </div>
 
             <footer>
-              <button disabled={!selected || busy} onClick={() => { void testPrint(); }} type="button"><Printer size={19} />ทดสอบพิมพ์</button>
+              <button disabled={!selected || busy} onClick={() => { void testPrint(); }} type="button"><Printer size={19} />{translateUi('ทดสอบพิมพ์')}</button>
             </footer>
           </section>
         </div>

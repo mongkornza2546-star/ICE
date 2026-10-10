@@ -3,6 +3,7 @@ import { ArrowClockwise, CaretLeft, DownloadSimple, X } from '@phosphor-icons/re
 import { supabase } from '../../lib/supabase';
 import { subscribeToDataChange } from '../../lib/dataChange';
 import { toBangkokDateString } from '../../lib/serviceDate';
+import { translateUi, uiDateTimeString, useLanguage } from '../../i18n';
 import { exportExecutiveReport } from './exportExecutiveReport';
 import { ReportSections, ReportTabs, type ReportSection } from './ExecutiveReportSections';
 import { formatReportDate, presetDates, reportRangeError, type Preset } from './reportDates';
@@ -24,9 +25,9 @@ const presetNames: Record<Exclude<Preset, 'custom'>, string> = {
 };
 
 function comparison(current: number, previous: number) {
-  if (previous <= 0) return 'ไม่มีฐานเปรียบเทียบ';
+  if (previous <= 0) return translateUi('ไม่มีฐานเปรียบเทียบ');
   const percent = Math.abs((current - previous) / previous * 100);
-  return `${current >= previous ? 'เพิ่ม' : 'ลด'} ${number(percent)}% จากช่วงก่อน`;
+  return `${translateUi(current >= previous ? 'เพิ่มขึ้น' : 'ลดลง')} ${number(percent)}% ${translateUi('จากช่วงก่อน')}`;
 }
 
 async function fetchDetails(from: string, to: string, query: DetailQuery, offset: number) {
@@ -44,16 +45,18 @@ async function fetchDetails(from: string, to: string, query: DetailQuery, offset
 function MetricCard({ title, value, note, previous, onClick, tone }: {
   title: string; value: number; note?: string; previous?: number; onClick: (trigger: HTMLButtonElement) => void; tone?: string;
 }) {
+  useLanguage();
   return <button className={`executive-metric ${tone ? `executive-metric--${tone}` : ''}`}
     onClick={(event) => onClick(event.currentTarget)} type="button"><span>{title}</span><strong>{baht(value)}</strong>
-    {previous !== undefined ? <small>ช่วงก่อน {baht(previous)} · {comparison(value, previous)}</small> : note ? <small>{note}</small> : null}
-    <span className="executive-metric__action">ดูรายการ ›</span></button>;
+    {previous !== undefined ? <small>{translateUi('ช่วงก่อน')} {baht(previous)} · {comparison(value, previous)}</small> : note ? <small>{note}</small> : null}
+    <span className="executive-metric__action">{translateUi('ดูรายการ ›')}</span></button>;
 }
 
 export function ExecutiveReportsPage({ isActive, demoReport, demoRows }: {
   isActive: boolean; demoReport?: ExecutiveReport;
   demoRows?: Partial<Record<ReportMetric, ReportRow[]>>;
 }) {
+  useLanguage();
   const initial = presetDates('month');
   const [preset, setPreset] = useState<Preset>('month');
   const [from, setFrom] = useState(initial.from);
@@ -255,32 +258,32 @@ export function ExecutiveReportsPage({ isActive, demoReport, demoRows }: {
   const receiptRefunds = detail?.bucket ? receiptPoint?.refunds ?? 0 : shownReport?.refunds ?? 0;
   return <div className="executive-report">
     <header className="executive-report__heading">
-      <div><h1>รายงานผู้บริหาร</h1><p>ยอดขาย เงินรับ ลูกหนี้ และปริมาณส่ง</p></div>
+      <div><h1>{translateUi('รายงานผู้บริหาร')}</h1><p>{translateUi('ยอดขาย เงินรับ ลูกหนี้ และปริมาณส่ง')}</p></div>
       <div className="executive-report__actions">
-        <button aria-label="รีเฟรชรายงาน" disabled={loading || Boolean(rangeError)} onClick={refresh} type="button"><ArrowClockwise size={19} /> รีเฟรช</button>
-        <button disabled={!shownReport || loading || exporting || Boolean(error)} onClick={() => void handleExport()} type="button"><DownloadSimple size={19} /> {exporting ? 'กำลังสร้าง Excel…' : 'ส่งออก Excel'}</button>
+        <button aria-label={translateUi('รีเฟรชรายงาน')} disabled={loading || Boolean(rangeError)} onClick={refresh} type="button"><ArrowClockwise size={19} />{translateUi(' รีเฟรช')}</button>
+        <button disabled={!shownReport || loading || exporting || Boolean(error)} onClick={() => void handleExport()} type="button"><DownloadSimple size={19} /> {exporting ? translateUi('กำลังสร้าง Excel…') : translateUi('ส่งออก Excel')}</button>
       </div>
     </header>
 
-    <section className="executive-filters" aria-label="เลือกช่วงเวลารายงาน">
-      <div className="executive-filter-controls"><div aria-label="ช่วงวันที่ลัด" className="executive-presets">{(Object.keys(presetNames) as Array<Exclude<Preset, 'custom'>>).map((key) =>
-        <button aria-pressed={preset === key} key={key} onClick={() => choosePreset(key)} type="button">{presetNames[key]}</button>)}</div>
-      <div className="executive-dates"><label>จาก<input max={toBangkokDateString()} onChange={(event) => { setPreset('custom'); setFrom(event.target.value); setDetail(null); }} type="date" value={from} /></label>
-        <label>ถึง<input max={toBangkokDateString()} onChange={(event) => { setPreset('custom'); setTo(event.target.value); setDetail(null); }} type="date" value={to} /></label></div></div>
-      {rangeError ? <p className="executive-error" role="alert">{rangeError}</p> : null}
-      {shownReport ? <p className="executive-asof">ข้อมูล ณ {new Date(shownReport.asOf).toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' })} · {formatReportDate(from)} – {formatReportDate(to)}{to === toBangkokDateString() ? ' · วันนี้ยังไม่สิ้นสุด' : ''}</p> : null}
+    <section className="executive-filters" aria-label={translateUi('เลือกช่วงเวลารายงาน')}>
+      <div className="executive-filter-controls"><div aria-label={translateUi('ช่วงวันที่ลัด')} className="executive-presets">{(Object.keys(presetNames) as Array<Exclude<Preset, 'custom'>>).map((key) =>
+        <button aria-pressed={preset === key} key={key} onClick={() => choosePreset(key)} type="button">{translateUi(presetNames[key])}</button>)}</div>
+      <div className="executive-dates"><label>{translateUi('จาก')}<input max={toBangkokDateString()} onChange={(event) => { setPreset('custom'); setFrom(event.target.value); setDetail(null); }} type="date" value={from} /></label>
+        <label>{translateUi('ถึง')}<input max={toBangkokDateString()} onChange={(event) => { setPreset('custom'); setTo(event.target.value); setDetail(null); }} type="date" value={to} /></label></div></div>
+      {rangeError ? <p className="executive-error" role="alert">{translateUi(rangeError)}</p> : null}
+      {shownReport ? <p className="executive-asof">{translateUi('ข้อมูล ณ ')}{uiDateTimeString(new Date(shownReport.asOf), { timeZone: 'Asia/Bangkok' })} · {formatReportDate(from)} – {formatReportDate(to)}{to === toBangkokDateString() ? ` · ${translateUi('วันนี้ยังไม่สิ้นสุด')}` : ''}</p> : null}
     </section>
 
-    {error ? <div className="executive-error" role="alert">โหลดรายงานไม่สำเร็จ: {error} <button onClick={refresh} type="button">ลองใหม่</button></div> : null}
-    {loading && !shownReport ? <p className="executive-status" role="status">กำลังโหลดรายงาน…</p> : null}
+    {error ? <div className="executive-error" role="alert">{translateUi('โหลดรายงานไม่สำเร็จ: ')}{translateUi(error)} <button onClick={refresh} type="button">{translateUi('ลองใหม่')}</button></div> : null}
+    {loading && !shownReport ? <p className="executive-status" role="status">{translateUi('กำลังโหลดรายงาน…')}</p> : null}
     {shownReport ? <>
-      <section className="executive-metrics" aria-label="ตัวเลขสำคัญ">
-        <MetricCard title="ยอดขายสุทธิช่วงนี้" value={shownReport.sales} previous={shownReport.previousSales} onClick={(trigger) => openDetail({ metric: 'sales' }, undefined, trigger)} />
-        <MetricCard title="เงินรับสุทธิช่วงนี้" value={shownReport.netReceipts} previous={shownReport.previousNetReceipts} onClick={(trigger) => openDetail({ metric: 'receipts' }, undefined, trigger)} />
-        <MetricCard title="หนี้ค้างปัจจุบัน" value={shownReport.outstanding} note={`${number(shownReport.debtors)} ร้าน · ณ ${formatReportDate(toBangkokDateString())}`} tone="amber" onClick={(trigger) => openDetail({ metric: 'debt' }, undefined, trigger)} />
-        <MetricCard title="เกินกำหนดปัจจุบัน" value={shownReport.overdue} note="บิลที่ต้องติดตาม" tone="red" onClick={(trigger) => openDetail({ metric: 'overdue' }, undefined, trigger)} />
+      <section className="executive-metrics" aria-label={translateUi('ตัวเลขสำคัญ')}>
+        <MetricCard title={translateUi('ยอดขายสุทธิช่วงนี้')} value={shownReport.sales} previous={shownReport.previousSales} onClick={(trigger) => openDetail({ metric: 'sales' }, undefined, trigger)} />
+        <MetricCard title={translateUi('เงินรับสุทธิช่วงนี้')} value={shownReport.netReceipts} previous={shownReport.previousNetReceipts} onClick={(trigger) => openDetail({ metric: 'receipts' }, undefined, trigger)} />
+        <MetricCard title={translateUi('หนี้ค้างปัจจุบัน')} value={shownReport.outstanding} note={`${number(shownReport.debtors)} ${translateUi('ร้าน')} · ${translateUi('ณ')} ${formatReportDate(toBangkokDateString())}`} tone="amber" onClick={(trigger) => openDetail({ metric: 'debt' }, undefined, trigger)} />
+        <MetricCard title={translateUi('เกินกำหนดปัจจุบัน')} value={shownReport.overdue} note="บิลที่ต้องติดตาม" tone="red" onClick={(trigger) => openDetail({ metric: 'overdue' }, undefined, trigger)} />
       </section>
-      <p className="executive-period-note">ยอดขายและเงินรับอิงช่วงวันที่เลือก · หนี้ค้างและเกินกำหนดเป็นยอดปัจจุบัน</p>
+      <p className="executive-period-note">{translateUi('ยอดขายและเงินรับอิงช่วงวันที่เลือก · หนี้ค้างและเกินกำหนดเป็นยอดปัจจุบัน')}</p>
 
       <ReportTabs active={section} onChange={setSection} />
       <ReportSections section={section} report={shownReport} trendMetric={trendMetric}
@@ -288,7 +291,7 @@ export function ExecutiveReportsPage({ isActive, demoReport, demoRows }: {
         toggleTrendTable={() => setShowTrendTable((value) => !value)} openDetail={openDetail} />
     </> : null}
 
-    {detail ? <div className="executive-detail-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeDetail(); }}><section aria-label={invoiceId ? 'รายละเอียดบิล' : `รายละเอียด${metricNames[detail.metric]}`} aria-modal="true" className="executive-detail" onKeyDown={(event) => {
+    {detail ? <div className="executive-detail-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeDetail(); }}><section aria-label={invoiceId ? translateUi('รายละเอียดบิล') : translateUi('รายละเอียด{0}', { 0: translateUi(metricNames[detail.metric]) })} aria-modal="true" className="executive-detail" onKeyDown={(event) => {
       if (event.key === 'Escape') { backDetail(); return; }
       if (event.key !== 'Tab') return;
       const focusable = [...(dialogRef.current?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)') ?? [])];
@@ -296,28 +299,28 @@ export function ExecutiveReportsPage({ isActive, demoReport, demoRows }: {
       if (event.shiftKey && (document.activeElement === focusable[0] || document.activeElement === dialogRef.current)) { event.preventDefault(); focusable[focusable.length - 1].focus(); }
       else if (!event.shiftKey && document.activeElement === focusable[focusable.length - 1]) { event.preventDefault(); focusable[0].focus(); }
     }} ref={dialogRef} role="dialog" tabIndex={-1}>
-      <header><button aria-label={invoiceId || detail.shopId ? 'กลับไปยังรายการ' : 'ย้อนกลับไปยังรายงาน'} onClick={backDetail} type="button"><CaretLeft size={21} /></button><div><h2>{invoiceId ? (invoice?.number ?? 'รายละเอียดบิล') : debtorName ?? detailLabel ?? metricNames[detail.metric]}</h2><p>{invoiceId ? invoice?.shop : detail.metric === 'debt' || detail.metric === 'overdue' ? 'ยอดปัจจุบัน' : `${formatReportDate(from)} – ${formatReportDate(to)}`}{!invoiceId && detail.metric === 'receipts' ? ' · ก่อนหักเงินคืน' : ''}</p></div><button aria-label="ปิดรายละเอียด" onClick={closeDetail} type="button"><X size={21} /></button></header>
+      <header><button aria-label={invoiceId || detail.shopId ? translateUi('กลับไปยังรายการ') : translateUi('ย้อนกลับไปยังรายงาน')} onClick={backDetail} type="button"><CaretLeft size={21} /></button><div><h2>{invoiceId ? (invoice?.number ?? translateUi('รายละเอียดบิล')) : debtorName ?? detailLabel ?? translateUi(metricNames[detail.metric])}</h2><p>{invoiceId ? invoice?.shop : detail.metric === 'debt' || detail.metric === 'overdue' ? translateUi('ยอดปัจจุบัน') : `${formatReportDate(from)} – ${formatReportDate(to)}`}{!invoiceId && detail.metric === 'receipts' ? translateUi(' · ก่อนหักเงินคืน') : ''}</p></div><button aria-label={translateUi('ปิดรายละเอียด')} onClick={closeDetail} type="button"><X size={21} /></button></header>
       {invoiceId ? <>
-        {invoiceError ? <p className="executive-error" role="alert">{invoiceError}</p> : null}
-        {!invoice && !invoiceError ? <p className="executive-status">กำลังโหลดบิล…</p> : null}
+        {invoiceError ? <p className="executive-error" role="alert">{translateUi(invoiceError)}</p> : null}
+        {!invoice && !invoiceError ? <p className="executive-status">{translateUi('กำลังโหลดบิล…')}</p> : null}
         {invoice ? <div className="executive-invoice">
-          <p>วันที่ขาย {formatReportDate(invoice.serviceDate)} · {invoice.area}</p>
-          <p>ครบกำหนด {formatReportDate(invoice.dueDate)}</p>
-          <div><span>ยอดขายสุทธิ</span><strong>{baht(invoice.total)}</strong></div>
-          <div><span>รับชำระแล้ว</span><strong>{baht(invoice.paid)}</strong></div>
-          <div><span>คงค้าง</span><strong>{baht(Math.max(0, invoice.total - invoice.paid))}</strong></div>
-          <h3>รายการสินค้า</h3>{invoice.items.map((item, index) => <div key={`${item.name}-${index}`}><span>{item.name}</span><strong>{number(item.quantity)} {item.unit}</strong></div>)}
-          <h3>ประวัติรับชำระ</h3>{invoice.payments.length ? invoice.payments.map((payment, index) => <div key={`${payment.date}-${index}`}><span>{new Date(payment.date).toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' })} · {payment.method === 'cash' ? 'เงินสด' : 'โอน/QR'}</span><strong>{baht(payment.amount)}</strong></div>) : <p>ยังไม่มีรายการรับชำระ</p>}
+          <p>{translateUi('วันที่ขาย ')}{formatReportDate(invoice.serviceDate)} · {invoice.area}</p>
+          <p>{translateUi('ครบกำหนด ')}{formatReportDate(invoice.dueDate)}</p>
+          <div><span>{translateUi('ยอดขายสุทธิ')}</span><strong>{baht(invoice.total)}</strong></div>
+          <div><span>{translateUi('รับชำระแล้ว')}</span><strong>{baht(invoice.paid)}</strong></div>
+          <div><span>{translateUi('คงค้าง')}</span><strong>{baht(Math.max(0, invoice.total - invoice.paid))}</strong></div>
+          <h3>{translateUi('รายการสินค้า')}</h3>{invoice.items.map((item, index) => <div key={`${item.name}-${index}`}><span>{item.name}</span><strong>{number(item.quantity)} {item.unit}</strong></div>)}
+          <h3>{translateUi('ประวัติรับชำระ')}</h3>{invoice.payments.length ? invoice.payments.map((payment, index) => <div key={`${payment.date}-${index}`}><span>{uiDateTimeString(new Date(payment.date), { timeZone: 'Asia/Bangkok' })} · {translateUi(payment.method === 'cash' ? 'เงินสด' : 'โอน/QR')}</span><strong>{baht(payment.amount)}</strong></div>) : <p>{translateUi('ยังไม่มีรายการรับชำระ')}</p>}
         </div> : null}
       </> : <>
       {detail.metric === 'receipts' && shownReport ? <div className="executive-receipt-breakdown">
-        <span>รับจริง {baht(receiptGross)}</span>
-        <button onClick={() => openDetail({ metric: 'refunds', bucket: detail.bucket })} type="button">คืนเงิน {baht(receiptRefunds)} · ดูรายการ</button>
-        <strong>รับสุทธิ {baht(receiptGross - receiptRefunds)}</strong>
+        <span>{translateUi('รับจริง ')}{baht(receiptGross)}</span>
+        <button onClick={() => openDetail({ metric: 'refunds', bucket: detail.bucket })} type="button">{translateUi('คืนเงิน ')}{baht(receiptRefunds)}{translateUi(' · ดูรายการ')}</button>
+        <strong>{translateUi('รับสุทธิ ')}{baht(receiptGross - receiptRefunds)}</strong>
       </div> : null}
-      {detailError ? <p className="executive-error" role="alert">{detailError} <button onClick={refresh} type="button">ลองใหม่</button></p> : null}
-      {!detailData && !detailError ? <p className="executive-status">กำลังโหลดรายการ…</p> : null}
-      {detailData ? <><p className="executive-detail__count">ทั้งหมด {number(detailData.total)} รายการ</p>
+      {detailError ? <p className="executive-error" role="alert">{translateUi(detailError)} <button onClick={refresh} type="button">{translateUi('ลองใหม่')}</button></p> : null}
+      {!detailData && !detailError ? <p className="executive-status">{translateUi('กำลังโหลดรายการ…')}</p> : null}
+      {detailData ? <><p className="executive-detail__count">{translateUi('ทั้งหมด ')}{number(detailData.total)}{translateUi(' รายการ')}</p>
         {detailData.rows.length ? <div className="executive-detail__rows">{detailData.rows.map((row) => (detail.metric === 'sales' || detail.metric === 'debt' || detail.metric === 'overdue') && row.shopId
           ? <button className="executive-detail__row-button" key={`${row.id}-${row.day}`} onClick={() => {
             if ((detail.metric === 'debt' || detail.metric === 'overdue') && !detail.shopId) {
@@ -325,9 +328,9 @@ export function ExecutiveReportsPage({ isActive, demoReport, demoRows }: {
               setDebtorName(row.label);
               openDetail({ ...detail, shopId: row.shopId ?? undefined });
             } else setInvoiceId(row.id);
-          }} type="button"><span><strong>{row.label}</strong><small>{detail.shopId || detail.metric === 'sales' ? formatReportDate(row.day) : 'ดูบิลค้าง'}{row.area ? ` · ${row.area}` : ''}{row.dueDate ? ` · ครบกำหนด ${formatReportDate(row.dueDate)}` : ''}</small></span><b>{baht(row.amount)}</b></button>
-          : <article key={`${row.id}-${row.day}`}><div><strong>{row.label}</strong><small>{formatReportDate(row.day)}{row.area ? ` · ${row.area}` : ''}{paymentMethod(row.method) ? ` · ${paymentMethod(row.method)}` : ''}</small></div><b>{baht(row.amount)}</b></article>)}</div> : <p className="executive-empty">ไม่มีรายการ</p>}
-        <footer><button disabled={detailPage === 0} onClick={() => setDetailPage((page) => page - 1)} type="button">ก่อนหน้า</button><span>หน้า {detailPage + 1} / {Math.max(1, Math.ceil(detailData.total / 50))}</span><button disabled={(detailPage + 1) * 50 >= detailData.total} onClick={() => setDetailPage((page) => page + 1)} type="button">ถัดไป</button></footer>
+          }} type="button"><span><strong>{row.label}</strong><small>{detail.shopId || detail.metric === 'sales' ? formatReportDate(row.day) : translateUi('ดูบิลค้าง')}{row.area ? ` · ${row.area}` : ''}{row.dueDate ? translateUi(' · ครบกำหนด {0}', { 0: formatReportDate(row.dueDate) }) : ''}</small></span><b>{baht(row.amount)}</b></button>
+          : <article key={`${row.id}-${row.day}`}><div><strong>{row.label}</strong><small>{formatReportDate(row.day)}{row.area ? ` · ${row.area}` : ''}{paymentMethod(row.method) ? ` · ${paymentMethod(row.method)}` : ''}</small></div><b>{baht(row.amount)}</b></article>)}</div> : <p className="executive-empty">{translateUi('ไม่มีรายการ')}</p>}
+        <footer><button disabled={detailPage === 0} onClick={() => setDetailPage((page) => page - 1)} type="button">{translateUi('ก่อนหน้า')}</button><span>{translateUi('หน้า ')}{detailPage + 1} / {Math.max(1, Math.ceil(detailData.total / 50))}</span><button disabled={(detailPage + 1) * 50 >= detailData.total} onClick={() => setDetailPage((page) => page + 1)} type="button">{translateUi('ถัดไป')}</button></footer>
       </> : null}
       </>}
     </section></div> : null}

@@ -1,3 +1,4 @@
+import { uiDateTimeFormat, translateUi, useLanguage } from './i18n';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { FormEvent, ReactNode } from 'react';
 import {
@@ -35,7 +36,7 @@ const STAGE_LABELS: Record<EventStage, string> = {
   active: 'กำลังจัดงาน', preparing: 'เตรียมงาน', upcoming: 'กำลังจะมา', ended: 'จบแล้ว',
 };
 function formatDate(value: string) {
-  return new Intl.DateTimeFormat('th-TH', { day: 'numeric', month: 'short', year: 'numeric' })
+  return uiDateTimeFormat({ day: 'numeric', month: 'short', year: 'numeric' })
     .format(new Date(`${value}T12:00:00+07:00`));
 }
 function eventStage(event: EmployeeEventSummary, today: string): EventStage {
@@ -63,6 +64,7 @@ export function EmployeeEventPage({ gateway = employeeEventGateway, isActive = t
   gateway?: EmployeeEventGateway;
   isActive?: boolean;
 }) {
+  useLanguage();
   const today = useBangkokServiceDate();
   const [events, setEvents] = useState<EmployeeEventSummary[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -79,7 +81,7 @@ export function EmployeeEventPage({ gateway = employeeEventGateway, isActive = t
   const [handoffDraft, setHandoffDraft] = useState<HandoffDraft | null>(null);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<{ message: string; booth?: EmployeeEventBooth } | null>(null);
+  const [success, setSuccess] = useState<{ message: string; values?: Record<string, string | number>; booth?: EmployeeEventBooth } | null>(null);
   const [highlightedBooth, setHighlightedBooth] = useState<string | null>(null);
   const pageRef = useRef<HTMLElement>(null);
   const selection = useRef<string | null>(null);
@@ -234,7 +236,7 @@ export function EmployeeEventPage({ gateway = employeeEventGateway, isActive = t
         boothNumber: boothDraft.boothNumber.trim(), shopName: boothDraft.shopName.trim(), eventZone: boothDraft.eventZone.trim(),
         contactName: boothDraft.contactName.trim(), contactPhone: boothDraft.contactPhone.trim(),
       });
-      setSuccess({ message: result.duplicate ? `บูธ ${result.booth.booth_number} มีอยู่แล้ว แสดงบูธเดิมให้แล้ว` : `เพิ่มบูธ ${result.booth.booth_number} แล้ว`, booth: result.booth });
+      setSuccess({ message: result.duplicate ? 'บูธ {booth} มีอยู่แล้ว แสดงบูธเดิมให้แล้ว' : 'เพิ่มบูธ {booth} แล้ว', values: { booth: result.booth.booth_number }, booth: result.booth });
       setHighlightedBooth(result.booth.id);
       setBoothQuery(result.booth.booth_number);
       setZone(result.booth.event_zone ?? '');
@@ -261,7 +263,7 @@ export function EmployeeEventPage({ gateway = employeeEventGateway, isActive = t
     setActionError(null);
     try {
       await gateway.handoffTanks({ participationId: handoffDraft.booth.id, quantity, note: handoffDraft.note.trim(), requestId: handoffDraft.requestId });
-      setSuccess({ message: `ส่งถัง ${quantity.toLocaleString('th-TH')} ใบให้บูธ ${handoffDraft.booth.booth_number} แล้ว` });
+      setSuccess({ message: 'ส่งถัง {quantity} ใบให้บูธ {booth} แล้ว', values: { quantity: quantity.toLocaleString('th-TH'), booth: handoffDraft.booth.booth_number } });
       setHighlightedBooth(handoffDraft.booth.id);
       setDetail((current) => current ? { ...current, booths: current.booths.map((booth) => booth.id === handoffDraft.booth.id
         ? { ...booth, tank_handoff_count: booth.tank_handoff_count + quantity, tank_balance: booth.tank_balance + quantity } : booth) } : current);
@@ -275,58 +277,61 @@ export function EmployeeEventPage({ gateway = employeeEventGateway, isActive = t
   const ended = Boolean(detail && today > detail.event.end_date);
   const handoffQuantity = Number(handoffDraft?.quantity) || 0;
   return (
-    <section className="employee-event-page" ref={pageRef} aria-label="อีเวนต์พนักงาน">
+    <section className="employee-event-page" ref={pageRef} aria-label={translateUi('อีเวนต์พนักงาน')}>
       {!selectedId ? <>
-        <header className="employee-event-heading"><div><p className="eyebrow">งานของพนักงาน</p><h1>อีเวนต์</h1><p className="employee-event-subtitle">เลือกงาน แล้วค้นหาบูธเพื่อส่งถัง</p></div><button aria-label="โหลดงานใหม่" className="employee-event-icon-button" disabled={loading} onClick={() => void loadOverview()} type="button"><ArrowClockwise size={22} /></button></header>
-        <nav aria-label="ช่วงเวลาของงาน" className="employee-event-tabs">{FILTERS.map((item) => <button aria-pressed={filter === item.value} key={item.value} onClick={() => setFilter(item.value)} type="button">{item.label}<span>{counts[item.value]}</span></button>)}</nav>
-        <SearchField label="ค้นหางาน" placeholder="ค้นหาชื่องานหรือสถานที่" value={eventQuery} onChange={setEventQuery} />
-        {overviewError ? <Notice error action={<button disabled={loading} onClick={() => void loadOverview()} type="button">ลองอีกครั้ง</button>}>{overviewError}</Notice> : null}
-        {loading && events.length === 0 ? <LoadingState text="กำลังโหลดงานอีเวนต์" /> : !overviewError && filteredEvents.length === 0 ? <div className="employee-event-empty"><CalendarBlank size={36} /><h2>{eventQuery.trim() ? 'ไม่พบงานที่ค้นหา' : filter === 'today' ? 'วันนี้ยังไม่มีงานอีเวนต์' : filter === 'upcoming' ? 'ยังไม่มีงานที่กำลังจะมา' : 'ยังไม่มีงานที่จบแล้ว'}</h2><p>{eventQuery.trim() ? 'ลองเปลี่ยนคำค้นหรือดูงานในช่วงเวลาอื่น' : 'เลือกช่วงเวลาด้านบนเพื่อดูงานอื่น'}</p>{eventQuery ? <button className="secondary-button" onClick={() => setEventQuery('')} type="button">ล้างคำค้น</button> : filter === 'today' ? <div><button className="secondary-button" onClick={() => setFilter('upcoming')} type="button">ดูงานที่กำลังจะมา</button><button className="employee-event-text-button" onClick={() => setFilter('ended')} type="button">ดูงานที่จบแล้ว</button></div> : null}</div> : null}
-        <div className="employee-event-list" aria-label="เลือกงานอีเวนต์">{filteredEvents.map((event) => <button className="employee-event-card" key={event.id} onClick={() => chooseEvent(event.id)} type="button"><div className="employee-event-card__top"><span className={`employee-event-status employee-event-status--${eventStage(event, today)}`}>{STAGE_LABELS[eventStage(event, today)]}</span><span>{event.active_participation_count} บูธ</span></div><strong>{event.name}</strong><span><CalendarBlank size={17} />{formatDate(event.start_date)} – {formatDate(event.end_date)}</span><span><MapPin size={17} />{event.location || 'ไม่ระบุสถานที่'}</span><span className="employee-event-card__action">ดูบูธในงาน<CaretRight size={19} /></span></button>)}</div>
+        <header className="employee-event-heading"><div><p className="eyebrow">{translateUi('งานของพนักงาน')}</p><h1>{translateUi('อีเวนต์')}</h1><p className="employee-event-subtitle">{translateUi('เลือกงาน แล้วค้นหาบูธเพื่อส่งถัง')}</p></div><button aria-label={translateUi('โหลดงานใหม่')} className="employee-event-icon-button" disabled={loading} onClick={() => void loadOverview()} type="button"><ArrowClockwise size={22} /></button></header>
+        <nav aria-label={translateUi('ช่วงเวลาของงาน')} className="employee-event-tabs">{FILTERS.map((item) => <button aria-pressed={filter === item.value} key={item.value} onClick={() => setFilter(item.value)} type="button">{translateUi(item.label)}<span>{counts[item.value]}</span></button>)}</nav>
+        <SearchField label={translateUi('ค้นหางาน')} placeholder={translateUi('ค้นหาชื่องานหรือสถานที่')} value={eventQuery} onChange={setEventQuery} />
+        {overviewError ? <Notice error action={<button disabled={loading} onClick={() => void loadOverview()} type="button">{translateUi('ลองอีกครั้ง')}</button>}>{translateUi(overviewError)}</Notice> : null}
+        {loading && events.length === 0 ? <LoadingState text={translateUi('กำลังโหลดงานอีเวนต์')} /> : !overviewError && filteredEvents.length === 0 ? <div className="employee-event-empty"><CalendarBlank size={36} /><h2>{eventQuery.trim() ? translateUi('ไม่พบงานที่ค้นหา') : filter === 'today' ? translateUi('วันนี้ยังไม่มีงานอีเวนต์') : filter === 'upcoming' ? translateUi('ยังไม่มีงานที่กำลังจะมา') : translateUi('ยังไม่มีงานที่จบแล้ว')}</h2><p>{eventQuery.trim() ? translateUi('ลองเปลี่ยนคำค้นหรือดูงานในช่วงเวลาอื่น') : translateUi('เลือกช่วงเวลาด้านบนเพื่อดูงานอื่น')}</p>{eventQuery ? <button className="secondary-button" onClick={() => setEventQuery('')} type="button">{translateUi('ล้างคำค้น')}</button> : filter === 'today' ? <div><button className="secondary-button" onClick={() => setFilter('upcoming')} type="button">{translateUi('ดูงานที่กำลังจะมา')}</button><button className="employee-event-text-button" onClick={() => setFilter('ended')} type="button">{translateUi('ดูงานที่จบแล้ว')}</button></div> : null}</div> : null}
+        <div className="employee-event-list" aria-label={translateUi('เลือกงานอีเวนต์')}>{filteredEvents.map((event) => <button className="employee-event-card" key={event.id} onClick={() => chooseEvent(event.id)} type="button"><div className="employee-event-card__top"><span className={`employee-event-status employee-event-status--${eventStage(event, today)}`}>{translateUi(STAGE_LABELS[eventStage(event, today)])}</span><span>{event.active_participation_count}{translateUi(' บูธ')}</span></div><strong>{event.name}</strong><span><CalendarBlank size={17} />{formatDate(event.start_date)} – {formatDate(event.end_date)}</span><span><MapPin size={17} />{event.location || translateUi('ไม่ระบุสถานที่')}</span><span className="employee-event-card__action">{translateUi('ดูบูธในงาน')}<CaretRight size={19} /></span></button>)}</div>
       </> : <>
-        <button className="employee-event-back" disabled={busy} onClick={goBack} type="button"><ArrowLeft size={19} />กลับไปเลือกงาน</button>
-        {!detail && detailLoading ? <LoadingState text="กำลังโหลดรายละเอียดงาน" /> : null}
-        {detailError ? <Notice error action={<button disabled={detailLoading || busy} onClick={() => void loadDetail(selectedId)} type="button">โหลดข้อมูลใหม่</button>}>{detailError}</Notice> : null}
+        <button className="employee-event-back" disabled={busy} onClick={goBack} type="button"><ArrowLeft size={19} />{translateUi('กลับไปเลือกงาน')}</button>
+        {!detail && detailLoading ? <LoadingState text={translateUi('กำลังโหลดรายละเอียดงาน')} /> : null}
+        {detailError ? <Notice error action={<button disabled={detailLoading || busy} onClick={() => void loadDetail(selectedId)} type="button">{translateUi('โหลดข้อมูลใหม่')}</button>}>{translateUi(detailError)}</Notice> : null}
         {detail ? <>
-          <header className="employee-event-heading employee-event-heading--detail"><div><span className={`employee-event-status employee-event-status--${eventStage(detail.event, today)}`}>{STAGE_LABELS[eventStage(detail.event, today)]}</span><h1>{detail.event.name}</h1><p className="employee-event-subtitle">{formatDate(detail.event.start_date)} – {formatDate(detail.event.end_date)}</p><p className="employee-event-location"><MapPin size={16} />{detail.event.location || 'ไม่ระบุสถานที่'}</p></div>{!ended ? <button className="secondary-button" disabled={busy || detailLoading} onClick={startBooth} type="button"><Plus size={18} />เพิ่มบูธ</button> : null}</header>
-          {ended ? <Notice>งานจบแล้ว ดูข้อมูลได้ · สิ้นสุด {formatDate(detail.event.end_date)}</Notice> : null}
+          <header className="employee-event-heading employee-event-heading--detail"><div><span className={`employee-event-status employee-event-status--${eventStage(detail.event, today)}`}>{translateUi(STAGE_LABELS[eventStage(detail.event, today)])}</span><h1>{detail.event.name}</h1><p className="employee-event-subtitle">{formatDate(detail.event.start_date)} – {formatDate(detail.event.end_date)}</p><p className="employee-event-location"><MapPin size={16} />{detail.event.location || translateUi('ไม่ระบุสถานที่')}</p></div>{!ended ? <button className="secondary-button" disabled={busy || detailLoading} onClick={startBooth} type="button"><Plus size={18} />{translateUi('เพิ่มบูธ')}</button> : null}</header>
+          {ended ? <Notice>{translateUi('งานจบแล้ว ดูข้อมูลได้ · สิ้นสุด ')}{formatDate(detail.event.end_date)}</Notice> : null}
           <div className="employee-event-booth-tools">
-            <SearchField label="ค้นหาบูธ" placeholder="ค้นหาเลขบูธหรือชื่อร้าน" value={boothQuery} onChange={setBoothQuery} />
-            <div className="employee-event-filter-row"><label><span className="sr-only">กรองโซน</span><select aria-label="กรองโซน" onChange={(event) => setZone(event.target.value)} value={zone}><option value="">ทุกโซน</option>{zones.map((value) => <option key={value} value={value}>{value}</option>)}</select></label><span>{filteredBooths.length} / {detail.booths.length} บูธ</span>{boothQuery || zone ? <button className="employee-event-text-button" onClick={resetFilters} type="button">ล้างตัวกรอง</button> : null}</div>
+            <SearchField label={translateUi('ค้นหาบูธ')} placeholder={translateUi('ค้นหาเลขบูธหรือชื่อร้าน')} value={boothQuery} onChange={setBoothQuery} />
+            <div className="employee-event-filter-row"><label><span className="sr-only">{translateUi('กรองโซน')}</span><select aria-label={translateUi('กรองโซน')} onChange={(event) => setZone(event.target.value)} value={zone}><option value="">{translateUi('ทุกโซน')}</option>{zones.map((value) => <option key={value} value={value}>{value}</option>)}</select></label><span>{filteredBooths.length} / {detail.booths.length}{translateUi(' บูธ')}</span>{boothQuery || zone ? <button className="employee-event-text-button" onClick={resetFilters} type="button">{translateUi('ล้างตัวกรอง')}</button> : null}</div>
           </div>
-          {success ? <Notice success floating={!success.booth} action={<button aria-label="ปิดข้อความสำเร็จ" className="employee-event-icon-button" onClick={() => setSuccess(null)} type="button"><X size={18} /></button>}><span>{success.message}</span>{success.booth && !handoffIssue(detail.event, success.booth, today) ? <button className="employee-event-text-button" disabled={busy || detailLoading} onClick={() => openHandoff(success.booth!)} type="button">ส่งถังให้บูธนี้</button> : null}</Notice> : null}
-          <div className="employee-event-booths" aria-label="บูธในงาน">{filteredBooths.map((booth) => {
+          {success ? <Notice success floating={!success.booth} action={<button aria-label={translateUi('ปิดข้อความสำเร็จ')} className="employee-event-icon-button" onClick={() => setSuccess(null)} type="button"><X size={18} /></button>}><span>{translateUi(success.message, success.values)}</span>{success.booth && !handoffIssue(detail.event, success.booth, today) ? <button className="employee-event-text-button" disabled={busy || detailLoading} onClick={() => openHandoff(success.booth!)} type="button">{translateUi('ส่งถังให้บูธนี้')}</button> : null}</Notice> : null}
+          <div className="employee-event-booths" aria-label={translateUi('บูธในงาน')}>{filteredBooths.map((booth) => {
             const issue = handoffIssue(detail.event, booth, today);
-            return <article aria-label={`บูธ ${booth.booth_number} ${booth.shop_name}`} className={highlightedBooth === booth.id ? 'is-highlighted' : undefined} key={booth.id}><span className="employee-event-booth-number"><small>บูธ</small>{booth.booth_number}</span><div className="employee-event-booth-info"><strong>{booth.shop_name}</strong><span>{booth.event_zone || 'ไม่ระบุโซน'}</span><p>ถังอยู่ที่ร้าน <b>{booth.tank_balance.toLocaleString('th-TH')} ใบ</b></p><small>ส่ง {booth.tank_handoff_count.toLocaleString('th-TH')} ใบ · รับคืน {booth.tank_return_count.toLocaleString('th-TH')} ใบ</small></div>{issue ? <span className="employee-event-unavailable">{issue}</span> : <button aria-label={`ส่งถัง บูธ ${booth.booth_number}`} className="primary-button employee-event-handoff" disabled={busy || detailLoading} onClick={() => openHandoff(booth)} type="button">ส่งถัง<CaretRight size={18} /></button>}</article>;
+            return <article aria-label={translateUi('บูธ {0} {1}', { 0: booth.booth_number, 1: booth.shop_name })} className={highlightedBooth === booth.id ? 'is-highlighted' : undefined} key={booth.id}><span className="employee-event-booth-number"><small>{translateUi('บูธ')}</small>{booth.booth_number}</span><div className="employee-event-booth-info"><strong>{booth.shop_name}</strong><span>{booth.event_zone || translateUi('ไม่ระบุโซน')}</span><p>{translateUi('ถังอยู่ที่ร้าน ')}<b>{booth.tank_balance.toLocaleString('th-TH')}{translateUi(' ใบ')}</b></p><small>{translateUi('ส่ง ')}{booth.tank_handoff_count.toLocaleString('th-TH')}{translateUi(' ใบ · รับคืน ')}{booth.tank_return_count.toLocaleString('th-TH')}{translateUi(' ใบ')}</small></div>{issue ? <span className="employee-event-unavailable">{translateUi(issue)}</span> : <button aria-label={translateUi('ส่งถัง บูธ {0}', { 0: booth.booth_number })} className="primary-button employee-event-handoff" disabled={busy || detailLoading} onClick={() => openHandoff(booth)} type="button">{translateUi('ส่งถัง')}<CaretRight size={18} /></button>}</article>;
           })}</div>
-          {filteredBooths.length === 0 ? <div className="employee-event-empty"><Storefront size={34} /><h2>{detail.booths.length === 0 ? 'งานนี้ยังไม่มีบูธ' : 'ไม่พบบูธที่ค้นหา'}</h2><p>{detail.booths.length === 0 ? 'เมื่อมีบูธแล้ว จะแสดงรายชื่อและยอดถังที่นี่' : 'ลองเปลี่ยนเลขบูธ ชื่อร้าน หรือโซน'}</p>{detail.booths.length === 0 && !ended ? <button className="secondary-button" disabled={busy || detailLoading} onClick={startBooth} type="button"><Plus size={18} />เพิ่มบูธแรก</button> : boothQuery || zone ? <button className="secondary-button" onClick={resetFilters} type="button">ล้างตัวกรอง</button> : null}</div> : null}
+          {filteredBooths.length === 0 ? <div className="employee-event-empty"><Storefront size={34} /><h2>{detail.booths.length === 0 ? translateUi('งานนี้ยังไม่มีบูธ') : translateUi('ไม่พบบูธที่ค้นหา')}</h2><p>{detail.booths.length === 0 ? translateUi('เมื่อมีบูธแล้ว จะแสดงรายชื่อและยอดถังที่นี่') : translateUi('ลองเปลี่ยนเลขบูธ ชื่อร้าน หรือโซน')}</p>{detail.booths.length === 0 && !ended ? <button className="secondary-button" disabled={busy || detailLoading} onClick={startBooth} type="button"><Plus size={18} />{translateUi('เพิ่มบูธแรก')}</button> : boothQuery || zone ? <button className="secondary-button" onClick={resetFilters} type="button">{translateUi('ล้างตัวกรอง')}</button> : null}</div> : null}
         </> : null}
       </>}
 
-      {boothDraft && detail && isActive ? <EmployeeEventDialog title="เพิ่มบูธ" context={detail.event.name} busy={busy} onClose={closeForm} onSubmit={(event) => void saveBooth(event)} submitLabel="บันทึกบูธ">
-        <label><span>เลขบูธ *</span><input data-initial-focus required disabled={busy} value={boothDraft.boothNumber} onChange={(event) => setBoothDraft({ ...boothDraft, boothNumber: event.target.value })} placeholder="เช่น A01" /></label>
-        <label><span>ชื่อร้าน</span><input disabled={busy} value={boothDraft.shopName} onChange={(event) => setBoothDraft({ ...boothDraft, shopName: event.target.value })} placeholder={`เว้นว่างเพื่อใช้ “บูธ ${boothDraft.boothNumber || '…'}”`} /></label>
-        <label><span>โซน</span><input disabled={busy} list="employee-event-zones" value={boothDraft.eventZone} onChange={(event) => setBoothDraft({ ...boothDraft, eventZone: event.target.value })} placeholder="เลือกหรือพิมพ์ชื่อโซน" /><datalist id="employee-event-zones">{zones.map((value) => <option key={value} value={value} />)}</datalist></label>
-        <details className="employee-event-contact"><summary>รายละเอียดติดต่อ (ไม่บังคับ)</summary><label><span>ชื่อผู้ติดต่อ</span><input disabled={busy} value={boothDraft.contactName} onChange={(event) => setBoothDraft({ ...boothDraft, contactName: event.target.value })} /></label><label><span>เบอร์โทร</span><input disabled={busy} inputMode="tel" value={boothDraft.contactPhone} onChange={(event) => setBoothDraft({ ...boothDraft, contactPhone: event.target.value })} /></label></details>
-        {actionError ? <p className="employee-event-form-error" role="alert">{actionError}</p> : null}
+      {boothDraft && detail && isActive ? <EmployeeEventDialog title={translateUi('เพิ่มบูธ')} context={detail.event.name} busy={busy} onClose={closeForm} onSubmit={(event) => void saveBooth(event)} submitLabel={translateUi('บันทึกบูธ')}>
+        <label><span>{translateUi('เลขบูธ *')}</span><input data-initial-focus required disabled={busy} value={boothDraft.boothNumber} onChange={(event) => setBoothDraft({ ...boothDraft, boothNumber: event.target.value })} placeholder={translateUi('เช่น A01')} /></label>
+        <label><span>{translateUi('ชื่อร้าน')}</span><input disabled={busy} value={boothDraft.shopName} onChange={(event) => setBoothDraft({ ...boothDraft, shopName: event.target.value })} placeholder={translateUi('เว้นว่างเพื่อใช้ “บูธ {0}”', { 0: boothDraft.boothNumber || '…' })} /></label>
+        <label><span>{translateUi('โซน')}</span><input disabled={busy} list="employee-event-zones" value={boothDraft.eventZone} onChange={(event) => setBoothDraft({ ...boothDraft, eventZone: event.target.value })} placeholder={translateUi('เลือกหรือพิมพ์ชื่อโซน')} /><datalist id="employee-event-zones">{zones.map((value) => <option key={value} value={value} />)}</datalist></label>
+        <details className="employee-event-contact"><summary>{translateUi('รายละเอียดติดต่อ (ไม่บังคับ)')}</summary><label><span>{translateUi('ชื่อผู้ติดต่อ')}</span><input disabled={busy} value={boothDraft.contactName} onChange={(event) => setBoothDraft({ ...boothDraft, contactName: event.target.value })} /></label><label><span>{translateUi('เบอร์โทร')}</span><input disabled={busy} inputMode="tel" value={boothDraft.contactPhone} onChange={(event) => setBoothDraft({ ...boothDraft, contactPhone: event.target.value })} /></label></details>
+        {actionError ? <p className="employee-event-form-error" role="alert">{translateUi(actionError)}</p> : null}
       </EmployeeEventDialog> : null}
-      {handoffDraft && detail && isActive ? <EmployeeEventDialog title={`ส่งถัง · บูธ ${handoffDraft.booth.booth_number}`} context={`${detail.event.name} · ${handoffDraft.booth.shop_name}`} busy={busy} onClose={closeForm} onSubmit={(event) => void saveHandoff(event)} submitLabel="ยืนยันส่งถัง">
-        <div className="employee-tank-summary"><span>ถังอยู่ที่ร้าน<strong>{handoffDraft.booth.tank_balance} ใบ</strong></span><span>ราคาต่อถัง<strong>{handoffDraft.booth.tank_rental_unit_price.toLocaleString('th-TH')} บาท</strong></span></div>
-        <label><span>จำนวนถังที่ส่งเพิ่ม (ใบ) *</span><div className="employee-tank-stepper"><button aria-label="ลดจำนวนถัง" disabled={busy || handoffQuantity <= 1} onClick={() => setHandoffDraft({ ...handoffDraft, quantity: String(Math.max(1, handoffQuantity - 1)) })} type="button"><Minus size={22} /></button><input aria-label="จำนวนถัง" required disabled={busy} min="1" max="10000" step="1" inputMode="numeric" type="number" value={handoffDraft.quantity} onChange={(event) => setHandoffDraft({ ...handoffDraft, quantity: event.target.value })} /><button aria-label="เพิ่มจำนวนถัง" disabled={busy || handoffQuantity >= 10000} onClick={() => setHandoffDraft({ ...handoffDraft, quantity: String(Math.min(10000, handoffQuantity + 1)) })} type="button"><Plus size={22} /></button></div></label>
-        <div className="employee-tank-total" aria-live="polite"><span>ค่าเช่าครั้งนี้<strong>{(Math.max(0, handoffQuantity) * handoffDraft.booth.tank_rental_unit_price).toLocaleString('th-TH')} บาท</strong></span><span>ถังอยู่ที่ร้านหลังส่ง<strong>{(handoffDraft.booth.tank_balance + Math.max(0, handoffQuantity)).toLocaleString('th-TH')} ใบ</strong></span></div>
-        <details className="employee-event-contact"><summary>เพิ่มหมายเหตุ (ไม่บังคับ)</summary><label><span>หมายเหตุ</span><input disabled={busy} value={handoffDraft.note} onChange={(event) => setHandoffDraft({ ...handoffDraft, note: event.target.value })} /></label></details>
-        {actionError ? <p className="employee-event-form-error" role="alert">{actionError}</p> : null}
+      {handoffDraft && detail && isActive ? <EmployeeEventDialog title={translateUi('ส่งถัง · บูธ {0}', { 0: handoffDraft.booth.booth_number })} context={`${detail.event.name} · ${handoffDraft.booth.shop_name}`} busy={busy} onClose={closeForm} onSubmit={(event) => void saveHandoff(event)} submitLabel={translateUi('ยืนยันส่งถัง')}>
+        <div className="employee-tank-summary"><span>{translateUi('ถังอยู่ที่ร้าน')}<strong>{handoffDraft.booth.tank_balance}{translateUi(' ใบ')}</strong></span><span>{translateUi('ราคาต่อถัง')}<strong>{handoffDraft.booth.tank_rental_unit_price.toLocaleString('th-TH')}{translateUi(' บาท')}</strong></span></div>
+        <label><span>{translateUi('จำนวนถังที่ส่งเพิ่ม (ใบ) *')}</span><div className="employee-tank-stepper"><button aria-label={translateUi('ลดจำนวนถัง')} disabled={busy || handoffQuantity <= 1} onClick={() => setHandoffDraft({ ...handoffDraft, quantity: String(Math.max(1, handoffQuantity - 1)) })} type="button"><Minus size={22} /></button><input aria-label={translateUi('จำนวนถัง')} required disabled={busy} min="1" max="10000" step="1" inputMode="numeric" type="number" value={handoffDraft.quantity} onChange={(event) => setHandoffDraft({ ...handoffDraft, quantity: event.target.value })} /><button aria-label={translateUi('เพิ่มจำนวนถัง')} disabled={busy || handoffQuantity >= 10000} onClick={() => setHandoffDraft({ ...handoffDraft, quantity: String(Math.min(10000, handoffQuantity + 1)) })} type="button"><Plus size={22} /></button></div></label>
+        <div className="employee-tank-total" aria-live="polite"><span>{translateUi('ค่าเช่าครั้งนี้')}<strong>{(Math.max(0, handoffQuantity) * handoffDraft.booth.tank_rental_unit_price).toLocaleString('th-TH')}{translateUi(' บาท')}</strong></span><span>{translateUi('ถังอยู่ที่ร้านหลังส่ง')}<strong>{(handoffDraft.booth.tank_balance + Math.max(0, handoffQuantity)).toLocaleString('th-TH')}{translateUi(' ใบ')}</strong></span></div>
+        <details className="employee-event-contact"><summary>{translateUi('เพิ่มหมายเหตุ (ไม่บังคับ)')}</summary><label><span>{translateUi('หมายเหตุ')}</span><input disabled={busy} value={handoffDraft.note} onChange={(event) => setHandoffDraft({ ...handoffDraft, note: event.target.value })} /></label></details>
+        {actionError ? <p className="employee-event-form-error" role="alert">{translateUi(actionError)}</p> : null}
       </EmployeeEventDialog> : null}
     </section>
   );
 }
 
 function SearchField({ label, placeholder, value, onChange }: { label: string; placeholder: string; value: string; onChange: (value: string) => void }) {
-  return <div className="employee-event-search"><MagnifyingGlass aria-hidden="true" size={22} /><input aria-label={label} placeholder={placeholder} type="search" value={value} onChange={(event) => onChange(event.target.value)} />{value ? <button aria-label={`ล้าง${label}`} onClick={() => onChange('')} type="button"><X size={19} /></button> : null}</div>;
+  useLanguage();
+  return <div className="employee-event-search"><MagnifyingGlass aria-hidden="true" size={22} /><input aria-label={label} placeholder={placeholder} type="search" value={value} onChange={(event) => onChange(event.target.value)} />{value ? <button aria-label={translateUi('ล้าง{0}', { 0: label })} onClick={() => onChange('')} type="button"><X size={19} /></button> : null}</div>;
 }
 function Notice({ children, error, success, floating, action }: { children: ReactNode; error?: boolean; success?: boolean; floating?: boolean; action?: ReactNode }) {
+  useLanguage();
   return <div className={`employee-event-notice${error ? ' employee-event-notice--error' : success ? ' employee-event-notice--success' : ''}${floating ? ' employee-event-notice--toast' : ''}`} role={error ? 'alert' : success ? 'status' : undefined}>{error ? <WarningCircle size={21} /> : success ? <CheckCircle size={21} /> : <CalendarBlank size={21} />}<div>{children}</div>{action}</div>;
 }
 function LoadingState({ text }: { text: string }) {
+  useLanguage();
   return <div className="employee-event-empty" role="status"><CircleNotch className="event-spin" size={30} /><p>{text}</p></div>;
 }

@@ -1,3 +1,4 @@
+import { translateUi, uiDateTimeFormat, useLanguage } from '../../../i18n';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   Bank,
@@ -61,7 +62,7 @@ function outstandingType(shop: QueueShop) {
   return hasCredit ? 'ค้างชำระ (เครดิต)' : 'ค้างชำระ';
 }
 
-const serviceDateTime = new Intl.DateTimeFormat('th-TH', { day: 'numeric', month: 'numeric', year: '2-digit' });
+const serviceDateTime = uiDateTimeFormat({ day: 'numeric', month: 'numeric', year: '2-digit' });
 
 function eventContextLabel(
   item: Pick<QueueShop, 'destination_kind' | 'event_name' | 'event_location' | 'event_zone' | 'event_booth'>,
@@ -107,6 +108,7 @@ export function CollectionDesk({
   onClearShop: () => void;
   onVoidPayment: (payment: PaymentHistoryItem) => void;
 }) {
+  useLanguage();
   const [filter, setFilter] = useState<QueueFilter>('outstanding');
   const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
   const [query, setQuery] = useState('');
@@ -268,10 +270,10 @@ export function CollectionDesk({
   }, [totalPages]);
 
   const stats = [
-    { label: 'ยอดค้างทั้งหมด', value: outstandingTotal, note: `${queue.length} กลุ่มยอดค้าง`, icon: Receipt, tone: 'blue' },
-    { label: 'เก็บเงินวันนี้', value: collectedTotal, note: `${todayPayments.length} รายการ`, icon: Coins, tone: 'green' },
-    { label: 'รับเงินสดวันนี้', value: cashTotal, note: `${todayPayments.filter((item) => item.payment_method === 'cash').length} รายการ`, icon: Money, tone: 'orange' },
-    { label: 'รับโอนวันนี้', value: transferTotal, note: `${todayPayments.filter((item) => item.payment_method !== 'cash').length} รายการ`, icon: Bank, tone: 'purple' },
+    { label: 'ยอดค้างทั้งหมด', value: outstandingTotal, note: `${queue.length} ${translateUi('กลุ่มยอดค้าง')}`, icon: Receipt, tone: 'blue' },
+    { label: 'เก็บเงินวันนี้', value: collectedTotal, note: `${todayPayments.length} ${translateUi('รายการ')}`, icon: Coins, tone: 'green' },
+    { label: 'รับเงินสดวันนี้', value: cashTotal, note: `${todayPayments.filter((item) => item.payment_method === 'cash').length} ${translateUi('รายการ')}`, icon: Money, tone: 'orange' },
+    { label: 'รับโอนวันนี้', value: transferTotal, note: `${todayPayments.filter((item) => item.payment_method !== 'cash').length} ${translateUi('รายการ')}`, icon: Bank, tone: 'purple' },
   ] as const;
 
   const changeFilter = (nextFilter: QueueFilter) => {
@@ -288,24 +290,23 @@ export function CollectionDesk({
     <div className="collection-desk">
       <header className="financial-ops__header collection-desk__header">
         <div>
-          <p className="eyebrow">การเงินหน้าร้าน</p>
-          <h1>คิวเก็บเงินของฉัน</h1>
+          <p className="eyebrow">{translateUi('การเงินหน้าร้าน')}</p>
+          <h1>{translateUi('คิวเก็บเงินของฉัน')}</h1>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
-            วันที่ธุรกิจ {serviceDate}
-            <span className="collection-desk__auto-refresh"><i aria-hidden="true" />อัปเดตอัตโนมัติ 30 วิ</span>
+            {translateUi('วันที่ธุรกิจ ')}{serviceDate}
+            <span className="collection-desk__auto-refresh"><i aria-hidden="true" />{translateUi('อัปเดตอัตโนมัติ 30 วิ')}</span>
           </span>
         </div>
         {runId ? (
           <button disabled={busy} onClick={onRefresh} type="button">
-            รีเฟรชยอดล่าสุด
-          </button>
+            {translateUi('รีเฟรชยอดล่าสุด')}</button>
         ) : null}
       </header>
 
-      <section className="collection-desk__stats" aria-label="สรุปการเก็บเงิน">
+      <section className="collection-desk__stats" aria-label={translateUi('สรุปการเก็บเงิน')}>
         {stats.map(({ label, value, note, icon: Icon, tone }) => (
           <article key={label}>
-            <span><small>{label}</small><strong>{money.format(value)}</strong><em>{note}</em></span>
+            <span><small>{translateUi(label)}</small><strong>{money.format(value)}</strong><em>{note}</em></span>
             <span className={`collection-desk__stat-icon collection-desk__stat-icon--${tone}`}><Icon size={25} weight="duotone" /></span>
           </article>
         ))}
@@ -317,8 +318,8 @@ export function CollectionDesk({
             <div>
               <Coins size={22} weight="duotone" />
               <span>
-                <h2>คิวรับเงินร้านค้า</h2>
-                <p>รวมยอดที่ถึงกำหนดและยอดค้างโดยอัตโนมัติ</p>
+                <h2>{translateUi('คิวรับเงินร้านค้า')}</h2>
+                <p>{translateUi('รวมยอดที่ถึงกำหนดและยอดค้างโดยอัตโนมัติ')}</p>
               </span>
             </div>
           </div>
@@ -327,83 +328,81 @@ export function CollectionDesk({
             <label className="financial-ops__queue-search">
               <MagnifyingGlass aria-hidden="true" size={20} />
               <input
-                aria-label="ค้นหาร้านค้า"
+                aria-label={translateUi('ค้นหาร้านค้า')}
                 onChange={(event) => { setQuery(event.target.value); setPage(0); }}
-                placeholder="ค้นหารหัสร้าน หรือชื่อร้าน"
+                placeholder={translateUi('ค้นหารหัสร้าน หรือชื่อร้าน')}
                 type="search"
                 value={query}
               />
             </label>
-            <label>ตึก
-              <select
-                aria-label="เลือกตึก"
+            <label>{translateUi('ตึก')}<select
+                aria-label={translateUi('เลือกตึก')}
                 onChange={(event) => { setBuildingId(event.target.value); setZoneId(''); setPage(0); }}
                 value={buildingId}
               >
-                <option value="">ทุกตึก {buildings.length > 0 ? `(${buildings.length})` : ''}</option>
+                <option value="">{translateUi('ทุกตึก ')}{buildings.length > 0 ? `(${buildings.length})` : ''}</option>
                 {buildings.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
               </select>
             </label>
-            <label>โซน
-              <select
-                aria-label="เลือกโซน"
+            <label>{translateUi('โซน')}<select
+                aria-label={translateUi('เลือกโซน')}
                 onChange={(event) => { setZoneId(event.target.value); setPage(0); }}
                 value={zoneId}
               >
-                <option value="">ทุกโซน {zones.length > 0 ? `(${zones.length})` : ''}</option>
+                <option value="">{translateUi('ทุกโซน ')}{zones.length > 0 ? `(${zones.length})` : ''}</option>
                 {zones.map((z) => <option key={z.id} value={z.id}>{z.name}{!buildingId && z.buildingName ? ` · ${z.buildingName}` : ''}</option>)}
               </select>
             </label>
           </div>
 
           <div className="collection-desk__admin-bar">
-            <div className="collection-desk__tabs" role="tablist" aria-label="กรองรายการร้านค้า">
-              <button aria-selected={filter === 'outstanding'} onClick={() => changeFilter('outstanding')} role="tab" type="button">ค้างชำระทั้งหมด <b>{queue.length}</b></button>
-              <button aria-selected={filter === 'collected'} onClick={() => changeFilter('collected')} role="tab" type="button">ประวัติรับเงิน <b>{paymentHistory.length}</b></button>
-              <button aria-selected={filter === 'all'} onClick={() => changeFilter('all')} role="tab" type="button">ทั้งหมด</button>
+            <div className="collection-desk__tabs" role="tablist" aria-label={translateUi('กรองรายการร้านค้า')}>
+              <button aria-selected={filter === 'outstanding'} onClick={() => changeFilter('outstanding')} role="tab" type="button">{translateUi('ค้างชำระทั้งหมด ')}<b>{queue.length}</b></button>
+              <button aria-selected={filter === 'collected'} onClick={() => changeFilter('collected')} role="tab" type="button">{translateUi('ประวัติรับเงิน ')}<b>{paymentHistory.length}</b></button>
+              <button aria-selected={filter === 'all'} onClick={() => changeFilter('all')} role="tab" type="button">{translateUi('ทั้งหมด')}</button>
             </div>
             <div className="collection-desk__subfilters">
               {filter === 'collected' ? <>
-                <select aria-label="กรองวิธีรับเงิน" onChange={(event) => { setPaymentMethod(event.target.value as typeof paymentMethod); setPage(0); }} value={paymentMethod}>
-                  <option value="all">ทุกวิธีรับเงิน</option>
-                  <option value="cash">เงินสด</option>
-                  <option value="transfer">โอนเงิน</option>
+                <select aria-label={translateUi('กรองวิธีรับเงิน')} onChange={(event) => { setPaymentMethod(event.target.value as typeof paymentMethod); setPage(0); }} value={paymentMethod}>
+                  <option value="all">{translateUi('ทุกวิธีรับเงิน')}</option>
+                  <option value="cash">{translateUi('เงินสด')}</option>
+                  <option value="transfer">{translateUi('โอนเงิน')}</option>
                 </select>
-                <select aria-label="กรองสถานะรับเงิน" onChange={(event) => { setPaymentStatus(event.target.value as typeof paymentStatus); setPage(0); }} value={paymentStatus}>
-                  <option value="all">ทุกสถานะ</option>
-                  <option value="active">รับเงินแล้ว</option>
-                  <option value="voided">ยกเลิกแล้ว</option>
+                <select aria-label={translateUi('กรองสถานะรับเงิน')} onChange={(event) => { setPaymentStatus(event.target.value as typeof paymentStatus); setPage(0); }} value={paymentStatus}>
+                  <option value="all">{translateUi('ทุกสถานะ')}</option>
+                  <option value="active">{translateUi('รับเงินแล้ว')}</option>
+                  <option value="voided">{translateUi('ยกเลิกแล้ว')}</option>
                 </select>
               </> : null}
-              <select aria-label="เรียงรายการ" onChange={(event) => { setSort(event.target.value as typeof sort); setPage(0); }} value={sort}>
+              <select aria-label={translateUi('เรียงรายการ')} onChange={(event) => { setSort(event.target.value as typeof sort); setPage(0); }} value={sort}>
                 {filter === 'collected' ? <>
-                  <option value="recent">เรียง: รับเงินล่าสุดก่อน</option>
-                  <option value="oldest">เรียง: รับเงินเก่าสุดก่อน</option>
+                  <option value="recent">{translateUi('เรียง: รับเงินล่าสุดก่อน')}</option>
+                  <option value="oldest">{translateUi('เรียง: รับเงินเก่าสุดก่อน')}</option>
                 </> : null}
-                <option value="high">เรียง: {filter === 'collected' ? 'ยอดรับ' : 'ยอดค้าง'}มาก - น้อย</option>
-                <option value="low">เรียง: {filter === 'collected' ? 'ยอดรับ' : 'ยอดค้าง'}น้อย - มาก</option>
+                <option value="high">{translateUi('เรียง: ')}{filter === 'collected' ? translateUi('ยอดรับ') : translateUi('ยอดค้าง')}{translateUi('มาก - น้อย')}</option>
+                <option value="low">{translateUi('เรียง: ')}{filter === 'collected' ? translateUi('ยอดรับ') : translateUi('ยอดค้าง')}{translateUi('น้อย - มาก')}</option>
               </select>
               {filter === 'outstanding' ? (
-                <div className="collection-desk__view-toggle" aria-label="เลือกมุมมอง">
+                <div className="collection-desk__view-toggle" aria-label={translateUi('เลือกมุมมอง')}>
                   <button
                     aria-pressed={viewMode === 'cards'}
                     className={viewMode === 'cards' ? 'is-active' : ''}
                     onClick={() => setViewMode('cards')}
-                    title="มุมมองการ์ด (POS)"
+                    title={translateUi('มุมมองการ์ด (POS)')}
                     type="button"
                   >
                     <SquaresFour size={18} weight={viewMode === 'cards' ? 'fill' : 'regular'} />
-                    <span>การ์ด</span>
+                    <span>{translateUi('การ์ด')}</span>
                   </button>
                   <button
                     aria-pressed={viewMode === 'table'}
                     className={viewMode === 'table' ? 'is-active' : ''}
                     onClick={() => setViewMode('table')}
-                    title="มุมมองตาราง"
+                    title={translateUi('มุมมองตาราง')}
                     type="button"
                   >
                     <Table size={18} weight={viewMode === 'table' ? 'fill' : 'regular'} />
-                    <span>ตาราง</span>
+                    <span>{translateUi('ตาราง')}</span>
                   </button>
                 </div>
               ) : null}
@@ -412,9 +411,9 @@ export function CollectionDesk({
 
           {filter !== 'outstanding' ? (
             <div className="collection-desk__history-date">
-              <button onClick={() => onHistoryDateChange(shiftServiceDate(historyDate, -1))} type="button">‹ วันก่อนหน้า</button>
+              <button onClick={() => onHistoryDateChange(shiftServiceDate(historyDate, -1))} type="button">{translateUi('‹ วันก่อนหน้า')}</button>
               <label><CalendarBlank aria-hidden="true" size={17} /><input
-                aria-label="วันที่ประวัติรับเงิน"
+                aria-label={translateUi('วันที่ประวัติรับเงิน')}
                 max={serviceDate}
                 onChange={(event) => {
                   if (event.target.value && event.target.value <= serviceDate) onHistoryDateChange(event.target.value);
@@ -422,7 +421,7 @@ export function CollectionDesk({
                 type="date"
                 value={historyDate}
               /></label>
-              <button disabled={historyDate >= serviceDate} onClick={() => onHistoryDateChange(shiftServiceDate(historyDate, 1))} type="button">วันถัดไป ›</button>
+              <button disabled={historyDate >= serviceDate} onClick={() => onHistoryDateChange(shiftServiceDate(historyDate, 1))} type="button">{translateUi('วันถัดไป ›')}</button>
             </div>
           ) : null}
 
@@ -436,7 +435,7 @@ export function CollectionDesk({
                   const shop = row.shop;
                   return (
                     <button
-                      aria-label={`เลือกรายการ ${row.displayTitle}`}
+                      aria-label={translateUi('เลือกรายการ {0}', { 0: row.displayTitle })}
                       className={`financial-ops__shop-card ${isSelected ? 'is-selected' : ''}`}
                       key={`${row.kind}-${row.id}`}
                       onClick={(event) => {
@@ -458,17 +457,17 @@ export function CollectionDesk({
                           imageUrl={shop.image_url}
                           loading="lazy"
                         />
-                        {shop.has_new_charges ? <small>มียอดเพิ่ม</small> : null}
+                        {shop.has_new_charges ? <small>{translateUi('มียอดเพิ่ม')}</small> : null}
                       </span>
                       <span className="financial-ops__shop-body">
                         <strong>{shop.destination_kind === 'event'
-                          ? (shop.event_booth ? `บูธ ${shop.event_booth}` : shop.shop_name)
+                          ? (shop.event_booth ? translateUi('บูธ {0}', { 0: shop.event_booth }) : shop.shop_name)
                           : shop.shop_code}</strong>
                         <b>{shop.destination_kind === 'event' && shop.event_booth && isBoothSameAsName(shop.shop_name, shop.event_booth)
                           ? ''
                           : shop.shop_name}</b>
                         {row.contextLabel ? <small>{row.contextLabel}</small> : null}
-                        <small><ListNumbers aria-hidden="true" size={15} /> {shop.charge_count} รายการค้าง</small>
+                        <small><ListNumbers aria-hidden="true" size={15} /> {shop.charge_count}{translateUi(' รายการค้าง')}</small>
                         <em>{money.format(row.amount)}</em>
                       </span>
                       <CaretRight aria-hidden="true" className="financial-ops__shop-arrow" size={20} />
@@ -479,7 +478,7 @@ export function CollectionDesk({
                 const payment = row.payment!;
                 return (
                   <button
-                    aria-label={`เลือกรายการ ${row.displayTitle}`}
+                    aria-label={translateUi('เลือกรายการ {0}', { 0: row.displayTitle })}
                     className={`financial-ops__shop-card ${isSelected ? 'is-selected' : ''}`}
                     key={`${row.kind}-${row.id}`}
                     onClick={(event) => {
@@ -502,29 +501,29 @@ export function CollectionDesk({
                         imageUrl={payment.image_url}
                         loading="lazy"
                       />
-                      {payment.status === 'voided' ? <small className="financial-ops__shop-status financial-ops__shop-status--voided">ยกเลิกแล้ว</small> : null}
+                      {payment.status === 'voided' ? <small className="financial-ops__shop-status financial-ops__shop-status--voided">{translateUi('ยกเลิกแล้ว')}</small> : null}
                     </span>
                     <span className="financial-ops__shop-body">
                       <strong>{payment.receipt_number}</strong>
                       <b>{row.shopName || payment.shops?.name || '-'}</b>
-                      <small>{paymentMethodLabel(payment.payment_method)} · {formatPaymentReceivedAt(payment)}</small>
+                      <small>{translateUi(paymentMethodLabel(payment.payment_method))} · {formatPaymentReceivedAt(payment)}</small>
                       <em>{money.format(row.amount)}</em>
                     </span>
                     <CaretRight aria-hidden="true" className="financial-ops__shop-arrow" size={20} />
                   </button>
                 );
               })}
-              {pageRows.length === 0 ? <p className="financial-ops__empty">ไม่พบรายการที่ค้นหา</p> : null}
+              {pageRows.length === 0 ? <p className="financial-ops__empty">{translateUi('ไม่พบรายการที่ค้นหา')}</p> : null}
             </div>
           ) : (
             <>
               <div className="collection-desk__table-head" aria-hidden="true">
-                <span>ร้านค้า</span>
-                <span>ประเภทรายการ</span>
-                <span>ยอดเงิน</span>
-                <span>เอกสารล่าสุด</span>
-                <span>วันที่ล่าสุด</span>
-                <span>สถานะ</span>
+                <span>{translateUi('ร้านค้า')}</span>
+                <span>{translateUi('ประเภทรายการ')}</span>
+                <span>{translateUi('ยอดเงิน')}</span>
+                <span>{translateUi('เอกสารล่าสุด')}</span>
+                <span>{translateUi('วันที่ล่าสุด')}</span>
+                <span>{translateUi('สถานะ')}</span>
                 <span />
               </div>
               <div className="collection-desk__rows">
@@ -536,7 +535,7 @@ export function CollectionDesk({
                   return (
                     <div className={isSelected ? 'collection-desk__row is-selected' : 'collection-desk__row'} key={`${row.kind}-${row.id}`}>
                       <button
-                        aria-label={`เลือกรายการ ${row.displayTitle}`}
+                        aria-label={translateUi('เลือกรายการ {0}', { 0: row.displayTitle })}
                         className="collection-desk__row-action"
                         onClick={(event) => {
                           if (row.shop) {
@@ -557,14 +556,14 @@ export function CollectionDesk({
                           <span>
                             <strong>{row.displayTitle}</strong>
                             {row.contextLabel ? <small>{row.contextLabel}</small> : null}
-                            <small>{row.kind === 'shop' ? `${row.shop?.charge_count ?? 0} รายการค้าง` : paymentMethodLabel(row.payment!.payment_method)}</small>
+                            <small>{row.kind === 'shop' ? translateUi('{0} รายการค้าง', { 0: row.shop?.charge_count ?? 0 }) : paymentMethodLabel(row.payment!.payment_method)}</small>
                           </span>
                         </span>
                         <span className="collection-desk__type">{row.transactionType}</span>
                         <b>{money.format(row.amount)}</b>
                         <span className="collection-desk__document"><strong>{row.document}</strong></span>
                         <time>{row.latestDate}</time>
-                        <em className={`collection-desk__status collection-desk__status--${row.status.tone}`}>{row.status.label}</em>
+                        <em className={`collection-desk__status collection-desk__status--${row.status.tone}`}>{translateUi(row.status.label)}</em>
                         <CaretRight aria-hidden="true" size={18} />
                       </button>
                       {row.shop?.image_url ? (
@@ -575,7 +574,7 @@ export function CollectionDesk({
                           imageUrl={row.shop.image_url}
                           renderImage={(src, onError) => (
                             <button
-                              aria-label={`ดูรูปร้าน ${row.displayTitle} ขนาดใหญ่`}
+                              aria-label={translateUi('ดูรูปร้าน {0} ขนาดใหญ่', { 0: row.displayTitle })}
                               className="collection-desk__shop-image-button"
                               onClick={() => setPreviewImage({ name: row.displayTitle, url: src })}
                               type="button"
@@ -588,29 +587,29 @@ export function CollectionDesk({
                     </div>
                   );
                 })}
-                {pageRows.length === 0 ? <p className="collection-desk__empty-notice">ไม่พบรายการที่ค้นหา</p> : null}
+                {pageRows.length === 0 ? <p className="collection-desk__empty-notice">{translateUi('ไม่พบรายการที่ค้นหา')}</p> : null}
               </div>
             </>
           )}
 
           <footer>
-            <span>แสดง {pageRows.length ? `${currentPage * PAGE_SIZE + 1} - ${currentPage * PAGE_SIZE + pageRows.length}` : '0'} จาก {totalCount} รายการ</span>
+            <span>{translateUi('แสดง ')}{pageRows.length ? `${currentPage * PAGE_SIZE + 1} - ${currentPage * PAGE_SIZE + pageRows.length}` : '0'}{translateUi(' จาก ')}{totalCount}{translateUi(' รายการ')}</span>
             <span>
-              <button aria-label="ก่อนหน้า" disabled={currentPage === 0} onClick={() => setPage(currentPage - 1)} type="button">‹</button>
+              <button aria-label={translateUi('ก่อนหน้า')} disabled={currentPage === 0} onClick={() => setPage(currentPage - 1)} type="button">‹</button>
               <b>{currentPage + 1}</b>
-              <button aria-label="ถัดไป" disabled={currentPage + 1 >= totalPages} onClick={() => setPage(currentPage + 1)} type="button">›</button>
+              <button aria-label={translateUi('ถัดไป')} disabled={currentPage + 1 >= totalPages} onClick={() => setPage(currentPage + 1)} type="button">›</button>
             </span>
-            <select aria-label="จำนวนรายการต่อหน้า" defaultValue={PAGE_SIZE}>
-              <option value={PAGE_SIZE}>{PAGE_SIZE} รายการ/หน้า</option>
+            <select aria-label={translateUi('จำนวนรายการต่อหน้า')} defaultValue={PAGE_SIZE}>
+              <option value={PAGE_SIZE}>{PAGE_SIZE}{translateUi(' รายการ/หน้า')}</option>
             </select>
           </footer>
         </section>
 
         {hasDetailPanel ? (
           <aside className="collection-desk__detail">
-            <div className="collection-desk__detail-title">รายละเอียดการรับเงิน</div>
+            <div className="collection-desk__detail-title">{translateUi('รายละเอียดการรับเงิน')}</div>
             {selectedPayment ? (
-              <section className="collection-desk__payment-detail" aria-label={`รายละเอียด ${selectedPayment.receipt_number}`}>
+              <section className="collection-desk__payment-detail" aria-label={translateUi('รายละเอียด {0}', { 0: selectedPayment.receipt_number })}>
                 <header>
                   <span>
                     {(() => {
@@ -629,26 +628,25 @@ export function CollectionDesk({
                       );
                     })()}
                   </span>
-                  <button aria-label="ปิดรายละเอียดรายการ" onClick={() => setSelectedPayment(null)} type="button">
+                  <button aria-label={translateUi('ปิดรายละเอียดรายการ')} onClick={() => setSelectedPayment(null)} type="button">
                     <X aria-hidden="true" size={20} />
                   </button>
                 </header>
                 <div className="collection-desk__payment-detail-summary">
-                  <span><small>ยอดรับชำระ</small><strong>{money.format(selectedPayment.allocated_amount)}</strong></span>
-                  <span><small>เอกสารล่าสุด</small><b>{selectedPayment.receipt_number}</b></span>
-                  <span><small>วิธีรับเงิน</small><b>{paymentMethodLabel(selectedPayment.payment_method)}</b></span>
-                  <span><small>วันที่รับเงิน</small><b>{formatPaymentReceivedAt(selectedPayment)}</b></span>
-                  {selectedPayment.entered_at ? <span><small>บันทึกเมื่อ</small><b>{receiptDateTime.format(new Date(selectedPayment.entered_at))}</b></span> : null}
-                  <span><small>สถานะ</small><em className={`collection-desk__status collection-desk__status--${selectedPayment.status === 'active' ? 'success' : 'voided'}`}>{selectedPayment.status === 'active' ? 'รับเงินแล้ว' : 'ยกเลิกแล้ว'}</em></span>
+                  <span><small>{translateUi('ยอดรับชำระ')}</small><strong>{money.format(selectedPayment.allocated_amount)}</strong></span>
+                  <span><small>{translateUi('เอกสารล่าสุด')}</small><b>{selectedPayment.receipt_number}</b></span>
+                  <span><small>{translateUi('วิธีรับเงิน')}</small><b>{translateUi(paymentMethodLabel(selectedPayment.payment_method))}</b></span>
+                  <span><small>{translateUi('วันที่รับเงิน')}</small><b>{formatPaymentReceivedAt(selectedPayment)}</b></span>
+                  {selectedPayment.entered_at ? <span><small>{translateUi('บันทึกเมื่อ')}</small><b>{receiptDateTime.format(new Date(selectedPayment.entered_at))}</b></span> : null}
+                  <span><small>{translateUi('สถานะ')}</small><em className={`collection-desk__status collection-desk__status--${selectedPayment.status === 'active' ? 'success' : 'voided'}`}>{selectedPayment.status === 'active' ? translateUi('รับเงินแล้ว') : translateUi('ยกเลิกแล้ว')}</em></span>
                 </div>
                 <div className="collection-desk__payment-detail-actions">
-                  <button disabled={busy} onClick={(event) => onOpenReceipt(selectedPayment, event.currentTarget)} type="button">ดูบิล</button>
+                  <button disabled={busy} onClick={(event) => onOpenReceipt(selectedPayment, event.currentTarget)} type="button">{translateUi('ดูบิล')}</button>
                   {selectedPayment.status === 'active' ? (
                     <>
                       <button disabled={busy} onClick={() => onPrintReceipt(selectedPayment)} type="button">
-                        <Printer aria-hidden="true" size={16} />พิมพ์ซ้ำ
-                      </button>
-                      <button disabled={busy} onClick={() => onVoidPayment(selectedPayment)} type="button">ยกเลิกรายการ</button>
+                        <Printer aria-hidden="true" size={16} />{translateUi('พิมพ์ซ้ำ')}</button>
+                      <button disabled={busy} onClick={() => onVoidPayment(selectedPayment)} type="button">{translateUi('ยกเลิกรายการ')}</button>
                     </>
                   ) : null}
                 </div>
@@ -668,12 +666,12 @@ export function CollectionDesk({
         >
           <section aria-labelledby="collection-shop-image-preview-title" aria-modal="true" className="image-preview-dialog" role="dialog">
             <div className="image-preview-dialog__header">
-              <h2 id="collection-shop-image-preview-title">รูปร้าน {previewImage.name}</h2>
-              <button aria-label="ปิดรูปภาพ" className="image-preview-dialog__close" onClick={() => setPreviewImage(null)} type="button">
+              <h2 id="collection-shop-image-preview-title">{translateUi('รูปร้าน ')}{previewImage.name}</h2>
+              <button aria-label={translateUi('ปิดรูปภาพ')} className="image-preview-dialog__close" onClick={() => setPreviewImage(null)} type="button">
                 <X size={22} weight="bold" />
               </button>
             </div>
-            <img alt={`รูปร้าน ${previewImage.name}`} className="image-preview-dialog__image" src={previewImage.url} />
+            <img alt={translateUi('รูปร้าน {0}', { 0: previewImage.name })} className="image-preview-dialog__image" src={previewImage.url} />
           </section>
         </div>
       ) : null}

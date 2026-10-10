@@ -1,3 +1,4 @@
+import { translateUi, useLanguage } from '../../../i18n';
 import { type FormEvent, useEffect, useMemo, useState } from 'react';
 import {
   CaretRight,
@@ -42,6 +43,7 @@ function toIceTypeDraft(iceType: IceTypeSetting): IceTypeDraft {
 }
 
 function IceTypeThumbnail({ path }: { path?: string | null }) {
+  useLanguage();
   const [url, setUrl] = useState<string | null>(null);
 
   useEffect(() => {
@@ -77,6 +79,7 @@ export function IceTypeEditor({
   previewPrices,
   readOnly = false,
 }: IceTypeEditorProps) {
+  useLanguage();
   const [iceTypeDraft, setIceTypeDraft] = useState<IceTypeDraft>(() => (
     iceTypes.length > 0 ? toIceTypeDraft(iceTypes[0]) : EMPTY_ICE_TYPE
   ));
@@ -180,16 +183,16 @@ export function IceTypeEditor({
   return (
     <div className="ref-ice-types-container">
       {/* Top Stats Cards Grid */}
-      <section className="ref-stats-grid" aria-label="สรุปชนิดน้ำแข็ง">
+      <section className="ref-stats-grid" aria-label={translateUi('สรุปชนิดน้ำแข็ง')}>
         <article className="ref-stat-card">
           <div className="ref-stat-card__icon ref-stat-card__icon--blue">
             <Cube size={26} weight="fill" />
           </div>
           <div className="ref-stat-card__content">
-            <p>ชนิดน้ำแข็งทั้งหมด</p>
+            <p>{translateUi('ชนิดน้ำแข็งทั้งหมด')}</p>
             <div className="ref-stat-card__val">
               <strong>{iceTypes.length}</strong>
-              <span>รายการ</span>
+              <span>{translateUi('รายการ')}</span>
             </div>
           </div>
         </article>
@@ -199,10 +202,10 @@ export function IceTypeEditor({
             <CheckCircle size={26} weight="fill" />
           </div>
           <div className="ref-stat-card__content">
-            <p>กำลังใช้งาน</p>
+            <p>{translateUi('กำลังใช้งาน')}</p>
             <div className="ref-stat-card__val">
               <strong>{activeCount}</strong>
-              <span>รายการ</span>
+              <span>{translateUi('รายการ')}</span>
             </div>
           </div>
         </article>
@@ -212,10 +215,10 @@ export function IceTypeEditor({
             <PauseCircle size={26} weight="fill" />
           </div>
           <div className="ref-stat-card__content">
-            <p>พักใช้งาน</p>
+            <p>{translateUi('พักใช้งาน')}</p>
             <div className="ref-stat-card__val">
               <strong>{iceTypes.length - activeCount}</strong>
-              <span>รายการ</span>
+              <span>{translateUi('รายการ')}</span>
             </div>
           </div>
         </article>
@@ -225,25 +228,25 @@ export function IceTypeEditor({
       <div className="ref-split-layout">
         {/* Left Column: Ice Type List */}
         <div className="ref-left-panel">
-          <h2 className="ref-list-heading">รายการชนิดน้ำแข็ง</h2>
+          <h2 className="ref-list-heading">{translateUi('รายการชนิดน้ำแข็ง')}</h2>
           <div className="ref-toolbar">
             <div className="ref-search-input">
               <MagnifyingGlass aria-hidden="true" size={18} />
               <input
                 onChange={(event) => setIceTypeQuery(event.target.value)}
-                placeholder="ค้นหาชื่อหรือรหัสชนิดน้ำแข็ง"
+                placeholder={translateUi('ค้นหาชื่อหรือรหัสชนิดน้ำแข็ง')}
                 value={iceTypeQuery}
               />
             </div>
             <button
-              aria-label={`กรองชนิดน้ำแข็ง: ${iceTypeFilterLabel}`}
+              aria-label={translateUi('กรองชนิดน้ำแข็ง: {0}', { 0: iceTypeFilterLabel })}
               className={`ref-filter-btn ${iceTypeFilter !== 'all' ? 'ref-filter-btn--active' : ''}`}
               onClick={() => setIceTypeFilter(nextFilter(iceTypeFilter))}
-              title={`กรองชนิดน้ำแข็ง: ${iceTypeFilterLabel}`}
+              title={translateUi('กรองชนิดน้ำแข็ง: {0}', { 0: iceTypeFilterLabel })}
               type="button"
             >
               <FunnelSimple size={18} />
-              <span>ตัวกรอง</span>
+              <span>{translateUi('ตัวกรอง')}</span>
             </button>
           </div>
 
@@ -276,12 +279,12 @@ export function IceTypeEditor({
 
                   <div className="ref-ice-card__body">
                     <strong>{iceType.name}</strong>
-                    <small>หน่วย: {iceType.unit}</small>
+                    <small>{translateUi('หน่วย: ')}{iceType.unit}</small>
                   </div>
 
                   <div className="ref-ice-card__badge-wrap">
                     <span className={`ref-pill ${iceType.is_active ? 'ref-pill--green' : 'ref-pill--amber'}`}>
-                      {iceType.is_active ? 'ใช้งาน' : 'ไม่ใช้งาน'}
+                      {iceType.is_active ? translateUi('ใช้งาน') : translateUi('ไม่ใช้งาน')}
                     </span>
                   </div>
 
@@ -291,13 +294,12 @@ export function IceTypeEditor({
                 </button>
               );
             })}
-            {filteredIceTypes.length === 0 ? <p className="empty-text">ไม่พบชนิดน้ำแข็งตามคำค้นหรือเงื่อนไขที่เลือก</p> : null}
+            {filteredIceTypes.length === 0 ? <p className="empty-text">{translateUi('ไม่พบชนิดน้ำแข็งตามคำค้นหรือเงื่อนไขที่เลือก')}</p> : null}
           </div>
 
           <div className="ref-pagination-footer">
             <span className="ref-pagination-info">
-              แสดง {filteredIceTypes.length === 0 ? 0 : 1}-{filteredIceTypes.length} จาก {iceTypes.length} รายการ
-            </span>
+              {translateUi('แสดง ')}{filteredIceTypes.length === 0 ? 0 : 1}-{filteredIceTypes.length}{translateUi(' จาก ')}{iceTypes.length}{translateUi(' รายการ')}</span>
             <div className="ref-pagination-controls">
               <button className="ref-page-btn" disabled type="button">&lt;</button>
               <span className="ref-page-num ref-page-num--active">1</span>
@@ -312,32 +314,32 @@ export function IceTypeEditor({
             {/* Section 1: ข้อมูลพื้นฐาน */}
             <div className="ref-section">
               <div className="ref-section-title">
-                <h2><span className="ref-section-title__index">A.</span> ข้อมูลพื้นฐาน</h2>
+                <h2><span className="ref-section-title__index">A.</span>{translateUi(' ข้อมูลพื้นฐาน')}</h2>
               </div>
 
               <div className="ref-form-grid ref-form-grid--three">
                 <div className="ref-form-group">
-                  <label>รหัส</label>
+                  <label>{translateUi('รหัส')}</label>
                   <input
-                    placeholder="เช่น 04"
+                    placeholder={translateUi('เช่น 04')}
                     required
                     value={iceTypeDraft.code}
                     onChange={(event) => setIceTypeDraft({ ...iceTypeDraft, code: event.target.value })}
                   />
                 </div>
                 <div className="ref-form-group">
-                  <label>ชื่อชนิดน้ำแข็ง</label>
+                  <label>{translateUi('ชื่อชนิดน้ำแข็ง')}</label>
                   <input
-                    placeholder="เช่น เปลือย (หลอดใหญ่)"
+                    placeholder={translateUi('เช่น เปลือย (หลอดใหญ่)')}
                     required
                     value={iceTypeDraft.name}
                     onChange={(event) => setIceTypeDraft({ ...iceTypeDraft, name: event.target.value })}
                   />
                 </div>
                 <div className="ref-form-group">
-                  <label>หน่วย</label>
+                  <label>{translateUi('หน่วย')}</label>
                   <input
-                    placeholder="เช่น ถุง"
+                    placeholder={translateUi('เช่น ถุง')}
                     required
                     value={iceTypeDraft.unit}
                     onChange={(event) => setIceTypeDraft({ ...iceTypeDraft, unit: event.target.value })}
@@ -352,7 +354,7 @@ export function IceTypeEditor({
                     onChange={(event) => setIceTypeDraft({ ...iceTypeDraft, isActive: event.target.checked })}
                     type="checkbox"
                   />
-                  <span>เปิดใช้งานชนิดน้ำแข็งนี้</span>
+                  <span>{translateUi('เปิดใช้งานชนิดน้ำแข็งนี้')}</span>
                 </label>
               </div>
             </div>
@@ -374,8 +376,8 @@ export function IceTypeEditor({
             readOnly={readOnly}
           />
 
-          {iceTypeError ? <p className="error-text" role="alert">{iceTypeError}</p> : null}
-          {iceTypeSuccess ? <p aria-live="polite" className="success-text">{iceTypeSuccess}</p> : null}
+          {iceTypeError ? <p className="error-text" role="alert">{translateUi(iceTypeError)}</p> : null}
+          {iceTypeSuccess ? <p aria-live="polite" className="success-text">{translateUi(iceTypeSuccess)}</p> : null}
 
           {/* Bottom Actions Bar */}
           <div className="ref-actions-bar">
@@ -391,15 +393,14 @@ export function IceTypeEditor({
               }}
               type="button"
             >
-              ยกเลิกการแก้ไข
-            </button>
+              {translateUi('ยกเลิกการแก้ไข')}</button>
             <button
               className="primary-button"
               disabled={savingIceType}
               form="ice-type-details-form"
               type="submit"
             >
-              {savingIceType ? 'กำลังบันทึก...' : 'บันทึกการเปลี่ยนแปลง'}
+              {savingIceType ? translateUi('กำลังบันทึก...') : translateUi('บันทึกการเปลี่ยนแปลง')}
             </button>
           </div>
         </div>

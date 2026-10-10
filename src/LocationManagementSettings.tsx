@@ -1,3 +1,4 @@
+import { translateUi, useLanguage } from './i18n';
 import { useRef, useState, type KeyboardEvent } from 'react';
 import { LocationSettings } from './LocationSettings';
 import { StockLocationSettings } from './StockLocationSettings';
@@ -5,6 +6,7 @@ import { StockLocationSettings } from './StockLocationSettings';
 type LocationTab = 'buildings' | 'stock_locations';
 
 export function LocationManagementSettings({ canManageBuildings }: { canManageBuildings: boolean }) {
+  useLanguage();
   const initialTab: LocationTab = canManageBuildings ? 'buildings' : 'stock_locations';
   const [activeTab, setActiveTab] = useState<LocationTab>(initialTab);
   const [visitedTabs, setVisitedTabs] = useState<ReadonlySet<LocationTab>>(() => new Set([initialTab]));
@@ -38,13 +40,13 @@ export function LocationManagementSettings({ canManageBuildings }: { canManageBu
     <div className="location-management-settings">
       <div className="settings-page-heading">
         <div>
-          <p className="eyebrow">ตั้งค่าสถานที่</p>
-          <h1>สถานที่และจุดถือครอง</h1>
-          <p className="muted">จัดการตึก โซนย่อย และจุดถือครองสต๊อกที่เกี่ยวข้องจากหน้าเดียวกัน</p>
+          <p className="eyebrow">{translateUi('ตั้งค่าสถานที่')}</p>
+          <h1>{translateUi('สถานที่และจุดถือครอง')}</h1>
+          <p className="muted">{translateUi('จัดการตึก โซนย่อย และจุดถือครองสต๊อกที่เกี่ยวข้องจากหน้าเดียวกัน')}</p>
         </div>
       </div>
 
-      <div aria-label="หมวดการตั้งค่าสถานที่" className="settings-tabs" role="tablist">
+      <div aria-label={translateUi('หมวดการตั้งค่าสถานที่')} className="settings-tabs" role="tablist">
         {canManageBuildings ? (
           <button
             aria-controls="buildings-and-zones-panel"
@@ -58,8 +60,7 @@ export function LocationManagementSettings({ canManageBuildings }: { canManageBu
             tabIndex={activeTab === 'buildings' ? 0 : -1}
             type="button"
           >
-            ตึก / โซน
-          </button>
+            {translateUi('ตึก / โซน')}</button>
         ) : null}
         <button
           aria-controls="stock-locations-panel"
@@ -73,8 +74,7 @@ export function LocationManagementSettings({ canManageBuildings }: { canManageBu
           tabIndex={activeTab === 'stock_locations' ? 0 : -1}
           type="button"
         >
-          จุดถือครองสต๊อก
-        </button>
+          {translateUi('จุดถือครองสต๊อก')}</button>
       </div>
 
       {canManageBuildings ? (

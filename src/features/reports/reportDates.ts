@@ -1,3 +1,4 @@
+import { uiDateTimeFormat } from '../../i18n';
 import { shiftServiceDate, toBangkokDateString } from '../../lib/serviceDate';
 
 export type Preset = 'today' | 'week' | 'month' | 'year' | 'custom';
@@ -22,7 +23,7 @@ export function reportRangeError(from: string, to: string, today = toBangkokDate
 }
 
 export function formatReportDate(date: string) {
-  return new Intl.DateTimeFormat('th-TH', { day: 'numeric', month: 'short', year: 'numeric' })
+  return uiDateTimeFormat({ day: 'numeric', month: 'short', year: 'numeric' })
     .format(new Date(`${date}T12:00:00+07:00`));
 }
 
@@ -32,7 +33,7 @@ export function reportBucketLabels(date: string, from: string, to: string) {
   const monthly = (Date.parse(to) - Date.parse(from)) / 86400000 > 30;
   if (!monthly) return { label: formatReportDate(date), axisLabel: date.slice(5) };
 
-  const month = new Intl.DateTimeFormat('th-TH', {
+  const month = uiDateTimeFormat({
     month: 'short', year: 'numeric', timeZone: 'Asia/Bangkok',
   }).format(new Date(`${date}T12:00:00+07:00`));
   const [year, monthNumber] = date.split('-').map(Number);

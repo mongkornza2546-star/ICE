@@ -28,6 +28,7 @@ import {
 import { COLLECTION_PROFILE_REFRESH_EVENT } from './lib/collectionContext';
 import { initGlobalRealtimeSync } from './lib/realtimeSync';
 import { clearPosCollectionReturn, readPosCollectionReturn } from './lib/posCollectionReturn';
+import { LanguageSwitcher, localizeErrorMessage, useLanguage } from './i18n';
 
 /**
  * Wrapper that keeps its children mounted once rendered,
@@ -58,6 +59,7 @@ export function RoleRouter({
   session: Session;
   onRecoverableSessionError: (message: string | null | undefined) => Promise<boolean>;
 }) {
+  const { language, t } = useLanguage();
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [profilePreview, setProfilePreview] = useState<UserProfile | null>(() => (
     readCachedUserProfile(session.user.id)?.profile ?? null
@@ -232,7 +234,7 @@ export function RoleRouter({
 
   const confirmLeavingDelivery = () => {
     if (deliveryDraftState.submitting) return false;
-    return !deliveryDraftState.dirty || window.confirm('ยังไม่ได้บันทึกรายการนี้ ต้องการออกจากหน้านี้หรือไม่?');
+    return !deliveryDraftState.dirty || window.confirm(t('unsavedConfirm'));
   };
 
   const signOut = async () => {
@@ -250,8 +252,8 @@ export function RoleRouter({
     return (
       <div className="app-shell">
         <section className="panel center-panel">
-          <p className="eyebrow">กำลังโหลดสิทธิ์</p>
-          <h1>ตรวจข้อมูลผู้ใช้ในระบบ</h1>
+          <p className="eyebrow">{t('loadingPermissions')}</p>
+          <h1>{t('checkingUser')}</h1>
           {profilePreview ? <p className="muted">{profilePreview.display_name}</p> : null}
         </section>
       </div>
@@ -262,10 +264,11 @@ export function RoleRouter({
     return (
       <div className="app-shell">
         <section className="panel center-panel">
-          <p className="eyebrow">โหลดผู้ใช้ไม่สำเร็จ</p>
-          <h1>{profileError}</h1>
+          <LanguageSwitcher className="language-switcher--auth" />
+          <p className="eyebrow">{t('userLoadFailed')}</p>
+          <h1>{language === 'my' ? localizeErrorMessage(profileError) : profileError}</h1>
           <button className="ghost-button" onClick={signOut} type="button">
-            ออกจากระบบ
+            {t('signOut')}
           </button>
         </section>
       </div>
@@ -276,13 +279,14 @@ export function RoleRouter({
     return (
       <div className="app-shell">
         <section className="panel center-panel">
-          <p className="eyebrow">บัญชียังไม่พร้อมใช้งาน</p>
-          <h1>ผู้ดูแลยังไม่ได้เปิดสิทธิ์บัญชีนี้</h1>
+          <LanguageSwitcher className="language-switcher--auth" />
+          <p className="eyebrow">{t('accountInactive')}</p>
+          <h1>{t('accountNotEnabled')}</h1>
           <p className="muted">
-            บัญชี Supabase Auth ถูกสร้างแล้ว แต่ `public.users.is_active` ยังเป็น `false`
+            {t('accountAuthCreated')}
           </p>
           <button className="ghost-button" onClick={signOut} type="button">
-            ออกจากระบบ
+            {t('signOut')}
           </button>
         </section>
       </div>
@@ -294,7 +298,7 @@ export function RoleRouter({
   if (profile.role === 'courier') {
     return (
       <EmployeeLayout onSignOut={signOut} profileLabel={profile.display_name} signOutDisabled={deliveryDraftState.submitting}>
-        <nav aria-label="งานพนักงาน" className="employee-task-tabs">
+        <nav aria-label={t('employeeTasks')} className="employee-task-tabs">
           <button
             aria-current={courierView === 'withdrawal' ? 'page' : undefined}
             onClick={() => {
@@ -306,7 +310,7 @@ export function RoleRouter({
             type="button"
           >
             <Package aria-hidden="true" size={22} weight="duotone" />
-            <span>เติม / คืน / ละลาย</span>
+            <span>{t('stockReceiveReturn')}</span>
           </button>
           <button
             aria-current={courierView === 'pos' ? 'page' : undefined}
@@ -334,7 +338,7 @@ export function RoleRouter({
             type="button"
           >
             <Coins aria-hidden="true" size={22} weight="duotone" />
-            <span>เก็บเงิน</span>
+            <span>{t('collectMoney')}</span>
           </button>
           <button
             aria-current={courierView === 'events' ? 'page' : undefined}
@@ -348,7 +352,7 @@ export function RoleRouter({
             type="button"
           >
             <CalendarBlank aria-hidden="true" size={22} weight="duotone" />
-            <span>อีเวนต์</span>
+            <span>{t('eventShort')}</span>
           </button>
         </nav>
         <KeepAlive active={courierView === 'withdrawal' || courierView === 'pos'}>

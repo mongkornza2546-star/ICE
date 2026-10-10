@@ -1,3 +1,4 @@
+import { translateUi, useLanguage } from './i18n';
 import { useEffect, useState } from 'react';
 import { registerSW } from 'virtual:pwa-register';
 import { clearLegacyCatalogImageCache, requestPwaUpdate } from './pwaUpdateSafety';
@@ -15,6 +16,7 @@ function isStandalone() {
 }
 
 export function PwaUpdatePrompt() {
+  useLanguage();
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const [hasDraft, setHasDraft] = useState(false);
   const [isOnline, setIsOnline] = useState(() => navigator.onLine);
@@ -105,8 +107,8 @@ export function PwaUpdatePrompt() {
   if (!isOnline) {
     return (
       <aside className="pwa-update-prompt pwa-update-prompt--offline" role="status" aria-live="assertive">
-        <strong>กำลังใช้งานแบบออฟไลน์</strong>
-        <span>เปิดดูหน้าที่เคยโหลดได้ แต่ต้องเชื่อมต่ออินเทอร์เน็ตก่อนบันทึกข้อมูล</span>
+        <strong>{translateUi('กำลังใช้งานแบบออฟไลน์')}</strong>
+        <span>{translateUi('เปิดดูหน้าที่เคยโหลดได้ แต่ต้องเชื่อมต่ออินเทอร์เน็ตก่อนบันทึกข้อมูล')}</span>
       </aside>
     );
   }
@@ -114,12 +116,11 @@ export function PwaUpdatePrompt() {
   if (updateAvailable) {
     return (
       <aside className="pwa-update-prompt" role="status" aria-live="polite">
-        <strong>มีเวอร์ชันใหม่พร้อมใช้งาน</strong>
-        {hasDraft ? <span>บันทึกหรือยกเลิกงานค้างก่อนอัปเดต</span> : null}
+        <strong>{translateUi('มีเวอร์ชันใหม่พร้อมใช้งาน')}</strong>
+        {hasDraft ? <span>{translateUi('บันทึกหรือยกเลิกงานค้างก่อนอัปเดต')}</span> : null}
         <div className="pwa-update-prompt__actions">
           <button disabled={hasDraft || !updateServiceWorker} onClick={() => void requestPwaUpdate(updateServiceWorker)} type="button">
-            อัปเดตตอนนี้
-          </button>
+            {translateUi('อัปเดตตอนนี้')}</button>
         </div>
       </aside>
     );
@@ -128,11 +129,11 @@ export function PwaUpdatePrompt() {
   if (installPrompt) {
     return (
       <aside className="pwa-update-prompt" role="status" aria-live="polite">
-        <strong>ติดตั้งแอปส่งน้ำแข็ง</strong>
-        <span>เปิดใช้งานจากหน้าจอหลักได้รวดเร็วและเปิดหน้าที่โหลดไว้ได้เมื่อสัญญาณขาด</span>
+        <strong>{translateUi('ติดตั้งแอปส่งน้ำแข็ง')}</strong>
+        <span>{translateUi('เปิดใช้งานจากหน้าจอหลักได้รวดเร็วและเปิดหน้าที่โหลดไว้ได้เมื่อสัญญาณขาด')}</span>
         <div className="pwa-update-prompt__actions">
-          <button className="pwa-update-prompt__secondary" onClick={() => setInstallPrompt(null)} type="button">ไว้ภายหลัง</button>
-          <button onClick={() => void installApp()} type="button">ติดตั้ง</button>
+          <button className="pwa-update-prompt__secondary" onClick={() => setInstallPrompt(null)} type="button">{translateUi('ไว้ภายหลัง')}</button>
+          <button onClick={() => void installApp()} type="button">{translateUi('ติดตั้ง')}</button>
         </div>
       </aside>
     );
@@ -141,10 +142,10 @@ export function PwaUpdatePrompt() {
   if (showIosInstallHelp) {
     return (
       <aside className="pwa-update-prompt" role="status" aria-live="polite">
-        <strong>เพิ่มแอปลงหน้าจอโฮม</strong>
-        <span>แตะปุ่มแชร์ใน Safari แล้วเลือก “เพิ่มไปยังหน้าจอโฮม”</span>
+        <strong>{translateUi('เพิ่มแอปลงหน้าจอโฮม')}</strong>
+        <span>{translateUi('แตะปุ่มแชร์ใน Safari แล้วเลือก “เพิ่มไปยังหน้าจอโฮม”')}</span>
         <div className="pwa-update-prompt__actions">
-          <button onClick={dismissIosInstallHelp} type="button">เข้าใจแล้ว</button>
+          <button onClick={dismissIosInstallHelp} type="button">{translateUi('เข้าใจแล้ว')}</button>
         </div>
       </aside>
     );
@@ -153,10 +154,10 @@ export function PwaUpdatePrompt() {
   if (!offlineReady) return null;
   return (
     <aside className="pwa-update-prompt pwa-update-prompt--ready" role="status" aria-live="polite">
-      <strong>แอปพร้อมใช้งานออฟไลน์แล้ว</strong>
-      <span>ครั้งถัดไปสามารถเปิดหน้าที่โหลดไว้ได้แม้สัญญาณขาด</span>
+      <strong>{translateUi('แอปพร้อมใช้งานออฟไลน์แล้ว')}</strong>
+      <span>{translateUi('ครั้งถัดไปสามารถเปิดหน้าที่โหลดไว้ได้แม้สัญญาณขาด')}</span>
       <div className="pwa-update-prompt__actions">
-        <button onClick={() => setOfflineReady(false)} type="button">รับทราบ</button>
+        <button onClick={() => setOfflineReady(false)} type="button">{translateUi('รับทราบ')}</button>
       </div>
     </aside>
   );

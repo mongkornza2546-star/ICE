@@ -1,3 +1,4 @@
+import { uiDateTimeFormat, translateUi, useLanguage } from '../../../i18n';
 import { useEffect, useState, type RefObject } from 'react';
 import {
   Bank,
@@ -102,6 +103,7 @@ export function PaymentModal({
   onPrintReceipt: (receipt: PaymentReceipt) => void;
   onRequestDueDate: (charge: QueueShop['charges'][number]) => void;
 }) {
+  useLanguage();
   const isPanel = presentation === 'panel';
   const [expandedChargeId, setExpandedChargeId] = useState<string | null>(null);
   const [evidencePreviewUrl, setEvidencePreviewUrl] = useState<string | null>(null);
@@ -127,7 +129,7 @@ export function PaymentModal({
   const selectedChargeIdSet = new Set(selectedChargeIds);
   return (
     <div
-      aria-label={`รับเงิน ${identity.title}`}
+      aria-label={translateUi('รับเงิน {0}', { 0: identity.title })}
       aria-modal={isPanel ? undefined : 'true'}
       className={isPanel ? 'financial-ops__inline-panel' : 'financial-ops__modal'}
       ref={dialogRef}
@@ -140,7 +142,7 @@ export function PaymentModal({
         <header>
           <span className="financial-ops__payment-image">
             <AutoRefreshShopImage
-              alt={`ร้าน ${identity.title}`}
+              alt={translateUi('ร้าน {0}', { 0: identity.title })}
               fallback={<Storefront aria-hidden="true" size={40} weight="duotone" />}
               imagePath={selectedShop.image_path}
               imageUrl={selectedShop.image_url}
@@ -148,7 +150,7 @@ export function PaymentModal({
           </span>
           <span>
             <small>{identity.isEventOnly ? identity.boothText : selectedShop.shop_code}</small>
-            <h2>{isPanel ? identity.title : 'บันทึกรับชำระเงิน'}</h2>
+            <h2>{isPanel ? identity.title : translateUi('บันทึกรับชำระเงิน')}</h2>
             {isPanel ? (
               identity.shopName ? <b>{identity.shopName}</b> : null
             ) : (
@@ -159,10 +161,10 @@ export function PaymentModal({
               selectedShop.event_location,
               selectedShop.event_zone,
             ].filter(Boolean).join(' · ')}</small> : null}
-            {selectedShop.billing_statement_number ? <small>ใบวางบิล {selectedShop.billing_statement_number}</small> : null}
+            {selectedShop.billing_statement_number ? <small>{translateUi('ใบวางบิล ')}{selectedShop.billing_statement_number}</small> : null}
           </span>
           <button
-            aria-label="ปิดหน้ารับเงิน"
+            aria-label={translateUi('ปิดหน้ารับเงิน')}
             disabled={busy}
             onClick={onClose}
             ref={closeButtonRef}
@@ -175,47 +177,47 @@ export function PaymentModal({
         {receipt ? (
           <div className="financial-ops__payment-complete">
             <CheckCircle aria-hidden="true" size={24} weight="fill" />
-            <span><strong>บันทึกรับเงินเรียบร้อย</strong><small>กดพิมพ์เมื่อร้านต้องการใบเสร็จ</small></span>
-            <button onClick={() => onPrintReceipt(receipt)} type="button"><Printer aria-hidden="true" size={19} />พิมพ์ใบเสร็จ</button>
-            <button onClick={onClose} type="button">เสร็จสิ้น</button>
+            <span><strong>{translateUi('บันทึกรับเงินเรียบร้อย')}</strong><small>{translateUi('กดพิมพ์เมื่อร้านต้องการใบเสร็จ')}</small></span>
+            <button onClick={() => onPrintReceipt(receipt)} type="button"><Printer aria-hidden="true" size={19} />{translateUi('พิมพ์ใบเสร็จ')}</button>
+            <button onClick={onClose} type="button">{translateUi('เสร็จสิ้น')}</button>
           </div>
         ) : (
           <div className="financial-ops__payment">
-            <section className="financial-ops__amount-due" aria-label="ยอดที่ต้องชำระ">
-              <span>ยอดบิลที่เลือก</span>
+            <section className="financial-ops__amount-due" aria-label={translateUi('ยอดที่ต้องชำระ')}>
+              <span>{translateUi('ยอดบิลที่เลือก')}</span>
               <strong>{money.format(selectedOutstandingAmount)}</strong>
             </section>
 
             {focusedCharge ? (
-              <section className="financial-ops__payment-breakdown" aria-label="สรุปยอดหลังส่งรอบล่าสุด">
-                <span><small>ยอดค้างก่อนหน้า</small><b>{money.format(priorOutstandingAmount)}</b></span>
-                <span><small>ยอดส่งรอบล่าสุด</small><b>{money.format(focusedCharge.outstanding_amount)}</b></span>
-                <span><small>ยอดบิลที่เลือก</small><strong>{money.format(selectedOutstandingAmount)}</strong></span>
+              <section className="financial-ops__payment-breakdown" aria-label={translateUi('สรุปยอดหลังส่งรอบล่าสุด')}>
+                <span><small>{translateUi('ยอดค้างก่อนหน้า')}</small><b>{money.format(priorOutstandingAmount)}</b></span>
+                <span><small>{translateUi('ยอดส่งรอบล่าสุด')}</small><b>{money.format(focusedCharge.outstanding_amount)}</b></span>
+                <span><small>{translateUi('ยอดบิลที่เลือก')}</small><strong>{money.format(selectedOutstandingAmount)}</strong></span>
               </section>
             ) : null}
 
             {!canRecordPayment ? (
-              <p className="employee-error" role="status">ดูข้อมูลได้ แต่ยังไม่ได้รับสิทธิ์บันทึกรับเงิน</p>
+              <p className="employee-error" role="status">{translateUi('ดูข้อมูลได้ แต่ยังไม่ได้รับสิทธิ์บันทึกรับเงิน')}</p>
             ) : null}
 
-            <section className="financial-ops__charge-list" aria-label="รายละเอียดบิลและรายการที่สั่ง">
+            <section className="financial-ops__charge-list" aria-label={translateUi('รายละเอียดบิลและรายการที่สั่ง')}>
               <div className="financial-ops__charge-list-title">
-                <strong><ListNumbers aria-hidden="true" size={18} /> เลือกบิลที่ต้องการรับชำระ</strong>
-                <small>เลือกแล้ว {selectedChargeIds.length} จาก {selectedShop.charges.length} บิล</small>
+                <strong><ListNumbers aria-hidden="true" size={18} />{translateUi(' เลือกบิลที่ต้องการรับชำระ')}</strong>
+                <small>{translateUi('เลือกแล้ว ')}{selectedChargeIds.length}{translateUi(' จาก ')}{selectedShop.charges.length}{translateUi(' บิล')}</small>
               </div>
-              <div className="financial-ops__charge-selection-actions" aria-label="คำสั่งเลือกบิล">
-                <button disabled={busy || !canRecordPayment} onClick={onSelectAllCharges} type="button">เลือกทั้งหมด</button>
-                <button disabled={busy || !canRecordPayment} onClick={onSelectTodayCharges} type="button">เฉพาะบิลวันนี้</button>
-                <button disabled={busy || !canRecordPayment} onClick={onClearChargeSelection} type="button">ล้างการเลือก</button>
+              <div className="financial-ops__charge-selection-actions" aria-label={translateUi('คำสั่งเลือกบิล')}>
+                <button disabled={busy || !canRecordPayment} onClick={onSelectAllCharges} type="button">{translateUi('เลือกทั้งหมด')}</button>
+                <button disabled={busy || !canRecordPayment} onClick={onSelectTodayCharges} type="button">{translateUi('เฉพาะบิลวันนี้')}</button>
+                <button disabled={busy || !canRecordPayment} onClick={onClearChargeSelection} type="button">{translateUi('ล้างการเลือก')}</button>
               </div>
               {selectionReviewRequired ? (
                 <div className="financial-ops__selection-warning" role="alert">
-                  <span>ยอดหรือรายการบิลเปลี่ยนจากข้อมูลที่เปิดไว้ กรุณาตรวจสอบยอดก่อนบันทึก</span>
-                  <button disabled={busy || !canRecordPayment} onClick={onConfirmSelectionReview} type="button">ตรวจสอบแล้ว</button>
+                  <span>{translateUi('ยอดหรือรายการบิลเปลี่ยนจากข้อมูลที่เปิดไว้ กรุณาตรวจสอบยอดก่อนบันทึก')}</span>
+                  <button disabled={busy || !canRecordPayment} onClick={onConfirmSelectionReview} type="button">{translateUi('ตรวจสอบแล้ว')}</button>
                 </div>
               ) : null}
               {selectedChargeIds.length === 0 ? (
-                <p className="financial-ops__selection-empty" role="status">กรุณาเลือกอย่างน้อย 1 บิลเพื่อรับชำระ</p>
+                <p className="financial-ops__selection-empty" role="status">{translateUi('กรุณาเลือกอย่างน้อย 1 บิลเพื่อรับชำระ')}</p>
               ) : null}
               {selectedShop.charges.map((charge) => {
                 const isPriorBalance = charge.service_date !== serviceDate;
@@ -223,18 +225,18 @@ export function PaymentModal({
                 const isSelected = selectedChargeIdSet.has(charge.charge_id);
                 const chargeHeader = <>
                   <span>
-                    <em>{isPriorBalance ? 'ยอดค้างจากวันอื่น' : 'บิลวันนี้'}</em>
-                    <b>{charge.charge_number ? `เลขที่บิล ${charge.charge_number}` : 'ขายสด'}</b>
-                    <small>ส่งวันที่ {formatServiceDate(charge.service_date)}</small>
+                    <em>{isPriorBalance ? translateUi('ยอดค้างจากวันอื่น') : translateUi('บิลวันนี้')}</em>
+                    <b>{charge.charge_number ? translateUi('เลขที่บิล {0}', { 0: charge.charge_number }) : translateUi('ขายสด')}</b>
+                    <small>{translateUi('ส่งวันที่ ')}{formatServiceDate(charge.service_date)}</small>
                   </span>
-                  <span className="financial-ops__charge-total"><small>ยอดค้างบิลนี้</small><b>{money.format(charge.outstanding_amount)}</b></span>
+                  <span className="financial-ops__charge-total"><small>{translateUi('ยอดค้างบิลนี้')}</small><b>{money.format(charge.outstanding_amount)}</b></span>
                 </>;
                 return (
                   <article className={`${isPriorBalance ? 'is-prior-balance ' : ''}${isExpanded ? 'is-expanded ' : ''}${isSelected ? 'is-selected' : ''}`.trim()} key={charge.charge_id}>
                     <div className="financial-ops__charge-heading">
                       <label className="financial-ops__charge-selector">
                         <input
-                          aria-label={`เลือกบิล ${charge.charge_number ?? 'ขายสด'}`}
+                          aria-label={translateUi('เลือกบิล {0}', { 0: charge.charge_number ?? translateUi('ขายสด') })}
                           checked={isSelected}
                           disabled={busy || !canRecordPayment}
                           onChange={() => onToggleCharge(charge.charge_id)}
@@ -245,7 +247,7 @@ export function PaymentModal({
                       {isPanel ? <button
                         aria-controls={`financial-charge-items-${charge.charge_id}`}
                         aria-expanded={isExpanded}
-                        aria-label={`ดูรายละเอียดบิลส่งของ ${charge.charge_number ?? 'ขายสด'}`}
+                        aria-label={translateUi('ดูรายละเอียดบิลส่งของ {0}', { 0: charge.charge_number ?? translateUi('ขายสด') })}
                         className="financial-ops__charge-toggle"
                         onClick={() => setExpandedChargeId((current) => current === charge.charge_id ? null : charge.charge_id)}
                         type="button"
@@ -254,7 +256,7 @@ export function PaymentModal({
                       </button> : null}
                     </div>
                     <div
-                      aria-label={`รายการส่งของบิล ${charge.charge_number ?? 'ขายสด'}`}
+                      aria-label={translateUi('รายการส่งของบิล {0}', { 0: charge.charge_number ?? translateUi('ขายสด') })}
                       className="financial-ops__charge-items"
                       hidden={!isExpanded}
                       id={`financial-charge-items-${charge.charge_id}`}
@@ -266,22 +268,22 @@ export function PaymentModal({
                           <b>{money.format(item.line_total)}</b>
                         </div>
                       ))}
-                      {(charge.items ?? []).length === 0 ? <small>ไม่พบรายละเอียดสินค้าของบิลนี้</small> : null}
+                      {(charge.items ?? []).length === 0 ? <small>{translateUi('ไม่พบรายละเอียดสินค้าของบิลนี้')}</small> : null}
                     </div>
                     {isExpanded && onEditCharge && charge.delivery_event_id ? <button
-                      aria-label={`ยกเลิกใบส่งน้ำแข็ง ${charge.charge_number ?? 'ขายสด'}`}
+                      aria-label={translateUi('ยกเลิกใบส่งน้ำแข็ง {0}', { 0: charge.charge_number ?? translateUi('ขายสด') })}
                       className="financial-ops__charge-edit"
                       disabled={busy}
                       onClick={() => onEditCharge(charge)}
                       type="button"
-                    >ยกเลิกใบส่งน้ำแข็ง</button> : null}
+                    >{translateUi('ยกเลิกใบส่งน้ำแข็ง')}</button> : null}
                     {charge.payment_term === 'credit' ? (
                       <button
                         className="financial-ops__due-date-request"
                         disabled={busy || !canRecordPayment}
                         onClick={() => onRequestDueDate(charge)}
                         type="button"
-                      >ขอเลื่อนกำหนด{charge.due_date ? ` · ${formatServiceDate(charge.due_date)}` : ''}</button>
+                      >{translateUi('ขอเลื่อนกำหนด')}{charge.due_date ? ` · ${formatServiceDate(charge.due_date)}` : ''}</button>
                     ) : null}
                   </article>
                 );
@@ -289,7 +291,7 @@ export function PaymentModal({
             </section>
 
             <section className="financial-ops__payment-methods" aria-labelledby="payment-method-label">
-              <h3 id="payment-method-label">รูปแบบการชำระ</h3>
+              <h3 id="payment-method-label">{translateUi('รูปแบบการชำระ')}</h3>
               <div style={{
                 gridTemplateColumns: `repeat(${availablePaymentMethods.length}, minmax(0, 1fr))`,
               }}>
@@ -305,7 +307,7 @@ export function PaymentModal({
                       type="button"
                     >
                       <Icon aria-hidden="true" size={22} weight="duotone" />
-                      <span>{paymentMethodLabel(allowedMethod)}</span>
+                      <span>{translateUi(paymentMethodLabel(allowedMethod))}</span>
                     </button>
                   );
                 })}
@@ -314,10 +316,10 @@ export function PaymentModal({
 
             <section className="financial-ops__received-box">
               <label className="financial-ops__payment-amount">
-                <span>{method === 'cash' ? 'รับเงินมา' : 'ยอดเงินที่โอน'}</span>
+                <span>{method === 'cash' ? translateUi('รับเงินมา') : translateUi('ยอดเงินที่โอน')}</span>
                 <span className="financial-ops__currency" aria-hidden="true">฿</span>
                 <input
-                  aria-label="ยอดรับเงินจริง"
+                  aria-label={translateUi('ยอดรับเงินจริง')}
                   disabled={busy || !canRecordPayment}
                   inputMode="decimal"
                   min="0.01"
@@ -326,20 +328,20 @@ export function PaymentModal({
                   type="number"
                   value={amount}
                 />
-                <small>บาท</small>
+                <small>{translateUi('บาท')}</small>
               </label>
               {method === 'cash' ? (
                 <div className="financial-ops__change-amount">
-                  <span>เงินทอน</span>
+                  <span>{translateUi('เงินทอน')}</span>
                   <strong>{money.format(changeAmount)}</strong>
                 </div>
               ) : null}
             </section>
 
             {canBackdatePayment ? (
-              <section className="financial-ops__backdate-payment" aria-label="วันและเวลาที่รับเงิน">
+              <section className="financial-ops__backdate-payment" aria-label={translateUi('วันและเวลาที่รับเงิน')}>
                 <label>
-                  <span>วันที่รับเงิน</span>
+                  <span>{translateUi('วันที่รับเงิน')}</span>
                   <input
                     disabled={busy || !canRecordPayment}
                     max={today}
@@ -351,18 +353,18 @@ export function PaymentModal({
                 </label>
                 <small className="financial-ops__backdate-hint">
                   <Info aria-hidden="true" size={14} weight="bold" />
-                  <span>เลือกวันที่เงินเข้าจริง ระบบเก็บเวลาที่บันทึกแยกไว้ให้อัตโนมัติ</span>
+                  <span>{translateUi('เลือกวันที่เงินเข้าจริง ระบบเก็บเวลาที่บันทึกแยกไว้ให้อัตโนมัติ')}</span>
                 </small>
               </section>
             ) : isPanel ? (
-              <section className="financial-ops__inline-datetime" aria-label="วันและเวลาที่รับเงิน">
-                <label><span>วันที่รับเงิน</span><input readOnly value={formatServiceDate(today)} /></label>
-                <label><span>เวลา</span><input readOnly value={new Intl.DateTimeFormat('th-TH', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Bangkok' }).format(new Date())} /></label>
+              <section className="financial-ops__inline-datetime" aria-label={translateUi('วันและเวลาที่รับเงิน')}>
+                <label><span>{translateUi('วันที่รับเงิน')}</span><input readOnly value={formatServiceDate(today)} /></label>
+                <label><span>{translateUi('เวลา')}</span><input readOnly value={uiDateTimeFormat({ hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Bangkok' }).format(new Date())} /></label>
               </section>
             ) : null}
 
             {method === 'cash' ? (
-              <div className="financial-ops__quick-amounts" aria-label="เลือกยอดรับเงินด่วน">
+              <div className="financial-ops__quick-amounts" aria-label={translateUi('เลือกยอดรับเงินด่วน')}>
                 {[100, 200, 500, 1000].map((value) => (
                   <button disabled={busy || !canRecordPayment} key={value} onClick={() => onAmountChange(value.toFixed(2))} type="button">
                     {value.toLocaleString('th-TH')}
@@ -371,18 +373,18 @@ export function PaymentModal({
               </div>
             ) : null}
 
-            <section className="financial-ops__payment-summary" aria-label="สรุปยอดรับเงิน">
-              <span><small>ยอดบิลที่เลือก</small><strong>{money.format(selectedOutstandingAmount)}</strong></span>
-              <span><small>ยอดรับชำระ</small><strong>{money.format(allocatedAmount)}</strong></span>
-              <span><small>ยอดค้างทั้งหมดหลังรับเงิน</small><b>{money.format(remainingAmount)}</b></span>
+            <section className="financial-ops__payment-summary" aria-label={translateUi('สรุปยอดรับเงิน')}>
+              <span><small>{translateUi('ยอดบิลที่เลือก')}</small><strong>{money.format(selectedOutstandingAmount)}</strong></span>
+              <span><small>{translateUi('ยอดรับชำระ')}</small><strong>{money.format(allocatedAmount)}</strong></span>
+              <span><small>{translateUi('ยอดค้างทั้งหมดหลังรับเงิน')}</small><b>{money.format(remainingAmount)}</b></span>
             </section>
 
             {(method !== 'cash' || evidenceRequired) ? (
               <label className="financial-ops__payment-evidence">
-                <span>แนบภาพสลิป <small>({evidenceRequired ? 'บังคับ' : 'ไม่บังคับ'})</small></span>
+                <span>{translateUi('แนบภาพสลิป ')}<small>({evidenceRequired ? translateUi('บังคับ') : translateUi('ไม่บังคับ')})</small></span>
                 <input
                   accept="image/jpeg,image/png,image/webp,application/pdf"
-                  aria-label="หลักฐานการชำระ"
+                  aria-label={translateUi('หลักฐานการชำระ')}
                   disabled={busy || !canRecordPayment}
                   onChange={(event) => onEvidenceChange(event.target.files?.[0] ?? null)}
                   required={evidenceRequired}
@@ -390,40 +392,40 @@ export function PaymentModal({
                 />
                 <span className="financial-ops__dropzone">
                   {evidencePreviewUrl ? (
-                    <img className="financial-ops__evidence-preview" src={evidencePreviewUrl} alt="ภาพตัวอย่างสลิปที่แนบ" />
+                    <img className="financial-ops__evidence-preview" src={evidencePreviewUrl} alt={translateUi('ภาพตัวอย่างสลิปที่แนบ')} />
                   ) : (
                     <UploadSimple aria-hidden="true" size={25} weight="duotone" />
                   )}
                   {evidence && !evidenceError ? (
                     <span className="financial-ops__evidence-attached" role="status">
                       <CheckCircle aria-hidden="true" size={18} weight="fill" />
-                      {evidence.type === 'application/pdf' ? 'แนบไฟล์ PDF แล้ว' : 'แนบสลิปแล้ว'}
+                      {evidence.type === 'application/pdf' ? translateUi('แนบไฟล์ PDF แล้ว') : translateUi('แนบสลิปแล้ว')}
                     </span>
                   ) : null}
-                  <b>{evidence ? evidence.name : 'อัปโหลดรูปสลิป'}</b>
-                  {evidence && !evidenceError ? <small>แตะเพื่อเปลี่ยนไฟล์ · กดบันทึกรับเงินเพื่อยืนยัน</small> : null}
-                  <small>JPG, PNG, WebP หรือ PDF ไม่เกิน 5 MB</small>
+                  <b>{evidence ? evidence.name : translateUi('อัปโหลดรูปสลิป')}</b>
+                  {evidence && !evidenceError ? <small>{translateUi('แตะเพื่อเปลี่ยนไฟล์ · กดบันทึกรับเงินเพื่อยืนยัน')}</small> : null}
+                  <small>{translateUi('JPG, PNG, WebP หรือ PDF ไม่เกิน 5 MB')}</small>
                 </span>
-                {evidenceError ? <small className="financial-ops__evidence-error" role="alert">{evidenceError}</small> : null}
+                {evidenceError ? <small className="financial-ops__evidence-error" role="alert">{translateUi(evidenceError)}</small> : null}
               </label>
             ) : null}
 
             <label className="financial-ops__payment-reference">
-              <span>หมายเหตุ <small>(ไม่บังคับ)</small></span>
+              <span>{translateUi('หมายเหตุ ')}<small>{translateUi('(ไม่บังคับ)')}</small></span>
               <input
-                aria-label="หมายเหตุ"
+                aria-label={translateUi('หมายเหตุ')}
                 disabled={busy || !canRecordPayment}
                 onChange={(event) => onReferenceChange(event.target.value)}
-                placeholder="เช่น ลูกค้าจ่ายแบงก์ใหญ่"
+                placeholder={translateUi('เช่น ลูกค้าจ่ายแบงก์ใหญ่')}
                 value={reference}
               />
             </label>
 
             <footer className="financial-ops__payment-actions">
-              <button disabled={busy} onClick={onClose} type="button">ยกเลิก</button>
+              <button disabled={busy} onClick={onClose} type="button">{translateUi('ยกเลิก')}</button>
               <button disabled={busy || !canRecordPayment || !paymentReady} onClick={onRecordPayment} type="button">
                 <FloppyDisk aria-hidden="true" size={21} weight="regular" />
-                {busy ? 'กำลังบันทึก...' : 'บันทึกรับเงินทันที'}
+                {busy ? translateUi('กำลังบันทึก...') : translateUi('บันทึกรับเงินทันที')}
               </button>
             </footer>
           </div>

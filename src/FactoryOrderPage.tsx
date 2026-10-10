@@ -1,3 +1,4 @@
+import { uiDateTimeFormat, translateUi, useLanguage } from './i18n';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   CalendarBlank,
@@ -45,12 +46,12 @@ function normalizeQuantity(value: number) {
 }
 
 function formatServiceDate(value: string) {
-  return new Intl.DateTimeFormat('th-TH', { day: 'numeric', month: 'short', year: 'numeric' })
-    .format(new Date(`${value}T12:00:00`));
+  return uiDateTimeFormat({ day: 'numeric', month: 'short', year: 'numeric' })
+    .format(new Date(`${value}T12:00:00+07:00`));
 }
 
 function formatTime(value: string) {
-  return new Intl.DateTimeFormat('th-TH', { hour: '2-digit', minute: '2-digit' }).format(new Date(value));
+  return uiDateTimeFormat({ hour: '2-digit', minute: '2-digit' }).format(new Date(value));
 }
 
 function aggregateOrderedItems(orders: StockMovementEntry[]) {
@@ -77,12 +78,14 @@ function formatMovementTotal(movement: StockMovementEntry) {
 }
 
 function IceTypeIcon({ name, size = 29 }: { name: string; size?: number }) {
+  useLanguage();
   return name.includes('บด')
     ? <Snowflake aria-hidden="true" size={size} weight="duotone" />
     : <Package aria-hidden="true" size={size} weight="duotone" />;
 }
 
 export function FactoryOrderPage() {
+  useLanguage();
   const [serviceDate, setServiceDate] = useState(currentServiceDate());
   const [trucks, setTrucks] = useState<TruckOption[]>([]);
   const [truckId, setTruckId] = useState('');
@@ -312,30 +315,29 @@ export function FactoryOrderPage() {
     <div className="factory-order-page">
       <header className="factory-order-heading">
         <div>
-          <h1>ส่งน้ำแข็งจากโรงงาน</h1>
-          <p>บันทึกน้ำแข็งเข้าสู่สต็อกรถตามวันที่ และเริ่มงานวันนี้อัตโนมัติเมื่อบันทึกรายการแรก</p>
+          <h1>{translateUi('ส่งน้ำแข็งจากโรงงาน')}</h1>
+          <p>{translateUi('บันทึกน้ำแข็งเข้าสู่สต็อกรถตามวันที่ และเริ่มงานวันนี้อัตโนมัติเมื่อบันทึกรายการแรก')}</p>
         </div>
       </header>
 
       <div className="factory-order-layout">
         <div className="factory-order-main">
-          <section className="factory-order-alert" aria-label="ข้อควรทราบ">
+          <section className="factory-order-alert" aria-label={translateUi('ข้อควรทราบ')}>
             <Info size={25} weight="fill" />
             <div>
-              <strong>ยอดที่ยืนยันจะเพิ่มเข้าสู่สต็อกรถทันที</strong>
-              <p>โรงงานไม่มีขั้นตอนนับรับแยกในระบบ กรุณาตรวจสอบชนิดและจำนวนก่อนยืนยัน</p>
+              <strong>{translateUi('ยอดที่ยืนยันจะเพิ่มเข้าสู่สต็อกรถทันที')}</strong>
+              <p>{translateUi('โรงงานไม่มีขั้นตอนนับรับแยกในระบบ กรุณาตรวจสอบชนิดและจำนวนก่อนยืนยัน')}</p>
             </div>
           </section>
 
           <section className="factory-order-card factory-order-form-card">
             <div className="factory-order-card__heading">
-              <h2>สั่งเพิ่มเข้าสต็อกรถ</h2>
+              <h2>{translateUi('สั่งเพิ่มเข้าสต็อกรถ')}</h2>
             </div>
 
             <div className="factory-order-fields">
               <label>
-                วันที่รับสินค้า
-                <span className="field-with-icon">
+                {translateUi('วันที่รับสินค้า')}<span className="field-with-icon">
                   <CalendarBlank size={18} />
                   <input
                     disabled={isActionSubmitting}
@@ -346,20 +348,18 @@ export function FactoryOrderPage() {
                 </span>
               </label>
               <label>
-                รถที่รับสินค้า
-                <select
+                {translateUi('รถที่รับสินค้า')}<select
                   disabled={loadingTrucks || isActionSubmitting || trucks.length === 0}
                   onChange={(event) => setTruckId(event.target.value)}
                   value={truckId}
                 >
-                  {trucks.length === 0 ? <option value="">ยังไม่มีรถบรรทุก</option> : null}
+                  {trucks.length === 0 ? <option value="">{translateUi('ยังไม่มีรถบรรทุก')}</option> : null}
                   {trucks.map((truck) => <option key={truck.id} value={truck.id}>{truck.code} - {truck.name}</option>)}
                 </select>
               </label>
               <label>
-                การบันทึก
-                <select disabled value="เพิ่มเข้าสู่สต็อกรถประจำวัน">
-                  <option value="เพิ่มเข้าสู่สต็อกรถประจำวัน">เพิ่มเข้าสู่สต็อกรถประจำวัน</option>
+                {translateUi('การบันทึก')}<select disabled value="เพิ่มเข้าสู่สต็อกรถประจำวัน">
+                  <option value="เพิ่มเข้าสู่สต็อกรถประจำวัน">{translateUi('เพิ่มเข้าสู่สต็อกรถประจำวัน')}</option>
                 </select>
               </label>
             </div>
@@ -367,21 +367,21 @@ export function FactoryOrderPage() {
             {loadingTrucks || loadingSummary ? (
               <div className="factory-order-loading" role="status">
                 <span className="loading-spinner" />
-                <p>กำลังโหลดชนิดน้ำแข็งและยอดสต็อก...</p>
+                <p>{translateUi('กำลังโหลดชนิดน้ำแข็งและยอดสต็อก...')}</p>
               </div>
             ) : trucks.length === 0 ? (
               <div className="factory-order-empty">
                 <Truck size={35} weight="duotone" />
-                <strong>ยังไม่มีรถบรรทุกที่เปิดใช้งาน</strong>
-                <p>เพิ่มรถบรรทุกในเมนูตั้งค่าจุดถือครองก่อนสร้างคำสั่งซื้อ</p>
+                <strong>{translateUi('ยังไม่มีรถบรรทุกที่เปิดใช้งาน')}</strong>
+                <p>{translateUi('เพิ่มรถบรรทุกในเมนูตั้งค่าจุดถือครองก่อนสร้างคำสั่งซื้อ')}</p>
               </div>
             ) : (
               <div className="factory-order-lines">
                 <div className="factory-order-line factory-order-line--header">
-                  <span>ประเภทน้ำแข็ง</span>
-                  <span>จำนวนที่สั่ง</span>
-                  <span>สต็อกรถปัจจุบัน</span>
-                  <span>หลังยืนยัน</span>
+                  <span>{translateUi('ประเภทน้ำแข็ง')}</span>
+                  <span>{translateUi('จำนวนที่สั่ง')}</span>
+                  <span>{translateUi('สต็อกรถปัจจุบัน')}</span>
+                  <span>{translateUi('หลังยืนยัน')}</span>
                 </div>
                 {iceTypes.map((ice) => {
                   const draftQuantity = quantities[ice.ice_type_id] ?? 0;
@@ -393,13 +393,13 @@ export function FactoryOrderPage() {
                       </span>
                       <span className="stepper">
                         <button
-                          aria-label={`ลดจำนวน ${ice.ice_type_name}`}
+                          aria-label={translateUi('ลดจำนวน {0}', { 0: ice.ice_type_name })}
                           disabled={isActionSubmitting || draftQuantity === 0}
                           onClick={() => updateQuantity(ice, draftQuantity - 10)}
                           type="button"
                         ><Minus size={16} /></button>
                         <input
-                          aria-label={`จำนวน ${ice.ice_type_name}`}
+                          aria-label={translateUi('จำนวน {0}', { 0: ice.ice_type_name })}
                           disabled={isActionSubmitting}
                           min={0}
                           onChange={(event) => updateQuantity(ice, Number(event.target.value) || 0)}
@@ -408,38 +408,38 @@ export function FactoryOrderPage() {
                           value={draftQuantity}
                         />
                         <button
-                          aria-label={`เพิ่มจำนวน ${ice.ice_type_name}`}
+                          aria-label={translateUi('เพิ่มจำนวน {0}', { 0: ice.ice_type_name })}
                           disabled={isActionSubmitting}
                           onClick={() => updateQuantity(ice, draftQuantity + 10)}
                           type="button"
                         ><Plus size={16} /></button>
                       </span>
                       <strong className="stock-number">
-                        <span className="mobile-stock-label">ตอนนี้</span>
+                        <span className="mobile-stock-label">{translateUi('ตอนนี้')}</span>
                         {ice.quantity.toLocaleString('th-TH')} <span className="stock-unit">{ice.unit}</span>
                       </strong>
                       <strong className="stock-number stock-number--projected">
-                        <span className="mobile-stock-label">หลังยืนยัน</span>
+                        <span className="mobile-stock-label">{translateUi('หลังยืนยัน')}</span>
                         {(ice.quantity + draftQuantity).toLocaleString('th-TH')} <span className="stock-unit">{ice.unit}</span>
                       </strong>
                     </div>
                   );
                 })}
-                {iceTypes.length === 0 ? <p className="empty-text">ยังไม่มีชนิดน้ำแข็งที่เปิดใช้งาน</p> : null}
+                {iceTypes.length === 0 ? <p className="empty-text">{translateUi('ยังไม่มีชนิดน้ำแข็งที่เปิดใช้งาน')}</p> : null}
               </div>
             )}
 
             <div className="factory-order-bottom-section">
               <div className="factory-order-note-field">
                 <label>
-                  <span>หมายเหตุ <small>(ถ้ามี)</small></span>
+                  <span>{translateUi('หมายเหตุ ')}<small>{translateUi('(ถ้ามี)')}</small></span>
                   <textarea
                     disabled={isActionSubmitting}
                     onChange={(event) => {
                       orderAction.reset();
                       setNote(event.target.value);
                     }}
-                    placeholder="เช่น เติมของสำหรับช่วงบ่าย"
+                    placeholder={translateUi('เช่น เติมของสำหรับช่วงบ่าย')}
                     value={note}
                   />
                 </label>
@@ -447,15 +447,15 @@ export function FactoryOrderPage() {
 
               <div className="factory-order-action-container">
                 <div className="factory-order-feedback" aria-live="polite">
-                  {error ? <p className="error-text" role="alert">{error}</p> : null}
-                  {orderAction.error ? <p className="error-text" role="alert">{orderAction.error}</p> : null}
-                  {orderAction.success ? <p className="factory-order-success"><CheckCircle size={19} weight="fill" />{orderAction.success}</p> : null}
-                  {cancelAction.error ? <p className="error-text" role="alert">{cancelAction.error}</p> : null}
-                  {cancelAction.success ? <p className="factory-order-success"><CheckCircle size={19} weight="fill" />{cancelAction.success}</p> : null}
+                  {error ? <p className="error-text" role="alert">{translateUi(error)}</p> : null}
+                  {orderAction.error ? <p className="error-text" role="alert">{translateUi(orderAction.error)}</p> : null}
+                  {orderAction.success ? <p className="factory-order-success"><CheckCircle size={19} weight="fill" />{translateUi(orderAction.success)}</p> : null}
+                  {cancelAction.error ? <p className="error-text" role="alert">{translateUi(cancelAction.error)}</p> : null}
+                  {cancelAction.success ? <p className="factory-order-success"><CheckCircle size={19} weight="fill" />{translateUi(cancelAction.success)}</p> : null}
                 </div>
                 <div className="factory-order-action-row">
                   <span className="factory-order-add-summary">
-                    ยอดที่จะเพิ่ม <Package size={18} weight="fill" /> <strong>{Object.values(quantities).filter(q => q > 0).length} รายการ</strong>
+                    {translateUi('ยอดที่จะเพิ่ม ')}<Package size={18} weight="fill" /> <strong>{Object.values(quantities).filter(q => q > 0).length}{translateUi(' รายการ')}</strong>
                   </span>
                   <button
                     className="primary-button"
@@ -464,7 +464,7 @@ export function FactoryOrderPage() {
                     type="button"
                   >
                     <ShoppingCart size={22} weight="bold" />
-                    {orderAction.isSubmitting ? 'กำลังบันทึก...' : 'ยืนยันคำสั่งซื้อ'}
+                    {orderAction.isSubmitting ? translateUi('กำลังบันทึก...') : translateUi('ยืนยันคำสั่งซื้อ')}
                   </button>
                 </div>
               </div>
@@ -474,8 +474,8 @@ export function FactoryOrderPage() {
           <section className="factory-order-card factory-order-adjustments">
             <div className="factory-order-card__heading">
               <div>
-                <h2>สั่งเพิ่มระหว่างวัน</h2>
-                <p>แตะจำนวนที่ใช้บ่อย แล้วตรวจยอดด้านบนก่อนยืนยัน</p>
+                <h2>{translateUi('สั่งเพิ่มระหว่างวัน')}</h2>
+                <p>{translateUi('แตะจำนวนที่ใช้บ่อย แล้วตรวจยอดด้านบนก่อนยืนยัน')}</p>
               </div>
             </div>
             <div className="quick-order-buttons">
@@ -491,17 +491,17 @@ export function FactoryOrderPage() {
 
             <div className="factory-order-history">
               <div className="factory-order-history__header">
-                <span>เวลา</span>
-                <span>รถรับสินค้า</span>
-                <span>รายการ</span>
-                <span>ผู้บันทึก</span>
-                <span>หมายเหตุ</span>
-                <span>จัดการ</span>
+                <span>{translateUi('เวลา')}</span>
+                <span>{translateUi('รถรับสินค้า')}</span>
+                <span>{translateUi('รายการ')}</span>
+                <span>{translateUi('ผู้บันทึก')}</span>
+                <span>{translateUi('หมายเหตุ')}</span>
+                <span>{translateUi('จัดการ')}</span>
               </div>
               {recentOrders.map((movement) => (
                 <div className="factory-order-history__row" key={movement.id}>
                   <span>{formatTime(movement.recorded_at)}</span>
-                  <span>{movement.to_location_name ?? selectedTruck?.name ?? 'รถบรรทุก'}</span>
+                  <span>{movement.to_location_name ?? selectedTruck?.name ?? translateUi('รถบรรทุก')}</span>
                   <span>{movement.items.map((item) => `${item.ice_type_name} ${item.quantity.toLocaleString('th-TH')} ${item.unit}`).join(' • ')}</span>
                   <span>{movement.recorded_by}</span>
                   <span>{movement.note ?? '-'}</span>
@@ -511,12 +511,11 @@ export function FactoryOrderPage() {
                     onClick={() => handleCancelOrder(movement.id)}
                     type="button"
                   >
-                    ยกเลิก
-                  </button>
+                    {translateUi('ยกเลิก')}</button>
                 </div>
               ))}
               {recentOrders.length === 0 && !loadingSummary
-                ? <p className="empty-text">ยังไม่มีคำสั่งซื้อในวันที่และรถที่เลือก</p>
+                ? <p className="empty-text">{translateUi('ยังไม่มีคำสั่งซื้อในวันที่และรถที่เลือก')}</p>
                 : null}
             </div>
           </section>
@@ -526,9 +525,9 @@ export function FactoryOrderPage() {
           <section className="factory-order-card factory-order-summary">
             <h2 className="summary-card-title">
               <CalendarBlank size={20} weight="fill" className="summary-title-icon" />
-              <span>สรุปวันนี้ <small>({formatServiceDate(serviceDate)})</small></span>
+              <span>{translateUi('สรุปวันนี้ ')}<small>({formatServiceDate(serviceDate)})</small></span>
             </h2>
-            <h3>ยอดสั่งเข้ารถ</h3>
+            <h3>{translateUi('ยอดสั่งเข้ารถ')}</h3>
             <div className="summary-items-list">
               {orderedTotals.map((ice) => (
                 <p key={ice.ice_type_id} className="summary-item-row">
@@ -539,11 +538,11 @@ export function FactoryOrderPage() {
                   <b>{ice.quantity.toLocaleString('th-TH')} {ice.unit}</b>
                 </p>
               ))}
-              {orderedTotals.length === 0 ? <p className="summary-empty">ยังไม่มียอดสั่ง</p> : null}
+              {orderedTotals.length === 0 ? <p className="summary-empty">{translateUi('ยังไม่มียอดสั่ง')}</p> : null}
             </div>
             <div className="summary-total">
-              <span>รวมยอดสั่งเข้ารถ</span>
-              <strong>{orderedTodayTotal.toLocaleString('th-TH')} หน่วย</strong>
+              <span>{translateUi('รวมยอดสั่งเข้ารถ')}</span>
+              <strong>{orderedTodayTotal.toLocaleString('th-TH')}{translateUi(' หน่วย')}</strong>
             </div>
           </section>
 
@@ -551,16 +550,16 @@ export function FactoryOrderPage() {
             <div>
               <Truck size={36} weight="fill" className="truck-card-icon" />
               <span>
-                <h3>รถรับสินค้าที่เลือก</h3>
-                <p>{selectedTruck ? `${selectedTruck.code} - ${selectedTruck.name}` : 'ยังไม่ได้ตั้งค่ารถบรรทุก'}</p>
+                <h3>{translateUi('รถรับสินค้าที่เลือก')}</h3>
+                <p>{selectedTruck ? `${selectedTruck.code} - ${selectedTruck.name}` : translateUi('ยังไม่ได้ตั้งค่ารถบรรทุก')}</p>
               </span>
             </div>
             <hr />
-            <p><strong>คำสั่งซื้อวันนี้</strong><span>{orderCount} รายการ</span></p>
+            <p><strong>{translateUi('คำสั่งซื้อวันนี้')}</strong><span>{orderCount}{translateUi(' รายการ')}</span></p>
           </section>
 
           <section className="factory-order-card recent-card">
-            <h2>คำสั่งซื้อล่าสุด</h2>
+            <h2>{translateUi('คำสั่งซื้อล่าสุด')}</h2>
             <div className="recent-orders-list">
               {recentOrders.slice(0, 5).map((movement) => (
                 <div className="recent-order" key={movement.id}>
@@ -578,7 +577,7 @@ export function FactoryOrderPage() {
                   </div>
                 </div>
               ))}
-              {recentOrders.length === 0 ? <p className="empty-text">ยังไม่มีประวัติ</p> : null}
+              {recentOrders.length === 0 ? <p className="empty-text">{translateUi('ยังไม่มีประวัติ')}</p> : null}
             </div>
           </section>
         </aside>

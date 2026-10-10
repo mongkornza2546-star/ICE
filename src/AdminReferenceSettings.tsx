@@ -1,3 +1,4 @@
+import { translateUi, useLanguage } from './i18n';
 import { useEffect, useState } from 'react';
 import { Cube, Plus, UsersThree } from '@phosphor-icons/react';
 import type { UserProfile } from './types/app';
@@ -26,6 +27,7 @@ export function AdminReferenceSettings({
   initialTab?: ReferenceTab;
   previewData?: ReferenceSettingsPreviewData;
 }) {
+  useLanguage();
   return <AdminReferenceSettingsContent initialTab={initialTab} previewData={previewData} />;
 }
 
@@ -38,6 +40,7 @@ function AdminReferenceSettingsContent({
   initialTab: ReferenceTab;
   previewData?: ReferenceSettingsPreviewData;
 }) {
+  useLanguage();
   const [activeTab, setActiveTab] = useState<ReferenceTab>(initialTab);
   const [createIceTypeRequested, setCreateIceTypeRequested] = useState(false);
 
@@ -117,16 +120,16 @@ function AdminReferenceSettingsContent({
   }
 
   if (loading) {
-    return <p className="empty-text">กำลังตรวจสอบสิทธิ์และโหลดข้อมูลตั้งค่า...</p>;
+    return <p className="empty-text">{translateUi('กำลังตรวจสอบสิทธิ์และโหลดข้อมูลตั้งค่า...')}</p>;
   }
 
   if (!authorized) {
     return (
       <section className="panel center-panel error-panel">
-        <p className="eyebrow">ไม่สามารถเปิดหน้าตั้งค่า</p>
-        <h2>ตรวจสอบสิทธิ์แอดมินไม่สำเร็จ</h2>
-        <p className="error-text" role="alert">{pageError ?? 'เกิดข้อผิดพลาดที่ไม่ทราบสาเหตุ'}</p>
-        <button className="ghost-button" onClick={() => window.location.reload()} type="button">ตรวจสอบอีกครั้ง</button>
+        <p className="eyebrow">{translateUi('ไม่สามารถเปิดหน้าตั้งค่า')}</p>
+        <h2>{translateUi('ตรวจสอบสิทธิ์แอดมินไม่สำเร็จ')}</h2>
+        <p className="error-text" role="alert">{pageError ?? translateUi('เกิดข้อผิดพลาดที่ไม่ทราบสาเหตุ')}</p>
+        <button className="ghost-button" onClick={() => window.location.reload()} type="button">{translateUi('ตรวจสอบอีกครั้ง')}</button>
       </section>
     );
   }
@@ -136,11 +139,11 @@ function AdminReferenceSettingsContent({
       {/* Top Page Header */}
       <header className="ref-page-header">
         <div className="ref-page-header__titles">
-          <h1>ผู้ใช้และชนิดน้ำแข็ง</h1>
+          <h1>{translateUi('ผู้ใช้และชนิดน้ำแข็ง')}</h1>
           <p>
             {activeTab === 'users'
-              ? 'จัดการผู้ใช้ระบบและชนิดน้ำแข็งที่ใช้งานในการจัดส่ง'
-              : 'จัดการผู้ใช้งานระบบและชนิดน้ำแข็งที่ให้บริการ'}
+              ? translateUi('จัดการผู้ใช้ระบบและชนิดน้ำแข็งที่ใช้งานในการจัดส่ง')
+              : translateUi('จัดการผู้ใช้งานระบบและชนิดน้ำแข็งที่ให้บริการ')}
           </p>
         </div>
         {activeTab === 'ice_types' ? (
@@ -151,21 +154,21 @@ function AdminReferenceSettingsContent({
               type="button"
             >
               <Plus size={20} weight="regular" aria-hidden="true" />
-              <span>เพิ่มชนิดน้ำแข็ง</span>
+              <span>{translateUi('เพิ่มชนิดน้ำแข็ง')}</span>
             </button>
           </div>
         ) : null}
       </header>
 
       {/* Tabs Navigation */}
-      <nav className="ref-nav-tabs" aria-label="หมวดหมู่การตั้งค่า">
+      <nav className="ref-nav-tabs" aria-label={translateUi('หมวดหมู่การตั้งค่า')}>
         <button
           className={`ref-nav-tab ${activeTab === 'users' ? 'ref-nav-tab--active' : ''}`}
           onClick={() => setActiveTab('users')}
           type="button"
         >
           <UsersThree size={20} weight={activeTab === 'users' ? 'bold' : 'regular'} />
-          <span>ผู้ใช้ระบบ</span>
+          <span>{translateUi('ผู้ใช้ระบบ')}</span>
         </button>
         <button
           className={`ref-nav-tab ${activeTab === 'ice_types' ? 'ref-nav-tab--active' : ''}`}
@@ -173,7 +176,7 @@ function AdminReferenceSettingsContent({
           type="button"
         >
           <Cube size={20} weight={activeTab === 'ice_types' ? 'bold' : 'regular'} />
-          <span>ชนิดน้ำแข็ง</span>
+          <span>{translateUi('ชนิดน้ำแข็ง')}</span>
         </button>
       </nav>
 

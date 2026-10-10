@@ -5,8 +5,10 @@ import { getRecoverableSessionNotice } from './lib/authErrors';
 import { supabase } from './lib/supabase';
 import { clearCachedUserProfile } from './lib/userProfileCache';
 import { RoleRouter } from './RoleRouter';
+import { LanguageSwitcher, localizeErrorMessage, useLanguage, translateUi } from './i18n';
 
 export function AuthGate() {
+  const { language, t } = useLanguage();
   const [session, setSession] = useState<Session | null>(null);
   const [authNotice, setAuthNotice] = useState<string | null>(null);
   const [bootLoading, setBootLoading] = useState(true);
@@ -69,11 +71,12 @@ export function AuthGate() {
     return (
       <div className="app-shell">
         <section className="panel center-panel">
+          <LanguageSwitcher className="language-switcher--auth" />
           <p className="eyebrow">Phase 2 Setup</p>
-          <h1>ต้องตั้งค่า Supabase ก่อนเริ่มใช้หน้าพนักงาน</h1>
+          <h1>{t('setupRequired')}</h1>
           <p>
-            สร้างไฟล์ <code>.env.local</code> จาก <code>.env.example</code> แล้วใส่
-            <code>VITE_SUPABASE_URL</code> และ <code>VITE_SUPABASE_ANON_KEY</code>
+            {t('setupFile')} <code>.env.local</code> {t('setupFrom')} <code>.env.example</code> {t('setupThen')}
+            <code>VITE_SUPABASE_URL</code> {t('setupAnd')} <code>VITE_SUPABASE_ANON_KEY</code>
           </p>
         </section>
       </div>
@@ -84,8 +87,8 @@ export function AuthGate() {
     return (
       <div className="app-shell">
         <section className="panel center-panel">
-          <p className="eyebrow">กำลังเริ่มระบบ</p>
-          <h1>โหลด session และสิทธิ์ผู้ใช้</h1>
+          <p className="eyebrow">{t('booting')}</p>
+          <h1>{t('loadingSession')}</h1>
         </section>
       </div>
     );
@@ -95,12 +98,13 @@ export function AuthGate() {
     <RoleRouter key={session.user.id} onRecoverableSessionError={recoverSession} session={session} />
   ) : (
     <div className="app-shell">
-      <SignInPanel notice={authNotice} />
+      <SignInPanel notice={authNotice && language === 'my' ? localizeErrorMessage(authNotice) : authNotice} />
     </div>
   );
 }
 
 function SignInPanel({ notice }: { notice: string | null }) {
+  const { language, t } = useLanguage();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -121,7 +125,7 @@ function SignInPanel({ notice }: { notice: string | null }) {
       : await signInWithNickname(username, password);
 
     if (signInError) {
-      setError(signInError.message);
+      setError(language === 'my' ? localizeErrorMessage(signInError.message) : signInError.message);
     }
 
     setSubmitting(false);
@@ -129,22 +133,23 @@ function SignInPanel({ notice }: { notice: string | null }) {
 
   return (
     <section className="panel auth-panel">
-      <p className="eyebrow">บัตรร้านส่งน้ำแข็ง</p>
-      <h1>เข้าสู่ระบบหน้างาน</h1>
+      <LanguageSwitcher className="language-switcher--auth" />
+      <p className="eyebrow">{t('brand')}</p>
+      <h1>{t('loginTitle')}</h1>
       {notice ? <p className="muted">{notice}</p> : null}
       <form className="auth-form" onSubmit={handleSubmit}>
         <label>
-          ชื่อเล่นหรืออีเมล
+          {t('usernameOrEmail')}
           <input
             autoComplete="username"
             value={username}
             onChange={(event) => setUsername(event.target.value)}
-            placeholder="เช่น เมย์ หรือ staff@example.com"
+            placeholder={t('usernameExample')}
             required
           />
         </label>
         <label>
-          รหัสผ่าน
+          {t('password')}
           <input
             autoComplete="current-password"
             type="password"
@@ -154,9 +159,9 @@ function SignInPanel({ notice }: { notice: string | null }) {
             required
           />
         </label>
-        {error ? <p className="error-text">{error}</p> : null}
+        {error ? <p className="error-text">{translateUi(error)}</p> : null}
         <button className="primary-button" disabled={submitting} type="submit">
-          {submitting ? 'กำลังเข้าสู่ระบบ...' : 'เข้าสู่ระบบ'}
+          {submitting ? t('signingIn') : t('signIn')}
         </button>
       </form>
     </section>

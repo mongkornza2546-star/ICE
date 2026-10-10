@@ -1,3 +1,4 @@
+import { translateUi, useLanguage } from '../../../i18n';
 import { type FormEvent, useEffect, useState } from 'react';
 import { Plus } from '@phosphor-icons/react';
 import type { IceTypePriceSetting, IceTypeOption } from '../../../types/app';
@@ -12,6 +13,7 @@ interface IceTypePriceEditorProps {
 }
 
 export function IceTypePriceEditor({ iceType, previewPrices, readOnly = false }: IceTypePriceEditorProps) {
+  useLanguage();
   const [prices, setPrices] = useState<IceTypePriceSetting[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -106,27 +108,27 @@ export function IceTypePriceEditor({ iceType, previewPrices, readOnly = false }:
   return (
     <div className="ref-section ref-price-section">
       <div className="ref-section-title">
-        <h3 aria-label="ราคากลาง"><span className="ref-section-title__index" aria-hidden="true">C.</span> ราคากลาง</h3>
+        <h3 aria-label={translateUi('ราคากลาง')}><span className="ref-section-title__index" aria-hidden="true">C.</span>{translateUi(' ราคากลาง')}</h3>
       </div>
 
       {!iceType ? (
-        <p className="empty-text">บันทึกชนิดน้ำแข็งก่อน แล้วจึงเพิ่มราคากลางได้</p>
+        <p className="empty-text">{translateUi('บันทึกชนิดน้ำแข็งก่อน แล้วจึงเพิ่มราคากลางได้')}</p>
       ) : (
         <div className="ref-price-container">
           {/* Price History Table */}
           {loading ? (
-            <p className="empty-text">กำลังโหลดราคากลาง...</p>
+            <p className="empty-text">{translateUi('กำลังโหลดราคากลาง...')}</p>
           ) : prices.length === 0 ? (
-            <p className="empty-text">ยังไม่มีการตั้งราคากลางสำหรับชนิดน้ำแข็งนี้</p>
+            <p className="empty-text">{translateUi('ยังไม่มีการตั้งราคากลางสำหรับชนิดน้ำแข็งนี้')}</p>
           ) : (
             <div className="ref-table-wrapper">
               <table className="ref-price-table">
                 <thead>
                   <tr>
-                    <th>ราคากลางต่อ{iceType.unit} (บาท)</th>
-                    <th>วันที่เริ่มมีผล</th>
-                    <th>วันที่สิ้นสุด</th>
-                    <th>สถานะ</th>
+                    <th>{translateUi('ราคากลางต่อ')}{iceType.unit}{translateUi(' (บาท)')}</th>
+                    <th>{translateUi('วันที่เริ่มมีผล')}</th>
+                    <th>{translateUi('วันที่สิ้นสุด')}</th>
+                    <th>{translateUi('สถานะ')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -148,7 +150,7 @@ export function IceTypePriceEditor({ iceType, previewPrices, readOnly = false }:
                         <td>{formatDateDisplay(p.valid_to)}</td>
                         <td>
                           <span className={`ref-pill ${isCurrent ? 'ref-pill--green' : 'ref-pill--gray'}`}>
-                            {statusLabel}
+                            {translateUi(statusLabel)}
                           </span>
                         </td>
                       </tr>
@@ -161,17 +163,16 @@ export function IceTypePriceEditor({ iceType, previewPrices, readOnly = false }:
 
           {/* Add New Price Period Card */}
           <div className="ref-add-price-card">
-            <h4>เพิ่มช่วงราคากลางใหม่</h4>
+            <h4>{translateUi('เพิ่มช่วงราคากลางใหม่')}</h4>
 
             <form className="ref-add-price-form" onSubmit={handleSave}>
               <div className="ref-add-price-grid">
                 <div className="ref-form-group">
                   <label>
-                    ราคากลางต่อ{iceType.unit} (บาท)
-                    <input
+                    {translateUi('ราคากลางต่อ')}{iceType.unit}{translateUi(' (บาท)')}<input
                       min="0.01"
                       onChange={(e) => setUnitPrice(e.target.value)}
-                      placeholder="เช่น 40.00"
+                      placeholder={translateUi('เช่น 40.00')}
                       required
                       step="0.01"
                       type="number"
@@ -181,7 +182,7 @@ export function IceTypePriceEditor({ iceType, previewPrices, readOnly = false }:
                 </div>
 
                 <div className="ref-form-group">
-                  <label>วันที่เริ่มมีผล</label>
+                  <label>{translateUi('วันที่เริ่มมีผล')}</label>
                   <input
                     onChange={(e) => setValidFrom(e.target.value)}
                     required
@@ -191,10 +192,10 @@ export function IceTypePriceEditor({ iceType, previewPrices, readOnly = false }:
                 </div>
 
                 <div className="ref-form-group">
-                  <label>วันที่สิ้นสุด (ไม่บังคับ)</label>
+                  <label>{translateUi('วันที่สิ้นสุด (ไม่บังคับ)')}</label>
                   <input
                     onChange={(e) => setValidTo(e.target.value)}
-                    placeholder="ไม่มีกำหนด"
+                    placeholder={translateUi('ไม่มีกำหนด')}
                     type="date"
                     value={validTo}
                   />
@@ -205,16 +206,16 @@ export function IceTypePriceEditor({ iceType, previewPrices, readOnly = false }:
                     className="primary-button ref-add-price-btn"
                     disabled={saving}
                     type="submit"
-                    aria-label="บันทึกราคากลางใหม่"
+                    aria-label={translateUi('บันทึกราคากลางใหม่')}
                   >
                     <Plus size={16} weight="bold" />
-                    <span>{saving ? 'กำลังบันทึก...' : 'เพิ่มช่วงราคา'}</span>
+                    <span>{saving ? translateUi('กำลังบันทึก...') : translateUi('เพิ่มช่วงราคา')}</span>
                   </button>
                 </div>
               </div>
 
-              {error ? <p className="error-text" role="alert">{error}</p> : null}
-              {success ? <p className="success-text" role="polite">{success}</p> : null}
+              {error ? <p className="error-text" role="alert">{translateUi(error)}</p> : null}
+              {success ? <p className="success-text" role="polite">{translateUi(success)}</p> : null}
             </form>
           </div>
         </div>

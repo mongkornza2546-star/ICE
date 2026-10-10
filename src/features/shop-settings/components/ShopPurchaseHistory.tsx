@@ -1,3 +1,4 @@
+import { translateUi, useLanguage } from '../../../i18n';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ArrowClockwise,
@@ -134,6 +135,7 @@ function entryPaymentMethods(entry: PurchaseHistoryEntry) {
 }
 
 export function ShopPurchaseHistory({ isActive, shopId }: { isActive: boolean; shopId: string }) {
+  useLanguage();
   const [entries, setEntries] = useState<PurchaseHistoryEntry[]>([]);
   const [period, setPeriod] = useState<HistoryPeriod>('90');
   const [paymentFilter, setPaymentFilter] = useState<HistoryPaymentFilter>('all');
@@ -192,56 +194,53 @@ export function ShopPurchaseHistory({ isActive, shopId }: { isActive: boolean; s
     outstanding: summary.outstanding + Number(entry.outstanding_amount),
   }), { amount: 0, quantity: 0, outstanding: 0 }), [filteredEntries]);
 
-  if (!shopId) return <p className="muted">บันทึกข้อมูลร้านก่อน แล้วจึงดูประวัติการซื้อ</p>;
+  if (!shopId) return <p className="muted">{translateUi('บันทึกข้อมูลร้านก่อน แล้วจึงดูประวัติการซื้อ')}</p>;
 
   return (
-    <section aria-label="ประวัติการซื้อของร้าน" className="shop-purchase-history">
+    <section aria-label={translateUi('ประวัติการซื้อของร้าน')} className="shop-purchase-history">
       <header className="shop-purchase-history__heading">
         <div>
-          <p className="eyebrow">รายการส่งและการชำระเงิน</p>
-          <h3>ประวัติการซื้อ</h3>
-          <p>แสดงรายการล่าสุดสูงสุด 100 รายการของร้านนี้</p>
+          <p className="eyebrow">{translateUi('รายการส่งและการชำระเงิน')}</p>
+          <h3>{translateUi('ประวัติการซื้อ')}</h3>
+          <p>{translateUi('แสดงรายการล่าสุดสูงสุด 100 รายการของร้านนี้')}</p>
         </div>
-        <button aria-label="โหลดประวัติการซื้อใหม่" className="secondary-button" disabled={loading} onClick={() => void loadHistory()} type="button">
+        <button aria-label={translateUi('โหลดประวัติการซื้อใหม่')} className="secondary-button" disabled={loading} onClick={() => void loadHistory()} type="button">
           <ArrowClockwise className={loading ? 'is-spinning' : ''} size={17} />
-          โหลดใหม่
-        </button>
+          {translateUi('โหลดใหม่')}</button>
       </header>
 
       <div className="shop-purchase-history__filters">
         <label>
-          ช่วงเวลา
-          <select value={period} onChange={(event) => setPeriod(event.target.value as HistoryPeriod)}>
-            <option value="30">30 วันล่าสุด</option>
-            <option value="90">90 วันล่าสุด</option>
-            <option value="all">ทั้งหมด</option>
+          {translateUi('ช่วงเวลา')}<select value={period} onChange={(event) => setPeriod(event.target.value as HistoryPeriod)}>
+            <option value="30">{translateUi('30 วันล่าสุด')}</option>
+            <option value="90">{translateUi('90 วันล่าสุด')}</option>
+            <option value="all">{translateUi('ทั้งหมด')}</option>
           </select>
         </label>
         <label>
-          สถานะชำระเงิน
-          <select value={paymentFilter} onChange={(event) => setPaymentFilter(event.target.value as HistoryPaymentFilter)}>
-            <option value="all">ทุกสถานะ</option>
-            <option value="paid">ชำระแล้ว</option>
-            <option value="outstanding">ยังมียอดค้าง</option>
+          {translateUi('สถานะชำระเงิน')}<select value={paymentFilter} onChange={(event) => setPaymentFilter(event.target.value as HistoryPaymentFilter)}>
+            <option value="all">{translateUi('ทุกสถานะ')}</option>
+            <option value="paid">{translateUi('ชำระแล้ว')}</option>
+            <option value="outstanding">{translateUi('ยังมียอดค้าง')}</option>
           </select>
         </label>
       </div>
 
       {!loading && !error ? (
-        <div className="shop-purchase-history__summary" aria-label="สรุปประวัติการซื้อที่แสดง">
-          <span><Receipt size={20} /><small>จำนวนรายการ</small><strong>{filteredEntries.length.toLocaleString('th-TH')}</strong></span>
-          <span><Package size={20} /><small>จำนวนรวม</small><strong>{totals.quantity.toLocaleString('th-TH')} หน่วย</strong></span>
-          <span><CheckCircle size={20} /><small>ยอดซื้อรวม</small><strong>{money.format(totals.amount)}</strong></span>
-          <span className={totals.outstanding > 0 ? 'has-outstanding' : ''}><WarningCircle size={20} /><small>ยอดค้าง</small><strong>{money.format(totals.outstanding)}</strong></span>
+        <div className="shop-purchase-history__summary" aria-label={translateUi('สรุปประวัติการซื้อที่แสดง')}>
+          <span><Receipt size={20} /><small>{translateUi('จำนวนรายการ')}</small><strong>{filteredEntries.length.toLocaleString('th-TH')}</strong></span>
+          <span><Package size={20} /><small>{translateUi('จำนวนรวม')}</small><strong>{totals.quantity.toLocaleString('th-TH')}{translateUi(' หน่วย')}</strong></span>
+          <span><CheckCircle size={20} /><small>{translateUi('ยอดซื้อรวม')}</small><strong>{money.format(totals.amount)}</strong></span>
+          <span className={totals.outstanding > 0 ? 'has-outstanding' : ''}><WarningCircle size={20} /><small>{translateUi('ยอดค้าง')}</small><strong>{money.format(totals.outstanding)}</strong></span>
         </div>
       ) : null}
 
       {loading ? (
-        <div className="shop-purchase-history__state" role="status"><span className="loading-spinner" /><strong>กำลังโหลดประวัติการซื้อ</strong><small>โปรดรอสักครู่</small></div>
+        <div className="shop-purchase-history__state" role="status"><span className="loading-spinner" /><strong>{translateUi('กำลังโหลดประวัติการซื้อ')}</strong><small>{translateUi('โปรดรอสักครู่')}</small></div>
       ) : error ? (
-        <div className="shop-purchase-history__state shop-purchase-history__state--error" role="alert"><WarningCircle size={30} /><strong>โหลดประวัติไม่สำเร็จ</strong><small>{error}</small><button className="secondary-button" onClick={() => void loadHistory()} type="button">ลองอีกครั้ง</button></div>
+        <div className="shop-purchase-history__state shop-purchase-history__state--error" role="alert"><WarningCircle size={30} /><strong>{translateUi('โหลดประวัติไม่สำเร็จ')}</strong><small>{translateUi(error)}</small><button className="secondary-button" onClick={() => void loadHistory()} type="button">{translateUi('ลองอีกครั้ง')}</button></div>
       ) : filteredEntries.length === 0 ? (
-        <div className="shop-purchase-history__state"><ClockCounterClockwise size={34} /><strong>ไม่พบประวัติการซื้อ</strong><small>ลองเปลี่ยนช่วงเวลาหรือสถานะการชำระเงิน</small></div>
+        <div className="shop-purchase-history__state"><ClockCounterClockwise size={34} /><strong>{translateUi('ไม่พบประวัติการซื้อ')}</strong><small>{translateUi('ลองเปลี่ยนช่วงเวลาหรือสถานะการชำระเงิน')}</small></div>
       ) : (
         <div className="shop-purchase-history__list">
           {filteredEntries.map((entry) => {
@@ -250,18 +249,18 @@ export function ShopPurchaseHistory({ isActive, shopId }: { isActive: boolean; s
               <article className="shop-purchase-card" key={entry.delivery_event_id}>
                 <div className="shop-purchase-card__date">
                   <CalendarBlank size={21} />
-                  <span><strong>{formatServiceDate(entry.service_date)}</strong><small>{new Date(entry.recorded_at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })} น.</small></span>
+                  <span><strong>{formatServiceDate(entry.service_date)}</strong><small>{new Date(entry.recorded_at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}{translateUi(' น.')}</small></span>
                 </div>
                 <div className="shop-purchase-card__body">
                   <div className="shop-purchase-card__title">
                     <span>
-                      <strong>{entry.charge_number ?? 'รายการเดิมก่อนใช้ระบบบิล'}</strong>
-                      <small>บันทึกโดย {entry.recorded_by_name || '—'}</small>
+                      <strong>{entry.charge_number ?? translateUi('รายการเดิมก่อนใช้ระบบบิล')}</strong>
+                      <small>{translateUi('บันทึกโดย ')}{entry.recorded_by_name || '—'}</small>
                     </span>
-                    <span className={`shop-purchase-status shop-purchase-status--${entry.payment_status ?? 'legacy'}`}>{paymentStatusLabel(entry.payment_status)}</span>
+                    <span className={`shop-purchase-status shop-purchase-status--${entry.payment_status ?? 'legacy'}`}>{translateUi(paymentStatusLabel(entry.payment_status))}</span>
                   </div>
-                  {entry.delivery_status === 'replaced' ? <p className="muted">บิลนี้ถูกแทนที่ด้วยบิลแก้ไขแล้ว</p>
-                    : entry.delivery_status === 'cancelled' || entry.charge_status === 'voided' ? <p className="muted">บิลนี้ถูกยกเลิกแล้ว</p> : null}
+                  {entry.delivery_status === 'replaced' ? <p className="muted">{translateUi('บิลนี้ถูกแทนที่ด้วยบิลแก้ไขแล้ว')}</p>
+                    : entry.delivery_status === 'cancelled' || entry.charge_status === 'voided' ? <p className="muted">{translateUi('บิลนี้ถูกยกเลิกแล้ว')}</p> : null}
                   <div className="shop-purchase-card__items">
                     {entry.items.map((item) => (
                       <span key={item.ice_type_id}>
@@ -271,10 +270,10 @@ export function ShopPurchaseHistory({ isActive, shopId }: { isActive: boolean; s
                     ))}
                   </div>
                   <div className="shop-purchase-card__meta">
-                    <span><small>เงื่อนไข</small><strong>{entry.payment_term ? paymentTermLabel[entry.payment_term] : 'ข้อมูลเดิม'}</strong></span>
-                    <span><small>วิธีชำระ</small><strong>{paymentMethods || (entry.payment_status === 'unpaid' ? 'ยังไม่ชำระ' : '—')}</strong></span>
-                    <span><small>ยอดรวม</small><strong>{entry.total_amount == null ? 'ไม่ระบุยอด' : money.format(Number(entry.total_amount))}</strong></span>
-                    <span><small>ยอดค้าง</small><strong className={entry.outstanding_amount > 0 ? 'is-outstanding' : ''}>{entry.total_amount == null ? '—' : money.format(Number(entry.outstanding_amount))}</strong></span>
+                    <span><small>{translateUi('เงื่อนไข')}</small><strong>{entry.payment_term ? paymentTermLabel[entry.payment_term] : translateUi('ข้อมูลเดิม')}</strong></span>
+                    <span><small>{translateUi('วิธีชำระ')}</small><strong>{paymentMethods || (entry.payment_status === 'unpaid' ? translateUi('ยังไม่ชำระ') : '—')}</strong></span>
+                    <span><small>{translateUi('ยอดรวม')}</small><strong>{entry.total_amount == null ? translateUi('ไม่ระบุยอด') : money.format(Number(entry.total_amount))}</strong></span>
+                    <span><small>{translateUi('ยอดค้าง')}</small><strong className={entry.outstanding_amount > 0 ? 'is-outstanding' : ''}>{entry.total_amount == null ? '—' : money.format(Number(entry.outstanding_amount))}</strong></span>
                   </div>
                   {entry.adjustments?.map((adjustment) => <p className="muted" key={adjustment.id}>{adjustment.reason} · {adjustment.amount_delta >= 0 ? '+' : ''}{money.format(Number(adjustment.amount_delta))}</p>)}
                 </div>

@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { useLanguage, translateUi } from './i18n';
 import { CalendarBlank, Coins, Package, Storefront } from '@phosphor-icons/react';
 import {
   EmployeeDeliveryWorkspace,
@@ -889,6 +890,7 @@ function buildDemoGateway(): EmployeeDeliveryGateway & { reset(): void } {
 }
 
 export function LocalDemoApp() {
+  const { t } = useLanguage();
   const [gatewayVersion, setGatewayVersion] = useState(0);
   const [draftState, setDraftState] = useState({ dirty: false, submitting: false });
   const [financialPage, setFinancialPage] = useState<'collection' | 'transactions' | 'credit' | 'credit_signoff'>(() => {
@@ -967,10 +969,10 @@ export function LocalDemoApp() {
   if (new URLSearchParams(window.location.search).get('screen') === 'employee-withdrawal-layout') {
     return (
       <EmployeeLayout onSignOut={() => undefined} profileLabel="test01@gmail.com">
-        <nav aria-label="งานพนักงาน" className="employee-task-tabs">
+        <nav aria-label={translateUi('งานพนักงาน')} className="employee-task-tabs">
           <button aria-current="page" type="button">
             <Package aria-hidden="true" size={22} weight="duotone" />
-            <span>เติม / คืน / ละลาย</span>
+            <span>{translateUi('เติม / คืน / ละลาย')}</span>
           </button>
           <button type="button">
             <Storefront aria-hidden="true" size={22} weight="duotone" />
@@ -978,11 +980,11 @@ export function LocalDemoApp() {
           </button>
           <button type="button">
             <CalendarBlank aria-hidden="true" size={22} weight="duotone" />
-            <span>อีเวนต์</span>
+            <span>{translateUi('อีเวนต์')}</span>
           </button>
           <button type="button">
             <Coins aria-hidden="true" size={22} weight="duotone" />
-            <span>เก็บเงิน</span>
+            <span>{translateUi('เก็บเงิน')}</span>
           </button>
         </nav>
         <EmployeeDeliveryWorkspace
@@ -1076,12 +1078,9 @@ export function LocalDemoApp() {
     <EmployeeLayout profileLabel="Local Demo">
       <div className="stack">
         <section className="panel">
-          <p className="eyebrow">Local Demo Mode</p>
-          <h1>ลองงานพนักงานตั้งแต่รับน้ำแข็งถึงส่งร้าน</h1>
-          <p className="muted">
-            โหมดนี้ใช้ข้อมูลจำลองในเบราว์เซอร์ ไม่แตะ Supabase จริง: รับน้ำแข็งจากรถเข้ารถเข็น
-            เลือกร้าน แล้วใส่จำนวนที่ส่งแต่ละชนิด
-          </p>
+          <p className="eyebrow">{t('demoMode')}</p>
+          <h1>{translateUi('ลองงานพนักงานตั้งแต่รับน้ำแข็งถึงส่งร้าน')}</h1>
+          <p className="muted">{t('demoDescription')}</p>
           <div className="toolbar">
             <button
               className="ghost-button"
@@ -1092,8 +1091,7 @@ export function LocalDemoApp() {
               }}
               type="button"
             >
-              รีเซ็ตข้อมูลเดโม่
-            </button>
+              {translateUi('รีเซ็ตข้อมูลเดโม่')}</button>
           </div>
         </section>
         <EmployeeDeliveryWorkspace

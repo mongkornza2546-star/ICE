@@ -1,3 +1,4 @@
+import { translateUi, useLanguage } from '../../i18n';
 import { useEffect, useRef, useState } from 'react';
 import { X } from '@phosphor-icons/react';
 import { readEventExcel, type EventExcelRow } from './eventExcelImport';
@@ -9,6 +10,7 @@ export function EventExcelImportDialog({ detail, gateway, onClose, onImported }:
   onClose: () => void;
   onImported: (result: EventNewShopsResult) => Promise<void>;
 }) {
+  useLanguage();
   const [rows, setRows] = useState<EventExcelRow[]>([]);
   const [filename, setFilename] = useState('');
   const [error, setError] = useState('');
@@ -66,21 +68,21 @@ export function EventExcelImportDialog({ detail, gateway, onClose, onImported }:
       else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
     }
   }}>
-    <button className="event-modal-backdrop" aria-label="ปิดหน้าต่าง" disabled={busy} onClick={onClose} type="button" tabIndex={-1} />
+    <button className="event-modal-backdrop" aria-label={translateUi('ปิดหน้าต่าง')} disabled={busy} onClick={onClose} type="button" tabIndex={-1} />
     <section className="event-modal">
-      <header><div><p className="eyebrow">{detail.event.name}</p><h2 id="event-import-title">อัปโหลด Excel ร้านในงาน</h2></div><button aria-label="ปิด" disabled={busy} onClick={onClose} type="button"><X size={20} /></button></header>
+      <header><div><p className="eyebrow">{detail.event.name}</p><h2 id="event-import-title">{translateUi('อัปโหลด Excel ร้านในงาน')}</h2></div><button aria-label={translateUi('ปิด')} disabled={busy} onClick={onClose} type="button"><X size={20} /></button></header>
       <div className="event-modal__body">
-        <p>ใช้ชีตแรก โดยแถวแรกมี เลขที่บูธ และ ชื่อร้านค้า เพิ่มคอลัมน์ ถังน้ำแข็ง ได้ · สูงสุด 1,000 ร้าน / 10 MB</p>
-        <label><span>เลือกไฟล์ Excel (.xlsx)</span><input ref={fileInput} type="file" accept=".xlsx" disabled={busy} onChange={(event) => { void selectFile(event.target.files?.[0]); event.target.value = ''; }} /></label>
-        <p>ใช้ช่วงวันที่ของงาน {detail.event.start_date} ถึง {detail.event.end_date} จำนวนถังจะเก็บในช่องจุดสังเกตของร้าน ยังไม่สร้างรายการเช่าหรือคิดเงิน</p>
-        {error ? <div className="event-feedback event-feedback--error event-import-error" role="alert">{error}</div> : null}
-        {busy ? <p role="status">กำลังดำเนินการ...</p> : null}
+        <p>{translateUi('ใช้ชีตแรก โดยแถวแรกมี เลขที่บูธ และ ชื่อร้านค้า เพิ่มคอลัมน์ ถังน้ำแข็ง ได้ · สูงสุด 1,000 ร้าน / 10 MB')}</p>
+        <label><span>{translateUi('เลือกไฟล์ Excel (.xlsx)')}</span><input ref={fileInput} type="file" accept=".xlsx" disabled={busy} onChange={(event) => { void selectFile(event.target.files?.[0]); event.target.value = ''; }} /></label>
+        <p>{translateUi('ใช้ช่วงวันที่ของงาน ')}{detail.event.start_date}{translateUi(' ถึง ')}{detail.event.end_date}{translateUi(' จำนวนถังจะเก็บในช่องจุดสังเกตของร้าน ยังไม่สร้างรายการเช่าหรือคิดเงิน')}</p>
+        {error ? <div className="event-feedback event-feedback--error event-import-error" role="alert">{translateUi(error)}</div> : null}
+        {busy ? <p role="status">{translateUi('กำลังดำเนินการ...')}</p> : null}
         {rows.length ? <>
-          <p role="status">{filename} · {rows.length} ร้าน · เพิ่มใหม่ {rows.length - skipped} ร้าน · ข้ามบูธที่มีอยู่แล้ว {skipped} ร้าน</p>
-          <div className="event-import-preview"><table><thead><tr><th>เลขที่บูธ</th><th>ชื่อร้านค้า</th><th>ถังน้ำแข็ง</th><th>สถานะ</th></tr></thead><tbody>{rows.map((row) => <tr key={row.rowNumber}><td>{row.input.booth_number}</td><td>{row.input.name}</td><td>{row.tankCount ?? '—'}</td><td>{isExisting(row) ? 'ข้าม (มีบูธแล้ว)' : 'เพิ่มใหม่'}</td></tr>)}</tbody></table></div>
+          <p role="status">{filename} · {rows.length}{translateUi(' ร้าน · เพิ่มใหม่ ')}{rows.length - skipped}{translateUi(' ร้าน · ข้ามบูธที่มีอยู่แล้ว ')}{skipped}{translateUi(' ร้าน')}</p>
+          <div className="event-import-preview"><table><thead><tr><th>{translateUi('เลขที่บูธ')}</th><th>{translateUi('ชื่อร้านค้า')}</th><th>{translateUi('ถังน้ำแข็ง')}</th><th>{translateUi('สถานะ')}</th></tr></thead><tbody>{rows.map((row) => <tr key={row.rowNumber}><td>{row.input.booth_number}</td><td>{row.input.name}</td><td>{row.tankCount ?? '—'}</td><td>{isExisting(row) ? translateUi('ข้าม (มีบูธแล้ว)') : translateUi('เพิ่มใหม่')}</td></tr>)}</tbody></table></div>
         </> : null}
       </div>
-      <footer><button className="secondary-button" disabled={busy} onClick={onClose} type="button">ยกเลิก</button><button className="primary-button" disabled={busy || !rows.length || rows.length === skipped} onClick={() => void submit()} type="button">ยืนยันนำเข้า {rows.length - skipped} ร้าน</button></footer>
+      <footer><button className="secondary-button" disabled={busy} onClick={onClose} type="button">{translateUi('ยกเลิก')}</button><button className="primary-button" disabled={busy || !rows.length || rows.length === skipped} onClick={() => void submit()} type="button">{translateUi('ยืนยันนำเข้า ')}{rows.length - skipped}{translateUi(' ร้าน')}</button></footer>
     </section>
   </div>;
 }

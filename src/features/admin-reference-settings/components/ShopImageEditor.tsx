@@ -1,3 +1,4 @@
+import { translateUi, useLanguage } from '../../../i18n';
 import { type ChangeEvent, type FormEvent, useEffect, useState } from 'react';
 import { Info, ImageSquare, Trash, UploadSimple } from '@phosphor-icons/react';
 import { ALLOWED_SHOP_IMAGE_TYPES, MAX_SHOP_IMAGE_SOURCE_SIZE, type ShopImageSetting } from '../types';
@@ -15,6 +16,7 @@ interface ShopImageEditorProps {
 }
 
 export function ShopImageEditor({ shop, onShopSaved }: ShopImageEditorProps) {
+  useLanguage();
   const [shopPreviewUrl, setShopPreviewUrl] = useState<string | null>(null);
   const [shopPreviewLoading, setShopPreviewLoading] = useState(false);
   const [shopUploadFile, setShopUploadFile] = useState<File | null>(null);
@@ -156,7 +158,7 @@ export function ShopImageEditor({ shop, onShopSaved }: ShopImageEditorProps) {
 
   return (
     <div className="shop-image-editor">
-      <div className="reference-form-heading"><h3>รูปร้าน</h3></div>
+      <div className="reference-form-heading"><h3>{translateUi('รูปร้าน')}</h3></div>
       {shop ? (
         <form className="reference-form" onSubmit={saveShopImage}>
           <div className="reference-shop-preview">
@@ -165,26 +167,26 @@ export function ShopImageEditor({ shop, onShopSaved }: ShopImageEditorProps) {
             )}
             <div className="reference-shop-preview__meta">
               <strong>{shop.code} · {shop.name}</strong>
-              <small>{shop.image_path ? 'ร้านนี้มีรูปในระบบแล้ว' : 'ร้านนี้ยังไม่มีรูปในระบบ'}</small>
-              {shopUploadFile ? <small>ไฟล์ใหม่: {shopUploadFile.name}</small> : null}
-              {shopPreviewLoading && !shopUploadFile ? <small>กำลังโหลดรูปตัวอย่าง...</small> : null}
+              <small>{shop.image_path ? translateUi('ร้านนี้มีรูปในระบบแล้ว') : translateUi('ร้านนี้ยังไม่มีรูปในระบบ')}</small>
+              {shopUploadFile ? <small>{translateUi('ไฟล์ใหม่: ')}{shopUploadFile.name}</small> : null}
+              {shopPreviewLoading && !shopUploadFile ? <small>{translateUi('กำลังโหลดรูปตัวอย่าง...')}</small> : null}
             </div>
           </div>
           <label className="secondary-button reference-upload-button">
             <UploadSimple size={18} />
-            <span>{shop.image_path ? 'เลือกรูปใหม่' : 'เลือกรูป'}</span>
+            <span>{shop.image_path ? translateUi('เลือกรูปใหม่') : translateUi('เลือกรูป')}</span>
             <input accept="image/jpeg,image/png,image/webp" onChange={chooseShopImageFile} type="file" />
           </label>
-          <p className="reference-inline-note"><Info size={16} weight="fill" />รองรับ JPG, PNG, WEBP ไฟล์ต้นฉบับไม่เกิน 25 MB และจะย่อเป็น WebP คุณภาพสูงไม่เกิน 1600 × 1200 px โดยตั้งเป้าไว้ที่ 1 MB และไม่เกิน 5 MB</p>
-          {shopImageError ? <p className="error-text" role="alert">{shopImageError}</p> : null}
-          {shopImageSuccess ? <p aria-live="polite" className="success-text">{shopImageSuccess}</p> : null}
+          <p className="reference-inline-note"><Info size={16} weight="fill" />{translateUi('รองรับ JPG, PNG, WEBP ไฟล์ต้นฉบับไม่เกิน 25 MB และจะย่อเป็น WebP คุณภาพสูงไม่เกิน 1600 × 1200 px โดยตั้งเป้าไว้ที่ 1 MB และไม่เกิน 5 MB')}</p>
+          {shopImageError ? <p className="error-text" role="alert">{translateUi(shopImageError)}</p> : null}
+          {shopImageSuccess ? <p aria-live="polite" className="success-text">{translateUi(shopImageSuccess)}</p> : null}
           <div className="reference-form__actions">
-            {shopUploadFile ? <button className="secondary-button" onClick={() => setShopUploadFile(null)} type="button">ยกเลิกรูปใหม่</button> : null}
-            <button className="ghost-button" disabled={savingShopImage || !shop.image_path} onClick={() => void removeShopImage()} type="button"><Trash size={18} /><span>ลบรูป</span></button>
-            <button className="primary-button" disabled={savingShopImage || !shopUploadFile} type="submit">{savingShopImage ? 'กำลังบันทึก...' : 'บันทึกรูปร้าน'}</button>
+            {shopUploadFile ? <button className="secondary-button" onClick={() => setShopUploadFile(null)} type="button">{translateUi('ยกเลิกรูปใหม่')}</button> : null}
+            <button className="ghost-button" disabled={savingShopImage || !shop.image_path} onClick={() => void removeShopImage()} type="button"><Trash size={18} /><span>{translateUi('ลบรูป')}</span></button>
+            <button className="primary-button" disabled={savingShopImage || !shopUploadFile} type="submit">{savingShopImage ? translateUi('กำลังบันทึก...') : translateUi('บันทึกรูปร้าน')}</button>
           </div>
         </form>
-      ) : <p className="muted">บันทึกข้อมูลร้านก่อน แล้วจึงเพิ่มหรือเปลี่ยนรูปร้านได้</p>}
+      ) : <p className="muted">{translateUi('บันทึกข้อมูลร้านก่อน แล้วจึงเพิ่มหรือเปลี่ยนรูปร้านได้')}</p>}
     </div>
   );
 }

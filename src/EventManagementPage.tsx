@@ -1,3 +1,4 @@
+import { uiDateTimeFormat, translateUi, useLanguage } from './i18n';
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   ArrowLeft,
@@ -162,7 +163,7 @@ function participationDraftFrom(event: EventJob, participation?: EventParticipat
 }
 
 function formatDate(date: string) {
-  return new Intl.DateTimeFormat('th-TH', { day: 'numeric', month: 'short', year: 'numeric' })
+  return uiDateTimeFormat({ day: 'numeric', month: 'short', year: 'numeric' })
     .format(new Date(`${date}T12:00:00+07:00`));
 }
 
@@ -209,6 +210,7 @@ export function EventManagementPage({
   onSelectedIdChange?: (eventId: string | null) => void;
   profileRole: ManagerRole;
 }) {
+  useLanguage();
   const [importOpen, setImportOpen] = useState(false);
   const [events, setEvents] = useState<EventOverview[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(() => initialSelectedId);
@@ -527,11 +529,11 @@ export function EventManagementPage({
   };
 
   if (loading && events.length === 0) {
-    return <EventPageState icon={<CircleNotch className="event-spin" size={28} />} title="กำลังโหลดงานอีเวนต์" detail="ตรวจสอบสิทธิ์และข้อมูลล่าสุดจากระบบ" />;
+    return <EventPageState icon={<CircleNotch className="event-spin" size={28} />} title={translateUi('กำลังโหลดงานอีเวนต์')} detail={translateUi('ตรวจสอบสิทธิ์และข้อมูลล่าสุดจากระบบ')} />;
   }
 
   if (error && events.length === 0) {
-    return <EventPageState icon={<WarningCircle size={30} />} title="เปิดหน้างานอีเวนต์ไม่ได้" detail={error} action={<button className="primary-button" onClick={() => void loadPage()} type="button">ลองอีกครั้ง</button>} />;
+    return <EventPageState icon={<WarningCircle size={30} />} title={translateUi('เปิดหน้างานอีเวนต์ไม่ได้')} detail={error} action={<button className="primary-button" onClick={() => void loadPage()} type="button">{translateUi('ลองอีกครั้ง')}</button>} />;
   }
 
   return (
@@ -539,20 +541,20 @@ export function EventManagementPage({
       <header className="event-management-heading">
         <div>
           <p className="eyebrow">Event lifecycle</p>
-          <h1>งานอีเวนต์</h1>
-          <p>สร้างงาน เพิ่มร้าน ตรวจความพร้อม และควบคุมการเผยแพร่</p>
+          <h1>{translateUi('งานอีเวนต์')}</h1>
+          <p>{translateUi('สร้างงาน เพิ่มร้าน ตรวจความพร้อม และควบคุมการเผยแพร่')}</p>
         </div>
-        <button className="primary-button" onClick={() => openEventEditor()} type="button"><Plus size={18} />สร้างงาน</button>
+        <button className="primary-button" onClick={() => openEventEditor()} type="button"><Plus size={18} />{translateUi('สร้างงาน')}</button>
       </header>
 
-      {success ? <div className="event-feedback event-feedback--success" role="status"><CheckCircle size={19} />{success}<button aria-label="ปิดข้อความ" onClick={() => setSuccess(null)} type="button"><X size={15} /></button></div> : null}
-      {actionError && !eventDraft && !participationDraft && !cancelTarget ? <div className="event-feedback event-feedback--error" role="alert"><WarningCircle size={19} />{actionError}</div> : null}
+      {success ? <div className="event-feedback event-feedback--success" role="status"><CheckCircle size={19} />{translateUi(success)}<button aria-label={translateUi('ปิดข้อความ')} onClick={() => setSuccess(null)} type="button"><X size={15} /></button></div> : null}
+      {actionError && !eventDraft && !participationDraft && !cancelTarget ? <div className="event-feedback event-feedback--error" role="alert"><WarningCircle size={19} />{translateUi(actionError)}</div> : null}
 
       {!detail && !detailLoading ? <div className="event-management-grid event-management-grid--overview">
-        <section className="event-browser" aria-label="รายการงานอีเวนต์">
+        <section className="event-browser" aria-label={translateUi('รายการงานอีเวนต์')}>
           <div className="event-browser__tools">
-            <label className="event-search"><MagnifyingGlass size={18} /><span className="sr-only">ค้นหางาน</span><input onChange={(event) => setQuery(event.target.value)} placeholder="ค้นหาชื่องาน ผู้จัด สถานที่" value={query} /></label>
-            <div className="event-filter-tabs event-filter-tabs--lifecycle" role="group" aria-label="กรองสถานะงาน">
+            <label className="event-search"><MagnifyingGlass size={18} /><span className="sr-only">{translateUi('ค้นหางาน')}</span><input onChange={(event) => setQuery(event.target.value)} placeholder={translateUi('ค้นหาชื่องาน ผู้จัด สถานที่')} value={query} /></label>
+            <div className="event-filter-tabs event-filter-tabs--lifecycle" role="group" aria-label={translateUi('กรองสถานะงาน')}>
               {([
                 ['open', 'ยังไม่จบ'],
                 ['all', 'ทั้งหมด'],
@@ -563,7 +565,7 @@ export function EventManagementPage({
                 ['ended', 'จบงาน'],
                 ['cancelled', 'ยกเลิก'],
               ] as Array<[EventFilter, string]>).map(([value, label]) => (
-                <button aria-pressed={filter === value} key={value} onClick={() => setFilter(value)} type="button">{label}</button>
+                <button aria-pressed={filter === value} key={value} onClick={() => setFilter(value)} type="button">{translateUi(label)}</button>
               ))}
             </div>
           </div>
@@ -572,20 +574,20 @@ export function EventManagementPage({
               const status = displayStatus(event);
               return (
                 <button aria-current={selectedId === event.id ? 'true' : undefined} className="event-list-card" key={event.id} onClick={() => void chooseEvent(event.id)} type="button">
-                  <span className={`event-status event-status--${status.tone}`}>{status.label}</span>
+                  <span className={`event-status event-status--${status.tone}`}>{translateUi(status.label)}</span>
                   <strong>{event.name}</strong>
                   <small><CalendarBlank size={14} />{formatDate(event.start_date)}–{formatDate(event.end_date)}</small>
                   <small><MapPin size={14} />{event.location}</small>
-                  <span className="event-list-card__count"><Storefront size={15} />{event.active_participation_count} ร้าน</span>
+                  <span className="event-list-card__count"><Storefront size={15} />{event.active_participation_count}{translateUi(' ร้าน')}</span>
                 </button>
               );
             })}
-            {filteredEvents.length === 0 ? <div className="event-empty-list"><CalendarBlank size={26} /><p>{events.length === 0 ? 'ยังไม่มีงานอีเวนต์' : 'ไม่พบงานตามตัวกรอง'}</p>{events.length === 0 ? <button onClick={() => openEventEditor()} type="button">สร้างงานแรก</button> : null}</div> : null}
+            {filteredEvents.length === 0 ? <div className="event-empty-list"><CalendarBlank size={26} /><p>{events.length === 0 ? translateUi('ยังไม่มีงานอีเวนต์') : translateUi('ไม่พบงานตามตัวกรอง')}</p>{events.length === 0 ? <button onClick={() => openEventEditor()} type="button">{translateUi('สร้างงานแรก')}</button> : null}</div> : null}
           </div>
         </section>
       </div> : null}
 
-      {detailLoading ? <section className="event-detail event-detail--full" aria-live="polite"><div className="event-detail-loading"><CircleNotch className="event-spin" size={26} />กำลังโหลดรายละเอียด</div></section> : null}
+      {detailLoading ? <section className="event-detail event-detail--full" aria-live="polite"><div className="event-detail-loading"><CircleNotch className="event-spin" size={26} />{translateUi('กำลังโหลดรายละเอียด')}</div></section> : null}
       {!detailLoading && detail ? <section className="event-detail event-detail--full" aria-live="polite">
             <EventDetail
               busyAction={busyAction}
@@ -615,46 +617,46 @@ export function EventManagementPage({
 
       {eventDraft ? (
         <div className="event-modal-layer" role="dialog" aria-modal="true" aria-labelledby="event-editor-title">
-          <button aria-label="ปิดหน้าต่าง" className="event-modal-backdrop" disabled={busyAction === 'event'} onClick={closeEventEditor} type="button" />
+          <button aria-label={translateUi('ปิดหน้าต่าง')} className="event-modal-backdrop" disabled={busyAction === 'event'} onClick={closeEventEditor} type="button" />
           <form className="event-modal" onSubmit={(event) => void saveEvent(event)}>
-            <header><div><p className="eyebrow">{eventDraft.id ? 'แก้ไขฉบับร่าง' : 'งานใหม่'}</p><h2 id="event-editor-title">{eventDraft.id ? 'แก้ข้อมูลงานอีเวนต์' : 'สร้างงานอีเวนต์'}</h2></div><button aria-label="ปิด" disabled={busyAction === 'event'} onClick={closeEventEditor} type="button"><X size={20} /></button></header>
+            <header><div><p className="eyebrow">{eventDraft.id ? translateUi('แก้ไขฉบับร่าง') : translateUi('งานใหม่')}</p><h2 id="event-editor-title">{eventDraft.id ? translateUi('แก้ข้อมูลงานอีเวนต์') : translateUi('สร้างงานอีเวนต์')}</h2></div><button aria-label={translateUi('ปิด')} disabled={busyAction === 'event'} onClick={closeEventEditor} type="button"><X size={20} /></button></header>
             <div className="event-modal__body">
-              <fieldset><legend>ข้อมูลงาน</legend><div className="event-form-grid">
-                <label className="event-field event-field--wide"><span>ชื่องาน</span><input autoFocus onChange={(event) => setEventDraft({ ...eventDraft, name: event.target.value })} value={eventDraft.name} /></label>
-                <label><span>ผู้จัดงาน</span><input onChange={(event) => setEventDraft({ ...eventDraft, organizerName: event.target.value })} value={eventDraft.organizerName} /></label>
-                <label><span>สถานที่</span><input onChange={(event) => setEventDraft({ ...eventDraft, location: event.target.value })} value={eventDraft.location} /></label>
-                <label><span>ผู้ติดต่อหลัก</span><input onChange={(event) => setEventDraft({ ...eventDraft, contactName: event.target.value })} value={eventDraft.contactName} /></label>
-                <label><span>เบอร์โทร</span><input inputMode="tel" onChange={(event) => setEventDraft({ ...eventDraft, contactPhone: event.target.value })} value={eventDraft.contactPhone} /></label>
-                <label><span>วันเริ่ม *</span><input onChange={(event) => setEventDraft({ ...eventDraft, startDate: event.target.value })} type="date" required value={eventDraft.startDate} /></label>
-                <label><span>วันสิ้นสุด *</span><input min={eventDraft.startDate} onChange={(event) => setEventDraft({ ...eventDraft, endDate: event.target.value })} type="date" required value={eventDraft.endDate} /></label>
-                <label className="event-field event-field--wide"><span>หมายเหตุ</span><textarea onChange={(event) => setEventDraft({ ...eventDraft, notes: event.target.value })} rows={3} value={eventDraft.notes} /></label>
+              <fieldset><legend>{translateUi('ข้อมูลงาน')}</legend><div className="event-form-grid">
+                <label className="event-field event-field--wide"><span>{translateUi('ชื่องาน')}</span><input autoFocus onChange={(event) => setEventDraft({ ...eventDraft, name: event.target.value })} value={eventDraft.name} /></label>
+                <label><span>{translateUi('ผู้จัดงาน')}</span><input onChange={(event) => setEventDraft({ ...eventDraft, organizerName: event.target.value })} value={eventDraft.organizerName} /></label>
+                <label><span>{translateUi('สถานที่')}</span><input onChange={(event) => setEventDraft({ ...eventDraft, location: event.target.value })} value={eventDraft.location} /></label>
+                <label><span>{translateUi('ผู้ติดต่อหลัก')}</span><input onChange={(event) => setEventDraft({ ...eventDraft, contactName: event.target.value })} value={eventDraft.contactName} /></label>
+                <label><span>{translateUi('เบอร์โทร')}</span><input inputMode="tel" onChange={(event) => setEventDraft({ ...eventDraft, contactPhone: event.target.value })} value={eventDraft.contactPhone} /></label>
+                <label><span>{translateUi('วันเริ่ม *')}</span><input onChange={(event) => setEventDraft({ ...eventDraft, startDate: event.target.value })} type="date" required value={eventDraft.startDate} /></label>
+                <label><span>{translateUi('วันสิ้นสุด *')}</span><input min={eventDraft.startDate} onChange={(event) => setEventDraft({ ...eventDraft, endDate: event.target.value })} type="date" required value={eventDraft.endDate} /></label>
+                <label className="event-field event-field--wide"><span>{translateUi('หมายเหตุ')}</span><textarea onChange={(event) => setEventDraft({ ...eventDraft, notes: event.target.value })} rows={3} value={eventDraft.notes} /></label>
               </div></fieldset>
 
-              {profileRole === 'admin' ? <EventConfigurationFields draft={eventDraft} onChange={setEventDraft} /> : <section className="event-lead-notice"><User size={20} /><div><strong>การตั้งค่าการชำระเงินเป็นสิทธิ์แอดมิน</strong><p>คุณสร้างงานและเพิ่มร้านได้ เมื่อแอดมินตั้งค่าแล้วจึงตรวจ readiness และเผยแพร่ได้</p></div></section>}
-              {actionError ? <p className="event-form-error" role="alert"><WarningCircle size={17} />{actionError}</p> : null}
+              {profileRole === 'admin' ? <EventConfigurationFields draft={eventDraft} onChange={setEventDraft} /> : <section className="event-lead-notice"><User size={20} /><div><strong>{translateUi('การตั้งค่าการชำระเงินเป็นสิทธิ์แอดมิน')}</strong><p>{translateUi('คุณสร้างงานและเพิ่มร้านได้ เมื่อแอดมินตั้งค่าแล้วจึงตรวจ readiness และเผยแพร่ได้')}</p></div></section>}
+              {actionError ? <p className="event-form-error" role="alert"><WarningCircle size={17} />{translateUi(actionError)}</p> : null}
             </div>
-            <footer><button className="secondary-button" disabled={busyAction === 'event'} onClick={closeEventEditor} type="button">ยกเลิก</button><button className="primary-button" disabled={busyAction === 'event'} type="submit">{busyAction === 'event' ? 'กำลังบันทึก...' : 'บันทึกงาน'}</button></footer>
+            <footer><button className="secondary-button" disabled={busyAction === 'event'} onClick={closeEventEditor} type="button">{translateUi('ยกเลิก')}</button><button className="primary-button" disabled={busyAction === 'event'} type="submit">{busyAction === 'event' ? translateUi('กำลังบันทึก...') : translateUi('บันทึกงาน')}</button></footer>
           </form>
         </div>
       ) : null}
 
       {participationDraft && detail ? (
         <div className="event-modal-layer" role="dialog" aria-modal="true" aria-labelledby="participation-editor-title">
-          <button aria-label="ปิดหน้าต่าง" className="event-modal-backdrop" disabled={busyAction === 'participation'} onClick={closeParticipationEditor} type="button" />
+          <button aria-label={translateUi('ปิดหน้าต่าง')} className="event-modal-backdrop" disabled={busyAction === 'participation'} onClick={closeParticipationEditor} type="button" />
           <form className="event-modal event-modal--participant" onSubmit={(event) => void saveParticipation(event)}>
-            <header><div><p className="eyebrow">ร้านที่เข้าร่วม</p><h2 id="participation-editor-title">{participationDraft.id ? 'แก้รายละเอียดร้าน' : 'เพิ่มร้านในงาน'}</h2></div><button aria-label="ปิด" disabled={busyAction === 'participation'} onClick={closeParticipationEditor} type="button"><X size={20} /></button></header>
+            <header><div><p className="eyebrow">{translateUi('ร้านที่เข้าร่วม')}</p><h2 id="participation-editor-title">{participationDraft.id ? translateUi('แก้รายละเอียดร้าน') : translateUi('เพิ่มร้านในงาน')}</h2></div><button aria-label={translateUi('ปิด')} disabled={busyAction === 'participation'} onClick={closeParticipationEditor} type="button"><X size={20} /></button></header>
             <div className="event-modal__body">
-              {participationDraft.id && participationDraft.shopName !== null ? <label><span>ชื่อร้าน</span><input required onChange={(event) => setParticipationDraft({ ...participationDraft, shopName: event.target.value })} value={participationDraft.shopName} /></label> : participationDraft.id ? <div className="event-selected-shop"><Storefront size={21} /><div><strong>{detail.participations.find((item) => item.id === participationDraft.id)?.shop_code} {detail.participations.find((item) => item.id === participationDraft.id)?.shop_name}</strong><small>{detail.event.status === 'published' ? 'เปลี่ยนร้านหลัง publish ไม่ได้' : 'ร้านที่เลือกไว้'}</small></div></div> : <>
-                <div className="event-filter-tabs" role="group" aria-label="วิธีเพิ่มร้าน">
-                  <button aria-pressed={participationMode === 'single'} onClick={() => setParticipationMode('single')} type="button">เพิ่มทีละร้าน</button>
-                  <button aria-pressed={participationMode === 'bulk'} onClick={() => setParticipationMode('bulk')} type="button">เพิ่มหลายร้าน</button>
+              {participationDraft.id && participationDraft.shopName !== null ? <label><span>{translateUi('ชื่อร้าน')}</span><input required onChange={(event) => setParticipationDraft({ ...participationDraft, shopName: event.target.value })} value={participationDraft.shopName} /></label> : participationDraft.id ? <div className="event-selected-shop"><Storefront size={21} /><div><strong>{detail.participations.find((item) => item.id === participationDraft.id)?.shop_code} {detail.participations.find((item) => item.id === participationDraft.id)?.shop_name}</strong><small>{detail.event.status === 'published' ? translateUi('เปลี่ยนร้านหลัง publish ไม่ได้') : translateUi('ร้านที่เลือกไว้')}</small></div></div> : <>
+                <div className="event-filter-tabs" role="group" aria-label={translateUi('วิธีเพิ่มร้าน')}>
+                  <button aria-pressed={participationMode === 'single'} onClick={() => setParticipationMode('single')} type="button">{translateUi('เพิ่มทีละร้าน')}</button>
+                  <button aria-pressed={participationMode === 'bulk'} onClick={() => setParticipationMode('bulk')} type="button">{translateUi('เพิ่มหลายร้าน')}</button>
                 </div>
                 {participationMode === 'bulk' ? <div className="event-bulk-entry">
-                  <label><span>ช่วงรหัสบูธ</span><textarea onChange={(event) => setBoothRanges(event.target.value)} placeholder={'A1-250\nF1-40\nT1-10'} rows={4} value={boothRanges} /></label>
-                  <p>ใส่หลายช่วงโดยขึ้นบรรทัดใหม่ เช่น A1-250, F1-40, T1-10 รวม 300 ร้าน</p>
-                  {parsedBooths.error ? <p role="alert" className="event-form-error">{parsedBooths.error}</p> : <p role="status">{parsedBooths.booths.length} ร้าน · ใช้รหัสบูธเป็นชื่อร้าน และข้ามบูธที่มีอยู่แล้วในตึก/โซนเดียวกัน</p>}
+                  <label><span>{translateUi('ช่วงรหัสบูธ')}</span><textarea onChange={(event) => setBoothRanges(event.target.value)} placeholder={'A1-250\nF1-40\nT1-10'} rows={4} value={boothRanges} /></label>
+                  <p>{translateUi('ใส่หลายช่วงโดยขึ้นบรรทัดใหม่ เช่น A1-250, F1-40, T1-10 รวม 300 ร้าน')}</p>
+                  {parsedBooths.error ? <p role="alert" className="event-form-error">{translateUi(parsedBooths.error)}</p> : <p role="status">{parsedBooths.booths.length}{translateUi(' ร้าน · ใช้รหัสบูธเป็นชื่อร้าน และข้ามบูธที่มีอยู่แล้วในตึก/โซนเดียวกัน')}</p>}
                 </div> : <div className="event-shop-picker" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setShopSuggestionsOpen(false); }}>
-                  <label htmlFor="event-shop-name">ชื่อร้าน</label><div className="event-shop-input">
+                  <label htmlFor="event-shop-name">{translateUi('ชื่อร้าน')}</label><div className="event-shop-input">
                     <input id="event-shop-name" ref={shopNameRef} onKeyDown={(event) => {
                       if (event.key === 'ArrowDown') {
                         event.preventDefault();
@@ -664,8 +666,8 @@ export function EventManagementPage({
                         event.stopPropagation();
                         setShopSuggestionsOpen(false);
                       }
-                    }} aria-autocomplete="list" aria-controls="event-shop-suggestions" aria-expanded={shopSuggestionsOpen} autoComplete="off" onChange={(event) => { setShopQuery(event.target.value); setParticipationDraft({ ...participationDraft, shopId: '' }); setShopSuggestionsOpen(Boolean(event.target.value.trim())); }} placeholder="พิมพ์ชื่อร้านใหม่ หรือค้นหาร้านประจำ" role="combobox" value={shopQuery} />
-                    <button aria-label="เลือกร้านประจำ" aria-expanded={shopSuggestionsOpen} onClick={() => setShopSuggestionsOpen(!shopSuggestionsOpen)} type="button">⌄</button>
+                    }} aria-autocomplete="list" aria-controls="event-shop-suggestions" aria-expanded={shopSuggestionsOpen} autoComplete="off" onChange={(event) => { setShopQuery(event.target.value); setParticipationDraft({ ...participationDraft, shopId: '' }); setShopSuggestionsOpen(Boolean(event.target.value.trim())); }} placeholder={translateUi('พิมพ์ชื่อร้านใหม่ หรือค้นหาร้านประจำ')} role="combobox" value={shopQuery} />
+                    <button aria-label={translateUi('เลือกร้านประจำ')} aria-expanded={shopSuggestionsOpen} onClick={() => setShopSuggestionsOpen(!shopSuggestionsOpen)} type="button">⌄</button>
                   </div>
                   {shopSuggestionsOpen ? <div ref={shopSuggestionsRef} onKeyDown={(event) => {
                     if (event.key === 'Escape') {
@@ -678,36 +680,36 @@ export function EventManagementPage({
                       const index = options.indexOf(document.activeElement as HTMLButtonElement);
                       options[(index + (event.key === 'ArrowDown' ? 1 : options.length - 1)) % options.length]?.focus();
                     }
-                  }} className="event-shop-results" id="event-shop-suggestions" role="listbox" aria-label="ร้านประจำ">
-                    {shopLoading ? <p>กำลังโหลดร้าน</p> : availableShops.map((shop) => <button role="option" aria-selected={participationDraft.shopId === shop.id} key={shop.id} onClick={() => { setParticipationDraft({ ...participationDraft, shopId: shop.id }); setShopQuery(shop.name); setShopSuggestionsOpen(false); shopNameRef.current?.focus(); }} type="button"><span><strong>{shop.code}</strong>{shop.name}</span></button>)}
-                    {!shopLoading && availableShops.length === 0 ? <p>ไม่พบร้านประจำ ใช้ชื่อที่พิมพ์สร้างร้านใหม่ได้</p> : null}
+                  }} className="event-shop-results" id="event-shop-suggestions" role="listbox" aria-label={translateUi('ร้านประจำ')}>
+                    {shopLoading ? <p>{translateUi('กำลังโหลดร้าน')}</p> : availableShops.map((shop) => <button role="option" aria-selected={participationDraft.shopId === shop.id} key={shop.id} onClick={() => { setParticipationDraft({ ...participationDraft, shopId: shop.id }); setShopQuery(shop.name); setShopSuggestionsOpen(false); shopNameRef.current?.focus(); }} type="button"><span><strong>{shop.code}</strong>{shop.name}</span></button>)}
+                    {!shopLoading && availableShops.length === 0 ? <p>{translateUi('ไม่พบร้านประจำ ใช้ชื่อที่พิมพ์สร้างร้านใหม่ได้')}</p> : null}
                   </div> : null}
-                  <small>{participationDraft.shopId ? 'เลือกร้านประจำแล้ว' : 'สร้างร้านใหม่ในงานนี้ · เว้นชื่อว่างเพื่อใช้รหัสบูธหรือชื่ออัตโนมัติ'}</small>
+                  <small>{participationDraft.shopId ? translateUi('เลือกร้านประจำแล้ว') : translateUi('สร้างร้านใหม่ในงานนี้ · เว้นชื่อว่างเพื่อใช้รหัสบูธหรือชื่ออัตโนมัติ')}</small>
                 </div>}
               </>}
-              <fieldset><legend>รายละเอียดในงาน</legend><div className="event-form-grid">
-                {participationMode === 'single' ? <label><span>เลขบูธ</span><input onChange={(event) => setParticipationDraft({ ...participationDraft, boothNumber: event.target.value })} value={participationDraft.boothNumber} /></label> : null}
-                <label><span>ตึก / โซน</span><input onChange={(event) => setParticipationDraft({ ...participationDraft, eventZone: event.target.value })} value={participationDraft.eventZone} /></label>
-                <label className="event-field event-field--wide"><span>จุดสังเกต</span><input onChange={(event) => setParticipationDraft({ ...participationDraft, landmark: event.target.value })} value={participationDraft.landmark} /></label>
-                <label><span>ผู้ติดต่อเฉพาะงาน</span><input onChange={(event) => setParticipationDraft({ ...participationDraft, contactName: event.target.value })} placeholder="เว้นว่างเพื่อใช้ข้อมูลร้าน" value={participationDraft.contactName} /></label>
-                <label><span>เบอร์โทรเฉพาะงาน</span><input inputMode="tel" onChange={(event) => setParticipationDraft({ ...participationDraft, contactPhone: event.target.value })} placeholder="เว้นว่างเพื่อใช้ข้อมูลร้าน" value={participationDraft.contactPhone} /></label>
-                <label><span>วันเริ่มขาย *</span><input min={detail.event.start_date} max={detail.event.end_date} onChange={(event) => setParticipationDraft({ ...participationDraft, startDate: event.target.value })} type="date" required value={participationDraft.startDate} /></label>
-                <label><span>วันสุดท้าย *</span><input min={participationDraft.startDate} max={detail.event.end_date} onChange={(event) => setParticipationDraft({ ...participationDraft, endDate: event.target.value })} type="date" required value={participationDraft.endDate} /></label>
+              <fieldset><legend>{translateUi('รายละเอียดในงาน')}</legend><div className="event-form-grid">
+                {participationMode === 'single' ? <label><span>{translateUi('เลขบูธ')}</span><input onChange={(event) => setParticipationDraft({ ...participationDraft, boothNumber: event.target.value })} value={participationDraft.boothNumber} /></label> : null}
+                <label><span>{translateUi('ตึก / โซน')}</span><input onChange={(event) => setParticipationDraft({ ...participationDraft, eventZone: event.target.value })} value={participationDraft.eventZone} /></label>
+                <label className="event-field event-field--wide"><span>{translateUi('จุดสังเกต')}</span><input onChange={(event) => setParticipationDraft({ ...participationDraft, landmark: event.target.value })} value={participationDraft.landmark} /></label>
+                <label><span>{translateUi('ผู้ติดต่อเฉพาะงาน')}</span><input onChange={(event) => setParticipationDraft({ ...participationDraft, contactName: event.target.value })} placeholder={translateUi('เว้นว่างเพื่อใช้ข้อมูลร้าน')} value={participationDraft.contactName} /></label>
+                <label><span>{translateUi('เบอร์โทรเฉพาะงาน')}</span><input inputMode="tel" onChange={(event) => setParticipationDraft({ ...participationDraft, contactPhone: event.target.value })} placeholder={translateUi('เว้นว่างเพื่อใช้ข้อมูลร้าน')} value={participationDraft.contactPhone} /></label>
+                <label><span>{translateUi('วันเริ่มขาย *')}</span><input min={detail.event.start_date} max={detail.event.end_date} onChange={(event) => setParticipationDraft({ ...participationDraft, startDate: event.target.value })} type="date" required value={participationDraft.startDate} /></label>
+                <label><span>{translateUi('วันสุดท้าย *')}</span><input min={participationDraft.startDate} max={detail.event.end_date} onChange={(event) => setParticipationDraft({ ...participationDraft, endDate: event.target.value })} type="date" required value={participationDraft.endDate} /></label>
               </div></fieldset>
-              {actionError ? <p className="event-form-error" role="alert"><WarningCircle size={17} />{actionError}</p> : null}
+              {actionError ? <p className="event-form-error" role="alert"><WarningCircle size={17} />{translateUi(actionError)}</p> : null}
             </div>
-            <footer><button className="secondary-button" disabled={busyAction === 'participation'} onClick={closeParticipationEditor} type="button">ยกเลิก</button><button className="primary-button" disabled={busyAction === 'participation'} type="submit">{busyAction === 'participation' ? 'กำลังบันทึก...' : participationMode === 'bulk' ? `สร้าง ${parsedBooths.booths.length} ร้าน` : 'บันทึกร้าน'}</button></footer>
+            <footer><button className="secondary-button" disabled={busyAction === 'participation'} onClick={closeParticipationEditor} type="button">{translateUi('ยกเลิก')}</button><button className="primary-button" disabled={busyAction === 'participation'} type="submit">{busyAction === 'participation' ? translateUi('กำลังบันทึก...') : participationMode === 'bulk' ? translateUi('สร้าง {0} ร้าน', { 0: parsedBooths.booths.length }) : translateUi('บันทึกร้าน')}</button></footer>
           </form>
         </div>
       ) : null}
 
       {cancelTarget ? (
         <div className="event-modal-layer" role="dialog" aria-modal="true" aria-labelledby="event-cancel-title">
-          <button aria-label="ปิดหน้าต่าง" className="event-modal-backdrop" disabled={busyAction === 'cancel'} onClick={closeCancelModal} type="button" />
+          <button aria-label={translateUi('ปิดหน้าต่าง')} className="event-modal-backdrop" disabled={busyAction === 'cancel'} onClick={closeCancelModal} type="button" />
           <form className="event-modal event-modal--cancel" onSubmit={(event) => void cancel(event)}>
-            <header><div><p className="eyebrow">การกระทำนี้ย้อนกลับไม่ได้</p><h2 id="event-cancel-title">ยกเลิก{cancelTarget.kind === 'event' ? 'งาน' : 'ร้านในงาน'}</h2></div><button aria-label="ปิด" disabled={busyAction === 'cancel'} onClick={closeCancelModal} type="button"><X size={20} /></button></header>
-            <div className="event-modal__body"><p>รายการ: <strong>{cancelTarget.label}</strong></p><label><span>เหตุผลในการยกเลิก *</span><textarea autoFocus onChange={(event) => setCancelReason(event.target.value)} rows={4} value={cancelReason} /></label>{actionError ? <p className="event-form-error" role="alert"><WarningCircle size={17} />{actionError}</p> : null}</div>
-            <footer><button className="secondary-button" disabled={busyAction === 'cancel'} onClick={closeCancelModal} type="button">กลับ</button><button className="primary-button destructive-button" disabled={busyAction === 'cancel' || !cancelReason.trim()} type="submit">{busyAction === 'cancel' ? 'กำลังยกเลิก...' : 'ยืนยันยกเลิก'}</button></footer>
+            <header><div><p className="eyebrow">{translateUi('การกระทำนี้ย้อนกลับไม่ได้')}</p><h2 id="event-cancel-title">{translateUi('ยกเลิก')}{cancelTarget.kind === 'event' ? translateUi('งาน') : translateUi('ร้านในงาน')}</h2></div><button aria-label={translateUi('ปิด')} disabled={busyAction === 'cancel'} onClick={closeCancelModal} type="button"><X size={20} /></button></header>
+            <div className="event-modal__body"><p>{translateUi('รายการ: ')}<strong>{cancelTarget.label}</strong></p><label><span>{translateUi('เหตุผลในการยกเลิก *')}</span><textarea autoFocus onChange={(event) => setCancelReason(event.target.value)} rows={4} value={cancelReason} /></label>{actionError ? <p className="event-form-error" role="alert"><WarningCircle size={17} />{translateUi(actionError)}</p> : null}</div>
+            <footer><button className="secondary-button" disabled={busyAction === 'cancel'} onClick={closeCancelModal} type="button">{translateUi('กลับ')}</button><button className="primary-button destructive-button" disabled={busyAction === 'cancel' || !cancelReason.trim()} type="submit">{busyAction === 'cancel' ? translateUi('กำลังยกเลิก...') : translateUi('ยืนยันยกเลิก')}</button></footer>
           </form>
         </div>
       ) : null}
@@ -716,6 +718,7 @@ export function EventManagementPage({
 }
 
 function EventConfigurationFields({ draft, onChange }: { draft: EventDraft; onChange: (draft: EventDraft) => void }) {
+  useLanguage();
   const toggleMethod = (method: PaymentMethod) => {
     const enabled = draft.allowedPaymentMethods.includes(method);
     const allowedPaymentMethods = enabled
@@ -728,15 +731,15 @@ function EventConfigurationFields({ draft, onChange }: { draft: EventDraft; onCh
     });
   };
   return (
-    <details className="event-payment-settings"><summary>ตั้งค่าการชำระเงิน (ไม่จำเป็นต้องกรอก)</summary><fieldset><legend>นโยบายการชำระเงิน · เฉพาะแอดมิน</legend><p className="event-settings-hint">เว้นค่าเช่าถังว่างเพื่อใช้ 100 บาท · หากไม่เลือกวิธีรับเงิน ระบบจะใช้เงินสด</p><div className="event-form-grid">
-      <label><span>ค่าเช่าถัง (บาท)</span><input min="0.01" onChange={(event) => onChange({ ...draft, tankRentalUnitPrice: event.target.value })} step="0.01" type="number" value={draft.tankRentalUnitPrice} /></label>
-      <label><span>เงื่อนไขชำระ</span><input disabled value="สิ้นวัน (end_of_day)" /></label>
-      <div className="event-field event-field--wide"><span>วิธีรับเงินที่อนุญาต</span><div className="event-check-grid">{PAYMENT_METHODS.map((method) => <label key={method.value}><input checked={draft.allowedPaymentMethods.includes(method.value)} onChange={() => toggleMethod(method.value)} type="checkbox" />{method.label}</label>)}</div></div>
-      <label className="event-field event-field--wide"><span>วิธีรับเงินเริ่มต้น</span><select onChange={(event) => onChange({ ...draft, defaultPaymentMethod: event.target.value as PaymentMethod | '' })} value={draft.defaultPaymentMethod}><option value="">เลือกวิธีเริ่มต้น</option>{draft.allowedPaymentMethods.map((method) => <option key={method} value={method}>{paymentLabel(method)}</option>)}</select></label>
+    <details className="event-payment-settings"><summary>{translateUi('ตั้งค่าการชำระเงิน (ไม่จำเป็นต้องกรอก)')}</summary><fieldset><legend>{translateUi('นโยบายการชำระเงิน · เฉพาะแอดมิน')}</legend><p className="event-settings-hint">{translateUi('เว้นค่าเช่าถังว่างเพื่อใช้ 100 บาท · หากไม่เลือกวิธีรับเงิน ระบบจะใช้เงินสด')}</p><div className="event-form-grid">
+      <label><span>{translateUi('ค่าเช่าถัง (บาท)')}</span><input min="0.01" onChange={(event) => onChange({ ...draft, tankRentalUnitPrice: event.target.value })} step="0.01" type="number" value={draft.tankRentalUnitPrice} /></label>
+      <label><span>{translateUi('เงื่อนไขชำระ')}</span><input disabled value="สิ้นวัน (end_of_day)" /></label>
+      <div className="event-field event-field--wide"><span>{translateUi('วิธีรับเงินที่อนุญาต')}</span><div className="event-check-grid">{PAYMENT_METHODS.map((method) => <label key={method.value}><input checked={draft.allowedPaymentMethods.includes(method.value)} onChange={() => toggleMethod(method.value)} type="checkbox" />{translateUi(method.label)}</label>)}</div></div>
+      <label className="event-field event-field--wide"><span>{translateUi('วิธีรับเงินเริ่มต้น')}</span><select onChange={(event) => onChange({ ...draft, defaultPaymentMethod: event.target.value as PaymentMethod | '' })} value={draft.defaultPaymentMethod}><option value="">{translateUi('เลือกวิธีเริ่มต้น')}</option>{draft.allowedPaymentMethods.map((method) => <option key={method} value={method}>{translateUi(paymentLabel(method))}</option>)}</select></label>
       {draft.allowedPaymentMethods.map((method) => {
         const referenceKey = PAYMENT_RULE_KEYS[method].reference;
         const evidenceKey = PAYMENT_RULE_KEYS[method].evidence;
-        return <div className="event-payment-rule event-field--wide" key={method}><strong>{paymentLabel(method)}</strong><label><input checked={draft[referenceKey]} onChange={(event) => onChange({ ...draft, [referenceKey]: event.target.checked })} type="checkbox" />ต้องมีเลขอ้างอิง</label><label><input checked={draft[evidenceKey]} onChange={(event) => onChange({ ...draft, [evidenceKey]: event.target.checked })} type="checkbox" />ต้องมีหลักฐาน</label></div>;
+        return <div className="event-payment-rule event-field--wide" key={method}><strong>{translateUi(paymentLabel(method))}</strong><label><input checked={draft[referenceKey]} onChange={(event) => onChange({ ...draft, [referenceKey]: event.target.checked })} type="checkbox" />{translateUi('ต้องมีเลขอ้างอิง')}</label><label><input checked={draft[evidenceKey]} onChange={(event) => onChange({ ...draft, [evidenceKey]: event.target.checked })} type="checkbox" />{translateUi('ต้องมีหลักฐาน')}</label></div>;
       })}
     </div></fieldset></details>
   );
@@ -769,6 +772,7 @@ function EventDetail({
   onPublish: () => void;
   profileRole: ManagerRole;
 }) {
+  useLanguage();
   const { event, configuration, participations, readiness } = detail;
   const status = displayStatus(event);
   const sortedParticipations = [...participations].sort((a, b) => (
@@ -787,60 +791,62 @@ function EventDetail({
   };
   return (
     <div className="event-detail__content">
-      <button className="event-back-button" onClick={onBack} type="button"><ArrowLeft size={17} />กลับไปหน้ารวมงาน</button>
+      <button className="event-back-button" onClick={onBack} type="button"><ArrowLeft size={17} />{translateUi('กลับไปหน้ารวมงาน')}</button>
       <header className="event-detail__header">
-        <div><span className={`event-status event-status--${status.tone}`}>{status.label}</span><h2>{event.name}</h2><p>{event.organizer_name}</p><p className="event-detail__counts">{activeParticipations.length} บูธ · ถังค้าง {tankBalance} ใบ</p></div>
+        <div><span className={`event-status event-status--${status.tone}`}>{translateUi(status.label)}</span><h2>{event.name}</h2><p>{event.organizer_name}</p><p className="event-detail__counts">{activeParticipations.length}{translateUi(' บูธ · ถังค้าง ')}{tankBalance}{translateUi(' ใบ')}</p></div>
         <div className="event-detail__actions">
-          {event.status !== 'cancelled' ? <button className="secondary-button" disabled={Boolean(busyAction)} onClick={onAddParticipation} type="button"><Plus size={16} />เพิ่มบูธ</button> : null}
-          {event.status === 'published' ? <button className="secondary-button" disabled={Boolean(busyAction)} onClick={openTankOperations} type="button">ส่งเพิ่มถัง</button> : null}
-          {event.status === 'draft' ? <button className="secondary-button" disabled={Boolean(busyAction)} onClick={onEditEvent} type="button"><PencilSimple size={16} />แก้ข้อมูลงาน</button> : null}
-          {event.status === 'draft' ? <button className="primary-button" disabled={Boolean(busyAction) || !readiness.is_ready} onClick={onPublish} type="button">{busyAction === 'publish' ? 'กำลังเผยแพร่...' : 'Publish'}</button> : null}
-          {event.status !== 'cancelled' ? <button className="event-danger-button" disabled={Boolean(busyAction)} onClick={onCancelEvent} type="button">ยกเลิกงาน</button> : null}
+          {event.status !== 'cancelled' ? <button className="secondary-button" disabled={Boolean(busyAction)} onClick={onAddParticipation} type="button"><Plus size={16} />{translateUi('เพิ่มบูธ')}</button> : null}
+          {event.status === 'published' ? <button className="secondary-button" disabled={Boolean(busyAction)} onClick={openTankOperations} type="button">{translateUi('ส่งเพิ่มถัง')}</button> : null}
+          {event.status === 'draft' ? <button className="secondary-button" disabled={Boolean(busyAction)} onClick={onEditEvent} type="button"><PencilSimple size={16} />{translateUi('แก้ข้อมูลงาน')}</button> : null}
+          {event.status === 'draft' ? <button className="primary-button" disabled={Boolean(busyAction) || !readiness.is_ready} onClick={onPublish} type="button">{busyAction === 'publish' ? translateUi('กำลังเผยแพร่...') : 'Publish'}</button> : null}
+          {event.status !== 'cancelled' ? <button className="event-danger-button" disabled={Boolean(busyAction)} onClick={onCancelEvent} type="button">{translateUi('ยกเลิกงาน')}</button> : null}
         </div>
       </header>
 
       <dl className="event-facts">
-        <div><dt>วันที่จัดงาน</dt><dd>{formatDate(event.start_date)}–{formatDate(event.end_date)}</dd></div>
-        <div><dt>สถานที่</dt><dd>{event.location}</dd></div>
-        <div><dt>ผู้ติดต่อ</dt><dd>{event.contact_name} · {event.contact_phone}</dd></div>
-        <div><dt>อัปเดตล่าสุด</dt><dd>{new Intl.DateTimeFormat('th-TH', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Bangkok' }).format(new Date(event.updated_at))}</dd></div>
+        <div><dt>{translateUi('วันที่จัดงาน')}</dt><dd>{formatDate(event.start_date)}–{formatDate(event.end_date)}</dd></div>
+        <div><dt>{translateUi('สถานที่')}</dt><dd>{event.location}</dd></div>
+        <div><dt>{translateUi('ผู้ติดต่อ')}</dt><dd>{event.contact_name} · {event.contact_phone}</dd></div>
+        <div><dt>{translateUi('อัปเดตล่าสุด')}</dt><dd>{uiDateTimeFormat({ dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Bangkok' }).format(new Date(event.updated_at))}</dd></div>
       </dl>
       {event.notes ? <p className="event-notes">{event.notes}</p> : null}
 
       {event.status === 'draft' ? <section className={`event-readiness ${readiness.is_ready ? 'event-readiness--ready' : ''}`}>
-        <header><div><h3>ความพร้อมก่อน Publish</h3><p>{readiness.is_ready ? 'ตรวจครบทุกเงื่อนไขแล้ว' : 'แก้รายการที่ยังไม่พร้อมก่อนเผยแพร่'}</p></div><strong>{readiness.checks.filter((check) => check.ok).length}/{readiness.checks.length}</strong></header>
+        <header><div><h3>{translateUi('ความพร้อมก่อน Publish')}</h3><p>{readiness.is_ready ? translateUi('ตรวจครบทุกเงื่อนไขแล้ว') : translateUi('แก้รายการที่ยังไม่พร้อมก่อนเผยแพร่')}</p></div><strong>{readiness.checks.filter((check) => check.ok).length}/{readiness.checks.length}</strong></header>
         <div className="event-readiness__checks">{readiness.checks.map((check) => <ReadinessCheck key={check.code} check={check} />)}</div>
       </section> : null}
 
       <section className="event-config-summary">
-        <header><h3>นโยบายการชำระเงิน</h3>{profileRole === 'round_lead' ? <span>อ่านอย่างเดียว</span> : null}</header>
-        {configuration ? <dl><div><dt>วิธีรับเงิน</dt><dd>{normalizePaymentMethods(configuration.allowed_payment_methods).map(paymentLabel).join(', ')}</dd></div><div><dt>วิธีเริ่มต้น</dt><dd>{paymentLabel(configuration.default_payment_method)}</dd></div><div><dt>เงื่อนไข</dt><dd>ชำระสิ้นวัน</dd></div><div><dt>Config version</dt><dd>v{configuration.version_no}</dd></div></dl> : <p className="event-config-missing"><WarningCircle size={18} />รอแอดมินตั้งค่า config</p>}
+        <header><h3>{translateUi('นโยบายการชำระเงิน')}</h3>{profileRole === 'round_lead' ? <span>{translateUi('อ่านอย่างเดียว')}</span> : null}</header>
+        {configuration ? <dl><div><dt>{translateUi('วิธีรับเงิน')}</dt><dd>{normalizePaymentMethods(configuration.allowed_payment_methods).map(paymentLabel).join(', ')}</dd></div><div><dt>{translateUi('วิธีเริ่มต้น')}</dt><dd>{translateUi(paymentLabel(configuration.default_payment_method))}</dd></div><div><dt>{translateUi('เงื่อนไข')}</dt><dd>{translateUi('ชำระสิ้นวัน')}</dd></div><div><dt>Config version</dt><dd>v{configuration.version_no}</dd></div></dl> : <p className="event-config-missing"><WarningCircle size={18} />{translateUi('รอแอดมินตั้งค่า config')}</p>}
       </section>
 
       {preparationPanel}
 
       <section className="event-participations">
-        <header><div><h3>ร้านที่เข้าร่วม</h3><p>{activeParticipations.length} ร้านที่ใช้งาน</p></div>{event.status !== 'cancelled' ? <div className="event-import-actions"><button className="secondary-button" disabled={Boolean(busyAction)} onClick={onImport} type="button">อัปโหลด Excel</button><button className="secondary-button" onClick={onAddParticipation} type="button"><Plus size={16} />เพิ่มร้าน</button></div> : null}</header>
+        <header><div><h3>{translateUi('ร้านที่เข้าร่วม')}</h3><p>{activeParticipations.length}{translateUi(' ร้านที่ใช้งาน')}</p></div>{event.status !== 'cancelled' ? <div className="event-import-actions"><button className="secondary-button" disabled={Boolean(busyAction)} onClick={onImport} type="button">{translateUi('อัปโหลด Excel')}</button><button className="secondary-button" onClick={onAddParticipation} type="button"><Plus size={16} />{translateUi('เพิ่มร้าน')}</button></div> : null}</header>
         <div className="event-participation-list">
           {sortedParticipations.map((participation) => <article className={participation.status === 'cancelled' ? 'is-cancelled' : ''} key={participation.id}>
             <span className="event-participation-icon"><Storefront size={21} /></span>
-            <div><strong>{participation.shop_event_job_id ? '' : `${participation.shop_code} · `}{participation.shop_name}</strong><small>{[participation.booth_number && `บูธ ${participation.booth_number}`, participation.event_zone, participation.landmark].filter(Boolean).join(' · ') || 'ยังไม่ระบุบูธ/โซน'}</small><small>{formatDate(participation.start_date)}–{formatDate(participation.end_date)} · {participation.contact_name || participation.shop_contact_name || 'ไม่มีผู้ติดต่อ'} {participation.contact_phone || participation.shop_contact_phone || ''}</small>{participation.status === 'cancelled' ? <em>ยกเลิก: {participation.cancellation_reason}</em> : null}</div>
-            {participation.status === 'active' && event.status !== 'cancelled' ? <div><button aria-label={`แก้ไข ${participation.shop_code} ${participation.shop_name}`} onClick={() => onEditParticipation(participation)} type="button"><PencilSimple size={16} /></button><button aria-label={`ยกเลิก ${participation.shop_code} ${participation.shop_name}`} onClick={() => onCancelParticipation(participation)} type="button"><X size={16} /></button></div> : null}
+            <div><strong>{participation.shop_event_job_id ? '' : `${participation.shop_code} · `}{participation.shop_name}</strong><small>{[participation.booth_number && translateUi('บูธ {0}', { 0: participation.booth_number }), participation.event_zone, participation.landmark].filter(Boolean).join(' · ') || translateUi('ยังไม่ระบุบูธ/โซน')}</small><small>{formatDate(participation.start_date)}–{formatDate(participation.end_date)} · {participation.contact_name || participation.shop_contact_name || translateUi('ไม่มีผู้ติดต่อ')} {participation.contact_phone || participation.shop_contact_phone || ''}</small>{participation.status === 'cancelled' ? <em>{translateUi('ยกเลิก: ')}{participation.cancellation_reason}</em> : null}</div>
+            {participation.status === 'active' && event.status !== 'cancelled' ? <div><button aria-label={translateUi('แก้ไข {0} {1}', { 0: participation.shop_code, 1: participation.shop_name })} onClick={() => onEditParticipation(participation)} type="button"><PencilSimple size={16} /></button><button aria-label={translateUi('ยกเลิก {0} {1}', { 0: participation.shop_code, 1: participation.shop_name })} onClick={() => onCancelParticipation(participation)} type="button"><X size={16} /></button></div> : null}
           </article>)}
-          {participations.length === 0 ? <div className="event-participation-empty"><Storefront size={26} /><p>ยังไม่มีร้านในงานนี้</p><button onClick={onAddParticipation} type="button">เพิ่มร้านแรก</button></div> : null}
+          {participations.length === 0 ? <div className="event-participation-empty"><Storefront size={26} /><p>{translateUi('ยังไม่มีร้านในงานนี้')}</p><button onClick={onAddParticipation} type="button">{translateUi('เพิ่มร้านแรก')}</button></div> : null}
         </div>
       </section>
 
-      {event.status === 'cancelled' ? <section className="event-cancelled-note"><WarningCircle size={20} /><div><strong>งานนี้ถูกยกเลิกแล้ว</strong><p>{event.cancellation_reason}</p></div></section> : null}
+      {event.status === 'cancelled' ? <section className="event-cancelled-note"><WarningCircle size={20} /><div><strong>{translateUi('งานนี้ถูกยกเลิกแล้ว')}</strong><p>{event.cancellation_reason}</p></div></section> : null}
     </div>
   );
 }
 
 function ReadinessCheck({ check }: { check: EventManagementDetail['readiness']['checks'][number] }) {
+  useLanguage();
   const items = Array.isArray(check.items) ? check.items : [];
-  return <article className={check.ok ? 'is-ready' : 'has-issue'}>{check.ok ? <CheckCircle size={20} weight="fill" /> : <WarningCircle size={20} weight="fill" />}<div><strong>{check.message}</strong>{typeof check.actual === 'number' ? <small>ปัจจุบัน {check.actual} ร้าน</small> : null}{!check.ok && check.code === 'participation_details' ? items.map((item, index) => <small key={String(item.participation_id ?? index)}>{String(item.shop_code ?? '')} {String(item.shop_name ?? '')}: {(Array.isArray(item.issues) ? item.issues : []).map((issue) => READINESS_ISSUES[String(issue)] ?? String(issue)).join(', ')}</small>) : null}{!check.ok && check.code === 'standard_price_coverage' ? items.map((item, index) => <small key={String(item.ice_type_id ?? index)}>{String(item.ice_type_code ?? '')} {String(item.ice_type_name ?? '')}: {(Array.isArray(item.missing_ranges) ? item.missing_ranges : []).map((range) => { const value = range as Record<string, unknown>; return `${String(value.start_date)}–${String(value.end_date)}`; }).join(', ')}</small>) : null}</div></article>;
+  return <article className={check.ok ? 'is-ready' : 'has-issue'}>{check.ok ? <CheckCircle size={20} weight="fill" /> : <WarningCircle size={20} weight="fill" />}<div><strong>{check.message}</strong>{typeof check.actual === 'number' ? <small>{translateUi('ปัจจุบัน ')}{check.actual}{translateUi(' ร้าน')}</small> : null}{!check.ok && check.code === 'participation_details' ? items.map((item, index) => <small key={String(item.participation_id ?? index)}>{String(item.shop_code ?? '')} {String(item.shop_name ?? '')}: {(Array.isArray(item.issues) ? item.issues : []).map((issue) => READINESS_ISSUES[String(issue)] ?? String(issue)).join(', ')}</small>) : null}{!check.ok && check.code === 'standard_price_coverage' ? items.map((item, index) => <small key={String(item.ice_type_id ?? index)}>{String(item.ice_type_code ?? '')} {String(item.ice_type_name ?? '')}: {(Array.isArray(item.missing_ranges) ? item.missing_ranges : []).map((range) => { const value = range as Record<string, unknown>; return `${String(value.start_date)}–${String(value.end_date)}`; }).join(', ')}</small>) : null}</div></article>;
 }
 
 function EventPageState({ icon, title, detail, action }: { icon: ReactNode; title: string; detail: string; action?: ReactNode }) {
+  useLanguage();
   return <div className="event-page-state">{icon}<h1>{title}</h1><p>{detail}</p>{action}</div>;
 }

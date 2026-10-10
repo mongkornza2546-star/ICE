@@ -1,3 +1,4 @@
+import { uiDateTimeFormat, translateUi, useLanguage } from '../../i18n';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowLeft,
@@ -33,7 +34,7 @@ const money = new Intl.NumberFormat('th-TH', {
   minimumFractionDigits: 0,
 });
 
-const dateTime = new Intl.DateTimeFormat('th-TH', {
+const dateTime = uiDateTimeFormat({
   hour: '2-digit',
   minute: '2-digit',
   timeZone: 'Asia/Bangkok',
@@ -102,6 +103,7 @@ export function EmployeeCasualCustomerPage({
   uploadEvidence: (file: File, idempotencyKey: string) => Promise<string>;
   voidTransaction: (payload: VoidPayload) => Promise<CasualTransactionResult>;
 }) {
+  useLanguage();
   const headingRef = useRef<HTMLHeadingElement>(null);
   const recordRetryRef = useRef<PendingEvidenceRequest | null>(null);
   const voidRetryRef = useRef<PendingEvidenceRequest | null>(null);
@@ -363,39 +365,39 @@ export function EmployeeCasualCustomerPage({
 
   return (
     <div className="employee-entry employee-casual-page">
-      <button aria-label="กลับไปเลือกร้าน" className="employee-back" disabled={busy} onClick={onBack} type="button">
+      <button aria-label={translateUi('กลับไปเลือกร้าน')} className="employee-back" disabled={busy} onClick={onBack} type="button">
         <ArrowLeft aria-hidden="true" size={20} weight="bold" />
-        <span>กลับไปเลือกร้าน</span>
+        <span>{translateUi('กลับไปเลือกร้าน')}</span>
       </button>
 
       <section className="employee-entry-card employee-casual-page__header">
         <span className="employee-casual-page__icon"><UserCircle aria-hidden="true" size={38} weight="duotone" /></span>
         <div>
-          <p className="employee-eyebrow">บันทึกส่งน้ำแข็ง · POS</p>
-          <h1 ref={headingRef} tabIndex={-1}>ลูกค้าขาจร</h1>
+          <p className="employee-eyebrow">{translateUi('บันทึกส่งน้ำแข็ง · POS')}</p>
+          <h1 ref={headingRef} tabIndex={-1}>{translateUi('ลูกค้าขาจร')}</h1>
           <p>{round.name} · {serviceDateLabel}{context ? ` · ${context.stock_source.name}` : ''}</p>
         </div>
       </section>
 
-      {error ? <p className="employee-error" role="alert"><WarningCircle size={20} weight="fill" />{error}</p> : null}
+      {error ? <p className="employee-error" role="alert"><WarningCircle size={20} weight="fill" />{translateUi(error)}</p> : null}
       {success ? <div aria-live="polite" className="employee-success">
-        <CheckCircle size={20} weight="fill" /><span>{success}</span>
-        {latestReceipt ? <button className="employee-success__print" onClick={() => { void printReceipt(); }} type="button"><Printer size={17} />พิมพ์</button> : null}
+        <CheckCircle size={20} weight="fill" /><span>{translateUi(success)}</span>
+        {latestReceipt ? <button className="employee-success__print" onClick={() => { void printReceipt(); }} type="button"><Printer size={17} />{translateUi('พิมพ์')}</button> : null}
       </div> : null}
 
-      {loading ? <section className="employee-entry-section employee-casual-page__loading">กำลังโหลดสต๊อกและประวัติ...</section> : context ? <>
-        {context.loose_stock?.length ? <section className="employee-entry-section" aria-label="ยอดแบ่งขายสะสม">
-          <h2>ยอดแบ่งขายสะสมวันนี้</h2>
+      {loading ? <section className="employee-entry-section employee-casual-page__loading">{translateUi('กำลังโหลดสต๊อกและประวัติ...')}</section> : context ? <>
+        {context.loose_stock?.length ? <section className="employee-entry-section" aria-label={translateUi('ยอดแบ่งขายสะสม')}>
+          <h2>{translateUi('ยอดแบ่งขายสะสมวันนี้')}</h2>
           {context.loose_stock.map((item) => {
             const ice = context.items.find((ice) => ice.ice_type_id === item.ice_type_id);
-            return <p key={item.ice_type_id}>{ice?.name} · สะสม {money.format(item.sales_amount)} · นับออก {item.quantity} {ice?.unit} · เศษ {money.format(item.remainder_amount)} / {money.format(item.unit_price)} ต่อ{ice?.unit}</p>;
+            return <p key={item.ice_type_id}>{ice?.name}{translateUi(' · สะสม ')}{money.format(item.sales_amount)}{translateUi(' · นับออก ')}{item.quantity} {ice?.unit}{translateUi(' · เศษ ')}{money.format(item.remainder_amount)} / {money.format(item.unit_price)}{translateUi(' ต่อ')}{ice?.unit}</p>;
           })}
         </section> : null}
         <div className="employee-pos-layout employee-pos-layout--casual">
           <section className="employee-pos-products" aria-labelledby="casual-sale-title">
             <div className="employee-pos-heading">
-              <div><p>สินค้า</p><h2 id="casual-sale-title">เลือกน้ำแข็ง</h2></div>
-              <span>ตัดจาก {context.stock_source.name}</span>
+              <div><p>{translateUi('สินค้า')}</p><h2 id="casual-sale-title">{translateUi('เลือกน้ำแข็ง')}</h2></div>
+              <span>{translateUi('ตัดจาก ')}{context.stock_source.name}</span>
             </div>
             <div className="employee-pos-product-grid">
               {context.items.map((item) => {
@@ -414,71 +416,71 @@ export function EmployeeCasualCustomerPage({
                   <span className="employee-pos-product-image"><IceCream aria-hidden="true" /></span>
                   <span className="employee-pos-product-selected">{selected ? <CheckCircle aria-hidden="true" weight="fill" /> : null}</span>
                   <strong>{item.name}</strong>
-                  <small>{selected && quantity > 0 ? `${quantity.toLocaleString('th-TH')} ${item.unit}` : 'ไม่ระบุจำนวน'}</small>
+                  <small>{selected && quantity > 0 ? `${quantity.toLocaleString('th-TH')} ${item.unit}` : translateUi('ไม่ระบุจำนวน')}</small>
                   <b>{selected && quantity > 0 ? quantity.toLocaleString('th-TH') : '—'}</b>
-                  <em>คงเหลือ {Number(item.available_quantity).toLocaleString('th-TH')} {item.unit}</em>
+                  <em>{translateUi('คงเหลือ ')}{Number(item.available_quantity).toLocaleString('th-TH')} {item.unit}</em>
                 </button>;
               })}
             </div>
           </section>
 
           <section className="employee-entry-section employee-casual-form" aria-labelledby="casual-kind-title">
-            <div className="employee-casual-form__title"><span>2</span><div><h2 id="casual-kind-title">เลือกประเภท</h2></div></div>
-            {selectedItem ? <section aria-label="แป้นใส่จำนวน" className="employee-pos-keypad">
+            <div className="employee-casual-form__title"><span>2</span><div><h2 id="casual-kind-title">{translateUi('เลือกประเภท')}</h2></div></div>
+            {selectedItem ? <section aria-label={translateUi('แป้นใส่จำนวน')} className="employee-pos-keypad">
               <div className="employee-pos-quantity">
                 <span>{selectedItem.name}</span>
                 <strong aria-live="polite">{quantityInput || '0'} {selectedItem.unit}</strong>
-                <small>คงเหลือ {available.toLocaleString('th-TH')} {selectedItem.unit}</small>
+                <small>{translateUi('คงเหลือ ')}{available.toLocaleString('th-TH')} {selectedItem.unit}</small>
               </div>
-              {quantityError ? <p className="employee-error" role="alert">{quantityError}</p> : null}
+              {quantityError ? <p className="employee-error" role="alert">{translateUi(quantityError)}</p> : null}
               <div className="employee-keypad">
                 {['7', '8', '9', '4', '5', '6', '1', '2', '3'].map((digit) => <button disabled={busy} key={digit} onClick={() => setQuantityInput((current) => `${current}${digit}`)} type="button">{digit}</button>)}
-                <button aria-label="ล้างจำนวน" disabled={busy} onClick={() => setQuantityInput('')} type="button">ล้าง</button>
-                <button aria-label={`เพิ่มครึ่ง${selectedItem.unit}`} disabled={busy || Boolean(quantityError) || quantity + 0.5 > available} onClick={() => setQuantityInput(String(quantity + 0.5))} type="button">½ {selectedItem.unit}</button>
+                <button aria-label={translateUi('ล้างจำนวน')} disabled={busy} onClick={() => setQuantityInput('')} type="button">{translateUi('ล้าง')}</button>
+                <button aria-label={translateUi('เพิ่มครึ่ง{0}', { 0: selectedItem.unit })} disabled={busy || Boolean(quantityError) || quantity + 0.5 > available} onClick={() => setQuantityInput(String(quantity + 0.5))} type="button">½ {selectedItem.unit}</button>
                 <button disabled={busy} onClick={() => setQuantityInput((current) => `${current}0`)} type="button">0</button>
-                <button aria-label="ลบหนึ่งหลัก" disabled={busy} onClick={() => setQuantityInput((current) => current.slice(0, -1))} type="button"><Backspace aria-hidden="true" size={24} /></button>
+                <button aria-label={translateUi('ลบหนึ่งหลัก')} disabled={busy} onClick={() => setQuantityInput((current) => current.slice(0, -1))} type="button"><Backspace aria-hidden="true" size={24} /></button>
               </div>
-            </section> : <p className="employee-casual-help">เลือกน้ำแข็งเพื่อกรอกจำนวน</p>}
+            </section> : <p className="employee-casual-help">{translateUi('เลือกน้ำแข็งเพื่อกรอกจำนวน')}</p>}
             <div className="employee-casual-kind">
-              <button className={kind === 'paid' ? 'is-selected' : ''} onClick={() => setKind('paid')} type="button"><Money size={24} /><strong>จ่ายทันที</strong></button>
-              <button className={kind === 'free' ? 'is-selected' : ''} onClick={() => setKind('free')} type="button"><Gift size={24} /><strong>แจกฟรี</strong></button>
+              <button className={kind === 'paid' ? 'is-selected' : ''} onClick={() => setKind('paid')} type="button"><Money size={24} /><strong>{translateUi('จ่ายทันที')}</strong></button>
+              <button className={kind === 'free' ? 'is-selected' : ''} onClick={() => setKind('free')} type="button"><Gift size={24} /><strong>{translateUi('แจกฟรี')}</strong></button>
             </div>
             <p className="employee-casual-help">{quantity > 0
-              ? `รายการนี้จะหักสต๊อกตามจำนวน ${quantity.toLocaleString('th-TH')} ${selectedItem?.unit ?? ''}`
+              ? translateUi('รายการนี้จะหักสต๊อกตามจำนวน {0} {1}', { 0: quantity.toLocaleString('th-TH'), 1: selectedItem?.unit ?? '' })
               : kind === 'paid'
-                ? 'ขายเล็กน้อย กรอกเฉพาะเงินที่รับได้ ยอดจะสะสมตามชนิดน้ำแข็งและนับออกเมื่อครบราคากลางต่อหน่วย'
-                : 'แจกเล็กน้อย ไม่ต้องระบุจำนวน ระบบจะบันทึกแจกฟรีโดยไม่หักสต๊อก'}</p>
+                ? translateUi('ขายเล็กน้อย กรอกเฉพาะเงินที่รับได้ ยอดจะสะสมตามชนิดน้ำแข็งและนับออกเมื่อครบราคากลางต่อหน่วย')
+                : translateUi('แจกเล็กน้อย ไม่ต้องระบุจำนวน ระบบจะบันทึกแจกฟรีโดยไม่หักสต๊อก')}</p>
             {kind === 'paid' ? <div className="employee-casual-payment">
-              <label><span>ยอดขาย (บาท)</span><input inputMode="numeric" min="1" onChange={(event) => setSaleAmount(event.target.value)} step="1" type="number" value={saleAmount} /></label>
-              <div className="employee-casual-methods">{(['cash', 'bank_transfer'] as PaymentMethod[]).map((method) => <button className={paymentMethod === method ? 'is-selected' : ''} key={method} onClick={() => setPaymentMethod(method)} type="button">{paymentLabels[method]}</button>)}</div>
-              {needsEvidence ? <label><span>หลักฐานการชำระ</span><input accept="image/*,application/pdf" onChange={(event) => selectEvidence(event.target.files?.[0] ?? null, setEvidence)} type="file" /></label> : null}
+              <label><span>{translateUi('ยอดขาย (บาท)')}</span><input inputMode="numeric" min="1" onChange={(event) => setSaleAmount(event.target.value)} step="1" type="number" value={saleAmount} /></label>
+              <div className="employee-casual-methods">{(['cash', 'bank_transfer'] as PaymentMethod[]).map((method) => <button className={paymentMethod === method ? 'is-selected' : ''} key={method} onClick={() => setPaymentMethod(method)} type="button">{translateUi(paymentLabels[method])}</button>)}</div>
+              {needsEvidence ? <label><span>{translateUi('หลักฐานการชำระ')}</span><input accept="image/*,application/pdf" onChange={(event) => selectEvidence(event.target.files?.[0] ?? null, setEvidence)} type="file" /></label> : null}
             </div> : null}
-            <label className="employee-casual-note"><span>หมายเหตุ (ไม่บังคับ)</span><textarea onChange={(event) => setNote(event.target.value)} value={note} /></label>
-            <button className="employee-primary-action" disabled={!canSubmit} onClick={() => { void submit(); }} type="button">{busy ? 'กำลังบันทึก...' : kind === 'paid' ? 'ยืนยันขายและรับเงิน' : 'ยืนยันแจกฟรี'}</button>
+            <label className="employee-casual-note"><span>{translateUi('หมายเหตุ (ไม่บังคับ)')}</span><textarea onChange={(event) => setNote(event.target.value)} value={note} /></label>
+            <button className="employee-primary-action" disabled={!canSubmit} onClick={() => { void submit(); }} type="button">{busy ? translateUi('กำลังบันทึก...') : kind === 'paid' ? translateUi('ยืนยันขายและรับเงิน') : translateUi('ยืนยันแจกฟรี')}</button>
           </section>
         </div>
 
         <section className="employee-history employee-casual-history" aria-labelledby="casual-history-title">
-          <div className="employee-casual-history__heading"><div><Receipt size={22} /><h2 id="casual-history-title">ประวัติวันนี้</h2></div><span>{context.history.length} รายการ</span></div>
-          {context.history.length === 0 ? <p className="employee-casual-history__empty">ยังไม่มีรายการขาจรวันนี้</p> : <div className="employee-casual-history__list">{context.history.map((item) => <article className={item.status === 'voided' ? 'is-voided' : ''} key={item.id}>
-            <div><strong>{item.ice_type_name} · {item.fulfillment_mode === 'loose' ? item.transaction_kind === 'paid' ? 'แบ่งขายสะสมตามยอดเงิน' : 'แจกไม่ระบุจำนวน' : `${Number(item.quantity).toLocaleString('th-TH')} ${item.ice_type_unit}`}</strong><small>{dateTime.format(new Date(item.recorded_at))} · {item.transaction_kind === 'paid' ? paymentLabels[item.payment_method!] : 'แจกฟรี'}{item.receipt_number ? ` · ${item.receipt_number}` : ''}</small>{item.status === 'voided' ? <em>ยกเลิกแล้ว · {item.void_reason}</em> : null}</div>
-            <b>{item.transaction_kind === 'paid' ? money.format(Number(item.sale_amount)) : 'ฟรี'}</b>
-            <div className="employee-casual-history__actions">{item.receipt_number ? <button onClick={() => { void printReceipt(item.id); }} type="button"><Printer size={16} />พิมพ์</button> : null}{item.status === 'active' && !context.stock_closed ? <button onClick={() => setVoidTarget(item)} type="button">ยกเลิก</button> : null}</div>
+          <div className="employee-casual-history__heading"><div><Receipt size={22} /><h2 id="casual-history-title">{translateUi('ประวัติวันนี้')}</h2></div><span>{context.history.length}{translateUi(' รายการ')}</span></div>
+          {context.history.length === 0 ? <p className="employee-casual-history__empty">{translateUi('ยังไม่มีรายการขาจรวันนี้')}</p> : <div className="employee-casual-history__list">{context.history.map((item) => <article className={item.status === 'voided' ? 'is-voided' : ''} key={item.id}>
+            <div><strong>{item.ice_type_name} · {item.fulfillment_mode === 'loose' ? item.transaction_kind === 'paid' ? translateUi('แบ่งขายสะสมตามยอดเงิน') : translateUi('แจกไม่ระบุจำนวน') : `${Number(item.quantity).toLocaleString('th-TH')} ${item.ice_type_unit}`}</strong><small>{dateTime.format(new Date(item.recorded_at))} · {item.transaction_kind === 'paid' ? translateUi(paymentLabels[item.payment_method!]) : translateUi('แจกฟรี')}{item.receipt_number ? ` · ${item.receipt_number}` : ''}</small>{item.status === 'voided' ? <em>{translateUi('ยกเลิกแล้ว · ')}{item.void_reason}</em> : null}</div>
+            <b>{item.transaction_kind === 'paid' ? money.format(Number(item.sale_amount)) : translateUi('ฟรี')}</b>
+            <div className="employee-casual-history__actions">{item.receipt_number ? <button onClick={() => { void printReceipt(item.id); }} type="button"><Printer size={16} />{translateUi('พิมพ์')}</button> : null}{item.status === 'active' && !context.stock_closed ? <button onClick={() => setVoidTarget(item)} type="button">{translateUi('ยกเลิก')}</button> : null}</div>
           </article>)}</div>}
         </section>
       </> : null}
 
       {voidTarget ? <div className="employee-casual-void" role="dialog" aria-modal="true" aria-labelledby="casual-void-title">
         <section>
-          <h2 id="casual-void-title">ยกเลิกรายการขาจร</h2>
-          <p>{voidTarget.ice_type_name} {voidTarget.fulfillment_mode === 'loose' ? 'ไม่ระบุจำนวน · คำนวณยอดสะสมใหม่หลังยกเลิก' : `${Number(voidTarget.quantity).toLocaleString('th-TH')} ${voidTarget.ice_type_unit}`}{voidTarget.transaction_kind === 'paid' ? ` · คืนเงินเต็มจำนวน ${money.format(Number(voidTarget.sale_amount))}` : ''}</p>
-          <label><span>เหตุผลการยกเลิก</span><textarea autoFocus onChange={(event) => setVoidReason(event.target.value)} value={voidReason} /></label>
+          <h2 id="casual-void-title">{translateUi('ยกเลิกรายการขาจร')}</h2>
+          <p>{voidTarget.ice_type_name} {voidTarget.fulfillment_mode === 'loose' ? translateUi('ไม่ระบุจำนวน · คำนวณยอดสะสมใหม่หลังยกเลิก') : `${Number(voidTarget.quantity).toLocaleString('th-TH')} ${voidTarget.ice_type_unit}`}{voidTarget.transaction_kind === 'paid' ? translateUi(' · คืนเงินเต็มจำนวน {0}', { 0: money.format(Number(voidTarget.sale_amount)) }) : ''}</p>
+          <label><span>{translateUi('เหตุผลการยกเลิก')}</span><textarea autoFocus onChange={(event) => setVoidReason(event.target.value)} value={voidReason} /></label>
           {voidTarget.transaction_kind === 'paid' ? <>
-            <div className="employee-casual-methods">{(['cash', 'bank_transfer'] as PaymentMethod[]).map((method) => <button className={refundMethod === method ? 'is-selected' : ''} key={method} onClick={() => setRefundMethod(method)} type="button">คืน{paymentLabels[method]}</button>)}</div>
-            <label><span>เลขอ้างอิงการคืน (ไม่บังคับ)</span><input onChange={(event) => setRefundReference(event.target.value)} value={refundReference} /></label>
-            {refundMethod !== 'cash' ? <label><span>หลักฐานการคืนเงิน</span><input accept="image/*,application/pdf" onChange={(event) => selectEvidence(event.target.files?.[0] ?? null, setRefundEvidence)} type="file" /></label> : null}
+            <div className="employee-casual-methods">{(['cash', 'bank_transfer'] as PaymentMethod[]).map((method) => <button className={refundMethod === method ? 'is-selected' : ''} key={method} onClick={() => setRefundMethod(method)} type="button">{translateUi('คืน')}{translateUi(paymentLabels[method])}</button>)}</div>
+            <label><span>{translateUi('เลขอ้างอิงการคืน (ไม่บังคับ)')}</span><input onChange={(event) => setRefundReference(event.target.value)} value={refundReference} /></label>
+            {refundMethod !== 'cash' ? <label><span>{translateUi('หลักฐานการคืนเงิน')}</span><input accept="image/*,application/pdf" onChange={(event) => selectEvidence(event.target.files?.[0] ?? null, setRefundEvidence)} type="file" /></label> : null}
           </> : null}
-          <div className="employee-casual-void__actions"><button disabled={busy} onClick={() => setVoidTarget(null)} type="button">กลับ</button><button disabled={!voidReason.trim() || busy || (voidTarget.transaction_kind === 'paid' && refundMethod !== 'cash' && !refundEvidence)} onClick={() => { void submitVoid(); }} type="button">ยืนยันยกเลิก</button></div>
+          <div className="employee-casual-void__actions"><button disabled={busy} onClick={() => setVoidTarget(null)} type="button">{translateUi('กลับ')}</button><button disabled={!voidReason.trim() || busy || (voidTarget.transaction_kind === 'paid' && refundMethod !== 'cash' && !refundEvidence)} onClick={() => { void submitVoid(); }} type="button">{translateUi('ยืนยันยกเลิก')}</button></div>
         </section>
       </div> : null}
     </div>

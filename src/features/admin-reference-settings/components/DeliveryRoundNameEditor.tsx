@@ -1,3 +1,4 @@
+import { translateUi, useLanguage } from '../../../i18n';
 import { type FormEvent, useState } from 'react';
 import { CheckCircle, Circle, Info } from '@phosphor-icons/react';
 import {
@@ -18,6 +19,7 @@ export function DeliveryRoundNameEditor({
   options: DeliveryRoundNameSetting[];
   onSaved: (option: DeliveryRoundNameSetting) => void;
 }) {
+  useLanguage();
   const [draft, setDraft] = useState<DeliveryRoundNameDraft>(EMPTY_DELIVERY_ROUND_NAME);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -48,7 +50,7 @@ export function DeliveryRoundNameEditor({
 
   return (
     <section className="reference-editor-panel">
-      <div className="reference-editor-panel__header"><span>3</span><h2>จัดการชื่อรอบส่ง</h2></div>
+      <div className="reference-editor-panel__header"><span>3</span><h2>{translateUi('จัดการชื่อรอบส่ง')}</h2></div>
       <div className="reference-editor-panel__body">
         <div className="reference-editor-panel__column reference-editor-panel__column--list">
           <div className="reference-list">
@@ -56,21 +58,21 @@ export function DeliveryRoundNameEditor({
               const selected = draft.id === option.id;
               return <button aria-current={selected ? 'true' : undefined} className={`reference-list-item ${selected ? 'reference-list-item--selected' : ''}`} key={option.id} onClick={() => { setDraft(toDraft(option)); setError(null); setSuccess(null); }} type="button">
                 <span className="reference-list-item__radio" aria-hidden="true">{selected ? <CheckCircle size={20} weight="fill" /> : <Circle size={20} />}</span>
-                <span className="reference-list-item__body"><strong>{option.name}</strong><small>ลำดับ {option.sort_order}</small></span>
-                <span className="reference-list-item__tags"><span className={`reference-pill ${option.is_active ? 'reference-pill--green' : 'reference-pill--gray'}`}>{option.is_active ? 'ใช้งาน' : 'พักใช้งาน'}</span></span>
+                <span className="reference-list-item__body"><strong>{option.name}</strong><small>{translateUi('ลำดับ ')}{option.sort_order}</small></span>
+                <span className="reference-list-item__tags"><span className={`reference-pill ${option.is_active ? 'reference-pill--green' : 'reference-pill--gray'}`}>{option.is_active ? translateUi('ใช้งาน') : translateUi('พักใช้งาน')}</span></span>
               </button>;
             })}
           </div>
         </div>
         <div className="reference-editor-panel__divider" aria-hidden="true" />
         <div className="reference-editor-panel__column reference-editor-panel__column--form">
-          <div className="reference-form-heading"><h3>เพิ่ม/แก้ไขชื่อรอบ</h3></div>
+          <div className="reference-form-heading"><h3>{translateUi('เพิ่ม/แก้ไขชื่อรอบ')}</h3></div>
           <form className="reference-form" onSubmit={handleSave}>
-            <div className="field-grid"><label>ชื่อรอบ<input placeholder="เช่น เช้ามืด" required value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} /></label><label>ลำดับ<input min="0" required type="number" value={draft.sortOrder} onChange={(event) => setDraft({ ...draft, sortOrder: event.target.value })} /></label></div>
-            <label className="inline-check reference-checkbox"><input checked={draft.isActive} onChange={(event) => setDraft({ ...draft, isActive: event.target.checked })} type="checkbox" />เปิดใช้งานชื่อนี้</label>
-            <p className="reference-inline-note"><Info size={16} weight="fill" />ชื่อที่พักใช้งานจะไม่แสดงในรายการเลือกเปิดรอบใหม่</p>
-            {error ? <p className="error-text" role="alert">{error}</p> : null}{success ? <p aria-live="polite" className="success-text">{success}</p> : null}
-            <div className="reference-form__actions"><button className="secondary-button" onClick={() => setDraft(EMPTY_DELIVERY_ROUND_NAME)} type="button">เพิ่มชื่อรอบ</button><button className="primary-button" disabled={saving} type="submit">{saving ? 'กำลังบันทึก...' : 'บันทึกชื่อรอบ'}</button></div>
+            <div className="field-grid"><label>{translateUi('ชื่อรอบ')}<input placeholder={translateUi('เช่น เช้ามืด')} required value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} /></label><label>{translateUi('ลำดับ')}<input min="0" required type="number" value={draft.sortOrder} onChange={(event) => setDraft({ ...draft, sortOrder: event.target.value })} /></label></div>
+            <label className="inline-check reference-checkbox"><input checked={draft.isActive} onChange={(event) => setDraft({ ...draft, isActive: event.target.checked })} type="checkbox" />{translateUi('เปิดใช้งานชื่อนี้')}</label>
+            <p className="reference-inline-note"><Info size={16} weight="fill" />{translateUi('ชื่อที่พักใช้งานจะไม่แสดงในรายการเลือกเปิดรอบใหม่')}</p>
+            {error ? <p className="error-text" role="alert">{translateUi(error)}</p> : null}{success ? <p aria-live="polite" className="success-text">{translateUi(success)}</p> : null}
+            <div className="reference-form__actions"><button className="secondary-button" onClick={() => setDraft(EMPTY_DELIVERY_ROUND_NAME)} type="button">{translateUi('เพิ่มชื่อรอบ')}</button><button className="primary-button" disabled={saving} type="submit">{saving ? translateUi('กำลังบันทึก...') : translateUi('บันทึกชื่อรอบ')}</button></div>
           </form>
         </div>
       </div>

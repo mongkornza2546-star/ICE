@@ -5,6 +5,7 @@ import { FilterChips } from './FilterChips';
 import { EmployeeState } from './EmployeeState';
 import { isBoothSameAsName, statusTone } from './utils';
 import { STATUS_LABELS } from './constants';
+import { translateUi, useLanguage } from '../../i18n';
 
 const outstandingFormatter = new Intl.NumberFormat('th-TH', {
   style: 'currency',
@@ -22,6 +23,7 @@ function RegularShopVisual({
   onPreview: (event: React.MouseEvent<HTMLButtonElement>, imageUrl: string) => void;
   refreshImageUrl: (card: ShopCard) => Promise<string | null>;
 }) {
+  useLanguage();
   const [imageUrl, setImageUrl] = useState(card.image_url);
   const [loadAttempt, setLoadAttempt] = useState(0);
   const [imageFailed, setImageFailed] = useState(false);
@@ -60,7 +62,7 @@ function RegularShopVisual({
       <span className="employee-shop-tile__visual">
         <span className="employee-shop-tile__placeholder"><Storefront aria-hidden="true" size={34} /></span>
         <span className={`employee-status employee-status--${statusTone(card.stop_status)}`}>
-          {STATUS_LABELS[card.stop_status]}
+          {translateUi(STATUS_LABELS[card.stop_status])}
         </span>
       </span>
     );
@@ -68,7 +70,7 @@ function RegularShopVisual({
 
   return (
     <button
-      aria-label={`ดูรูปร้าน ${card.shop_code} ${card.shop_name}`}
+      aria-label={translateUi('ดูรูปร้าน {0} {1}', { 0: card.shop_code, 1: card.shop_name })}
       className="employee-shop-tile__image-button"
       onClick={(event) => onPreview(event, imageUrl)}
       type="button"
@@ -84,7 +86,7 @@ function RegularShopVisual({
           src={imageUrl}
         />
         <span className={`employee-status employee-status--${statusTone(card.stop_status)}`}>
-          {STATUS_LABELS[card.stop_status]}
+          {translateUi(STATUS_LABELS[card.stop_status])}
         </span>
       </span>
     </button>
@@ -150,6 +152,7 @@ export function EmployeeShopPicker({
   stockState: EmployeeStockState | null;
   shopButtonRefs: React.MutableRefObject<Map<string, HTMLButtonElement>>;
 }) {
+  const { language } = useLanguage();
   const [previewImage, setPreviewImage] = useState<{ name: string; url: string; trigger: HTMLButtonElement } | null>(null);
 
   useEffect(() => {
@@ -173,21 +176,21 @@ export function EmployeeShopPicker({
 
   const shopTiles = useMemo(() => filteredCards.map((card) => {
     const isEvent = card.destination_kind === 'event';
-    const boothText = card.booth_number ? `บูธ ${card.booth_number}` : '';
+    const boothText = card.booth_number ? `${translateUi('บูธ')} ${card.booth_number}` : '';
     const sameAsBooth = isEvent && isBoothSameAsName(card.shop_name, card.booth_number);
-    const eventPrimaryHeading = boothText || card.shop_name || 'ไม่ระบุบูธ';
+    const eventPrimaryHeading = boothText || card.shop_name || translateUi('ไม่ระบุบูธ');
     const eventSecondaryHeading = sameAsBooth ? null : card.shop_name;
     const buttonAriaLabel = isEvent
-      ? `เลือกร้าน ${[boothText, card.shop_name].filter(Boolean).join(' ')}`
-      : `เลือกร้าน ${card.shop_code} ${card.shop_name}`;
+      ? `${language === 'my' ? 'ဆိုင်ရွေးရန်' : 'เลือกร้าน'} ${[boothText, card.shop_name].filter(Boolean).join(' ')}`
+      : `${language === 'my' ? 'ဆိုင်ရွေးရန်' : 'เลือกร้าน'} ${card.shop_code} ${card.shop_name}`;
     const outstandingAmount = collectionOutstanding === null
       ? undefined
       : collectionOutstanding[card.shop_id] ?? 0;
     const outstandingLabel = collectionOutstandingError
-      ? 'โหลดยอดรอรับชำระไม่สำเร็จ'
+      ? translateUi('โหลดยอดรอรับชำระไม่สำเร็จ')
       : outstandingAmount === undefined
-        ? collectionOutstandingLoading ? 'กำลังโหลดยอดรอรับชำระ…' : 'ตรวจยอดเมื่อเปิดร้าน'
-        : `ยอดรอรับชำระ ${outstandingFormatter.format(outstandingAmount)}`;
+        ? collectionOutstandingLoading ? translateUi('กำลังโหลดยอดรอรับชำระ…') : translateUi('ตรวจยอดเมื่อเปิดร้าน')
+        : `${translateUi('ยอดรอรับชำระ')} ${outstandingFormatter.format(outstandingAmount)}`;
 
     return (
       <article
@@ -196,9 +199,9 @@ export function EmployeeShopPicker({
       >
         {isEvent ? (
           <span className="employee-shop-tile__visual employee-shop-tile__visual--booth">
-            <span className="employee-shop-tile__booth"><small>บูธ</small><strong>{card.booth_number || 'ไม่ระบุ'}</strong></span>
+            <span className="employee-shop-tile__booth"><small>{translateUi('บูธ')}</small><strong>{card.booth_number || translateUi('ไม่ระบุ')}</strong></span>
             <span className={`employee-status employee-status--${statusTone(card.stop_status)}`}>
-              {STATUS_LABELS[card.stop_status]}
+              {translateUi(STATUS_LABELS[card.stop_status])}
             </span>
           </span>
         ) : (
@@ -237,18 +240,18 @@ export function EmployeeShopPicker({
               </>
             )}
             <small>{isEvent
-              ? `${card.event_name} · ${card.event_location}${card.event_zone ? ` · โซน ${card.event_zone}` : ''}`
+              ? `${card.event_name} · ${card.event_location}${card.event_zone ? translateUi(' · โซน {0}', { 0: card.event_zone }) : ''}`
               : `${card.building_name} · ${card.floor_or_zone}`}</small>
             {!isEvent ? <span className="employee-shop-tile__outstanding">{outstandingLabel}</span> : null}
             {isEvent && !card.event_delivery_enabled
-              ? <span>ยังไม่เปิดบันทึกส่งน้ำแข็ง</span>
+              ? <span>{translateUi('ยังไม่เปิดบันทึกส่งน้ำแข็ง')}</span>
               : null}
           </span>
           <CaretRight aria-hidden="true" className="employee-shop-tile__arrow" size={20} />
         </button>
       </article>
     );
-  }), [filteredCards, collectionOutstanding, collectionOutstandingError, collectionOutstandingLoading,
+  }), [language, filteredCards, collectionOutstanding, collectionOutstandingError, collectionOutstandingLoading,
     enableAssignedStockFlow, stockState, refreshShopImageUrl, openCard, shopButtonRefs]);
 
   return (
@@ -256,24 +259,24 @@ export function EmployeeShopPicker({
       <div className="employee-entry-section__heading">
         <span>{enableAssignedStockFlow ? '2' : '1'}</span>
         <div>
-          <h2 id="employee-shop-step">เลือกร้านที่จะไปส่ง</h2>
-          <p>{enableAssignedStockFlow ? 'แตะร้าน แล้วใส่จำนวนที่ส่งแต่ละชนิด' : 'แตะร้านก่อน ระบบจะโหลดสต๊อก ราคา และเงื่อนไขชำระของร้านนั้น'}</p>
+          <h2 id="employee-shop-step">{translateUi('เลือกร้านที่จะไปส่ง')}</h2>
+          <p>{enableAssignedStockFlow ? translateUi('แตะร้าน แล้วใส่จำนวนที่ส่งแต่ละชนิด') : translateUi('แตะร้านก่อน ระบบจะโหลดสต๊อก ราคา และเงื่อนไขชำระของร้านนั้น')}</p>
         </div>
       </div>
 
-      {selectedRoundId ? <nav aria-label="ประเภทจุดส่ง" className={`employee-destination-tabs${casualCustomerEntryVisible ? '' : ' employee-destination-tabs--two'}`}>
-        <button aria-pressed={destinationKind === 'regular'} onClick={() => setDestinationKind('regular')} type="button">ร้านประจำ</button>
-        <button aria-pressed={destinationKind === 'event'} onClick={() => setDestinationKind('event')} type="button">อีเว้น</button>
-        {casualCustomerEntryVisible ? <button aria-label="บันทึกลูกค้าขาจร" onClick={openCasualCustomer} ref={casualCustomerButtonRef} type="button">ลูกค้าขาจร</button> : null}
+      {selectedRoundId ? <nav aria-label={translateUi('ประเภทจุดส่ง')} className={`employee-destination-tabs${casualCustomerEntryVisible ? '' : ' employee-destination-tabs--two'}`}>
+        <button aria-pressed={destinationKind === 'regular'} onClick={() => setDestinationKind('regular')} type="button">{translateUi('ร้านประจำ')}</button>
+        <button aria-pressed={destinationKind === 'event'} onClick={() => setDestinationKind('event')} type="button">{translateUi('อีเว้น')}</button>
+        {casualCustomerEntryVisible ? <button aria-label={translateUi('บันทึกลูกค้าขาจร')} onClick={openCasualCustomer} ref={casualCustomerButtonRef} type="button">{translateUi('ลูกค้าขาจร')}</button> : null}
       </nav> : null}
 
       <label className="employee-search employee-search--standalone">
         <MagnifyingGlass aria-hidden="true" size={22} />
-        <span className="employee-visually-hidden">ค้นหาร้าน</span>
+        <span className="employee-visually-hidden">{translateUi('ค้นหาร้าน')}</span>
         <input
           disabled={!selectedRoundId}
           onChange={(event) => setQuery(event.target.value)}
-          placeholder={destinationKind === 'event' ? 'ค้นชื่อร้าน เลขบูธ โซน หรือเบอร์โทร' : 'ค้นรหัสหรือชื่อร้าน'}
+          placeholder={destinationKind === 'event' ? translateUi('ค้นชื่อร้าน เลขบูธ โซน หรือเบอร์โทร') : translateUi('ค้นรหัสหรือชื่อร้าน')}
           type="search"
           value={query}
         />
@@ -283,28 +286,28 @@ export function EmployeeShopPicker({
         <>
           {destinationKind === 'regular' ? <FilterChips
             icon={<Buildings aria-hidden="true" size={19} />}
-            label="ตึก"
+            label={translateUi('ตึก')}
             onChange={(value) => {
               setSelectedBuildingId(value);
               setSelectedZone('');
             }}
-            options={[{ value: '', label: 'ทุกตึก' }, ...buildingOptions.map((item) => ({ value: item.id, label: item.name }))]}
+            options={[{ value: '', label: translateUi('ทุกตึก') }, ...buildingOptions.map((item) => ({ value: item.id, label: item.name }))]}
             value={selectedBuildingId}
           /> : <FilterChips
             icon={<Storefront aria-hidden="true" size={19} />}
-            label="งาน"
+            label={translateUi('งาน')}
             onChange={(value) => {
               setSelectedEventJobId(value);
               setSelectedZone('');
             }}
-            options={[{ value: '', label: 'ทุกงาน' }, ...eventOptions.map((item) => ({ value: item.id, label: item.name }))]}
+            options={[{ value: '', label: translateUi('ทุกงาน') }, ...eventOptions.map((item) => ({ value: item.id, label: item.name }))]}
             value={selectedEventJobId}
           />}
           <FilterChips
             icon={<MapPin aria-hidden="true" size={19} />}
-            label="โซน"
+            label={translateUi('โซน')}
             onChange={setSelectedZone}
-            options={[{ value: '', label: 'ทุกโซน' }, ...zoneOptions.map((zone) => ({ value: zone, label: zone }))]}
+            options={[{ value: '', label: translateUi('ทุกโซน') }, ...zoneOptions.map((zone) => ({ value: zone, label: zone }))]}
             value={selectedZone}
           />
         </>
@@ -313,21 +316,21 @@ export function EmployeeShopPicker({
       {destinationKind === 'event' && eventCardsError ? (
         <div className="employee-error" role="alert">
           <WarningCircle aria-hidden="true" size={22} weight="fill" />
-          <span>โหลดร้านอีเว้นไม่สำเร็จ: {eventCardsError}</span>
+          <span>{translateUi('โหลดร้านอีเว้นไม่สำเร็จ: ')}{translateUi(eventCardsError)}</span>
         </div>
       ) : null}
 
       {!selectedRoundId ? (
-        <EmployeeState title="เลือกรอบส่งก่อน" detail="หากมีหลายรอบ ต้องเลือกรอบที่กำลังทำงาน" />
+        <EmployeeState title={translateUi('เลือกรอบส่งก่อน')} detail={translateUi('หากมีหลายรอบ ต้องเลือกรอบที่กำลังทำงาน')} />
       ) : loadingCards ? (
-        <EmployeeState title="กำลังโหลดร้าน" detail="รอสักครู่" />
+        <EmployeeState title={translateUi('กำลังโหลดร้าน')} detail={translateUi('รอสักครู่')} />
       ) : filteredCards.length === 0 ? (
-        <EmployeeState title={destinationKind === 'event' ? 'ไม่พบร้านในอีเว้น' : 'ไม่พบร้าน'} detail={destinationKind === 'event' ? 'ลองเปลี่ยนงาน โซน หรือคำค้นหา' : 'ลองเปลี่ยนตึก โซน หรือคำค้นหา'} />
+        <EmployeeState title={destinationKind === 'event' ? translateUi('ไม่พบร้านในอีเว้น') : translateUi('ไม่พบร้าน')} detail={destinationKind === 'event' ? translateUi('ลองเปลี่ยนงาน โซน หรือคำค้นหา') : translateUi('ลองเปลี่ยนตึก โซน หรือคำค้นหา')} />
       ) : (
-        <section aria-label={`ร้านที่พบ ${filteredCards.length} ร้าน`} className="employee-shop-section">
+        <section aria-label={language === 'my' ? `တွေ့ရှိသောဆိုင် ${filteredCards.length} ဆိုင်` : translateUi('ร้านที่พบ {0} ร้าน', { 0: filteredCards.length })} className="employee-shop-section">
           <div className="employee-shop-section__heading">
-            <h2>{destinationKind === 'event' ? 'ร้านในอีเว้น' : 'ร้านที่เลือกได้'}</h2>
-            <span>{filteredCards.length} ร้าน</span>
+            <h2>{destinationKind === 'event' ? translateUi('ร้านในอีเว้น') : translateUi('ร้านที่เลือกได้')}</h2>
+            <span>{filteredCards.length}{translateUi(' ร้าน')}</span>
           </div>
           <div className="employee-shop-grid">
             {shopTiles}
@@ -340,10 +343,10 @@ export function EmployeeShopPicker({
       }} role="presentation">
         <section aria-labelledby="employee-shop-image-preview-title" aria-modal="true" className="image-preview-dialog" role="dialog">
           <div className="image-preview-dialog__header">
-            <h2 id="employee-shop-image-preview-title">รูปร้าน {previewImage.name}</h2>
-            <button aria-label="ปิดรูปภาพ" autoFocus className="image-preview-dialog__close" onClick={closePreview} type="button"><X size={22} weight="bold" /></button>
+            <h2 id="employee-shop-image-preview-title">{translateUi('รูปร้าน')} {previewImage.name}</h2>
+            <button aria-label={translateUi('ปิดรูปภาพ')} autoFocus className="image-preview-dialog__close" onClick={closePreview} type="button"><X size={22} weight="bold" /></button>
           </div>
-          <img alt={`รูปร้าน ${previewImage.name}`} className="image-preview-dialog__image" src={previewImage.url} />
+          <img alt={`${translateUi('รูปร้าน')} ${previewImage.name}`} className="image-preview-dialog__image" src={previewImage.url} />
         </section>
       </div> : null}
     </section>

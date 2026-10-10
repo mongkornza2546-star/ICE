@@ -1,3 +1,4 @@
+import { translateUi, useLanguage } from './i18n';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { supabase } from './lib/supabase';
 import { isEventLocationCode } from './lib/eventLocationCode';
@@ -6,6 +7,7 @@ import type { BuildingOption, BuildingZoneOption } from './types/app';
 const emptyDraft = (sort_order = 1) => ({ id: '', code: '', name: '', sort_order, is_active: true });
 
 export function LocationSettings() {
+  useLanguage();
   const [buildings, setBuildings] = useState<BuildingOption[]>([]);
   const [zones, setZones] = useState<BuildingZoneOption[]>([]);
   const [selectedBuildingId, setSelectedBuildingId] = useState('');
@@ -121,69 +123,70 @@ export function LocationSettings() {
     setSaving(null);
   };
 
-  if (loading) return <p className="empty-text">กำลังโหลดตึกและโซนย่อย...</p>;
+  if (loading) return <p className="empty-text">{translateUi('กำลังโหลดตึกและโซนย่อย...')}</p>;
 
   return (
     <div className="location-settings">
       <section className="panel stack">
         <div className="panel-header">
-          <div><p className="eyebrow">ขั้นที่ 1</p><h2>ตั้งค่าตึก</h2></div>
-          <button className="ghost-button" onClick={() => setBuildingDraft({ id: '', code: '', name: '', sort_order: nextBuildingSortOrder, is_active: true })} type="button">+ ตึกใหม่</button>
+          <div><p className="eyebrow">{translateUi('ขั้นที่ 1')}</p><h2>{translateUi('ตั้งค่าตึก')}</h2></div>
+          <button className="ghost-button" onClick={() => setBuildingDraft({ id: '', code: '', name: '', sort_order: nextBuildingSortOrder, is_active: true })} type="button">{translateUi('+ ตึกใหม่')}</button>
         </div>
-        <p className="muted">จัดการตึกและโซนถาวรที่นี่ · จัดการงานชั่วคราวในเมนูงานอีเวนต์</p>
+        <p className="muted">{translateUi('จัดการตึกและโซนถาวรที่นี่ · จัดการงานชั่วคราวในเมนูงานอีเวนต์')}</p>
         <div className="settings-list">
           {permanentBuildings.map((building) => (
             <button className={`round-item ${selectedBuildingId === building.id ? 'round-item--selected' : ''}`} key={building.id} onClick={() => chooseBuilding(building)} type="button">
               <span>{building.sort_order ?? '—'}. {building.code} · {building.name}</span>
-              <small>{building.is_active ? 'ใช้งาน' : 'พักใช้งาน'} · {zones.filter((zone) => zone.building_id === building.id && !isEventLocationCode(zone.code)).length} โซนย่อย</small>
+              <small>{building.is_active ? translateUi('ใช้งาน') : translateUi('พักใช้งาน')} · {zones.filter((zone) => zone.building_id === building.id && !isEventLocationCode(zone.code)).length}{translateUi(' โซนย่อย')}</small>
             </button>
           ))}
-          {permanentBuildings.length === 0 ? <p className="empty-text">ยังไม่มีตึกถาวร กรุณาเพิ่มตึก</p> : null}
+          {permanentBuildings.length === 0 ? <p className="empty-text">{translateUi('ยังไม่มีตึกถาวร กรุณาเพิ่มตึก')}</p> : null}
         </div>
         <form className="settings-form" onSubmit={saveBuilding}>
           <div className="field-grid field-grid--three">
-            <TextField label="รหัสตึก" required value={buildingDraft.code} onChange={(code) => setBuildingDraft({ ...buildingDraft, code })} />
-            <TextField label="ชื่อตึก" required value={buildingDraft.name} onChange={(name) => setBuildingDraft({ ...buildingDraft, name })} />
-            <label>ลำดับ<input min={1} required step={1} type="number" value={buildingDraft.sort_order} onChange={(event) => setBuildingDraft({ ...buildingDraft, sort_order: Math.max(1, Math.floor(Number(event.target.value) || 1)) })} /></label>
+            <TextField label={translateUi('รหัสตึก')} required value={buildingDraft.code} onChange={(code) => setBuildingDraft({ ...buildingDraft, code })} />
+            <TextField label={translateUi('ชื่อตึก')} required value={buildingDraft.name} onChange={(name) => setBuildingDraft({ ...buildingDraft, name })} />
+            <label>{translateUi('ลำดับ')}<input min={1} required step={1} type="number" value={buildingDraft.sort_order} onChange={(event) => setBuildingDraft({ ...buildingDraft, sort_order: Math.max(1, Math.floor(Number(event.target.value) || 1)) })} /></label>
           </div>
-          <label className="inline-check"><input checked={buildingDraft.is_active} onChange={(event) => setBuildingDraft({ ...buildingDraft, is_active: event.target.checked })} type="checkbox" /> เปิดใช้งานตึก</label>
-          <button className="primary-button" disabled={saving === 'building'} type="submit">{saving === 'building' ? 'กำลังบันทึก...' : 'บันทึกตึก'}</button>
+          <label className="inline-check"><input checked={buildingDraft.is_active} onChange={(event) => setBuildingDraft({ ...buildingDraft, is_active: event.target.checked })} type="checkbox" />{translateUi(' เปิดใช้งานตึก')}</label>
+          <button className="primary-button" disabled={saving === 'building'} type="submit">{saving === 'building' ? translateUi('กำลังบันทึก...') : translateUi('บันทึกตึก')}</button>
         </form>
       </section>
 
       <section className="panel stack">
         <div className="panel-header">
-          <div><p className="eyebrow">ขั้นที่ 2</p><h2>โซนย่อย {selectedBuilding ? `· ${selectedBuilding.name}` : ''}</h2></div>
-          <button className="ghost-button" disabled={!selectedBuildingId} onClick={() => setZoneDraft({ id: '', code: '', name: '', sort_order: nextZoneSortOrder, is_active: true })} type="button">+ โซนใหม่</button>
+          <div><p className="eyebrow">{translateUi('ขั้นที่ 2')}</p><h2>{translateUi('โซนย่อย ')}{selectedBuilding ? `· ${selectedBuilding.name}` : ''}</h2></div>
+          <button className="ghost-button" disabled={!selectedBuildingId} onClick={() => setZoneDraft({ id: '', code: '', name: '', sort_order: nextZoneSortOrder, is_active: true })} type="button">{translateUi('+ โซนใหม่')}</button>
         </div>
-        {!selectedBuildingId ? <p className="empty-text">เลือกหรือสร้างตึกก่อน</p> : (
+        {!selectedBuildingId ? <p className="empty-text">{translateUi('เลือกหรือสร้างตึกก่อน')}</p> : (
           <>
             <div className="zone-grid">
               {buildingZones.map((zone) => (
                 <button className={`choice-chip ${zoneDraft.id === zone.id ? 'choice-chip--selected' : ''}`} key={zone.id} onClick={() => setZoneDraft({ id: zone.id, code: zone.code, name: zone.name, sort_order: zone.sort_order, is_active: zone.is_active })} type="button">
                   <span>{zone.sort_order}. {zone.code} · {zone.name}</span>
-                  <small>{zone.is_active ? 'ใช้งาน' : 'พักใช้งาน'}</small>
+                  <small>{zone.is_active ? translateUi('ใช้งาน') : translateUi('พักใช้งาน')}</small>
                 </button>
               ))}
             </div>
             <form className="settings-form" onSubmit={saveZone}>
               <div className="field-grid field-grid--three">
-                <TextField label="รหัสโซน" required value={zoneDraft.code} onChange={(code) => setZoneDraft({ ...zoneDraft, code })} />
-                <TextField label="ชื่อโซนย่อย" required value={zoneDraft.name} onChange={(name) => setZoneDraft({ ...zoneDraft, name })} />
-                <label>ลำดับ<input min={1} required type="number" value={zoneDraft.sort_order} onChange={(event) => setZoneDraft({ ...zoneDraft, sort_order: Math.max(1, Number(event.target.value) || 1) })} /></label>
+                <TextField label={translateUi('รหัสโซน')} required value={zoneDraft.code} onChange={(code) => setZoneDraft({ ...zoneDraft, code })} />
+                <TextField label={translateUi('ชื่อโซนย่อย')} required value={zoneDraft.name} onChange={(name) => setZoneDraft({ ...zoneDraft, name })} />
+                <label>{translateUi('ลำดับ')}<input min={1} required type="number" value={zoneDraft.sort_order} onChange={(event) => setZoneDraft({ ...zoneDraft, sort_order: Math.max(1, Number(event.target.value) || 1) })} /></label>
               </div>
-              <label className="inline-check"><input checked={zoneDraft.is_active} onChange={(event) => setZoneDraft({ ...zoneDraft, is_active: event.target.checked })} type="checkbox" /> เปิดใช้งานโซน</label>
-              <button className="primary-button" disabled={saving === 'zone'} type="submit">{saving === 'zone' ? 'กำลังบันทึก...' : 'บันทึกโซนย่อย'}</button>
+              <label className="inline-check"><input checked={zoneDraft.is_active} onChange={(event) => setZoneDraft({ ...zoneDraft, is_active: event.target.checked })} type="checkbox" />{translateUi(' เปิดใช้งานโซน')}</label>
+              <button className="primary-button" disabled={saving === 'zone'} type="submit">{saving === 'zone' ? translateUi('กำลังบันทึก...') : translateUi('บันทึกโซนย่อย')}</button>
             </form>
           </>
         )}
-        {error ? <p className="error-text">{error}</p> : null}
-        {success ? <p className="success-text">{success}</p> : null}
+        {error ? <p className="error-text">{translateUi(error)}</p> : null}
+        {success ? <p className="success-text">{translateUi(success)}</p> : null}
       </section>
     </div>
   );
 }
 
 function TextField({ label, value, required, onChange }: { label: string; value: string; required?: boolean; onChange: (value: string) => void }) {
+  useLanguage();
   return <label>{label}<input required={required} value={value} onChange={(event) => onChange(event.target.value)} /></label>;
 }

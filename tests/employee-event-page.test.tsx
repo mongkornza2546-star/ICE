@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { EmployeeEventPage } from '../src/EmployeeEventPage';
+import { LanguageProvider, LanguageSwitcher, translateUi } from '../src/i18n';
 import type { EmployeeEventBooth, EmployeeEventDetail, EmployeeEventGateway, EmployeeEventSummary } from '../src/features/employee-events/types';
 
 beforeEach(() => {
@@ -337,4 +338,31 @@ it('searches an 83-booth event and distinguishes empty results from an empty eve
   await user.type(screen.getByLabelText('ค้นหาบูธ'), 'หาไม่พบ');
   expect(screen.getByText('ไม่พบบูธที่ค้นหา')).not.toBeNull();
   expect(screen.queryByRole('button', { name: 'เพิ่มบูธแรก' })).toBeNull();
+});
+
+
+it('localizes a real handoff and its success message while preserving booth data and draft across language changes', async () => {
+  const api = gateway();
+  const user = userEvent.setup();
+  window.localStorage.setItem('ice-delivery.language.v1', 'my');
+  render(<LanguageProvider><LanguageSwitcher /><EmployeeEventPage gateway={api} /></LanguageProvider>);
+  await openEvent(user);
+  await user.click(screen.getByRole('button', { name: translateUi('ส่งถัง บูธ {0}', { 0: 'A1' }) }));
+  const dialog = screen.getByRole('dialog');
+  expect(dialog.textContent).toContain('งานตลาดนัด · ร้านหนึ่ง');
+  expect(dialog.textContent).not.toContain('จำนวนถัง');
+  const quantity = within(dialog).getByRole('spinbutton');
+  fireEvent.change(quantity, { target: { value: '2' } });
+  fireEvent.change(document.querySelector('.language-switcher select')!, { target: { value: 'th' } });
+  expect(within(dialog).getByRole('spinbutton')).toBe(quantity);
+  expect((quantity as HTMLInputElement).value).toBe('2');
+  fireEvent.change(document.querySelector('.language-switcher select')!, { target: { value: 'my' } });
+  await user.click(within(dialog).getByRole('button', { name: translateUi('ยืนยันส่งถัง') }));
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  const toast = screen.getByRole('status');
+  expect(toast.textContent).toContain(translateUi('ส่งถัง {quantity} ใบให้บูธ {booth} แล้ว', { quantity: 2, booth: 'A1' }));
+  expect(toast.textContent).not.toMatch(/[ก-๙]/);
+  expect(api.handoffTanks).toHaveBeenCalledWith(expect.objectContaining({ participationId: 'booth-1', quantity: 2 }));
+  fireEvent.change(document.querySelector('.language-switcher select')!, { target: { value: 'th' } });
+  expect(toast.textContent).toContain('ส่งถัง 2 ใบให้บูธ A1 แล้ว');
 });

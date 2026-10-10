@@ -1,3 +1,4 @@
+import { translateUi, useLanguage } from './i18n';
 import { FormEvent, useEffect, useState } from 'react';
 import { supabase } from './lib/supabase';
 import { isEventLocationCode } from './lib/eventLocationCode';
@@ -56,6 +57,7 @@ const EMPTY_DRAFT: LocationDraft = {
 };
 
 export function StockLocationSettings() {
+  useLanguage();
   const [locations, setLocations] = useState<StockLocationSetting[]>([]);
   const [buildings, setBuildings] = useState<BuildingOption[]>([]);
   const [members, setMembers] = useState<RoundMemberOption[]>([]);
@@ -154,7 +156,7 @@ export function StockLocationSettings() {
     setSaving(false);
   }
 
-  if (loading) return <p className="empty-text">กำลังโหลดจุดถือครองสต๊อก...</p>;
+  if (loading) return <p className="empty-text">{translateUi('กำลังโหลดจุดถือครองสต๊อก...')}</p>;
 
   const permanentBuildings = buildings.filter((building) => !isEventLocationCode(building.code));
   const legacyEventBuilding = buildings.find((building) => building.id === draft.buildingId && isEventLocationCode(building.code));
@@ -164,15 +166,14 @@ export function StockLocationSettings() {
       <section className="panel stack">
         <div className="panel-header">
           <div>
-            <p className="eyebrow">จุดปฏิบัติงาน</p>
-            <h2>จุดถือครองสต๊อกทั้งหมด</h2>
+            <p className="eyebrow">{translateUi('จุดปฏิบัติงาน')}</p>
+            <h2>{translateUi('จุดถือครองสต๊อกทั้งหมด')}</h2>
           </div>
           <button className="ghost-button" onClick={() => setDraft(EMPTY_DRAFT)} type="button">
-            + จุดใหม่
-          </button>
+            {translateUi('+ จุดใหม่')}</button>
         </div>
-        <p className="muted">เพิ่ม แก้ไข และพักใช้งานรถบรรทุก จุดปฏิบัติงาน หรือจุดถือครองอื่นได้จากหน้านี้</p>
-        <p className="muted">จัดการงานชั่วคราวและจุดรายงานอีเวนต์ในเมนูงานอีเวนต์</p>
+        <p className="muted">{translateUi('เพิ่ม แก้ไข และพักใช้งานรถบรรทุก จุดปฏิบัติงาน หรือจุดถือครองอื่นได้จากหน้านี้')}</p>
+        <p className="muted">{translateUi('จัดการงานชั่วคราวและจุดรายงานอีเวนต์ในเมนูงานอีเวนต์')}</p>
         <div className="settings-list">
           {locations.map((location) => (
             <button
@@ -182,27 +183,26 @@ export function StockLocationSettings() {
               type="button"
             >
               <span>{isEventCode(location.code) ? location.name : `${location.code} · ${location.name}`}</span>
-              <small>{KIND_LABELS[location.kind]} · {location.is_active ? 'ใช้งาน' : 'พักใช้งาน'}</small>
+              <small>{translateUi(KIND_LABELS[location.kind])} · {location.is_active ? translateUi('ใช้งาน') : translateUi('พักใช้งาน')}</small>
             </button>
           ))}
-          {locations.length === 0 ? <p className="empty-text">ยังไม่มีจุดถือครอง กรุณาเพิ่มจุดแรก</p> : null}
+          {locations.length === 0 ? <p className="empty-text">{translateUi('ยังไม่มีจุดถือครอง กรุณาเพิ่มจุดแรก')}</p> : null}
         </div>
       </section>
 
       <section className="panel stack">
         <div>
-          <p className="eyebrow">{draft.id ? 'แก้ไขจุด' : 'จุดใหม่'}</p>
-          <h2>รายละเอียดจุดถือครอง</h2>
+          <p className="eyebrow">{draft.id ? translateUi('แก้ไขจุด') : translateUi('จุดใหม่')}</p>
+          <h2>{translateUi('รายละเอียดจุดถือครอง')}</h2>
         </div>
         <form className="settings-form" onSubmit={saveLocation}>
           <div className="field-grid">
-            <label>รหัส<input required value={draft.code} onChange={(event) => setDraft({ ...draft, code: event.target.value })} /></label>
-            <label>ชื่อ<input required value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} /></label>
+            <label>{translateUi('รหัส')}<input required value={draft.code} onChange={(event) => setDraft({ ...draft, code: event.target.value })} /></label>
+            <label>{translateUi('ชื่อ')}<input required value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} /></label>
           </div>
           <div className="field-grid">
             <label>
-              ประเภท
-              <select
+              {translateUi('ประเภท')}<select
                 value={draft.kind}
                 onChange={(event) => {
                   const kind = event.target.value as StockLocationKind;
@@ -214,32 +214,31 @@ export function StockLocationSettings() {
                   });
                 }}
               >
-                {LOCATION_KINDS.map((kind) => <option key={kind.value} value={kind.value}>{kind.label}</option>)}
+                {LOCATION_KINDS.map((kind) => <option key={kind.value} value={kind.value}>{translateUi(kind.label)}</option>)}
               </select>
             </label>
             <label>
-              ตึกที่เกี่ยวข้อง (ถ้ามี)
-              <select value={draft.buildingId} onChange={(event) => setDraft({ ...draft, buildingId: event.target.value })}>
-                <option value="">ไม่ผูกกับตึก</option>
-                {legacyEventBuilding ? <option disabled value={legacyEventBuilding.id}>{legacyEventBuilding.name} · อีเวนต์ (ความสัมพันธ์เดิม)</option> : null}
+              {translateUi('ตึกที่เกี่ยวข้อง (ถ้ามี)')}<select value={draft.buildingId} onChange={(event) => setDraft({ ...draft, buildingId: event.target.value })}>
+                <option value="">{translateUi('ไม่ผูกกับตึก')}</option>
+                {legacyEventBuilding ? <option disabled value={legacyEventBuilding.id}>{legacyEventBuilding.name}{translateUi(' · อีเวนต์ (ความสัมพันธ์เดิม)')}</option> : null}
                 {permanentBuildings.map((building) => <option key={building.id} value={building.id}>{building.code} · {building.name}</option>)}
               </select>
             </label>
             <label>
-              ผู้ถือสต๊อก {draft.kind === 'team' ? '(จำเป็น)' : '(ถ้ามี)'}
+              {translateUi('ผู้ถือสต๊อก ')}{draft.kind === 'team' ? translateUi('(จำเป็น)') : translateUi('(ถ้ามี)')}
               <select
                 disabled={draft.kind === 'work_site'}
                 required={draft.kind === 'team'}
                 value={draft.assignedUserId}
                 onChange={(event) => setDraft({ ...draft, assignedUserId: event.target.value })}
               >
-                <option value="">ไม่ผูกผู้ใช้</option>
+                <option value="">{translateUi('ไม่ผูกผู้ใช้')}</option>
                 {members.map((member) => <option key={member.id} value={member.id}>{member.code} · {member.display_name}</option>)}
               </select>
             </label>
           </div>
           {draft.kind === 'work_site' ? (
-            <p className="muted">พนักงานประจำจุดกำหนดได้จากหน้า “ผู้ใช้และชนิดน้ำแข็ง” โดยไม่กระทบผู้ถือสต๊อกใน ledger</p>
+            <p className="muted">{translateUi('พนักงานประจำจุดกำหนดได้จากหน้า “ผู้ใช้และชนิดน้ำแข็ง” โดยไม่กระทบผู้ถือสต๊อกใน ledger')}</p>
           ) : null}
           <label className="inline-check">
             <input
@@ -251,8 +250,7 @@ export function StockLocationSettings() {
               })}
               type="checkbox"
             />
-            เปิดใช้งานจุดนี้
-          </label>
+            {translateUi('เปิดใช้งานจุดนี้')}</label>
           <label className="inline-check" style={draft.kind === 'work_site' ? { opacity: 0.6, cursor: 'not-allowed' } : {}}>
             <input
               checked={draft.kind === 'work_site' ? false : draft.holdsInventory}
@@ -265,12 +263,10 @@ export function StockLocationSettings() {
               })}
               type="checkbox"
             />
-            เก็บสต๊อกคงเหลือจริง (Holds Inventory)
-          </label>
+            {translateUi('เก็บสต๊อกคงเหลือจริง (Holds Inventory)')}</label>
           {draft.kind === 'work_site' && (
             <p style={{ color: '#c2410c', fontSize: '0.8rem', margin: '4px 0 12px 24px', fontWeight: 500 }}>
-              ⚠️ จุดบริการ (work_site) บังคับเป็น Report-Only ในโมเดลใหม่ ไม่เก็บสต๊อกคงเหลือเคลื่อนไหวโดยตรง
-            </p>
+              {translateUi('⚠️ จุดบริการ (work_site) บังคับเป็น Report-Only ในโมเดลใหม่ ไม่เก็บสต๊อกคงเหลือเคลื่อนไหวโดยตรง')}</p>
           )}
           <label className="inline-check">
             <input
@@ -279,8 +275,7 @@ export function StockLocationSettings() {
               onChange={(event) => setDraft({ ...draft, requiresDailyCount: event.target.checked })}
               type="checkbox"
             />
-            ต้องตรวจนับสต๊อกสิ้นวัน (Requires Daily Count)
-          </label>
+            {translateUi('ต้องตรวจนับสต๊อกสิ้นวัน (Requires Daily Count)')}</label>
           {draft.kind === 'truck' ? <label className="inline-check">
             <input
               checked={draft.isCourierSource}
@@ -288,15 +283,13 @@ export function StockLocationSettings() {
               onChange={(event) => setDraft({ ...draft, isCourierSource: event.target.checked })}
               type="checkbox"
             />
-            ใช้เป็นรถหลักสำหรับพนักงานส่ง
-          </label> : null}
+            {translateUi('ใช้เป็นรถหลักสำหรับพนักงานส่ง')}</label> : null}
           {draft.kind === 'work_site' ? <label className="inline-check">
             <input checked={draft.isDefaultForBuilding} onChange={(event) => setDraft({ ...draft, isDefaultForBuilding: event.target.checked })} type="checkbox" />
-            ใช้เป็นจุดสต๊อกหลักของตึก
-          </label> : null}
-          {error ? <p className="error-text">{error}</p> : null}
-          {success ? <p className="success-text">{success}</p> : null}
-          <button className="primary-button" disabled={saving} type="submit">{saving ? 'กำลังบันทึก...' : 'บันทึกจุดถือครอง'}</button>
+            {translateUi('ใช้เป็นจุดสต๊อกหลักของตึก')}</label> : null}
+          {error ? <p className="error-text">{translateUi(error)}</p> : null}
+          {success ? <p className="success-text">{translateUi(success)}</p> : null}
+          <button className="primary-button" disabled={saving} type="submit">{saving ? translateUi('กำลังบันทึก...') : translateUi('บันทึกจุดถือครอง')}</button>
         </form>
       </section>
     </div>

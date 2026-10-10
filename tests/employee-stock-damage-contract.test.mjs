@@ -5,6 +5,7 @@ import test from 'node:test';
 const migration = readFileSync(new URL('../supabase/migrations/0142_employee_stock_damage.sql', import.meta.url), 'utf8');
 const stylesheet = readFileSync(new URL('../src/index.css', import.meta.url), 'utf8');
 const router = readFileSync(new URL('../src/RoleRouter.tsx', import.meta.url), 'utf8');
+const i18n = readFileSync(new URL('../src/i18n.tsx', import.meta.url), 'utf8');
 const workspace = readFileSync(new URL('../src/EmployeeDeliveryWorkspace.tsx', import.meta.url), 'utf8');
 
 test('employee damage validates both holding and aggregate stock before writing the ledger', () => {
@@ -20,7 +21,8 @@ test('all three employee stock modes fit one row and navigation advertises damag
   for (const rule of modeRules) {
     assert.match(rule[1], /grid-template-columns:\s*repeat\(3,/);
   }
-  assert.match(router, /เติม \/ คืน \/ ละลาย/);
+  assert.match(router, /t\('stockReceiveReturn'\)/);
+  assert.match(i18n, /stockReceiveReturn: \{ th: 'เติม \/ คืน \/ ละลาย', my: '[^']+' \}/);
   assert.match(workspace, /เติมจากรถ[\s\S]*บันทึกน้ำแข็งละลาย/);
 });
 

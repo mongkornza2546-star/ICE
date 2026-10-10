@@ -8,6 +8,31 @@
   font-display: swap;
 }
 
+@font-face {
+  font-family: 'Noto Sans Myanmar';
+  src: url('/fonts/NotoSansMyanmar-Regular.ttf') format('truetype');
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Noto Sans Myanmar';
+  src: url('/fonts/NotoSansMyanmar-Bold.ttf') format('truetype');
+  font-style: normal;
+  font-weight: 700 900;
+  font-display: swap;
+}
+
+html[lang='my'] { font-family: 'Noto Sans Myanmar', 'Noto Sans Thai', system-ui, sans-serif; }
+html[lang='my'] body, html[lang='my'] button, html[lang='my'] input, html[lang='my'] select, html[lang='my'] textarea { font-family: 'Noto Sans Myanmar', 'Noto Sans Thai', system-ui, sans-serif; }
+.language-switcher { display: inline-flex; align-items: center; flex: 0 0 auto; }
+.language-switcher select { min-height: 38px; max-width: 100px; border: 1px solid #cbd8e7; border-radius: 9px; padding: 5px 8px; background: #fff; color: #173758; font: inherit; font-size: .78rem; cursor: pointer; }
+.language-switcher--auth { float: right; }
+@media (max-width: 600px) {
+  .language-switcher select { min-height: 40px; max-width: 84px; padding-inline: 4px; }
+  .admin-topbar__actions .profile-menu { display: none; }
+}
+
 .thermal-printer-fab { position: fixed; right: 16px; bottom: max(16px, env(safe-area-inset-bottom)); z-index: 70; display: inline-flex; align-items: center; gap: 7px; min-height: 44px; border: 1px solid #c8d6e7; border-radius: 999px; background: #fff; padding: 8px 13px; color: #34536f; box-shadow: 0 8px 24px #123b6329; font: inherit; font-size: .75rem; font-weight: 800; }
 .thermal-printer-fab--ready { border-color: #79c9a3; color: #08744b; background: #f1fcf7; }
 .thermal-printer-layer { position: fixed; z-index: 200; inset: 0; display: grid; place-items: center; padding: 18px; }

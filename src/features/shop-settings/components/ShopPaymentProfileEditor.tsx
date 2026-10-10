@@ -1,3 +1,4 @@
+import { translateUi, useLanguage } from '../../../i18n';
 import { type FormEvent, useEffect, useState } from 'react';
 import { CreditCard } from '@phosphor-icons/react';
 import type { ShopPaymentProfileSetting, PaymentMethod, CreditDueRule } from '../../../types/app';
@@ -31,6 +32,7 @@ const defaultProfile = (shop_id: string): ShopPaymentProfileSetting => ({
 });
 
 export function ShopPaymentProfileEditor({ shopId, shopName, onSaved }: ShopPaymentProfileEditorProps) {
+  useLanguage();
   const [profile, setProfile] = useState<ShopPaymentProfileSetting>(defaultProfile(shopId));
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -118,7 +120,7 @@ export function ShopPaymentProfileEditor({ shopId, shopName, onSaved }: ShopPaym
     }
   }
 
-  if (loading) return <p className="empty-text">กำลังโหลดโปรไฟล์การชำระเงิน...</p>;
+  if (loading) return <p className="empty-text">{translateUi('กำลังโหลดโปรไฟล์การชำระเงิน...')}</p>;
 
   const isCredit = profile.allowed_payment_terms.includes('credit');
 
@@ -126,20 +128,19 @@ export function ShopPaymentProfileEditor({ shopId, shopName, onSaved }: ShopPaym
     <section className="shop-payment-profile-section" style={{ marginTop: '1.5rem', borderTop: '1px solid var(--border-color, #eee)', paddingTop: '1.5rem' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
         <CreditCard size={22} weight="duotone" />
-        <h3 style={{ margin: 0 }}>เงื่อนไขการชำระเงินของ {shopName}</h3>
+        <h3 style={{ margin: 0 }}>{translateUi('เงื่อนไขการชำระเงินของ ')}{shopName}</h3>
       </div>
 
       <form onSubmit={handleSave}>
         <div style={{ marginBottom: '1rem' }}>
           <label className="inline-check">
             <input checked={isCredit} onChange={toggleCredit} type="checkbox" />
-            ร้านเครดิต (Credit)
-          </label>
+            {translateUi('ร้านเครดิต (Credit)')}</label>
         </div>
 
         <div className="field-grid" style={{ marginBottom: '1rem' }}>
           <div>
-            <label>ช่องทางการเงินที่รับ (Payment Methods)</label>
+            <label>{translateUi('ช่องทางการเงินที่รับ (Payment Methods)')}</label>
             <div style={{ display: 'flex', gap: '1rem', marginTop: '0.5rem' }}>
               <label className="inline-check">
                 <input
@@ -147,28 +148,25 @@ export function ShopPaymentProfileEditor({ shopId, shopName, onSaved }: ShopPaym
                   onChange={() => toggleMethod('cash')}
                   type="checkbox"
                 />
-                เงินสด (Cash)
-              </label>
+                {translateUi('เงินสด (Cash)')}</label>
               <label className="inline-check">
                 <input
                   checked={profile.allowed_payment_methods.includes('bank_transfer')}
                   onChange={() => toggleMethod('bank_transfer')}
                   type="checkbox"
                 />
-                โอนเงิน (Transfer)
-              </label>
+                {translateUi('โอนเงิน (Transfer)')}</label>
             </div>
           </div>
 
           <label>
-            ช่องทางเริ่มต้น (Default Method)
-            <select
+            {translateUi('ช่องทางเริ่มต้น (Default Method)')}<select
               onChange={(e) => setProfile({ ...profile, default_payment_method: e.target.value as PaymentMethod })}
               value={profile.default_payment_method}
             >
               {profile.allowed_payment_methods.map((method) => (
                 <option key={method} value={method}>
-                  {method === 'cash' ? 'เงินสด' : 'โอนเงิน'}
+                  {method === 'cash' ? translateUi('เงินสด') : translateUi('โอนเงิน')}
                 </option>
               ))}
             </select>
@@ -183,14 +181,12 @@ export function ShopPaymentProfileEditor({ shopId, shopName, onSaved }: ShopPaym
                 onChange={(e) => setProfile({ ...profile, allow_outstanding: e.target.checked })}
                 type="checkbox"
               />
-              อนุญาตให้มียอดค้างชำระได้ (หากจ่ายไม่ครบในรอบส่ง)
-            </label>
+              {translateUi('อนุญาตให้มียอดค้างชำระได้ (หากจ่ายไม่ครบในรอบส่ง)')}</label>
           </div>
         ) : (
           <div className="field-grid" style={{ marginBottom: '1rem', background: 'var(--panel-bg, #f9f9f9)', padding: '1rem', borderRadius: '8px' }}>
             <label>
-              รอบเก็บเงิน
-              <select
+              {translateUi('รอบเก็บเงิน')}<select
                 onChange={(e) => {
                   const creditDueRule = e.target.value as CreditDueRule;
                   setProfile({
@@ -204,17 +200,16 @@ export function ShopPaymentProfileEditor({ shopId, shopName, onSaved }: ShopPaym
                 }}
                 value={profile.credit_due_rule ?? 'net_days'}
               >
-                <option value="weekly">ทุกสัปดาห์</option>
-                <option value="semi_monthly">รอบครึ่งเดือน (วันที่ 1–15 / 16–สิ้นเดือน)</option>
-                <option value="end_of_month">ทุกสิ้นเดือน</option>
-                <option value="net_days">หลังส่งสินค้า X วัน</option>
+                <option value="weekly">{translateUi('ทุกสัปดาห์')}</option>
+                <option value="semi_monthly">{translateUi('รอบครึ่งเดือน (วันที่ 1–15 / 16–สิ้นเดือน)')}</option>
+                <option value="end_of_month">{translateUi('ทุกสิ้นเดือน')}</option>
+                <option value="net_days">{translateUi('หลังส่งสินค้า X วัน')}</option>
               </select>
             </label>
 
             {profile.credit_due_rule === 'net_days' ? (
               <label>
-                จำนวนวันหลังส่งสินค้า
-                <input
+                {translateUi('จำนวนวันหลังส่งสินค้า')}<input
                   min="1"
                   onChange={(e) => setProfile({ ...profile, credit_days: Number(e.target.value) || 1 })}
                   type="number"
@@ -225,13 +220,12 @@ export function ShopPaymentProfileEditor({ shopId, shopName, onSaved }: ShopPaym
 
             {profile.credit_due_rule === 'weekly' ? (
               <label>
-                วันเก็บเงินประจำสัปดาห์
-                <select
+                {translateUi('วันเก็บเงินประจำสัปดาห์')}<select
                   onChange={(e) => setProfile({ ...profile, credit_collection_weekday: Number(e.target.value) })}
                   value={profile.credit_collection_weekday ?? 5}
                 >
                   {CREDIT_COLLECTION_WEEKDAY_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>{option.label}</option>
+                    <option key={option.value} value={option.value}>{translateUi(option.label)}</option>
                   ))}
                 </select>
               </label>
@@ -240,11 +234,10 @@ export function ShopPaymentProfileEditor({ shopId, shopName, onSaved }: ShopPaym
             <p style={{ alignSelf: 'end', margin: 0 }}>{formatCreditCollectionCycle(profile)}</p>
 
             <label>
-              วงเงินเครดิต (บาท - เว้นว่างหากไม่จำกัด)
-              <input
+              {translateUi('วงเงินเครดิต (บาท - เว้นว่างหากไม่จำกัด)')}<input
                 min="0"
                 onChange={(e) => setProfile({ ...profile, credit_limit: e.target.value ? Number(e.target.value) : null })}
-                placeholder="เช่น 10000"
+                placeholder={translateUi('เช่น 10000')}
                 type="number"
                 value={profile.credit_limit ?? ''}
               />
@@ -252,11 +245,11 @@ export function ShopPaymentProfileEditor({ shopId, shopName, onSaved }: ShopPaym
           </div>
         )}
 
-        {error ? <p className="error-text" role="alert">{error}</p> : null}
-        {success ? <p className="success-text" role="polite">{success}</p> : null}
+        {error ? <p className="error-text" role="alert">{translateUi(error)}</p> : null}
+        {success ? <p className="success-text" role="polite">{translateUi(success)}</p> : null}
 
         <button className="primary-button" disabled={saving} type="submit">
-          {saving ? 'กำลังบันทึก...' : 'บันทึกโปรไฟล์การชำระเงิน'}
+          {saving ? translateUi('กำลังบันทึก...') : translateUi('บันทึกโปรไฟล์การชำระเงิน')}
         </button>
       </form>
     </section>

@@ -20,6 +20,7 @@ import {
 } from '@phosphor-icons/react';
 import iceCubeLogo from './assets/ice-cube-cluster-logo.png';
 import { toBangkokDateString } from './lib/serviceDate';
+import { LanguageSwitcher, useLanguage, uiDateTimeFormat, type MessageKey } from './i18n';
 
 export type AdminView =
   | 'manager_overview'
@@ -36,18 +37,18 @@ export type AdminView =
 
 export type FinancialPage = 'collection' | 'transactions' | 'credit' | 'credit_signoff';
 
-const viewMeta: Record<AdminView, { label: string; shortLabel: string; icon: typeof Truck }> = {
-  manager_overview: { label: 'งานวันนี้', shortLabel: 'งานวันนี้', icon: ClipboardText },
-  executive_reports: { label: 'รายงานผู้บริหาร', shortLabel: 'รายงาน', icon: ChartBar },
-  events: { label: 'งานอีเวนต์', shortLabel: 'อีเวนต์', icon: CalendarDots },
-  factory_order: { label: 'สั่งน้ำแข็งจากโรงงาน', shortLabel: 'สั่งน้ำแข็ง', icon: ShoppingCart },
-  delivery: { label: 'บันทึกส่งน้ำแข็ง', shortLabel: 'บันทึกส่ง', icon: Truck },
-  financial_operations: { label: 'การเงินและบัญชี', shortLabel: 'การเงิน', icon: Coins },
-  stock_operations: { label: 'โอน / ตรวจ / ปิดสต๊อก', shortLabel: 'จัดการสต๊อก', icon: MapPin },
-  stock_audit: { label: 'Audit สต็อก', shortLabel: 'Audit สต็อก', icon: ClockCounterClockwise },
-  location_management: { label: 'สถานที่และจุดถือครอง', shortLabel: 'สถานที่', icon: Gear },
-  shops: { label: 'ร้านค้า', shortLabel: 'ร้านค้า', icon: Storefront },
-  reference_settings: { label: 'ผู้ใช้และชนิดน้ำแข็ง', shortLabel: 'ข้อมูลระบบ', icon: IdentificationCard },
+const viewMeta: Record<AdminView, { labelKey: MessageKey; shortLabelKey: MessageKey; icon: typeof Truck }> = {
+  manager_overview: { labelKey: 'workToday', shortLabelKey: 'workToday', icon: ClipboardText },
+  executive_reports: { labelKey: 'executiveReports', shortLabelKey: 'reports', icon: ChartBar },
+  events: { labelKey: 'events', shortLabelKey: 'eventShort', icon: CalendarDots },
+  factory_order: { labelKey: 'factoryOrder', shortLabelKey: 'factoryOrderShort', icon: ShoppingCart },
+  delivery: { labelKey: 'delivery', shortLabelKey: 'deliveryShort', icon: Truck },
+  financial_operations: { labelKey: 'finance', shortLabelKey: 'financeShort', icon: Coins },
+  stock_operations: { labelKey: 'stockOperations', shortLabelKey: 'stockOperationsShort', icon: MapPin },
+  stock_audit: { labelKey: 'stockAudit', shortLabelKey: 'stockAudit', icon: ClockCounterClockwise },
+  location_management: { labelKey: 'locations', shortLabelKey: 'locationsShort', icon: Gear },
+  shops: { labelKey: 'shops', shortLabelKey: 'shops', icon: Storefront },
+  reference_settings: { labelKey: 'systemData', shortLabelKey: 'systemDataShort', icon: IdentificationCard },
 };
 
 
@@ -76,6 +77,7 @@ export function AdminLayout({
   signOutDisabled?: boolean;
   children: ReactNode;
 }) {
+  const { t } = useLanguage();
   const [isDesktopLayout, setIsDesktopLayout] = useState(() => window.innerWidth >= 901);
   const [navigationExpanded, setNavigationExpanded] = useState(() => window.innerWidth >= 901);
   const [financialNavigationExpanded, setFinancialNavigationExpanded] = useState(activeView === 'financial_operations');
@@ -83,7 +85,7 @@ export function AdminLayout({
   const todayServiceDate = toBangkokDateString();
   const displayedServiceDate = serviceDate ?? todayServiceDate;
   const accountingWorkspace = activeView === 'financial_operations' && financialPage === 'transactions';
-  const displayedDate = new Intl.DateTimeFormat('th-TH', {
+  const displayedDate = uiDateTimeFormat({
     day: 'numeric',
     month: 'short',
     year: 'numeric',
@@ -124,12 +126,12 @@ export function AdminLayout({
             <img alt="" src={iceCubeLogo} />
           </span>
           <span>
-            <strong>ระบบจัดส่งน้ำแข็ง</strong>
-            <small>ศูนย์ราชการ</small>
+            <strong>{t('brandFull')}</strong>
+            <small>{t('governmentCenter')}</small>
           </span>
         </div>
 
-        <nav className="admin-nav" aria-label="เมนูหัวหน้า">
+        <nav className="admin-nav" aria-label={t('managerMenu')}>
           {allowedViews.map((view) => {
             const Icon = viewMeta[view].icon;
             if (view === 'financial_operations') {
@@ -150,11 +152,11 @@ export function AdminLayout({
                     type="button"
                   >
                     <Icon aria-hidden="true" size={21} weight={activeView === view ? 'fill' : 'regular'} />
-                    <span>{viewMeta[view].label}</span>
+                    <span>{t(viewMeta[view].labelKey)}</span>
                     <CaretDown aria-hidden="true" className="admin-nav__group-caret" size={15} />
                   </button>
                   {financialNavigationExpanded ? (
-                    <div className="admin-nav__subnav" aria-label="เมนูย่อยการเงินและบัญชี">
+                    <div className="admin-nav__subnav" aria-label={t('financialSubmenu')}>
                       <button
                         aria-current={activeView === view && financialPage === 'collection' ? 'page' : undefined}
                         onClick={() => {
@@ -163,7 +165,7 @@ export function AdminLayout({
                           if (!isDesktopLayout) setNavigationExpanded(false);
                         }}
                         type="button"
-                      >เก็บเงินร้านค้า</button>
+                      >{t('collectShopPayments')}</button>
                       <button
                         aria-current={activeView === view && financialPage === 'transactions' ? 'page' : undefined}
                         onClick={() => {
@@ -172,7 +174,7 @@ export function AdminLayout({
                           if (!isDesktopLayout) setNavigationExpanded(false);
                         }}
                         type="button"
-                      >บัญชี / เอกสารและการเงิน</button>
+                      >{t('accountingDocuments')}</button>
                       <button
                         aria-current={activeView === view && financialPage === 'credit' ? 'page' : undefined}
                         onClick={() => {
@@ -181,7 +183,7 @@ export function AdminLayout({
                           if (!isDesktopLayout) setNavigationExpanded(false);
                         }}
                         type="button"
-                      >ลูกหนี้เครดิต</button>
+                      >{t('creditReceivables')}</button>
                       <button
                         aria-current={activeView === view && financialPage === 'credit_signoff' ? 'page' : undefined}
                         onClick={() => {
@@ -190,7 +192,7 @@ export function AdminLayout({
                           if (!isDesktopLayout) setNavigationExpanded(false);
                         }}
                         type="button"
-                      >ใบเซ็นเครดิต</button>
+                      >{t('creditSignoff')}</button>
                     </div>
                   ) : null}
                 </div>
@@ -207,7 +209,7 @@ export function AdminLayout({
                 type="button"
               >
                 <Icon aria-hidden="true" size={21} weight={activeView === view ? 'fill' : 'regular'} />
-                <span>{viewMeta[view].label}</span>
+                <span>{t(viewMeta[view].labelKey)}</span>
               </button>
             );
           })}
@@ -216,8 +218,8 @@ export function AdminLayout({
         <div className="sidebar-status">
           <span className="online-dot" />
           <span>
-            <small>สิทธิ์ตามบทบาท</small>
-            <strong>ตรวจสอบโดยฐานข้อมูล</strong>
+            <small>{t('roleByDatabase')}</small>
+            <strong>{t('verifiedByDatabase')}</strong>
           </span>
         </div>
         <p className="sidebar-version">Ice Delivery · v1.0</p>
@@ -235,14 +237,14 @@ export function AdminLayout({
               type="button"
             >
               <List size={22} />
-              <span>เมนู</span>
+              <span>{t('menu')}</span>
             </button>
             {onServiceDateChange ? (
               <label className="context-pill context-pill--date-select">
                 <CalendarBlank aria-hidden="true" size={18} />
-                <span className="sr-only">วันที่ออกบิล</span>
+                <span className="sr-only">{t('serviceDate')}</span>
                 <input
-                  aria-label="วันที่ออกบิล"
+                  aria-label={t('serviceDate')}
                   max={todayServiceDate}
                   onChange={(event) => {
                     if (event.target.value && event.target.value <= todayServiceDate) {
@@ -254,15 +256,16 @@ export function AdminLayout({
                 />
               </label>
             ) : (
-              <span className="context-pill"><CalendarBlank size={18} />{accountingWorkspace ? 'วันนี้ · ' : ''}{displayedDate}{accountingWorkspace ? null : <CaretDown size={14} />}</span>
+              <span className="context-pill"><CalendarBlank size={18} />{accountingWorkspace ? `${t('today')} · ` : ''}{displayedDate}{accountingWorkspace ? null : <CaretDown size={14} />}</span>
             )}
-            <span className="context-pill"><MapPin size={18} />ศูนย์ราชการ{accountingWorkspace ? null : <CaretDown size={14} />}</span>
+            <span className="context-pill"><MapPin size={18} />{t('governmentCenter')}{accountingWorkspace ? null : <CaretDown size={14} />}</span>
           </div>
           <div className="admin-topbar__actions">
-            <span className="current-view-label">{viewMeta[activeView].shortLabel}</span>
+            <span className="current-view-label">{t(viewMeta[activeView].shortLabelKey)}</span>
+            <LanguageSwitcher />
             {activeView === 'reference_settings' || activeView === 'shops' ? (
               <>
-                <button aria-label="การแจ้งเตือน" className="topbar-notification" type="button">
+                <button aria-label={t('notifications')} className="topbar-notification" type="button">
                   <Bell size={21} weight="regular" />
                 </button>
                 <span className="topbar-profile-divider" aria-hidden="true" />
@@ -274,7 +277,7 @@ export function AdminLayout({
               {!onSignOut ? <CaretDown size={16} /> : null}
             </div>
             {onSignOut ? (
-              <button aria-label="ออกจากระบบ" className="sign-out-button" disabled={signOutDisabled} onClick={onSignOut} title={signOutDisabled ? 'กำลังบันทึกรายการ' : 'ออกจากระบบ'} type="button">
+              <button aria-label={t('signOut')} className="sign-out-button" disabled={signOutDisabled} onClick={onSignOut} title={signOutDisabled ? t('saveInProgress') : t('signOut')} type="button">
                 <SignOut size={18} />
               </button>
             ) : null}
@@ -282,7 +285,7 @@ export function AdminLayout({
         </header>
         <main className="admin-content">{children}</main>
       </div>
-      {navigationExpanded && !isDesktopLayout ? <button className="sidebar-scrim" aria-label="ปิดเมนู" onClick={() => setNavigationExpanded(false)} type="button" /> : null}
+      {navigationExpanded && !isDesktopLayout ? <button className="sidebar-scrim" aria-label={t('closeMenu')} onClick={() => setNavigationExpanded(false)} type="button" /> : null}
     </div>
   );
 }

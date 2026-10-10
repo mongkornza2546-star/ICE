@@ -1,3 +1,4 @@
+import { translateUi, useLanguage } from '../../i18n';
 export function FilterChips({
   label,
   icon,
@@ -11,8 +12,9 @@ export function FilterChips({
   options: Array<{ value: string; label: string }>;
   onChange: (value: string) => void;
 }) {
+  useLanguage();
   return (
-    <section className="employee-chip-filter" aria-label={`กรองตาม${label}`}>
+    <section className="employee-chip-filter" aria-label={translateUi('กรองตาม{0}', { 0: label })}>
       <span>{icon}{label}</span>
       <div>
         {options.map((option) => (

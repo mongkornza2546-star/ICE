@@ -1,3 +1,4 @@
+import { translateUi, useLanguage } from '../../i18n';
 import { useEffect, useRef, useState } from 'react';
 import { ArrowClockwise } from '@phosphor-icons/react';
 import { isR2Path, refreshR2CatalogObjectUrl } from '../../lib/r2Storage';
@@ -7,6 +8,7 @@ export function EmployeeStockProductImage({ iceType, onPreview }: {
   iceType: IceTypeOption;
   onPreview: (image: { name: string; url: string }) => void;
 }) {
+  useLanguage();
   const [url, setUrl] = useState(iceType.image_url ?? null);
   const [status, setStatus] = useState<'ready' | 'refreshing' | 'failed'>('ready');
   const [attempt, setAttempt] = useState(0);
@@ -40,7 +42,7 @@ export function EmployeeStockProductImage({ iceType, onPreview }: {
 
   if (status !== 'ready' || !url) {
     return <button
-      aria-label={`โหลดรูป ${iceType.name} ใหม่`}
+      aria-label={translateUi('โหลดรูป {0} ใหม่', { 0: iceType.name })}
       className="employee-stock-product-image-button"
       disabled={status === 'refreshing'}
       onClick={() => void retry()}
@@ -48,13 +50,13 @@ export function EmployeeStockProductImage({ iceType, onPreview }: {
     >
       <span className="employee-stock-product-image-retry">
         <ArrowClockwise aria-hidden="true" size={22} />
-        <small>{status === 'refreshing' ? 'กำลังโหลดรูป…' : 'โหลดรูปใหม่'}</small>
+        <small>{status === 'refreshing' ? translateUi('กำลังโหลดรูป…') : translateUi('โหลดรูปใหม่')}</small>
       </span>
     </button>;
   }
 
   return <button
-    aria-label={`ดูรูป ${iceType.name} ขนาดใหญ่`}
+    aria-label={translateUi('ดูรูป {0} ขนาดใหญ่', { 0: iceType.name })}
     className="employee-stock-product-image-button"
     onClick={() => onPreview({ name: iceType.name, url })}
     type="button"

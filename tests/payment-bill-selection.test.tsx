@@ -1,4 +1,6 @@
-import { createRef } from 'react';
+import { createRef, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
+import { LanguageProvider, LanguageSwitcher, translateUi } from '../src/i18n';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { PaymentModal } from '../src/features/financial-operations/components/PaymentModal';
@@ -51,7 +53,7 @@ const shop: QueueShop = {
   ],
 };
 
-function renderModal(overrides: Partial<Parameters<typeof PaymentModal>[0]> = {}) {
+function renderModal(overrides: Partial<Parameters<typeof PaymentModal>[0]> = {}, wrap: (node: ReactNode) => ReactNode = (node) => node) {
   const props: Parameters<typeof PaymentModal>[0] = {
     allocatedAmount: 75,
     amount: '100.00',
@@ -87,7 +89,7 @@ function renderModal(overrides: Partial<Parameters<typeof PaymentModal>[0]> = {}
     serviceDate,
     ...overrides,
   };
-  render(<PaymentModal {...props} />);
+  render(wrap(<PaymentModal {...props} />));
   return props;
 }
 
@@ -181,4 +183,20 @@ it('does not allocate a floating-point remainder to another bill', () => {
     { charge_id: 'decimal-0', amount: 10.20 },
     { charge_id: 'decimal-1', amount: 20.40 },
   ]);
+});
+
+
+it('translates payment copy inside a body portal without translating customer or product names', () => {
+  window.localStorage.setItem('ice-delivery.language.v1', 'my');
+  renderModal({ selectedShop: { ...shop, shop_name: 'ร้านค้า', charges: shop.charges.map((charge) => ({ ...charge, items: [{ ice_type_id: 'ice-1', name: 'เงินสด', quantity: 1, unit: 'ถุง', line_total: charge.original_amount }] })) } },
+    (node) => <LanguageProvider><LanguageSwitcher />{createPortal(node, document.body)}</LanguageProvider>);
+  const checkbox = screen.getByRole('checkbox', { name: translateUi('เลือกบิล {0}', { 0: 'INV-TODAY' }) });
+  expect((checkbox as HTMLInputElement).checked).toBe(true);
+  expect(screen.getByRole('button', { name: translateUi('เลือกทั้งหมด') })).toBeTruthy();
+  expect(screen.getAllByText(/เงินสด × 1 ถุง/)).toHaveLength(2);
+  expect(screen.getByText('S001', { exact: true })).toBeTruthy();
+  expect(screen.getByText('ร้านค้า', { exact: true })).toBeTruthy();
+  fireEvent.change(document.querySelector('.language-switcher select')!, { target: { value: 'th' } });
+  expect(screen.getByRole('checkbox', { name: 'เลือกบิล INV-TODAY' })).toBe(checkbox);
+  expect((checkbox as HTMLInputElement).checked).toBe(true);
 });

@@ -1,3 +1,4 @@
+import { uiDateTimeFormat, translateUi, useLanguage } from './i18n';
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from './lib/supabase';
 import { useRpcAction } from './hooks/useRpcAction';
@@ -17,6 +18,7 @@ const STATUS_OPTIONS: Array<{ value: Exclude<ShopRoundStatus, 'pending'>; label:
 ];
 
 export function ManagerDeliveryAdjustments({ round }: { round: DeliveryRound | null }) {
+  useLanguage();
   const [summary, setSummary] = useState<ManagerDeliveryEventSummary | null>(null);
   const [selectedId, setSelectedId] = useState('');
   const [status, setStatus] = useState<Exclude<ShopRoundStatus, 'pending'>>('delivered');
@@ -148,21 +150,21 @@ export function ManagerDeliveryAdjustments({ round }: { round: DeliveryRound | n
     await revisionAction.execute(args, { signature });
   }
 
-  if (!round) return <p className="empty-text">เลือกรอบเพื่อตรวจรายการส่ง</p>;
-  if (loading) return <p className="empty-text">กำลังโหลดรายการส่ง...</p>;
-  if (!summary) return <p className="error-text">{error ?? 'โหลดรายการไม่สำเร็จ'}</p>;
+  if (!round) return <p className="empty-text">{translateUi('เลือกรอบเพื่อตรวจรายการส่ง')}</p>;
+  if (loading) return <p className="empty-text">{translateUi('กำลังโหลดรายการส่ง...')}</p>;
+  if (!summary) return <p className="error-text">{error ?? translateUi('โหลดรายการไม่สำเร็จ')}</p>;
 
   return (
     <section className="manager-delivery-adjustments">
       <div className="panel-header">
         <div>
-          <p className="eyebrow">ตรวจและแก้ไข</p>
-          <h3>รายการส่งของทุกคน</h3>
+          <p className="eyebrow">{translateUi('ตรวจและแก้ไข')}</p>
+          <h3>{translateUi('รายการส่งของทุกคน')}</h3>
         </div>
-        <span className="status-badge status-badge--neutral">{summary.events.length} รายการ</span>
+        <span className="status-badge status-badge--neutral">{summary.events.length}{translateUi(' รายการ')}</span>
       </div>
 
-      {summary.events.length === 0 ? <p className="empty-text">ยังไม่มีรายการส่งในรอบนี้</p> : (
+      {summary.events.length === 0 ? <p className="empty-text">{translateUi('ยังไม่มีรายการส่งในรอบนี้')}</p> : (
         <div className="manager-adjustment-grid">
           <div className="stock-ledger-list manager-event-list">
             {summary.events.map((deliveryEvent) => (
@@ -182,14 +184,12 @@ export function ManagerDeliveryAdjustments({ round }: { round: DeliveryRound | n
             <form className="settings-form" onSubmit={(event) => void submitRevision(event, 'correct')}>
               <div className="field-grid">
                 <label>
-                  สถานะ
-                  <select disabled={round.status === 'closed'} value={status} onChange={(event) => setStatus(event.target.value as Exclude<ShopRoundStatus, 'pending'>)}>
-                    {STATUS_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                  {translateUi('สถานะ')}<select disabled={round.status === 'closed'} value={status} onChange={(event) => setStatus(event.target.value as Exclude<ShopRoundStatus, 'pending'>)}>
+                    {STATUS_OPTIONS.map((option) => <option key={option.value} value={option.value}>{translateUi(option.label)}</option>)}
                   </select>
                 </label>
                 <label>
-                  เหตุผลที่แก้/ยกเลิก
-                  <input disabled={round.status === 'closed'} required value={reason} onChange={(event) => setReason(event.target.value)} />
+                  {translateUi('เหตุผลที่แก้/ยกเลิก')}<input disabled={round.status === 'closed'} required value={reason} onChange={(event) => setReason(event.target.value)} />
                 </label>
               </div>
               {status === 'delivered' ? (
@@ -208,14 +208,14 @@ export function ManagerDeliveryAdjustments({ round }: { round: DeliveryRound | n
                   ))}
                 </div>
               ) : null}
-              <label>หมายเหตุ<textarea disabled={round.status === 'closed'} rows={2} value={note} onChange={(event) => setNote(event.target.value)} /></label>
-              {revisionAction.error ? <p className="error-text">{revisionAction.error}</p> : null}
-              {revisionAction.success ? <p className="success-text">{revisionAction.success}</p> : null}
+              <label>{translateUi('หมายเหตุ')}<textarea disabled={round.status === 'closed'} rows={2} value={note} onChange={(event) => setNote(event.target.value)} /></label>
+              {revisionAction.error ? <p className="error-text">{translateUi(revisionAction.error)}</p> : null}
+              {revisionAction.success ? <p className="success-text">{translateUi(revisionAction.success)}</p> : null}
               <div className="manager-action-row">
-                <button className="primary-button" disabled={revisionAction.isSubmitting || round.status === 'closed'} type="submit">{revisionAction.isSubmitting ? 'กำลังบันทึก...' : 'บันทึกการแก้ไข'}</button>
-                <button className="ghost-button danger-button" disabled={revisionAction.isSubmitting || round.status === 'closed'} onClick={() => void submitRevision(null, 'cancel')} type="button">ยกเลิกรายการ</button>
+                <button className="primary-button" disabled={revisionAction.isSubmitting || round.status === 'closed'} type="submit">{revisionAction.isSubmitting ? translateUi('กำลังบันทึก...') : translateUi('บันทึกการแก้ไข')}</button>
+                <button className="ghost-button danger-button" disabled={revisionAction.isSubmitting || round.status === 'closed'} onClick={() => void submitRevision(null, 'cancel')} type="button">{translateUi('ยกเลิกรายการ')}</button>
               </div>
-              {round.status === 'closed' ? <p className="muted">รอบปิดแล้ว รายการแก้ไขได้เฉพาะก่อนปิดรอบเพื่อไม่ให้ snapshot เปลี่ยนย้อนหลัง</p> : null}
+              {round.status === 'closed' ? <p className="muted">{translateUi('รอบปิดแล้ว รายการแก้ไขได้เฉพาะก่อนปิดรอบเพื่อไม่ให้ snapshot เปลี่ยนย้อนหลัง')}</p> : null}
             </form>
           ) : null}
         </div>
@@ -235,5 +235,5 @@ function eventItemsLabel(event: ManagerDeliveryEvent, summary: ManagerDeliveryEv
 }
 
 function formatTime(value: string) {
-  return new Intl.DateTimeFormat('th-TH', { hour: '2-digit', minute: '2-digit' }).format(new Date(value));
+  return uiDateTimeFormat({ hour: '2-digit', minute: '2-digit' }).format(new Date(value));
 }

@@ -1,3 +1,4 @@
+import { translateUi, useLanguage } from '../../i18n';
 import { useEffect, useState } from 'react';
 import { ArrowClockwise, Check, Truck, WarningCircle, CaretRight, X } from '@phosphor-icons/react';
 import type { DeliveryRound, EmployeeStockState, IceTypeOption } from '../../types/app';
@@ -41,6 +42,7 @@ export function EmployeeStockTransferSection({
   variant: 'cards' | 'table';
   transferItems: Array<{ ice_type_id: string; quantity: number }>;
 }) {
+  useLanguage();
   const isCardLayout = variant === 'cards';
   const isReturn = stockTransferMode === 'return';
   const isDamage = stockTransferMode === 'damage';
@@ -62,44 +64,44 @@ export function EmployeeStockTransferSection({
         <div className="employee-entry-section__heading">
           <span>1</span>
           <div>
-            <h2 id="employee-stock-step">{isReturn ? 'คืนน้ำแข็งขึ้นรถ' : isDamage ? 'บันทึกน้ำแข็งละลาย' : 'เติมน้ำแข็งเข้าจุดถือครอง'}</h2>
+            <h2 id="employee-stock-step">{isReturn ? translateUi('คืนน้ำแข็งขึ้นรถ') : isDamage ? translateUi('บันทึกน้ำแข็งละลาย') : translateUi('เติมน้ำแข็งเข้าจุดถือครอง')}</h2>
             <p>{isReturn
-              ? 'คืนของที่เหลือจากจุดถือครองกลับขึ้นรถ'
+              ? translateUi('คืนของที่เหลือจากจุดถือครองกลับขึ้นรถ')
               : isDamage
-                ? 'ตัดออกจากสต๊อกที่คุณถือเมื่อสินค้าเสียหายหรือละลาย'
-                : 'เติมจากรถเพิ่มได้หลายครั้ง แต่ละครั้งเป็นรายการโอนใหม่'}</p>
+                ? translateUi('ตัดออกจากสต๊อกที่คุณถือเมื่อสินค้าเสียหายหรือละลาย')
+                : translateUi('เติมจากรถเพิ่มได้หลายครั้ง แต่ละครั้งเป็นรายการโอนใหม่')}</p>
           </div>
         </div>
-        <div aria-label="เลือกประเภทรายการสต๊อก" className="employee-stock-mode" role="group">
+        <div aria-label={translateUi('เลือกประเภทรายการสต๊อก')} className="employee-stock-mode" role="group">
           <button
             aria-pressed={stockTransferMode === 'receive'}
             disabled={transferSubmitting}
             onClick={() => changeStockTransferMode('receive')}
             type="button"
-          >เติมจากรถ</button>
+          >{translateUi('เติมจากรถ')}</button>
           <button
             aria-pressed={isReturn}
             disabled={transferSubmitting}
             onClick={() => changeStockTransferMode('return')}
             type="button"
-          >คืนขึ้นรถ</button>
+          >{translateUi('คืนขึ้นรถ')}</button>
           <button
             aria-pressed={isDamage}
             disabled={transferSubmitting}
             onClick={() => changeStockTransferMode('damage')}
             type="button"
-          >ละลาย</button>
+          >{translateUi('ละลาย')}</button>
         </div>
         {stockError ? (
           <div className="employee-error employee-error--retry" role="alert">
-            <span><WarningCircle aria-hidden="true" size={22} weight="fill" />{stockError}</span>
-            <button disabled={transferSubmitting} onClick={() => void loadStockState(selectedRoundId)} type="button">ลองใหม่</button>
+            <span><WarningCircle aria-hidden="true" size={22} weight="fill" />{translateUi(stockError)}</span>
+            <button disabled={transferSubmitting} onClick={() => void loadStockState(selectedRoundId)} type="button">{translateUi('ลองใหม่')}</button>
           </div>
         ) : null}
         {!selectedRoundId ? (
-          <EmployeeState title="เลือกรอบส่งก่อน" detail="ระบบจะหาจุดถือครองที่ผูกกับคุณให้อัตโนมัติ" />
+          <EmployeeState title={translateUi('เลือกรอบส่งก่อน')} detail={translateUi('ระบบจะหาจุดถือครองที่ผูกกับคุณให้อัตโนมัติ')} />
         ) : !stockState && !stockError ? (
-          <EmployeeState title="กำลังโหลดสต๊อกของคุณ" detail="ตรวจยอดรถและจุดถือครอง" />
+          <EmployeeState title={translateUi('กำลังโหลดสต๊อกของคุณ')} detail={translateUi('ตรวจยอดรถและจุดถือครอง')} />
         ) : stockState ? (
           <>
             {isCardLayout ? (
@@ -107,7 +109,7 @@ export function EmployeeStockTransferSection({
                 <Truck aria-hidden="true" size={28} weight="duotone" />
                 <span>
                   <small>{usesHoldingStock ? stockState.holding_location.name : stockState.truck_location.name}</small>
-                  <strong>{isDamage ? 'ตัดออกจากสต๊อก' : isReturn ? stockState.truck_location.name : stockState.holding_location.name}</strong>
+                  <strong>{isDamage ? translateUi('ตัดออกจากสต๊อก') : isReturn ? stockState.truck_location.name : stockState.holding_location.name}</strong>
                 </span>
                 <CaretRight aria-hidden="true" size={20} weight="bold" />
               </div>
@@ -115,11 +117,11 @@ export function EmployeeStockTransferSection({
               <div className="employee-stock-route">
                 <span><Truck aria-hidden="true" size={22} />{usesHoldingStock ? stockState.holding_location.name : stockState.truck_location.name}</span>
                 <CaretRight aria-hidden="true" size={20} />
-                <strong>{isDamage ? 'ตัดออกจากสต๊อก' : isReturn ? stockState.truck_location.name : stockState.holding_location.name}</strong>
+                <strong>{isDamage ? translateUi('ตัดออกจากสต๊อก') : isReturn ? stockState.truck_location.name : stockState.holding_location.name}</strong>
               </div>
             )}
             {isCardLayout ? (
-              <div className="employee-stock-table" role="list" aria-label={isReturn ? 'ยอดก่อนและหลังคืนน้ำแข็ง' : isDamage ? 'ยอดก่อนและหลังบันทึกน้ำแข็งละลาย' : 'ยอดเติมและยอดควรเหลือ'}>
+              <div className="employee-stock-table" role="list" aria-label={isReturn ? translateUi('ยอดก่อนและหลังคืนน้ำแข็ง') : isDamage ? translateUi('ยอดก่อนและหลังบันทึกน้ำแข็งละลาย') : translateUi('ยอดเติมและยอดควรเหลือ')}>
                 {iceTypes.map((iceType) => {
                   const truckBefore = stockQuantity(stockState.truck_location.balances, iceType.id);
                   const holdingBefore = stockQuantity(stockState.holding_location.balances, iceType.id);
@@ -128,7 +130,7 @@ export function EmployeeStockTransferSection({
                   return (
                     <div className="employee-stock-row" key={iceType.id} role="listitem">
                       <strong><span>{iceType.name}</span> <small>({iceType.unit})</small></strong>
-                      <span className="employee-stock-available"><small>{usesHoldingStock ? isDamage ? 'เหลือก่อนละลาย' : 'เหลือก่อนคืน' : 'เหลือบนรถ'}</small>{usesHoldingStock ? holdingBefore : truckBefore} {iceType.unit}</span>
+                      <span className="employee-stock-available"><small>{usesHoldingStock ? isDamage ? translateUi('เหลือก่อนละลาย') : translateUi('เหลือก่อนคืน') : translateUi('เหลือบนรถ')}</small>{usesHoldingStock ? holdingBefore : truckBefore} {iceType.unit}</span>
                       {iceType.image_url || iceType.image_path ? (
                         <EmployeeStockProductImage
                           key={`${iceType.id}:${iceType.image_path}:${iceType.image_url}`}
@@ -148,21 +150,21 @@ export function EmployeeStockTransferSection({
                           unit={iceType.unit}
                         />
                       </div>
-                      <div className="employee-stock-stats" role="group" aria-label={`ยอด${iceType.name}`}>
+                      <div className="employee-stock-stats" role="group" aria-label={translateUi('ยอด{0}', { 0: iceType.name })}>
                         {isReturn ? (
                           <>
-                            <span><small>รถก่อน</small><strong>{truckBefore}</strong> {iceType.unit}</span>
-                            <span><small>เหลือหลังคืน</small><strong>{holdingBefore - transferQuantity}</strong> {iceType.unit}</span>
+                            <span><small>{translateUi('รถก่อน')}</small><strong>{truckBefore}</strong> {iceType.unit}</span>
+                            <span><small>{translateUi('เหลือหลังคืน')}</small><strong>{holdingBefore - transferQuantity}</strong> {iceType.unit}</span>
                           </>
                         ) : isDamage ? (
                           <>
-                            <span><small>คงเหลือก่อน</small><strong>{holdingBefore}</strong> {iceType.unit}</span>
-                            <span><small>เหลือหลังละลาย</small><strong>{holdingBefore - transferQuantity}</strong> {iceType.unit}</span>
+                            <span><small>{translateUi('คงเหลือก่อน')}</small><strong>{holdingBefore}</strong> {iceType.unit}</span>
+                            <span><small>{translateUi('เหลือหลังละลาย')}</small><strong>{holdingBefore - transferQuantity}</strong> {iceType.unit}</span>
                           </>
                         ) : (
                           <>
-                            <span><small>เติมวันนี้</small><strong>{withdrawnToday}</strong> {iceType.unit}</span>
-                            <span><small>ควรเหลือ</small><strong>{holdingBefore}</strong> {iceType.unit}</span>
+                            <span><small>{translateUi('เติมวันนี้')}</small><strong>{withdrawnToday}</strong> {iceType.unit}</span>
+                            <span><small>{translateUi('ควรเหลือ')}</small><strong>{holdingBefore}</strong> {iceType.unit}</span>
                           </>
                         )}
                       </div>
@@ -171,9 +173,9 @@ export function EmployeeStockTransferSection({
                 })}
               </div>
             ) : (
-              <div className="employee-stock-table" role="table" aria-label={isReturn ? 'ยอดก่อนและหลังคืนน้ำแข็ง' : isDamage ? 'ยอดก่อนและหลังบันทึกน้ำแข็งละลาย' : 'ยอดเติมและยอดควรเหลือ'}>
+              <div className="employee-stock-table" role="table" aria-label={isReturn ? translateUi('ยอดก่อนและหลังคืนน้ำแข็ง') : isDamage ? translateUi('ยอดก่อนและหลังบันทึกน้ำแข็งละลาย') : translateUi('ยอดเติมและยอดควรเหลือ')}>
                 <div className="employee-stock-row employee-stock-row--header" role="row">
-                  <span role="columnheader">ชนิด</span><span role="columnheader">{usesHoldingStock ? isDamage ? 'เหลือก่อนละลาย' : 'เหลือก่อนคืน' : 'เหลือบนรถ'}</span><span role="columnheader">{movementLabel}</span><span role="columnheader">{isReturn ? 'รถก่อน' : isDamage ? 'คงเหลือก่อน' : 'เติมวันนี้'}</span><span role="columnheader">{usesHoldingStock ? isDamage ? 'เหลือหลังละลาย' : 'เหลือหลังคืน' : 'ควรเหลือ'}</span>
+                  <span role="columnheader">{translateUi('ชนิด')}</span><span role="columnheader">{usesHoldingStock ? isDamage ? translateUi('เหลือก่อนละลาย') : translateUi('เหลือก่อนคืน') : translateUi('เหลือบนรถ')}</span><span role="columnheader">{translateUi(movementLabel)}</span><span role="columnheader">{isReturn ? translateUi('รถก่อน') : isDamage ? translateUi('คงเหลือก่อน') : translateUi('เติมวันนี้')}</span><span role="columnheader">{usesHoldingStock ? isDamage ? translateUi('เหลือหลังละลาย') : translateUi('เหลือหลังคืน') : translateUi('ควรเหลือ')}</span>
                 </div>
                 {iceTypes.map((iceType) => {
                   const truckBefore = stockQuantity(stockState.truck_location.balances, iceType.id);
@@ -183,8 +185,8 @@ export function EmployeeStockTransferSection({
                   return (
                     <div className="employee-stock-row" key={iceType.id} role="row">
                       <strong role="cell">{iceType.name}<small>{iceType.unit}</small></strong>
-                      <span data-label={usesHoldingStock ? isDamage ? 'เหลือก่อนละลาย' : 'เหลือก่อนคืน' : 'เหลือบนรถ'} role="cell">{usesHoldingStock ? holdingBefore : truckBefore}</span>
-                      <div className="employee-stock-transfer-cell" data-label={movementLabel} role="cell">
+                      <span data-label={usesHoldingStock ? isDamage ? translateUi('เหลือก่อนละลาย') : translateUi('เหลือก่อนคืน') : translateUi('เหลือบนรถ')} role="cell">{usesHoldingStock ? holdingBefore : truckBefore}</span>
+                      <div className="employee-stock-transfer-cell" data-label={translateUi(movementLabel)} role="cell">
                         <QuantityStepper
                           disabled={transferSubmitting || selectedRound?.status === 'closed'}
                           iceTypeName={iceType.name}
@@ -195,8 +197,8 @@ export function EmployeeStockTransferSection({
                           step={0.5}
                         />
                       </div>
-                      <span data-label={isReturn ? 'รถก่อน' : isDamage ? 'คงเหลือก่อน' : 'เติมวันนี้'} role="cell">{isReturn ? truckBefore : isDamage ? holdingBefore : withdrawnToday}</span>
-                      <b data-label={usesHoldingStock ? isDamage ? 'เหลือหลังละลาย' : 'เหลือหลังคืน' : 'ควรเหลือ'} role="cell">{usesHoldingStock ? holdingBefore - transferQuantity : holdingBefore}</b>
+                      <span data-label={isReturn ? translateUi('รถก่อน') : isDamage ? translateUi('คงเหลือก่อน') : translateUi('เติมวันนี้')} role="cell">{isReturn ? truckBefore : isDamage ? holdingBefore : withdrawnToday}</span>
+                      <b data-label={usesHoldingStock ? isDamage ? translateUi('เหลือหลังละลาย') : translateUi('เหลือหลังคืน') : translateUi('ควรเหลือ')} role="cell">{usesHoldingStock ? holdingBefore - transferQuantity : holdingBefore}</b>
                     </div>
                   );
                 })}
@@ -211,17 +213,16 @@ export function EmployeeStockTransferSection({
                   type="button"
                 >
                   <ArrowClockwise aria-hidden="true" size={20} weight="bold" />
-                  รีเซ็ตทั้งหมด
-                </button>
+                  {translateUi('รีเซ็ตทั้งหมด')}</button>
                 <button
-                  aria-label={isReturn ? 'ยืนยันคืนของ' : isDamage ? 'ยืนยันน้ำแข็งละลาย' : 'ยืนยันเติมน้ำแข็ง'}
+                  aria-label={isReturn ? translateUi('ยืนยันคืนของ') : isDamage ? translateUi('ยืนยันน้ำแข็งละลาย') : translateUi('ยืนยันเติมน้ำแข็ง')}
                   className="employee-submit employee-stock-submit"
                   disabled={transferSubmitting || transferItems.length === 0 || selectedRound?.status === 'closed'}
                   onClick={() => void handleStockTransfer()}
                   type="button"
                 >
                   <Check aria-hidden="true" size={22} weight="bold" />
-                  {selectedRound?.status === 'closed' ? 'รอบนี้ปิดแล้ว' : transferSubmitting ? 'กำลังบันทึก...' : isReturn ? 'ยืนยันคืนของ' : isDamage ? 'ยืนยันน้ำแข็งละลาย' : 'ยืนยันการเติม'}
+                  {selectedRound?.status === 'closed' ? translateUi('รอบนี้ปิดแล้ว') : transferSubmitting ? translateUi('กำลังบันทึก...') : isReturn ? translateUi('ยืนยันคืนของ') : isDamage ? translateUi('ยืนยันน้ำแข็งละลาย') : translateUi('ยืนยันการเติม')}
                 </button>
               </div>
             ) : (
@@ -231,7 +232,7 @@ export function EmployeeStockTransferSection({
                 onClick={() => void handleStockTransfer()}
                 type="button"
               >
-                {selectedRound?.status === 'closed' ? 'รอบนี้ปิดแล้ว' : transferSubmitting ? 'กำลังบันทึก...' : isReturn ? 'ยืนยันคืนของ' : isDamage ? 'ยืนยันน้ำแข็งละลาย' : 'ยืนยันการเติม'}
+                {selectedRound?.status === 'closed' ? translateUi('รอบนี้ปิดแล้ว') : transferSubmitting ? translateUi('กำลังบันทึก...') : isReturn ? translateUi('ยืนยันคืนของ') : isDamage ? translateUi('ยืนยันน้ำแข็งละลาย') : translateUi('ยืนยันการเติม')}
               </button>
             )}
           </>
@@ -242,8 +243,8 @@ export function EmployeeStockTransferSection({
           }} role="presentation">
             <section aria-labelledby="employee-stock-image-preview-title" aria-modal="true" className="image-preview-dialog" role="dialog">
               <div className="image-preview-dialog__header">
-                <h2 id="employee-stock-image-preview-title">รูป {previewImage.name}</h2>
-                <button aria-label="ปิดรูปภาพ" className="image-preview-dialog__close" onClick={() => setPreviewImage(null)} type="button">
+                <h2 id="employee-stock-image-preview-title">{translateUi('รูป ')}{previewImage.name}</h2>
+                <button aria-label={translateUi('ปิดรูปภาพ')} className="image-preview-dialog__close" onClick={() => setPreviewImage(null)} type="button">
                   <X size={22} weight="bold" />
                 </button>
               </div>

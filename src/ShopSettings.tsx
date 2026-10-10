@@ -1,6 +1,7 @@
 import { ChangeEvent, FormEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Buildings, CaretRight, CheckCircle, Clock, ClockCounterClockwise, CreditCard, Eye, FileText, FileXls, GearSix, GridFour, IdentificationCard, ImageSquare, ListBullets, MagnifyingGlass, MapPin, Phone, Plus, Receipt, SlidersHorizontal, Storefront, Tag, UploadSimple, User, Warning, X } from '@phosphor-icons/react';
 import { supabase } from './lib/supabase';
+import { translateUi, useLanguage } from './i18n';
 import { env } from './lib/env';
 import { parseShopImportFile, type ShopImportRow } from './lib/shopImport';
 import type { BuildingOption, BuildingZoneOption, ShopSetting, IceTypeOption } from './types/app';
@@ -90,6 +91,7 @@ export function ShopSettings({
   isActive?: boolean;
   readOnly?: boolean;
 }) {
+  useLanguage();
   const managementReadOnly = readOnly || env.isDemoMode;
   const historyOnlyPreview = managementReadOnly && allowReadOnlyPreview;
   const [shops, setShops] = useState<ShopSetting[]>([]);
@@ -923,7 +925,7 @@ export function ShopSettings({
     setSaving(false);
   };
 
-  if (loading && shops.length === 0) return <p className="empty-text">กำลังโหลดข้อมูลร้าน...</p>;
+  if (loading && shops.length === 0) return <p className="empty-text">{translateUi('กำลังโหลดข้อมูลร้าน...')}</p>;
 
   const activeShopCount = readinessReport?.total_active_shops ?? shops.filter((shop) => shop.status === 'active').length;
   const readyShopCount = readinessReport?.shops_ready_count ?? 0;
@@ -939,62 +941,62 @@ export function ShopSettings({
       <input accept=".xlsx" className="shop-import-file-input" onChange={chooseImportFile} ref={importInputRef} type="file" />
       <header className="shop-page-heading">
         <div>
-          <h1>ร้านค้า</h1>
-          <p>จัดการร้านประจำ สถานะการตั้งค่า POS และข้อมูลสำคัญของร้านค้าในศูนย์ราชการ</p>
+          <h1>{translateUi('ร้านค้า')}</h1>
+          <p>{translateUi('จัดการร้านประจำ สถานะการตั้งค่า POS และข้อมูลสำคัญของร้านค้าในศูนย์ราชการ')}</p>
         </div>
         <div className="shop-page-actions">
-          <button className="primary-button shop-page-actions__new" onClick={() => void startNew()} type="button"><Plus size={21} weight="regular" />ร้านใหม่</button>
-          <button className="secondary-button" disabled={exporting || totalShopCount === 0} onClick={() => void exportDirectory()} type="button"><FileXls size={19} />{exporting ? 'กำลังส่งออก...' : 'ส่งออก Excel'}</button>
-          <button className="secondary-button" onClick={() => importInputRef.current?.click()} type="button"><UploadSimple size={19} />นำเข้า Excel</button>
-          <button className="secondary-button" onClick={() => void openBulkSettings('price')} type="button"><SlidersHorizontal size={19} />ตั้งค่าหลายร้าน</button>
-          <button className="secondary-button" onClick={() => void openBulkSettings('payment')} type="button"><Receipt size={19} />ตั้งค่าประเภทการรับเงิน</button>
+          <button className="primary-button shop-page-actions__new" onClick={() => void startNew()} type="button"><Plus size={21} weight="regular" />{translateUi('ร้านใหม่')}</button>
+          <button className="secondary-button" disabled={exporting || totalShopCount === 0} onClick={() => void exportDirectory()} type="button"><FileXls size={19} />{exporting ? translateUi('กำลังส่งออก...') : translateUi('ส่งออก Excel')}</button>
+          <button className="secondary-button" onClick={() => importInputRef.current?.click()} type="button"><UploadSimple size={19} />{translateUi('นำเข้า Excel')}</button>
+          <button className="secondary-button" onClick={() => void openBulkSettings('price')} type="button"><SlidersHorizontal size={19} />{translateUi('ตั้งค่าหลายร้าน')}</button>
+          <button className="secondary-button" onClick={() => void openBulkSettings('payment')} type="button"><Receipt size={19} />{translateUi('ตั้งค่าประเภทการรับเงิน')}</button>
         </div>
       </header>
 
-      {exportError ? <p className="error-text shop-export-feedback" role="alert">{exportError}</p> : null}
-      {exportSuccess ? <p aria-live="polite" className="success-text shop-export-feedback">{exportSuccess}</p> : null}
+      {exportError ? <p className="error-text shop-export-feedback" role="alert">{translateUi(exportError)}</p> : null}
+      {exportSuccess ? <p aria-live="polite" className="success-text shop-export-feedback">{translateUi(exportSuccess)}</p> : null}
 
-      <section aria-label="สรุปสถานะร้าน" className="shop-summary-grid">
-        <article className="shop-summary-card shop-summary-card--blue"><span className="shop-summary-card__icon"><Storefront size={35} weight="duotone" /></span><div><p>ร้านประจำทั้งหมด</p><strong>{totalShopCount}</strong><small>ร้าน</small><a href="#shop-directory">ดูรายละเอียดทั้งหมด <CaretRight size={14} /></a></div></article>
-        <article className="shop-summary-card shop-summary-card--green"><span className="shop-summary-card__icon"><CheckCircle size={35} weight="duotone" /></span><div><p>พร้อมใช้งาน POS</p><strong>{readinessMetric(readyShopCount)}</strong><small>ร้าน {readinessAvailable && activeShopCount ? `(${Math.round((readyShopCount / activeShopCount) * 100)}%)` : ''}</small><em>พร้อมรับออเดอร์</em></div></article>
-        <article className="shop-summary-card shop-summary-card--orange"><span className="shop-summary-card__icon"><CreditCard size={35} weight="duotone" /></span><div><p>ยังไม่มี Payment Profile</p><strong>{readinessMetric(missingProfileCount)}</strong><small>ร้าน {readinessAvailable && activeShopCount ? `(${Math.round((missingProfileCount / activeShopCount) * 100)}%)` : ''}</small><em>ตั้งค่าให้เสร็จเพื่อขายได้</em></div></article>
-        <article className="shop-summary-card shop-summary-card--red"><span className="shop-summary-card__icon"><Warning size={35} weight="duotone" /></span><div><p>ยังไม่มีราคากลางน้ำแข็ง</p><strong>{readinessMetric(missingPriceCount)}</strong><small>ร้าน</small><em>ตั้งราคากลางก่อนขาย</em></div></article>
+      <section aria-label={translateUi('สรุปสถานะร้าน')} className="shop-summary-grid">
+        <article className="shop-summary-card shop-summary-card--blue"><span className="shop-summary-card__icon"><Storefront size={35} weight="duotone" /></span><div><p>{translateUi('ร้านประจำทั้งหมด')}</p><strong>{totalShopCount}</strong><small>{translateUi('ร้าน')}</small><a href="#shop-directory">{translateUi('ดูรายละเอียดทั้งหมด ')}<CaretRight size={14} /></a></div></article>
+        <article className="shop-summary-card shop-summary-card--green"><span className="shop-summary-card__icon"><CheckCircle size={35} weight="duotone" /></span><div><p>{translateUi('พร้อมใช้งาน POS')}</p><strong>{readinessMetric(readyShopCount)}</strong><small>{translateUi('ร้าน ')}{readinessAvailable && activeShopCount ? `(${Math.round((readyShopCount / activeShopCount) * 100)}%)` : ''}</small><em>{translateUi('พร้อมรับออเดอร์')}</em></div></article>
+        <article className="shop-summary-card shop-summary-card--orange"><span className="shop-summary-card__icon"><CreditCard size={35} weight="duotone" /></span><div><p>{translateUi('ยังไม่มี Payment Profile')}</p><strong>{readinessMetric(missingProfileCount)}</strong><small>{translateUi('ร้าน ')}{readinessAvailable && activeShopCount ? `(${Math.round((missingProfileCount / activeShopCount) * 100)}%)` : ''}</small><em>{translateUi('ตั้งค่าให้เสร็จเพื่อขายได้')}</em></div></article>
+        <article className="shop-summary-card shop-summary-card--red"><span className="shop-summary-card__icon"><Warning size={35} weight="duotone" /></span><div><p>{translateUi('ยังไม่มีราคากลางน้ำแข็ง')}</p><strong>{readinessMetric(missingPriceCount)}</strong><small>{translateUi('ร้าน')}</small><em>{translateUi('ตั้งราคากลางก่อนขาย')}</em></div></article>
       </section>
 
       {importFileName || importError || importSuccess ? <section className="shop-import-inline">
-        <div><FileXls size={25} weight="duotone" /><span><strong>{importFileName || 'นำเข้ารายการร้านค้า'}</strong><small>{importRows.length ? `พบ ${importRows.length} ร้านในไฟล์` : 'เลือกไฟล์ Excel เพื่อเริ่มนำเข้า'}</small></span></div>
-        <div className="shop-import-inline__actions"><a download href="/templates/shop-import-template.xlsx">ดาวน์โหลดแม่แบบ</a><button className="primary-button" disabled={managementReadOnly || importing || importRows.length === 0} onClick={importCatalog} type="button">{importing ? 'กำลังนำเข้า...' : `ยืนยันนำเข้า ${importRows.length} ร้าน`}</button></div>
-        {importError ? <p className="error-text">{importError}</p> : null}{importSuccess ? <p className="success-text">{importSuccess}</p> : null}
+        <div><FileXls size={25} weight="duotone" /><span><strong>{importFileName || translateUi('นำเข้ารายการร้านค้า')}</strong><small>{importRows.length ? translateUi('พบ {0} ร้านในไฟล์', { 0: importRows.length }) : translateUi('เลือกไฟล์ Excel เพื่อเริ่มนำเข้า')}</small></span></div>
+        <div className="shop-import-inline__actions"><a download href="/templates/shop-import-template.xlsx">{translateUi('ดาวน์โหลดแม่แบบ')}</a><button className="primary-button" disabled={managementReadOnly || importing || importRows.length === 0} onClick={importCatalog} type="button">{importing ? translateUi('กำลังนำเข้า...') : translateUi('ยืนยันนำเข้า {0} ร้าน', { 0: importRows.length })}</button></div>
+        {importError ? <p className="error-text">{translateUi(importError)}</p> : null}{importSuccess ? <p className="success-text">{translateUi(importSuccess)}</p> : null}
       </section> : null}
 
       {readinessStatus === 'error' ? (
         <div className="shop-readiness-error" role="alert">
-          <span>ไม่สามารถโหลดสถานะความพร้อม POS ได้{readinessError ? `: ${readinessError}` : ''}</span>
-          <button className="ghost-button" onClick={() => void refreshReadiness()} type="button">ลองใหม่</button>
+          <span>{translateUi('ไม่สามารถโหลดสถานะความพร้อม POS ได้')}{readinessError ? `: ${readinessError}` : ''}</span>
+          <button className="ghost-button" onClick={() => void refreshReadiness()} type="button">{translateUi('ลองใหม่')}</button>
         </div>
       ) : null}
 
       {directoryError ? (
         <div className="shop-readiness-error" role="alert">
-          <span>ไม่สามารถโหลดข้อมูลร้านได้: {directoryError}</span>
-          <button className="ghost-button" onClick={retryDirectoryLoad} type="button">ลองใหม่</button>
+          <span>{translateUi('ไม่สามารถโหลดข้อมูลร้านได้: ')}{translateUi(directoryError)}</span>
+          <button className="ghost-button" onClick={retryDirectoryLoad} type="button">{translateUi('ลองใหม่')}</button>
         </div>
       ) : null}
 
       <section className="shop-catalog" id="shop-directory">
         <div className="shop-catalog__toolbar">
-          <label className="shop-search-field"><MagnifyingGlass aria-hidden="true" size={20} /><input aria-label="ค้นหาร้าน" onChange={(event) => setQuery(event.target.value)} placeholder="ค้นหาด้วยรหัสร้าน / ชื่อร้าน / ศูนย์ / เบอร์โทร" value={query} /></label>
+          <label className="shop-search-field"><MagnifyingGlass aria-hidden="true" size={20} /><input aria-label={translateUi('ค้นหาร้าน')} onChange={(event) => setQuery(event.target.value)} placeholder={translateUi('ค้นหาด้วยรหัสร้าน / ชื่อร้าน / ศูนย์ / เบอร์โทร')} value={query} /></label>
           <div className="shop-catalog__filters">
-            <select aria-label="กรองตึก" className="shop-filter-button" onChange={(e) => { setBuildingFilter(e.target.value); setZoneFilter(''); }} value={buildingFilter}><option value="">อาคาร: ทั้งหมด</option>{buildings.map((b) => <option key={b.id} value={b.id}>{b.code} · {b.name}</option>)}</select>
-            <select aria-label="กรองโซนย่อย" className="shop-filter-button" disabled={!buildingFilter} onChange={(e) => setZoneFilter(e.target.value)} value={zoneFilter}><option value="">โซน: ทั้งหมด</option>{zones.filter((z) => z.building_id === buildingFilter).map((z) => <option key={z.id} value={z.id}>{z.code} · {z.name}</option>)}</select>
-            <select aria-label="กรองสถานะร้าน" className="shop-filter-button" onChange={(e) => setShopFilter(e.target.value as ActiveFilter)} value={shopFilter}><option value="all">สถานะร้าน: ทั้งหมด</option><option value="active">เฉพาะร้านที่ใช้งาน</option><option value="inactive">เฉพาะร้านที่ปิด / พักใช้งาน</option></select>
-            <select aria-label="กรองประเภทรายรับ" className="shop-filter-button" disabled={!readinessAvailable} onChange={(e) => setPaymentFilter(e.target.value as 'all' | 'missing')} value={paymentFilter}><option value="all">ประเภทรายรับ: ทั้งหมด</option><option value="missing">ยังไม่มี Payment Profile</option></select>
-            <select aria-label="กรองความพร้อม POS" className="shop-filter-button" disabled={!readinessAvailable} onChange={(e) => setPosFilter(e.target.value as 'all' | 'ready' | 'issues')} value={posFilter}><option value="all">สถานะความพร้อม POS: ทั้งหมด</option><option value="ready">พร้อม POS</option><option value="issues">ต้องตั้งค่าเพิ่ม</option></select>
+            <select aria-label={translateUi('กรองตึก')} className="shop-filter-button" onChange={(e) => { setBuildingFilter(e.target.value); setZoneFilter(''); }} value={buildingFilter}><option value="">{translateUi('อาคาร: ทั้งหมด')}</option>{buildings.map((b) => <option key={b.id} value={b.id}>{b.code} · {b.name}</option>)}</select>
+            <select aria-label={translateUi('กรองโซนย่อย')} className="shop-filter-button" disabled={!buildingFilter} onChange={(e) => setZoneFilter(e.target.value)} value={zoneFilter}><option value="">{translateUi('โซน: ทั้งหมด')}</option>{zones.filter((z) => z.building_id === buildingFilter).map((z) => <option key={z.id} value={z.id}>{z.code} · {z.name}</option>)}</select>
+            <select aria-label={translateUi('กรองสถานะร้าน')} className="shop-filter-button" onChange={(e) => setShopFilter(e.target.value as ActiveFilter)} value={shopFilter}><option value="all">{translateUi('สถานะร้าน: ทั้งหมด')}</option><option value="active">{translateUi('เฉพาะร้านที่ใช้งาน')}</option><option value="inactive">{translateUi('เฉพาะร้านที่ปิด / พักใช้งาน')}</option></select>
+            <select aria-label={translateUi('กรองประเภทรายรับ')} className="shop-filter-button" disabled={!readinessAvailable} onChange={(e) => setPaymentFilter(e.target.value as 'all' | 'missing')} value={paymentFilter}><option value="all">{translateUi('ประเภทรายรับ: ทั้งหมด')}</option><option value="missing">{translateUi('ยังไม่มี Payment Profile')}</option></select>
+            <select aria-label={translateUi('กรองความพร้อม POS')} className="shop-filter-button" disabled={!readinessAvailable} onChange={(e) => setPosFilter(e.target.value as 'all' | 'ready' | 'issues')} value={posFilter}><option value="all">{translateUi('สถานะความพร้อม POS: ทั้งหมด')}</option><option value="ready">{translateUi('พร้อม POS')}</option><option value="issues">{translateUi('ต้องตั้งค่าเพิ่ม')}</option></select>
           </div>
-          <div className="shop-view-switcher" aria-label="รูปแบบการแสดงผล"><button aria-label="แสดงแบบการ์ด" className={catalogView === 'grid' ? 'is-active' : ''} onClick={() => setCatalogView('grid')} type="button"><GridFour size={20} weight="bold" />การ์ด</button><button aria-label="แสดงแบบรายการ" className={catalogView === 'list' ? 'is-active' : ''} onClick={() => setCatalogView('list')} type="button"><ListBullets size={20} weight="bold" />ตาราง</button></div>
+          <div className="shop-view-switcher" aria-label={translateUi('รูปแบบการแสดงผล')}><button aria-label={translateUi('แสดงแบบการ์ด')} className={catalogView === 'grid' ? 'is-active' : ''} onClick={() => setCatalogView('grid')} type="button"><GridFour size={20} weight="bold" />{translateUi('การ์ด')}</button><button aria-label={translateUi('แสดงแบบรายการ')} className={catalogView === 'list' ? 'is-active' : ''} onClick={() => setCatalogView('list')} type="button"><ListBullets size={20} weight="bold" />{translateUi('ตาราง')}</button></div>
         </div>
         <div aria-busy={pageLoading} className={`shop-card-grid shop-card-grid--${catalogView}`}>
-          {pageLoading ? <div className="shop-catalog__empty"><Clock aria-hidden="true" size={32} /><strong>กำลังโหลดร้านในหน้านี้...</strong></div> : null}
+          {pageLoading ? <div className="shop-catalog__empty"><Clock aria-hidden="true" size={32} /><strong>{translateUi('กำลังโหลดร้านในหน้านี้...')}</strong></div> : null}
           {!pageLoading ? <>
           {pagedShops.map((shop) => {
             const building = buildings.find((item) => item.id === shop.building_id);
@@ -1032,29 +1034,29 @@ export function ShopSettings({
               >
                 <span className="shop-directory-card__visual">
                   {imageUrl && !failedShopImages[shop.id] ? (
-                    <img alt={`รูปภาพร้าน ${shop.name}`} decoding="async" loading="lazy" onError={() => setFailedShopImages((current) => ({ ...current, [shop.id]: true }))} onLoad={() => setLoadedShopImages((current) => ({ ...current, [shop.id]: true }))} src={imageUrl} />
+                    <img alt={translateUi('รูปภาพร้าน {0}', { 0: shop.name })} decoding="async" loading="lazy" onError={() => setFailedShopImages((current) => ({ ...current, [shop.id]: true }))} onLoad={() => setLoadedShopImages((current) => ({ ...current, [shop.id]: true }))} src={imageUrl} />
                   ) : null}
-                  {!imageLoaded || !imageUrl || failedShopImages[shop.id] ? <><Storefront aria-hidden="true" size={38} weight="duotone" /><small className="shop-directory-card__photo-status">{shop.image_path ? (imageUrl && !failedShopImages[shop.id] ? 'กำลังโหลดรูป...' : 'แสดงรูปไม่ได้') : 'ยังไม่มีรูป'}</small></> : null}
+                  {!imageLoaded || !imageUrl || failedShopImages[shop.id] ? <><Storefront aria-hidden="true" size={38} weight="duotone" /><small className="shop-directory-card__photo-status">{translateUi(shop.image_path ? (imageUrl && !failedShopImages[shop.id] ? 'กำลังโหลดรูป...' : 'แสดงรูปไม่ได้') : 'ยังไม่มีรูป')}</small></> : null}
                 </span>
                 <span className="shop-directory-card__body">
-                  <span className="shop-directory-card__heading"><span className="shop-directory-card__code">{shop.code}</span><span className={`shop-directory-card__status shop-directory-card__status--${shop.status}`}>{shop.status === 'active' ? 'ใช้งาน' : 'พักใช้งาน'}</span></span>
+                  <span className="shop-directory-card__heading"><span className="shop-directory-card__code">{shop.code}</span><span className={`shop-directory-card__status shop-directory-card__status--${shop.status}`}>{shop.status === 'active' ? translateUi('ใช้งาน') : translateUi('พักใช้งาน')}</span></span>
                   <strong>{shop.name}</strong>
-                  <span className="shop-directory-card__locations"><span className="shop-directory-card__location"><Buildings aria-hidden="true" size={15} />{building?.name ?? 'ไม่พบตึก'}</span><span className="shop-directory-card__location"><MapPin aria-hidden="true" size={15} />{zone?.name ?? shop.floor_or_zone}</span></span>
-                  <span className="shop-directory-card__readiness"><span><small>ประเภทรายรับ</small><b className={paymentClass}>{paymentLabel}</b></span><span><small>สถานะ POS</small><b className={posClass}>{posLabel}</b></span></span>
-                  {shop.contact_phone ? <span className="shop-directory-card__phone"><Phone aria-hidden="true" size={15} />{shop.contact_phone}</span> : <span className="shop-directory-card__phone shop-directory-card__phone--empty">ไม่มีเบอร์โทรศัพท์</span>}
+                  <span className="shop-directory-card__locations"><span className="shop-directory-card__location"><Buildings aria-hidden="true" size={15} />{building?.name ?? translateUi('ไม่พบตึก')}</span><span className="shop-directory-card__location"><MapPin aria-hidden="true" size={15} />{zone?.name ?? shop.floor_or_zone}</span></span>
+                  <span className="shop-directory-card__readiness"><span><small>{translateUi('ประเภทรายรับ')}</small><b className={paymentClass}>{translateUi(paymentLabel)}</b></span><span><small>{translateUi('สถานะ POS')}</small><b className={posClass}>{translateUi(posLabel)}</b></span></span>
+                  {shop.contact_phone ? <span className="shop-directory-card__phone"><Phone aria-hidden="true" size={15} />{shop.contact_phone}</span> : <span className="shop-directory-card__phone shop-directory-card__phone--empty">{translateUi('ไม่มีเบอร์โทรศัพท์')}</span>}
                 </span>
                 <span className="shop-directory-card__footer">
-                  <span><Eye aria-hidden="true" size={16} />รายละเอียด</span><span><SlidersHorizontal aria-hidden="true" size={16} />แก้ไข</span><span><GearSix aria-hidden="true" size={16} />ตั้งค่า POS</span>
+                  <span><Eye aria-hidden="true" size={16} />{translateUi('รายละเอียด')}</span><span><SlidersHorizontal aria-hidden="true" size={16} />{translateUi('แก้ไข')}</span><span><GearSix aria-hidden="true" size={16} />{translateUi('ตั้งค่า POS')}</span>
                 </span>
               </button>
             );
           })}
           {filteredShopCount === 0 ? (
-            <div className="shop-catalog__empty"><ImageSquare aria-hidden="true" size={32} weight="duotone" /><strong>ไม่พบร้านที่ค้นหา</strong><span>ลองค้นหาด้วยรหัสร้านหรือชื่อร้านอีกครั้ง</span></div>
+            <div className="shop-catalog__empty"><ImageSquare aria-hidden="true" size={32} weight="duotone" /><strong>{translateUi('ไม่พบร้านที่ค้นหา')}</strong><span>{translateUi('ลองค้นหาด้วยรหัสร้านหรือชื่อร้านอีกครั้ง')}</span></div>
           ) : null}
           </> : null}
         </div>
-        <div className="shop-catalog__footer-row"><span className="shop-catalog__count"><span>พบ {filteredShopCount} ร้าน</span><span> · แสดง {pagedShops.length ? page * PAGE_SIZE + 1 : 0} - {Math.min((page + 1) * PAGE_SIZE, filteredShopCount)}</span></span>
+        <div className="shop-catalog__footer-row"><span className="shop-catalog__count"><span>{translateUi('พบ ')}{filteredShopCount}{translateUi(' ร้าน')}</span><span>{translateUi(' · แสดง ')}{pagedShops.length ? page * PAGE_SIZE + 1 : 0} - {Math.min((page + 1) * PAGE_SIZE, filteredShopCount)}</span></span>
         {totalPages > 1 ? (
           <div className="shop-catalog__pagination">
             <button
@@ -1062,14 +1064,14 @@ export function ShopSettings({
               disabled={pageLoading || page === 0}
               onClick={() => goToPage(Math.max(0, page - 1))}
               type="button"
-            >‹ ก่อนหน้า</button>
-            <span className="shop-catalog__page-info">หน้า {page + 1} / {totalPages}</span>
+            >{translateUi('‹ ก่อนหน้า')}</button>
+            <span className="shop-catalog__page-info">{translateUi('หน้า ')}{page + 1} / {totalPages}</span>
             <button
               className="shop-filter-button"
               disabled={pageLoading || page >= totalPages - 1}
               onClick={() => goToPage(Math.min(totalPages - 1, page + 1))}
               type="button"
-            >ถัดไป ›</button>
+            >{translateUi('ถัดไป ›')}</button>
           </div>
         ) : null}</div>
       </section>
@@ -1078,60 +1080,59 @@ export function ShopSettings({
         <div className="modal-backdrop shop-settings-backdrop" onMouseDown={(event) => {
           if (event.target === event.currentTarget) closeEditor();
         }}>
-          <section aria-label={draft.id ? `แก้ไข ${draft.name}` : 'เพิ่มร้านใหม่'} aria-labelledby="shop-editor-title" aria-modal="true" className="panel shop-settings-editor shop-settings-dialog" role="dialog">
+          <section aria-label={draft.id ? translateUi('แก้ไข {0}', { 0: draft.name }) : translateUi('เพิ่มร้านใหม่')} aria-labelledby="shop-editor-title" aria-modal="true" className="panel shop-settings-editor shop-settings-dialog" role="dialog">
             <header className="shop-editor-hero">
               <span className="shop-editor-hero__icon"><Storefront size={32} weight="fill" /></span>
               <div className="shop-editor-hero__copy">
-                <p className="eyebrow">ตั้งค่าร้านค้า</p>
-                <h2 id="shop-editor-title">{draft.id ? <span className="employee-visually-hidden">แก้ไข </span> : null}{draft.name || 'เพิ่มร้านใหม่'}</h2>
+                <p className="eyebrow">{translateUi('ตั้งค่าร้านค้า')}</p>
+                <h2 id="shop-editor-title">{draft.id ? <span className="employee-visually-hidden">{translateUi('แก้ไข ')}</span> : null}{draft.name || translateUi('เพิ่มร้านใหม่')}</h2>
                 <div className="shop-editor-hero__badges">
-                  <span>รหัสร้าน: {draft.code || '—'}</span>
-                  <span className={draft.status === 'active' ? 'is-active' : 'is-inactive'}>{draft.status === 'active' ? 'ใช้งาน' : 'พักใช้งาน'}</span>
+                  <span>{translateUi('รหัสร้าน: ')}{draft.code || '—'}</span>
+                  <span className={draft.status === 'active' ? 'is-active' : 'is-inactive'}>{draft.status === 'active' ? translateUi('ใช้งาน') : translateUi('พักใช้งาน')}</span>
                   {editorBuilding ? <span>{editorBuilding.code} · {editorBuilding.name}</span> : null}
-                  {editorZone ? <span>โซนย่อย: {editorZone.name}</span> : null}
+                  {editorZone ? <span>{translateUi('โซนย่อย: ')}{editorZone.name}</span> : null}
                 </div>
               </div>
               <div className="shop-settings-dialog__actions">
-                {draft.id && draft.status === 'active' && !historyOnlyPreview ? <button className="shop-editor-deactivate" disabled={saving} onClick={() => void deactivateShop()} type="button">ปิดร้าน / ย้ายออก</button> : null}
-                <button aria-label="ปิดหน้าต่างข้อมูลร้าน" autoFocus className="shop-settings-dialog__close" disabled={saving || savingTank} onClick={closeEditor} type="button"><X aria-hidden="true" size={24} /></button>
+                {draft.id && draft.status === 'active' && !historyOnlyPreview ? <button className="shop-editor-deactivate" disabled={saving} onClick={() => void deactivateShop()} type="button">{translateUi('ปิดร้าน / ย้ายออก')}</button> : null}
+                <button aria-label={translateUi('ปิดหน้าต่างข้อมูลร้าน')} autoFocus className="shop-settings-dialog__close" disabled={saving || savingTank} onClick={closeEditor} type="button"><X aria-hidden="true" size={24} /></button>
               </div>
             </header>
 
-            <section className="shop-editor-overview" aria-label="สรุปข้อมูลร้าน">
-              <EditorStat icon={<IdentificationCard size={24} />} label="รหัสร้าน" value={draft.code || '—'} />
-              <EditorStat icon={<Storefront size={24} />} label="ชื่อร้าน" value={draft.name || '—'} />
-              <EditorStat icon={<Buildings size={24} />} label="อาคาร / โซนย่อย" value={editorBuilding && editorZone ? `${editorBuilding.code} · ${editorZone.name}` : '—'} />
-              <EditorStat icon={<User size={24} />} label="ผู้ติดต่อ" value={draft.contact_name || '—'} />
-              <EditorStat icon={<Phone size={24} />} label="เบอร์โทร" value={draft.contact_phone || '—'} />
-              <EditorStat icon={<ListBullets size={24} />} label="ลำดับส่งในโซน" value={draft.delivery_sequence?.toLocaleString('th-TH') ?? 'ยังไม่กำหนด'} />
-              <EditorStat icon={<Clock size={24} />} label="รอบปกติต่อวัน" value={`${draft.normal_rounds_per_day} รอบ`} />
-              <EditorStat icon={<Storefront size={24} />} label="สถานะร้าน" value={draft.status === 'active' ? 'ใช้งาน' : 'พักใช้งาน'} tone={draft.status} />
-              <EditorStat icon={<FileText size={24} />} label="หมายเหตุการเข้าถึง" value={draft.access_note || '—'} />
+            <section className="shop-editor-overview" aria-label={translateUi('สรุปข้อมูลร้าน')}>
+              <EditorStat icon={<IdentificationCard size={24} />} label={translateUi('รหัสร้าน')} value={draft.code || '—'} />
+              <EditorStat icon={<Storefront size={24} />} label={translateUi('ชื่อร้าน')} value={draft.name || '—'} />
+              <EditorStat icon={<Buildings size={24} />} label={translateUi('อาคาร / โซนย่อย')} value={editorBuilding && editorZone ? `${editorBuilding.code} · ${editorZone.name}` : '—'} />
+              <EditorStat icon={<User size={24} />} label={translateUi('ผู้ติดต่อ')} value={draft.contact_name || '—'} />
+              <EditorStat icon={<Phone size={24} />} label={translateUi('เบอร์โทร')} value={draft.contact_phone || '—'} />
+              <EditorStat icon={<ListBullets size={24} />} label={translateUi('ลำดับส่งในโซน')} value={draft.delivery_sequence?.toLocaleString('th-TH') ?? 'ยังไม่กำหนด'} />
+              <EditorStat icon={<Clock size={24} />} label={translateUi('รอบปกติต่อวัน')} value={`${draft.normal_rounds_per_day} รอบ`} />
+              <EditorStat icon={<Storefront size={24} />} label={translateUi('สถานะร้าน')} value={draft.status === 'active' ? 'ใช้งาน' : 'พักใช้งาน'} tone={draft.status} />
+              <EditorStat icon={<FileText size={24} />} label={translateUi('หมายเหตุการเข้าถึง')} value={draft.access_note || '—'} />
             </section>
 
-            <nav className="shop-editor-tabs" aria-label="หมวดหมู่การตั้งค่าร้าน">
-              <button className={editorTab === 'basic' ? 'is-active' : ''} disabled={historyOnlyPreview} onClick={() => setEditorTab('basic')} ref={editorTab === 'basic' ? activeEditorTabRef : undefined} type="button"><FileText size={21} />ข้อมูลพื้นฐาน</button>
-              <button className={editorTab === 'assets' ? 'is-active' : ''} disabled={historyOnlyPreview} onClick={() => void openAssetsTab()} ref={editorTab === 'assets' ? activeEditorTabRef : undefined} type="button"><ImageSquare size={21} />ถังเช่าและรูปภาพ</button>
-              <button className={editorTab === 'payment' ? 'is-active' : ''} disabled={historyOnlyPreview} onClick={() => setEditorTab('payment')} ref={editorTab === 'payment' ? activeEditorTabRef : undefined} type="button"><CreditCard size={21} />การชำระเงิน</button>
-              <button className={editorTab === 'prices' ? 'is-active' : ''} disabled={historyOnlyPreview} onClick={() => setEditorTab('prices')} ref={editorTab === 'prices' ? activeEditorTabRef : undefined} type="button"><Tag size={21} />ราคาพิเศษน้ำแข็ง</button>
-              <button className={editorTab === 'history' ? 'is-active' : ''} onClick={() => setEditorTab('history')} ref={editorTab === 'history' ? activeEditorTabRef : undefined} type="button"><ClockCounterClockwise size={21} />ประวัติการซื้อ</button>
+            <nav className="shop-editor-tabs" aria-label={translateUi('หมวดหมู่การตั้งค่าร้าน')}>
+              <button className={editorTab === 'basic' ? 'is-active' : ''} disabled={historyOnlyPreview} onClick={() => setEditorTab('basic')} ref={editorTab === 'basic' ? activeEditorTabRef : undefined} type="button"><FileText size={21} />{translateUi('ข้อมูลพื้นฐาน')}</button>
+              <button className={editorTab === 'assets' ? 'is-active' : ''} disabled={historyOnlyPreview} onClick={() => void openAssetsTab()} ref={editorTab === 'assets' ? activeEditorTabRef : undefined} type="button"><ImageSquare size={21} />{translateUi('ถังเช่าและรูปภาพ')}</button>
+              <button className={editorTab === 'payment' ? 'is-active' : ''} disabled={historyOnlyPreview} onClick={() => setEditorTab('payment')} ref={editorTab === 'payment' ? activeEditorTabRef : undefined} type="button"><CreditCard size={21} />{translateUi('การชำระเงิน')}</button>
+              <button className={editorTab === 'prices' ? 'is-active' : ''} disabled={historyOnlyPreview} onClick={() => setEditorTab('prices')} ref={editorTab === 'prices' ? activeEditorTabRef : undefined} type="button"><Tag size={21} />{translateUi('ราคาพิเศษน้ำแข็ง')}</button>
+              <button className={editorTab === 'history' ? 'is-active' : ''} onClick={() => setEditorTab('history')} ref={editorTab === 'history' ? activeEditorTabRef : undefined} type="button"><ClockCounterClockwise size={21} />{translateUi('ประวัติการซื้อ')}</button>
             </nav>
 
-            {error ? <p className="error-text shop-editor-feedback" role="alert">{error}</p> : null}
-            {success ? <p aria-live="polite" className="success-text shop-editor-feedback">{success}</p> : null}
+            {error ? <p className="error-text shop-editor-feedback" role="alert">{translateUi(error)}</p> : null}
+            {success ? <p aria-live="polite" className="success-text shop-editor-feedback">{translateUi(success)}</p> : null}
 
             {!historyOnlyPreview ? <form className="settings-form shop-editor-form" hidden={editorTab !== 'basic'} onSubmit={handleSave}>
               <div className="shop-editor-fields">
-                <TextField label="รหัสร้าน" required value={draft.code} onChange={(code) => setDraft({ ...draft, code })} />
+                <TextField label={translateUi('รหัสร้าน')} required value={draft.code} onChange={(code) => setDraft({ ...draft, code })} />
                 <label className="shop-stall-field">
-                  รหัสล็อก/พื้นที่ขาย
-                  <input
+                  {translateUi('รหัสล็อก/พื้นที่ขาย')}<input
                     aria-describedby={`shop-stall-code-help${stallAvailability ? ' shop-stall-code-status' : ''}`}
                     aria-invalid={activeStallConflict || undefined}
                     value={draft.government_shop_code}
                     onChange={(event) => setDraft({ ...draft, government_shop_code: event.target.value })}
                   />
-                  <small className="shop-stall-field__help" id="shop-stall-code-help">รหัสประจำพื้นที่ขายของศูนย์ราชการ ใช้ซ้ำได้เมื่อร้านเดิมย้ายออก แต่ห้ามมีร้านใช้งานพร้อมกันในล็อกเดียวกัน</small>
+                  <small className="shop-stall-field__help" id="shop-stall-code-help">{translateUi('รหัสประจำพื้นที่ขายของศูนย์ราชการ ใช้ซ้ำได้เมื่อร้านเดิมย้ายออก แต่ห้ามมีร้านใช้งานพร้อมกันในล็อกเดียวกัน')}</small>
                   {stallAvailability ? (
                     <span
                       aria-live="polite"
@@ -1142,21 +1143,21 @@ export function ShopSettings({
                     </span>
                   ) : null}
                 </label>
-                <TextField label="ชื่อร้าน" required value={draft.name} onChange={(name) => setDraft({ ...draft, name })} />
-                <label>อาคาร<select required value={draft.building_id} onChange={(event) => { const building_id = event.target.value; setDraft({ ...draft, building_id, zone_id: zones.find((zone) => zone.building_id === building_id)?.id ?? '' }); }}><option value="">เลือกตึก</option>{buildings.map((building) => <option key={building.id} value={building.id}>{building.code} · {building.name}</option>)}</select></label>
-                <label>โซนย่อย<select required value={draft.zone_id} onChange={(event) => setDraft({ ...draft, zone_id: event.target.value })}><option value="">เลือกโซนย่อย</option>{zones.filter((zone) => zone.building_id === draft.building_id).map((zone) => <option key={zone.id} value={zone.id}>{zone.code} · {zone.name}</option>)}</select></label>
-                <TextField label="ผู้ติดต่อ" value={draft.contact_name} onChange={(contact_name) => setDraft({ ...draft, contact_name })} />
-                <TextField label="เบอร์โทร" value={draft.contact_phone} onChange={(contact_phone) => setDraft({ ...draft, contact_phone })} />
-                <label>สถานะร้าน<select value={draft.status} onChange={(event) => setDraft({ ...draft, status: event.target.value as ShopDraft['status'] })}><option value="active">ใช้งาน</option><option value="inactive">พักใช้งาน</option></select></label>
-                <label>ลำดับส่งในโซน<input min={1} placeholder="ยังไม่กำหนด" step={1} type="number" value={draft.delivery_sequence ?? ''} onChange={(event) => setDraft({ ...draft, delivery_sequence: event.target.value === '' ? null : Math.max(1, Math.floor(Number(event.target.value) || 1)) })} /></label>
-                <label className="shop-editor-field--rounds">รอบปกติต่อวัน<input min={1} required type="number" value={draft.normal_rounds_per_day} onChange={(event) => setDraft({ ...draft, normal_rounds_per_day: Math.max(1, Number(event.target.value) || 1) })} /></label>
+                <TextField label={translateUi('ชื่อร้าน')} required value={draft.name} onChange={(name) => setDraft({ ...draft, name })} />
+                <label>{translateUi('อาคาร')}<select required value={draft.building_id} onChange={(event) => { const building_id = event.target.value; setDraft({ ...draft, building_id, zone_id: zones.find((zone) => zone.building_id === building_id)?.id ?? '' }); }}><option value="">{translateUi('เลือกตึก')}</option>{buildings.map((building) => <option key={building.id} value={building.id}>{building.code} · {building.name}</option>)}</select></label>
+                <label>{translateUi('โซนย่อย')}<select required value={draft.zone_id} onChange={(event) => setDraft({ ...draft, zone_id: event.target.value })}><option value="">{translateUi('เลือกโซนย่อย')}</option>{zones.filter((zone) => zone.building_id === draft.building_id).map((zone) => <option key={zone.id} value={zone.id}>{zone.code} · {zone.name}</option>)}</select></label>
+                <TextField label={translateUi('ผู้ติดต่อ')} value={draft.contact_name} onChange={(contact_name) => setDraft({ ...draft, contact_name })} />
+                <TextField label={translateUi('เบอร์โทร')} value={draft.contact_phone} onChange={(contact_phone) => setDraft({ ...draft, contact_phone })} />
+                <label>{translateUi('สถานะร้าน')}<select value={draft.status} onChange={(event) => setDraft({ ...draft, status: event.target.value as ShopDraft['status'] })}><option value="active">{translateUi('ใช้งาน')}</option><option value="inactive">{translateUi('พักใช้งาน')}</option></select></label>
+                <label>{translateUi('ลำดับส่งในโซน')}<input min={1} placeholder={translateUi('ยังไม่กำหนด')} step={1} type="number" value={draft.delivery_sequence ?? ''} onChange={(event) => setDraft({ ...draft, delivery_sequence: event.target.value === '' ? null : Math.max(1, Math.floor(Number(event.target.value) || 1)) })} /></label>
+                <label className="shop-editor-field--rounds">{translateUi('รอบปกติต่อวัน')}<input min={1} required type="number" value={draft.normal_rounds_per_day} onChange={(event) => setDraft({ ...draft, normal_rounds_per_day: Math.max(1, Number(event.target.value) || 1) })} /></label>
               </div>
-              <label>หมายเหตุการเข้าถึง<textarea rows={3} placeholder="ระบุหมายเหตุการเข้าถึง (ถ้ามี)" value={draft.access_note} onChange={(event) => setDraft({ ...draft, access_note: event.target.value })} /></label>
-              <footer className="shop-editor-savebar"><button className="secondary-button" disabled={saving} onClick={closeEditor} type="button">ยกเลิก</button><button className="primary-button" disabled={saving || activeStallConflict} type="submit">{saving ? 'กำลังบันทึก...' : 'บันทึกข้อมูลร้าน'}</button></footer>
+              <label>{translateUi('หมายเหตุการเข้าถึง')}<textarea rows={3} placeholder={translateUi('ระบุหมายเหตุการเข้าถึง (ถ้ามี)')} value={draft.access_note} onChange={(event) => setDraft({ ...draft, access_note: event.target.value })} /></label>
+              <footer className="shop-editor-savebar"><button className="secondary-button" disabled={saving} onClick={closeEditor} type="button">{translateUi('ยกเลิก')}</button><button className="primary-button" disabled={saving || activeStallConflict} type="submit">{saving ? translateUi('กำลังบันทึก...') : translateUi('บันทึกข้อมูลร้าน')}</button></footer>
             </form> : null}
 
             {!historyOnlyPreview ? <div className="shop-editor-tab-content" hidden={editorTab !== 'assets'}>
-              {draft.id ? <ShopTankRentalPanel key={draft.id} shopId={draft.id} isActive={editorTab === 'assets'} shopActive={draft.status === 'active'} /> : <p className="muted">บันทึกข้อมูลร้านก่อน แล้วจึงเช่าถังรายครั้ง</p>}
+              {draft.id ? <ShopTankRentalPanel key={draft.id} shopId={draft.id} isActive={editorTab === 'assets'} shopActive={draft.status === 'active'} /> : <p className="muted">{translateUi('บันทึกข้อมูลร้านก่อน แล้วจึงเช่าถังรายครั้ง')}</p>}
               <ShopImageEditor
                 onShopSaved={(savedShop) => {
                   const updateImagePath = (shop: ShopSetting) => shop.id === savedShop.id ? { ...shop, image_path: savedShop.image_path } : shop;
@@ -1169,60 +1170,58 @@ export function ShopSettings({
               <div className="rented-tank-section">
           <div className="panel-header">
             <div>
-              <p className="eyebrow">ทะเบียนถังประจำร้าน</p>
-              <h3>ถังเช่า {activeShopTanks.length} ใบ</h3>
+              <p className="eyebrow">{translateUi('ทะเบียนถังประจำร้าน')}</p>
+              <h3>{translateUi('ถังเช่า ')}{activeShopTanks.length}{translateUi(' ใบ')}</h3>
             </div>
           </div>
           {!draft.id ? (
-            <p className="muted">บันทึกข้อมูลร้านก่อน แล้วจึงเพิ่มรหัสและรูปถังเช่าแต่ละใบ</p>
+            <p className="muted">{translateUi('บันทึกข้อมูลร้านก่อน แล้วจึงเพิ่มรหัสและรูปถังเช่าแต่ละใบ')}</p>
           ) : rentedTanksLoading ? (
-            <p className="muted">กำลังโหลดข้อมูลถังเช่า...</p>
+            <p className="muted">{translateUi('กำลังโหลดข้อมูลถังเช่า...')}</p>
           ) : (
             <>
               <div className="rented-tank-list">
                 {activeShopTanks.map((tank) => (
                   <article className="rented-tank-card" key={tank.id}>
                     {tank.image_url ? (
-                      <img alt={`ถัง ${tank.tank_code}`} className="rented-tank-photo" src={tank.image_url} />
+                      <img alt={translateUi('ถัง {0}', { 0: tank.tank_code })} className="rented-tank-photo" src={tank.image_url} />
                     ) : (
-                      <div className="rented-tank-photo rented-tank-photo--placeholder">ไม่มีรูปตัวอย่าง</div>
+                      <div className="rented-tank-photo rented-tank-photo--placeholder">{translateUi('ไม่มีรูปตัวอย่าง')}</div>
                     )}
                     <div>
                       <strong>{tank.tank_code}</strong>
-                      <small>เริ่มเช่า {new Date(tank.rented_at).toLocaleDateString('th-TH')}</small>
+                      <small>{translateUi('เริ่มเช่า ')}{new Date(tank.rented_at).toLocaleDateString('th-TH')}</small>
                     </div>
                     <button className="ghost-button" disabled={savingTank} onClick={() => void returnRentedTank(tank)} type="button">
-                      รับคืนถัง
-                    </button>
+                      {translateUi('รับคืนถัง')}</button>
                   </article>
                 ))}
-                {activeShopTanks.length === 0 ? <p className="empty-text">ร้านนี้ยังไม่มีถังเช่า</p> : null}
+                {activeShopTanks.length === 0 ? <p className="empty-text">{translateUi('ร้านนี้ยังไม่มีถังเช่า')}</p> : null}
               </div>
               <div className="rented-tank-entry">
-                <TextField label="รหัสถัง" required value={tankCode} onChange={setTankCode} />
+                <TextField label={translateUi('รหัสถัง')} required value={tankCode} onChange={setTankCode} />
                 <label className="secondary-button rented-tank-file">
-                  เลือกรูปถัง
-                  <input accept="image/jpeg,image/png,image/webp" onChange={chooseTankImage} type="file" />
+                  {translateUi('เลือกรูปถัง')}<input accept="image/jpeg,image/png,image/webp" onChange={chooseTankImage} type="file" />
                 </label>
-                <span className="muted">{tankImageFile?.name ?? 'ยังไม่ได้เลือกรูป'}</span>
+                <span className="muted">{tankImageFile?.name ?? translateUi('ยังไม่ได้เลือกรูป')}</span>
                 {tankImagePreviewUrl ? (
                   <div className="rented-tank-preview">
-                    <img alt="ตัวอย่างรูปถังที่เลือก" src={tankImagePreviewUrl} />
+                    <img alt={translateUi('ตัวอย่างรูปถังที่เลือก')} src={tankImagePreviewUrl} />
                   </div>
                 ) : null}
                 <button className="primary-button" disabled={savingTank} onClick={() => void registerRentedTank()} type="button">
-                  {savingTank ? 'กำลังบันทึก...' : 'เพิ่มถังเช่า'}
+                  {savingTank ? translateUi('กำลังบันทึก...') : translateUi('เพิ่มถังเช่า')}
                 </button>
               </div>
             </>
           )}
-          {tankError ? <p className="error-text">{tankError}</p> : null}
-          {tankSuccess ? <p className="success-text">{tankSuccess}</p> : null}
-          <p className="muted">จำนวนถังเช่าคำนวณจากรายการรหัสถังที่ยังไม่ได้รับคืน จึงไม่ต้องกรอกจำนวนแยก</p>
+          {tankError ? <p className="error-text">{translateUi(tankError)}</p> : null}
+          {tankSuccess ? <p className="success-text">{translateUi(tankSuccess)}</p> : null}
+          <p className="muted">{translateUi('จำนวนถังเช่าคำนวณจากรายการรหัสถังที่ยังไม่ได้รับคืน จึงไม่ต้องกรอกจำนวนแยก')}</p>
               </div>
             </div> : null}
-            {!historyOnlyPreview ? <div className="shop-editor-tab-content" hidden={editorTab !== 'payment'}>{draft.id ? <ShopPaymentProfileEditor onSaved={refreshReadiness} shopId={draft.id} shopName={draft.name} /> : <p className="muted">บันทึกข้อมูลร้านก่อน แล้วจึงตั้งค่าการชำระเงิน</p>}</div> : null}
-            {!historyOnlyPreview ? <div className="shop-editor-tab-content" hidden={editorTab !== 'prices'}>{draft.id ? <ShopSpecialPriceEditor iceTypes={iceTypes} onSaved={refreshReadiness} shopId={draft.id} shopName={draft.name} /> : <p className="muted">บันทึกข้อมูลร้านก่อน แล้วจึงตั้งค่าราคาพิเศษน้ำแข็ง</p>}</div> : null}
+            {!historyOnlyPreview ? <div className="shop-editor-tab-content" hidden={editorTab !== 'payment'}>{draft.id ? <ShopPaymentProfileEditor onSaved={refreshReadiness} shopId={draft.id} shopName={draft.name} /> : <p className="muted">{translateUi('บันทึกข้อมูลร้านก่อน แล้วจึงตั้งค่าการชำระเงิน')}</p>}</div> : null}
+            {!historyOnlyPreview ? <div className="shop-editor-tab-content" hidden={editorTab !== 'prices'}>{draft.id ? <ShopSpecialPriceEditor iceTypes={iceTypes} onSaved={refreshReadiness} shopId={draft.id} shopName={draft.name} /> : <p className="muted">{translateUi('บันทึกข้อมูลร้านก่อน แล้วจึงตั้งค่าราคาพิเศษน้ำแข็ง')}</p>}</div> : null}
             <div className="shop-editor-tab-content" hidden={editorTab !== 'history'}><ShopPurchaseHistory isActive={editorTab === 'history'} shopId={draft.id} /></div>
           </section>
         </div>
@@ -1254,6 +1253,7 @@ export function ShopSettings({
 
 
 function TextField({ label, value, required, onChange }: { label: string; value: string; required?: boolean; onChange: (value: string) => void }) {
+  useLanguage();
   return (
     <label>
       {label}
@@ -1271,6 +1271,7 @@ function escapeLikePattern(value: string) {
 }
 
 function EditorStat({ icon, label, value, tone }: { icon: ReactNode; label: string; value: string; tone?: 'active' | 'inactive' }) {
+  useLanguage();
   return (
     <div className="shop-editor-stat">
       <span className="shop-editor-stat__icon">{icon}</span>

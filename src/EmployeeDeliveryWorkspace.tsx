@@ -40,6 +40,7 @@ import {
 import { subscribeToDataChange } from './lib/dataChange';
 import { getErrorMessage } from './lib/errorMessage';
 import { loadCurrentCollectionQueue } from './lib/collectionQueue';
+import { uiDateTimeFormat, translateUi, useLanguage } from './i18n';
 
 export interface EmployeeDeliveryPayload {
   destinationKind: NonNullable<ShopCard['destination_kind']>;
@@ -289,11 +290,11 @@ async function withPublicIceTypeOptions(iceTypes: IceTypeOption[]): Promise<IceT
 }
 
 function formatEmployeeServiceDate(serviceDate: string) {
-  return new Intl.DateTimeFormat('th-TH-u-ca-gregory', {
+  return uiDateTimeFormat({
     day: '2-digit',
     month: 'short',
     year: 'numeric',
-  }).format(new Date(`${serviceDate}T12:00:00+07:00`));
+  }, 'th-TH-u-ca-gregory').format(new Date(`${serviceDate}T12:00:00+07:00`));
 }
 
 export function createSupabaseGateway(): EmployeeDeliveryGateway {
@@ -771,6 +772,7 @@ export function EmployeeDeliveryWorkspace({
   stockSourceLabel?: string;
   viewMode?: 'pos' | 'withdrawal';
 }) {
+  useLanguage();
   const resolvedViewMode = viewMode ?? (enableAssignedStockFlow ? 'combined' : 'pos');
   const isBackdatedBilling = !enableAssignedStockFlow && serviceDate < toBangkokDateString();
   const [deliveryDraftState, setDeliveryDraftState] = useState<EmployeeDeliveryDraftState>({
@@ -900,13 +902,13 @@ export function EmployeeDeliveryWorkspace({
 
   if (data.loadingReference) {
     return <EmployeeState
-      title={isBackdatedBilling ? `กำลังโหลดงานวันที่ ${serviceDate}` : 'กำลังโหลดงานวันนี้'}
-      detail="ดึงงานประจำวันและชนิดน้ำแข็ง"
+      title={isBackdatedBilling ? translateUi('กำลังโหลดงานวันที่ {0}', { 0: serviceDate }) : translateUi('กำลังโหลดงานวันนี้')}
+      detail={translateUi('ดึงงานประจำวันและชนิดน้ำแข็ง')}
     />;
   }
 
   if (!data.error && data.iceTypes.length === 0) {
-    return <EmployeeState title="ยังไม่มีชนิดน้ำแข็งที่ใช้งาน" detail="ให้แอดมินเปิดใช้งานชนิดน้ำแข็งอย่างน้อย 1 รายการก่อนบันทึกส่ง" />;
+    return <EmployeeState title={translateUi('ยังไม่มีชนิดน้ำแข็งที่ใช้งาน')} detail={translateUi('ให้แอดมินเปิดใช้งานชนิดน้ำแข็งอย่างน้อย 1 รายการก่อนบันทึกส่ง')} />;
   }
 
   if (data.taskChoiceCard) {
@@ -1031,25 +1033,24 @@ export function EmployeeDeliveryWorkspace({
     <div className={`employee-workspace ${resolvedViewMode === 'withdrawal' ? 'employee-workspace--withdrawal' : ''}`}>
       <section className="employee-intro">
         <div>
-          <p className="employee-eyebrow">{isBackdatedBilling ? 'ออกบิลย้อนหลัง · เฉพาะแอดมิน' : 'งานพนักงาน'}</p>
+          <p className="employee-eyebrow">{isBackdatedBilling ? translateUi('ออกบิลย้อนหลัง · เฉพาะแอดมิน') : translateUi('งานพนักงาน')}</p>
           <h1>{resolvedViewMode === 'withdrawal'
-            ? 'เติม คืน และบันทึกน้ำแข็งละลาย'
+            ? translateUi('เติม คืน และบันทึกน้ำแข็งละลาย')
             : isBackdatedBilling
-              ? `เลือกร้านเพื่อออกบิลวันที่ ${serviceDate}`
-              : 'เลือกร้าน แล้วบันทึกส่ง'}</h1>
+              ? translateUi('เลือกร้านเพื่อออกบิลวันที่ {0}', { 0: serviceDate })
+              : translateUi('เลือกร้าน แล้วบันทึกส่ง')}</h1>
           <p>{resolvedViewMode === 'withdrawal'
-            ? 'เติมจากรถเข้าจุดถือครอง คืนของที่เหลือกลับขึ้นรถ หรือบันทึกน้ำแข็งละลายจากสต๊อกของคุณ'
-            : 'เลือกร้านก่อน ระบบจะตรวจสต๊อกต้นทาง ราคา และเงื่อนไขชำระของร้านนั้น'}</p>
+            ? translateUi('เติมจากรถเข้าจุดถือครอง คืนของที่เหลือกลับขึ้นรถ หรือบันทึกน้ำแข็งละลายจากสต๊อกของคุณ')
+            : translateUi('เลือกร้านก่อน ระบบจะตรวจสต๊อกต้นทาง ราคา และเงื่อนไขชำระของร้านนั้น')}</p>
         </div>
         <div className="employee-intro__actions">
         {resolvedViewMode === 'pos' && onOpenEvents ? <button className="secondary-button" disabled={data.anySubmitting} onClick={onOpenEvents} type="button">
-          <CalendarBlank aria-hidden="true" size={18} />เปิดอีเวนต์
-        </button> : null}
+          <CalendarBlank aria-hidden="true" size={18} />{translateUi('เปิดอีเวนต์')}</button> : null}
         {data.selectedRound ? (
           <div className={`employee-round-badge ${data.selectedRound.status === 'closed' ? 'employee-round-badge--closed' : ''}`}>
             {resolvedViewMode === 'withdrawal' ? <CalendarBlank aria-hidden="true" size={24} weight="duotone" /> : null}
             <span>
-              <strong>{isBackdatedBilling ? 'งานย้อนหลัง' : data.selectedRound.name}</strong>
+              <strong>{isBackdatedBilling ? translateUi('งานย้อนหลัง') : data.selectedRound.name}</strong>
               <small>{formatEmployeeServiceDate(data.selectedRound.service_date)}</small>
             </span>
             {resolvedViewMode === 'withdrawal' && openRounds.length > 1
@@ -1061,14 +1062,14 @@ export function EmployeeDeliveryWorkspace({
       </section>
 
       {openRounds.length > 1 ? (
-        <section className="employee-filters employee-filters--round" aria-label="เลือกงาน">
+        <section className="employee-filters employee-filters--round" aria-label={translateUi('เลือกงาน')}>
           <label className="employee-round-select">
-            <span>เลือกงาน</span>
+            <span>{translateUi('เลือกงาน')}</span>
             <select disabled={data.anySubmitting} value={data.selectedRoundId} onChange={(event) => data.chooseRound(event.target.value)}>
-              <option value="">เลือกงาน</option>
+              <option value="">{translateUi('เลือกงาน')}</option>
               {data.rounds.map((round) => (
                 <option key={round.id} value={round.id}>
-                  {round.name} · {round.service_date} · {round.cancelled_at ? 'ยกเลิก' : round.status === 'open' ? 'กำลังดำเนินการ' : 'ปิดแล้ว'}
+                  {round.name} · {round.service_date} · {round.cancelled_at ? translateUi('ยกเลิก') : round.status === 'open' ? translateUi('กำลังดำเนินการ') : translateUi('ปิดแล้ว')}
                 </option>
               ))}
             </select>
@@ -1078,15 +1079,14 @@ export function EmployeeDeliveryWorkspace({
 
       {data.success ? <div aria-live="polite" className="employee-success">
         <CheckCircle aria-hidden="true" size={22} weight="fill" />
-        <span>{data.success}</span>
+        <span>{translateUi(data.success)}</span>
         {data.latestReceiptAvailable ? <button className="employee-success__print" onClick={data.printLatestReceipt} type="button">
-          <Printer aria-hidden="true" size={18} />พิมพ์ใบเสร็จ
-        </button> : null}
+          <Printer aria-hidden="true" size={18} />{translateUi('พิมพ์ใบเสร็จ')}</button> : null}
       </div> : null}
       {data.error ? (
         <div className="employee-error employee-error--retry" role="alert">
-          <span><WarningCircle aria-hidden="true" size={22} weight="fill" />{data.error}</span>
-          <button disabled={data.loadingCards || data.loadingReference} onClick={data.retryLoad} type="button">ลองใหม่</button>
+          <span><WarningCircle aria-hidden="true" size={22} weight="fill" />{translateUi(data.error)}</span>
+          <button disabled={data.loadingCards || data.loadingReference} onClick={data.retryLoad} type="button">{translateUi('ลองใหม่')}</button>
         </div>
       ) : null}
 
@@ -1094,12 +1094,12 @@ export function EmployeeDeliveryWorkspace({
         <section className="employee-state" aria-labelledby="employee-no-open-round">
           <WarningCircle aria-hidden="true" size={42} />
           <h2 id="employee-no-open-round">{isBackdatedBilling
-            ? 'วันที่นี้ไม่มีรอบส่งที่เปิดอยู่'
-            : 'ยังไม่มีรอบส่งที่เปิดอยู่'}</h2>
+            ? translateUi('วันที่นี้ไม่มีรอบส่งที่เปิดอยู่')
+            : translateUi('ยังไม่มีรอบส่งที่เปิดอยู่')}</h2>
           <p>{isBackdatedBilling
-            ? 'ไม่สามารถเพิ่มบิลลงในวันที่ปิดรอบแล้วได้ เพื่อไม่ให้ยอดสต๊อกที่ปิดวันเปลี่ยนย้อนหลัง'
-            : 'หัวหน้ารอบต้องเปิดรอบส่งและเพิ่มคุณเข้ารอบก่อน จึงจะเลือกร้านและบันทึกส่งได้'}</p>
-          <button className="employee-text-button" disabled={data.loadingReference} onClick={data.retryLoad} type="button">โหลดรอบอีกครั้ง</button>
+            ? translateUi('ไม่สามารถเพิ่มบิลลงในวันที่ปิดรอบแล้วได้ เพื่อไม่ให้ยอดสต๊อกที่ปิดวันเปลี่ยนย้อนหลัง')
+            : translateUi('หัวหน้ารอบต้องเปิดรอบส่งและเพิ่มคุณเข้ารอบก่อน จึงจะเลือกร้านและบันทึกส่งได้')}</p>
+          <button className="employee-text-button" disabled={data.loadingReference} onClick={data.retryLoad} type="button">{translateUi('โหลดรอบอีกครั้ง')}</button>
         </section>
       ) : (
         <>
