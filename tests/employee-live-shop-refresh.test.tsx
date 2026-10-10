@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { EmployeeDeliveryGateway } from '../src/EmployeeDeliveryWorkspace';
 import type { DeliveryPosContext, EmployeeStockState, ShopCard } from '../src/types/app';
+import { publishDataChange } from '../src/lib/dataChange';
 
 const supabaseMock = vi.hoisted(() => {
   const state: { postgresChangeListener: (() => void) | null } = {
@@ -126,6 +127,72 @@ const stockState: EmployeeStockState = {
 };
 
 describe('employee live shop loading', () => {
+  it('refreshes the stock shown in an open admin shop after factory stock changes', async () => {
+    let available = 5;
+    const loadDeliveryPosContext = vi.fn(async () => ({
+      ...posContext,
+      items: [{ ...posContext.items[0], stock_quantity: available }],
+    }));
+    const gateway = {
+      loadReferenceData: vi.fn().mockResolvedValue({
+        rounds: [{
+          id: 'round-1', service_date: '2026-08-11', name: 'งานประจำวัน',
+          round_type: 'daily', status: 'open', opened_at: '2026-08-11T01:00:00Z',
+        }],
+        iceTypes: [{ id: 'ice-1', code: 'ICE', name: 'หลอดเล็ก', unit: 'ถุง' }],
+      }),
+      loadShopCards: vi.fn().mockResolvedValue([shopCard]),
+      loadEmployeeStockState: vi.fn(),
+      loadDeliveryPosContext,
+      invalidateDeliveryPosContextCache: vi.fn(),
+      recordDelivery: vi.fn(),
+    } as unknown as EmployeeDeliveryGateway;
+
+    render(<EmployeeDeliveryWorkspace
+      gateway={gateway}
+      requestScope="admin-live-stock"
+      serviceDate="2026-08-11"
+    />);
+    await userEvent.setup().click(await screen.findByRole('button', { name: /^เลือกร้าน / }));
+    await screen.findByText('คงเหลือ 5 ถุง');
+    expect(loadDeliveryPosContext).toHaveBeenNthCalledWith(1, 'stop-1', {
+      destinationKind: 'regular', serviceDate: '2026-08-11', forceRefresh: true,
+    });
+
+    available = 79;
+    act(() => publishDataChange(['stock']));
+
+    await waitFor(() => expect(screen.getByText('คงเหลือ 79 ถุง')).toBeTruthy());
+    expect(loadDeliveryPosContext).toHaveBeenCalledTimes(2);
+    expect(loadDeliveryPosContext).toHaveBeenLastCalledWith('stop-1', {
+      destinationKind: 'regular', serviceDate: '2026-08-11', forceRefresh: true,
+    });
+  });
+
+  it('starts a new stock read after an older in-flight read completes', async () => {
+    let finishOldRead!: (value: { data: DeliveryPosContext; error: null }) => void;
+    const oldRead = new Promise<{ data: DeliveryPosContext; error: null }>((resolve) => {
+      finishOldRead = resolve;
+    });
+    supabaseMock.client.rpc
+      .mockReturnValueOnce(oldRead)
+      .mockResolvedValueOnce({
+        data: { ...posContext, items: [{ ...posContext.items[0], stock_quantity: 79 }] },
+        error: null,
+      });
+    const gateway = createSupabaseGateway();
+    const options = { destinationKind: 'regular' as const, serviceDate: '2026-08-11' };
+
+    const oldContext = gateway.loadDeliveryPosContext!('stop-1', options);
+    const freshContext = gateway.loadDeliveryPosContext!('stop-1', { ...options, forceRefresh: true });
+    expect(supabaseMock.client.rpc).toHaveBeenCalledTimes(1);
+
+    finishOldRead({ data: posContext, error: null });
+    await oldContext;
+    expect((await freshContext).items[0].stock_quantity).toBe(79);
+    expect(supabaseMock.client.rpc).toHaveBeenCalledTimes(2);
+  });
+
   it('requires the loose-transaction capability before enabling casual customers', async () => {
     supabaseMock.client.rpc
       .mockResolvedValueOnce({

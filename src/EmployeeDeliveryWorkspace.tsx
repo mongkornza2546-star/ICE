@@ -532,6 +532,12 @@ export function createSupabaseGateway(): EmployeeDeliveryGateway {
         return markPosContextCache(stored.context, stored.cachedAt, false);
       }
 
+      // A stock notification can arrive while an older read is still running.
+      // Wait for that read, then start a new request against the updated ledger.
+      if (options?.forceRefresh) {
+        await posContextRequests.get(key)?.catch(() => undefined);
+      }
+
       return singleFlight(posContextRequests, key, async () => {
         try {
           if (!supabase) throw new Error('ยังไม่ได้ตั้งค่า Supabase');
@@ -849,14 +855,20 @@ export function EmployeeDeliveryWorkspace({
     }
     if (data.anySubmitting || !catalogRefreshPending.current) return;
     catalogRefreshPending.current = false;
+    gateway.invalidateDeliveryPosContextCache?.();
     data.refreshShopCatalog();
-  }, [data.anySubmitting, data.refreshShopCatalog, isActive]);
+    void data.refreshOpenPosContext();
+  }, [data.anySubmitting, data.refreshOpenPosContext, data.refreshShopCatalog, gateway, isActive]);
 
   useEffect(() => subscribeToDataChange(['stock', 'pos'], () => {
-    if (!isActive || data.anySubmitting) return;
+    if (!isActive || data.anySubmitting) {
+      catalogRefreshPending.current = true;
+      return;
+    }
     gateway.invalidateDeliveryPosContextCache?.();
     data.retryLoad();
-  }), [data.anySubmitting, data.retryLoad, gateway, isActive]);
+    void data.refreshOpenPosContext();
+  }), [data.anySubmitting, data.refreshOpenPosContext, data.retryLoad, gateway, isActive]);
 
   useEffect(() => subscribeToDataChange(['payment', 'receivable'], () => {
     if (!isActive) return;
@@ -869,7 +881,11 @@ export function EmployeeDeliveryWorkspace({
       const now = Date.now();
       if (now - lastForegroundRefreshAt.current < FOREGROUND_REFRESH_MIN_MS) return;
       lastForegroundRefreshAt.current = now;
-      if (!data.anySubmitting) data.retryLoad();
+      if (!data.anySubmitting) {
+        gateway.invalidateDeliveryPosContextCache?.();
+        data.retryLoad();
+        void data.refreshOpenPosContext();
+      }
     };
     const refreshFromCatalogChange = () => {
       if (anySubmittingRef.current) {
@@ -898,7 +914,7 @@ export function EmployeeDeliveryWorkspace({
       window.removeEventListener('focus', refreshOnFocus);
       void client.removeChannel(channel);
     };
-  }, [data.refreshShopCatalog, data.retryLoad, isActive, requestScope, serviceDate]);
+  }, [data.refreshOpenPosContext, data.refreshShopCatalog, data.retryLoad, gateway, isActive, requestScope, serviceDate]);
 
   if (data.loadingReference) {
     return <EmployeeState

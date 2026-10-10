@@ -733,6 +733,7 @@ export function useEmployeeDeliveryData({
       void loadPosContext(card.round_stop_id, {
         destinationKind: card.destination_kind ?? 'regular',
         serviceDate,
+        forceRefresh: !enableAssignedStockFlow,
       }).then((loadedContext) => {
         if (requestId !== posContextRequestId.current) return;
         const context = withKnownIceTypeImages(loadedContext, iceTypes);
@@ -902,6 +903,34 @@ export function useEmployeeDeliveryData({
     }
     setReferenceReloadId((current) => current + 1);
   }, [loadCards, loadStockState, selectedRoundId]);
+
+  const refreshOpenPosContext = useCallback(async () => {
+    if (!selectedCard || !gateway.loadDeliveryPosContext) return;
+    const requestId = ++posContextRequestId.current;
+    setLoadingPosContext(true);
+    setPosContextError(null);
+    try {
+      const loaded = await gateway.loadDeliveryPosContext(selectedCard.round_stop_id, {
+        destinationKind: selectedCard.destination_kind ?? 'regular',
+        serviceDate,
+        forceRefresh: true,
+      });
+      if (requestId !== posContextRequestId.current) return;
+      const context = withKnownIceTypeImages(loaded, iceTypes);
+      setPosContext(context);
+      setDeliveryQuantities((current) => Object.fromEntries(
+        iceTypes.map((iceType) => {
+          const available = context.items.find((item) => item.ice_type_id === iceType.id)?.stock_quantity ?? 0;
+          return [iceType.id, Math.min(current[iceType.id] ?? 0, available)];
+        }),
+      ));
+    } catch (loadError) {
+      if (requestId !== posContextRequestId.current) return;
+      setPosContextError(employeeErrorMessage(loadError));
+    } finally {
+      if (requestId === posContextRequestId.current) setLoadingPosContext(false);
+    }
+  }, [gateway, iceTypes, selectedCard, serviceDate]);
 
   const refreshShopCatalog = useCallback(() => {
     setSuccess(null);
@@ -1623,6 +1652,7 @@ export function useEmployeeDeliveryData({
     setPaymentEvidence,
     setApprovalReason,
     retryLoad,
+    refreshOpenPosContext,
     refreshShopCatalog,
     refreshCollectionOutstanding,
     printLatestReceipt,
