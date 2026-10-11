@@ -1,3 +1,4 @@
+import { deliveryLineTotal, deliverySubtotal, exclusiveVat } from '../../lib/vat';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import type {
   DeliveryRound,
@@ -105,7 +106,7 @@ interface ImmediateSaleRetry extends PendingRequestIdentity {
 }
 
 type DeliveryRequestPayload = Pick<EmployeeDeliveryPayload,
-  'destinationKind' | 'roundStopId' | 'items' | 'status' | 'note' | 'paymentTerm' | 'approvalId'>;
+  'destinationKind' | 'roundStopId' | 'items' | 'status' | 'note' | 'paymentTerm' | 'approvalId' | 'expectedVatRate' | 'expectedTotal'>;
 
 export function useEmployeeDeliveryData({
   canCollectShopPayments = true,
@@ -1104,6 +1105,8 @@ export function useEmployeeDeliveryData({
     event?.preventDefault();
     if (!selectedCard || !selectedRound || submitting || submissionInFlight.current) return;
     const trimmedNote = note.trim();
+    const expectedVatRate = selectedPaymentTerm === 'credit' && posContext?.payment_profile?.vat_enabled ? 7 : 0;
+    const expectedTotal = exclusiveVat(deliverySubtotal(items, posContext?.items ?? []), expectedVatRate).total;
     const payload: DeliveryRequestPayload = retryPayload ?? {
       destinationKind: selectedCard.destination_kind ?? 'regular',
       roundStopId: selectedCard.round_stop_id,
@@ -1112,6 +1115,7 @@ export function useEmployeeDeliveryData({
       note: trimmedNote || null,
       paymentTerm: status === 'delivered' ? selectedPaymentTerm : null,
       approvalId,
+      ...(posContext ? { expectedVatRate, expectedTotal: status === 'delivered' ? expectedTotal : null } : {}),
     };
     const isDelivery = payload.status === 'delivered';
     const signature = `${requestScope}:${JSON.stringify(payload)}`;
@@ -1148,10 +1152,7 @@ export function useEmployeeDeliveryData({
       }
       if (selectedPaymentTerm === 'credit'
         && posContext.payment_profile.credit_remaining != null
-        && items.reduce((total, item) => {
-          const contextItem = posContext.items.find((candidate) => candidate.ice_type_id === item.ice_type_id);
-          return total + item.quantity * (contextItem?.unit_price ?? 0);
-        }, 0) > posContext.payment_profile.credit_remaining
+        && expectedTotal > posContext.payment_profile.credit_remaining
         && !approvalId) {
         setEntryError('ยอดนี้เกินวงเงินเครดิต ต้องขออนุมัติและได้รับอนุมัติก่อนบันทึกส่ง');
         return;
@@ -1167,10 +1168,7 @@ export function useEmployeeDeliveryData({
     }
     if (!retryPayload && isDelivery && selectedPaymentTerm === 'immediate' && selectedCard.destination_kind !== 'event' && gateway.recordImmediateSale && !onOpenCollection) {
       setPaymentTerm(selectedPaymentTerm);
-      const totalAmount = items.reduce((total, item) => {
-        const contextItem = posContext?.items.find((candidate) => candidate.ice_type_id === item.ice_type_id);
-        return total + item.quantity * (contextItem?.unit_price ?? 0);
-      }, 0);
+      const totalAmount = deliverySubtotal(items, posContext?.items ?? []);
       const draftResult: DeliveryFinancialResult = {
         delivery_event_id: '',
         round_stop_id: selectedCard.round_stop_id,
@@ -1188,7 +1186,7 @@ export function useEmployeeDeliveryData({
             name: contextItem?.name,
             unit: contextItem?.unit,
             unit_price: contextItem?.unit_price ?? null,
-            line_total: item.quantity * (contextItem?.unit_price ?? 0),
+            line_total: deliveryLineTotal(item.quantity, contextItem?.unit_price ?? 0),
             price_source: contextItem?.price_source ?? null,
             price_source_id: contextItem?.price_source_id ?? null,
           };
@@ -1287,6 +1285,16 @@ export function useEmployeeDeliveryData({
       const code = typeof submitError === 'object' && submitError && 'code' in submitError
         ? String(submitError.code)
         : '';
+      const vatConflict = typeof submitError === 'object' && submitError && 'details' in submitError
+        && submitError.details === 'VAT_OR_PRICE_CHANGED';
+      // The VAT guard checks under the idempotency lock and only rejects an
+      // uncommitted sale, so even an old offline retry can safely be reviewed.
+      if (!recorded && vatConflict) {
+        clearPendingRequest(storageSignature, request.key);
+        setApprovalId(null);
+        gateway.invalidateDeliveryPosContextCache?.();
+        await refreshOpenPosContext();
+      }
       // A SQL error rejects this attempt. On a retry it does not establish
       // whether the earlier attempt committed, so retain its original key.
       if (!recorded && !isRetry && /^(?:[0-9][0-9A-Z]|P0|XX)[0-9A-Z]{3}$/.test(code) && !code.startsWith('08')) {
@@ -1328,10 +1336,9 @@ export function useEmployeeDeliveryData({
           paymentResult.total_amount ?? 0,
         ), 0)
         : null;
-      const requestedAmount = paymentOutstandingAmount ?? items.reduce((total, item) => {
-        const contextItem = posContext.items.find((candidate) => candidate.ice_type_id === item.ice_type_id);
-        return total + item.quantity * (contextItem?.unit_price ?? 0);
-      }, 0);
+      const requestedAmount = paymentOutstandingAmount ?? exclusiveVat(
+        deliverySubtotal(items, posContext.items), paymentTerm === 'credit' && posContext.payment_profile?.vat_enabled ? 7 : 0,
+      ).total;
       const approval = await gateway.requestFinancialApproval({
         roundStopId: selectedCard.round_stop_id,
         kind: paymentOutstandingAmount == null ? 'credit_limit' : 'outstanding_balance',
@@ -1494,10 +1501,7 @@ export function useEmployeeDeliveryData({
               forceRefresh: true,
             },
           ), iceTypes);
-          const refreshedTotal = items.reduce((total, item) => {
-            const refreshedItem = refreshedContext.items.find((candidate) => candidate.ice_type_id === item.ice_type_id);
-            return total + item.quantity * (refreshedItem?.unit_price ?? 0);
-          }, 0);
+          const refreshedTotal = deliverySubtotal(items, refreshedContext.items);
           const refreshedResult: DeliveryFinancialResult = {
             ...paymentResult,
             total_amount: refreshedTotal,
@@ -1508,7 +1512,7 @@ export function useEmployeeDeliveryData({
                 name: refreshedItem?.name,
                 unit: refreshedItem?.unit,
                 unit_price: refreshedItem?.unit_price ?? null,
-                line_total: item.quantity * (refreshedItem?.unit_price ?? 0),
+                line_total: deliveryLineTotal(item.quantity, refreshedItem?.unit_price ?? 0),
                 price_source: refreshedItem?.price_source ?? null,
                 price_source_id: refreshedItem?.price_source_id ?? null,
               };

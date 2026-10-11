@@ -98,14 +98,37 @@ export function printBillingStatement(statement: BillingStatement, existingPrint
   table.append(thead, tbody);
   main.append(table);
 
+  // Full amounts and prior payments were frozen when the statement was issued.
+  if (statement.gross_amount != null) {
+    const summary = doc.createElement('section');
+    const rows: Array<[string, number]> = [
+      ['ค่าสินค้าก่อน VAT', Number(statement.subtotal_amount)],
+      ['VAT', Number(statement.vat_amount)],
+      ['ยอดรวมสุทธิ', Number(statement.gross_amount)],
+      ['ชำระก่อนออกใบวางบิล', Number(statement.gross_amount) - Number(statement.total_amount)],
+    ];
+    for (const [label, amount] of rows) {
+      const row = doc.createElement('p');
+      row.className = 'number';
+      row.textContent = `${label}: ${money.format(amount)}`;
+      summary.append(row);
+    }
+    main.append(summary);
+  }
   const total = doc.createElement('div');
   total.className = 'total';
   const totalLabel = doc.createElement('span');
-  totalLabel.textContent = 'ยอดรวม';
+  totalLabel.textContent = statement.gross_amount == null ? 'ยอดรวม' : 'ยอดวางบิล';
   const totalAmount = doc.createElement('span');
   totalAmount.textContent = money.format(Number(statement.total_amount));
   total.append(totalLabel, totalAmount);
   main.append(total);
+  if (statement.gross_amount != null) {
+    const remaining = doc.createElement('p');
+    remaining.className = 'number';
+    remaining.textContent = `ชำระหลังออกใบวางบิล: ${money.format(Math.max(Number(statement.total_amount) - Number(statement.outstanding_amount), 0))} · คงเหลือ: ${money.format(Number(statement.outstanding_amount))}`;
+    main.append(remaining);
+  }
 
   const notice = doc.createElement('p');
   notice.className = 'notice';

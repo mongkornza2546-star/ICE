@@ -51,6 +51,7 @@ export interface DeliveryPosItem {
 }
 
 export interface ShopPaymentProfile {
+  vat_enabled?: boolean;
   allowed_payment_terms: PaymentTerm[];
   default_payment_term: PaymentTerm;
   allowed_payment_methods: PaymentMethod[];
@@ -98,6 +99,9 @@ export interface DeliveryPosContext {
 }
 
 export interface DeliveryFinancialResult {
+  subtotal_amount?: number | null;
+  vat_rate?: number | null;
+  vat_amount?: number | null;
   delivery_event_id: string;
   round_stop_id: string;
   charge_id: string | null;
@@ -568,6 +572,7 @@ export interface IceTypePriceSetting {
 }
 
 export interface ShopPaymentProfileSetting {
+  vat_enabled?: boolean;
   id?: string;
   shop_id: string;
   allowed_payment_terms: PaymentTerm[];

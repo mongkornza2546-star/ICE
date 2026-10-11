@@ -471,6 +471,7 @@ export async function saveShopPaymentProfile(
 
   const payload = {
     shop_id: profile.shop_id,
+    vat_enabled: profile.allowed_payment_terms.includes('credit') && Boolean(profile.vat_enabled),
     allowed_payment_terms: profile.allowed_payment_terms,
     default_payment_term: profile.default_payment_term,
     allowed_payment_methods: profile.allowed_payment_methods,

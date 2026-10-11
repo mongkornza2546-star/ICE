@@ -1,3 +1,4 @@
+import { VatBreakdown } from './VatBreakdown';
 import { uiDateTimeFormat, translateUi, useLanguage } from '../../../i18n';
 import { ArrowLeft, CaretRight, FileText, Printer, WarningCircle } from '@phosphor-icons/react';
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
@@ -269,11 +270,12 @@ export function DailyCreditAcknowledgementPanel({ serviceDate, printerName, shop
               <span>{line.ice_type_name} · {Number(line.quantity)} {line.ice_type_unit}{line.unit_price == null ? '' : ` × ${money.format(Number(line.unit_price))}`}</span>
               <b>{money.format(Number(line.line_total))}</b>
             </li>)}</ul>
+            {Number(invoice.vat_rate) > 0 ? <VatBreakdown subtotal={Number(invoice.subtotal_amount)} vat={Number(invoice.vat_amount)} total={Number(invoice.total_amount)} rate={invoice.vat_rate} /> : null}
           </div>)}
           {detail?.shopId === selectedShopId && detail.invoices ? <div className="daily-credit-signoff__detail-total"><strong>{translateUi('รวม ')}{detail.invoices.length} INV</strong><b>{money.format(detail.invoices.reduce((sum, invoice) => sum + Number(invoice.total_amount), 0))}</b></div> : null}
         </div>
         <div className="daily-credit-signoff__actions">
-          <span className={selectedShop.is_stale ? 'is-stale' : ''}>{selectedShop.is_stale ? 'ยอดเปลี่ยน · พิมพ์ฉบับใหม่' : selectedShop.document_id ? translateUi('ฉบับที่ {0}', { 0: selectedShop.document_version ?? '—' }) : 'ยังไม่ได้สร้างใบ'}{selectedShop.evidence_count ? translateUi(' · มีรูปใบเซ็น {0} รูป', { 0: selectedShop.evidence_count }) : ''}</span>
+          <span className={selectedShop.is_stale ? 'is-stale' : ''}>{selectedShop.is_stale ? translateUi('ยอดเปลี่ยน · พิมพ์ฉบับใหม่') : selectedShop.document_id ? translateUi('ฉบับที่ {0}', { 0: selectedShop.document_version ?? '—' }) : translateUi('ยังไม่ได้สร้างใบ')}{selectedShop.evidence_count ? translateUi(' · มีรูปใบเซ็น {0} รูป', { 0: selectedShop.evidence_count }) : ''}</span>
           <div>
             <button disabled={busyShopId === selectedShopId} onClick={() => void print(selectedShop)} type="button"><Printer size={17} />{selectedShop.document_id && !selectedShop.is_stale ? translateUi('พิมพ์ซ้ำ') : translateUi('พิมพ์ใบรวม')}</button>
             {selectedShop.latest_evidence_path ? <button disabled={busyShopId === selectedShopId} onClick={() => void viewEvidence(selectedShop)} type="button">{translateUi('ดูรูป')}</button> : null}
@@ -306,7 +308,7 @@ export function DailyCreditAcknowledgementPanel({ serviceDate, printerName, shop
     {!loading && items.length > 0 && filteredItems.length === 0 ? <p className="financial-ops__empty">{translateUi('ไม่มีร้านในตึกและโซนที่เลือก')}</p> : null}
     <div className="daily-credit-signoff__list">
       {!loading && filteredItems.map((item) => {
-        const label = item.is_stale ? 'ยอดเปลี่ยน · พิมพ์ฉบับใหม่' : item.document_id ? translateUi('ฉบับที่ {0}', { 0: item.document_version ?? '—' }) : 'ยังไม่ได้สร้างใบ';
+        const label = item.is_stale ? 'ยอดเปลี่ยน · พิมพ์ฉบับใหม่' : item.document_id ? translateUi('ฉบับที่ {0}', { 0: item.document_version ?? '—' }) : translateUi('ยังไม่ได้สร้างใบ');
         return <article key={item.shop_id}>
           <button className="daily-credit-signoff__entry" id={`credit-shop-${item.shop_id}`} onClick={() => selectShop(item.shop_id)} type="button">
           <div className="daily-credit-signoff__summary">

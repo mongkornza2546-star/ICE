@@ -44,6 +44,8 @@ import { loadCurrentCollectionQueue } from './lib/collectionQueue';
 import { uiDateTimeFormat, translateUi, useLanguage } from './i18n';
 
 export interface EmployeeDeliveryPayload {
+  expectedVatRate?: number;
+  expectedTotal?: number | null;
   destinationKind: NonNullable<ShopCard['destination_kind']>;
   roundStopId: string;
   items: Array<{ ice_type_id: string; quantity: number }>;
@@ -613,7 +615,7 @@ export function createSupabaseGateway(): EmployeeDeliveryGateway {
       if (!supabase) throw new Error('ยังไม่ได้ตั้งค่า Supabase');
       const isEventStop = payload.destinationKind === 'event';
       const { data, error } = await supabase.rpc(
-        isEventStop ? 'record_event_ice_delivery' : 'record_delivery', {
+        isEventStop ? 'record_event_ice_delivery' : 'record_delivery_with_vat_check', {
         p_round_stop_id: payload.roundStopId,
         p_items: payload.items,
         p_stop_status: payload.status,
@@ -623,6 +625,8 @@ export function createSupabaseGateway(): EmployeeDeliveryGateway {
         ...(isEventStop ? {} : {
           p_payment_term: payload.paymentTerm,
           p_approval_id: payload.approvalId ?? null,
+          p_expected_vat_rate: payload.expectedVatRate ?? 0,
+          p_expected_total: payload.expectedTotal ?? null,
         }),
       });
       if (error) throw error;

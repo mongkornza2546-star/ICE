@@ -1,3 +1,4 @@
+import { VatBreakdown } from './VatBreakdown';
 import { uiDateTimeFormat, translateUi, useLanguage } from '../../../i18n';
 import { useEffect, useState, type RefObject } from 'react';
 import {
@@ -262,6 +263,7 @@ export function PaymentModal({
                       id={`financial-charge-items-${charge.charge_id}`}
                       role="region"
                     >
+                      {Number(charge.vat_rate) > 0 ? <VatBreakdown subtotal={Number(charge.subtotal_amount)} vat={Number(charge.vat_amount)} total={charge.original_amount} rate={charge.vat_rate} paid={charge.original_amount - charge.outstanding_amount} /> : null}
                       {(charge.items ?? []).map((item) => (
                         <div key={item.ice_type_id}>
                           <span>{item.name} × {item.quantity.toLocaleString('th-TH')} {item.unit}</span>

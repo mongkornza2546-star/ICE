@@ -114,6 +114,28 @@ function DeliveryHarness({
 }
 
 describe('employee delivery to collection handoff', () => {
+  it('releases an uncommitted VAT-conflict retry so the refreshed sale gets a new key', async () => {
+    const user = userEvent.setup();
+    const gateway = createGateway([]);
+    const recordDelivery = vi.fn()
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+      .mockRejectedValueOnce({ code: 'P0001', details: 'VAT_OR_PRICE_CHANGED', message: 'VAT changed' })
+      .mockResolvedValue(undefined);
+    gateway.recordDelivery = recordDelivery;
+    gateway.invalidateDeliveryPosContextCache = vi.fn();
+    render(<DeliveryHarness gateway={gateway} onOpenCollection={vi.fn()} requestScope="vat-conflict-retry" />);
+    await user.click(await screen.findByRole('button', { name: 'เลือกร้าน' }));
+    await user.click(screen.getByRole('button', { name: 'ใส่จำนวน' }));
+    await user.click(screen.getByRole('button', { name: 'ส่งอย่างเดียว' }));
+    await user.click(await screen.findByRole('button', { name: 'ลองคำขอเดิมอีกครั้ง' }));
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'ลองคำขอเดิมอีกครั้ง' })).toBeNull());
+    expect(recordDelivery.mock.calls[1][0].idempotencyKey).toBe(recordDelivery.mock.calls[0][0].idempotencyKey);
+    expect(gateway.invalidateDeliveryPosContextCache).toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: 'ส่งอย่างเดียว' }));
+    await waitFor(() => expect(recordDelivery).toHaveBeenCalledTimes(3));
+    expect(recordDelivery.mock.calls[2][0].idempotencyKey).not.toBe(recordDelivery.mock.calls[0][0].idempotencyKey);
+  });
+
   it.each([
     ['ส่งอย่างเดียว', 'ส่งและรับชำระ'],
     ['ส่งและรับชำระ', 'ส่งอย่างเดียว'],

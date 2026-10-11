@@ -40,7 +40,7 @@ export type SalesDocumentPayload = {
   recordedByName?: string | null;
   items: SalesDocumentItem[];
   allocations: SalesDocumentAllocation[];
-  totals: { total: number; received: number | null; change: number | null };
+  totals: { total: number; received: number | null; change: number | null; subtotal?: number; vat?: number; vatRate?: number };
   voidInfo: { voidedAt: string; reason: string; voidedBy?: string | null } | null;
 };
 
@@ -60,6 +60,9 @@ type StoredCharge = {
 };
 
 export type StoredSalesDocument = {
+  subtotal_amount?: number | string | null;
+  vat_amount?: number | string | null;
+  vat_rate?: number | string | null;
   document_type: 'INV' | 'REC';
   document_number: string;
   document_title: string;
@@ -132,6 +135,7 @@ export function salesDocumentFromStored(document: StoredSalesDocument): SalesDoc
       amount: Number(charge.received_amount),
     })),
     totals: {
+      ...(document.subtotal_amount != null ? { subtotal: Number(document.subtotal_amount), vat: Number(document.vat_amount ?? 0), vatRate: Number(document.vat_rate ?? 0) } : {}),
       total: Number(document.total_amount ?? document.allocated_amount ?? 0),
       received: document.received_amount == null ? null : Number(document.received_amount),
       change: document.change_amount == null ? null : Number(document.change_amount),
@@ -339,6 +343,10 @@ export function printSalesDocument(
     root.append(allocationSection);
   }
 
+  if (payload.totals.vatRate && payload.totals.vatRate > 0) {
+    line(`ค่าสินค้าก่อน VAT ${money.format(payload.totals.subtotal ?? 0)}`);
+    line(`VAT ${payload.totals.vatRate}% ${money.format(payload.totals.vat ?? 0)}`);
+  }
   const total = printDocument.createElement('div');
   total.className = 'total';
   const totalLabel = printDocument.createElement('span');

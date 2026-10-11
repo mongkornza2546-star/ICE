@@ -2,6 +2,24 @@ import { describe, expect, it, vi } from 'vitest';
 import { printDailyCreditAcknowledgement } from '../src/lib/dailyCreditAcknowledgementPrint';
 
 describe('daily credit delivery slip printing', () => {
+  it('prints stored VAT separately from the full goods total', () => {
+    const printDocument = document.implementation.createHTMLDocument();
+    const printWindow = {
+      document: printDocument, addEventListener: vi.fn(), close: vi.fn(), focus: vi.fn(), print: vi.fn(),
+    } as unknown as Window;
+    printDailyCreditAcknowledgement({
+      document_id: 'vat-document', document_title: 'ใบส่งของ', version: 1,
+      generated_at: '2026-09-24T12:59:00.000Z', service_date: '2026-09-24',
+      shop_code: 'VAT', shop_name: 'ร้านเครดิต', invoices: [],
+      item_totals: [{ name: 'น้ำแข็ง', unit: 'ถุง', quantity: 40, line_total: 1000 }],
+      subtotal_amount: 1000, vat_amount: 70, total_amount: 1070,
+    }, printWindow);
+    const text = printDocument.body.textContent ?? '';
+    expect(text).toContain('ค่าสินค้าก่อน VAT ฿1,000.00');
+    expect(text).toContain('VAT ฿70.00');
+    expect(text).toContain('ยอดเครดิตวันนี้฿1,070.00');
+  });
+
   it('prints the date, enlarged item rows, and the current printer nickname', () => {
     const printDocument = document.implementation.createHTMLDocument();
     const printWindow = {

@@ -1,3 +1,4 @@
+import { VatBreakdown } from './VatBreakdown';
 import { uiDateTimeFormat, translateUi, useLanguage } from '../../../i18n';
 import { FileText, Printer, Prohibit, X } from '@phosphor-icons/react';
 import { useMemo, useState } from 'react';
@@ -42,6 +43,10 @@ export function BillingStatementsSection({
     .filter((charge) => selected.has(charge.charge_id))
     .reduce((total, charge) => total + Number(charge.outstanding_amount), 0);
 
+  const selectedCharges = availableCharges.filter((charge) => selected.has(charge.charge_id));
+  const selectedSubtotal = selectedCharges.reduce((sum, charge) => sum + Number(charge.subtotal_amount ?? charge.original_amount), 0);
+  const selectedVat = selectedCharges.reduce((sum, charge) => sum + Number(charge.vat_amount ?? 0), 0);
+  const selectedGross = selectedCharges.reduce((sum, charge) => sum + Number(charge.original_amount), 0);
   const openEditor = () => {
     setSelectedIds(availableCharges
       .filter((charge) => charge.due_date <= currentServiceDate)
@@ -109,6 +114,7 @@ export function BillingStatementsSection({
             <b>{money.format(Number(charge.outstanding_amount))}</b>
           </label>)}
         </div>
+        {selectedCharges.some((charge) => Number(charge.vat_rate) > 0) ? <VatBreakdown subtotal={selectedSubtotal} vat={selectedVat} total={selectedGross} paid={selectedGross - selectedTotal} /> : null}
         <div className="credit-ar__statement-total"><span>{translateUi('เลือก ')}{selectedIds.length}{translateUi(' บิล')}</span><strong>{money.format(selectedTotal)}</strong></div>
         {error ? <p className="credit-ar__action-error" role="alert">{translateUi(error)}</p> : null}
         <div className="credit-ar__statement-footer"><button className="secondary-button" disabled={working} onClick={() => setEditorOpen(false)} type="button">{translateUi('ยกเลิก')}</button><button className="primary-button" disabled={working || selectedIds.length === 0} onClick={() => void create()} type="button"><Printer size={17} />{translateUi('ออกและพิมพ์ใบวางบิล')}</button></div>

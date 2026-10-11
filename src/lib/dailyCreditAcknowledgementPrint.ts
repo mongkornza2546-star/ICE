@@ -10,6 +10,8 @@ export type DailyCreditAcknowledgementItem = {
 };
 
 export type DailyCreditAcknowledgementDocument = {
+  subtotal_amount?: number | string;
+  vat_amount?: number | string;
   document_id: string;
   document_title: string;
   version: number;
@@ -19,6 +21,9 @@ export type DailyCreditAcknowledgementDocument = {
   shop_name: string;
   shop_location?: string | null;
   invoices: Array<{
+    subtotal_amount?: number | string;
+    vat_amount?: number | string;
+    vat_rate?: number;
     document_number: string;
     recorded_at: string;
     recorded_by: string;
@@ -46,7 +51,7 @@ export function printDailyCreditAcknowledgement(
   payload: DailyCreditAcknowledgementDocument,
   existingPrintWindow?: Window | null,
 ) {
-  const heightMm = Math.max(90, 70 + payload.item_totals.length * 9);
+  const heightMm = Math.max(90, 70 + payload.item_totals.length * 9 + (Number(payload.vat_amount) > 0 ? 12 : 0));
   const printWindow = existingPrintWindow
     ?? window.open('', '_blank', `popup,width=360,height=${Math.ceil(heightMm * 3.78)}`);
   if (!printWindow) return false;
@@ -107,6 +112,10 @@ export function printDailyCreditAcknowledgement(
   }
   root.append(totals);
 
+  if (Number(payload.vat_amount) > 0) {
+    line(`ค่าสินค้าก่อน VAT ${money.format(Number(payload.subtotal_amount))}`);
+    line(`VAT ${money.format(Number(payload.vat_amount))}`);
+  }
   const grandTotal = printDocument.createElement('div');
   grandTotal.className = 'grand-total';
   const grandTotalLabel = printDocument.createElement('span');

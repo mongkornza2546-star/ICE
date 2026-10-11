@@ -89,6 +89,7 @@ export interface StockMovementPayload {
 }
 
 export interface DeliveryPayload {
+  expectedVatRate?: 0 | 7;
   roundStopId: string;
   status: OfflineDeliveryStatusV1;
   note: string | null;
@@ -171,6 +172,9 @@ export interface OfflineStoredInvoiceV1 extends OfflineStoredSalesDocumentBaseV1
   service_date: string;
   due_date: string;
   payment_term: Exclude<OfflinePaymentTermV1, 'immediate'>;
+  subtotal_amount?: number;
+  vat_rate?: number;
+  vat_amount?: number;
   total_amount: number;
   items: Array<{
     ice_type_name: string;
@@ -225,6 +229,9 @@ export interface OfflineDeliveryResultV1 {
   charge_id: string | null;
   charge_number: string | null;
   service_date: string | null;
+  subtotal_amount?: number | null;
+  vat_rate?: number | null;
+  vat_amount?: number | null;
   total_amount: number | null;
   payment_term: OfflinePaymentTermV1 | null;
   payment_status: 'unpaid' | 'partial' | 'paid' | null;
@@ -434,7 +441,7 @@ function isNonNegativeHalfQuantity(value: unknown): value is number {
   return isNonNegativeNumber(value) && Number.isSafeInteger(value * 2);
 }
 
-function roundedLineTotalMinor(quantity: unknown, unitPrice: unknown): number | null {
+export function roundedLineTotalMinor(quantity: unknown, unitPrice: unknown): number | null {
   if (!isPositiveHalfQuantity(quantity)) return null;
   const unitPriceMinor = minorUnits(unitPrice);
   if (unitPriceMinor === null) return null;
@@ -530,8 +537,9 @@ function validateDeliveryPayload(payload: unknown): boolean {
       'paymentTerm',
       'approvalId',
       'expectedTotal',
-      'expectedPaymentProfileFingerprint',
+      'expectedPaymentProfileFingerprint', 'expectedVatRate',
     ]) &&
+    (payload.expectedVatRate === undefined || payload.expectedVatRate === 0 || (payload.expectedVatRate === 7 && payload.paymentTerm === 'credit')) &&
     isUuid(payload.roundStopId) &&
     DELIVERY_STATUSES.includes(payload.status as OfflineDeliveryStatusV1) &&
     isNullableString(payload.note) &&
@@ -551,7 +559,7 @@ function validateDeliveryPayload(payload: unknown): boolean {
       payload.expectedTotal !== null &&
       typeof payload.expectedPaymentProfileFingerprint === 'string' &&
       SHA256_HEX.test(payload.expectedPaymentProfileFingerprint) &&
-      expectedItemsTotalMinor(payload.items as unknown[]) === minorUnits(payload.expectedTotal)
+      exclusiveTotalMinor(expectedItemsTotalMinor(payload.items as unknown[]), Number(payload.expectedVatRate ?? 0)) === minorUnits(payload.expectedTotal)
     );
   }
 
@@ -561,6 +569,7 @@ function validateDeliveryPayload(payload: unknown): boolean {
     payload.paymentTerm === null &&
     payload.approvalId === null &&
     payload.expectedTotal === null &&
+    (payload.expectedVatRate === undefined || payload.expectedVatRate === 0) &&
     payload.expectedPaymentProfileFingerprint === null
   );
 }
@@ -811,12 +820,29 @@ function validateStoredSalesDocumentBase(value: Record<string, unknown>): boolea
   );
 }
 
+function exclusiveTotalMinor(subtotal: number | null, rate: number): number | null {
+  if (subtotal === null) return null;
+  return subtotal + Math.round(subtotal * rate / 100);
+}
+
+function validateVatTotal(value: Record<string, unknown>, itemsSubtotal: number | null): boolean {
+  if (itemsSubtotal === null) return false;
+  if (value.subtotal_amount === undefined && value.vat_rate === undefined && value.vat_amount === undefined) {
+    return itemsSubtotal === minorUnits(value.total_amount);
+  }
+  return isMoney(value.subtotal_amount) && isMoney(value.vat_amount)
+    && (value.vat_rate === 0 || (value.vat_rate === 7 && value.payment_term === 'credit'))
+    && itemsSubtotal === minorUnits(value.subtotal_amount)
+    && Math.round(itemsSubtotal * Number(value.vat_rate) / 100) === minorUnits(value.vat_amount)
+    && itemsSubtotal + Number(minorUnits(value.vat_amount)) === minorUnits(value.total_amount);
+}
+
 function validateStoredInvoice(value: Record<string, unknown>): boolean {
   return (
     hasOnlyKeys(value, [
       'document_type', 'document_number', 'document_title', 'status', 'issued_at',
       'service_date', 'due_date', 'shop_code', 'shop_name', 'shop_location',
-      'payment_term', 'total_amount', 'items', 'void_info',
+      'payment_term', 'total_amount', 'items', 'void_info', 'subtotal_amount', 'vat_rate', 'vat_amount',
     ]) &&
     validateStoredSalesDocumentBase(value) &&
     isTimestamp(value.issued_at) &&
@@ -827,7 +853,7 @@ function validateStoredInvoice(value: Record<string, unknown>): boolean {
     Array.isArray(value.items) &&
     value.items.length > 0 &&
     value.items.every(validateStoredSalesItem) &&
-    sumLineTotalsMinor(value.items) === minorUnits(value.total_amount)
+    validateVatTotal(value, sumLineTotalsMinor(value.items))
   );
 }
 
@@ -921,7 +947,7 @@ function validateDeliveryResult(value: unknown): boolean {
     !hasOnlyKeys(value, [
       'delivery_event_id', 'round_stop_id', 'charge_id', 'charge_number', 'service_date',
       'total_amount', 'payment_term', 'payment_status', 'due_date', 'approval_id',
-      'print_document', 'items',
+      'print_document', 'items', 'subtotal_amount', 'vat_rate', 'vat_amount',
     ]) ||
     !isUuid(value.delivery_event_id) ||
     !isUuid(value.round_stop_id) ||
@@ -950,7 +976,7 @@ function validateDeliveryResult(value: unknown): boolean {
   if (
     !isServiceDate(value.service_date) || !isPositiveMoney(value.total_amount) ||
     value.items.length === 0 ||
-    sumLineTotalsMinor(value.items) !== minorUnits(value.total_amount)
+    !validateVatTotal(value, sumLineTotalsMinor(value.items))
   ) return false;
 
   if (value.payment_term === 'immediate') {
@@ -971,6 +997,8 @@ function validateDeliveryResult(value: unknown): boolean {
     value.print_document.due_date === value.due_date &&
     value.print_document.payment_term === value.payment_term &&
     minorUnits(value.print_document.total_amount) === minorUnits(value.total_amount) &&
+    Number(value.print_document.vat_rate ?? 0) === Number(value.vat_rate ?? 0) &&
+    Number(value.print_document.vat_amount ?? 0) === Number(value.vat_amount ?? 0) &&
     Array.isArray(value.print_document.items) &&
     salesItemsMatchDeliveryItems(value.print_document.items, value.items)
   );

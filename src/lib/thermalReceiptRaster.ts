@@ -282,6 +282,10 @@ export async function renderSalesDocumentRaster(payload: SalesDocumentPayload) {
       receipt.gap(3);
     }
     receipt.rule();
+    if (payload.totals.vatRate && payload.totals.vatRate > 0) {
+      receipt.row('ค่าสินค้าก่อน VAT', money.format(payload.totals.subtotal ?? 0));
+      receipt.row(`VAT ${payload.totals.vatRate}%`, money.format(payload.totals.vat ?? 0));
+    }
     receipt.row('ยอดรวม', money.format(payload.totals.total), { bold: true, size: 24 });
     if (payload.totals.received != null) {
       receipt.gap(4);
@@ -313,6 +317,10 @@ export async function renderDailyCreditRaster(payload: DailyCreditAcknowledgemen
   receipt.gap(6);
   for (const item of payload.item_totals) receipt.row(`${item.name} ${Number(item.quantity)} ${item.unit}`, money.format(Number(item.line_total)), { size: 25 });
   receipt.rule();
+  if (Number(payload.vat_amount) > 0) {
+    receipt.row('ค่าสินค้าก่อน VAT', money.format(Number(payload.subtotal_amount)));
+    receipt.row('VAT', money.format(Number(payload.vat_amount)));
+  }
   receipt.row('ยอดเครดิตวันนี้', money.format(Number(payload.total_amount)), { bold: true, size: 26 });
   receipt.gap(8);
   receipt.text('ร้านได้รับสินค้าตามรายการและรับทราบยอดเครดิตข้างต้น', { size: 20 });

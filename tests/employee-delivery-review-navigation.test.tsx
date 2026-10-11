@@ -381,3 +381,15 @@ describe('employee delivery review navigation', () => {
     expect(sortPaymentTerms(['immediate', 'end_of_day', 'immediate'])).toEqual(['end_of_day', 'immediate']);
   });
 });
+
+it('shows exclusive VAT and blocks a credit sale when VAT takes it over the available limit', () => {
+  renderReview(true, shopCard, {
+    posContext: { ...posContext, payment_profile: { ...posContext.payment_profile!,
+      allowed_payment_terms: ['credit'], default_payment_term: 'credit', vat_enabled: true,
+      credit_limit: 125, credit_remaining: 125, credit_due_rule: 'net_days', credit_days: 30,
+    } },
+  });
+  expect(screen.getByLabelText('รายละเอียด VAT').textContent).toContain('128.40');
+  expect(screen.getByText('ยอดเกินวงเงินเครดิต')).toBeTruthy();
+  expect((screen.getByRole('button', { name: 'ส่งอย่างเดียว' }) as HTMLButtonElement).disabled).toBe(true);
+});

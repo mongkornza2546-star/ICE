@@ -1,3 +1,4 @@
+import { publishDataChange } from '../../../lib/dataChange';
 import { translateUi, useLanguage } from '../../../i18n';
 import { type FormEvent, useEffect, useState } from 'react';
 import { CreditCard } from '@phosphor-icons/react';
@@ -14,6 +15,7 @@ interface ShopPaymentProfileEditorProps {
 
 const defaultProfile = (shop_id: string): ShopPaymentProfileSetting => ({
   shop_id,
+  vat_enabled: false,
   allowed_payment_terms: ['end_of_day', 'immediate'],
   default_payment_term: 'end_of_day',
   allowed_payment_methods: ['cash', 'bank_transfer'],
@@ -70,6 +72,7 @@ export function ShopPaymentProfileEditor({ shopId, shopName, onSaved }: ShopPaym
     const creditRule = isCredit ? (profile.credit_due_rule ?? 'net_days') : null;
     setProfile({
       ...profile,
+      vat_enabled: isCredit ? (profile.vat_enabled ?? false) : false,
       allowed_payment_terms: isCredit ? ['credit'] : ['end_of_day', 'immediate'],
       default_payment_term: isCredit ? 'credit' : 'end_of_day',
       allow_outstanding: isCredit ? true : profile.allow_outstanding,
@@ -105,12 +108,14 @@ export function ShopPaymentProfileEditor({ shopId, shopName, onSaved }: ShopPaym
     try {
       const saved = await saveShopPaymentProfile({
         ...profile,
+        vat_enabled: isCredit && Boolean(profile.vat_enabled),
         allowed_payment_terms: isCredit ? ['credit'] : ['end_of_day', 'immediate'],
         default_payment_term: isCredit ? 'credit' : 'end_of_day',
         allowed_payment_methods: normalizePaymentMethods(profile.allowed_payment_methods),
         default_payment_method: normalizePaymentMethod(profile.default_payment_method),
       });
       setProfile(saved);
+      publishDataChange(['pos', 'receivable']);
       setSuccess('บันทึกเงื่อนไขการชำระเงินของร้านแล้ว');
       await onSaved?.();
     } catch (err) {
@@ -137,6 +142,16 @@ export function ShopPaymentProfileEditor({ shopId, shopName, onSaved }: ShopPaym
             <input checked={isCredit} onChange={toggleCredit} type="checkbox" />
             {translateUi('ร้านเครดิต (Credit)')}</label>
         </div>
+
+        {isCredit ? <fieldset style={{ marginBottom: '1rem' }}>
+          <legend>{translateUi('VAT สำหรับร้านเครดิต')}</legend>
+          <label className="inline-check">
+            <input type="checkbox" checked={Boolean(profile.vat_enabled)} onChange={(event) => setProfile({ ...profile, vat_enabled: event.target.checked })} />
+            {translateUi('คิด VAT เพิ่ม 7%')}
+          </label>
+          <p>{translateUi('ตัวอย่าง: ค่าน้ำแข็ง 1,000 + VAT 70 = ยอดสุทธิ 1,070 บาท')}</p>
+          <small>{translateUi('ใช้กับรายการขายน้ำแข็งใหม่หลังบันทึกการตั้งค่า ยอดบิลเดิมไม่เปลี่ยน')}</small>
+        </fieldset> : null}
 
         <div className="field-grid" style={{ marginBottom: '1rem' }}>
           <div>

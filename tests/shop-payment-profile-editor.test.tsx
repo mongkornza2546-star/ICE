@@ -54,3 +54,21 @@ it('merges a legacy QR option into bank transfer and never renders QR as a choic
     default_payment_term: 'end_of_day',
   })));
 });
+
+it('shows VAT only for credit shops, saves opt-in and clears it when credit is disabled', async () => {
+  service.loadShopPaymentProfile.mockResolvedValue(legacyProfile);
+  service.saveShopPaymentProfile.mockImplementation(async (profile) => profile);
+  render(<ShopPaymentProfileEditor shopId="shop-1" shopName="ร้านทดสอบ" />);
+  await screen.findByLabelText('ร้านเครดิต (Credit)');
+  expect(screen.queryByLabelText('คิด VAT เพิ่ม 7%')).toBeNull();
+  fireEvent.click(screen.getByLabelText('ร้านเครดิต (Credit)'));
+  expect((screen.getByLabelText('คิด VAT เพิ่ม 7%') as HTMLInputElement).checked).toBe(false);
+  fireEvent.click(screen.getByLabelText('คิด VAT เพิ่ม 7%'));
+  fireEvent.click(screen.getByRole('button', { name: 'บันทึกโปรไฟล์การชำระเงิน' }));
+  await waitFor(() => expect(service.saveShopPaymentProfile).toHaveBeenLastCalledWith(expect.objectContaining({ vat_enabled: true })));
+  await screen.findByText('บันทึกเงื่อนไขการชำระเงินของร้านแล้ว');
+  fireEvent.click(screen.getByLabelText('ร้านเครดิต (Credit)'));
+  expect(screen.queryByLabelText('คิด VAT เพิ่ม 7%')).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'บันทึกโปรไฟล์การชำระเงิน' }));
+  await waitFor(() => expect(service.saveShopPaymentProfile).toHaveBeenLastCalledWith(expect.objectContaining({ vat_enabled: false })));
+});

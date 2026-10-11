@@ -12,6 +12,9 @@ export type PaymentProfile = {
 };
 
 export type QueueCharge = {
+  subtotal_amount?: number;
+  vat_amount?: number;
+  vat_rate?: number;
   charge_id: string;
   delivery_event_id?: string | null;
   charge_number: string | null;
@@ -59,6 +62,7 @@ export type QueueShop = {
 };
 
 export type Receivable = {
+  vat_enabled?: boolean;
   shop_id: string;
   shop_code: string;
   shop_name: string;
@@ -96,6 +100,10 @@ export type ReceivableDetail = {
 };
 
 export type BillingStatementItem = {
+  subtotal_amount?: number | null;
+  vat_amount?: number;
+  vat_rate?: number;
+  gross_amount?: number | null;
   charge_id: string;
   charge_number: string | null;
   service_date: string;
@@ -105,6 +113,10 @@ export type BillingStatementItem = {
 };
 
 export type BillingStatement = {
+  subtotal_amount?: number | null;
+  vat_amount?: number;
+  vat_rate?: number;
+  gross_amount?: number | null;
   id: string;
   statement_number: string;
   shop_id: string;
@@ -149,6 +161,9 @@ export type ReceivablePayment = {
 };
 
 export type ReceivableCharge = {
+  subtotal_amount?: number;
+  vat_amount?: number;
+  vat_rate?: number;
   charge_id: string;
   charge_number: string | null;
   service_date: string;

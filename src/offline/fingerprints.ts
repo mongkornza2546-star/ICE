@@ -64,6 +64,7 @@ export function paymentProfileFingerprintValue(profile: ShopPaymentProfile): Can
     algorithm: OFFLINE_FINGERPRINT_ALGORITHM,
     kind: 'payment_profile',
     value: {
+      ...(profile.vat_enabled ? { vat_rate: 7 } : {}),
       allow_outstanding: profile.allow_outstanding,
       allowed_payment_methods: [...profile.allowed_payment_methods].sort(compareText),
       allowed_payment_terms: [...profile.allowed_payment_terms].sort(compareText),

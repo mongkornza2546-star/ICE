@@ -1,3 +1,4 @@
+import { VatBreakdown } from '../financial-operations/components/VatBreakdown';
 import { translateUi, useLanguage } from '../../i18n';
 import { useEffect, useRef, useState } from 'react';
 import { Printer, WarningCircle, X } from '@phosphor-icons/react';
@@ -18,6 +19,7 @@ type CorrectionItem = {
 };
 
 type CorrectionContext = {
+  subtotal_amount?: number; vat_amount?: number; vat_rate?: number;
   destination_kind?: 'regular' | 'event';
   delivery_event_id: string;
   round_stop_id: string;
@@ -173,6 +175,7 @@ export function DeliveryCorrectionDialog({
           <span><small>{translateUi('ยอดปัจจุบัน')}</small><strong>{money.format(Number(context.effective_amount))}</strong></span>
           <span><small>{translateUi('รับชำระแล้ว')}</small><strong>{money.format(Number(context.allocated_amount))}</strong></span>
         </div>
+        {Number(context.vat_rate) > 0 ? <VatBreakdown subtotal={Number(context.subtotal_amount)} vat={Number(context.vat_amount)} total={context.effective_amount} rate={context.vat_rate} paid={context.allocated_amount} /> : null}
         {isClosed && !canCancel ? <p className="delivery-correction-dialog__notice"><WarningCircle size={18} />{translateUi('รอบหรือวันนี้ปิดแล้ว ไม่สามารถยกเลิกใบส่งนี้ได้')}</p> : null}
         {hasPayment ? <p className="delivery-correction-dialog__notice"><WarningCircle size={18} />{translateUi('บิลนี้รับชำระแล้วทั้งหมดหรือบางส่วน จึงยกเลิกใบส่งไม่ได้ ให้หัวหน้าหรือแอดมินตรวจสอบรายการรับเงินก่อน หากบันทึกรับเงินผิด ให้ยกเลิกใบเสร็จที่ผิดก่อนดำเนินการต่อ')}</p>
           : immediateSale ? <p className="delivery-correction-dialog__notice"><WarningCircle size={18} />{translateUi('รายการนี้ไม่มียอดรับชำระที่ยังใช้งานอยู่ ให้ยกเลิกรายการส่งก่อนบันทึกขายใหม่')}</p> : null}

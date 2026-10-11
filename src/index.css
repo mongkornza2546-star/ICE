@@ -4606,3 +4606,8 @@ fieldset.ref-section {
   .dashboard-location-sale { flex-wrap: wrap; }
   .dashboard-location-sale > b { width: 100%; text-align: right; }
 }
+
+.vat-breakdown { margin: .6rem 0; padding: .7rem; background: #f2f7fb; border-radius: 8px; font-size: .875rem; }
+.vat-breakdown > div { display: flex; justify-content: space-between; gap: 1rem; }
+.vat-breakdown dd { margin: 0; font-variant-numeric: tabular-nums; }
+.vat-badge { display: inline-block; margin-inline: .35rem; padding: 2px 6px; border-radius: 4px; background: #e5f0ff; color: #174a81; font-size: .75rem; }

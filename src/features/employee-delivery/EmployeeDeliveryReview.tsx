@@ -1,3 +1,5 @@
+import { deliveryLineTotal, deliverySubtotal, exclusiveVat } from '../../lib/vat';
+import { VatBreakdown } from '../financial-operations/components/VatBreakdown';
 import { translateUi, useLanguage } from '../../i18n';
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent, type KeyboardEvent } from 'react';
 import {
@@ -179,14 +181,14 @@ export function EmployeeDeliveryReview({
   const visibleShopCards = shopCards.filter((card) => [
     card.shop_code, card.shop_name, card.booth_number, card.building_name, card.floor_or_zone,
   ].some((value) => value?.toLocaleLowerCase('th-TH').includes(shopQuery)));
-  const totalAmount = useMemo(() => items.reduce((total, item) => {
-    const product = contextItems.find((candidate) => candidate.ice_type_id === item.ice_type_id);
-    return total + item.quantity * (product?.unit_price ?? 0);
-  }, 0), [contextItems, items]);
+  const subtotalAmount = useMemo(() => deliverySubtotal(items, contextItems), [contextItems, items]);
   const missingPrice = items.some((item) => (
     contextItems.find((candidate) => candidate.ice_type_id === item.ice_type_id)?.unit_price == null
   ));
   const isCreditShop = Boolean(posContext?.payment_profile?.allowed_payment_terms.includes('credit'));
+  const vatRate = isCreditShop && posContext?.payment_profile?.vat_enabled ? 7 : 0;
+  const tax = exclusiveVat(subtotalAmount, vatRate);
+  const totalAmount = tax.total;
   const exceedsCredit = isCreditShop
     && posContext?.payment_profile?.credit_remaining != null
     && totalAmount > posContext.payment_profile.credit_remaining;
@@ -347,7 +349,7 @@ export function EmployeeDeliveryReview({
             ...item,
             name: product?.name,
             unit: product?.unit,
-            line_total: item.quantity * (product?.unit_price ?? 0),
+            line_total: deliveryLineTotal(item.quantity, product?.unit_price ?? 0),
           };
         });
     return (
@@ -755,7 +757,7 @@ export function EmployeeDeliveryReview({
                   return (
                     <div key={item.ice_type_id}>
                       <span><strong>{product?.name}</strong><small>{item.quantity} {product?.unit} × {product?.unit_price == null ? '—' : money.format(product.unit_price)}</small></span>
-                      <b>{product?.unit_price == null ? '—' : money.format(item.quantity * product.unit_price)}</b>
+                      <b>{product?.unit_price == null ? '—' : money.format(deliveryLineTotal(item.quantity, product.unit_price))}</b>
                       <button aria-label={translateUi('ลบ{0}', { 0: product?.name ?? translateUi('สินค้า') })} onClick={() => onSetQuantity(item.ice_type_id, 0)} type="button">
                         <Trash aria-hidden="true" />
                       </button>
@@ -773,10 +775,10 @@ export function EmployeeDeliveryReview({
               ) : !posContext?.payment_profile && financialContextRequired && !loadingPosContext ? (
                 <p className="employee-error">{translateUi('ร้านนี้ยังไม่มีเงื่อนไขการชำระ')}</p>
               ) : null}
-              <div className="employee-cart-total">
+              {vatRate > 0 ? <VatBreakdown subtotal={tax.subtotal} vat={tax.vat} total={tax.total} rate={vatRate} /> : <div className="employee-cart-total">
                 <span>{translateUi('ยอดรวม')}</span>
                 <strong>{posContext ? money.format(totalAmount) : renderTotals(toTotals(items), iceTypes)}</strong>
-              </div>
+              </div>}
               {exceedsCredit ? (
                 <div className="employee-approval-request">
                   <strong>{approvalId ? translateUi('อนุมัติวงเงินแล้ว') : translateUi('ยอดเกินวงเงินเครดิต')}</strong>
