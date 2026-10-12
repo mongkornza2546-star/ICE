@@ -119,7 +119,7 @@ export interface EmployeeApprovalPayload {
 
 export interface EmployeeStockTransferPayload {
   roundId: string;
-  items: Array<{ ice_type_id: string; quantity: number }>;
+  items: Array<{ ice_type_id: string; quantity: number; fullBags?: number; halfBags?: number; confirmedOverstock?: boolean }>;
   idempotencyKey: string;
 }
 
@@ -359,7 +359,7 @@ export function createSupabaseGateway(): EmployeeDeliveryGateway {
           supabase.rpc('get_employee_active_session', { p_service_date: serviceDate }),
           supabase
             .from('ice_types')
-            .select('id, code, name, unit, image_path')
+            .select('id, code, name, unit, image_path, allowHalf:allow_half')
             .eq('is_active', true)
             .order('code'),
         ]);
@@ -1184,12 +1184,9 @@ export function EmployeeDeliveryWorkspace({
               changeStockTransferMode={data.changeStockTransferMode}
               selectedRound={data.selectedRound}
               handleStockTransfer={data.handleStockTransfer}
-              resetTransferQuantities={() => {
-                data.iceTypes.forEach((iceType) => {
-                  const quantity = data.transferQuantities[iceType.id] ?? 0;
-                  if (quantity > 0) data.changeTransferQuantity(iceType.id, -quantity);
-                });
-              }}
+              undoTransferQuantity={data.undoTransferQuantity}
+              canUndo={data.canUndoTransfer}
+              success={data.transferSuccess}
               variant={resolvedViewMode === 'withdrawal' ? 'cards' : 'table'}
               transferItems={data.transferItems}
             />

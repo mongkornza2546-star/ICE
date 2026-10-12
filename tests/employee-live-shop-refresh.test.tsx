@@ -3,6 +3,8 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { EmployeeDeliveryGateway } from '../src/EmployeeDeliveryWorkspace';
 import type { DeliveryPosContext, EmployeeStockState, ShopCard } from '../src/types/app';
+import { LanguageProvider, LanguageSwitcher, translateUi } from '../src/i18n';
+import { writeRecovery } from '../src/lib/recoveryStorage';
 import { publishDataChange } from '../src/lib/dataChange';
 
 const supabaseMock = vi.hoisted(() => {
@@ -929,8 +931,8 @@ describe('employee live shop loading', () => {
       onStockReceived={onStockReceived}
     />);
 
-    await user.click(await screen.findByRole('button', { name: 'เพิ่มน้ำแข็งอีกครึ่ง' }));
-    await user.click(screen.getByRole('button', { name: 'ยืนยันเติมน้ำแข็ง' }));
+    await user.click(await screen.findByRole('button', { name: 'เพิ่มครึ่งถุง น้ำแข็ง' }));
+    await user.click(screen.getByRole('button', { name: /บันทึกเติมจากรถ · 0.5 ถุง/ }));
     await waitFor(() => expect(gateway.recordEmployeeStockTransfer).toHaveBeenCalledTimes(1));
     act(() => supabaseMock.state.postgresChangeListener?.());
     expect(loadShopCards).toHaveBeenCalledTimes(1);
@@ -941,4 +943,127 @@ describe('employee live shop loading', () => {
     await waitFor(() => expect(loadShopCards).toHaveBeenCalledTimes(2));
     expect(loadShopCards).toHaveBeenNthCalledWith(2, 'round-1', { forceRefresh: true });
   });
+});
+
+it('stock form rejects zero, undoes edits, retains failed input and updates stock after retry', async () => {
+  const user = userEvent.setup();
+  const after = { ...stockState, truck_location: { ...stockState.truck_location, balances: [{ ...stockState.truck_location.balances[0], quantity: 5.5 }] } };
+  const before = { ...stockState, truck_location: { ...stockState.truck_location, balances: [{ ...stockState.truck_location.balances[0], quantity: 20 }] } };
+  const save = vi.fn().mockRejectedValueOnce(new Error('offline')).mockResolvedValue(after);
+  const gateway = {
+    loadReferenceData: vi.fn().mockResolvedValue({ rounds: [{ id: 'round-1', service_date: '2026-08-11', name: 'งานประจำวัน', status: 'open' }], iceTypes: [{ id: 'ice-1', code: 'ICE', name: 'น้ำแข็ง', unit: 'ถุง' }] }),
+    loadShopCards: vi.fn().mockResolvedValue([]), loadEmployeeStockState: vi.fn().mockResolvedValue(before),
+    recordEmployeeStockTransfer: save, recordEmployeeStockReturn: vi.fn(), recordEmployeeStockDamage: vi.fn(), recordDelivery: vi.fn(),
+  } as unknown as EmployeeDeliveryGateway;
+  render(<EmployeeDeliveryWorkspace enableAssignedStockFlow gateway={gateway} requestScope="bag-retry-test" serviceDate="2026-08-11" viewMode="withdrawal" />);
+  await user.click(await screen.findByRole('button', { name: /บันทึกเติมจากรถ · 0 ถุง/ }));
+  expect(save).not.toHaveBeenCalled();
+  expect(screen.getAllByText('ใส่จำนวนอย่างน้อยหนึ่งรายการก่อนบันทึก').length).toBeGreaterThan(0);
+  const full = screen.getByLabelText('เต็มถุง น้ำแข็ง') as HTMLInputElement;
+  const half = screen.getByLabelText('ครึ่งถุง น้ำแข็ง') as HTMLInputElement;
+  fireEvent.change(full, { target: { value: '14' } });
+  fireEvent.change(half, { target: { value: '1' } });
+  await user.click(screen.getByRole('button', { name: 'ย้อนกลับ' }));
+  expect(full.value).toBe('14'); expect(half.value).toBe('0');
+  await user.click(screen.getByRole('button', { name: 'เพิ่มครึ่งถุง น้ำแข็ง' }));
+  expect(screen.getByText('เหลือบนรถ 5.5 ถุง')).toBeTruthy();
+  await user.click(screen.getByRole('button', { name: /บันทึกเติมจากรถ · 14.5 ถุง/ }));
+  await waitFor(() => expect(screen.getAllByText(/กรุณาลองบันทึกใหม่/).length).toBeGreaterThan(0));
+  expect(full.value).toBe('14'); expect(half.value).toBe('1');
+  await user.click(screen.getByRole('button', { name: /บันทึกเติมจากรถ · 14.5 ถุง/ }));
+  await waitFor(() => expect(full.value).toBe('0'));
+  expect(half.value).toBe('0');
+  expect(screen.getByText('เหลือบนรถ 5.5 ถุง')).toBeTruthy();
+  expect(screen.getAllByText('บันทึกแล้ว เติมไป 14.5 ถุง').length).toBeGreaterThan(0);
+  expect((screen.getByRole('button', { name: 'ย้อนกลับ' }) as HTMLButtonElement).disabled).toBe(true);
+  expect(save.mock.calls[0][0].items).toEqual([{ ice_type_id: 'ice-1', fullBags: 14, halfBags: 1, quantity: 14.5, confirmedOverstock: false }]);
+  expect(save.mock.calls[0][0].idempotencyKey).toBe(save.mock.calls[1][0].idempotencyKey);
+});
+
+function stockRetryGateway(save: ReturnType<typeof vi.fn>) {
+  const available = { ...stockState, holding_location: { ...stockState.holding_location,
+    balances: [{ ...stockState.holding_location.balances[0], quantity: 20 }] } };
+  return {
+    loadReferenceData: vi.fn().mockResolvedValue({
+      rounds: [{ id: 'round-1', service_date: '2026-08-11', name: 'งานประจำวัน', status: 'open' }],
+      iceTypes: [{ id: 'ice-1', code: 'ICE', name: 'น้ำแข็ง', unit: 'ถุง' }],
+    }),
+    loadShopCards: vi.fn().mockResolvedValue([]), loadEmployeeStockState: vi.fn().mockResolvedValue(available),
+    recordEmployeeStockTransfer: save, recordEmployeeStockReturn: save, recordEmployeeStockDamage: save,
+    recordDelivery: vi.fn(),
+  } as unknown as EmployeeDeliveryGateway;
+}
+
+it.each([
+  ['receive', 'stock-transfer', 'เติมจากรถ'],
+  ['return', 'stock-return', 'คืนขึ้นรถ'],
+  ['damage', 'stock-damage', 'ละลาย'],
+])('recovers a legacy %s draft with its original request key and quantity-only payload', async (mode, operation, label) => {
+  const scope = `bag-upgrade-${mode}`;
+  const key = crypto.randomUUID();
+  const legacyItems = [{ ice_type_id: 'ice-1', quantity: 2.5 }];
+  const signature = `${scope}:${operation}:${JSON.stringify({ roundId: 'round-1', items: legacyItems })}`;
+  window.localStorage.setItem('ice-delivery.pending-requests.v1', JSON.stringify({
+    [signature]: { key, clientRecordedAt: new Date().toISOString() },
+  }));
+  writeRecovery(scope, '2026-08-11', 'withdrawal', {
+    selectedRoundId: 'round-1', selectedBuildingId: '', selectedZone: '', query: '', selectedCardId: null,
+    selectedIceTypeId: 'ice-1', deliveryQuantities: {}, transferQuantities: { 'ice-1': 2.5 },
+    stockTransferMode: mode, status: 'delivered', note: '', paymentOpen: false,
+  });
+  const save = vi.fn().mockRejectedValueOnce(new Error('Failed to fetch')).mockResolvedValue(stockState);
+  render(<EmployeeDeliveryWorkspace enableAssignedStockFlow gateway={stockRetryGateway(save)} requestScope={scope} serviceDate="2026-08-11" viewMode="withdrawal" />);
+  const button = await screen.findByRole('button', { name: `บันทึก${label} · 2.5 ถุง` });
+  fireEvent.click(button);
+  await waitFor(() => expect(screen.getAllByText(/กรุณาลองบันทึกใหม่/).length).toBeGreaterThan(0));
+  expect(save.mock.calls[0][0]).toEqual({ roundId: 'round-1', items: legacyItems.map(item => ({ ...item, confirmedOverstock: false })), idempotencyKey: key });
+  fireEvent.click(button);
+  await waitFor(() => expect((screen.getByLabelText('เต็มถุง น้ำแข็ง') as HTMLInputElement).value).toBe('0'));
+  expect(save.mock.calls[1][0]).toEqual(save.mock.calls[0][0]);
+  expect(JSON.parse(window.localStorage.getItem('ice-delivery.pending-requests.v1')!)[signature]).toBeUndefined();
+  // A separate save with the same total now uses a fresh key and preserves the split.
+  fireEvent.click(screen.getByRole('button', { name: 'เติมจากรถ' }));
+  fireEvent.change(screen.getByLabelText('เต็มถุง น้ำแข็ง'), { target: { value: '2' } });
+  fireEvent.change(screen.getByLabelText('ครึ่งถุง น้ำแข็ง'), { target: { value: '1' } });
+  fireEvent.click(screen.getByRole('button', { name: 'บันทึกเติมจากรถ · 2.5 ถุง' }));
+  await waitFor(() => expect(save).toHaveBeenCalledTimes(3));
+  expect(save.mock.calls[2][0].idempotencyKey).not.toBe(key);
+  expect(save.mock.calls[2][0].items[0]).toMatchObject({ quantity: 2.5, fullBags: 2, halfBags: 1 });
+});
+
+it('localizes stock controls, confirmation and feedback in Burmese', async () => {
+  window.localStorage.setItem('ice-delivery.language.v1', 'my');
+  const save = vi.fn().mockRejectedValueOnce(new Error('Failed to fetch')).mockResolvedValue(stockState);
+  const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+  try {
+    render(<LanguageProvider><LanguageSwitcher /><EmployeeDeliveryWorkspace enableAssignedStockFlow gateway={stockRetryGateway(save)} requestScope="bag-burmese" serviceDate="2026-08-11" viewMode="withdrawal" /></LanguageProvider>);
+    await screen.findByRole('button', { name: translateUi('เติมจากรถ') });
+    await waitFor(() => expect(document.querySelector('.bag-transfer-card')).not.toBeNull());
+    const fullLabel = translateUi('เต็มถุง');
+    expect(fullLabel).not.toBe('เต็มถุง');
+    const full = screen.getByLabelText(`${fullLabel} น้ำแข็ง`) as HTMLInputElement;
+    fireEvent.click(document.querySelector('.bag-transfer-buttons .employee-submit')!);
+    expect(document.querySelector('.bag-transfer-error')!.textContent).not.toMatch(/[ก-๙]/);
+    fireEvent.change(full, { target: { value: '14' } });
+    fireEvent.change(screen.getByLabelText(`${translateUi('ครึ่งถุง')} น้ำแข็ง`), { target: { value: '1' } });
+    for (const selector of ['.bag-transfer-warning', '.bag-transfer-total', '.bag-transfer-buttons', '.bag-product-name small']) {
+      expect(document.querySelector(selector)!.textContent).not.toMatch(/[ก-๙]/);
+    }
+    fireEvent.click(document.querySelector('.bag-transfer-buttons .employee-submit')!);
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(document.querySelector('.bag-transfer-error')).not.toBeNull());
+    expect(document.querySelector('.bag-transfer-error')!.textContent).not.toMatch(/[ก-๙]/);
+    expect(confirm.mock.calls[0][0]).not.toMatch(/[ก-๙]/);
+    fireEvent.click(document.querySelector('.bag-transfer-buttons .employee-submit')!);
+    await waitFor(() => expect(full.value).toBe('0'));
+    const success = document.querySelector('.bag-transfer-success')!;
+    expect(success.textContent).toContain('14.5');
+    expect(success.textContent).not.toMatch(/[ก-๙]/);
+    fireEvent.change(document.querySelector('.language-switcher select')!, { target: { value: 'th' } });
+    expect(success.textContent).toBe('บันทึกแล้ว เติมไป 14.5 ถุง');
+  } finally {
+    confirm.mockRestore();
+    const switcher = document.querySelector('.language-switcher select');
+    if (switcher) fireEvent.change(switcher, { target: { value: 'th' } });
+  }
 });

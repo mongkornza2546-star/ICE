@@ -13,7 +13,7 @@ const TRUCK_ID = '40000000-0000-4000-8000-000000000001';
 const HOLDING_ID = '40000000-0000-4000-8000-000000000002';
 const SERVICE_DATE = '2026-08-09';
 
-async function createDatabase(t) {
+async function createDatabase(t, { migrateBagCounts = true } = {}) {
   const db = new PGlite();
   t.after(() => db.close());
 
@@ -154,6 +154,7 @@ async function createDatabase(t) {
 
   await db.exec(originalTransfer);
   await db.exec(readFileSync(new URL('../supabase/migrations/0183_employee_stock_transfer_half_bags.sql', import.meta.url), 'utf8'));
+  if (migrateBagCounts) await db.exec(readFileSync(new URL('../supabase/migrations/0218_employee_stock_bag_counts.sql', import.meta.url), 'utf8'));
   return db;
 }
 
@@ -185,3 +186,69 @@ test('employee transfer rejects invalid fractions and overdraw without writing s
   const count = await db.query('select count(*)::integer as count from public.stock_movements');
   assert.equal(count.rows[0].count, 0);
 });
+
+for (const operation of ['transfer', 'return', 'damage']) {
+  test(`employee ${operation} preserves split, verifies retries, and permits confirmed overstock`, async (t) => {
+    const db = await createDatabase(t);
+    await db.exec('update test_location_balances set quantity = 20; update test_aggregate_balances set quantity = 20');
+    const item = { ice_type_id: ICE_ID, quantity: 14.5, fullBags: 14, halfBags: 1 };
+    const run = (value, key = '60000000-0000-4000-8000-000000000001') => db.query(
+      `select public.record_employee_stock_${operation}($1, $2::jsonb, $3)`, [ROUND_ID, JSON.stringify([value]), key]);
+    await run(item);
+    await run(item);
+    // A lost response followed by a balance refresh changes the UI confirmation,
+    // but must still acknowledge the same committed movement.
+    await run({ ...item, confirmedOverstock: true });
+    assert.deepEqual((await db.query('select quantity, full_bags, half_bags from stock_movement_items')).rows,
+      [{ quantity: '14.5', full_bags: 14, half_bags: 1 }]);
+    const source = operation === 'transfer' ? TRUCK_ID : HOLDING_ID;
+    assert.equal((await db.query('select stock_balance_at($1, $2, $3) as quantity', [SERVICE_DATE, source, ICE_ID])).rows[0].quantity, '5.5');
+    await assert.rejects(run({ ...item, fullBags: 13, halfBags: 3 }), /different employee stock/);
+    const key = '60000000-0000-4000-8000-000000000002';
+    await assert.rejects(run(item, key), /enough stock/);
+    await run({ ...item, confirmedOverstock: true }, key);
+    assert.equal((await db.query('select count(*)::int as count from stock_movements')).rows[0].count, 2);
+  });
+}
+test('bag split validation and allowHalf reject invalid data; old totals stay readable', async (t) => {
+  const db = await createDatabase(t);
+  await transfer(db, 1.5);
+  assert.equal((await db.query('select full_bags from stock_movement_items')).rows[0].full_bags, null);
+  await db.exec('update ice_types set allow_half = false');
+  for (const item of [
+    { quantity: 1.5, fullBags: 1, halfBags: 1 },
+    { quantity: 1, fullBags: 0, halfBags: 2 },
+    { quantity: 1, fullBags: 1.5, halfBags: 0 },
+    { quantity: 1, fullBags: 2, halfBags: 0 },
+    { quantity: 1, fullBags: 1 },
+  ]) {
+    await assert.rejects(db.query('select record_employee_stock_transfer($1, $2::jsonb, $3)',
+      [ROUND_ID, JSON.stringify([{ ice_type_id: ICE_ID, ...item }]), '60000000-0000-4000-8000-000000000003']), /Invalid full\/half/);
+  }
+});
+
+for (const operation of ['transfer', 'return', 'damage']) {
+  test(`employee ${operation} retries a pre-migration request without duplicating stock`, async (t) => {
+    const db = await createDatabase(t, { migrateBagCounts: false });
+    for (const file of ['0137_employee_stock_returns.sql', '0142_employee_stock_damage.sql']) {
+      await db.exec(readFileSync(new URL('../supabase/migrations/' + file, import.meta.url), 'utf8'));
+    }
+    await db.exec('update test_location_balances set quantity = 20; update test_aggregate_balances set quantity = 20');
+    const item = { ice_type_id: ICE_ID, quantity: 14.5 };
+    const key = '60000000-0000-4000-8000-000000000004';
+    const run = (value = item, mode = operation) => db.query(
+      `select public.record_employee_stock_${mode}($1, $2::jsonb, $3)`, [ROUND_ID, JSON.stringify([value]), key]);
+    await run();
+    await run();
+    await db.exec(readFileSync(new URL('../supabase/migrations/0218_employee_stock_bag_counts.sql', import.meta.url), 'utf8'));
+    await run();
+    await run({ ...item, confirmedOverstock: true });
+    await assert.rejects(run({ ...item, quantity: 1 }), /different employee stock/);
+    await assert.rejects(run(item, operation === 'damage' ? 'return' : 'damage'), /different employee stock/);
+    await db.exec("update auth_context set user_id = '10000000-0000-4000-8000-000000000002'");
+    await assert.rejects(run(), /belongs to another user/);
+    assert.deepEqual((await db.query('select quantity, full_bags, half_bags from stock_movement_items')).rows,
+      [{ quantity: '14.5', full_bags: null, half_bags: null }]);
+    assert.equal((await db.query('select count(*)::int as count from stock_movements')).rows[0].count, 1);
+  });
+}

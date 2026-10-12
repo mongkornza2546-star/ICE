@@ -1,0 +1,41 @@
+.bag-transfer-list { display: grid; gap: 12px; padding-bottom: 160px; }
+.bag-transfer-card { min-width: 0; padding: 12px; border: 1px solid #cbdff7; border-radius: 16px; background: #fff; color: #163b5a; }
+.bag-transfer-heading { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; align-items: center; gap: 8px; min-height: 72px; }
+.bag-transfer-heading .employee-stock-product-image-button, .bag-product-fallback { display: grid; place-items: center; width: 44px; height: 44px; min-height: 44px; padding: 0; margin: 0; overflow: hidden; border: 0; border-radius: 8px; background: #eaf3ff; color: #1766ce; }
+.bag-transfer-heading .employee-stock-product-image { width: 44px; height: 44px; object-fit: cover; }
+.bag-transfer-heading .employee-stock-product-image-retry { min-height: 44px; padding: 0; }
+.bag-transfer-heading .employee-stock-product-image-retry small { display: none; }
+.bag-product-name { min-width: 0; line-height: 1.6; }
+.bag-product-name strong { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-size: 15px; }
+.bag-product-name small, .bag-transfer-total > small { display: block; font-size: 11px; }
+.bag-transfer-total { text-align: right; color: #1665d2; }
+.bag-transfer-total strong { display: block; font-size: 24px; line-height: 1.5; }
+.bag-transfer-total strong small { font-size: 12px; }
+.bag-transfer-inputs { display: flex; gap: 8px; margin-top: 8px; }
+.bag-counter { flex: 1; min-width: 0; font-size: 14px; line-height: 1.7; }
+.bag-counter > span:first-child { display: block; margin-bottom: 4px; }
+.bag-counter-controls { display: grid; grid-template-columns: 44px minmax(0, 1fr) 44px; border: 1px solid #cbdff7; border-radius: 10px; overflow: hidden; }
+.bag-counter-controls button { width: 44px; min-height: 48px; padding: 0; border: 0; color: #1665d2; background: #f1f6ff; font-size: 28px; }
+.bag-counter-controls input { width: 100%; min-width: 0; padding: 0; border: 0; border-radius: 0; color: inherit; background: transparent; text-align: center; font: inherit; font-size: 28px; }
+.bag-counter-controls button:disabled { opacity: .4; }
+.bag-transfer-warning { height: 40px; margin-top: 6px; color: #926100; font-size: 12px; line-height: 20px; }
+.bag-transfer-warning[role] { background: #fff4cc; border-radius: 6px; padding-inline: 4px; }
+.bag-transfer-actions { position: fixed; z-index: 65; bottom: 12px; left: 50%; transform: translateX(-50%); width: min(680px, calc(100% - 24px)); padding: 10px; border: 1px solid #cbdff7; border-radius: 14px; background: #fff; box-shadow: 0 -4px 20px #163b5a18; }
+.bag-transfer-buttons { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px; }
+.bag-transfer-buttons button { display: flex; align-items: center; justify-content: center; gap: 4px; min-height: 48px; margin: 0; padding: 8px; font-size: 14px; line-height: 1.5; }
+.bag-transfer-undo { background: transparent; border: 1px solid #cbdff7; border-radius: 10px; color: #476480; }
+.bag-transfer-actions p { margin: 6px 0 0; font-size: 13px; }
+.bag-transfer-error { color: #bc2525; }
+.bag-transfer-success { color: #138348; }
+@media (max-width: 759px) { .bag-transfer-actions { bottom: calc(76px + env(safe-area-inset-bottom)); } }
+@media (prefers-color-scheme: dark) {
+  .bag-transfer-card, .bag-transfer-actions { background: #172638; color: #e4edf8; border-color: #3a526e; }
+  .bag-counter-controls { border-color: #3a526e; }
+  .bag-counter-controls button, .bag-product-fallback { background: #233c58; color: #9ac7ff; }
+  .bag-transfer-total, .bag-transfer-undo { color: #9ac7ff; }
+  .bag-transfer-warning[role] { background: #4a3c16; color: #ffda7b; }
+  .bag-transfer-error { color: #ffaaaa; }
+  .bag-transfer-success { color: #79e7aa; }
+}
+.employee-workspace--withdrawal .bag-transfer-heading .employee-stock-product-image-button { grid-column: 1; grid-row: 1; }
+.bag-counter { color: inherit; }

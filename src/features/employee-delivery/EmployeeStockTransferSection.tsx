@@ -1,12 +1,13 @@
-import { translateUi, useLanguage } from '../../i18n';
+import { localizeErrorMessage, translateUi, useLanguage } from '../../i18n';
 import { useEffect, useState } from 'react';
 import { ArrowClockwise, Check, Truck, WarningCircle, CaretRight, X } from '@phosphor-icons/react';
 import type { DeliveryRound, EmployeeStockState, IceTypeOption } from '../../types/app';
-import type { StockTransferMode } from './useEmployeeDeliveryData';
+import type { StockTransferMode, StockTransferSuccess } from './useEmployeeDeliveryData';
 import { EmployeeState } from './EmployeeState';
 import { EmployeeStockProductImage } from './EmployeeStockProductImage';
 import './employee-stock-product-image.css';
-import { QuantityStepper } from './QuantityStepper';
+import { bagTotal, emptyBags, formatBags, type BagQuantity } from './bagQuantity';
+import './employee-bag-transfer.css';
 import { stockQuantity } from './utils';
 
 export function EmployeeStockTransferSection({
@@ -22,7 +23,9 @@ export function EmployeeStockTransferSection({
   changeStockTransferMode,
   selectedRound,
   handleStockTransfer,
-  resetTransferQuantities,
+  undoTransferQuantity,
+  canUndo,
+  success,
   variant,
   transferItems,
 }: {
@@ -32,13 +35,15 @@ export function EmployeeStockTransferSection({
   selectedRoundId: string;
   stockState: EmployeeStockState | null;
   iceTypes: IceTypeOption[];
-  transferQuantities: Record<string, number>;
-  changeTransferQuantity: (iceTypeId: string, delta: number) => void;
+  transferQuantities: Record<string, BagQuantity>;
+  changeTransferQuantity: (iceTypeId: string, field: keyof BagQuantity, value: number) => void;
   stockTransferMode: StockTransferMode;
   changeStockTransferMode: (mode: StockTransferMode) => void;
   selectedRound: DeliveryRound | null;
   handleStockTransfer: () => void;
-  resetTransferQuantities: () => void;
+  undoTransferQuantity: () => void;
+  canUndo: boolean;
+  success: StockTransferSuccess | null;
   variant: 'cards' | 'table';
   transferItems: Array<{ ice_type_id: string; quantity: number }>;
 }) {
@@ -48,6 +53,13 @@ export function EmployeeStockTransferSection({
   const isDamage = stockTransferMode === 'damage';
   const usesHoldingStock = isReturn || isDamage;
   const movementLabel = isReturn ? 'คืนขึ้นรถ' : isDamage ? 'ละลาย' : 'เติมจากรถ';
+  const translatedStockError = stockError ? translateUi(stockError) : null;
+  const stockErrorMessage = stockError && translatedStockError === stockError
+    ? localizeErrorMessage(stockError) : translatedStockError;
+  const successMessage = success ? translateUi(success.mode === 'return'
+    ? 'บันทึกแล้ว คืนไป {0} ถุง'
+    : success.mode === 'damage' ? 'บันทึกแล้ว ละลายไป {0} ถุง' : 'บันทึกแล้ว เติมไป {0} ถุง',
+  { 0: formatBags(success.quantity) }) : null;
   const [previewImage, setPreviewImage] = useState<{ name: string; url: string } | null>(null);
 
   useEffect(() => {
@@ -94,7 +106,7 @@ export function EmployeeStockTransferSection({
         </div>
         {stockError ? (
           <div className="employee-error employee-error--retry" role="alert">
-            <span><WarningCircle aria-hidden="true" size={22} weight="fill" />{translateUi(stockError)}</span>
+            <span><WarningCircle aria-hidden="true" size={22} weight="fill" />{stockErrorMessage}</span>
             <button disabled={transferSubmitting} onClick={() => void loadStockState(selectedRoundId)} type="button">{translateUi('ลองใหม่')}</button>
           </div>
         ) : null}
@@ -120,121 +132,54 @@ export function EmployeeStockTransferSection({
                 <strong>{isDamage ? translateUi('ตัดออกจากสต๊อก') : isReturn ? stockState.truck_location.name : stockState.holding_location.name}</strong>
               </div>
             )}
-            {isCardLayout ? (
-              <div className="employee-stock-table" role="list" aria-label={isReturn ? translateUi('ยอดก่อนและหลังคืนน้ำแข็ง') : isDamage ? translateUi('ยอดก่อนและหลังบันทึกน้ำแข็งละลาย') : translateUi('ยอดเติมและยอดควรเหลือ')}>
-                {iceTypes.map((iceType) => {
-                  const truckBefore = stockQuantity(stockState.truck_location.balances, iceType.id);
-                  const holdingBefore = stockQuantity(stockState.holding_location.balances, iceType.id);
-                  const withdrawnToday = stockQuantity(stockState.withdrawn_balances, iceType.id);
-                  const transferQuantity = transferQuantities[iceType.id] ?? 0;
-                  return (
-                    <div className="employee-stock-row" key={iceType.id} role="listitem">
-                      <strong><span>{iceType.name}</span> <small>({iceType.unit})</small></strong>
-                      <span className="employee-stock-available"><small>{usesHoldingStock ? isDamage ? translateUi('เหลือก่อนละลาย') : translateUi('เหลือก่อนคืน') : translateUi('เหลือบนรถ')}</small>{usesHoldingStock ? holdingBefore : truckBefore} {iceType.unit}</span>
-                      {iceType.image_url || iceType.image_path ? (
-                        <EmployeeStockProductImage
-                          key={`${iceType.id}:${iceType.image_path}:${iceType.image_url}`}
-                          iceType={iceType}
-                          onPreview={setPreviewImage}
-                        />
-                      ) : null}
-                      <div className="employee-stock-transfer-cell">
-                        <QuantityStepper
-                          disabled={transferSubmitting || selectedRound?.status === 'closed'}
-                          iceTypeName={iceType.name}
-                          maxQuantity={usesHoldingStock ? holdingBefore : truckBefore}
-                          onChange={(delta) => changeTransferQuantity(iceType.id, delta)}
-                          quantity={transferQuantity}
-                          purpose={movementLabel}
-                          step={0.5}
-                          unit={iceType.unit}
-                        />
-                      </div>
-                      <div className="employee-stock-stats" role="group" aria-label={translateUi('ยอด{0}', { 0: iceType.name })}>
-                        {isReturn ? (
-                          <>
-                            <span><small>{translateUi('รถก่อน')}</small><strong>{truckBefore}</strong> {iceType.unit}</span>
-                            <span><small>{translateUi('เหลือหลังคืน')}</small><strong>{holdingBefore - transferQuantity}</strong> {iceType.unit}</span>
-                          </>
-                        ) : isDamage ? (
-                          <>
-                            <span><small>{translateUi('คงเหลือก่อน')}</small><strong>{holdingBefore}</strong> {iceType.unit}</span>
-                            <span><small>{translateUi('เหลือหลังละลาย')}</small><strong>{holdingBefore - transferQuantity}</strong> {iceType.unit}</span>
-                          </>
-                        ) : (
-                          <>
-                            <span><small>{translateUi('เติมวันนี้')}</small><strong>{withdrawnToday}</strong> {iceType.unit}</span>
-                            <span><small>{translateUi('ควรเหลือ')}</small><strong>{holdingBefore}</strong> {iceType.unit}</span>
-                          </>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <div className="employee-stock-table" role="table" aria-label={isReturn ? translateUi('ยอดก่อนและหลังคืนน้ำแข็ง') : isDamage ? translateUi('ยอดก่อนและหลังบันทึกน้ำแข็งละลาย') : translateUi('ยอดเติมและยอดควรเหลือ')}>
-                <div className="employee-stock-row employee-stock-row--header" role="row">
-                  <span role="columnheader">{translateUi('ชนิด')}</span><span role="columnheader">{usesHoldingStock ? isDamage ? translateUi('เหลือก่อนละลาย') : translateUi('เหลือก่อนคืน') : translateUi('เหลือบนรถ')}</span><span role="columnheader">{translateUi(movementLabel)}</span><span role="columnheader">{isReturn ? translateUi('รถก่อน') : isDamage ? translateUi('คงเหลือก่อน') : translateUi('เติมวันนี้')}</span><span role="columnheader">{usesHoldingStock ? isDamage ? translateUi('เหลือหลังละลาย') : translateUi('เหลือหลังคืน') : translateUi('ควรเหลือ')}</span>
-                </div>
-                {iceTypes.map((iceType) => {
-                  const truckBefore = stockQuantity(stockState.truck_location.balances, iceType.id);
-                  const holdingBefore = stockQuantity(stockState.holding_location.balances, iceType.id);
-                  const withdrawnToday = stockQuantity(stockState.withdrawn_balances, iceType.id);
-                  const transferQuantity = transferQuantities[iceType.id] ?? 0;
-                  return (
-                    <div className="employee-stock-row" key={iceType.id} role="row">
-                      <strong role="cell">{iceType.name}<small>{iceType.unit}</small></strong>
-                      <span data-label={usesHoldingStock ? isDamage ? translateUi('เหลือก่อนละลาย') : translateUi('เหลือก่อนคืน') : translateUi('เหลือบนรถ')} role="cell">{usesHoldingStock ? holdingBefore : truckBefore}</span>
-                      <div className="employee-stock-transfer-cell" data-label={translateUi(movementLabel)} role="cell">
-                        <QuantityStepper
-                          disabled={transferSubmitting || selectedRound?.status === 'closed'}
-                          iceTypeName={iceType.name}
-                          maxQuantity={usesHoldingStock ? holdingBefore : truckBefore}
-                          onChange={(delta) => changeTransferQuantity(iceType.id, delta)}
-                          quantity={transferQuantity}
-                          purpose={movementLabel}
-                          step={0.5}
-                        />
-                      </div>
-                      <span data-label={isReturn ? translateUi('รถก่อน') : isDamage ? translateUi('คงเหลือก่อน') : translateUi('เติมวันนี้')} role="cell">{isReturn ? truckBefore : isDamage ? holdingBefore : withdrawnToday}</span>
-                      <b data-label={usesHoldingStock ? isDamage ? translateUi('เหลือหลังละลาย') : translateUi('เหลือหลังคืน') : translateUi('ควรเหลือ')} role="cell">{usesHoldingStock ? holdingBefore - transferQuantity : holdingBefore}</b>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-            {isCardLayout ? (
-              <div className="employee-stock-actions">
-                <button
-                  className="employee-stock-reset"
-                  disabled={transferSubmitting || transferItems.length === 0 || selectedRound?.status === 'closed'}
-                  onClick={resetTransferQuantities}
-                  type="button"
-                >
-                  <ArrowClockwise aria-hidden="true" size={20} weight="bold" />
-                  {translateUi('รีเซ็ตทั้งหมด')}</button>
-                <button
-                  aria-label={isReturn ? translateUi('ยืนยันคืนของ') : isDamage ? translateUi('ยืนยันน้ำแข็งละลาย') : translateUi('ยืนยันเติมน้ำแข็ง')}
-                  className="employee-submit employee-stock-submit"
-                  disabled={transferSubmitting || transferItems.length === 0 || selectedRound?.status === 'closed'}
-                  onClick={() => void handleStockTransfer()}
-                  type="button"
-                >
-                  <Check aria-hidden="true" size={22} weight="bold" />
-                  {selectedRound?.status === 'closed' ? translateUi('รอบนี้ปิดแล้ว') : transferSubmitting ? translateUi('กำลังบันทึก...') : isReturn ? translateUi('ยืนยันคืนของ') : isDamage ? translateUi('ยืนยันน้ำแข็งละลาย') : translateUi('ยืนยันการเติม')}
+            <div className="bag-transfer-list" role="list" aria-label={translateUi(movementLabel)}>
+              {iceTypes.map((iceType) => {
+                const bags = transferQuantities[iceType.id] ?? emptyBags();
+                const quantity = bagTotal({ ...bags, halfBags: iceType.allowHalf === false ? 0 : bags.halfBags });
+                const before = stockQuantity(usesHoldingStock ? stockState.holding_location.balances : stockState.truck_location.balances, iceType.id);
+                const disabled = transferSubmitting || selectedRound?.status === 'closed';
+                return <div className="bag-transfer-card" key={iceType.id} role="listitem">
+                  <div className="bag-transfer-heading">
+                    {iceType.image_url || iceType.image_path ? <EmployeeStockProductImage key={`${iceType.id}:${iceType.image_path}:${iceType.image_url}`} iceType={iceType} onPreview={setPreviewImage} />
+                      : <span className="bag-product-fallback" aria-hidden="true">{Array.from(iceType.name).slice(0, 2).join('')}</span>}
+                    <div className="bag-product-name"><strong>{iceType.name}</strong><small>{translateUi(usesHoldingStock ? 'เหลือที่ถือ {0} ถุง' : 'เหลือบนรถ {0} ถุง', { 0: formatBags(before - quantity) })}</small></div>
+                    <div className="bag-transfer-total"><small>{translateUi(isReturn ? 'คืนครั้งนี้' : isDamage ? 'ละลายครั้งนี้' : 'เติมครั้งนี้')}</small><strong>{formatBags(quantity)} <small>{translateUi('ถุง')}</small></strong></div>
+                  </div>
+                  <div className="bag-transfer-inputs">
+                    {(['fullBags', ...(iceType.allowHalf === false ? [] : ['halfBags'])] as Array<keyof BagQuantity>).map((field) => {
+                      const label = translateUi(field === 'fullBags' ? 'เต็มถุง' : 'ครึ่งถุง');
+                      return <label className="bag-counter" key={field}>
+                        <span>{label} <small>{field === 'fullBags' ? '×1' : '×½'}</small></span>
+                        <span className="bag-counter-controls">
+                          <button type="button" aria-label={translateUi('ลด{0} {1}', { 0: label, 1: iceType.name })} disabled={disabled || bags[field] === 0} onClick={() => changeTransferQuantity(iceType.id, field, bags[field] - 1)}>−</button>
+                          <input aria-label={`${label} ${iceType.name}`} type="text" inputMode="numeric" pattern="[0-9]*" value={bags[field]} disabled={disabled}
+                            onFocus={(event) => event.currentTarget.select()}
+                            onChange={(event) => {
+                              if (/^[0-9]*$/.test(event.target.value)) changeTransferQuantity(iceType.id, field, Number(event.target.value));
+                            }} />
+                          <button type="button" aria-label={translateUi('เพิ่ม{0} {1}', { 0: label, 1: iceType.name })} disabled={disabled} onClick={() => changeTransferQuantity(iceType.id, field, bags[field] + 1)}>+</button>
+                        </span>
+                      </label>;
+                    })}
+                  </div>
+                  <div className="bag-transfer-warning" role={quantity > before ? 'status' : undefined}>
+                    {quantity > before ? translateUi('จำนวนเกินสต๊อกคงเหลือ ต้องยืนยันก่อนบันทึก') : '\u00a0'}
+                  </div>
+                </div>;
+              })}
+            </div>
+            <div className="bag-transfer-actions">
+              <div className="bag-transfer-buttons">
+                <button className="bag-transfer-undo" disabled={transferSubmitting || !canUndo || selectedRound?.status === 'closed'} onClick={undoTransferQuantity} type="button">
+                  <ArrowClockwise aria-hidden="true" size={18} />{translateUi('ย้อนกลับ')}
+                </button>
+                <button className="employee-submit" disabled={transferSubmitting || selectedRound?.status === 'closed'} onClick={() => void handleStockTransfer()} type="button">
+                  <Check aria-hidden="true" size={18} />
+                  {selectedRound?.status === 'closed' ? translateUi('รอบนี้ปิดแล้ว') : transferSubmitting ? translateUi('กำลังบันทึก...') : translateUi('บันทึก{0} · {1} ถุง', { 0: translateUi(movementLabel), 1: formatBags(transferItems.reduce((sum, item) => sum + item.quantity, 0)) })}
                 </button>
               </div>
-            ) : (
-              <button
-                className="employee-submit employee-stock-submit"
-                disabled={transferSubmitting || transferItems.length === 0 || selectedRound?.status === 'closed'}
-                onClick={() => void handleStockTransfer()}
-                type="button"
-              >
-                {selectedRound?.status === 'closed' ? translateUi('รอบนี้ปิดแล้ว') : transferSubmitting ? translateUi('กำลังบันทึก...') : isReturn ? translateUi('ยืนยันคืนของ') : isDamage ? translateUi('ยืนยันน้ำแข็งละลาย') : translateUi('ยืนยันการเติม')}
-              </button>
-            )}
+              {stockError ? <p className="bag-transfer-error" role="alert"><span>{stockErrorMessage}</span> <span>{translateUi('กรุณาลองบันทึกใหม่')}</span></p> : successMessage ? <p className="bag-transfer-success" role="status">{successMessage}</p> : null}
+            </div>
           </>
         ) : null}
         {previewImage ? (

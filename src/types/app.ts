@@ -213,6 +213,7 @@ export interface DeliveryRound {
 }
 
 export interface IceTypeOption {
+  allowHalf?: boolean;
   id: string;
   code: string;
   name: string;

@@ -1,3 +1,5 @@
+import { bagTotal, emptyBags, restoreBags, type BagQuantity } from './bagQuantity';
+import { translateUi } from '../../i18n';
 import { deliveryLineTotal, deliverySubtotal, exclusiveVat } from '../../lib/vat';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import type {
@@ -35,6 +37,7 @@ import {
 
 const PAD_VALUES = ['0', '1', '2', '3', '4', '5', '+'] as const;
 export type StockTransferMode = 'receive' | 'return' | 'damage';
+export interface StockTransferSuccess { mode: StockTransferMode; quantity: number }
 
 function automaticRoundId(rounds: DeliveryRound[]) {
   const openRounds = rounds.filter((round) => round.status === 'open');
@@ -82,7 +85,7 @@ interface EmployeeWorkspaceRecovery {
   selectedCardId: string | null;
   selectedIceTypeId: string;
   deliveryQuantities: Record<string, number>;
-  transferQuantities: Record<string, number>;
+  transferQuantities: Record<string, BagQuantity>;
   stockTransferMode: StockTransferMode;
   paymentTerm: PaymentTerm;
   paymentResult: DeliveryFinancialResult | null;
@@ -168,7 +171,10 @@ export function useEmployeeDeliveryData({
   const [collectionOutstandingError, setCollectionOutstandingError] = useState<string | null>(null);
   const [selectedIceTypeId, setSelectedIceTypeId] = useState('');
   const [deliveryQuantities, setDeliveryQuantities] = useState<Record<string, number>>({});
-  const [transferQuantities, setTransferQuantities] = useState<Record<string, number>>({});
+  const [transferQuantities, setTransferQuantities] = useState<Record<string, BagQuantity>>({});
+  const [transferSuccess, setTransferSuccess] = useState<StockTransferSuccess | null>(null);
+  const [transferHistory, setTransferHistory] = useState<Record<string, BagQuantity>[]>([]);
+  useEffect(() => { setTransferHistory([]); setTransferSuccess(null); }, [selectedRoundId]);
   const [stockTransferMode, setStockTransferMode] = useState<StockTransferMode>('receive');
   const [stockState, setStockState] = useState<EmployeeStockState | null>(null);
   const [posContext, setPosContext] = useState<DeliveryPosContext | null>(null);
@@ -330,7 +336,7 @@ export function useEmployeeDeliveryData({
         nextIceTypes.map((iceType) => [iceType.id, current[iceType.id] ?? 0]),
       ));
       setTransferQuantities((current) => Object.fromEntries(
-        nextIceTypes.map((iceType) => [iceType.id, current[iceType.id] ?? 0]),
+        nextIceTypes.map((iceType) => [iceType.id, current[iceType.id] ?? emptyBags()]),
       ));
       setSelectedRoundId((current) => (
         nextRounds.some((round) => round.id === current) ? current : automaticRoundId(nextRounds)
@@ -535,7 +541,11 @@ export function useEmployeeDeliveryData({
     .map((iceType) => ({ ice_type_id: iceType.id, quantity: deliveryQuantities[iceType.id] ?? 0 }))
     .filter((item) => item.quantity > 0), [deliveryQuantities, iceTypes]);
   const transferItems = useMemo(() => iceTypes
-    .map((iceType) => ({ ice_type_id: iceType.id, quantity: transferQuantities[iceType.id] ?? 0 }))
+    .map((iceType) => {
+      const bags = transferQuantities[iceType.id] ?? emptyBags();
+      const counts = { fullBags: bags.fullBags, halfBags: iceType.allowHalf === false ? 0 : bags.halfBags };
+      return { ice_type_id: iceType.id, ...counts, quantity: bagTotal(counts) };
+    })
     .filter((item) => item.quantity > 0), [iceTypes, transferQuantities]);
   
   const anySubmitting = submitting || transferSubmitting || paymentSubmitting || approvalSubmitting;
@@ -842,7 +852,7 @@ export function useEmployeeDeliveryData({
     if (!saved || loadingCards || loadedCardsRoundId.current !== selectedRoundId || saved.selectedRoundId !== selectedRoundId) return;
     if (enableAssignedStockFlow && !stockState) return;
     pendingCardRecovery.current = null;
-    setTransferQuantities(saved.transferQuantities);
+    setTransferQuantities(Object.fromEntries(Object.entries(saved.transferQuantities).map(([id, value]) => [id, restoreBags(value)])));
     const card = cards.find((candidate) => candidate.round_stop_id === saved.selectedCardId);
     if (card) openCard(card, saved);
     setRecoveryReadyToPersist(true);
@@ -1018,53 +1028,72 @@ export function useEmployeeDeliveryData({
     setEntryError(null);
   };
 
-  const changeTransferQuantity = (iceTypeId: string, delta: number) => {
-    if (transferSubmitting || selectedRound?.status === 'closed') return;
-    const available = stockQuantity(
-      stockTransferMode === 'return' || stockTransferMode === 'damage'
-        ? stockState?.holding_location.balances
-        : stockState?.truck_location.balances,
-      iceTypeId,
-    );
-    setTransferQuantities((current) => ({
-      ...current,
-      [iceTypeId]: Math.max(0, Math.min(available, (current[iceTypeId] ?? 0) + delta)),
-    }));
+  const changeTransferQuantity = (iceTypeId: string, field: keyof BagQuantity, value: number) => {
+    if (transferSubmitting || selectedRound?.status === 'closed' || !Number.isSafeInteger(value) || value < 0) return;
+    if (field === 'halfBags' && iceTypes.find((ice) => ice.id === iceTypeId)?.allowHalf === false) return;
+    const current = transferQuantities[iceTypeId] ?? emptyBags();
+    if (current[field] === value) return;
+    setTransferHistory((history) => [...history, transferQuantities]);
+    setTransferQuantities({ ...transferQuantities, [iceTypeId]: { ...current, [field]: value } });
     setStockError(null);
-    setSuccess(null);
+    setTransferSuccess(null);
+  };
+
+  const undoTransferQuantity = () => {
+    if (transferSubmitting || !transferHistory.length || selectedRound?.status === 'closed') return;
+    setTransferQuantities(transferHistory[transferHistory.length - 1]);
+    setTransferHistory((history) => history.slice(0, -1));
+    setStockError(null);
+    setTransferSuccess(null);
   };
 
   const changeStockTransferMode = (nextMode: StockTransferMode) => {
     if (nextMode === stockTransferMode || transferSubmitting) return;
     if (transferItems.length > 0
-      && !window.confirm('เปลี่ยนประเภทรายการแล้ว จำนวนที่กรอกไว้จะถูกล้าง ต้องการเปลี่ยนหรือไม่?')) return;
-    const clearedTransferQuantities = Object.fromEntries(iceTypes.map((iceType) => [iceType.id, 0]));
+      && !window.confirm(translateUi('เปลี่ยนประเภทรายการแล้ว จำนวนที่กรอกไว้จะถูกล้าง ต้องการเปลี่ยนหรือไม่?'))) return;
+    const clearedTransferQuantities = Object.fromEntries(iceTypes.map((iceType) => [iceType.id, emptyBags()]));
     persistRecoveryNow({
       stockTransferMode: nextMode,
       transferQuantities: clearedTransferQuantities,
     });
     setStockTransferMode(nextMode);
     setTransferQuantities(clearedTransferQuantities);
+    setTransferHistory([]);
     setStockError(null);
-    setSuccess(null);
+    setTransferSuccess(null);
   };
 
   const handleStockTransfer = async () => {
-    if (!selectedRound || !stockState || transferSubmitting || transferItems.length === 0) return;
+    if (!selectedRound || !stockState || transferSubmitting) return;
+    if (transferItems.length === 0) {
+      setStockError('ใส่จำนวนอย่างน้อยหนึ่งรายการก่อนบันทึก');
+      return;
+    }
+    const source = stockTransferMode === 'receive' ? stockState.truck_location : stockState.holding_location;
+    const overstock = transferItems.some((item) => item.quantity > stockQuantity(source.balances, item.ice_type_id));
+    if (overstock && !window.confirm(translateUi('จำนวนที่กรอกมากกว่าสต๊อกคงเหลือ ยืนยันบันทึกและให้ยอดคงเหลือติดลบหรือไม่?'))) return;
     const operation = stockTransferMode === 'return'
       ? 'stock-return'
       : stockTransferMode === 'damage'
         ? 'stock-damage'
         : 'stock-transfer';
-    const signature = `${requestScope}:${operation}:${JSON.stringify({
+    const splitSignature = `${requestScope}:${operation}:${JSON.stringify({
       roundId: selectedRound.id,
       items: transferItems,
     })}`;
+    // A recovered pre-upgrade draft may already have committed. Preserve its
+    // quantity-only payload and key until acknowledged, then use splits for new saves.
+    const legacyItems = transferItems.map(({ ice_type_id, quantity }) => ({ ice_type_id, quantity }));
+    const legacySignature = `${requestScope}:${operation}:${JSON.stringify({ roundId: selectedRound.id, items: legacyItems })}`;
+    const legacyRequest = getPendingRequest(legacySignature);
+    const signature = legacyRequest ? legacySignature : splitSignature;
+    const confirmedItems = (legacyRequest ? legacyItems : transferItems)
+      .map((item) => ({ ...item, confirmedOverstock: overstock }));
     const request = getOrCreatePendingRequest(signature);
     const requestId = ++transferRequestId.current;
     setTransferSubmitting(true);
     setStockError(null);
-    setSuccess(null);
+    setTransferSuccess(null);
     try {
       const recordStockMovement = stockTransferMode === 'return'
         ? gateway.recordEmployeeStockReturn
@@ -1073,21 +1102,18 @@ export function useEmployeeDeliveryData({
           : gateway.recordEmployeeStockTransfer;
       const nextState = await recordStockMovement({
         roundId: selectedRound.id,
-        items: transferItems,
+        items: confirmedItems,
         idempotencyKey: request.key,
       });
       publishDataChange(['accounting', 'stock']);
       if (requestId !== transferRequestId.current || activeStockRoundId.current !== selectedRound.id) return;
-      const clearedTransferQuantities = Object.fromEntries(iceTypes.map((iceType) => [iceType.id, 0]));
+      const clearedTransferQuantities = Object.fromEntries(iceTypes.map((iceType) => [iceType.id, emptyBags()]));
       persistRecoveryNow({ transferQuantities: clearedTransferQuantities });
       clearPendingRequest(signature, request.key);
       setStockState(nextState);
       setTransferQuantities(clearedTransferQuantities);
-      setSuccess(stockTransferMode === 'return'
-        ? `คืนน้ำแข็งขึ้น ${nextState.truck_location.name} แล้ว`
-        : stockTransferMode === 'damage'
-          ? `บันทึกน้ำแข็งละลายจาก ${nextState.holding_location.name} แล้ว`
-          : `เติมน้ำแข็งเข้า ${nextState.holding_location.name} แล้ว`);
+      setTransferHistory([]);
+      setTransferSuccess({ mode: stockTransferMode, quantity: transferItems.reduce((sum, item) => sum + item.quantity, 0) });
       if (stockTransferMode === 'receive') onStockReceived?.();
     } catch (transferError) {
       if (requestId !== transferRequestId.current || activeStockRoundId.current !== selectedRound.id) return;
@@ -1666,6 +1692,9 @@ export function useEmployeeDeliveryData({
     returnToDelivery,
     attemptBack,
     changeTransferQuantity,
+    undoTransferQuantity,
+    canUndoTransfer: transferHistory.length > 0,
+    transferSuccess,
     changeStockTransferMode,
     setDeliveryQuantity,
     clearDeliveryQuantities,

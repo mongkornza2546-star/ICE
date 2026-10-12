@@ -1,3 +1,4 @@
+import { bagTotal, emptyBags } from '../src/features/employee-delivery/bagQuantity';
 import { useState } from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -25,30 +26,33 @@ const stockState = {
   },
 };
 
-function StockTransferHarness({ onSubmit, image = false }: { onSubmit: (quantity: number) => void; image?: boolean }) {
+function StockTransferHarness({ onSubmit, image = false, allowHalf = true }: { onSubmit: (quantity: number) => void; image?: boolean; allowHalf?: boolean }) {
   const [mode, setMode] = useState<StockTransferMode>('receive');
-  const [quantity, setQuantity] = useState(0);
+  const [bags, setBags] = useState(emptyBags());
+  const quantity = bagTotal(bags);
   return <EmployeeStockTransferSection
     stockError={null}
     transferSubmitting={false}
     loadStockState={() => undefined}
     selectedRoundId="round-1"
     stockState={stockState}
-    iceTypes={[{ id: 'ice-1', code: 'ICE', name: 'หลอดเล็ก', unit: 'ถุง', ...(image ? { image_path: 'ice_types/ice-1/r2/photo.webp', image_url: 'https://r2.test/stale' } : {}) }]}
-    transferQuantities={{ 'ice-1': quantity }}
-    changeTransferQuantity={(_, delta) => setQuantity((current) => Math.max(0, Math.min(3, current + delta)))}
+    iceTypes={[{ id: 'ice-1', code: 'ICE', name: 'หลอดเล็ก', unit: 'ถุง', allowHalf, ...(image ? { image_path: 'ice_types/ice-1/r2/photo.webp', image_url: 'https://r2.test/stale' } : {}) }]}
+    transferQuantities={{ 'ice-1': bags }}
+    changeTransferQuantity={(_, field, value) => setBags((current) => ({ ...current, [field]: value }))}
     stockTransferMode={mode}
     changeStockTransferMode={setMode}
     selectedRound={{ id: 'round-1', name: 'รอบวันนี้', service_date: '2026-08-09', status: 'open' }}
     handleStockTransfer={() => onSubmit(quantity)}
-    resetTransferQuantities={() => setQuantity(0)}
+    undoTransferQuantity={() => setBags(emptyBags())}
+    canUndo={quantity > 0}
+    success={null}
     variant="cards"
     transferItems={quantity > 0 ? [{ ice_type_id: 'ice-1', quantity }] : []}
   />;
 }
 
 describe('employee stock damage', () => {
-  it('selects damage, limits it to holding stock, and submits it', async () => {
+  it('selects damage and warns without blocking above holding stock', async () => {
     const user = userEvent.setup();
     const onSubmit = vi.fn();
     render(<StockTransferHarness onSubmit={onSubmit} />);
@@ -56,14 +60,15 @@ describe('employee stock damage', () => {
     await user.click(screen.getByRole('button', { name: 'ละลาย' }));
     expect(screen.getByRole('heading', { name: 'บันทึกน้ำแข็งละลาย' })).toBeTruthy();
 
-    const add = screen.getByRole('button', { name: 'เพิ่มหลอดเล็กอีกครึ่ง' });
+    const add = screen.getByRole('button', { name: 'เพิ่มครึ่งถุง หลอดเล็ก' });
     await user.click(add);
-    expect((screen.getByLabelText('จำนวนหลอดเล็ก') as HTMLInputElement).value).toBe('0.5');
-    for (let click = 0; click < 5; click += 1) await user.click(add);
-    expect((add as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByLabelText('ครึ่งถุง หลอดเล็ก') as HTMLInputElement).value).toBe('1');
+    for (let click = 0; click < 6; click += 1) await user.click(add);
+    expect((add as HTMLButtonElement).disabled).toBe(false);
+    expect(screen.getByText('จำนวนเกินสต๊อกคงเหลือ ต้องยืนยันก่อนบันทึก')).toBeTruthy();
 
-    await user.click(screen.getByRole('button', { name: 'ยืนยันน้ำแข็งละลาย' }));
-    expect(onSubmit).toHaveBeenCalledWith(3);
+    await user.click(screen.getByRole('button', { name: /บันทึกละลาย · 3.5 ถุง/ }));
+    expect(onSubmit).toHaveBeenCalledWith(3.5);
   });
 });
 
@@ -73,10 +78,10 @@ describe('employee stock receive', () => {
     const onSubmit = vi.fn();
     render(<StockTransferHarness onSubmit={onSubmit} />);
 
-    await user.click(screen.getByRole('button', { name: 'เพิ่มหลอดเล็กอีกครึ่ง' }));
+    await user.click(screen.getByRole('button', { name: 'เพิ่มครึ่งถุง หลอดเล็ก' }));
 
-    expect((screen.getByLabelText('จำนวนหลอดเล็ก') as HTMLInputElement).value).toBe('0.5');
-    await user.click(screen.getByRole('button', { name: 'ยืนยันเติมน้ำแข็ง' }));
+    expect((screen.getByLabelText('ครึ่งถุง หลอดเล็ก') as HTMLInputElement).value).toBe('1');
+    await user.click(screen.getByRole('button', { name: /บันทึกเติมจากรถ · 0.5 ถุง/ }));
     expect(onSubmit).toHaveBeenCalledWith(0.5);
   });
 });
@@ -88,10 +93,10 @@ describe('employee stock return', () => {
     render(<StockTransferHarness onSubmit={onSubmit} />);
 
     await user.click(screen.getByRole('button', { name: 'คืนขึ้นรถ' }));
-    await user.click(screen.getByRole('button', { name: 'เพิ่มหลอดเล็กอีกครึ่ง' }));
+    await user.click(screen.getByRole('button', { name: 'เพิ่มครึ่งถุง หลอดเล็ก' }));
 
-    expect((screen.getByLabelText('จำนวนหลอดเล็ก') as HTMLInputElement).value).toBe('0.5');
-    await user.click(screen.getByRole('button', { name: 'ยืนยันคืนของ' }));
+    expect((screen.getByLabelText('ครึ่งถุง หลอดเล็ก') as HTMLInputElement).value).toBe('1');
+    await user.click(screen.getByRole('button', { name: /บันทึกคืนขึ้นรถ · 0.5 ถุง/ }));
     expect(onSubmit).toHaveBeenCalledWith(0.5);
   });
 
@@ -101,11 +106,12 @@ describe('employee stock return', () => {
     render(<StockTransferHarness onSubmit={onSubmit} />);
 
     await user.click(screen.getByRole('button', { name: 'คืนขึ้นรถ' }));
-    const quantityInput = screen.getByLabelText('จำนวนหลอดเล็ก') as HTMLInputElement;
-    await user.type(quantityInput, '0.5');
+    const quantityInput = screen.getByLabelText('ครึ่งถุง หลอดเล็ก') as HTMLInputElement;
+    await user.clear(quantityInput);
+    await user.type(quantityInput, '1');
 
-    expect(quantityInput.value).toBe('0.5');
-    await user.click(screen.getByRole('button', { name: 'ยืนยันคืนของ' }));
+    expect(quantityInput.value).toBe('1');
+    await user.click(screen.getByRole('button', { name: /บันทึกคืนขึ้นรถ · 0.5 ถุง/ }));
     expect(onSubmit).toHaveBeenCalledWith(0.5);
   });
 });
@@ -134,3 +140,18 @@ describe('employee stock image recovery', () => {
     await waitFor(() => expect(imageMocks.refresh).toHaveBeenCalledTimes(2));
   });
 });
+
+ it('types 14 full bags and one half bag as 14.5', () => {
+   render(<StockTransferHarness onSubmit={() => undefined} />);
+   fireEvent.change(screen.getByLabelText('เต็มถุง หลอดเล็ก'), { target: { value: '14' } });
+   fireEvent.change(screen.getByLabelText('ครึ่งถุง หลอดเล็ก'), { target: { value: '1' } });
+   expect(screen.getByRole('button', { name: /บันทึกเติมจากรถ · 14.5 ถุง/ })).toBeTruthy();
+   expect(screen.getByText('เหลือบนรถ -4.5 ถุง')).toBeTruthy();
+   fireEvent.change(screen.getByLabelText('เต็มถุง หลอดเล็ก'), { target: { value: '-1' } });
+   expect((screen.getByLabelText('เต็มถุง หลอดเล็ก') as HTMLInputElement).value).toBe('14');
+ });
+ it('hides half bags when allowHalf is false', () => {
+   render(<StockTransferHarness onSubmit={() => undefined} allowHalf={false} />);
+   expect(screen.queryByLabelText('ครึ่งถุง หลอดเล็ก')).toBeNull();
+   expect(screen.getByLabelText('เต็มถุง หลอดเล็ก')).toBeTruthy();
+ });

@@ -370,7 +370,6 @@ export function RoleRouter({
               setCourierView('collection');
             }}
             onOpenEvents={() => setCourierView('events')}
-            onStockReceived={() => setCourierView('pos')}
             printerName={profile.nickname?.trim() || profile.display_name}
             requestScope={profile.id}
             collectionReturnOrigin="courier-pos"
