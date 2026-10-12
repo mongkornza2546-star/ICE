@@ -48,7 +48,12 @@ export function printBillingStatement(
     .bill-date { font-size: 8pt; }
     .amount { white-space: nowrap; font-weight: 700; }
     .closing { break-inside: avoid; page-break-inside: avoid; padding-top: 10px; }
-    .summary { margin-left: auto; width: 78mm; }
+    .summaries { display: grid; grid-template-columns: minmax(0, 1fr) 78mm; gap: 12mm; align-items: start; }
+    .summary { width: 78mm; }
+    .ice-summary { border-top: 2px solid #17679b; padding-top: 8px; }
+    .ice-summary h2 { margin: 0 0 6px; font-size: 11pt; color: #125d90; }
+    .ice-summary .summary-row { border-bottom: 1px solid #d6e0e7; padding: 4px 0; }
+    .ice-summary .quantity-total { font-weight: 700; }
     .summary-row { display: flex; justify-content: space-between; gap: 10px; padding: 2px 0; }
     .summary-row span:last-child { white-space: nowrap; font-variant-numeric: tabular-nums; }
     .total { margin-top: 5px; padding: 8px 0; border-top: 2px solid #17679b; border-bottom: 1px solid #c9d8e3; font-size: 13pt; font-weight: 700; color: #125d90; }
@@ -120,8 +125,19 @@ export function printBillingStatement(
   thead.append(headerRow);
   table.append(columns, thead);
   const chargesById = new Map(charges.map((charge) => [charge.charge_id, charge]));
+  const iceTotals = new Map<string, { name: string; unit: string; quantity: number }>();
+  const unitTotals = new Map<string, number>();
+  let missingDetails = 0;
   for (const [index, item] of statement.items.entries()) {
     const products = chargesById.get(item.charge_id)?.items ?? [];
+    if (products.length === 0) missingDetails += 1;
+    for (const product of products) {
+      const key = JSON.stringify([product.ice_type_id, product.unit]);
+      const total = iceTotals.get(key) ?? { name: product.name, unit: product.unit, quantity: 0 };
+      total.quantity += Number(product.quantity);
+      iceTotals.set(key, total);
+      unitTotals.set(product.unit, (unitTotals.get(product.unit) ?? 0) + Number(product.quantity));
+    }
     const tbody = element('tbody');
     // Keep multiple ice types under one bill, with its amount printed only once.
     for (let productIndex = 0; productIndex < Math.max(products.length, 1); productIndex += 1) {
@@ -152,6 +168,22 @@ export function printBillingStatement(
   main.append(table);
 
   const closing = element('section', undefined, 'closing');
+  const summaries = element('div', undefined, 'summaries');
+  const iceSummary = element('section', undefined, 'ice-summary');
+  iceSummary.append(element('h2', 'สรุปจำนวนน้ำแข็ง'));
+  for (const total of iceTotals.values()) {
+    const row = element('p', undefined, 'summary-row');
+    row.append(element('span', total.name), element('span', `${quantity.format(total.quantity)} ${total.unit}`));
+    iceSummary.append(row);
+  }
+  for (const [unit, total] of unitTotals) {
+    const row = element('p', undefined, 'summary-row quantity-total');
+    row.append(element('span', missingDetails ? 'รวมเฉพาะรายการที่มีข้อมูล' : 'รวมทั้งหมด'), element('span', `${quantity.format(total)} ${unit}`));
+    iceSummary.append(row);
+  }
+  if (missingDetails) {
+    iceSummary.append(element('p', `ไม่พบรายละเอียดน้ำแข็ง ${missingDetails} บิล จึงยังสรุปจำนวนได้ไม่ครบ`, 'muted'));
+  }
   const summary = element('div', undefined, 'summary');
   const summaryRow = (label: string, amount: number, className = '') => {
     const row = element('p', undefined, `summary-row ${className}`);
@@ -170,7 +202,8 @@ export function printBillingStatement(
     summaryRow('ชำระหลังออกใบวางบิล', Math.max(Number(statement.total_amount) - Number(statement.outstanding_amount), 0), 'remaining');
     summaryRow('ยอดคงเหลือ', Number(statement.outstanding_amount));
   }
-  closing.append(summary, element('p', 'เอกสารนี้เป็นใบวางบิล ไม่ใช่ใบเสร็จรับเงิน', 'notice'));
+  summaries.append(iceSummary, summary);
+  closing.append(summaries, element('p', 'เอกสารนี้เป็นใบวางบิล ไม่ใช่ใบเสร็จรับเงิน', 'notice'));
   const footer = element('footer');
   for (const label of ['ผู้วางบิล', 'ผู้รับวางบิล']) {
     const signature = element('div', undefined, 'signature');

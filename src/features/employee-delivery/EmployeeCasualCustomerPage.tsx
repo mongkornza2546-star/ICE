@@ -434,7 +434,7 @@ export function EmployeeCasualCustomerPage({
               </div>
               {quantityError ? <p className="employee-error" role="alert">{translateUi(quantityError)}</p> : null}
               <div className="employee-keypad">
-                {['7', '8', '9', '4', '5', '6', '1', '2', '3'].map((digit) => <button disabled={busy} key={digit} onClick={() => setQuantityInput((current) => `${current}${digit}`)} type="button">{digit}</button>)}
+                {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((digit) => <button disabled={busy} key={digit} onClick={() => setQuantityInput((current) => `${current}${digit}`)} type="button">{digit}</button>)}
                 <button aria-label={translateUi('ล้างจำนวน')} disabled={busy} onClick={() => setQuantityInput('')} type="button">{translateUi('ล้าง')}</button>
                 <button aria-label={translateUi('เพิ่มครึ่ง{0}', { 0: selectedItem.unit })} disabled={busy || Boolean(quantityError) || quantity + 0.5 > available} onClick={() => setQuantityInput(String(quantity + 0.5))} type="button">½ {selectedItem.unit}</button>
                 <button disabled={busy} onClick={() => setQuantityInput((current) => `${current}0`)} type="button">0</button>

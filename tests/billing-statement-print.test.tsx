@@ -33,6 +33,34 @@ function print(payload = statement, sourceCharges = charges) {
 }
 
 describe('billing statement printing', () => {
+  it('summarizes ice by type and unit across only the bills on this statement', () => {
+    const doc = print(statement, [
+      charges[0],
+      { ...charges[1], items: [
+        { ice_type_id: 'small', name: 'หลอดเล็ก', unit: 'ถุง', quantity: 2.5 },
+        { ice_type_id: 'small', name: 'หลอดเล็ก', unit: 'กระสอบ', quantity: 1 },
+      ] },
+      { ...charges[0], charge_id: 'not-on-statement' },
+    ]);
+    const rows = Array.from(doc.querySelectorAll('.ice-summary .summary-row'), (row) => row.textContent);
+    expect(rows).toEqual([
+      'หลอดเล็ก4 ถุง', 'หลอดใหญ่0.5 ถุง', 'หลอดเล็ก1 กระสอบ',
+      'รวมทั้งหมด4.5 ถุง', 'รวมทั้งหมด1 กระสอบ',
+    ]);
+    expect(doc.querySelector('.total')?.textContent).toBe('ยอดวางบิลทั้งสิ้น฿150.00');
+  });
+
+  it('labels partial quantity totals when a bill has no product details', () => {
+    const doc = print(statement, [charges[0]]);
+    const text = doc.querySelector('.ice-summary')?.textContent;
+    expect(text).toContain('รวมเฉพาะรายการที่มีข้อมูล2 ถุง');
+    expect(text).toContain('ไม่พบรายละเอียดน้ำแข็ง 1 บิล');
+    expect(text).not.toContain('รวมทั้งหมด');
+    const empty = print(statement, []);
+    expect(empty.querySelector('.ice-summary')?.textContent).toContain('ไม่พบรายละเอียดน้ำแข็ง 2 บิล');
+    expect(empty.querySelector('.quantity-total')).toBeNull();
+  });
+
   it('matches ice details by charge ID and shows each date and amount once for multiple ice types', () => {
     const doc = print(statement, [...charges].reverse());
     expect(doc.documentElement.lang).toBe('th');
