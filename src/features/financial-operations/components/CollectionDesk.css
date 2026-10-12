@@ -1,0 +1,107 @@
+/* Receipt history is a compact ledger on desktop, with stacked rows on small screens. */
+.collection-desk__section--history {
+  container: collection-history / inline-size;
+  min-width: 0;
+  gap: 18px;
+  padding: 22px;
+}
+.collection-history__navigation {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 18px;
+  border-bottom: 1px solid #e4ebf3;
+}
+.collection-desk__section--history .collection-desk__tabs { padding: 0; height: 48px; }
+.collection-desk__section--history .collection-desk__tabs button { padding: 0 12px; white-space: nowrap; font-size: .78rem; }
+.collection-desk__section--history .collection-desk__tabs b { margin-left: 5px; }
+.collection-desk__section--history .collection-desk__history-date {
+  display: flex;
+  padding: 0 0 8px;
+  border: 0;
+  background: transparent;
+  gap: 5px;
+}
+.collection-desk__section--history .collection-desk__history-date label { flex-direction: row; margin: 0; padding: 0 10px; }
+.collection-desk__section--history .collection-desk__history-date input { width: 132px; min-height: 38px; padding: 0; }
+.collection-desk__section--history .collection-desk__history-date button { min-width: 36px; min-height: 38px; font-size: .8rem; }
+.collection-desk__section--history .collection-desk__history-date button:first-child,
+.collection-desk__section--history .collection-desk__history-date button:nth-child(3) { font-size: 1.25rem; }
+.collection-desk__section--history .financial-ops__queue-filters {
+  grid-template-columns: minmax(200px, 1.8fr) repeat(4, minmax(100px, 1fr));
+  gap: 12px;
+}
+.collection-desk__section--history .financial-ops__queue-filters > label { min-width: 0; font-weight: 500; color: #536a82; }
+.collection-desk__section--history .financial-ops__queue-search { grid-column: auto; }
+.collection-desk__section--history select { appearance: auto; box-shadow: none; background-color: #fff; }
+.collection-desk__section--history .collection-desk__admin-bar { gap: 12px; padding: 0; border: 0; }
+.collection-desk__section--history .collection-desk__subfilters { margin-left: auto; }
+.collection-desk__section--history .collection-desk__subfilters select { width: auto; max-width: 100%; font-weight: 500; }
+.collection-history__results { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; color: #566b82; font-size: .76rem; }
+.collection-history__results > span:first-child { font-weight: 600; color: #243e5b; }
+.collection-history__results > span:nth-child(2) { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px; }
+.collection-history__results strong { color: #116b4c; font-size: .92rem; font-variant-numeric: tabular-nums; }
+.collection-history__results small { font-size: .65rem; }
+.collection-history__results button, .collection-history__empty button { display: inline-flex; align-items: center; gap: 4px; min-height: 34px; padding: 5px 8px; border: 0; border-radius: 6px; color: #1165bd; background: #eff6ff; font: inherit; cursor: pointer; }
+.collection-history__list { overflow: hidden; border: 1px solid #e0e8f0; border-radius: 10px; }
+.collection-history__head, .collection-history__row {
+  display: grid;
+  grid-template-columns: minmax(180px, 2fr) minmax(148px, 1.3fr) minmax(82px, .7fr) minmax(94px, .8fr) minmax(100px, .85fr) 16px;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 16px;
+}
+.collection-history__head { min-height: 44px; color: #607389; background: #f6f9fc; font-size: .7rem; font-weight: 600; }
+.collection-history__head > span:nth-child(5) { text-align: right; }
+.collection-history__row { width: 100%; min-height: 84px; border: 0; border-top: 1px solid #e9eef4; color: #203c59; background: #fff; font: inherit; font-size: .78rem; text-align: left; cursor: pointer; transition: background 120ms ease; }
+.collection-history__row:hover { background: #f4f9ff; }
+.collection-history__row:focus-visible { position: relative; outline: 2px solid #1479ec; outline-offset: -3px; background: #f4f9ff; }
+.collection-history__shop { display: flex; align-items: center; gap: 11px; min-width: 0; }
+.collection-history__thumbnail { width: 42px; height: 42px; display: grid; place-items: center; flex-shrink: 0; overflow: hidden; border: 1px solid #dce8f3; border-radius: 10px; color: #6289ae; background: #eff5fb; }
+.collection-history__thumbnail img { width: 100%; height: 100%; object-fit: cover; }
+.collection-history__shop > span:last-child, .collection-history__receipt { display: grid; gap: 4px; min-width: 0; }
+.collection-history__shop strong { display: -webkit-box; overflow: hidden; -webkit-line-clamp: 2; -webkit-box-orient: vertical; line-height: 1.5; font-weight: 600; overflow-wrap: anywhere; }
+.collection-history__shop small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #728297; font-size: .67rem; }
+.collection-history__receipt strong { font-weight: 500; color: #216ec0; overflow-wrap: anywhere; }
+.collection-history__receipt time { font-size: .67rem; color: #728297; }
+.collection-history__method { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; font-size: .73rem; }
+.collection-history__method svg { flex-shrink: 0; }
+.collection-history__method--cash { color: #277554; }
+.collection-history__method--transfer { color: #6655a4; }
+.collection-history__status { display: inline-flex; align-items: center; justify-self: start; gap: 5px; padding: 5px 8px; border-radius: 6px; white-space: nowrap; font-size: .65rem; font-style: normal; font-weight: 500; }
+.collection-history__status i { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+.collection-history__amount { text-align: right; font-size: .9rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.collection-history__row--voided .collection-history__amount { color: #8b7680; text-decoration: line-through; font-weight: 500; }
+.collection-history__arrow { color: #8a9cb0; }
+.collection-history__empty { display: grid; justify-items: center; gap: 10px; padding: 44px 16px; color: #728297; text-align: center; font-size: .78rem; }
+.collection-history__empty strong { color: #344e6a; }
+.collection-desk__pagination { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; color: #64768b; font-size: .72rem; }
+.collection-desk__pagination > span:nth-child(2) { display: flex; align-items: center; gap: 6px; }
+.collection-desk__pagination button, .collection-desk__pagination b { width: 34px; height: 34px; display: grid; place-items: center; border: 1px solid #dce5ee; border-radius: 7px; color: #395b7a; background: #fff; font: inherit; }
+.collection-desk__pagination b { color: #1165bd; background: #eff6ff; border-color: #bfdbf7; font-weight: 700; }
+.collection-desk__pagination button:disabled { opacity: .4; cursor: not-allowed; }
+.collection-desk__pagination button:not(:disabled) { cursor: pointer; }
+@container collection-history (max-width: 850px) {
+  .collection-desk__section--history .financial-ops__queue-filters { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .collection-desk__section--history .financial-ops__queue-search { grid-column: 1 / -1; }
+  .collection-history__head, .collection-history__row { gap: 10px; padding: 12px; grid-template-columns: minmax(155px, 1.8fr) minmax(130px, 1.3fr) 75px 87px 94px 14px; }
+}
+@container collection-history (max-width: 680px) {
+  .collection-history__head { display: none; }
+  .collection-history__row { grid-template-columns: minmax(0, 1fr) auto; gap: 10px 16px; padding: 16px; }
+  .collection-history__shop { grid-column: 1; grid-row: 1; }
+  .collection-history__amount { grid-column: 2; grid-row: 1; }
+  .collection-history__receipt { grid-column: 1; grid-row: 2; padding-left: 53px; }
+  .collection-history__status { grid-column: 2; grid-row: 2; justify-self: end; }
+  .collection-history__method { grid-column: 1; grid-row: 3; padding-left: 53px; }
+  .collection-history__arrow { grid-column: 2; grid-row: 3; justify-self: end; }
+  .collection-desk__section--history .financial-ops__queue-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 759px) {
+  .collection-desk__section--history { padding: 14px; }
+  .collection-desk__section--history .collection-desk__tabs { max-width: 100%; }
+  .collection-desk__section--history .collection-desk__tabs button { padding: 0 8px; font-size: .72rem; }
+  .collection-desk__section--history .collection-desk__history-date { justify-content: flex-start; }
+  .collection-desk__page-size { display: none; }
+}

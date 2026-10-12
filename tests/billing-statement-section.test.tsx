@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
+import { printBillingStatement } from '../src/lib/billingStatementPrint';
 import { BillingStatementsSection } from '../src/features/financial-operations/components/BillingStatementsSection';
 import type { BillingStatement, ReceivableCharge } from '../src/features/financial-operations/types';
 
@@ -66,6 +67,9 @@ describe('BillingStatementsSection', () => {
       statements={[existingStatement]}
     />);
 
+    fireEvent.click(screen.getByRole('button', { name: 'พิมพ์ BIL2610-00001' }));
+    expect(printBillingStatement).toHaveBeenCalledWith(existingStatement, undefined, [due, future, alreadyBilled]);
+
     fireEvent.click(screen.getByRole('button', { name: 'ออกใบวางบิล' }));
     expect(screen.getByText('INV-DUE')).toBeTruthy();
     expect(screen.getByText('INV-FUTURE')).toBeTruthy();
@@ -76,5 +80,6 @@ describe('BillingStatementsSection', () => {
     fireEvent.click(screen.getByRole('checkbox', { name: /INV-FUTURE/ }));
     fireEvent.click(screen.getByRole('button', { name: 'ออกและพิมพ์ใบวางบิล' }));
     await waitFor(() => expect(onCreate).toHaveBeenCalledWith(['charge-due', 'charge-future']));
+    await waitFor(() => expect(printBillingStatement).toHaveBeenCalledWith(createdStatement, printWindow, [due, future, alreadyBilled]));
   });
 });

@@ -13,7 +13,7 @@ const TRUCK_ID = '40000000-0000-4000-8000-000000000001';
 const HOLDING_ID = '40000000-0000-4000-8000-000000000002';
 const SERVICE_DATE = '2026-08-09';
 
-async function createDatabase(t, { migrateBagCounts = true } = {}) {
+async function createDatabase(t, { migrateBagCounts = true, iceTypeName = 'Ice' } = {}) {
   const db = new PGlite();
   t.after(() => db.close());
 
@@ -154,9 +154,28 @@ async function createDatabase(t, { migrateBagCounts = true } = {}) {
 
   await db.exec(originalTransfer);
   await db.exec(readFileSync(new URL('../supabase/migrations/0183_employee_stock_transfer_half_bags.sql', import.meta.url), 'utf8'));
-  if (migrateBagCounts) await db.exec(readFileSync(new URL('../supabase/migrations/0218_employee_stock_bag_counts.sql', import.meta.url), 'utf8'));
+  await db.query('update public.ice_types set name = $1 where id = $2', [iceTypeName, ICE_ID]);
+  if (migrateBagCounts) {
+    await db.exec(readFileSync(new URL('../supabase/migrations/0218_employee_stock_bag_counts.sql', import.meta.url), 'utf8'));
+    await db.exec(readFileSync(new URL('../supabase/migrations/0219_correct_stock_half_bag_ice_types.sql', import.meta.url), 'utf8'));
+  }
   return db;
 }
+
+test('half bags are available for crushed small tube ice and unavailable for block ice', async (t) => {
+  for (const [name, expected] of [['หลอดเล็กโม่', true], ['น้ำแข็งก้อน', false], ['ก้อน', false]]) {
+    await t.test(name, async (subtest) => {
+      const db = await createDatabase(subtest, { iceTypeName: name });
+      const { rows } = await db.query('select allow_half from public.ice_types where id = $1', [ICE_ID]);
+      assert.equal(rows[0].allow_half, expected);
+      const halfBag = { ice_type_id: ICE_ID, quantity: 0.5, fullBags: 0, halfBags: 1 };
+      const record = () => db.query('select public.record_employee_stock_transfer($1, $2::jsonb, $3)',
+        [ROUND_ID, JSON.stringify([halfBag]), '50000000-0000-4000-8000-000000000099']);
+      if (expected) await record();
+      else await assert.rejects(record(), /Invalid full\/half/);
+    });
+  }
+});
 
 function transfer(db, quantity, key = '50000000-0000-4000-8000-000000000001') {
   return db.query(`select public.record_employee_stock_transfer($1, $2::jsonb, $3) as result`,
