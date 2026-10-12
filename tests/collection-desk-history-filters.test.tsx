@@ -15,7 +15,7 @@ const payments: PaymentHistoryItem[] = [
   },
   {
     id: 'payment-b', receipt_number: 'REC-B', received_amount: 200, allocated_amount: 200,
-    change_amount: 0, payment_method: 'transfer', status: 'active',
+    change_amount: 0, payment_method: 'bank_transfer', status: 'active',
     recorded_at: '2026-09-24T09:00:00.000Z', void_reason: null,
     building_id: 'building-b', building_name: 'ตึก B', zone_id: 'zone-b1', zone_name: 'โซน 1',
     shops: { code: 'B1', name: 'ร้าน B' },
@@ -103,7 +103,7 @@ describe('CollectionDesk history filters', () => {
 
     await user.click(screen.getByRole('tab', { name: /ประวัติรับเงิน/ }));
     expect((screen.getByLabelText('เรียงรายการ') as HTMLSelectElement).value).toBe('recent');
-    expect(screen.getAllByRole('button', { name: /เลือกรายการ/ }).map((button) => button.textContent?.match(/REC-[A-Z0-9]+/)?.[0]))
+    expect(screen.getAllByRole('button', { name: /เลือกรายการ/ }).map((button) => within(button).getByText(/^REC-[A-Z0-9]+$/).textContent))
       .toEqual(['REC-B2', 'REC-B', 'REC-A']);
 
     await user.selectOptions(screen.getByLabelText('กรองวิธีรับเงิน'), 'transfer');
@@ -121,4 +121,72 @@ describe('CollectionDesk history filters', () => {
     await user.selectOptions(screen.getByLabelText('เรียงรายการ'), 'high');
     expect((screen.getByLabelText('เรียงรายการ') as HTMLSelectElement).value).toBe('high');
   });
+  it('totals only active filtered receipts, includes QR transfers, clears filters, and opens the matching receipt', async () => {
+    const user = userEvent.setup();
+    const onOpenReceipt = vi.fn();
+    const onHistoryDateChange = vi.fn();
+    const qrPayment: PaymentHistoryItem = { ...payments[0], id: 'payment-qr', receipt_number: 'REC-QR', payment_method: 'qr', allocated_amount: 50 };
+    render(<CollectionDesk busy={false} historyDate="2026-09-23" serviceDate="2026-09-24"
+      onClearShop={vi.fn()} onHistoryDateChange={onHistoryDateChange} onOpenReceipt={onOpenReceipt}
+      onPrintReceipt={vi.fn()} onRefresh={vi.fn()} onSelectShop={vi.fn()} onVoidPayment={vi.fn()}
+      paymentHistory={[...payments, qrPayment]} paymentPanel={null} queue={[]} runId={null}
+      selectedShop={null} todayPayments={[]} />);
+
+    await user.click(screen.getByRole('tab', { name: /ประวัติรับเงิน/ }));
+    const summary = screen.getByRole('status');
+    expect(summary.textContent).toContain('350.00');
+    await user.selectOptions(screen.getByLabelText('กรองวิธีรับเงิน'), 'transfer');
+    expect(summary.textContent).toContain('250.00');
+    expect(screen.getByText('REC-QR')).toBeTruthy();
+    expect(screen.getByText('REC-B')).toBeTruthy();
+    expect(screen.queryByText('REC-A')).toBeNull();
+
+    await user.click(screen.getByText('REC-QR').closest('button')!);
+    expect(onOpenReceipt).toHaveBeenCalledWith(qrPayment, expect.any(HTMLButtonElement));
+    await user.selectOptions(screen.getByLabelText('กรองสถานะรับเงิน'), 'voided');
+    expect(screen.getByText('ไม่พบรายการตามตัวกรอง')).toBeTruthy();
+    await user.click(within(summary).getByRole('button', { name: 'ล้างตัวกรอง' }));
+    expect(screen.getByText('REC-A')).toBeTruthy();
+    expect(screen.getByText('REC-B2')).toBeTruthy();
+    expect(summary.textContent).toContain('350.00');
+    await user.selectOptions(screen.getByLabelText('กรองสถานะรับเงิน'), 'voided');
+    expect(summary.textContent).toContain('0.00');
+    expect(summary.textContent).not.toContain('300.00');
+    await user.click(screen.getByRole('button', { name: 'วันก่อนหน้า' }));
+    expect(onHistoryDateChange).toHaveBeenLastCalledWith('2026-09-22');
+    await user.click(screen.getByRole('button', { name: 'วันนี้' }));
+    expect(onHistoryDateChange).toHaveBeenLastCalledWith('2026-09-24');
+  });
+
+  it.each([
+    { width: 390, initial: 'การ์ด', other: 'ตาราง' },
+    { width: 1280, initial: 'ตาราง', other: 'การ์ด' },
+  ])('defaults to $initial at $width px and keeps filters when switching views', async ({ width, initial, other }) => {
+    vi.stubGlobal('innerWidth', width);
+    try {
+      const user = userEvent.setup();
+      const onOpenReceipt = vi.fn();
+      render(<CollectionDesk busy={false} historyDate="2026-09-24" serviceDate="2026-09-24"
+        onClearShop={vi.fn()} onHistoryDateChange={vi.fn()} onOpenReceipt={onOpenReceipt}
+        onPrintReceipt={vi.fn()} onRefresh={vi.fn()} onSelectShop={vi.fn()} onVoidPayment={vi.fn()}
+        paymentHistory={payments} paymentPanel={null} queue={[]} runId={null}
+        selectedShop={null} todayPayments={[]} />);
+      await user.click(screen.getByRole('tab', { name: /ประวัติรับเงิน/ }));
+      expect(screen.getByRole('button', { name: initial, pressed: true })).toBeTruthy();
+      await user.selectOptions(screen.getByLabelText('กรองวิธีรับเงิน'), 'transfer');
+      await user.click(screen.getByRole('button', { name: other, exact: true }));
+      expect(screen.getByRole('button', { name: other, pressed: true })).toBeTruthy();
+      expect(screen.getAllByRole('button', { name: /เลือกรายการ/ })).toHaveLength(1);
+      await user.click(screen.getByText('REC-B').closest('button')!);
+      expect(onOpenReceipt).toHaveBeenCalledWith(payments[1], expect.any(HTMLButtonElement));
+      await user.click(screen.getByRole('tab', { name: /ค้างชำระทั้งหมด/ }));
+      await user.click(screen.getByRole('tab', { name: /ประวัติรับเงิน/ }));
+      expect(screen.getByRole('button', { name: other, pressed: true })).toBeTruthy();
+      await user.click(screen.getByRole('button', { name: initial, exact: true }));
+      expect(screen.getByRole('button', { name: initial, pressed: true })).toBeTruthy();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
 });

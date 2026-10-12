@@ -112,6 +112,7 @@ export function CollectionDesk({
   useLanguage();
   const [filter, setFilter] = useState<QueueFilter>('outstanding');
   const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
+  const [historyViewMode, setHistoryViewMode] = useState<'cards' | 'table'>(() => window.innerWidth < 760 ? 'cards' : 'table');
   const [query, setQuery] = useState('');
   const [buildingId, setBuildingId] = useState('');
   const [zoneId, setZoneId] = useState('');
@@ -287,6 +288,8 @@ export function CollectionDesk({
 
   const hasDetailPanel = Boolean(paymentPanel || selectedPayment);
   const isHistory = filter === 'collected';
+  const activeViewMode = isHistory ? historyViewMode : viewMode;
+  const setActiveViewMode = isHistory ? setHistoryViewMode : setViewMode;
   const hasHistoryFilters = Boolean(query || buildingId || zoneId || paymentMethod !== 'all' || paymentStatus !== 'all');
   const historyTotal = visibleRows.reduce((sum, row) => sum + (row.payment?.status === 'active' ? row.amount : 0), 0);
   const clearHistoryFilters = () => {
@@ -417,9 +420,7 @@ export function CollectionDesk({
                 <span>{translateUi('ยอดรับสุทธิ')} <strong>{money.format(historyTotal)}</strong><small>{translateUi('ไม่รวมรายการยกเลิก')}</small></span>
                 {hasHistoryFilters ? <button onClick={clearHistoryFilters} type="button"><X aria-hidden="true" size={14} />{translateUi('ล้างตัวกรอง')}</button> : null}
               </div>
-            ) : (
-            {queueTabs}
-            )}
+            ) : queueTabs}
             <div className="collection-desk__subfilters">
               <select aria-label={translateUi('เรียงรายการ')} onChange={(event) => { setSort(event.target.value as typeof sort); setPage(0); }} value={sort}>
                 {filter === 'collected' ? <>
@@ -429,26 +430,26 @@ export function CollectionDesk({
                 <option value="high">{translateUi('เรียง: ')}{filter === 'collected' ? translateUi('ยอดรับ') : translateUi('ยอดค้าง')}{translateUi('มาก - น้อย')}</option>
                 <option value="low">{translateUi('เรียง: ')}{filter === 'collected' ? translateUi('ยอดรับ') : translateUi('ยอดค้าง')}{translateUi('น้อย - มาก')}</option>
               </select>
-              {filter === 'outstanding' ? (
-                <div className="collection-desk__view-toggle" aria-label={translateUi('เลือกมุมมอง')}>
+              {filter === 'outstanding' || isHistory ? (
+                <div className="collection-desk__view-toggle" role="group" aria-label={translateUi('เลือกมุมมอง')}>
                   <button
-                    aria-pressed={viewMode === 'cards'}
-                    className={viewMode === 'cards' ? 'is-active' : ''}
-                    onClick={() => setViewMode('cards')}
-                    title={translateUi('มุมมองการ์ด (POS)')}
+                    aria-pressed={activeViewMode === 'cards'}
+                    className={activeViewMode === 'cards' ? 'is-active' : ''}
+                    onClick={() => setActiveViewMode('cards')}
+                    title={translateUi(isHistory ? 'การ์ด' : 'มุมมองการ์ด (POS)')}
                     type="button"
                   >
-                    <SquaresFour size={18} weight={viewMode === 'cards' ? 'fill' : 'regular'} />
+                    <SquaresFour size={18} weight={activeViewMode === 'cards' ? 'fill' : 'regular'} />
                     <span>{translateUi('การ์ด')}</span>
                   </button>
                   <button
-                    aria-pressed={viewMode === 'table'}
-                    className={viewMode === 'table' ? 'is-active' : ''}
-                    onClick={() => setViewMode('table')}
+                    aria-pressed={activeViewMode === 'table'}
+                    className={activeViewMode === 'table' ? 'is-active' : ''}
+                    onClick={() => setActiveViewMode('table')}
                     title={translateUi('มุมมองตาราง')}
                     type="button"
                   >
-                    <Table size={18} weight={viewMode === 'table' ? 'fill' : 'regular'} />
+                    <Table size={18} weight={activeViewMode === 'table' ? 'fill' : 'regular'} />
                     <span>{translateUi('ตาราง')}</span>
                   </button>
                 </div>
@@ -459,7 +460,12 @@ export function CollectionDesk({
           {filter === 'all' ? historyDateControl : null}
 
           {isHistory ? (
-            <div className="collection-history__list" aria-label={translateUi('รายการประวัติรับเงิน')}>
+            <div
+              className={`collection-history__list collection-history__list--${historyViewMode}`}
+              aria-label={translateUi('รายการประวัติรับเงิน')}
+              role="region"
+              tabIndex={historyViewMode === 'table' ? 0 : undefined}
+            >
               <div className="collection-history__head" aria-hidden="true">
                 <span>{translateUi('ร้านค้า / สถานที่')}</span>
                 <span>{translateUi('ใบเสร็จ / วันที่รับเงิน')}</span>
@@ -471,7 +477,7 @@ export function CollectionDesk({
               {pageRows.map((row) => {
                 const payment = row.payment!;
                 const location = payment.destination_kind === 'event'
-                  ? [payment.event_name, payment.event_location, payment.event_zone].filter(Boolean).join(' · ')
+                  ? [payment.event_name, payment.event_location, payment.event_zone, payment.event_booth && `บูธ ${payment.event_booth}`].filter(Boolean).join(' · ')
                   : [payment.building_name, payment.zone_name].filter(Boolean).join(' · ');
                 return (
                   <button

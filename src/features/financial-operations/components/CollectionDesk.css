@@ -1,5 +1,5 @@
-/* Receipt history is a compact ledger on desktop, with stacked rows on small screens. */
-.collection-desk__section--history {
+/* Receipt history supports an explicit table or card view on every screen size. */
+.collection-desk__section.collection-desk__section--history {
   container: collection-history / inline-size;
   min-width: 0;
   gap: 18px;
@@ -33,7 +33,7 @@
   gap: 12px;
 }
 .collection-desk__section--history .financial-ops__queue-filters > label { min-width: 0; font-weight: 500; color: #536a82; }
-.collection-desk__section--history .financial-ops__queue-search { grid-column: auto; }
+.collection-desk__section--history .financial-ops__queue-filters .financial-ops__queue-search { grid-column: auto; }
 .collection-desk__section--history select { appearance: auto; box-shadow: none; background-color: #fff; }
 .collection-desk__section--history .collection-desk__admin-bar { gap: 12px; padding: 0; border: 0; }
 .collection-desk__section--history .collection-desk__subfilters { margin-left: auto; }
@@ -84,24 +84,32 @@
 .collection-desk__pagination button:not(:disabled) { cursor: pointer; }
 @container collection-history (max-width: 850px) {
   .collection-desk__section--history .financial-ops__queue-filters { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-  .collection-desk__section--history .financial-ops__queue-search { grid-column: 1 / -1; }
+  .collection-desk__section--history .financial-ops__queue-filters .financial-ops__queue-search { grid-column: 1 / -1; }
   .collection-history__head, .collection-history__row { gap: 10px; padding: 12px; grid-template-columns: minmax(155px, 1.8fr) minmax(130px, 1.3fr) 75px 87px 94px 14px; }
 }
 @container collection-history (max-width: 680px) {
-  .collection-history__head { display: none; }
-  .collection-history__row { grid-template-columns: minmax(0, 1fr) auto; gap: 10px 16px; padding: 16px; }
-  .collection-history__shop { grid-column: 1; grid-row: 1; }
-  .collection-history__amount { grid-column: 2; grid-row: 1; }
-  .collection-history__receipt { grid-column: 1; grid-row: 2; padding-left: 53px; }
-  .collection-history__status { grid-column: 2; grid-row: 2; justify-self: end; }
-  .collection-history__method { grid-column: 1; grid-row: 3; padding-left: 53px; }
-  .collection-history__arrow { grid-column: 2; grid-row: 3; justify-self: end; }
   .collection-desk__section--history .financial-ops__queue-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 759px) {
-  .collection-desk__section--history { padding: 14px; }
+  .collection-desk__section.collection-desk__section--history { padding: 14px; }
   .collection-desk__section--history .collection-desk__tabs { max-width: 100%; }
   .collection-desk__section--history .collection-desk__tabs button { padding: 0 8px; font-size: .72rem; }
   .collection-desk__section--history .collection-desk__history-date { justify-content: flex-start; }
   .collection-desk__page-size { display: none; }
 }
+
+.collection-desk__section--history .collection-desk__view-toggle { padding: 0; }
+.collection-desk__section--history .collection-desk__view-toggle button { min-height: 38px; }
+.collection-history__list--table { overflow-x: auto; }
+.collection-history__list--table .collection-history__head,
+.collection-history__list--table .collection-history__row { min-width: 720px; }
+.collection-history__list--cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: 14px; overflow: visible; border: 0; border-radius: 0; }
+.collection-history__list--cards .collection-history__head { display: none; }
+.collection-history__list--cards .collection-history__row { grid-template-columns: minmax(0, 1fr) auto; gap: 10px 16px; padding: 16px; border: 1px solid #e0e8f0; border-radius: 10px; }
+.collection-history__list--cards .collection-history__shop { grid-column: 1; grid-row: 1; }
+.collection-history__list--cards .collection-history__amount { grid-column: 2; grid-row: 1; }
+.collection-history__list--cards .collection-history__receipt { grid-column: 1; grid-row: 2; padding-left: 53px; }
+.collection-history__list--cards .collection-history__status { grid-column: 2; grid-row: 2; justify-self: end; }
+.collection-history__list--cards .collection-history__method { grid-column: 1; grid-row: 3; padding-left: 53px; }
+.collection-history__list--cards .collection-history__arrow { grid-column: 2; grid-row: 3; justify-self: end; }
+.collection-history__list--cards .collection-history__empty { grid-column: 1 / -1; }
