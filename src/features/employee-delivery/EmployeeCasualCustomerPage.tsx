@@ -76,8 +76,60 @@ type PendingEvidenceRequest = {
   evidencePath: string | null;
 };
 
+type VoidForm = {
+  voidReason: string;
+  refundMethod: PaymentMethod;
+  refundReference: string;
+  refundEvidence: File | null;
+};
+
+type PendingVoidRequest = {
+  current: PendingEvidenceRequest | null;
+  form: VoidForm;
+};
+
 function fileIdentity(file: File | null) {
   return file ? { name: file.name, size: file.size, lastModified: file.lastModified, type: file.type } : null;
+}
+
+function CasualVoidDialog({
+  busy,
+  initialForm,
+  onBack,
+  onSubmit,
+  selectEvidence,
+  target,
+}: {
+  busy: boolean;
+  initialForm?: VoidForm;
+  onBack: () => void;
+  onSubmit: (form: VoidForm) => Promise<void>;
+  selectEvidence: (file: File | null, setFile: (file: File | null) => void) => void;
+  target: CasualTransactionHistoryItem;
+}) {
+  useLanguage();
+  // Keep typing independent of the product grid and potentially long daily history.
+  const [voidReason, setVoidReason] = useState(initialForm?.voidReason ?? '');
+  const [refundMethod, setRefundMethod] = useState<PaymentMethod>(initialForm?.refundMethod ?? 'cash');
+  const [refundReference, setRefundReference] = useState(initialForm?.refundReference ?? '');
+  const [refundEvidence, setRefundEvidence] = useState<File | null>(initialForm?.refundEvidence ?? null);
+
+  return <div className="employee-casual-void" role="dialog" aria-modal="true" aria-labelledby="casual-void-title">
+    <section>
+      <h2 id="casual-void-title">{translateUi('ยกเลิกรายการขาจร')}</h2>
+      <p>{target.ice_type_name} {target.fulfillment_mode === 'loose' ? translateUi('ไม่ระบุจำนวน · คำนวณยอดสะสมใหม่หลังยกเลิก') : `${Number(target.quantity).toLocaleString('th-TH')} ${target.ice_type_unit}`}{target.transaction_kind === 'paid' ? translateUi(' · คืนเงินเต็มจำนวน {0}', { 0: money.format(Number(target.sale_amount)) }) : ''}</p>
+      <label><span>{translateUi('เหตุผลการยกเลิก')}</span><textarea autoFocus onChange={(event) => setVoidReason(event.target.value)} value={voidReason} /></label>
+      {target.transaction_kind === 'paid' ? <>
+        <div className="employee-casual-methods">{(['cash', 'bank_transfer'] as PaymentMethod[]).map((method) => <button className={refundMethod === method ? 'is-selected' : ''} key={method} onClick={() => setRefundMethod(method)} type="button">{translateUi('คืน')}{translateUi(paymentLabels[method])}</button>)}</div>
+        <label><span>{translateUi('เลขอ้างอิงการคืน (ไม่บังคับ)')}</span><input onChange={(event) => setRefundReference(event.target.value)} value={refundReference} /></label>
+        {refundMethod !== 'cash' ? <>
+          <label><span>{translateUi('หลักฐานการคืนเงิน')}</span><input accept="image/*,application/pdf" aria-describedby={refundEvidence ? 'casual-refund-evidence-name' : undefined} onChange={(event) => selectEvidence(event.target.files?.[0] ?? null, setRefundEvidence)} type="file" /></label>
+          {refundEvidence ? <small id="casual-refund-evidence-name">{refundEvidence.name}</small> : null}
+        </> : null}
+      </> : null}
+      <div className="employee-casual-void__actions"><button disabled={busy} onClick={onBack} type="button">{translateUi('กลับ')}</button><button disabled={!voidReason.trim() || busy || (target.transaction_kind === 'paid' && refundMethod !== 'cash' && !refundEvidence)} onClick={() => { void onSubmit({ voidReason, refundMethod, refundReference, refundEvidence }); }} type="button">{translateUi('ยืนยันยกเลิก')}</button></div>
+    </section>
+  </div>;
 }
 
 export function EmployeeCasualCustomerPage({
@@ -106,7 +158,7 @@ export function EmployeeCasualCustomerPage({
   useLanguage();
   const headingRef = useRef<HTMLHeadingElement>(null);
   const recordRetryRef = useRef<PendingEvidenceRequest | null>(null);
-  const voidRetryRef = useRef<PendingEvidenceRequest | null>(null);
+  const voidRequestsRef = useRef(new Map<string, PendingVoidRequest>());
   const {
     clearPendingRequest,
     getOrCreatePendingRequest,
@@ -127,10 +179,6 @@ export function EmployeeCasualCustomerPage({
   const [evidence, setEvidence] = useState<File | null>(null);
   const [note, setNote] = useState('');
   const [voidTarget, setVoidTarget] = useState<CasualTransactionHistoryItem | null>(null);
-  const [voidReason, setVoidReason] = useState('');
-  const [refundMethod, setRefundMethod] = useState<PaymentMethod>('cash');
-  const [refundReference, setRefundReference] = useState('');
-  const [refundEvidence, setRefundEvidence] = useState<File | null>(null);
 
   useLayoutEffect(() => {
     headingRef.current?.focus({ preventScroll: true });
@@ -139,7 +187,7 @@ export function EmployeeCasualCustomerPage({
   const dirty = Boolean(
     busy || saleAmount || evidence || note
     || Boolean(iceTypeId) || quantity !== 0
-    || voidTarget || voidReason || refundReference || refundEvidence,
+    || voidTarget || voidRequestsRef.current.size > 0,
   );
 
   useEffect(() => {
@@ -185,6 +233,15 @@ export function EmployeeCasualCustomerPage({
 
   const refresh = async () => {
     const next = await loadContext(round.id);
+    // A refresh can confirm a void whose original response was lost.
+    for (const item of next.history) {
+      if (item.status !== 'voided') continue;
+      const pending = voidRequestsRef.current.get(item.id);
+      if (pending?.current) {
+        clearPendingRequest(pending.current.signature, pending.current.key);
+      }
+      voidRequestsRef.current.delete(item.id);
+    }
     setContext(next);
     setIceTypeId((current) => next.items.some((item) => item.ice_type_id === current) ? current : '');
   };
@@ -308,7 +365,8 @@ export function EmployeeCasualCustomerPage({
     }
   };
 
-  const submitVoid = async () => {
+  const submitVoid = async (form: VoidForm) => {
+    const { voidReason, refundMethod, refundReference, refundEvidence } = form;
     if (!voidTarget || !voidReason.trim() || busy) return;
     const isPaid = voidTarget.transaction_kind === 'paid';
     if (isPaid && refundMethod !== 'cash' && !refundEvidence) return;
@@ -319,7 +377,12 @@ export function EmployeeCasualCustomerPage({
       referenceNumber: isPaid ? refundReference.trim() || null : null,
       evidence: isPaid && refundMethod !== 'cash' ? fileIdentity(refundEvidence) : null,
     })}`;
-    const { request, retry } = preparePendingRequest(voidRetryRef, signature);
+    // Preserve the submitted draft and retry identity across dialog remounts,
+    // without updating the page on each keystroke or replacing another sale's retry.
+    const pending = voidRequestsRef.current.get(voidTarget.id) ?? { current: null, form };
+    pending.form = form;
+    voidRequestsRef.current.set(voidTarget.id, pending);
+    const { request, retry } = preparePendingRequest(pending, signature);
     let evidencePath = retry.evidencePath;
     let transactionVoided = false;
     setBusy(true);
@@ -328,7 +391,7 @@ export function EmployeeCasualCustomerPage({
       if (isPaid && refundMethod !== 'cash' && refundEvidence && !evidencePath) {
         evidencePath = await uploadEvidence(refundEvidence, request.key);
         setPendingRequestEvidencePath(signature, request.key, evidencePath);
-        voidRetryRef.current = { ...retry, evidencePath };
+        pending.current = { ...retry, evidencePath };
       }
       await voidTransaction({
         transactionId: voidTarget.id,
@@ -340,7 +403,7 @@ export function EmployeeCasualCustomerPage({
       });
       transactionVoided = true;
       clearPendingRequest(signature, request.key);
-      voidRetryRef.current = null;
+      voidRequestsRef.current.delete(voidTarget.id);
       publishDataChange(['accounting', 'payment', 'refund', 'stock', 'pos']);
       setLatestReceipt(null);
       if (isPaid) {
@@ -350,9 +413,6 @@ export function EmployeeCasualCustomerPage({
         ? 'ยกเลิกรายการและคืนสต๊อกแล้ว'
         : isPaid ? 'ยกเลิกรายการและบันทึกคืนเงินแล้ว' : 'ยกเลิกรายการแล้ว');
       setVoidTarget(null);
-      setVoidReason('');
-      setRefundReference('');
-      setRefundEvidence(null);
       await refresh();
     } catch (cause) {
       setError(transactionVoided
@@ -470,19 +530,15 @@ export function EmployeeCasualCustomerPage({
         </section>
       </> : null}
 
-      {voidTarget ? <div className="employee-casual-void" role="dialog" aria-modal="true" aria-labelledby="casual-void-title">
-        <section>
-          <h2 id="casual-void-title">{translateUi('ยกเลิกรายการขาจร')}</h2>
-          <p>{voidTarget.ice_type_name} {voidTarget.fulfillment_mode === 'loose' ? translateUi('ไม่ระบุจำนวน · คำนวณยอดสะสมใหม่หลังยกเลิก') : `${Number(voidTarget.quantity).toLocaleString('th-TH')} ${voidTarget.ice_type_unit}`}{voidTarget.transaction_kind === 'paid' ? translateUi(' · คืนเงินเต็มจำนวน {0}', { 0: money.format(Number(voidTarget.sale_amount)) }) : ''}</p>
-          <label><span>{translateUi('เหตุผลการยกเลิก')}</span><textarea autoFocus onChange={(event) => setVoidReason(event.target.value)} value={voidReason} /></label>
-          {voidTarget.transaction_kind === 'paid' ? <>
-            <div className="employee-casual-methods">{(['cash', 'bank_transfer'] as PaymentMethod[]).map((method) => <button className={refundMethod === method ? 'is-selected' : ''} key={method} onClick={() => setRefundMethod(method)} type="button">{translateUi('คืน')}{translateUi(paymentLabels[method])}</button>)}</div>
-            <label><span>{translateUi('เลขอ้างอิงการคืน (ไม่บังคับ)')}</span><input onChange={(event) => setRefundReference(event.target.value)} value={refundReference} /></label>
-            {refundMethod !== 'cash' ? <label><span>{translateUi('หลักฐานการคืนเงิน')}</span><input accept="image/*,application/pdf" onChange={(event) => selectEvidence(event.target.files?.[0] ?? null, setRefundEvidence)} type="file" /></label> : null}
-          </> : null}
-          <div className="employee-casual-void__actions"><button disabled={busy} onClick={() => setVoidTarget(null)} type="button">{translateUi('กลับ')}</button><button disabled={!voidReason.trim() || busy || (voidTarget.transaction_kind === 'paid' && refundMethod !== 'cash' && !refundEvidence)} onClick={() => { void submitVoid(); }} type="button">{translateUi('ยืนยันยกเลิก')}</button></div>
-        </section>
-      </div> : null}
+      {voidTarget ? <CasualVoidDialog
+        key={voidTarget.id}
+        busy={busy}
+        initialForm={voidRequestsRef.current.get(voidTarget.id)?.form}
+        onBack={() => setVoidTarget(null)}
+        onSubmit={submitVoid}
+        selectEvidence={selectEvidence}
+        target={voidTarget}
+      /> : null}
     </div>
   );
 }
