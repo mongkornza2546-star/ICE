@@ -23,7 +23,6 @@ import type {
   DueDateRequest,
   HistoryReceiptDetail,
   PaymentHistoryItem,
-  PaymentCorrectionTarget,
   PaymentReceipt,
   PaymentReceiptSnapshot,
   QueueShop,
@@ -634,15 +633,6 @@ export function FinancialOperations({
     return receiptFromSnapshot(data as PaymentReceiptSnapshot);
   };
 
-  const getPaymentCorrectionTargets = async (paymentId: string) => {
-    if (!supabase) return [];
-    const { data, error: rpcError } = await supabase.rpc('get_payment_correction_targets', {
-      p_payment_id: paymentId,
-    });
-    if (rpcError) throw rpcError;
-    return (data ?? []) as PaymentCorrectionTarget[];
-  };
-
   const recordPayment = () => {
     return runAction(async () => {
       if (!canCollectShopPayments || !supabase || !runId || !selectedShop || !paymentReady) return;
@@ -815,8 +805,6 @@ export function FinancialOperations({
       payment,
       charges: null,
       error: null,
-      correctionTargets: isManager ? null : [],
-      correctionError: null,
     });
     void getReceiptCharges(payment.id)
       .then((charges) => {
@@ -829,25 +817,6 @@ export function FinancialOperations({
           ? { ...current, error: getErrorMessage(receiptError) }
           : current);
       });
-    if (isManager) {
-      void getPaymentCorrectionTargets(payment.id)
-        .then((correctionTargets) => {
-          setHistoryReceipt((current) => current?.payment.id === payment.id
-            ? { ...current, correctionTargets }
-            : current);
-        })
-        .catch((targetError: unknown) => {
-          setHistoryReceipt((current) => current?.payment.id === payment.id
-            ? { ...current, correctionTargets: [], correctionError: getErrorMessage(targetError) }
-            : current);
-        });
-    }
-  };
-
-  const openHistoryChargeCorrection = (target: PaymentCorrectionTarget) => {
-    historyReturnFocusRef.current = null;
-    setHistoryReceipt(null);
-    setCorrectionEventId(target.delivery_event_id);
   };
 
   const decide = (approvalId: string, decision: 'approved' | 'rejected') => runAction(async () => {
@@ -1184,7 +1153,6 @@ export function FinancialOperations({
           historyReceipt={historyReceipt}
           onClose={() => setHistoryReceipt(null)}
           onPrint={() => printHistoryReceipt(historyReceipt.payment)}
-          onCorrect={isManager ? openHistoryChargeCorrection : undefined}
           onVoid={historyReceipt.payment.status === 'active'
             && (isManager || (canCollectShopPayments && Boolean(currentUserId) && historyReceipt.payment.recorded_by === currentUserId)) ? () => {
             void voidPayment(historyReceipt.payment).then((voided) => {

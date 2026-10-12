@@ -267,19 +267,6 @@ export type ReceiptCharge = {
   items: ReceiptItem[];
 };
 
-export type PaymentCorrectionTarget = {
-  charge_id: string;
-  charge_number: string | null;
-  delivery_event_id: string;
-  payment_allocated_amount: number;
-  allocated_amount: number;
-  effective_amount: number;
-  destination_kind?: 'regular' | 'event';
-  event_settlement_context_id?: string | null;
-  event_participation_id?: string | null;
-  settlement_service_date?: string | null;
-};
-
 export type PaymentReceipt = {
   paymentId: string;
   receiptNumber: string;
@@ -337,8 +324,6 @@ export type HistoryReceiptDetail = {
   payment: PaymentHistoryItem;
   charges: ReceiptCharge[] | null;
   error: string | null;
-  correctionTargets: PaymentCorrectionTarget[] | null;
-  correctionError: string | null;
 };
 
 export type ReceiptItemRow = {

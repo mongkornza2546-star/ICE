@@ -1,8 +1,9 @@
 import { translateUi, useLanguage } from '../../../i18n';
 import type { RefObject } from 'react';
 import { Coins, ListNumbers, Printer, X } from '@phosphor-icons/react';
-import type { HistoryReceiptDetail, PaymentCorrectionTarget } from '../types';
+import type { HistoryReceiptDetail } from '../types';
 import { formatCollectionShopIdentity, money, paymentMethodLabel, formatPaymentReceivedAt, receiptDateTime } from '../utils';
+import { ReceiptPaymentEvidence } from './ReceiptPaymentEvidence';
 
 export function HistoryReceiptModal({
   historyReceipt,
@@ -12,7 +13,6 @@ export function HistoryReceiptModal({
   onClose,
   onPrint,
   onVoid,
-  onCorrect,
 }: {
   historyReceipt: HistoryReceiptDetail;
   busy: boolean;
@@ -21,7 +21,6 @@ export function HistoryReceiptModal({
   onClose: () => void;
   onPrint: () => void;
   onVoid?: () => void;
-  onCorrect?: (target: PaymentCorrectionTarget) => void;
 }) {
   useLanguage();
   const shopIdentity = formatCollectionShopIdentity({
@@ -88,20 +87,13 @@ export function HistoryReceiptModal({
               ))}
             </article>
           ))}
+          {onVoid && historyReceipt.payment.status === 'active' ? (
+            <p>{translateUi('บิลที่มีการรับชำระอยู่ยังยกเลิกใบส่งไม่ได้ หากบันทึกรับเงินผิด ให้ตรวจสอบและยกเลิกใบเสร็จที่ผิดก่อน')}</p>
+          ) : null}
         </section>
 
-        {onCorrect ? (
-          <section className="financial-ops__receipt-charges" aria-label={translateUi('บิลปัจจุบันที่แก้ไขได้')}>
-            <strong><ListNumbers aria-hidden="true" size={18} />{translateUi(' บิลที่ชำระครบและแก้ไขได้')}</strong>
-            {historyReceipt.correctionTargets === null && !historyReceipt.correctionError ? <p>{translateUi('กำลังตรวจสอบบิล...')}</p> : null}
-            {historyReceipt.correctionError ? <p className="employee-error" role="alert">{translateUi('ตรวจสอบสิทธิ์ยกเลิกใบส่งไม่สำเร็จ: ')}{translateUi(historyReceipt.correctionError)}</p> : null}
-            {historyReceipt.correctionTargets?.map((target) => (
-              <article key={target.charge_id}>
-                <header><strong>{target.charge_number ?? translateUi('ขายสด')}</strong><b>{money.format(target.effective_amount)}</b></header>
-                <button disabled={busy} onClick={() => onCorrect(target)} type="button">{translateUi('ยกเลิกใบส่งน้ำแข็ง ')}{target.charge_number ?? translateUi('ขายสด')}</button>
-              </article>
-            ))}
-          </section>
+        {historyReceipt.payment.payment_method !== 'cash' ? (
+          <ReceiptPaymentEvidence key={historyReceipt.payment.id} paymentId={historyReceipt.payment.id} />
         ) : null}
 
         <div className="financial-ops__receipt-actions">

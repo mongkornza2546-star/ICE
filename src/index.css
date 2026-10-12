@@ -2176,6 +2176,8 @@ input:disabled, select:disabled, textarea:disabled { background: #f2f5f8; color:
 .financial-ops__receipt-charges article > div { color: #61788e; font-size: .68rem; }
 .financial-ops__receipt-charges article > div > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .financial-ops__receipt-charges article > div b { color: #45627a; font-size: .68rem; }
+.financial-ops__receipt-evidence img { display: block; width: 100%; max-height: 320px; border-radius: 8px; object-fit: contain; background: #fff; }
+.financial-ops__receipt-evidence-link, .financial-ops__receipt-evidence button { min-height: 42px; display: inline-flex; align-items: center; justify-content: center; padding: 8px 12px; border: 1px solid #bdd2e3; border-radius: 8px; color: #086dce; background: #fff; font: inherit; font-size: .75rem; font-weight: 800; text-decoration: none; }
 .financial-ops__receipt-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .financial-ops__receipt-actions button { min-height: 42px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; border: 1px solid #0875db; border-radius: 9px; color: #fff; background: #0875db; font: inherit; font-weight: 800; }
 .financial-ops__receipt-actions button:last-child { border-color: #c7d9e7; color: #45627a; background: #fff; }

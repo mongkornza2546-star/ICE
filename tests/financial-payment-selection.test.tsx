@@ -317,3 +317,22 @@ it('blocks empty and future received dates and still requires a slip on a backda
   fireEvent.click(screen.getByRole('button', { name: 'โอนเงิน', exact: true }));
   expect(record.hasAttribute('disabled')).toBe(true);
 });
+
+it('still opens cancellation for an unpaid delivery from the collection queue', async () => {
+  supabaseMock.rpc.mockImplementation(async (name: string) => ({
+    data: name === 'get_delivery_correction_route' ? { destination_kind: 'regular' } : {
+      delivery_event_id: 'unpaid-delivery', charge_id: shop.charges[0].charge_id,
+      charge_number: 'INV-OLD', shop_name: shop.shop_name, payment_term: 'credit',
+      round_status: 'open', day_closed: false, effective_amount: 50, allocated_amount: 0,
+      can_cancel: true, items: [],
+    }, error: null,
+  }));
+  render(<FinancialOperations userRole="admin" demoData={{ serviceDate, runId: 'run-1', queue: [{
+    ...shop, charges: [{ ...shop.charges[0], delivery_event_id: 'unpaid-delivery' }],
+  }], paymentHistory: [] }} />);
+  const detailToggle = screen.queryByRole('button', { name: 'ดูรายละเอียดบิลส่งของ INV-OLD' });
+  if (detailToggle?.getAttribute('aria-expanded') === 'false') fireEvent.click(detailToggle);
+  fireEvent.click(screen.getByRole('button', { name: 'ยกเลิกใบส่งน้ำแข็ง INV-OLD' }));
+  expect(await screen.findByRole('button', { name: 'ยืนยันยกเลิกใบส่งน้ำแข็ง' })).toBeTruthy();
+  expect(supabaseMock.rpc).toHaveBeenCalledWith('get_delivery_correction_route', { p_event_id: 'unpaid-delivery' });
+});

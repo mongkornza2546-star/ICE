@@ -1,8 +1,26 @@
 import { supabase } from './supabase';
 import { optimizeImage } from './imageOptimizer';
-import { removeR2Objects, uploadR2Object } from './r2Storage';
+import { getHybridObjectUrl, removeR2Objects, uploadR2Object } from './r2Storage';
 
 export const MAX_PAYMENT_EVIDENCE_SIZE = 5 * 1024 * 1024;
+
+export async function getStoredPaymentEvidence(paymentId: string) {
+  const client = supabase;
+  if (!client) throw new Error('ยังไม่ได้ตั้งค่า Supabase');
+  const { data: payment, error } = await client.from('payments')
+    .select('evidence_path').eq('id', paymentId).single();
+  if (error) throw error;
+  const path = payment.evidence_path as string | null;
+  if (!path) return null;
+
+  const url = await getHybridObjectUrl('payment-evidence', path, async () => {
+    const { data, error: urlError } = await client.storage.from('payment-evidence')
+      .createSignedUrl(path, 3600);
+    if (urlError || !data?.signedUrl) throw urlError ?? new Error('ไม่สามารถเปิดสลิปได้');
+    return data.signedUrl;
+  });
+  return { url, isPdf: /\.pdf$/i.test(path) };
+}
 
 async function evidenceDigest(file: Blob) {
   const contents = await new Promise<ArrayBuffer>((resolve, reject) => {
