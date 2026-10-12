@@ -143,6 +143,34 @@ function renderReview(canCollectImmediatePayment = true, card = shopCard, overri
 }
 
 describe('employee delivery review navigation', () => {
+  it('shows cancellation details without offering another cancellation even with stale permissions', () => {
+    renderReview(true, {
+      ...shopCard,
+      today_history: [{
+        event_id: 'cancelled-1',
+        delivery_status: 'cancelled',
+        recorded_at: '2026-08-18T01:00:00Z',
+        recorded_by: 'พนักงานส่ง 1',
+        round_name: 'รอบเช้า',
+        stop_status: 'delivered',
+        note: null,
+        items: { 'ice-1': 4 },
+        can_cancel: true,
+        can_correct: true,
+        cancelled_at: '2026-08-19T02:15:00Z',
+        cancelled_by: 'แอดมิน 1',
+        cancellation_reason: 'บันทึกซ้ำ',
+      }],
+    }, { iceTypes: [{ id: 'ice-1', code: 'SMALL', name: 'หลอดเล็ก', unit: 'ถุง' }] });
+    const history = screen.getByRole('heading', { name: 'ประวัติวันนี้' }).closest('section')!;
+    expect(within(history).getByText('ยกเลิกแล้ว')).toBeTruthy();
+    expect(within(history).getByText('หลอดเล็ก 4 ถุง')).toBeTruthy();
+    expect(within(history).getByText('พนักงานส่ง 1')).toBeTruthy();
+    expect(within(history).getByText(/ยกเลิกโดย แอดมิน 1.*09:15/)).toBeTruthy();
+    expect(within(history).getByText('เหตุผล: บันทึกซ้ำ')).toBeTruthy();
+    expect(within(history).queryByRole('button', { name: 'ยกเลิกใบส่งน้ำแข็ง' })).toBeNull();
+  });
+
   it.each(['', '1.1', '3', '168'])('blocks delivery and review while quantity %s is uncommitted', async (value) => {
     const user = userEvent.setup();
     const { onConfirmDelivery } = renderReview();

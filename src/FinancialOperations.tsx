@@ -691,7 +691,9 @@ export function FinancialOperations({
         ? 'record_event_payment'
         : selectedShop.billing_statement_id
           ? 'record_billing_statement_payment'
-          : 'record_regular_collection_payment';
+          : selectedShop.collection_scope === 'shop'
+            ? 'record_shop_collection_payment'
+            : 'record_regular_collection_payment';
       const { data, error: rpcError } = paymentDate < today
         ? await supabase.rpc('record_backdated_collection_payment', {
           p_payment_kind: paymentRpc,

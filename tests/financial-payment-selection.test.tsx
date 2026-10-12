@@ -106,6 +106,28 @@ it('records only today selected bill while keeping expected outstanding for the 
   expect(await screen.findByText('บันทึกรับเงินเรียบร้อย')).not.toBeNull();
 });
 
+it('shows statement membership and submits selected billed and unbilled charges in one payment', async () => {
+  const unified: QueueShop = {
+    ...shop, collection_scope: 'shop',
+    charges: [{ ...shop.charges[0], billing_statement_id: 'statement-1', billing_statement_number: 'BIL2610-00004' }, shop.charges[1]],
+  };
+  supabaseMock.loadQueue.mockResolvedValue({ runId: 'run-1', queue: [unified] });
+  render(<FinancialOperations userRole="courier" serviceDate={serviceDate}
+    focusRequest={{ requestId: 'unified-1', source: 'pos-shortcut', shopId: shop.shop_id, queueKey: `regular:${shop.shop_id}` }} />);
+  expect(await screen.findByText('ใบวางบิล BIL2610-00004')).not.toBeNull();
+  expect(screen.getAllByRole('checkbox', { name: /เลือกบิล INV/ })).toHaveLength(2);
+  expect((screen.getByRole('spinbutton', { name: 'ยอดรับเงินจริง' }) as HTMLInputElement).value).toBe('125.00');
+  fireEvent.click(screen.getByRole('checkbox', { name: 'เลือกบิล INV-TODAY' }));
+  expect((screen.getByRole('spinbutton', { name: 'ยอดรับเงินจริง' }) as HTMLInputElement).value).toBe('50.00');
+  fireEvent.click(screen.getByRole('button', { name: 'เลือกทั้งหมด' }));
+  fireEvent.click(screen.getByRole('button', { name: 'บันทึกรับเงินทันที' }));
+  await waitFor(() => expect(supabaseMock.rpc).toHaveBeenCalledWith('record_shop_collection_payment', expect.objectContaining({
+    p_allocations: [{ charge_id: shop.charges[0].charge_id, amount: 50 }, { charge_id: shop.charges[1].charge_id, amount: 75 }],
+    p_expected_outstanding_amount: 125, p_received_amount: 125,
+  })));
+  expect(await screen.findByText('บันทึกรับเงินเรียบร้อย')).not.toBeNull();
+});
+
 it('supports old-only, multiple, all, and empty bill selections', () => {
   renderFinancialOperations();
   const amount = screen.getByRole('spinbutton', { name: 'ยอดรับเงินจริง' }) as HTMLInputElement;
@@ -279,6 +301,7 @@ it('allows only admins to edit the received date and uses Bangkok today rather t
 });
 
 it.each([
+  { kind: 'record_shop_collection_payment', extra: { collection_scope: 'shop' as const } },
   { kind: 'record_regular_collection_payment', extra: {} },
   { kind: 'record_billing_statement_payment', extra: { billing_statement_id: 'statement-1' } },
   { kind: 'record_event_payment', extra: {

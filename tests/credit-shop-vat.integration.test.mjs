@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { createVatDatabase } from './helpers/creditVatDatabase.mjs';
 
 const admin = '10000000-0000-4000-8000-000000000001';
@@ -116,6 +117,9 @@ test('credit VAT through real migrations, delivery writers, billing, collection 
   assert.equal(statement.total_amount, oldStatement.total_amount);
   assert.equal(statement.vat_amount, 0);
   assert.equal(statement.gross_amount, null);
+  const receivable = (await value(db, 'select public.get_credit_receivables() as value'))[0];
+  assert.equal(receivable.outstanding_subtotal_amount, 100);
+  assert.equal(receivable.outstanding_amount, 100);
   assert.equal(await value(db, `select vat_enabled as value from public.shop_payment_profiles where shop_id='${shop}'`), false);
  });
  let sale, saleKey = randomUUID();
@@ -133,6 +137,7 @@ test('credit VAT through real migrations, delivery writers, billing, collection 
   assert.equal(context.payment_profile.credit_exposure, 1170);
   const receivables = await value(db, `select public.get_credit_receivables() as value`);
   assert.equal(receivables[0].outstanding_amount, 1170);
+  assert.equal(receivables[0].outstanding_subtotal_amount, 1100);
   assert.equal(receivables[0].vat_enabled, true);
   const detail = await value(db, `select public.get_credit_receivable_detail('${shop}') as value`);
   assert.equal(detail.charges.find(c => c.charge_id === sale.charge_id).vat_amount, 70);
@@ -170,6 +175,10 @@ test('credit VAT through real migrations, delivery writers, billing, collection 
   const replay = await pay(db, sale.charge_id, 500, 1070, null, paymentKey);
   assert.equal(payment.payment_id, replay.payment_id);
   nonVat = await record(db, 2, 0);
+  const receivable = (await value(db, 'select public.get_credit_receivables() as value'))[0];
+  assert.equal(receivable.vat_enabled, false);
+  assert.equal(receivable.outstanding_amount, 720);
+  assert.equal(receivable.outstanding_subtotal_amount, 682.71); // 100 + 50 + round(570 * 1000 / 1070)
   statement = await issue(db, [sale.charge_id, nonVat.charge_id]);
   assert.equal(statement.subtotal_amount, 1050);
   assert.equal(statement.vat_amount, 70);
@@ -181,11 +190,39 @@ test('credit VAT through real migrations, delivery writers, billing, collection 
   assert.equal(queued.subtotal_amount, 1000);
   assert.equal(queued.vat_amount, 70);
   assert.equal(queued.outstanding_amount, 570);
+  // Exercise the new path against all migrations/triggers, preserving this
+  // test's original ledger for the legacy writer checks below.
+  await db.exec('begin');
+  try {
+    const extra = await record(db, 4, 0);
+    const unified = await value(db, `select public.get_shop_collection_queue('${run}') as value`);
+    assert.equal(unified.length, 1);
+    assert.equal(unified[0].outstanding_amount, 820); // old statement 100 + current 620 + new 100
+    const billed = unified[0].charges.find(c => c.charge_id === sale.charge_id);
+    assert.equal(billed.billing_statement_number, statement.statement_number);
+    assert.equal(billed.vat_amount, 70);
+    const allocations = [{ charge_id: sale.charge_id, amount: 570 }, { charge_id: extra.charge_id, amount: 100 }];
+    const payment = await value(db, `select public.record_shop_collection_payment($1,$2::jsonb,'cash',700,null,null,$3,820,null,$4) as value`,
+      [shop, JSON.stringify(allocations), run, randomUUID()]);
+    await db.exec('set constraints all immediate');
+    assert.equal(payment.allocated_amount, 670);
+    assert.equal(payment.change_amount, 30);
+    const receipt = await value(db, 'select get_payment_receipt_snapshot($1) as value', [payment.payment_id]);
+    assert.equal(receipt.charges.length, 2);
+    assert.equal((await statements(db)).find(s => s.id === statement.id).outstanding_amount, 50);
+    await value(db, 'select void_payment($1, $2) as value', [payment.payment_id, 'Test reversal']);
+    assert.equal((await statements(db)).find(s => s.id === statement.id).outstanding_amount, 620);
+  } finally {
+    await db.exec('rollback');
+  }
   await pay(db, sale.charge_id, 570, 620, statement.id);
   const latest = (await statements(db)).find(s => s.id === statement.id);
   assert.equal(latest.vat_amount, 70);
   assert.equal(latest.total_amount, 620);
   assert.equal(latest.outstanding_amount, 50);
+  const afterPayment = (await value(db, 'select public.get_credit_receivables() as value'))[0];
+  assert.equal(afterPayment.outstanding_subtotal_amount, 150);
+  assert.equal(afterPayment.outstanding_amount, 150);
  });
  await t.test('credit limit includes VAT and rounding occurs per charge', async () => {
   await db.exec(`update public.shop_payment_profiles set vat_enabled=true, credit_limit=200 where shop_id='${shop}'`);
@@ -195,6 +232,9 @@ test('credit VAT through real migrations, delivery writers, billing, collection 
   assert.equal(half.subtotal_amount, 12.5);
   assert.equal(half.vat_amount, .88);
   assert.equal(half.total_amount, 13.38);
+  const withRounding = (await value(db, 'select public.get_credit_receivables() as value'))[0];
+  assert.equal(withRounding.outstanding_subtotal_amount, 162.5);
+  assert.equal(withRounding.outstanding_amount, 163.38);
   await db.exec(`update public.shop_payment_profiles set vat_enabled=false where shop_id='${shop}'`);
   const result = await value(db, `select public.apply_open_delivery_correction($1, 'cancel', '[]', 'delivered', null, 'VAT cancellation test', $2, null) as value`, [half.delivery_event_id, randomUUID()]);
   assert.equal(result.new_amount, 0);
@@ -202,6 +242,9 @@ test('credit VAT through real migrations, delivery writers, billing, collection 
   const cancelled = await value(db, 'select public.get_charge_print_document($1) as value', [half.charge_id]);
   assert.equal(cancelled.total_amount, 13.38);
   assert.equal(cancelled.status, 'voided');
+  const afterCancellation = (await value(db, 'select public.get_credit_receivables() as value'))[0];
+  assert.equal(afterCancellation.outstanding_subtotal_amount, 150);
+  assert.equal(afterCancellation.outstanding_amount, 150);
  });
  await t.test('paid bills and closed-period edits remain protected', async () => {
   await assert.rejects(value(db, `select public.apply_open_delivery_correction($1, 'cancel', '[]', 'delivered', null, 'paid', $2, null) as value`, [sale.delivery_event_id, randomUUID()]), /ชำระ|ล่าสุด/);
@@ -242,5 +285,61 @@ test('credit VAT through real migrations, delivery writers, billing, collection 
   assert.equal(result.subtotal_amount, 1.01);
   assert.equal(result.vat_amount, .07);
   assert.equal(result.total_amount, 1.08);
+ });
+ await t.test('September VAT repair checks scope, preserves payments and updates invoice snapshots once', async () => {
+  // Isolate the reviewed repair cohort from the ledger exercised above.
+  await db.exec(`set session_replication_role=replica;
+    update public.delivery_charges set service_date='2026-08-31';
+    set session_replication_role=origin;
+    update public.shop_payment_profiles set vat_enabled=false, credit_limit=null where shop_id='${shop}'`);
+  const create = async (rate = 0) => value(db,
+    `select public.record_delivery_with_vat_check($1,$2::jsonb,'delivered',null,now(),$3,'credit',null,$4,$5) as value`,
+    [stop, items(4), randomUUID(), rate, rate ? 8.60 : 8.04]);
+  const target = await create();
+  await db.exec('set session_replication_role=replica');
+  await db.query(`update public.delivery_charges set service_date='2026-09-01' where id=$1`, [target.charge_id]);
+  await db.exec('set session_replication_role=origin');
+  const prior = await create();
+  await db.exec('set session_replication_role=replica');
+  await db.query(`update public.delivery_charges set service_date='2026-08-31' where id=$1`, [prior.charge_id]);
+  await db.exec('set session_replication_role=origin');
+  await db.exec(`update public.shop_payment_profiles set vat_enabled=true where shop_id='${shop}'`);
+  const alreadyVat = await create(7);
+  await db.exec(`set session_replication_role=replica;
+    update public.delivery_rounds set service_date='2026-09-01';
+    set session_replication_role=origin`);
+  const script = readFileSync(new URL('../supabase/scripts/backfill_credit_vat_september_2026.sql', import.meta.url), 'utf8')
+    .replace('5047b139-345c-4173-b3dd-b5fe5a13bd2e', admin)
+    .replace('221::integer expected_count, 35640::numeric expected_subtotal, 2494.80::numeric expected_vat',
+      '1::integer expected_count, 8.04::numeric expected_subtotal, 0.56::numeric expected_vat');
+  const commit = script.replace(/rollback;\s*$/, 'commit;');
+  await db.exec(script); // default dry run must change nothing
+  assert.equal(await value(db, 'select vat_rate as value from delivery_charges where id=$1', [target.charge_id]), '0.00');
+  const statement = await issue(db, [target.charge_id]);
+  await assert.rejects(db.exec(commit), /Paid, billed or adjusted/);
+  await db.exec('rollback');
+  const payment = await pay(db, target.charge_id, 1, 8.04, statement.id);
+  await value(db, `select void_billing_statement($1,'repair test') as value`, [statement.id]);
+  await assert.rejects(db.exec(commit), /Paid, billed or adjusted/);
+  await db.exec('rollback');
+  await value(db, `select void_payment($1,'repair test') as value`, [payment.payment_id]);
+  const receiptsBefore = JSON.stringify((await db.query('select * from payment_receipt_snapshots order by payment_id')).rows);
+  await db.exec(commit);
+  const repaired = await value(db, 'select get_charge_print_document($1) as value', [target.charge_id]);
+  assert.equal(repaired.subtotal_amount, 8.04);
+  assert.equal(repaired.vat_rate, 7);
+  assert.equal(repaired.vat_amount, .56);
+  assert.equal(repaired.total_amount, 8.60);
+  assert.equal(await value(db, 'select original_amount as value from delivery_charges where id=$1', [target.charge_id]), '8.60');
+  assert.equal(await value(db, 'select original_amount as value from delivery_charges where id=$1', [prior.charge_id]), '8.04');
+  assert.equal(await value(db, 'select original_amount as value from delivery_charges where id=$1', [alreadyVat.charge_id]), '8.60');
+  const audit = await value(db, `select before_value as value from audit_logs where action='backfill_credit_vat_september_2026'`);
+  assert.equal(audit.charge.original_amount, 8.04);
+  assert.equal(audit.document.total_amount, 8.04);
+  assert.equal(JSON.stringify((await db.query('select * from payment_receipt_snapshots order by payment_id')).rows), receiptsBefore);
+  await assert.rejects(db.exec(commit), /scope changed/); // replay cannot add VAT twice
+  await db.exec('rollback');
+  await assert.rejects(db.exec(`update delivery_charges set vat_rate=0 where id='${target.charge_id}'`), /immutable/);
+  await assert.rejects(db.exec(`update delivery_charge_document_snapshots set document_data='{}' where charge_id='${target.charge_id}'`), /immutable/);
  });
 });

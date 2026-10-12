@@ -50,7 +50,12 @@ function dueLabel(shop: QueueShop, serviceDate: string) {
   );
   const oldest = [...shop.charges].sort((left, right) => accountableDate(left).localeCompare(accountableDate(right)))[0];
   const oldestDate = oldest ? accountableDate(oldest) : null;
-  if (!oldestDate || oldestDate === serviceDate) return { label: 'วันนี้', tone: 'today' as const };
+  if (!oldestDate || oldestDate >= serviceDate) {
+    return {
+      label: shop.charges.some((charge) => charge.billing_statement_id) ? 'ตามใบวางบิล' : 'วันนี้',
+      tone: 'today' as const,
+    };
+  }
   const elapsed = Math.max(1, Math.round((Date.parse(serviceDate) - Date.parse(oldestDate)) / 86_400_000));
   return { label: `เกินกำหนด ${elapsed} วัน`, tone: elapsed >= 5 ? 'danger' as const : 'warning' as const };
 }
@@ -183,7 +188,7 @@ export function CollectionDesk({
   const visibleRows = useMemo(() => {
     const shopRows: CollectionRow[] = queue
       .filter((shop) => {
-        const matchesQuery = !normalizedQuery || `${shop.shop_code} ${shop.shop_name} ${shop.billing_statement_number ?? ''} ${shop.event_name ?? ''} ${shop.event_location ?? ''} ${shop.event_zone ?? ''} ${shop.event_booth ?? ''} ${shop.charges.map((charge) => charge.charge_number).join(' ')}`
+        const matchesQuery = !normalizedQuery || `${shop.shop_code} ${shop.shop_name} ${shop.billing_statement_number ?? ''} ${shop.event_name ?? ''} ${shop.event_location ?? ''} ${shop.event_zone ?? ''} ${shop.event_booth ?? ''} ${shop.charges.map((charge) => `${charge.charge_number ?? ''} ${charge.billing_statement_number ?? ''}`).join(' ')}`
           .toLocaleLowerCase().includes(normalizedQuery);
         const matchesBuilding = !buildingId || shop.building_id === buildingId;
         const matchesZone = !zoneId || shop.zone_id === zoneId;

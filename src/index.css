@@ -2482,6 +2482,7 @@ input:disabled, select:disabled, textarea:disabled { background: #f2f5f8; color:
 .employee-history-list { display: grid; gap: 8px; }
 .employee-history-list article { display: grid; grid-template-columns: minmax(130px, .7fr) minmax(0, 1fr) auto; gap: 10px; padding: 10px 12px; border: 1px solid #e0e8f1; border-radius: 10px; background: #f9fbfd; color: #3c5570; font-size: .73rem; }
 .employee-history-list article small { color: #78879a; }
+.employee-history-cancellation { grid-column: 1 / -1; display: grid; gap: 3px; overflow-wrap: anywhere; }
 .employee-empty-history { padding: 16px; border-radius: 10px; color: #75869b; background: #f5f7fa; font-size: .76rem; text-align: center; }
 
 @media (min-width: 680px) {

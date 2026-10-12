@@ -14,7 +14,7 @@ const newBill = '10000000-0000-4000-8000-000000000002';
 const otherShopBill = '10000000-0000-4000-8000-000000000003';
 const otherRunBill = '10000000-0000-4000-8000-000000000004';
 
-async function createDatabase(t, { applyDateFix = true, applyCreditHistoryFix = true } = {}) {
+async function createDatabase(t, { applyDateFix = true, applyCreditHistoryFix = true, applyUnifiedCollections = true } = {}) {
   const db = new PGlite();
   t.after(() => db.close());
   // Minimal surrounding schema; payment/void writers, wrappers, effective
@@ -191,6 +191,7 @@ async function createDatabase(t, { applyDateFix = true, applyCreditHistoryFix = 
   await db.exec(eventWriter.slice(eventWriter.indexOf('create or replace function public.record_event_payment(')));
   if (applyDateFix) await db.exec(migration('0204_payment_date_presentation_and_replay'));
   if (applyCreditHistoryFix) await db.exec(migration('0208_preserve_former_credit_customer_history'));
+  if (applyUnifiedCollections) await db.exec(migration('0220_unified_shop_collections'));
   return db;
 }
 
@@ -219,6 +220,150 @@ async function voidStatement(db, id) {
 async function voidPayment(db, id) {
   await db.query('select public.void_payment($1, $2)', [id, 'Correct payment']);
 }
+
+async function shopQueue(db) {
+  return (await db.query('select public.get_shop_collection_queue($1) as queue', [runId])).rows[0].queue;
+}
+
+async function shopPay(db, allocations, { expected = 125, received = allocations.reduce((sum, a) => sum + a.amount, 0), key = 90 } = {}) {
+  return (await db.query(`select public.record_shop_collection_payment($1, $2::jsonb, 'cash', $3,
+    null, null, $4, $5, null, $6) as result`,
+  [shopId, JSON.stringify(allocations), received, runId, expected, requestKey(key)])).rows[0].result;
+}
+
+test('shop collection includes billed debt and a later backdated bill without voiding the statement', async (t) => {
+  const db = await createDatabase(t);
+  await db.query('update delivery_charges set original_amount=1800 where id=$1', [oldBill]);
+  const statement = await issue(db, [oldBill]);
+  await db.query(`update delivery_charges set original_amount=120,
+    service_date=service_date-35, created_at=now() where id=$1`, [newBill]);
+  const rows = await shopQueue(db);
+  assert.equal(rows.length, 1, 'one collection for all outstanding bills of the shop');
+  assert.equal(Number(rows[0].outstanding_amount), 1920);
+  assert.equal(rows[0].charges.length, 2);
+  assert.equal(rows[0].charges.find(c => c.charge_id === oldBill).billing_statement_id, statement.id);
+  assert.equal(rows[0].collection_scope, 'shop');
+  assert.equal(rows[0].queue_key, `regular:${shopId}`);
+  const allocations = [{ charge_id: oldBill, amount: 1800 }, { charge_id: newBill, amount: 120 }];
+  const payment = await shopPay(db, allocations, { expected: 1920, received: 2000 });
+  assert.equal(Number(payment.allocated_amount), 1920);
+  assert.equal(Number(payment.change_amount), 80);
+  assert.equal((await shopQueue(db)).length, 0);
+  const stored = (await db.query('select get_billing_statements($1) as items', [shopId])).rows[0].items[0];
+  assert.equal(stored.status, 'active');
+  assert.equal(Number(stored.outstanding_amount), 0);
+  assert.deepEqual(await shopPay(db, allocations, { expected: 1920, received: 2000 }), payment);
+  await voidPayment(db, payment.payment_id);
+  assert.equal(Number((await shopQueue(db))[0].outstanding_amount), 1920);
+});
+
+test('one payment can select bills across two active statements and leave other bills unpaid', async (t) => {
+  const db = await createDatabase(t);
+  const first = await issue(db, [oldBill]);
+  const second = await issue(db, [newBill]);
+  const allocations = [{ charge_id: oldBill, amount: 20 }, { charge_id: newBill, amount: 30 }];
+  const payment = await shopPay(db, allocations);
+  assert.ok((await shopQueue(db))[0].latest_payment_at);
+  const statements = (await db.query('select get_billing_statements($1) as items', [shopId])).rows[0].items;
+  assert.equal(Number(statements.find(s => s.id === first.id).outstanding_amount), 30);
+  assert.equal(Number(statements.find(s => s.id === second.id).outstanding_amount), 45);
+  const links = (await db.query('select charge_id, billing_statement_id from payment_allocations where payment_id=$1 order by charge_id', [payment.payment_id])).rows;
+  assert.deepEqual(links, [{ charge_id: oldBill, billing_statement_id: first.id }, { charge_id: newBill, billing_statement_id: second.id }]);
+  await assert.rejects(shopPay(db, allocations, { key: 91 }), /outstanding changed/i);
+  await assert.rejects(shopPay(db, allocations, { received: 51 }), /different payment/i);
+  await db.exec("set test.visible='false'");
+  await assert.rejects(shopPay(db, allocations), /cannot be viewed/i);
+  await db.exec("set test.visible='true'");
+  await voidStatement(db, first.id);
+  const replacement = await issue(db, [oldBill]);
+  await assert.rejects(voidPayment(db, payment.payment_id), /void.*billing statement.*first/i);
+  await voidStatement(db, replacement.id);
+  await voidPayment(db, payment.payment_id);
+  assert.equal(Number((await shopQueue(db))[0].outstanding_amount), 125);
+  await db.exec("update collection_runs set status='closed'");
+  assert.deepEqual(await shopPay(db, allocations), { ...payment, status: 'voided' });
+});
+
+test('shop collection preserves future due eligibility, permissions and allocation checks', async (t) => {
+  const db = await createDatabase(t);
+  await db.query('update delivery_charges set due_date=due_date+3 where id=$1', [newBill]);
+  assert.equal(Number((await shopQueue(db))[0].outstanding_amount), 50);
+  await issue(db, [newBill]);
+  assert.equal(Number((await shopQueue(db))[0].outstanding_amount), 125);
+  await db.exec("set test.can_collect='false'");
+  await assert.rejects(shopPay(db, [{ charge_id: newBill, amount: 25 }]), /cannot collect/i);
+  await db.exec("set test.can_collect='true'");
+  await assert.rejects(shopPay(db, [{ charge_id: newBill, amount: 76 }]), /exceed.*balance/i);
+  await assert.rejects(shopPay(db, [{ charge_id: newBill, amount: 10 }, { charge_id: newBill, amount: 10 }]), /distinct charge/i);
+  await assert.rejects(shopPay(db, [{ charge_id: otherShopBill, amount: 10 }]), /not found|shop|scope/i);
+  await db.exec("set role authenticated; set test.role='courier'");
+  await shopPay(db, [{ charge_id: newBill, amount: 25 }]);
+  assert.equal(Number((await shopQueue(db))[0].outstanding_amount), 100);
+});
+
+test('shop collection excludes event debts and rejects allocating a regular receipt to an event', async (t) => {
+  const db = await createDatabase(t);
+  await issue(db);
+  await db.exec(`
+    insert into event_settlement_contexts(id, service_date)
+      values ('70000000-0000-4000-8000-000000000001', (clock_timestamp() at time zone 'Asia/Bangkok')::date);
+    insert into delivery_charges(id, shop_id, payment_term, due_date, created_at, service_date,
+      outstanding_amount, original_amount, event_settlement_context_id)
+    values ('${otherRunBill}', '${shopId}', 'end_of_day',
+      (clock_timestamp() at time zone 'Asia/Bangkok')::date, now(),
+      (clock_timestamp() at time zone 'Asia/Bangkok')::date, 10, 10,
+      '70000000-0000-4000-8000-000000000001');
+  `);
+  const rows = await shopQueue(db);
+  assert.equal(rows.length, 2);
+  const event = (await queue(db)).find(r => r.destination_kind === 'event');
+  assert.deepEqual(rows.find(r => r.destination_kind === 'event'), event);
+  assert.equal(Number(rows.find(r => r.destination_kind === 'regular').outstanding_amount), 125);
+  await assert.rejects(shopPay(db, [{ charge_id: otherRunBill, amount: 10 }]), /event.*workflow/i);
+  await shopPay(db, [{ charge_id: oldBill, amount: 50 }, { charge_id: newBill, amount: 75 }]);
+  assert.deepEqual(await shopQueue(db), [event]);
+});
+
+test('backdated shop collection keeps a single dated receipt and rejects cross-date retries', async (t) => {
+  const db = await createDatabase(t);
+  await issue(db);
+  const date = (await db.query("select ((clock_timestamp() at time zone 'Asia/Bangkok')::date - 1)::text as date")).rows[0].date;
+  const allocations = [{ charge_id: oldBill, amount: 20 }, { charge_id: newBill, amount: 30 }];
+  const args = JSON.stringify({ p_shop_id: shopId, p_allocations: allocations, p_payment_method: 'cash',
+    p_received_amount: 50, p_collection_run_id: runId, p_expected_outstanding_amount: 125,
+    p_idempotency_key: requestKey(90) });
+  const write = (day = date) => db.query(`select public.record_backdated_collection_payment(
+    'record_shop_collection_payment', $1::date, $2::jsonb) as result`, [day, args]);
+  await db.exec("set test.role='courier'");
+  await assert.rejects(write(), /เฉพาะแอดมิน/);
+  await db.exec("set test.role='admin'");
+  const result = (await write()).rows[0].result;
+  assert.equal(result.received_date_override, date);
+  assert.deepEqual((await write()).rows[0].result, result);
+  await assert.rejects(write('2020-01-01'), /different received date/i);
+  await assert.rejects(shopPay(db, allocations), /different received date/i);
+  const receipt = (await db.query('select receipt_data from payment_receipt_snapshots where payment_id=$1', [result.payment_id])).rows[0].receipt_data;
+  assert.equal(receipt.received_date_override, date);
+  assert.equal(receipt.charges.length, 2);
+  assert.equal((await db.query('select count(*)::int as count from payments')).rows[0].count, 1);
+});
+
+test('upgrade preserves legacy statement payments, reversals and receipt retries', async (t) => {
+  const db = await createDatabase(t, { applyUnifiedCollections: false });
+  const statement = await issue(db);
+  const args = { statement: statement.id };
+  const previous = await pay(db, args);
+  await db.exec(migration('0220_unified_shop_collections'));
+  assert.deepEqual(await pay(db, args), previous);
+  assert.equal(Number((await shopQueue(db))[0].outstanding_amount), 100);
+  await voidPayment(db, previous.payment_id);
+  assert.equal(Number((await shopQueue(db))[0].outstanding_amount), 125);
+  const payment = await shopPay(db, [{ charge_id: newBill, amount: 75 }]);
+  await assert.rejects(pay(db, { ...args, key: 90 }), /different payment/i);
+  await assert.rejects(shopPay(db, [{ charge_id: newBill, amount: 25 }], { key: 1 }), /different payment/i);
+  await voidPayment(db, payment.payment_id);
+  assert.equal(Number((await shopQueue(db))[0].outstanding_amount), 125);
+});
 
 test('statement retries return the original payment after balance changes, voiding and run closure', async (t) => {
   const db = await createDatabase(t);

@@ -12,6 +12,8 @@ export type PaymentProfile = {
 };
 
 export type QueueCharge = {
+  billing_statement_id?: string | null;
+  billing_statement_number?: string | null;
   subtotal_amount?: number;
   vat_amount?: number;
   vat_rate?: number;
@@ -33,6 +35,7 @@ export type QueueCharge = {
 };
 
 export type QueueShop = {
+  collection_scope?: 'shop';
   queue_key?: string;
   destination_kind?: 'regular' | 'event';
   billing_statement_id?: string | null;
@@ -63,6 +66,7 @@ export type QueueShop = {
 
 export type Receivable = {
   vat_enabled?: boolean;
+  outstanding_subtotal_amount?: number;
   shop_id: string;
   shop_code: string;
   shop_name: string;

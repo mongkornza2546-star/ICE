@@ -229,6 +229,7 @@ export function PaymentModal({
                     <em>{isPriorBalance ? translateUi('ยอดค้างจากวันอื่น') : translateUi('บิลวันนี้')}</em>
                     <b>{charge.charge_number ? translateUi('เลขที่บิล {0}', { 0: charge.charge_number }) : translateUi('ขายสด')}</b>
                     <small>{translateUi('ส่งวันที่ ')}{formatServiceDate(charge.service_date)}</small>
+                    {charge.billing_statement_number ? <small>{translateUi('ใบวางบิล ')}{charge.billing_statement_number}</small> : null}
                   </span>
                   <span className="financial-ops__charge-total"><small>{translateUi('ยอดค้างบิลนี้')}</small><b>{money.format(charge.outstanding_amount)}</b></span>
                 </>;

@@ -9,11 +9,21 @@ import {
   ensureCurrentCollectionContext,
   invalidateCurrentCollectionContext,
 } from '../src/lib/collectionContext';
+import { loadCurrentCollectionQueue } from '../src/lib/collectionQueue';
 
 describe('automatic collection context', () => {
   beforeEach(() => {
     invalidateCurrentCollectionContext();
     supabaseMock.rpc.mockReset();
+  });
+
+  it('loads the unified shop queue after obtaining the authorized daily context', async () => {
+    const queue = [{ shop_id: 'shop-1', collection_scope: 'shop', outstanding_amount: 1920, charges: [] }];
+    supabaseMock.rpc.mockResolvedValueOnce({
+      data: { collection_run_id: 'run-1', service_date: '2026-10-12', status: 'open' }, error: null,
+    }).mockResolvedValueOnce({ data: queue, error: null });
+    expect(await loadCurrentCollectionQueue('2026-10-12')).toEqual({ runId: 'run-1', queue });
+    expect(supabaseMock.rpc).toHaveBeenLastCalledWith('get_shop_collection_queue', { p_collection_run_id: 'run-1' });
   });
 
   it('coalesces concurrent ensures and caches the current service date', async () => {

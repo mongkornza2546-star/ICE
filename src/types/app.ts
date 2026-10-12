@@ -512,6 +512,10 @@ export interface ShopSetting {
 
 export interface ShopCardHistoryEntry {
   event_id: string;
+  delivery_status?: 'active' | 'replaced' | 'cancelled';
+  cancelled_at?: string | null;
+  cancelled_by?: string | null;
+  cancellation_reason?: string | null;
   charge_id?: string | null;
   recorded_at: string;
   recorded_by_id?: string | null;

@@ -1,6 +1,6 @@
 import { deliveryLineTotal, deliverySubtotal, exclusiveVat } from '../../lib/vat';
 import { VatBreakdown } from '../financial-operations/components/VatBreakdown';
-import { translateUi, useLanguage } from '../../i18n';
+import { translateUi, uiDateTimeFormat, useLanguage } from '../../i18n';
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent, type KeyboardEvent } from 'react';
 import {
   ArrowLeft,
@@ -866,12 +866,18 @@ export function EmployeeDeliveryReview({
             {shopCard.today_history.map((entry) => (
               <article key={entry.event_id}>
                 <div><strong>{formatShortTime(entry.recorded_at)} · {entry.round_name}</strong>
-                {(entry.can_cancel || entry.can_correct) ? <button className="employee-text-button" onClick={() => setCorrectionEventId(entry.event_id)} type="button">{translateUi('ยกเลิกใบส่งน้ำแข็ง')}</button> : null}</div>
+                {entry.delivery_status === 'cancelled'
+                  ? <span className="status-badge status-badge--danger">{translateUi('ยกเลิกแล้ว')}</span>
+                  : (entry.can_cancel || entry.can_correct) ? <button className="employee-text-button" onClick={() => setCorrectionEventId(entry.event_id)} type="button">{translateUi('ยกเลิกใบส่งน้ำแข็ง')}</button> : null}</div>
                 <span>{entry.stop_status && entry.stop_status !== 'delivered'
                   ? `${translateUi(STATUS_LABELS[entry.stop_status])}${entry.note ? ` · ${entry.note}` : ''}`
                   : renderTotals(entry.items, iceTypes)}</span>
                 <small>{entry.recorded_by}</small>
-                {entry.correction_blocker && !(entry.can_cancel || entry.can_correct) ? <small title={entry.correction_blocker}>{entry.correction_blocker}</small> : null}
+                {entry.delivery_status === 'cancelled' ? <div className="employee-history-cancellation">
+                  <small>{translateUi('ยกเลิกโดย ')}{entry.cancelled_by ?? '—'}
+                    {entry.cancelled_at ? ` · ${uiDateTimeFormat({ day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Bangkok' }).format(new Date(entry.cancelled_at))}` : ''}</small>
+                  {entry.cancellation_reason ? <small>{translateUi('เหตุผล')}: {entry.cancellation_reason}</small> : null}
+                </div> : entry.correction_blocker && !(entry.can_cancel || entry.can_correct) ? <small title={entry.correction_blocker}>{entry.correction_blocker}</small> : null}
               </article>
             ))}
           </div>

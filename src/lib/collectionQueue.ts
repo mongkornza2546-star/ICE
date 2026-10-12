@@ -13,7 +13,7 @@ export async function loadCurrentCollectionQueue(serviceDate: string): Promise<C
   const runId = context.collection_run_id;
   if (!runId) return { runId: null, queue: [] };
 
-  const response = await supabase.rpc('get_collection_run_queue', {
+  const response = await supabase.rpc('get_shop_collection_queue', {
     p_collection_run_id: runId,
   });
   if (response.error) {
