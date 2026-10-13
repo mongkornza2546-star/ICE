@@ -1,3 +1,21 @@
+## 2026-10-13 — Combined area bar chart
+
+- Request: combine the supplied sales-by-area and delivery-by-destination panels into one bar-chart panel.
+- Source: `/Users/bhusitt./Desktop/ภาพถ่ายหน้าจอ2569-10-13เวลา 13.38.17.png`, 2236 × 1170 pixels. Compared at 1118 × 585 after 2:1 downsampling.
+- Final evidence: `outputs/executive-combined-area-chart.jpg`, 1118 × 644 content crop from `outputs/executive-combined-chart-viewport.jpg`, captured in the in-app browser at 1440 × 1000 CSS pixels, density 1. Selected state: building B, same selected month; demo values differ from production reference.
+- Mobile evidence: `outputs/executive-combined-area-chart-mobile.jpg`, full page at 390 × 844 CSS viewport. Page width remained 390 px; the chart scrolls horizontally within its 253 px viewport, allowing every bar to remain reachable.
+- Comparison: normalized source and final implementation were opened together. The requested structural change is intentional: one full-width vertical sales chart with an integrated selected-area quantity section, replacing both independent panels.
+- Fidelity surfaces: existing Noto Sans Thai and navy/blue tokens retained; rounded white panel and pale detail surface retained; axes/gridlines show the money scale; per-product values preserve their own units; Phosphor icons retained with no new image assets.
+- Data handling: all destinations are merged by kind plus ID; sorting is by sales, without discarding destinations beyond the original top five. Volume-only destinations remain selectable with zero sales. Missing volume data has a distinct message. The axis supports signed sales and zero totals.
+- Interactions: selected building B and verified its 500/250 bag quantities; on mobile selected casual sales and verified 30 bags; opened that area's sales drawer. Existing volume drilldowns remain available. Browser error/warning log was empty.
+- Tests: 31 focused UI tests passed, including an additional merge/selection test covering seven destinations, same ID across different kinds, fractional quantities and mixed units. Production build passed with the existing large-chunk advisory; diff whitespace check passed.
+- Capture history: an initial browser clip used document-relative coordinates and captured the wrong section; that evidence was rejected and overwritten with a verified crop of the viewport screenshot. No visual repair was needed after the valid desktop/mobile inspection.
+- Findings: no actionable P0/P1/P2 findings remain for this scoped change. Source values and layout are intentionally not copied pixel-for-pixel because the user requested consolidation into a chart.
+
+final result: passed
+
+---
+
 ## 2026-10-13 — Executive report layout refinement
 
 **Source and state**

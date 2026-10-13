@@ -140,7 +140,8 @@ it('shows business totals and drills into the selected building', async () => {
   fireEvent.click(screen.getByRole('button', { name: /รายการส่ง .*จำนวนครั้ง/ }));
   expect(within(screen.getByRole('table', { name: 'ปริมาณงานและน้ำแข็ง' })).getByText('น้ำแข็งหลอด')).not.toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'ภาพรวม' }));
-  fireEvent.click(within(screen.getByLabelText('ยอดขายตามพื้นที่')).getByRole('button', { name: /อาคาร A/ }));
+  fireEvent.click(within(screen.getByLabelText('ยอดขายและปริมาณน้ำแข็งตามพื้นที่')).getByRole('button', { name: /อาคาร A/ }));
+  fireEvent.click(screen.getByRole('button', { name: 'ดูรายการขายพื้นที่นี้' }));
   await screen.findByRole('dialog', { name: 'รายละเอียดยอดขายสุทธิ' });
   await waitFor(() => expect(rpc).toHaveBeenCalledWith('get_executive_report_details', expect.objectContaining({
     p_metric: 'sales', p_area_kind: 'building', p_area_id: 'building-1',
@@ -255,7 +256,7 @@ it('opens the report from the local demo entry point without a backend request',
   try {
     render(<LocalDemoApp />);
     expect(await screen.findByRole('heading', { name: 'รายงานผู้บริหาร' })).not.toBeNull();
-    expect(within(screen.getByLabelText('ยอดขายตามพื้นที่')).getByText('งานประชุมประจำปี')).not.toBeNull();
+    expect(within(screen.getByLabelText('ยอดขายและปริมาณน้ำแข็งตามพื้นที่')).getByText('งานประชุมประจำปี')).not.toBeNull();
     expect(rpc).not.toHaveBeenCalled();
   } finally {
     window.history.replaceState(null, '', '/');
@@ -541,11 +542,11 @@ it('shows delivery quantities and destination breakdowns with their own units on
   expect(within(products).getByText('10')).not.toBeNull();
   expect(within(products).getByText('ถุง')).not.toBeNull();
   expect(within(screen.getByRole('navigation', { name: 'หมวดรายงาน' })).getAllByRole('button').map((button) => button.textContent)).toEqual(['ภาพรวม', 'การเงิน']);
-  const locations = screen.getByRole('region', { name: 'สรุปยอดน้ำแข็งแต่ละจุด' });
-  const building = within(locations).getByRole('button', { name: /อาคาร A/ });
-  expect(building.textContent).toContain('6.5');
-  expect(building.textContent).not.toContain('2.5');
-  fireEvent.click(building);
+  const locations = screen.getByRole('region', { name: 'จำนวนส่งของพื้นที่ที่เลือก' });
+  expect(within(locations).getByRole('heading', { name: 'อาคาร A' })).not.toBeNull();
+  expect(within(locations).getByText('6.5')).not.toBeNull();
+  expect(within(locations).queryByText('2.5')).toBeNull();
+  fireEvent.click(within(locations).getByRole('button', { name: 'ดูปริมาณส่ง' }));
   expect(screen.getByRole('table', { name: 'ปริมาณน้ำแข็ง · อาคาร A' })).not.toBeNull();
 });
 
@@ -557,10 +558,44 @@ it('distinguishes unavailable destination data from a loaded destination without
     return name === 'get_executive_report' ? { ...result, data: { ...result.data, volumeAreas } } : result;
   });
   render(<ExecutiveReportsPage isActive />);
-  const locations = await screen.findByRole('region', { name: 'สรุปยอดน้ำแข็งแต่ละจุด' });
+  const locations = await screen.findByRole('region', { name: 'จำนวนส่งของพื้นที่ที่เลือก' });
   expect(within(locations).getByText('ข้อมูลแยกตึกยังไม่พร้อมใช้งาน')).not.toBeNull();
   expect(within(locations).queryByText('ยังไม่มีรายการส่งน้ำแข็ง')).toBeNull();
   volumeAreas = [];
   fireEvent.click(screen.getByRole('button', { name: 'รีเฟรชรายงาน' }));
   expect(await within(locations).findByText('ยังไม่มีรายการส่งน้ำแข็ง')).not.toBeNull();
+});
+
+it('merges every sales and volume destination and switches the product breakdown with each bar', async () => {
+  const original = rpc.getMockImplementation();
+  rpc.mockImplementation(async (name: string, args: unknown) => {
+    const result = await original?.(name, args);
+    if (name !== 'get_executive_report') return result;
+    return { ...result, data: { ...result.data,
+      areas: Array.from({ length: 6 }, (_, index) => ({ kind: 'building', id: `area-${index}`, name: `ตึก ${index}`, sales: (6 - index) * 100 })),
+      volumeAreas: [
+        { kind: 'building', id: 'area-5', name: 'ตึก 5', products: [
+          { id: 'bags', name: 'หลอดเล็ก', unit: 'ถุง', delivered: 6.5, damaged: 0 },
+          { id: 'blocks', name: 'น้ำแข็งก้อน', unit: 'แถว', delivered: 2, damaged: 0 },
+        ] },
+        { kind: 'event', id: 'area-5', name: 'งานประชุม', products: [
+          { id: 'bags', name: 'หลอดเล็ก', unit: 'ถุง', delivered: 8, damaged: 0 },
+        ] },
+      ],
+    } };
+  });
+  render(<ExecutiveReportsPage isActive />);
+  const graph = await screen.findByRole('group', { name: 'กราฟแท่งยอดขายตามพื้นที่' });
+  expect(within(graph).getAllByRole('button')).toHaveLength(7);
+  fireEvent.click(within(graph).getByRole('button', { name: /ตึก 5/ }));
+  const selected = screen.getByRole('region', { name: 'จำนวนส่งของพื้นที่ที่เลือก' });
+  expect(within(selected).getByText('6.5')).not.toBeNull();
+  expect(within(selected).getByText('ถุง')).not.toBeNull();
+  expect(within(selected).getByText('2')).not.toBeNull();
+  expect(within(selected).getByText('แถว')).not.toBeNull();
+  fireEvent.click(within(graph).getByRole('button', { name: /งานประชุม/ }));
+  expect(within(selected).getByText('8')).not.toBeNull();
+  expect(within(selected).queryByText('6.5')).toBeNull();
+  expect(within(selected).queryByRole('button', { name: 'ดูรายการขายพื้นที่นี้' })).toBeNull();
+  expect(within(graph).getByRole('button', { name: /งานประชุม/ }).getAttribute('aria-pressed')).toBe('true');
 });
