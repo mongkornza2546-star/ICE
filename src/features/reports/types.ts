@@ -31,6 +31,10 @@ export type ExecutiveReport = {
   areas: Array<{ kind: string; id: string | null; name: string; sales: number }>;
   shops: Array<{ id: string; name: string; sales: number }>;
   products: Array<{ id: string; name: string; unit: string; delivered: number; damaged: number }>;
+  volumeAreas?: Array<{
+    kind: string; id: string | null; name: string;
+    products: ExecutiveReport['products'];
+  }>;
 };
 
 export type DetailQuery = {

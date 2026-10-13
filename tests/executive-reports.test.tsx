@@ -30,6 +30,17 @@ beforeEach(() => {
       areas: [{ kind: 'building', id: 'building-1', name: 'อาคาร A', sales: 500 }],
       shops: [{ id: 'shop-1', name: 'ร้านหนึ่ง', sales: 500 }],
       products: [{ id: 'ice-1', name: 'น้ำแข็งหลอด', unit: 'ถุง', delivered: 10, damaged: 1 }],
+      volumeAreas: [
+        { kind: 'building', id: 'building-1', name: 'อาคาร A', products: [
+          { id: 'ice-1', name: 'น้ำแข็งหลอด', unit: 'ถุง', delivered: 6.5, damaged: 0.5 },
+        ] },
+        { kind: 'building', id: 'building-2', name: 'อาคาร B', products: [
+          { id: 'ice-1', name: 'น้ำแข็งหลอด', unit: 'ถุง', delivered: 2.5, damaged: 0.5 },
+        ] },
+        { kind: 'casual', id: null, name: 'ขายหน้ารถ', products: [
+          { id: 'ice-1', name: 'น้ำแข็งหลอด', unit: 'ถุง', delivered: 1, damaged: 0 },
+        ] },
+      ],
     } : {
       total: 1,
       rows: [{ id: 'item-1', day: args.p_bucket ?? from, label: 'ร้านหนึ่ง',
@@ -120,7 +131,7 @@ it('shows business totals and drills into the selected building', async () => {
   expect(await screen.findByText('อาคาร A')).not.toBeNull();
   expect(screen.getByText('หนี้ค้างปัจจุบัน')).not.toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'ปริมาณส่ง' }));
-  expect(screen.getByText('น้ำแข็งหลอด')).not.toBeNull();
+  expect(within(screen.getByRole('table', { name: 'ปริมาณงานและน้ำแข็ง' })).getByText('น้ำแข็งหลอด')).not.toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'ภาพรวม' }));
   fireEvent.click(within(screen.getByLabelText('ยอดขายตามพื้นที่')).getByRole('button', { name: /อาคาร A/ }));
   await screen.findByRole('dialog', { name: 'รายละเอียดยอดขายสุทธิ' });
@@ -225,7 +236,12 @@ it('exports a reconciled workbook with summary, trend, areas, and detail sheets'
   await screen.findByText('อาคาร A');
   fireEvent.click(screen.getByRole('button', { name: /ส่งออก Excel/ }));
   await waitFor(() => expect(writeXlsxFile).toHaveBeenCalledTimes(1));
-  expect(writeXlsxFile.mock.calls[0][1].sheets).toEqual(['สรุป', 'แนวโน้ม', 'พื้นที่', 'รายการ']);
+  expect(writeXlsxFile.mock.calls[0][1].sheets).toEqual(['สรุป', 'แนวโน้ม', 'พื้นที่', 'รายการ', 'ปริมาณรวม', 'ปริมาณแยกตึก']);
+  const rows = (index: number) => writeXlsxFile.mock.calls[0][0][index].map((row: Array<{ value: unknown }>) => row.map((cell) => cell.value));
+  expect(rows(4)).toContainEqual(['น้ำแข็งหลอด', 'ถุง', 10, 1]);
+  expect(rows(5)).toContainEqual(['ตึก', 'อาคาร A', 'น้ำแข็งหลอด', 'ถุง', 6.5, 0.5]);
+  expect(rows(5)).toContainEqual(['ตึก', 'อาคาร B', 'น้ำแข็งหลอด', 'ถุง', 2.5, 0.5]);
+  expect(rows(5)).toContainEqual(['ขายหน้ารถ', 'ขายหน้ารถ', 'น้ำแข็งหลอด', 'ถุง', 1, 0]);
 });
 
 it('opens the report from the local demo entry point without a backend request', async () => {
@@ -351,4 +367,37 @@ it('uses monthly headings after selecting the year preset', async () => {
   } finally {
     vi.useRealTimers();
   }
+});
+
+it('shows the overall volume followed by each building and separate other activity without extra controls', async () => {
+  render(<ExecutiveReportsPage isActive />);
+  await screen.findByText('อาคาร A');
+  rpc.mockClear();
+  fireEvent.click(screen.getByRole('button', { name: 'ปริมาณส่ง' }));
+  const total = screen.getByRole('table', { name: 'ปริมาณงานและน้ำแข็ง' });
+  expect(within(total).getByText('10')).not.toBeNull();
+  const buildings = screen.getByRole('region', { name: 'แยกตามตึก' });
+  const a = within(buildings).getByRole('table', { name: 'ปริมาณน้ำแข็ง · อาคาร A' });
+  const b = within(buildings).getByRole('table', { name: 'ปริมาณน้ำแข็ง · อาคาร B' });
+  expect(within(a).getByText('6.5')).not.toBeNull();
+  expect(within(a).getByText('0.5')).not.toBeNull();
+  expect(within(b).getByText('2.5')).not.toBeNull();
+  expect(within(buildings).queryByText('ขายหน้ารถ')).toBeNull();
+  expect(within(screen.getByRole('region', { name: 'รายการอื่นในยอดรวม' })).getByRole('table', { name: 'ปริมาณน้ำแข็ง · ขายหน้ารถ' })).not.toBeNull();
+  expect(screen.queryByRole('checkbox')).toBeNull();
+  expect(rpc).not.toHaveBeenCalled();
+});
+
+it('distinguishes missing building data from an empty period', async () => {
+  const original = rpc.getMockImplementation()!;
+  rpc.mockImplementation(async (name: string, args: unknown) => {
+    const result = await original(name, args);
+    if (name === 'get_executive_report') delete result.data.volumeAreas;
+    return result;
+  });
+  render(<ExecutiveReportsPage isActive />);
+  await screen.findByText('อาคาร A');
+  fireEvent.click(screen.getByRole('button', { name: 'ปริมาณส่ง' }));
+  expect(screen.getByText('ข้อมูลแยกตึกยังไม่พร้อมใช้งาน')).not.toBeNull();
+  expect(within(screen.getByRole('table', { name: 'ปริมาณงานและน้ำแข็ง' })).getByText('10')).not.toBeNull();
 });

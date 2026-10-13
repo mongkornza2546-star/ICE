@@ -24,7 +24,7 @@ async function database(t) {
     create function public.current_app_role() returns text language sql stable as
       $$ select current_setting('test.app_role', true) $$;
     create table public.shops (id uuid primary key, name text, building_id uuid);
-    create table public.buildings (id uuid primary key, name text);
+    create table public.buildings (id uuid primary key, name text, code text);
     create table public.round_stops (id uuid primary key, building_id_snapshot uuid,
       building_name_snapshot text, event_participation_id uuid);
     create table public.delivery_events (id uuid primary key, round_stop_id uuid,
@@ -63,7 +63,8 @@ async function database(t) {
     create table public.delivery_adjustment_items (adjustment_id uuid, ice_type_id uuid,
       quantity_delta numeric);
     create table public.stock_movements (id uuid primary key, kind text, status text,
-      service_date date);
+      service_date date, from_location_id uuid);
+    create table public.stock_locations (id uuid primary key, name text, building_id uuid);
     create table public.stock_movement_items (movement_id uuid, ice_type_id uuid, quantity numeric);
   `);
   await db.exec(productionFunction('0128_delivery_corrections_refunds_and_adjustments', 'effective_delivery_charge_amount'));
@@ -73,6 +74,7 @@ async function database(t) {
   // tests merely because the fixture omitted inherited EXECUTE privileges.
   await db.exec(readFileSync(new URL('../supabase/migrations/0040_fix_supabase_linter_security_warnings.sql', import.meta.url), 'utf8'));
   await db.exec(migration);
+  await db.exec(readFileSync(new URL('../supabase/migrations/0224_executive_report_volume_by_building.sql', import.meta.url), 'utf8'));
   await db.exec(`select set_config('test.app_role', 'admin', false)`);
   return db;
 }
@@ -112,6 +114,7 @@ test('executive report separates sales, old-debt receipts, refunds, and current 
   assert.equal(report.deliveryCount, 1);
   assert.equal(report.trend.length, 2);
   assert.equal(report.products[0].delivered, 5);
+  assertVolumeReconciles(report);
   const oldDebtPayment = await db.query(`select public.get_executive_report_details(
     '2026-09-01', '2026-09-02', 'receipts') as details`);
   assert.equal(oldDebtPayment.rows[0].details.total, 2);
@@ -148,8 +151,10 @@ test('the facts helper stays private under production default grants', async (t)
   const db = await database(t);
   await db.exec(`select set_config('test.app_role', 'courier', false); set role authenticated`);
   await assert.rejects(db.query(`select * from public.executive_report_facts('2026-09-01', '2026-09-02')`), /permission denied for function executive_report_facts/);
+  await assert.rejects(db.query(`select public.executive_report_volume_areas('2026-09-01', '2026-09-02')`), /permission denied for function executive_report_volume_areas/);
   await db.exec('reset role; set role anon');
   await assert.rejects(db.query(`select * from public.executive_report_facts('2026-09-01', '2026-09-02')`), /permission denied for function executive_report_facts/);
+  await assert.rejects(db.query(`select public.executive_report_volume_areas('2026-09-01', '2026-09-02')`), /permission denied for function executive_report_volume_areas/);
 });
 
 test('shop and event rentals reconcile across sales, debt, invoices, and export detail pages', async (t) => {
@@ -266,8 +271,92 @@ test('loose product quantities use daily stock conversion without double-countin
   const report = await getReport('2026-09-01', '2026-09-02');
   assert.equal(report.sales, 180);
   assert.equal(report.products[0].delivered, 5, 'floor per day/location, then add the one measured bag');
+  assertVolumeReconciles(report);
+  assert.equal(report.volumeAreas[0].kind, 'casual');
   assert.equal((await getReport('2026-09-01', '2026-09-01')).products[0].delivered, 1);
   assert.equal((await getReport('2026-09-02', '2026-09-02')).products[0].delivered, 4);
   await db.exec(`update public.casual_transactions set status = 'voided' where id = 'a0000000-0000-4000-8000-000000000004'`);
   assert.equal((await getReport('2026-09-01', '2026-09-02')).products[0].delivered, 3, 'voids recompute converted quantities');
 });
+
+test('volume reconciles by destination with corrections, events, damage-only buildings and stock locations', async (t) => {
+  const db = await database(t);
+  const id = (n) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
+  await db.exec(`
+    insert into buildings values
+      ('${id(1)}', 'อาคาร A', 'A'), ('${id(2)}', 'อาคาร B', 'B'),
+      ('${id(3)}', 'อาคาร C', 'C'), ('${id(4)}', 'ตึกงาน', 'EVENT-${id(5)}');
+    insert into event_jobs values ('${id(5)}', 'งานประชุม');
+    insert into event_participations values ('${id(6)}', '${id(5)}');
+    insert into event_settlement_contexts values ('${id(7)}', '${id(6)}');
+    insert into shops values ('${id(8)}', 'ร้านที่ย้ายไปตึก B', '${id(2)}'), ('${id(9)}', 'ร้านไม่ระบุตึก', null);
+    insert into ice_types values ('${id(10)}', 'หลอดเล็ก', 'ถุง'), ('${id(11)}', 'น้ำแข็งก้อน', 'แถว');
+    insert into round_stops values
+      ('${id(12)}', '${id(1)}', 'อาคาร A', null),
+      ('${id(13)}', '${id(2)}', 'อาคาร B', null);
+    insert into delivery_events values
+      ('${id(20)}', '${id(12)}', 'active', '2026-09-01'),
+      ('${id(21)}', '${id(13)}', 'active', '2026-09-01'),
+      ('${id(22)}', '${id(13)}', 'active', '2026-09-01'),
+      ('${id(23)}', null, 'active', '2026-09-01'),
+      ('${id(24)}', '${id(12)}', 'cancelled', '2026-09-01'),
+      ('${id(25)}', '${id(12)}', 'active', '2026-08-31');
+    insert into delivery_charges (id, delivery_event_id, shop_id, service_date, status, original_amount, event_settlement_context_id) values
+      ('${id(30)}', '${id(20)}', '${id(8)}', '2026-09-01', 'active', 100, null),
+      ('${id(31)}', '${id(21)}', '${id(8)}', '2026-09-01', 'active', 100, null),
+      ('${id(32)}', '${id(22)}', '${id(8)}', '2026-09-01', 'active', 100, '${id(7)}'),
+      ('${id(33)}', '${id(23)}', '${id(9)}', '2026-09-01', 'active', 100, null),
+      ('${id(34)}', '${id(24)}', '${id(8)}', '2026-09-01', 'cancelled', 100, null),
+      ('${id(35)}', '${id(25)}', '${id(8)}', '2026-08-31', 'active', 100, null);
+    insert into delivery_items values
+      ('${id(20)}', '${id(10)}', 10), ('${id(20)}', '${id(11)}', 2),
+      ('${id(21)}', '${id(10)}', 4), ('${id(22)}', '${id(10)}', 3),
+      ('${id(23)}', '${id(10)}', 1), ('${id(24)}', '${id(10)}', 100), ('${id(25)}', '${id(10)}', 100);
+    insert into delivery_charge_adjustments values
+      ('${id(40)}', '${id(30)}', 'active', -5),
+      ('${id(41)}', '${id(30)}', 'voided', 100),
+      ('${id(42)}', '${id(34)}', 'active', 100);
+    insert into delivery_adjustment_items values
+      ('${id(40)}', '${id(10)}', -0.5), ('${id(41)}', '${id(10)}', 100), ('${id(42)}', '${id(10)}', 100);
+    insert into stock_locations values
+      ('${id(50)}', 'สต็อก A', '${id(1)}'), ('${id(51)}', 'สต็อก C', '${id(3)}'),
+      ('${id(52)}', 'รถส่ง', null), ('${id(53)}', 'สต็อกงาน', '${id(4)}');
+    insert into stock_movements values
+      ('${id(60)}', 'damage', 'active', '2026-09-01', '${id(50)}'),
+      ('${id(61)}', 'damage', 'active', '2026-09-01', '${id(51)}'),
+      ('${id(62)}', 'damage', 'active', '2026-09-01', '${id(52)}'),
+      ('${id(63)}', 'damage', 'active', '2026-09-01', '${id(53)}'),
+      ('${id(64)}', 'damage', 'voided', '2026-09-01', '${id(50)}'),
+      ('${id(65)}', 'damage', 'active', '2026-08-31', '${id(50)}');
+    insert into stock_movement_items values
+      ('${id(60)}', '${id(10)}', 0.5), ('${id(61)}', '${id(10)}', 1),
+      ('${id(62)}', '${id(10)}', 2), ('${id(63)}', '${id(10)}', 0.5),
+      ('${id(64)}', '${id(10)}', 100), ('${id(65)}', '${id(10)}', 100);
+  `);
+  const report = (await db.query(`select get_executive_report('2026-09-01', '2026-09-01') as report`)).rows[0].report;
+  const area = (kind, key) => report.volumeAreas.find((row) => row.kind === kind && row.id === key);
+  assert.equal(report.deliveryCount, 4);
+  assert.equal(area('building', id(1)).products.find((p) => p.id === id(10)).delivered, 9.5, 'snapshot destination survives shop relocation');
+  assert.equal(area('building', id(2)).products[0].delivered, 4, 'event-context delivery does not leak into the regular building');
+  assert.equal(area('building', id(3)).products[0].delivered, 0, 'damage-only buildings remain visible');
+  assert.equal(area('event', id(5)).products[0].delivered, 3);
+  assert.equal(area('event', id(5)).products[0].damaged, 0.5);
+  assert.equal(area('stock', id(52)).products[0].damaged, 2);
+  assert.equal(area('unknown', null).products[0].delivered, 1);
+  assertVolumeReconciles(report);
+});
+
+function assertVolumeReconciles(report) {
+  const totals = new Map();
+  for (const area of report.volumeAreas) for (const product of area.products) {
+    const sum = totals.get(product.id) ?? { delivered: 0, damaged: 0 };
+    sum.delivered += product.delivered;
+    sum.damaged += product.damaged;
+    totals.set(product.id, sum);
+  }
+  for (const product of report.products) {
+    assert.deepEqual(totals.get(product.id), { delivered: product.delivered, damaged: product.damaged });
+    totals.delete(product.id);
+  }
+  for (const sum of totals.values()) assert.deepEqual(sum, { delivered: 0, damaged: 0 });
+}

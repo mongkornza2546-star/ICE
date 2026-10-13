@@ -58,6 +58,16 @@ function AreaTable({ report, openDetail }: { report: ExecutiveReport; openDetail
   </DataTable>;
 }
 
+function VolumeTable({ products, label }: { products: ExecutiveReport['products']; label: string }) {
+  return <DataTable headings={['ชนิดน้ำแข็ง', 'หน่วย', 'จำนวนส่ง', 'เสียหาย']} label={label}>
+    {products.map((product) => <tr key={product.id}>
+      <td data-label={translateUi('ชนิดน้ำแข็ง')}>{product.name}</td><td data-label={translateUi('หน่วย')}>{product.unit}</td>
+      <td data-label={translateUi('จำนวนส่ง')} className="executive-numeric">{number(product.delivered)}</td>
+      <td data-label={translateUi('เสียหาย')} className="executive-numeric">{number(product.damaged)}</td>
+    </tr>)}
+  </DataTable>;
+}
+
 function ShopTable({ report, openDetail }: { report: ExecutiveReport; openDetail: (query: DetailQuery, label?: string, trigger?: HTMLElement) => void }) {
   useLanguage();
   if (!report.shops.length) return <p className="executive-empty">{translateUi('ยังไม่มีร้านที่มียอดขาย')}</p>;
@@ -163,14 +173,29 @@ export function ReportSections({ section, report, trendMetric, setTrendMetric, s
     </Panel>
   </div>;
 
-  return <div className="executive-report__stack"><Panel title={translateUi('ปริมาณงานและน้ำแข็ง')} description={translateUi('จำนวนส่งและเสียหาย แยกตามชนิดและหน่วย')}>
-    <p className="executive-feature-number">{number(report.deliveryCount)} <small>{translateUi('รายการส่งร้าน')}</small></p>
-    {report.products.length ? <DataTable headings={['ชนิดน้ำแข็ง', 'หน่วย', 'จำนวนส่ง', 'เสียหาย']} label={translateUi('ปริมาณงานและน้ำแข็ง')}>
-      {report.products.map((product) => <tr key={product.id}>
-        <td data-label={translateUi('ชนิดน้ำแข็ง')}>{product.name}</td><td data-label={translateUi('หน่วย')}>{product.unit}</td>
-        <td data-label={translateUi('จำนวนส่ง')} className="executive-numeric">{number(product.delivered)}</td>
-        <td data-label={translateUi('เสียหาย')} className="executive-numeric">{number(product.damaged)}</td>
-      </tr>)}
-    </DataTable> : <p className="executive-empty">{translateUi('ยังไม่มีปริมาณน้ำแข็งในช่วงนี้')}</p>}
-  </Panel></div>;
+  const buildings = report.volumeAreas?.filter((area) => area.kind === 'building') ?? [];
+  const otherAreas = report.volumeAreas?.filter((area) => area.kind !== 'building') ?? [];
+  return <div className="executive-report__stack">
+    <Panel title={translateUi('ปริมาณงานและน้ำแข็ง · รวมทั้งหมด')} description={translateUi('จำนวนส่งและเสียหาย แยกตามชนิดและหน่วย')}>
+      <p className="executive-feature-number">{number(report.deliveryCount)} <small>{translateUi('รายการส่งร้าน')}</small></p>
+      {report.products.length ? <VolumeTable products={report.products} label={translateUi('ปริมาณงานและน้ำแข็ง')} />
+        : <p className="executive-empty">{translateUi('ยังไม่มีปริมาณน้ำแข็งในช่วงนี้')}</p>}
+    </Panel>
+    <section aria-label={translateUi('แยกตามตึก')} className="executive-report__stack">
+      <div><h2>{translateUi('แยกตามตึก')}</h2>
+        <p className="executive-panel-note">{translateUi('จำนวนส่งตามตึกปลายทาง · เสียหายตามจุดสต็อกของตึก')}</p></div>
+      {buildings.map((area) => <Panel key={area.id} title={area.name}>
+        <VolumeTable products={area.products} label={`${translateUi('ปริมาณน้ำแข็ง')} · ${area.name}`} />
+      </Panel>)}
+      {!buildings.length ? <p className="executive-empty">{translateUi(report.volumeAreas
+        ? 'ยังไม่มีปริมาณน้ำแข็งแยกตึกในช่วงนี้' : 'ข้อมูลแยกตึกยังไม่พร้อมใช้งาน')}</p> : null}
+    </section>
+    {otherAreas.length ? <section aria-label={translateUi('รายการอื่นในยอดรวม')} className="executive-report__stack">
+      <h2>{translateUi('รายการอื่นในยอดรวม')}</h2>
+      {otherAreas.map((area) => <Panel key={`${area.kind}-${area.id ?? 'none'}`} title={area.name}
+        description={area.kind === 'event' ? translateUi('อีเวนต์') : undefined}>
+        <VolumeTable products={area.products} label={`${translateUi('ปริมาณน้ำแข็ง')} · ${area.name}`} />
+      </Panel>)}
+    </section> : null}
+  </div>;
 }

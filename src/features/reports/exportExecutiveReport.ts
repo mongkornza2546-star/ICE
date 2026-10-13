@@ -40,13 +40,28 @@ export async function exportExecutiveReport(
       (detailRows[metric] ?? []).map((row) => [metric, row.day, row.label, row.area ?? '',
         row.method ?? '', row.dueDate ?? '', row.amount, row.id])),
   ]);
-  await writeXlsxFile([summary, trend, areas, details], {
-    sheets: ['สรุป', 'แนวโน้ม', 'พื้นที่', 'รายการ'],
+  const volume = sheet([
+    ['ชนิดน้ำแข็ง', 'หน่วย', 'จำนวนส่ง', 'เสียหาย'],
+    ...report.products.map((row) => [row.name, row.unit, row.delivered, row.damaged]),
+  ]);
+  const volumeAreas = sheet([
+    ['ประเภทพื้นที่', 'ตึก / พื้นที่', 'ชนิดน้ำแข็ง', 'หน่วย', 'จำนวนส่ง', 'เสียหาย'],
+    ...(report.volumeAreas ?? []).flatMap((area) => area.products.map((row) => [
+      area.kind === 'building' ? 'ตึก' : area.kind === 'event' ? 'อีเวนต์'
+        : area.kind === 'casual' ? 'ขายหน้ารถ' : area.kind === 'stock' ? 'จุดสต็อก' : 'ไม่ระบุตึก',
+      area.name, row.name, row.unit, row.delivered, row.damaged,
+    ])),
+    ...(report.volumeAreas ? [] : [['ข้อมูลแยกตึกยังไม่พร้อมใช้งาน']]),
+  ]);
+  await writeXlsxFile([summary, trend, areas, details, volume, volumeAreas], {
+    sheets: ['สรุป', 'แนวโน้ม', 'พื้นที่', 'รายการ', 'ปริมาณรวม', 'ปริมาณแยกตึก'],
     columns: [
       [{ width: 32 }, { width: 24 }],
       Array.from({ length: 5 }, () => ({ width: 20 })),
       Array.from({ length: 3 }, () => ({ width: 24 })),
       Array.from({ length: 8 }, () => ({ width: 22 })),
+      Array.from({ length: 4 }, () => ({ width: 22 })),
+      Array.from({ length: 6 }, () => ({ width: 22 })),
     ],
     fileName: `executive-report-${report.from}-${report.to}.xlsx`,
   });

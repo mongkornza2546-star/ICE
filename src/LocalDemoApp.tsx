@@ -921,6 +921,23 @@ export function LocalDemoApp() {
         { id: 'demo-small', name: 'น้ำแข็งหลอดเล็ก', unit: 'ถุง', delivered: 1450, damaged: 12 },
         { id: 'demo-large', name: 'น้ำแข็งหลอดใหญ่', unit: 'ถุง', delivered: 680, damaged: 4 },
       ],
+      volumeAreas: [
+        { kind: 'building', id: 'demo-a', name: 'อาคาร A', products: [
+          { id: 'demo-small', name: 'น้ำแข็งหลอดเล็ก', unit: 'ถุง', delivered: 850, damaged: 7.5 },
+          { id: 'demo-large', name: 'น้ำแข็งหลอดใหญ่', unit: 'ถุง', delivered: 400, damaged: 2 },
+        ] },
+        { kind: 'building', id: 'demo-b', name: 'อาคาร B', products: [
+          { id: 'demo-small', name: 'น้ำแข็งหลอดเล็ก', unit: 'ถุง', delivered: 500, damaged: 4.5 },
+          { id: 'demo-large', name: 'น้ำแข็งหลอดใหญ่', unit: 'ถุง', delivered: 250, damaged: 2 },
+        ] },
+        { kind: 'event', id: 'demo-event', name: 'งานประชุมประจำปี', products: [
+          { id: 'demo-small', name: 'น้ำแข็งหลอดเล็ก', unit: 'ถุง', delivered: 70, damaged: 0 },
+          { id: 'demo-large', name: 'น้ำแข็งหลอดใหญ่', unit: 'ถุง', delivered: 30, damaged: 0 },
+        ] },
+        { kind: 'casual', id: null, name: 'ขายหน้ารถ', products: [
+          { id: 'demo-small', name: 'น้ำแข็งหลอดเล็ก', unit: 'ถุง', delivered: 30, damaged: 0 },
+        ] },
+      ],
     };
     const demoRows: Partial<Record<ReportMetric, ReportRow[]>> = {
       sales: [{ id: 'demo-sale', day: to, label: 'ร้านกาแฟลานเล่า', amount: 28000, area: 'อาคาร A', shopId: 'demo-shop' }],
