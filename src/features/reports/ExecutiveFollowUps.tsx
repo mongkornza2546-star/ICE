@@ -7,7 +7,7 @@ import type { ExecutiveReport, ReportRow } from './types';
 import './ExecutiveFollowUps.css';
 
 const baht = (value: number) => new Intl.NumberFormat('th-TH', {
-  style: 'currency', currency: 'THB', minimumFractionDigits: 0, maximumFractionDigits: 2,
+  style: 'currency', currency: 'THB', maximumFractionDigits: 0,
 }).format(value);
 const number = (value: number) => new Intl.NumberFormat('th-TH', { maximumFractionDigits: 1 }).format(value);
 

@@ -1,7 +1,4 @@
 import { ChartBar, CreditCard } from '@phosphor-icons/react';
-import { FinancialAnalysis } from './FinancialOverview';
-import { money as baht } from './financialReport';
-import { toBangkokDateString } from '../../lib/serviceDate';
 import { ReportOverview } from './ReportOverview';
 import { translateUi, useLanguage } from '../../i18n';
 import { formatReportDate, reportBucketLabels } from './reportDates';
@@ -9,6 +6,9 @@ import { agingLabels, damageFlags, damageRate, receiptMethodLabels, attentionIte
 import { DataTable, Panel, StackBar } from './ReportPrimitives';
 import type { DetailQuery, ExecutiveReport } from './types';
 
+const baht = (value: number) => new Intl.NumberFormat('th-TH', {
+  style: 'currency', currency: 'THB', maximumFractionDigits: 0,
+}).format(value);
 const number = (value: number) => new Intl.NumberFormat('th-TH', { maximumFractionDigits: 1 }).format(value);
 const percent = (value: number) => new Intl.NumberFormat('th-TH', { maximumFractionDigits: 1 }).format(value);
 const areaType = (kind: string) => kind === 'event' ? 'อีเวนต์' : kind === 'casual' ? 'ขายหน้ารถ' : 'อาคาร';
@@ -124,7 +124,7 @@ function DebtAgingPanel({ report, openDetail }: {
 }) {
   useLanguage();
   const aging = report.debtAging;
-  if (!aging || aging.length === 0) return <Panel title={translateUi('อายุหนี้')}><p>{translateUi('ยังคำนวณไม่ได้ · ขาดข้อมูลวันครบกำหนดและยอดค้างรายบิล')}</p></Panel>;
+  if (!aging || aging.length === 0) return null;
   const total = report.outstanding;
   const segments = aging.map((b) => ({
     key: b.bucket,
@@ -133,7 +133,7 @@ function DebtAgingPanel({ report, openDetail }: {
   }));
 
   return <Panel
-    description={`${translateUi('ยอด ณ')} ${formatReportDate(toBangkokDateString(new Date(report.asOf)))} · ${translateUi('ไม่ขึ้นกับช่วงวันที่เลือก')}`}
+    description={translateUi('ยอดหนี้เป็นสถานะปัจจุบัน ไม่ขึ้นกับช่วงวันที่เลือก')}
     id="executive-aging"
     title={translateUi('ตารางวิเคราะห์อายุหนี้')}
   >
@@ -148,10 +148,10 @@ function DebtAgingPanel({ report, openDetail }: {
             </span>
           </td>
           <td className="executive-numeric" data-label={translateUi('จำนวนเงิน')}>
-            {row.amount > 0 && report.financialVersion === 1 ? (
+            {row.amount > 0 && isOverdue ? (
               <button
                 className="executive-table-link"
-                onClick={(event) => openDetail({ metric: isOverdue ? 'overdue' : 'debt', agingBucket: row.bucket }, agingLabels[row.bucket], event.currentTarget)}
+                onClick={(event) => openDetail({ metric: 'overdue' }, undefined, event.currentTarget)}
                 type="button"
               >
                 {baht(row.amount)}<span aria-hidden="true"> ›</span>
@@ -202,7 +202,7 @@ function TrendPanel({ report, metric, onMetricChange, showTable, onTableChange, 
   showTable: boolean; onTableChange: () => void; openDetail: (query: DetailQuery, label?: string, trigger?: HTMLElement) => void;
 }) {
   useLanguage();
-  const values = report.trend.map((point) => metric === 'sales' ? point.sales : point.receipts);
+  const values = report.trend.map((point) => metric === 'sales' ? point.sales : point.receipts - point.refunds);
   const maxPositive = Math.max(0, ...values);
   const maxNegative = Math.max(0, ...values.map((value) => -value));
   const hasNegative = maxNegative > 0;
@@ -210,13 +210,12 @@ function TrendPanel({ report, metric, onMetricChange, showTable, onTableChange, 
   return <Panel description={translateUi('เลือกแท่งเพื่อดูรายการในช่วงนั้น')} label={translateUi('แนวโน้มยอดขายและเงินรับ')} title={translateUi('แนวโน้ม')}>
     <div aria-label={translateUi('เลือกตัวเลขในกราฟ')} className="executive-segment">
       <button aria-pressed={metric === 'sales'} onClick={() => onMetricChange('sales')} type="button">{translateUi('ยอดขาย')}</button>
-      <button aria-pressed={metric === 'receipts'} onClick={() => onMetricChange('receipts')} type="button">{translateUi('เงินรับจริง')}</button>
+      <button aria-pressed={metric === 'receipts'} onClick={() => onMetricChange('receipts')} type="button">{translateUi('เงินรับสุทธิ')}</button>
     </div>
-    <p className="executive-panel-note">{translateUi('แนวโน้มกำไร: ยังคำนวณไม่ได้ · ขาดต้นทุนและค่าใช้จ่ายในแต่ละช่วง')}</p>
     {report.trend.length ? <>
-      <div aria-label={translateUi('กราฟ{0}', { 0: metric === 'sales' ? translateUi('ยอดขาย') : translateUi('เงินรับจริง') })} className={`executive-chart ${hasNegative ? 'executive-chart--signed' : ''}`} role="group">
+      <div aria-label={translateUi('กราฟ{0}', { 0: metric === 'sales' ? translateUi('ยอดขาย') : translateUi('เงินรับสุทธิ') })} className={`executive-chart ${hasNegative ? 'executive-chart--signed' : ''}`} role="group">
         {report.trend.map((point) => {
-          const value = metric === 'sales' ? point.sales : point.receipts;
+          const value = metric === 'sales' ? point.sales : point.receipts - point.refunds;
           const { label, axisLabel } = reportBucketLabels(point.date, report.from, report.to);
           const height = value === 0 ? 0 : Math.max(3, Math.abs(value) / scale * 100);
           return <button aria-label={`${label} ${baht(value)}`} className="executive-chart__item" key={point.date}
@@ -285,27 +284,11 @@ export function ReportSections({
 }) {
   useLanguage();
   if (section === 'overview') {
-    return <div className="executive-report__stack">
-      <AttentionBanner report={report} onNavigate={onNavigateSection} />
-      <div className="executive-analysis-links">
-        <button type="button" onClick={() => onNavigateSection?.('finance')}>{translateUi('วิเคราะห์กำไร เงินสด และลูกหนี้ ›')}</button>
-        <button type="button" onClick={() => onNavigateSection?.('sales')}>{translateUi('ดูยอดขาย')}</button>
-        {!report.scopeShopId ? <button type="button" onClick={() => onNavigateSection?.('volume')}>{translateUi('รายการส่ง')} {number(report.deliveryCount)} · {translateUi('จำนวนครั้งที่บันทึกส่ง')}</button> : null}
-      </div>
-      <TrendPanel metric={trendMetric} onMetricChange={setTrendMetric} onTableChange={toggleTrendTable} openDetail={openDetail} report={report} showTable={showTrendTable} />
-      <Panel title={translateUi('ขายมาก กับ ทำกำไรมาก')} description={translateUi('ยอดขายสูงไม่ได้แปลว่ากำไรสูง')}>
-        <div className="executive-cash-grid">
-          <div><span>{translateUi('ลูกค้ายอดขายสูงสุด')}</span>{report.shops.length ? <button type="button" className="executive-table-link" onClick={(event) => openDetail({ metric: 'sales', shopId: report.shops[0].id }, report.shops[0].name, event.currentTarget)}>{report.shops[0].name} · {baht(report.shops[0].sales)} ›</button> : <p>{translateUi('ไม่มีรายการขายลูกค้าในช่วงนี้')}</p>}</div>
-          <div><span>{translateUi('พื้นที่ยอดขายสูงสุด')}</span>{report.areas.length ? <button type="button" className="executive-table-link" onClick={(event) => openDetail({ metric: 'sales', areaKind: report.areas[0].kind, areaId: report.areas[0].id }, report.areas[0].name, event.currentTarget)}>{report.areas[0].name} · {baht(report.areas[0].sales)} ›</button> : <p>{translateUi('ไม่มีรายการขายในช่วงนี้')}</p>}</div>
-          <div><span>{translateUi('สินค้า / ลูกค้า / เส้นทางที่ทำกำไรสูงสุด')}</span><strong>{translateUi('ยังคำนวณไม่ได้')}</strong><small>{translateUi('ขาดต้นทุนที่เชื่อมกับสินค้า ลูกค้า และเส้นทาง ไม่ใช้ยอดขายแทนกำไร')}</small></div>
-        </div>
-      </Panel>
-    </div>;
+    return <ReportOverview report={report} openDetail={openDetail} onNavigate={onNavigateSection} />;
   }
 
   if (section === 'sales') {
     return <div className="executive-report__stack">
-      {!report.scopeShopId ? <details className="executive-panel executive-methodology"><summary>{translateUi('ปริมาณสินค้าและพื้นที่จัดส่ง')}</summary><ReportOverview report={report} openDetail={openDetail} onNavigate={onNavigateSection} /></details> : null}
       <TrendPanel metric={trendMetric} onMetricChange={setTrendMetric} onTableChange={toggleTrendTable} openDetail={openDetail} report={report} showTable={showTrendTable} />
       <QuietShopsPanel openDetail={openDetail} report={report} />
       <Panel description={translateUi('อาคาร อีเวนต์ และขายหน้ารถ · เลือกชื่อพื้นที่เพื่อดูรายการ')} label={translateUi('ยอดขายตามพื้นที่')} title={translateUi('ยอดขายตามพื้นที่')}>
@@ -319,9 +302,8 @@ export function ReportSections({
 
   if (section === 'finance') {
     return <div className="executive-report__stack">
-      <FinancialAnalysis report={report} openDetail={openDetail} />
       <AttentionBanner onNavigate={onNavigateSection} report={report} />
-      <Panel description={translateUi('เงินรับหลังหักเงินคืน ยังไม่หักเงินจ่ายประเภทอื่น จึงไม่ใช่กระแสเงินสดสุทธิ')} title={translateUi('เงินรับช่วงนี้')}>
+      <Panel description={translateUi('เงินรับสุทธิหลังหักเงินคืน')} title={translateUi('เงินรับช่วงนี้')}>
         <div className="executive-finance-flow">
           <button onClick={(event) => openDetail({ metric: 'receipts' }, undefined, event.currentTarget)} type="button"><span>{translateUi('เงินรับจริง')}</span><strong>{baht(report.receipts)}</strong><small>{translateUi('ดูรายการรับเงิน ›')}</small></button>
           <span aria-hidden="true">−</span>
@@ -332,7 +314,7 @@ export function ReportSections({
       </Panel>
       <ReceiptMethodsPanel report={report} />
       <DebtAgingPanel openDetail={openDetail} report={report} />
-      <Panel description={`${translateUi('ยอด ณ')} ${formatReportDate(toBangkokDateString(new Date(report.asOf)))} · ${translateUi('ไม่ขึ้นกับช่วงวันที่เลือก')}`} title={translateUi('ลูกหนี้ปัจจุบัน')}>
+      <Panel description={translateUi('ยอดหนี้เป็นสถานะปัจจุบัน ไม่ขึ้นกับช่วงวันที่เลือก')} title={translateUi('ลูกหนี้ปัจจุบัน')}>
         <div className="executive-debt-grid">
           <button onClick={(event) => openDetail({ metric: 'debt' }, undefined, event.currentTarget)} type="button"><span>{translateUi('หนี้ค้างทั้งหมด · ')}{number(report.debtors)}{translateUi(' ร้าน')}</span><strong>{baht(report.outstanding)}</strong><small>{translateUi('ดูร้านค้าและบิลค้าง ›')}</small></button>
           <button onClick={(event) => openDetail({ metric: 'overdue' }, undefined, event.currentTarget)} type="button"><span>{translateUi('เกินกำหนด')}</span><strong>{baht(report.overdue)}</strong><small>{translateUi('ดูร้านค้าและบิลเกินกำหนด ›')}</small></button>
@@ -340,8 +322,6 @@ export function ReportSections({
       </Panel>
     </div>;
   }
-
-  if (report.scopeShopId) return <Panel title={translateUi('ปริมาณส่งรายร้าน')}><p>{translateUi('ยังไม่รองรับการแยกของเสียและปริมาณตามร้าน กรุณาเลือกขอบเขตทั้งกิจการ')}</p></Panel>;
 
   const buildings = report.volumeAreas?.filter((area) => area.kind === 'building') ?? [];
   const otherAreas = report.volumeAreas?.filter((area) => area.kind !== 'building') ?? [];
