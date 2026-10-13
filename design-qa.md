@@ -1,3 +1,17 @@
+## 2026-10-13 — Safari missing chart bars
+
+- Reproduced the user's missing-bar symptom in native Safari on the local executive-report demo. Labels, values and selection worked, but every plot and bar measured 0 px high; bar widths were 64 px and colors were present.
+- Ranked hypotheses: collapsed plot height; native button/grid sizing; paint/clipping. DOM measurements identified collapsed height and ruled out missing width/color. Setting only the plot height to 220 px fixed rendering without changing markup or data.
+- Fix: give the plot a definite height matching the existing grid and axis, so Safari can resolve the percentage-sized absolute bars.
+- Regression: `tests/browser/executive-area-chart.js` is a read-only browser-console layout check. Open `http://127.0.0.1:5173/?screen=executive-report` with the demo server running, then paste the script into the console. Before the fix it failed for all four bars (plotHeight/barHeight = 0); after the fix Safari reported `PASS: 4 bars align with the chart scale`.
+- Chromium comparison: all plots measured 220 px; sales 95.5%, 68.5%, 14.5%, and 10% produced heights approximately 210.1, 150.7, 31.9, and 22 px.
+- Interaction: selecting the event bar in Safari changed the quantity details to 70/30 bags. Screenshot: `outputs/executive-chart-safari-fixed.png` (local demo, not production data).
+- Validation: 31 executive-report tests passed; production build passed with the existing large-chunk advisory.
+- Why previous checks missed this: jsdom does not render layout, and the prior visual check covered Chromium only. Keep the Safari console geometry check for future chart CSS changes.
+- Scope: local source fixed and verified; live site has not been redeployed in this task.
+
+---
+
 ## 2026-10-13 — Combined area bar chart
 
 - Request: combine the supplied sales-by-area and delivery-by-destination panels into one bar-chart panel.

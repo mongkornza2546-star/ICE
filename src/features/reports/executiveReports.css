@@ -362,7 +362,8 @@
 .executive-area-chart__column { position: relative; flex: 1 0 120px; min-width: 0; display: grid; grid-template-rows: 32px 220px auto; align-content: start; gap: 0; padding: 0 10px; border: 0; border-radius: 8px; background: none; color: #5b7290; text-align: center; }
 .executive-area-chart__column:hover { background: #edf5ff66; }
 .executive-area-chart__column > strong { align-self: start; font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; }
-.executive-area-chart__plot { display: block; position: relative; width: 100%; }
+/* Safari needs a definite plot height inside the button for percentage-sized bars. */
+.executive-area-chart__plot { display: block; position: relative; width: 100%; height: 220px; }
 .executive-area-chart__plot i { position: absolute; left: 50%; width: min(56%, 64px); transform: translateX(-50%); border-radius: 7px 7px 0 0; background: #a6c9fa; transition: background .18s ease; }
 .executive-area-chart__column[aria-pressed="true"] { color: #1955bc; }
 .executive-area-chart__column[aria-pressed="true"] .executive-area-chart__plot i { background: #3478ed; }
