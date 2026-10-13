@@ -1,3 +1,5 @@
+import { ChartBar, CreditCard } from '@phosphor-icons/react';
+import { ReportOverview } from './ReportOverview';
 import { translateUi, useLanguage } from '../../i18n';
 import { formatReportDate, reportBucketLabels } from './reportDates';
 import { agingLabels, damageFlags, damageRate, receiptMethodLabels, attentionItems } from './reportInsights';
@@ -15,16 +17,14 @@ export type ReportSection = 'overview' | 'sales' | 'finance' | 'volume';
 
 const sections: Array<{ id: ReportSection; label: string }> = [
   { id: 'overview', label: 'ภาพรวม' },
-  { id: 'sales', label: 'ยอดขาย' },
-  { id: 'finance', label: 'เงินรับและลูกหนี้' },
-  { id: 'volume', label: 'ปริมาณส่ง' },
+  { id: 'finance', label: 'การเงิน' },
 ];
 
 export function ReportTabs({ active, onChange }: { active: ReportSection; onChange: (section: ReportSection) => void }) {
   useLanguage();
   return <nav aria-label={translateUi('หมวดรายงาน')} className="executive-tabs">
-    {sections.map(({ id, label }) => <button aria-current={active === id ? 'page' : undefined}
-      key={id} onClick={() => onChange(id)} type="button">{translateUi(label)}</button>)}
+    {sections.map(({ id, label }) => <button aria-current={(active === id || (id === 'overview' && active !== 'finance')) ? 'page' : undefined}
+      key={id} onClick={() => onChange(id)} type="button">{id === 'overview' ? <ChartBar size={19} aria-hidden="true" /> : <CreditCard size={19} aria-hidden="true" />}{translateUi(label)}</button>)}
   </nav>;
 }
 
@@ -284,31 +284,12 @@ export function ReportSections({
 }) {
   useLanguage();
   if (section === 'overview') {
-    return <div className="executive-report__grid">
-      <div className="executive-grid-full">
-        <AttentionBanner onNavigate={onNavigateSection} report={report} />
-      </div>
-      <TrendPanel metric={trendMetric} onMetricChange={setTrendMetric} onTableChange={toggleTrendTable} openDetail={openDetail} report={report} showTable={showTrendTable} />
-      <Panel description={translateUi('5 พื้นที่ยอดขายสูงสุด')} label={translateUi('ยอดขายตามพื้นที่')} title={translateUi('ยอดขายตามพื้นที่')}>
-        {report.areas.length ? <div className="executive-rank-list">{report.areas.slice(0, 5).map((area) =>
-          <button key={`${area.kind}-${area.id ?? 'casual'}`} onClick={(event) => openDetail({ metric: 'sales', areaKind: area.kind, areaId: area.id }, area.name, event.currentTarget)} type="button">
-            <span><strong>{area.name}</strong><small>{translateUi(areaType(area.kind))}</small></span><b>{baht(area.sales)}</b>
-            <i style={{ width: `${Math.max(0, Math.min(100, area.sales / Math.max(1, report.areas[0].sales) * 100))}%` }} />
-          </button>)}</div> : <p className="executive-empty">{translateUi('ยังไม่มียอดขายตามพื้นที่')}</p>}
-      </Panel>
-      <Panel description={translateUi('จำนวนรายการส่งร้าน')} title={translateUi('งานส่งช่วงนี้')}>
-        <p className="executive-feature-number">{number(report.deliveryCount)} <small>{translateUi('รายการ')}</small></p>
-        <p className="executive-panel-note">{translateUi('ดูจำนวนส่งและเสียหายแยกชนิดน้ำแข็งในแท็บปริมาณส่ง')}</p>
-      </Panel>
-      <Panel description={translateUi('ยอดค้างที่ต้องติดตาม ณ ปัจจุบัน')} title={translateUi('บิลเกินกำหนด')}>
-        <p className="executive-feature-number executive-feature-number--red">{baht(report.overdue)}</p>
-        <button className="executive-text-button" onClick={(event) => openDetail({ metric: 'overdue' }, undefined, event.currentTarget)} type="button">{translateUi('ดูร้านค้าและบิลเกินกำหนด ›')}</button>
-      </Panel>
-    </div>;
+    return <ReportOverview report={report} openDetail={openDetail} onNavigate={onNavigateSection} />;
   }
 
   if (section === 'sales') {
     return <div className="executive-report__stack">
+      <TrendPanel metric={trendMetric} onMetricChange={setTrendMetric} onTableChange={toggleTrendTable} openDetail={openDetail} report={report} showTable={showTrendTable} />
       <QuietShopsPanel openDetail={openDetail} report={report} />
       <Panel description={translateUi('อาคาร อีเวนต์ และขายหน้ารถ · เลือกชื่อพื้นที่เพื่อดูรายการ')} label={translateUi('ยอดขายตามพื้นที่')} title={translateUi('ยอดขายตามพื้นที่')}>
         <AreaTable openDetail={openDetail} report={report} />
@@ -321,6 +302,7 @@ export function ReportSections({
 
   if (section === 'finance') {
     return <div className="executive-report__stack">
+      <AttentionBanner onNavigate={onNavigateSection} report={report} />
       <Panel description={translateUi('เงินรับสุทธิหลังหักเงินคืน')} title={translateUi('เงินรับช่วงนี้')}>
         <div className="executive-finance-flow">
           <button onClick={(event) => openDetail({ metric: 'receipts' }, undefined, event.currentTarget)} type="button"><span>{translateUi('เงินรับจริง')}</span><strong>{baht(report.receipts)}</strong><small>{translateUi('ดูรายการรับเงิน ›')}</small></button>
@@ -358,7 +340,7 @@ export function ReportSections({
     <section aria-label={translateUi('แยกตามตึก')} className="executive-report__stack" id="executive-volume-areas">
       <div><h2>{translateUi('แยกตามตึก')}</h2>
         <p className="executive-panel-note">{translateUi('จำนวนส่งตามตึกปลายทาง · เสียหายตามจุดสต็อกของตึก')}</p></div>
-      {buildings.map((area) => <Panel key={area.id} title={area.name}>
+      {buildings.map((area) => <Panel id={`executive-volume-${area.kind}-${area.id}`} key={area.id} title={area.name}>
         <VolumeTable label={`${translateUi('ปริมาณน้ำแข็ง')} · ${area.name}`} products={area.products} />
       </Panel>)}
       {!buildings.length ? <p className="executive-empty">{translateUi(report.volumeAreas
@@ -366,7 +348,7 @@ export function ReportSections({
     </section>
     {otherAreas.length ? <section aria-label={translateUi('รายการอื่นในยอดรวม')} className="executive-report__stack">
       <h2>{translateUi('รายการอื่นในยอดรวม')}</h2>
-      {otherAreas.map((area) => <Panel description={area.kind === 'event' ? translateUi('อีเวนต์') : undefined} key={`${area.kind}-${area.id ?? 'none'}`} title={area.name}>
+      {otherAreas.map((area) => <Panel id={`executive-volume-${area.kind}-${area.id ?? 'none'}`} description={area.kind === 'event' ? translateUi('อีเวนต์') : undefined} key={`${area.kind}-${area.id ?? 'none'}`} title={area.name}>
         <VolumeTable label={`${translateUi('ปริมาณน้ำแข็ง')} · ${area.name}`} products={area.products} />
       </Panel>)}
     </section> : null}

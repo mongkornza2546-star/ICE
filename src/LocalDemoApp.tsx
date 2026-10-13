@@ -920,6 +920,10 @@ export function LocalDemoApp() {
       products: [
         { id: 'demo-small', name: 'น้ำแข็งหลอดเล็ก', unit: 'ถุง', delivered: 1450, damaged: 12 },
         { id: 'demo-large', name: 'น้ำแข็งหลอดใหญ่', unit: 'ถุง', delivered: 680, damaged: 4 },
+        { id: 'demo-crushed', name: 'โม่', unit: 'ถุง', delivered: 0, damaged: 0 },
+        { id: 'demo-small-crushed', name: 'หลอดเล็กโม่', unit: 'ถุง', delivered: 0, damaged: 0 },
+        { id: 'demo-block', name: 'น้ำแข็งก้อน', unit: 'แถว', delivered: 0, damaged: 0 },
+        { id: 'demo-clear', name: 'หลอดเล็กถุงใส', unit: 'ถุง', delivered: 0, damaged: 0 },
       ],
       volumeAreas: [
         { kind: 'building', id: 'demo-a', name: 'อาคาร A', products: [

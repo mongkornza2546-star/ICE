@@ -1,3 +1,99 @@
+## 2026-10-13 — Executive report layout refinement
+
+**Source and state**
+
+- User requested a layout fix and visual refinement of the previously implemented reference.
+- Current-session source capture: `outputs/executive-layout-before-desktop.jpg` (1440 × 1489), overview with the unchanged local demo data. Additional initial inspection at 728 × 708: `outputs/executive-layout-before.jpg`.
+- Final desktop: `outputs/executive-layout-polished-desktop.jpg` (1440 × 1446), captured at 1440 × 1000 CSS pixels, density 1.
+- Final responsive evidence: `outputs/executive-layout-polished-tablet.jpg` at 1024 × 900 CSS viewport and `outputs/executive-layout-polished-mobile.jpg` at 390 × 844 CSS viewport, density 1, full-page captures. The 320 px viewport was also measured.
+- Full-view comparison: before and after desktop images were opened together in one tool response, at the same viewport, theme, selected month and sample data. No density normalization needed. Overall page height changes are intentional.
+- Focused inspection: browser screenshots of the toolbar, metric cards and mobile layout confirmed readable labels, correctly paired values/units, and aligned controls.
+
+**Audit and resolved findings**
+
+1. Overview — resolved: the initial date toolbar and large tabs consumed excess vertical space; dates now align opposite compact presets, and tab icons/underline communicate selection.
+2. Product summary — resolved: six products previously wrapped into an unbalanced 5+1 arrangement. Desktop now shows six columns; narrower report containers use three or two columns. Breakpoints respond to actual report width, including the sidebar.
+3. Lower panels — resolved: area sales and destination summaries had different framing and a wide gap. Both now use consistent white cards, aligned headings, 20 px gutters, and clear row affordances. Area amounts sit above their bars; destination quantities sit below location names.
+4. Mobile — resolved P2 in first refinement: inherited column layout centered the page heading, and supporting metric copy was 10 px. The final heading aligns left; supporting copy is 11 px; primary controls/date inputs have 44 px targets. Delivery count spans both columns in DOM order.
+
+**Required fidelity surfaces**
+
+- Typography: existing Noto Sans Thai retained, 26/22 px page titles, 16/15 px section titles, strong tabular metric values and consistent secondary labels. Amounts and their units remain distinct.
+- Spacing/layout: compact toolbar, 14–16 px card radii, consistent panel framing and balanced card grids. No document overflow at 1440, 1024, 390 or 320 px; card scroll widths did not exceed their widths at 320 px.
+- Colors/tokens: pale application background, white panels, blue active tabs/actions, restrained semantic icon colors and red overdue values.
+- Assets: existing Phosphor icons retained; no generated or handcrafted image assets introduced.
+- Copy/content: same report totals and drilldowns, actual selected date range in the summary heading, accurate top-five area caption and all per-product destination quantities preserved.
+
+**Verification and history**
+
+- First desktop refinement accepted; mobile P2 issues were corrected and captured again in the final mobile image. No actionable P0/P1/P2 findings remain.
+- Browser opened sales details and finance aging tables successfully; warning/error console log was empty.
+- Existing focused tests: 30/30 passed.
+- Final production build passed, with the existing large-chunk advisory.
+- `git diff --check` passed.
+- Visual checks do not claim a full accessibility audit; no production database mutation or deployment was performed.
+
+**Implementation checklist**
+
+- Completed: toolbar, tab hierarchy, responsive metric/product grids, panel balance, mobile alignment and interactive regression checks.
+
+final result: passed
+
+---
+
+## 2026-10-13 — Executive report reference layout
+
+**Comparison Target**
+
+- Source visual truth: `/Users/bhusitt./Desktop/ภาพถ่ายหน้าจอ2569-10-13เวลา 13.06.05.png` (1472 × 1092 pixels).
+- Implementation: `http://127.0.0.1:5173/?screen=executive-report`, rendered in the Codex in-app browser.
+- Desktop evidence: `outputs/executive-overview-desktop.jpg` (1736 × 1491 full-page pixels; viewport 1736 × 1400 CSS pixels, density 1).
+- Normalized comparison: `outputs/executive-overview-comparison.png` (1462 × 1092 pixels), cropped from x=249, y=323 to compare the app-owned overview with the supplied content-only image. Existing app navigation, date filters, and export controls sit above/outside this region and are intentionally retained.
+- Mobile evidence: `outputs/executive-overview-mobile.jpg`, full-page capture at 390 × 844 CSS viewport, density 1. Document scroll width measured 390 pixels.
+- State: overview tab, light theme, six demo products, five business metrics, four destinations. Demo values differ from the source; production renders the existing report response and selected date period. No screenshot values were hardcoded into production.
+- Full-view evidence: the source image and normalized implementation capture were emitted together in one visual comparison input. Both show two primary tabs, five white metric cards on a pale background, a five-column product grid wrapping onto a second row, and area bars beside destination cards.
+- Focused evidence: metric labels, values, notes, product units, area amounts and destination rows were legible at full resolution in the same comparison. Mobile product cards and area bars were additionally inspected in a scrolled browser screenshot.
+
+**Findings**
+
+- No actionable P0/P1/P2 mismatch for the requested approximate reference layout.
+- Accepted content differences: populated demo quantities and destinations replace the reference's zero-volume state. Each product retains its own unit; destination rows keep quantities separated by product.
+- Accepted behavior: the date selector controls all period totals, so captions describe the selected period rather than claiming every view is today. Sales trends remain under “ดูยอดขาย”; follow-up alerts, payment methods, aging and debt follow-ups remain in “การเงิน”.
+- Empty-state correctness: missing destination data is distinguished from a successfully loaded period without deliveries. The existing API omits zero-activity products, so an entirely empty production period displays an empty state instead of fabricated catalog entries.
+
+**Required Fidelity Surfaces**
+
+- Fonts and typography: retained the application's Noto Sans Thai family; bold navy numeric hierarchy, dark active tab, blue section titles and muted supporting text match the reference direction.
+- Spacing and layout rhythm: five desktop metric columns and five product columns, rounded card corners, pale icon tiles, generous section spacing and a two-column lower section. Mobile uses two card columns and stacked panels.
+- Colors and visual tokens: white, pale blue-gray, navy and bright blue; green receipts, amber outstanding debt and red overdue icon accents.
+- Image quality and asset fidelity: reference contains UI icons only. Installed Phosphor ChartBar, CreditCard, Truck, Receipt, Warning, Cube and Buildings icons provide vector assets; no raster assets or generated imagery are needed.
+- Copy and content: reference section hierarchy and labels retained, with truthful period captions and report-provided financial totals/quantities.
+
+**Interaction And Build Checks**
+
+- Browser: opened “ดูยอดขาย” and verified trend and sales tables; opened “การเงิน” and verified financial panels; opened the debt drawer from its summary card; selected the event destination and verified its product table; returned to overview.
+- Browser console: no warnings or errors during these checks.
+- Responsive: 390 px viewport had no document overflow; product names and units remained readable and area bars fit their panel.
+- `npx vitest run tests/executive-reports.test.tsx --maxWorkers=1 --no-file-parallelism`: 30 tests passed, including date filtering, exports, invoice navigation, keyboard focus, overview quantities and unavailable/empty destination data.
+- `npm run build`: passed. Existing Vite chunk-size advisory remains.
+
+**Comparison History**
+
+- First reference comparison: layout matched the requested hierarchy with no actionable P0/P1/P2 differences. No visual repair iteration required.
+- Mobile verification: no overflow or clipped card content found.
+
+**Implementation Checklist**
+
+- Complete: reference structure, responsive layout, existing report data binding, financial navigation, sales drilldowns, destination navigation and automated verification.
+
+**Follow-up Polish**
+
+- P3: Phosphor glyph shapes and existing product font metrics differ slightly from the reference. Existing application typography and icon library are intentionally retained.
+
+final result: passed
+
+---
+
 ## 2026-09-17 — Manager dashboard sales by ice type
 
 **Comparison Target**

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowClockwise, CaretLeft, DownloadSimple, X } from '@phosphor-icons/react';
+import { ArrowClockwise, CaretLeft, CaretRight, ChartBar, CreditCard, DownloadSimple, Receipt, Truck, Warning, X, type Icon } from '@phosphor-icons/react';
 import { supabase } from '../../lib/supabase';
 import { subscribeToDataChange } from '../../lib/dataChange';
 import { toBangkokDateString } from '../../lib/serviceDate';
@@ -7,6 +7,7 @@ import { translateUi, uiDateTimeString, useLanguage } from '../../i18n';
 import { exportExecutiveReport } from './exportExecutiveReport';
 import { ReportSections, ReportTabs, type ReportSection } from './ExecutiveReportSections';
 import { ExecutiveFollowUps } from './ExecutiveFollowUps';
+import { ReportShopProfile } from './ReportShopProfile';
 import { formatReportDate, presetDates, reportRangeError, type Preset } from './reportDates';
 import type { DetailQuery, ExecutiveReport, ReportInvoice, ReportMetric, ReportRow } from './types';
 import './executiveReports.css';
@@ -37,15 +38,17 @@ async function fetchDetails(from: string, to: string, query: DetailQuery, offset
   return data as { total: number; rows: ReportRow[] };
 }
 
-function MetricCard({ title, value, note, onClick, tone }: {
-  title: string; value: number; note?: string;
+function MetricCard({ title, value, note, description, onClick, tone = 'blue', icon: Icon, count = false }: {
+  title: string; value: number; note?: string; description?: string; icon: Icon; count?: boolean;
   onClick: (trigger: HTMLButtonElement) => void; tone?: string;
 }) {
-  useLanguage();
-  return <button className={`executive-metric ${tone ? `executive-metric--${tone}` : ''}`}
-    onClick={(event) => onClick(event.currentTarget)} type="button"><span>{title}</span><strong>{baht(value)}</strong>
-    {note ? <small>{note}</small> : null}
-    <span className="executive-metric__action">{translateUi('ดูรายการ ›')}</span></button>;
+  return <button className={`executive-metric executive-metric--${tone}${count ? ' executive-metric--count' : ''}`}
+    onClick={(event) => onClick(event.currentTarget)} type="button">
+    <span className="executive-metric__heading"><span className="executive-metric__icon"><Icon size={23} aria-hidden="true" /></span>{title}</span>
+    <strong>{count ? number(value) : baht(value)}</strong>
+    {description ? <small>{description}</small> : null}
+    {note ? <small className="executive-metric__note">{note}</small> : null}
+  </button>;
 }
 
 export function ExecutiveReportsPage({ isActive, demoReport, demoRows }: {
@@ -282,17 +285,30 @@ export function ExecutiveReportsPage({ isActive, demoReport, demoRows }: {
     {error ? <div className="executive-error" role="alert">{translateUi('โหลดรายงานไม่สำเร็จ: ')}{translateUi(error)} <button onClick={refresh} type="button">{translateUi('ลองใหม่')}</button></div> : null}
     {loading && !shownReport ? <p className="executive-status" role="status">{translateUi('กำลังโหลดรายงาน…')}</p> : null}
     {shownReport ? <>
-      <section className="executive-metrics" aria-label={translateUi('ตัวเลขสำคัญ')}>
-        <MetricCard title={translateUi('ยอดขายสุทธิช่วงนี้')} value={shownReport.sales}
-          onClick={(trigger) => openDetail({ metric: 'sales' }, undefined, trigger)} />
-        <MetricCard note={shownReport.sales > 0 ? translateUi('อัตราการเก็บเงิน {0}%', { 0: number(shownReport.netReceipts / shownReport.sales * 100) }) : undefined} title={translateUi('เงินรับสุทธิช่วงนี้')} value={shownReport.netReceipts}
-          onClick={(trigger) => openDetail({ metric: 'receipts' }, undefined, trigger)} />
-        <MetricCard note={`${number(shownReport.debtors)} ${translateUi('ร้าน')} · ${translateUi('ณ')} ${formatReportDate(toBangkokDateString())}`} onClick={(trigger) => openDetail({ metric: 'debt' }, undefined, trigger)} title={translateUi('หนี้ค้างปัจจุบัน')} tone="amber" value={shownReport.outstanding} />
-        <MetricCard note="บิลที่ต้องติดตาม" onClick={(trigger) => openDetail({ metric: 'overdue' }, undefined, trigger)} title={translateUi('เกินกำหนดปัจจุบัน')} tone="red" value={shownReport.overdue} />
-      </section>
-      <p className="executive-period-note">{translateUi('ยอดขายและเงินรับอิงช่วงวันที่เลือก · หนี้ค้างและเกินกำหนดเป็นยอดปัจจุบัน')}</p>
-
       <ReportTabs active={section} onChange={setSection} />
+      <section className="executive-business-overview" aria-label={translateUi('ภาพรวมธุรกิจ')}>
+        <div className="executive-business-overview__heading"><h2>{translateUi('ภาพรวมธุรกิจ')}</h2><p>{formatReportDate(from)} – {formatReportDate(to)}</p></div>
+        <div className="executive-metrics" aria-label={translateUi('ตัวเลขสำคัญ')}>
+          <MetricCard title={translateUi('ยอดขายสุทธิ')} value={shownReport.sales} icon={ChartBar}
+            description={translateUi('ตามช่วงวันที่เลือก')} note={translateUi('รวมค่าน้ำถัง/VAT ที่เรียกเก็บ')}
+            onClick={(trigger) => openDetail({ metric: 'sales' }, undefined, trigger)} />
+          <MetricCard title={translateUi('เงินรับสุทธิ')} value={shownReport.netReceipts} icon={CreditCard} tone="green"
+            description={translateUi('วันที่รับเงินจริง')} note={translateUi('ไม่ใช่ยอดขายของวันเดียวกัน')}
+            onClick={(trigger) => openDetail({ metric: 'receipts' }, undefined, trigger)} />
+          <MetricCard title={translateUi('รายการส่ง')} value={shownReport.deliveryCount} icon={Truck} count
+            description={translateUi('จำนวนครั้งที่บันทึกส่ง')} note={translateUi('ไม่ใช่จำนวนถุง')}
+            onClick={() => setSection('volume')} />
+          <MetricCard description={`${number(shownReport.debtors)} ${translateUi('ร้าน')} · ${translateUi('ยอด ณ')} ${formatReportDate(toBangkokDateString())}`}
+            onClick={(trigger) => openDetail({ metric: 'debt' }, undefined, trigger)} title={translateUi('หนี้ค้างปัจจุบัน')} icon={Receipt} tone="amber" value={shownReport.outstanding} />
+          <MetricCard description={translateUi('ยอดค้างที่ต้องติดตาม')} onClick={(trigger) => openDetail({ metric: 'overdue' }, undefined, trigger)}
+            title={translateUi('หนี้เกินกำหนด')} icon={Warning} tone="red" value={shownReport.overdue} />
+        </div>
+      </section>
+      {section === 'sales' || section === 'volume' ? <nav className="executive-detail-nav" aria-label={translateUi('รายละเอียดรายงาน')}>
+        <button onClick={() => setSection('overview')} type="button"><CaretLeft size={16} />{translateUi('กลับภาพรวม')}</button>
+        <button aria-current={section === 'sales' ? 'page' : undefined} onClick={() => setSection('sales')} type="button">{translateUi('ยอดขาย')}</button>
+        <button aria-current={section === 'volume' ? 'page' : undefined} onClick={() => setSection('volume')} type="button">{translateUi('ปริมาณส่ง')}</button>
+      </nav> : null}
       <ReportSections
         onNavigateSection={(nextSection, targetId) => {
           setSection(nextSection);
@@ -342,6 +358,8 @@ export function ExecutiveReportsPage({ isActive, demoReport, demoRows }: {
           <h3>{translateUi('ประวัติรับชำระ')}</h3>{invoice.payments.length ? invoice.payments.map((payment, index) => <div key={`${payment.date}-${index}`}><span>{uiDateTimeString(new Date(payment.date), { timeZone: 'Asia/Bangkok' })} · {translateUi(payment.method === 'cash' ? 'เงินสด' : 'โอน/QR')}</span><strong>{baht(payment.amount)}</strong></div>) : <p>{translateUi('ยังไม่มีรายการรับชำระ')}</p>}
         </div> : null}
       </> : <>
+      {detail.shopId ? <ReportShopProfile key={detail.shopId} shopId={detail.shopId} demo={Boolean(demoReport)}
+        demoArea={Object.values(demoRows ?? {}).flat().find((row) => row.shopId === detail.shopId && row.area)?.area} /> : null}
       {detail.metric === 'receipts' && shownReport ? <div className="executive-receipt-breakdown">
         <span>{translateUi('รับจริง ')}{baht(receiptGross)}</span>
         <button onClick={() => openDetail({ metric: 'refunds', bucket: detail.bucket })} type="button">{translateUi('คืนเงิน ')}{baht(receiptRefunds)}{translateUi(' · ดูรายการ')}</button>
@@ -349,15 +367,21 @@ export function ExecutiveReportsPage({ isActive, demoReport, demoRows }: {
       </div> : null}
       {detailError ? <p className="executive-error" role="alert">{translateUi(detailError)} <button onClick={refresh} type="button">{translateUi('ลองใหม่')}</button></p> : null}
       {!detailData && !detailError ? <p className="executive-status">{translateUi('กำลังโหลดรายการ…')}</p> : null}
-      {detailData ? <><p className="executive-detail__count">{translateUi('ทั้งหมด ')}{number(detailData.total)}{translateUi(' รายการ')}</p>
+      {detailData ? <><div className="executive-detail__list-heading">{detail.shopId ? <h3>{translateUi(detail.metric === 'overdue' ? 'บิลเกินกำหนด' : detail.metric === 'debt' ? 'บิลค้างชำระ' : 'รายการขาย')}</h3> : null}<p className="executive-detail__count">{translateUi('ทั้งหมด ')}{number(detailData.total)}{translateUi(' รายการ')}</p></div>
         {detailData.rows.length ? <div className="executive-detail__rows">{detailData.rows.map((row) => (detail.metric === 'sales' || detail.metric === 'debt' || detail.metric === 'overdue') && row.shopId
-          ? <button className="executive-detail__row-button" key={`${row.id}-${row.day}`} onClick={() => {
+          ? <button className={`executive-detail__row-button${detail.shopId ? ' executive-detail__row-button--invoice' : ''}`} key={`${row.id}-${row.day}`} onClick={() => {
             if ((detail.metric === 'debt' || detail.metric === 'overdue') && !detail.shopId) {
               debtorListPage.current = detailPage;
               setDebtorName(row.label);
               openDetail({ ...detail, shopId: row.shopId ?? undefined });
             } else setInvoiceId(row.id);
-          }} type="button"><span><strong>{row.label}</strong><small>{detail.shopId || detail.metric === 'sales' ? formatReportDate(row.day) : translateUi('ดูบิลค้าง')}{row.area ? ` · ${row.area}` : ''}{row.dueDate ? translateUi(' · ครบกำหนด {0}', { 0: formatReportDate(row.dueDate) }) : ''}</small></span><b>{baht(row.amount)}</b></button>
+          }} type="button">{detail.shopId ? <>
+            <Receipt className="executive-detail__bill-icon" size={22} aria-hidden="true" />
+            <span className="executive-detail__bill-info"><strong>{translateUi('บิลวันที่ ')}{formatReportDate(row.day)}</strong>
+              <small className={detail.metric === 'overdue' ? 'executive-detail__due--overdue' : undefined}>{row.dueDate ? translateUi('ครบกำหนด {0}', { 0: formatReportDate(row.dueDate) }) : translateUi('ไม่ระบุวันครบกำหนด')}</small>
+            </span><span className="executive-detail__bill-amount"><b>{baht(row.amount)}</b><small>{translateUi('ดูบิล')}</small></span>
+            <CaretRight size={16} aria-hidden="true" />
+          </> : <><span><strong>{row.label}</strong><small>{detail.metric === 'sales' ? formatReportDate(row.day) : translateUi('ดูบิลค้าง')}{row.area ? ` · ${row.area}` : ''}{row.dueDate ? translateUi(' · ครบกำหนด {0}', { 0: formatReportDate(row.dueDate) }) : ''}</small></span><b>{baht(row.amount)}</b></>}</button>
           : <article key={`${row.id}-${row.day}`}><div><strong>{row.label}</strong><small>{formatReportDate(row.day)}{row.area ? ` · ${row.area}` : ''}{paymentMethod(row.method) ? ` · ${paymentMethod(row.method)}` : ''}</small></div><b>{baht(row.amount)}</b></article>)}</div> : <p className="executive-empty">{translateUi('ไม่มีรายการ')}</p>}
         <footer><button disabled={detailPage === 0} onClick={() => setDetailPage((page) => page - 1)} type="button">{translateUi('ก่อนหน้า')}</button><span>{translateUi('หน้า ')}{detailPage + 1} / {Math.max(1, Math.ceil(detailData.total / 50))}</span><button disabled={(detailPage + 1) * 50 >= detailData.total} onClick={() => setDetailPage((page) => page + 1)} type="button">{translateUi('ถัดไป')}</button></footer>
       </> : null}
