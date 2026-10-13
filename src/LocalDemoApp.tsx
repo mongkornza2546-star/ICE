@@ -938,6 +938,30 @@ export function LocalDemoApp() {
           { id: 'demo-small', name: 'น้ำแข็งหลอดเล็ก', unit: 'ถุง', delivered: 30, damaged: 0 },
         ] },
       ],
+      debtAging: [
+        { bucket: 'notDue', amount: 54800, shops: 9 },
+        { bucket: 'days1to7', amount: 9200, shops: 2 },
+        { bucket: 'days8to30', amount: 6400, shops: 1 },
+        { bucket: 'days31plus', amount: 2800, shops: 1 },
+      ],
+      receiptMethods: [
+        { method: 'bank_transfer', amount: 88000 },
+        { method: 'cash', amount: 42000 },
+        { method: 'qr', amount: 17200 },
+      ],
+      quietShops: {
+        total: 1,
+        monthlySales: 14200,
+        rows: [{
+          id: 'demo-quiet-1',
+          name: 'ร้านส้มตำป้าณี',
+          building: 'อาคาร A',
+          lastOrder: from,
+          daysSince: 14,
+          usualGap: 2.5,
+          monthlySales: 14200,
+        }],
+      },
     };
     const demoRows: Partial<Record<ReportMetric, ReportRow[]>> = {
       sales: [{ id: 'demo-sale', day: to, label: 'ร้านกาแฟลานเล่า', amount: 28000, area: 'อาคาร A', shopId: 'demo-shop' }],

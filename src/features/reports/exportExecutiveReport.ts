@@ -25,6 +25,21 @@ export async function exportExecutiveReport(
     ['เกินกำหนดปัจจุบัน', report.overdue],
     ['จำนวนลูกหนี้ปัจจุบัน', report.debtors],
     ['จำนวนรายการส่งช่วงนี้', report.deliveryCount],
+    ...(report.debtAging ? [
+      ['--- อายุหนี้ปัจจุบัน ---', '---'],
+      ...report.debtAging.map((b) => [
+        b.bucket === 'notDue' ? 'ยังไม่ถึงกำหนด' : b.bucket === 'days1to7' ? 'เกิน 1–7 วัน'
+          : b.bucket === 'days8to30' ? 'เกิน 8–30 วัน' : 'เกิน 30 วัน',
+        b.amount,
+      ]),
+    ] : []),
+    ...(report.receiptMethods ? [
+      ['--- สัดส่วนช่องทางรับเงิน ---', '---'],
+      ...report.receiptMethods.map((m) => [
+        m.method === 'cash' ? 'เงินสด' : m.method === 'bank_transfer' ? 'โอนเงิน' : m.method === 'qr' ? 'QR' : m.method,
+        m.amount,
+      ]),
+    ] : []),
   ]);
   const trend = sheet([
     ['วัน / เดือน', 'ยอดขายสุทธิ', 'เงินรับจริง', 'เงินคืนจริง', 'เงินรับสุทธิ'],

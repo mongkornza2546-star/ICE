@@ -285,17 +285,31 @@ export function ExecutiveReportsPage({ isActive, demoReport, demoRows }: {
       <section className="executive-metrics" aria-label={translateUi('ตัวเลขสำคัญ')}>
         <MetricCard title={translateUi('ยอดขายสุทธิช่วงนี้')} value={shownReport.sales}
           onClick={(trigger) => openDetail({ metric: 'sales' }, undefined, trigger)} />
-        <MetricCard title={translateUi('เงินรับสุทธิช่วงนี้')} value={shownReport.netReceipts}
+        <MetricCard note={shownReport.sales > 0 ? translateUi('อัตราการเก็บเงิน {0}%', { 0: number(shownReport.netReceipts / shownReport.sales * 100) }) : undefined} title={translateUi('เงินรับสุทธิช่วงนี้')} value={shownReport.netReceipts}
           onClick={(trigger) => openDetail({ metric: 'receipts' }, undefined, trigger)} />
-        <MetricCard title={translateUi('หนี้ค้างปัจจุบัน')} value={shownReport.outstanding} note={`${number(shownReport.debtors)} ${translateUi('ร้าน')} · ${translateUi('ณ')} ${formatReportDate(toBangkokDateString())}`} tone="amber" onClick={(trigger) => openDetail({ metric: 'debt' }, undefined, trigger)} />
-        <MetricCard title={translateUi('เกินกำหนดปัจจุบัน')} value={shownReport.overdue} note="บิลที่ต้องติดตาม" tone="red" onClick={(trigger) => openDetail({ metric: 'overdue' }, undefined, trigger)} />
+        <MetricCard note={`${number(shownReport.debtors)} ${translateUi('ร้าน')} · ${translateUi('ณ')} ${formatReportDate(toBangkokDateString())}`} onClick={(trigger) => openDetail({ metric: 'debt' }, undefined, trigger)} title={translateUi('หนี้ค้างปัจจุบัน')} tone="amber" value={shownReport.outstanding} />
+        <MetricCard note="บิลที่ต้องติดตาม" onClick={(trigger) => openDetail({ metric: 'overdue' }, undefined, trigger)} title={translateUi('เกินกำหนดปัจจุบัน')} tone="red" value={shownReport.overdue} />
       </section>
       <p className="executive-period-note">{translateUi('ยอดขายและเงินรับอิงช่วงวันที่เลือก · หนี้ค้างและเกินกำหนดเป็นยอดปัจจุบัน')}</p>
 
       <ReportTabs active={section} onChange={setSection} />
-      <ReportSections section={section} report={shownReport} trendMetric={trendMetric}
-        setTrendMetric={setTrendMetric} showTrendTable={showTrendTable}
-        toggleTrendTable={() => setShowTrendTable((value) => !value)} openDetail={openDetail} />
+      <ReportSections
+        onNavigateSection={(nextSection, targetId) => {
+          setSection(nextSection);
+          if (targetId) {
+            window.requestAnimationFrame(() => {
+              document.getElementById(targetId)?.scrollIntoView({ behavior: 'smooth' });
+            });
+          }
+        }}
+        openDetail={openDetail}
+        report={shownReport}
+        section={section}
+        setTrendMetric={setTrendMetric}
+        showTrendTable={showTrendTable}
+        toggleTrendTable={() => setShowTrendTable((value) => !value)}
+        trendMetric={trendMetric}
+      />
 
       {section === 'finance' ? <ExecutiveFollowUps report={shownReport} isActive={isActive} demoRows={demoReport ? demoRows?.overdue ?? [] : undefined}
         onOpenAll={(trigger) => openDetail({ metric: 'overdue' }, undefined, trigger)}

@@ -23,7 +23,7 @@ async function database(t) {
       $$ select coalesce(current_setting('test.active', true), 'true')::boolean $$;
     create function public.current_app_role() returns text language sql stable as
       $$ select current_setting('test.app_role', true) $$;
-    create table public.shops (id uuid primary key, name text, building_id uuid);
+    create table public.shops (id uuid primary key, name text, building_id uuid, status text default 'active');
     create table public.buildings (id uuid primary key, name text, code text);
     create table public.round_stops (id uuid primary key, building_id_snapshot uuid,
       building_name_snapshot text, event_participation_id uuid);
@@ -75,6 +75,7 @@ async function database(t) {
   await db.exec(readFileSync(new URL('../supabase/migrations/0040_fix_supabase_linter_security_warnings.sql', import.meta.url), 'utf8'));
   await db.exec(migration);
   await db.exec(readFileSync(new URL('../supabase/migrations/0224_executive_report_volume_by_building.sql', import.meta.url), 'utf8'));
+  await db.exec(readFileSync(new URL('../supabase/migrations/0225_executive_report_insights.sql', import.meta.url), 'utf8'));
   await db.exec(`select set_config('test.app_role', 'admin', false)`);
   return db;
 }
@@ -152,9 +153,78 @@ test('the facts helper stays private under production default grants', async (t)
   await db.exec(`select set_config('test.app_role', 'courier', false); set role authenticated`);
   await assert.rejects(db.query(`select * from public.executive_report_facts('2026-09-01', '2026-09-02')`), /permission denied for function executive_report_facts/);
   await assert.rejects(db.query(`select public.executive_report_volume_areas('2026-09-01', '2026-09-02')`), /permission denied for function executive_report_volume_areas/);
+  await assert.rejects(db.query(`select public.executive_report_insights('2026-09-01', '2026-09-02')`), /permission denied for function executive_report_insights/);
   await db.exec('reset role; set role anon');
   await assert.rejects(db.query(`select * from public.executive_report_facts('2026-09-01', '2026-09-02')`), /permission denied for function executive_report_facts/);
   await assert.rejects(db.query(`select public.executive_report_volume_areas('2026-09-01', '2026-09-02')`), /permission denied for function executive_report_volume_areas/);
+  await assert.rejects(db.query(`select public.executive_report_insights('2026-09-01', '2026-09-02')`), /permission denied for function executive_report_insights/);
+});
+
+test('insights age current debt, split receipts by method and flag shops that stopped ordering', async (t) => {
+  const db = await database(t);
+  const id = (n) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
+  await db.exec(`
+    create temporary table clock as select (now() at time zone 'Asia/Bangkok')::date as today;
+    insert into buildings values ('${id(1)}', 'อาคาร A', 'A');
+    insert into shops (id, name, building_id, status) values
+      ('${id(2)}', 'ร้านประจำ', '${id(1)}', 'active'),
+      ('${id(3)}', 'ร้านหายไป', '${id(1)}', 'active'),
+      ('${id(4)}', 'ร้านปิดแล้ว', '${id(1)}', 'inactive'),
+      ('${id(5)}', 'ร้านรายสัปดาห์', '${id(1)}', 'active');
+    -- Rentals carry current debt without being reorder signals.
+    insert into shop_tank_rentals (id, quantity, unit_price, recorded_at) values
+      ('${id(10)}', 1, 100, now()), ('${id(11)}', 1, 50, now()), ('${id(12)}', 1, 40, now()),
+      ('${id(13)}', 1, 70, now()), ('${id(14)}', 1, 30, now());
+    insert into delivery_charges (id, shop_id, service_date, due_date, status, original_amount, tank_rental_id)
+      select v.id::uuid, v.shop::uuid, clock.today - v.age, clock.today - v.age, 'active', v.amount, v.rental::uuid
+      from clock, (values
+        ('${id(20)}', '${id(2)}', 0, 100, '${id(10)}'),
+        ('${id(21)}', '${id(2)}', 3, 50, '${id(11)}'),
+        ('${id(22)}', '${id(3)}', 10, 40, '${id(12)}'),
+        ('${id(23)}', '${id(3)}', 45, 70, '${id(13)}'),
+        ('${id(24)}', '${id(2)}', 45, 30, '${id(14)}')) v(id, shop, age, amount, rental);
+    insert into payments values
+      ('${id(30)}', '${id(3)}', 15, 'cash', now(), 'active'),
+      ('${id(31)}', '${id(2)}', 30, 'bank_transfer', now(), 'active'),
+      ('${id(32)}', '${id(5)}', 20, 'qr', now(), 'active'),
+      ('${id(33)}', '${id(2)}', 99, 'cash', now(), 'voided');
+    insert into payment_allocations values ('${id(30)}', '${id(22)}', 15), ('${id(31)}', '${id(24)}', 30);
+    insert into casual_transactions (id, service_date, transaction_kind, status, sale_amount, quantity, payment_method, recorded_at)
+      select '${id(34)}', today, 'paid', 'active', 10, 1, 'cash', now() from clock;
+    create temporary table seeded_orders as
+      select gen_random_uuid() as event_id, gen_random_uuid() as charge_id, plan.shop::uuid as shop_id, clock.today - plan.age as day
+      from clock, (
+        select '${id(2)}' as shop, generate_series(2, 20, 2) as age
+        union all select '${id(3)}', generate_series(30, 40, 2)
+        union all select '${id(4)}', generate_series(30, 40, 2)
+        union all select '${id(5)}', generate_series(12, 33, 7)
+      ) plan;
+    insert into delivery_events (id, status, recorded_at) select event_id, 'active', now() from seeded_orders;
+    insert into delivery_charges (id, delivery_event_id, shop_id, service_date, due_date, status, original_amount)
+      select charge_id, event_id, shop_id, day, day, 'active', 60 from seeded_orders;
+    -- Settled long ago so orders disturb neither debt aging nor this period's receipts.
+    insert into payments values ('${id(35)}', '${id(2)}', 0, 'cash', now() - interval '200 days', 'active');
+    insert into payment_allocations select '${id(35)}', charge_id, 60 from seeded_orders;
+  `);
+  const report = (await db.query('select get_executive_report(today, today) as report from clock')).rows[0].report;
+  const sum = (rows) => rows.reduce((total, row) => total + row.amount, 0);
+  assert.deepEqual(report.debtAging, [
+    { bucket: 'notDue', amount: 100, shops: 1 },
+    { bucket: 'days1to7', amount: 50, shops: 1 },
+    { bucket: 'days8to30', amount: 25, shops: 1 },
+    { bucket: 'days31plus', amount: 70, shops: 1 },
+  ]);
+  assert.equal(sum(report.debtAging), report.outstanding);
+  assert.equal(sum(report.debtAging.slice(1)), report.overdue);
+  assert.deepEqual(report.receiptMethods, [
+    { method: 'bank_transfer', amount: 30 }, { method: 'cash', amount: 25 }, { method: 'qr', amount: 20 },
+  ]);
+  assert.equal(sum(report.receiptMethods), report.receipts);
+  // Weekly shop is 12 days quiet against a 7-day rhythm; the inactive shop is ignored.
+  assert.equal(report.quietShops.total, 1);
+  assert.deepEqual(report.quietShops.rows.map((row) => [row.name, row.building, row.daysSince, row.usualGap, row.monthlySales]),
+    [['ร้านหายไป', 'อาคาร A', 30, 2, 981.82]]);
+  assert.equal(report.quietShops.monthlySales, 981.82);
 });
 
 test('shop and event rentals reconcile across sales, debt, invoices, and export detail pages', async (t) => {

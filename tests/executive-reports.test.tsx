@@ -401,3 +401,74 @@ it('distinguishes missing building data from an empty period', async () => {
   expect(screen.getByText('ข้อมูลแยกตึกยังไม่พร้อมใช้งาน')).not.toBeNull();
   expect(within(screen.getByRole('table', { name: 'ปริมาณงานและน้ำแข็ง' })).getByText('10')).not.toBeNull();
 });
+
+it('renders executive attention alerts, quiet shops, debt aging and payment mix', async () => {
+  const original = rpc.getMockImplementation()!;
+  rpc.mockImplementation(async (name: string, args: unknown) => {
+    const result = await original(name, args);
+    if (name !== 'get_executive_report') return result;
+    return {
+      ...result,
+      data: {
+        ...result.data,
+        debtAging: [
+          { bucket: 'notDue', amount: 100, shops: 1 },
+          { bucket: 'days1to7', amount: 50, shops: 1 },
+          { bucket: 'days8to30', amount: 20, shops: 1 },
+          { bucket: 'days31plus', amount: 10, shops: 1 },
+        ],
+        receiptMethods: [
+          { method: 'bank_transfer', amount: 200 },
+          { method: 'cash', amount: 80 },
+        ],
+        quietShops: {
+          total: 1,
+          monthlySales: 1500,
+          rows: [{
+            id: 'shop-quiet',
+            name: 'ร้านเงียบ',
+            building: 'อาคาร A',
+            lastOrder: '2026-09-01',
+            daysSince: 14,
+            usualGap: 3,
+            monthlySales: 1500,
+          }],
+        },
+      },
+    };
+  });
+
+  render(<ExecutiveReportsPage isActive />);
+  await screen.findByText('อาคาร A');
+
+  // Attention banner in Overview
+  const banner = screen.getByRole('region', { name: 'สัญญาณเตือนและสิ่งที่ต้องติดตาม' });
+  expect(within(banner).getByText('หนี้ค้างเกิน 30 วัน')).not.toBeNull();
+  expect(within(banner).getByText(/1 ร้านไม่ได้สั่งนานกว่าปกติ/)).not.toBeNull();
+
+  // Volume tab: Damage rate percentage
+  fireEvent.click(screen.getByRole('button', { name: 'ปริมาณส่ง' }));
+  const volumeTable = screen.getByRole('table', { name: 'ปริมาณงานและน้ำแข็ง' });
+  expect(within(volumeTable).getByText('10%')).not.toBeNull();
+
+  // Sales tab: Quiet shops panel
+  fireEvent.click(screen.getByRole('button', { name: 'ยอดขาย' }));
+  expect(screen.getByText('ร้านที่หยุดสั่งซื้อ / สัญญาณเตือน')).not.toBeNull();
+  const quietLink = screen.getByRole('button', { name: /ร้านเงียบ/ });
+  fireEvent.click(quietLink);
+  await screen.findByRole('dialog');
+  expect(rpc).toHaveBeenCalledWith('get_executive_report_details', expect.objectContaining({
+    p_metric: 'sales',
+    p_shop_id: 'shop-quiet',
+  }));
+  fireEvent.click(screen.getByRole('button', { name: 'ปิดรายละเอียด' }));
+
+  // Finance tab: Debt aging and Payment methods
+  fireEvent.click(screen.getByRole('button', { name: 'เงินรับและลูกหนี้' }));
+  const agingTable = screen.getByRole('table', { name: 'ตารางวิเคราะห์อายุหนี้' });
+  expect(within(agingTable).getByText('เกิน 30 วัน')).not.toBeNull();
+  expect(within(agingTable).getByText('เกิน 1–7 วัน')).not.toBeNull();
+  expect(screen.getByText('สัดส่วนช่องทางรับเงิน')).not.toBeNull();
+  expect(screen.getByText('โอนเงิน')).not.toBeNull();
+});
+

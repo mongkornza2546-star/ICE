@@ -35,6 +35,26 @@ export type ExecutiveReport = {
     kind: string; id: string | null; name: string;
     products: ExecutiveReport['products'];
   }>;
+  // Optional until migration 0225 is applied.
+  debtAging?: DebtAgingBucket[];
+  receiptMethods?: Array<{ method: string; amount: number }>;
+  quietShops?: { total: number; monthlySales: number; rows: QuietShop[] };
+};
+
+export type DebtAgingBucket = {
+  bucket: 'notDue' | 'days1to7' | 'days8to30' | 'days31plus';
+  amount: number;
+  shops: number;
+};
+
+export type QuietShop = {
+  id: string;
+  name: string;
+  building: string | null;
+  lastOrder: string;
+  daysSince: number;
+  usualGap: number;
+  monthlySales: number;
 };
 
 export type DetailQuery = {
