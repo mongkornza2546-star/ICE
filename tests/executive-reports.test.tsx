@@ -566,13 +566,17 @@ it('distinguishes unavailable destination data from a loaded destination without
   expect(await within(locations).findByText('ยังไม่มีรายการส่งน้ำแข็ง')).not.toBeNull();
 });
 
-it('merges every sales and volume destination and switches the product breakdown with each bar', async () => {
+it('merges sales destinations while excluding stock holders and switches each bar breakdown', async () => {
   const original = rpc.getMockImplementation();
   rpc.mockImplementation(async (name: string, args: unknown) => {
     const result = await original?.(name, args);
     if (name !== 'get_executive_report') return result;
     return { ...result, data: { ...result.data,
-      areas: Array.from({ length: 6 }, (_, index) => ({ kind: 'building', id: `area-${index}`, name: `ตึก ${index}`, sales: (6 - index) * 100 })),
+      areas: [
+        ...Array.from({ length: 6 }, (_, index) => ({ kind: 'building', id: `area-${index}`, name: `ตึก ${index}`, sales: (6 - index) * 100 })),
+        { kind: 'stock', id: 'stock-1', name: 'จุดถือครองสต็อก', sales: 9000 },
+        { kind: 'casual', id: null, name: 'ขายหน้ารถ', sales: 50 },
+      ],
       volumeAreas: [
         { kind: 'building', id: 'area-5', name: 'ตึก 5', products: [
           { id: 'bags', name: 'หลอดเล็ก', unit: 'ถุง', delivered: 6.5, damaged: 0 },
@@ -581,12 +585,19 @@ it('merges every sales and volume destination and switches the product breakdown
         { kind: 'event', id: 'area-5', name: 'งานประชุม', products: [
           { id: 'bags', name: 'หลอดเล็ก', unit: 'ถุง', delivered: 8, damaged: 0 },
         ] },
+        { kind: 'stock', id: 'truck-1', name: 'รถบรรทุก', products: [
+          { id: 'bags', name: 'หลอดเล็ก', unit: 'ถุง', delivered: 0, damaged: 5 },
+        ] },
+        { kind: 'casual', id: null, name: 'ขายหน้ารถ', products: [
+          { id: 'bags', name: 'หลอดเล็ก', unit: 'ถุง', delivered: 1.5, damaged: 0 },
+        ] },
       ],
     } };
   });
   render(<ExecutiveReportsPage isActive />);
   const graph = await screen.findByRole('group', { name: 'กราฟแท่งยอดขายตามพื้นที่' });
-  expect(within(graph).getAllByRole('button')).toHaveLength(7);
+  expect(within(graph).getAllByRole('button')).toHaveLength(8);
+  expect(within(graph).queryByRole('button', { name: /รถบรรทุก|จุดถือครองสต็อก/ })).toBeNull();
   fireEvent.click(within(graph).getByRole('button', { name: /ตึก 5/ }));
   const selected = screen.getByRole('region', { name: 'จำนวนส่งของพื้นที่ที่เลือก' });
   expect(within(selected).getByText('6.5')).not.toBeNull();
@@ -598,4 +609,7 @@ it('merges every sales and volume destination and switches the product breakdown
   expect(within(selected).queryByText('6.5')).toBeNull();
   expect(within(selected).queryByRole('button', { name: 'ดูรายการขายพื้นที่นี้' })).toBeNull();
   expect(within(graph).getByRole('button', { name: /งานประชุม/ }).getAttribute('aria-pressed')).toBe('true');
+  fireEvent.click(within(graph).getByRole('button', { name: /ขายหน้ารถ/ }));
+  expect(within(selected).getByText('1.5')).not.toBeNull();
+  expect(within(selected).getByRole('button', { name: 'ดูรายการขายพื้นที่นี้' })).not.toBeNull();
 });

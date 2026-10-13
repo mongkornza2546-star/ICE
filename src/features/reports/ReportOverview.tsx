@@ -6,6 +6,7 @@ import type { DetailQuery, ExecutiveReport } from './types';
 
 const number = (value: number) => new Intl.NumberFormat('th-TH', { maximumFractionDigits: 1 }).format(value);
 const baht = (value: number) => new Intl.NumberFormat('th-TH', { style: 'currency', currency: 'THB', maximumFractionDigits: 0 }).format(value);
+const isSalesDestination = (area: { kind: string }) => ['building', 'event', 'casual'].includes(area.kind);
 
 export function ReportOverview({ report, openDetail, onNavigate }: {
   report: ExecutiveReport;
@@ -15,10 +16,10 @@ export function ReportOverview({ report, openDetail, onNavigate }: {
   useLanguage();
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const areaKey = (area: { kind: string; id: string | null }) => `${area.kind}-${area.id ?? 'none'}`;
-  const areas = report.areas.map((area) => ({ ...area, hasSales: true,
+  const areas = report.areas.filter(isSalesDestination).map((area) => ({ ...area, hasSales: true,
     products: report.volumeAreas?.find((volume) => areaKey(volume) === areaKey(area))?.products ?? [],
   }));
-  for (const volume of report.volumeAreas ?? []) {
+  for (const volume of (report.volumeAreas ?? []).filter(isSalesDestination)) {
     if (!areas.some((area) => areaKey(area) === areaKey(volume))) {
       areas.push({ ...volume, sales: 0, hasSales: false });
     }
