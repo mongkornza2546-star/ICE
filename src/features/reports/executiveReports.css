@@ -89,7 +89,7 @@
 .executive-filter-controls { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
 .executive-presets button { min-height: 40px; }
 .executive-dates input { min-height: 40px; }
-.executive-metric { min-height: 145px; padding: 15px; gap: 5px; }
+.executive-metric { min-height: 128px; padding: 15px; gap: 5px; }
 .executive-metric small { margin-top: 0; }
 .executive-metric__action { color: #075ed8; font-size: .83rem; font-weight: 700; margin-top: auto; }
 .executive-period-note { color: #536780; font-size: .85rem; }
@@ -141,7 +141,7 @@
 .executive-detail__rows article div, .executive-detail__row-button span { min-width: 0; }
 @media (max-width: 740px) {
   .executive-report__grid { grid-template-columns: 1fr; }
-  .executive-metric { min-height: 138px; padding: 13px; }
+  .executive-metric { min-height: 124px; padding: 13px; }
   .executive-panel { padding: 15px; }
   .executive-finance-flow { grid-template-columns: 1fr; gap: 4px; }
   .executive-finance-flow > span { justify-self: center; }

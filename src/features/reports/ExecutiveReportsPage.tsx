@@ -6,6 +6,7 @@ import { toBangkokDateString } from '../../lib/serviceDate';
 import { translateUi, uiDateTimeString, useLanguage } from '../../i18n';
 import { exportExecutiveReport } from './exportExecutiveReport';
 import { ReportSections, ReportTabs, type ReportSection } from './ExecutiveReportSections';
+import { ExecutiveFollowUps } from './ExecutiveFollowUps';
 import { formatReportDate, presetDates, reportRangeError, type Preset } from './reportDates';
 import type { DetailQuery, ExecutiveReport, ReportInvoice, ReportMetric, ReportRow } from './types';
 import './executiveReports.css';
@@ -24,12 +25,6 @@ const presetNames: Record<Exclude<Preset, 'custom'>, string> = {
   today: 'วันนี้', week: '7 วัน', month: 'เดือนนี้', year: 'ปีนี้',
 };
 
-function comparison(current: number, previous: number) {
-  if (previous <= 0) return translateUi('ไม่มีฐานเปรียบเทียบ');
-  const percent = Math.abs((current - previous) / previous * 100);
-  return `${translateUi(current >= previous ? 'เพิ่มขึ้น' : 'ลดลง')} ${number(percent)}% ${translateUi('จากช่วงก่อน')}`;
-}
-
 async function fetchDetails(from: string, to: string, query: DetailQuery, offset: number) {
   if (!supabase) throw new Error('ยังไม่ได้ตั้งค่าการเชื่อมต่อ Supabase');
   const { data, error } = await supabase.rpc('get_executive_report_details', {
@@ -42,13 +37,14 @@ async function fetchDetails(from: string, to: string, query: DetailQuery, offset
   return data as { total: number; rows: ReportRow[] };
 }
 
-function MetricCard({ title, value, note, previous, onClick, tone }: {
-  title: string; value: number; note?: string; previous?: number; onClick: (trigger: HTMLButtonElement) => void; tone?: string;
+function MetricCard({ title, value, note, onClick, tone }: {
+  title: string; value: number; note?: string;
+  onClick: (trigger: HTMLButtonElement) => void; tone?: string;
 }) {
   useLanguage();
   return <button className={`executive-metric ${tone ? `executive-metric--${tone}` : ''}`}
     onClick={(event) => onClick(event.currentTarget)} type="button"><span>{title}</span><strong>{baht(value)}</strong>
-    {previous !== undefined ? <small>{translateUi('ช่วงก่อน')} {baht(previous)} · {comparison(value, previous)}</small> : note ? <small>{note}</small> : null}
+    {note ? <small>{note}</small> : null}
     <span className="executive-metric__action">{translateUi('ดูรายการ ›')}</span></button>;
 }
 
@@ -83,8 +79,11 @@ export function ExecutiveReportsPage({ isActive, demoReport, demoRows }: {
   const invoiceRequest = useRef(0);
   const dialogRef = useRef<HTMLElement>(null);
   const detailTrigger = useRef<HTMLElement | null>(null);
+  const detailTriggerShop = useRef<string | null>(null);
+  const reportHeading = useRef<HTMLHeadingElement | null>(null);
   const debtorListPage = useRef(0);
   const rangeError = reportRangeError(from, to);
+  const shownReport = !rangeError && report && report.from === from && report.to === to ? report : null;
 
   const refresh = useCallback(() => setRefreshKey((value) => value + 1), []);
 
@@ -197,13 +196,20 @@ export function ExecutiveReportsPage({ isActive, demoReport, demoRows }: {
     setPreset(next); setFrom(dates.from); setTo(dates.to); setDetail(null);
   };
   const openDetail = (query: DetailQuery, label?: string, trigger?: HTMLElement) => {
-    if (!detail) detailTrigger.current = trigger ?? document.activeElement as HTMLElement | null;
+    if (!detail) {
+      detailTrigger.current = trigger ?? document.activeElement as HTMLElement | null;
+      detailTriggerShop.current = detailTrigger.current?.getAttribute('data-follow-up-shop') ?? null;
+    }
     setDetail(query); setDetailPage(0); setInvoiceId(null); setDetailLabel(label ?? null);
     if (!query.shopId) setDebtorName(null);
   };
   const closeDetail = () => {
     setDetail(null); setInvoiceId(null); setDetailLabel(null); setDebtorName(null);
-    window.requestAnimationFrame(() => detailTrigger.current?.focus());
+    window.requestAnimationFrame(() => {
+      const currentShop = detailTriggerShop.current ? [...document.querySelectorAll<HTMLElement>('[data-follow-up-shop]')]
+        .find((button) => button.getAttribute('data-follow-up-shop') === detailTriggerShop.current) : null;
+      (detailTrigger.current?.isConnected ? detailTrigger.current : currentShop ?? reportHeading.current)?.focus();
+    });
   };
   const backDetail = () => {
     if (invoiceId) { setInvoiceId(null); return; }
@@ -252,13 +258,12 @@ export function ExecutiveReportsPage({ isActive, demoReport, demoRows }: {
     }
   };
 
-  const shownReport = report && report.from === from && report.to === to ? report : null;
   const receiptPoint = detail?.bucket ? shownReport?.trend.find((row) => row.date === detail.bucket) : null;
   const receiptGross = detail?.bucket ? receiptPoint?.receipts ?? 0 : shownReport?.receipts ?? 0;
   const receiptRefunds = detail?.bucket ? receiptPoint?.refunds ?? 0 : shownReport?.refunds ?? 0;
   return <div className="executive-report">
     <header className="executive-report__heading">
-      <div><h1>{translateUi('รายงานผู้บริหาร')}</h1><p>{translateUi('ยอดขาย เงินรับ ลูกหนี้ และปริมาณส่ง')}</p></div>
+      <div><h1 ref={reportHeading} tabIndex={-1}>{translateUi('รายงานผู้บริหาร')}</h1><p>{translateUi('ยอดขาย เงินรับ ลูกหนี้ และปริมาณส่ง')}</p></div>
       <div className="executive-report__actions">
         <button aria-label={translateUi('รีเฟรชรายงาน')} disabled={loading || Boolean(rangeError)} onClick={refresh} type="button"><ArrowClockwise size={19} />{translateUi(' รีเฟรช')}</button>
         <button disabled={!shownReport || loading || exporting || Boolean(error)} onClick={() => void handleExport()} type="button"><DownloadSimple size={19} /> {exporting ? translateUi('กำลังสร้าง Excel…') : translateUi('ส่งออก Excel')}</button>
@@ -271,15 +276,17 @@ export function ExecutiveReportsPage({ isActive, demoReport, demoRows }: {
       <div className="executive-dates"><label>{translateUi('จาก')}<input max={toBangkokDateString()} onChange={(event) => { setPreset('custom'); setFrom(event.target.value); setDetail(null); }} type="date" value={from} /></label>
         <label>{translateUi('ถึง')}<input max={toBangkokDateString()} onChange={(event) => { setPreset('custom'); setTo(event.target.value); setDetail(null); }} type="date" value={to} /></label></div></div>
       {rangeError ? <p className="executive-error" role="alert">{translateUi(rangeError)}</p> : null}
-      {shownReport ? <p className="executive-asof">{translateUi('ข้อมูล ณ ')}{uiDateTimeString(new Date(shownReport.asOf), { timeZone: 'Asia/Bangkok' })} · {formatReportDate(from)} – {formatReportDate(to)}{to === toBangkokDateString() ? ` · ${translateUi('วันนี้ยังไม่สิ้นสุด')}` : ''}</p> : null}
+      {shownReport ? <p className="executive-asof">{translateUi('ข้อมูล ณ ')}{uiDateTimeString(new Date(shownReport.asOf), { timeZone: 'Asia/Bangkok' })} · {formatReportDate(from)} – {formatReportDate(to)}</p> : null}
     </section>
 
     {error ? <div className="executive-error" role="alert">{translateUi('โหลดรายงานไม่สำเร็จ: ')}{translateUi(error)} <button onClick={refresh} type="button">{translateUi('ลองใหม่')}</button></div> : null}
     {loading && !shownReport ? <p className="executive-status" role="status">{translateUi('กำลังโหลดรายงาน…')}</p> : null}
     {shownReport ? <>
       <section className="executive-metrics" aria-label={translateUi('ตัวเลขสำคัญ')}>
-        <MetricCard title={translateUi('ยอดขายสุทธิช่วงนี้')} value={shownReport.sales} previous={shownReport.previousSales} onClick={(trigger) => openDetail({ metric: 'sales' }, undefined, trigger)} />
-        <MetricCard title={translateUi('เงินรับสุทธิช่วงนี้')} value={shownReport.netReceipts} previous={shownReport.previousNetReceipts} onClick={(trigger) => openDetail({ metric: 'receipts' }, undefined, trigger)} />
+        <MetricCard title={translateUi('ยอดขายสุทธิช่วงนี้')} value={shownReport.sales}
+          onClick={(trigger) => openDetail({ metric: 'sales' }, undefined, trigger)} />
+        <MetricCard title={translateUi('เงินรับสุทธิช่วงนี้')} value={shownReport.netReceipts}
+          onClick={(trigger) => openDetail({ metric: 'receipts' }, undefined, trigger)} />
         <MetricCard title={translateUi('หนี้ค้างปัจจุบัน')} value={shownReport.outstanding} note={`${number(shownReport.debtors)} ${translateUi('ร้าน')} · ${translateUi('ณ')} ${formatReportDate(toBangkokDateString())}`} tone="amber" onClick={(trigger) => openDetail({ metric: 'debt' }, undefined, trigger)} />
         <MetricCard title={translateUi('เกินกำหนดปัจจุบัน')} value={shownReport.overdue} note="บิลที่ต้องติดตาม" tone="red" onClick={(trigger) => openDetail({ metric: 'overdue' }, undefined, trigger)} />
       </section>
@@ -289,6 +296,14 @@ export function ExecutiveReportsPage({ isActive, demoReport, demoRows }: {
       <ReportSections section={section} report={shownReport} trendMetric={trendMetric}
         setTrendMetric={setTrendMetric} showTrendTable={showTrendTable}
         toggleTrendTable={() => setShowTrendTable((value) => !value)} openDetail={openDetail} />
+
+      {section === 'finance' ? <ExecutiveFollowUps report={shownReport} isActive={isActive} demoRows={demoReport ? demoRows?.overdue ?? [] : undefined}
+        onOpenAll={(trigger) => openDetail({ metric: 'overdue' }, undefined, trigger)}
+        onOpenShop={(row, trigger) => {
+          debtorListPage.current = 0;
+          setDebtorName(row.label);
+          openDetail({ metric: 'overdue', shopId: row.shopId ?? undefined }, row.label, trigger);
+        }} /> : null}
     </> : null}
 
     {detail ? <div className="executive-detail-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeDetail(); }}><section aria-label={invoiceId ? translateUi('รายละเอียดบิล') : translateUi('รายละเอียด{0}', { 0: translateUi(metricNames[detail.metric]) })} aria-modal="true" className="executive-detail" onKeyDown={(event) => {

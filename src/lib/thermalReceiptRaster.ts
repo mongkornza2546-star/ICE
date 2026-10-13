@@ -307,7 +307,7 @@ export async function renderDailyCreditRaster(payload: DailyCreditAcknowledgemen
   const receipt = new ReceiptRaster();
   receipt.text('Super Ice', { align: 'center', bold: true, size: 31 });
   receipt.text('ใบสรุปส่งของเครดิตประจำวัน', { align: 'center', bold: true, size: 26 });
-  receipt.text(`วันที่ ${payload.service_date}`, { align: 'center', size: 22 });
+  receipt.text(`วันที่ ${formatReceiptDate(payload.service_date)}`, { align: 'center', size: 22 });
   receipt.gap(6);
   receipt.text(`${payload.shop_code} · ${payload.shop_name}`, { bold: true, size: 23 });
   if (payload.shop_location) receipt.text(`จุดส่ง: ${payload.shop_location}`, { size: 21 });

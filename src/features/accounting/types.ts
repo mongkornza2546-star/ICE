@@ -205,6 +205,7 @@ export type AccountingShopInvoiceDetailEntry = {
   recorded_at: string;
   recorded_by_name: string;
   total_amount: number | null;
+  sales_amount?: number | null;
   payment_term: 'immediate' | 'end_of_day' | 'credit' | null;
   allocated_amount: number;
   outstanding_amount: number;

@@ -1,5 +1,6 @@
 import { isAndroidApp, printThermalImage } from './thermalPrinter';
 import { renderDailyCreditRaster } from './thermalReceiptRaster';
+import { formatReceiptDate } from './salesDocumentPresentation';
 
 export type DailyCreditAcknowledgementItem = {
   ice_type_name: string;
@@ -90,7 +91,7 @@ export function printDailyCreditAcknowledgement(
   title.textContent = 'Super Ice';
   root.append(title);
   line('ใบสรุปส่งของเครดิตประจำวัน', 'center document-title');
-  line(`วันที่ ${payload.service_date}`, 'center');
+  line(`วันที่ ${formatReceiptDate(payload.service_date)}`, 'center');
   line(`${payload.shop_code} · ${payload.shop_name}`);
   if (payload.shop_location) line(`จุดส่ง: ${payload.shop_location}`, undefined, 'small');
   if (payload.printed_by_nickname?.trim()) line(`พนักงาน: ${payload.printed_by_nickname.trim()}`);

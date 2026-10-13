@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { beforeEach, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { ExecutiveReportsPage } from '../src/features/reports/ExecutiveReportsPage';
 import { LocalDemoApp } from '../src/LocalDemoApp';
 import { formatReportDate, presetDates } from '../src/features/reports/reportDates';
@@ -9,10 +9,12 @@ vi.mock('../src/lib/supabase', () => ({ supabase: { rpc } }));
 vi.mock('write-excel-file', () => ({ default: writeXlsxFile }));
 
 beforeEach(() => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date('2026-10-13T02:23:00Z'));
   const { from, to } = presetDates('month');
   rpc.mockReset();
   writeXlsxFile.mockReset();
-  rpc.mockImplementation((name: string, args: { p_metric?: string; p_bucket?: string }) => Promise.resolve({
+  rpc.mockImplementation((name: string, args: { p_metric?: string; p_bucket?: string; p_from?: string; p_to?: string }) => Promise.resolve({
     error: null,
     data: name === 'get_executive_report_invoice' ? {
       number: 'C-001', shop: 'ร้านหนึ่ง', serviceDate: from, area: 'อาคาร A',
@@ -20,7 +22,7 @@ beforeEach(() => {
       items: [{ name: 'น้ำแข็งหลอด', unit: 'ถุง', quantity: 10 }],
       payments: [{ date: new Date().toISOString(), method: 'cash', amount: 200 }],
     } : name === 'get_executive_report' ? {
-      from, to, asOf: new Date().toISOString(), previousFrom: from, previousTo: to,
+      from: args.p_from ?? from, to: args.p_to ?? to, asOf: new Date().toISOString(),
       sales: 500, receipts: 300, refunds: 20, netReceipts: 280,
       previousSales: 250, previousNetReceipts: 140,
       outstanding: 180, overdue: 80, debtors: 2, deliveryCount: 4,
@@ -36,6 +38,81 @@ beforeEach(() => {
         area: 'อาคาร A', shopId: 'shop-1' }],
     },
   }));
+});
+
+afterEach(() => vi.useRealTimers());
+
+it('shows a simple summary and preserves the full selected dates for totals and drilldowns', async () => {
+  render(<ExecutiveReportsPage isActive />);
+  fireEvent.click(screen.getByRole('button', { name: '7 วัน' }));
+  const sales = await screen.findByRole('button', { name: /ยอดขายสุทธิช่วงนี้/ });
+  expect(sales.querySelector('strong')?.textContent).toBe('฿500');
+  expect(screen.getByRole('button', { name: /เงินรับสุทธิช่วงนี้/ }).querySelector('strong')?.textContent).toBe('฿280');
+  expect(sales.textContent).not.toContain('%');
+  expect(screen.queryByRole('checkbox')).toBeNull();
+  expect(screen.queryByText(/เปรียบเทียบ|วันที่สิ้นสุดแล้ว|ช่วงก่อน/)).toBeNull();
+  expect(screen.queryByRole('region', { name: 'ต้องติดตาม' })).toBeNull();
+  expect(rpc).toHaveBeenCalledWith('get_executive_report', { p_from: '2026-10-07', p_to: '2026-10-13' });
+  expect(rpc.mock.calls.every(([name]) => name === 'get_executive_report')).toBe(true);
+  fireEvent.click(sales);
+  await screen.findByRole('dialog');
+  expect(rpc).toHaveBeenCalledWith('get_executive_report_details', expect.objectContaining({
+    p_from: '2026-10-07', p_to: '2026-10-13', p_metric: 'sales',
+  }));
+});
+
+it('uses the selected dates for today and historical summaries without comparison settings', async () => {
+  render(<ExecutiveReportsPage isActive />);
+  await screen.findByText('อาคาร A');
+  rpc.mockClear();
+  fireEvent.click(screen.getByRole('button', { name: 'วันนี้' }));
+  const todaySales = await screen.findByRole('button', { name: /ยอดขายสุทธิช่วงนี้/ });
+  expect(todaySales.querySelector('strong')?.textContent).toBe('฿500');
+  expect(rpc).toHaveBeenCalledWith('get_executive_report', { p_from: '2026-10-13', p_to: '2026-10-13' });
+  fireEvent.change(screen.getByLabelText('จาก'), { target: { value: '2026-10-01' } });
+  fireEvent.change(screen.getByLabelText('ถึง'), { target: { value: '2026-10-06' } });
+  const historical = await screen.findByRole('button', { name: /ยอดขายสุทธิช่วงนี้/ });
+  expect(historical.querySelector('strong')?.textContent).toBe('฿500');
+  expect(rpc).toHaveBeenCalledWith('get_executive_report', { p_from: '2026-10-01', p_to: '2026-10-06' });
+  expect(rpc.mock.calls.every(([name]) => name === 'get_executive_report')).toBe(true);
+  expect(screen.queryByText(/เปรียบเทียบ|วันที่สิ้นสุดแล้ว|ช่วงก่อน/)).toBeNull();
+});
+
+it('exports full selected-period totals without comparison configuration or requests', async () => {
+  render(<ExecutiveReportsPage isActive />);
+  await screen.findByRole('button', { name: /ยอดขายสุทธิช่วงนี้/ });
+  const exportButton = screen.getByRole('button', { name: /ส่งออก Excel/ });
+  expect(exportButton.hasAttribute('disabled')).toBe(false);
+  fireEvent.click(exportButton);
+  await waitFor(() => expect(writeXlsxFile).toHaveBeenCalledTimes(1));
+  const rows = writeXlsxFile.mock.calls[0][0][0].map((row: Array<{ value: unknown }>) => row.map((cell) => cell.value));
+  expect(rows).toContainEqual(['รายงานผู้บริหาร', '2026-10-01 ถึง 2026-10-13']);
+  expect(rows).toContainEqual(['ยอดขายสุทธิช่วงนี้', 500]);
+  expect(rows).toContainEqual(['เงินรับสุทธิช่วงนี้', 280]);
+  expect(rows.flat().some((value: unknown) => typeof value === 'string' && /เปรียบเทียบ|ช่วงก่อน/.test(value))).toBe(false);
+  expect(rpc.mock.calls.every(([name]) => name === 'get_executive_report' || name === 'get_executive_report_details')).toBe(true);
+  const detailRequests = rpc.mock.calls.filter(([name]) => name === 'get_executive_report_details');
+  expect(detailRequests).toHaveLength(4);
+  for (const [, args] of detailRequests) expect(args).toMatchObject({ p_from: '2026-10-01', p_to: '2026-10-13' });
+});
+
+it('opens overdue shop invoices from finance and restores focus even after the report refreshes', async () => {
+  render(<ExecutiveReportsPage isActive />);
+  await screen.findByText('อาคาร A');
+  fireEvent.click(screen.getByRole('button', { name: 'เงินรับและลูกหนี้' }));
+  const followUps = await screen.findByRole('region', { name: 'ต้องติดตาม' });
+  const originalButton = await within(followUps).findByRole('button', { name: /ร้านหนึ่ง/ });
+  fireEvent.click(originalButton);
+  const dialog = await screen.findByRole('dialog');
+  await within(dialog).findByText('ทั้งหมด 1 รายการ');
+  expect(rpc).toHaveBeenCalledWith('get_executive_report_details', expect.objectContaining({
+    p_metric: 'overdue', p_shop_id: 'shop-1', p_limit: 50,
+  }));
+  fireEvent(window, new Event('focus'));
+  await waitFor(() => expect(originalButton.isConnected).toBe(false));
+  const refreshedButton = await within(followUps).findByRole('button', { name: /ร้านหนึ่ง/ });
+  fireEvent.click(within(dialog).getByRole('button', { name: 'ปิดรายละเอียด' }));
+  await waitFor(() => expect(document.activeElement).toBe(refreshedButton));
 });
 
 it('shows business totals and drills into the selected building', async () => {
@@ -111,7 +188,9 @@ it('handles zero sales and a negative net receipt without misleading comparisons
   });
   render(<ExecutiveReportsPage isActive />);
   await screen.findByText('อาคาร A');
-  expect(screen.getAllByText(/ไม่มีฐานเปรียบเทียบ/).length).toBe(2);
+  expect(screen.getByRole('button', { name: /ยอดขายสุทธิช่วงนี้/ }).querySelector('strong')?.textContent).toBe('฿0');
+  expect(screen.getByRole('button', { name: /เงินรับสุทธิช่วงนี้/ }).querySelector('strong')?.textContent).toBe('-฿5');
+  expect(screen.queryByText(/ไม่มีฐานเปรียบเทียบ/)).toBeNull();
   fireEvent.click(within(screen.getByRole('navigation', { name: 'หมวดรายงาน' })).getByRole('button', { name: 'ยอดขาย' }));
   expect(within(screen.getByRole('table', { name: 'ตารางยอดขายตามพื้นที่' })).getByText('—')).not.toBeNull();
   fireEvent.click(within(screen.getByRole('navigation', { name: 'หมวดรายงาน' })).getByRole('button', { name: 'ภาพรวม' }));

@@ -1083,7 +1083,7 @@ function ShopInvoiceDetail({ entries, error, fromDate, loading, onClose, onOpenD
         const outsideLabel = entry.service_date < fromDate ? 'หนี้ค้างก่อนช่วง' : entry.service_date > toDate ? 'บิลค้างหลังช่วง' : null;
         return <details className="accounting-invoice" key={entry.delivery_event_id}><summary>
           <span><strong>{entry.charge_number ?? translateUi('รายการเดิมก่อนใช้ระบบบิล')}</strong><small>{accountingDate.format(new Date(`${entry.service_date}T12:00:00+07:00`))}{outsideLabel ? ` · ${outsideLabel}` : ''}</small></span>
-          <span><small>{translateUi('ยอดขาย')}</small><strong>{entry.total_amount == null ? '—' : money.format(Number(entry.total_amount))}</strong></span>
+          <span><small>{translateUi('ยอดขาย')}</small><strong>{(entry.sales_amount ?? entry.total_amount) == null ? '—' : money.format(Number(entry.sales_amount ?? entry.total_amount))}</strong></span>
           <span><small>{translateUi('รับแล้ว')}</small><strong>{money.format(Number(entry.allocated_amount))}</strong></span>
           <span><small>{translateUi('ค้าง')}</small><strong>{money.format(Number(entry.outstanding_amount))}</strong></span>
           <span className={`accounting-payment-status accounting-payment-status--${entry.payment_status === 'paid' ? 'paid' : 'outstanding'}`}>{status}</span>

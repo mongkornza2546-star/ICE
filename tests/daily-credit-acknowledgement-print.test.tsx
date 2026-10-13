@@ -49,7 +49,7 @@ describe('daily credit delivery slip printing', () => {
     expect(printed).toBe(true);
     expect(text).toContain('Super Ice');
     expect(text).toContain('ใบสรุปส่งของเครดิตประจำวัน');
-    expect(text).toContain('วันที่ 2026-09-24');
+    expect(text).toContain('วันที่ 24/09/2026');
     expect(text).not.toContain('ฉบับที่ 1');
     expect(text).toContain('หลอดเล็ก 2 ถุง');
     expect(text).toContain('พนักงาน: นิด');

@@ -1198,3 +1198,79 @@ test('tank handoffs preserve matrix sales and invoice totals used by Excel expor
     assert.deepEqual(priorFields, result.previous.rows[0].days[0], `${date}: preserve existing sales and status`);
   }
 });
+
+for (const withCasualWrapper of [false, true]) test(`accounting sales exclude stored VAT across summary, daily matrix and invoice detail (casual wrapper: ${withCasualWrapper})`, async (t) => {
+  const db = await createEventAccountingDatabase(t);
+  await db.exec(`
+    alter table public.shop_payment_profiles add column credit_due_rule text,
+      add column credit_collection_weekday integer, add column credit_days integer;
+    alter table public.delivery_charges add column vat_amount numeric not null default 0;
+    alter table public.delivery_charges add column vat_rate numeric not null default 0;
+    alter table public.delivery_charges add column subtotal_amount numeric not null default 0;
+    alter table public.ice_types add column is_active boolean not null default true;
+    insert into public.delivery_events values
+      ('${CREDIT_EVENT_ID}', '${STOP_ID}', '${USER_ID}', 'active', '2026-08-01T03:00:00Z'),
+      ('${IMMEDIATE_EVENT_ID}', '${STOP_ID}', '${USER_ID}', 'active', '2026-08-01T04:00:00Z');
+    insert into public.delivery_charges
+      (id, delivery_event_id, shop_id, service_date, payment_term, original_amount, status, subtotal_amount, vat_amount, vat_rate) values
+      ('${CREDIT_CHARGE_ID}', '${CREDIT_EVENT_ID}', '${SHOP_ID}', '2026-08-01', 'credit', 64.20, 'active', 60, 4.20, 7),
+      ('${IMMEDIATE_CHARGE_ID}', '${IMMEDIATE_EVENT_ID}', '${SHOP_ID}', '2026-08-01', 'immediate', 100, 'active', 100, 0, 0);
+    insert into public.payments (id, shop_id, allocated_amount, status, recorded_at)
+      values ('${PAYMENT_ID}', '${SHOP_ID}', 32.10, 'active', '2026-08-01T05:00:00Z');
+    insert into public.payment_allocations values ('${PAYMENT_ID}', '${CREDIT_CHARGE_ID}', 32.10);
+  `);
+  const vat = readFileSync(new URL('../supabase/migrations/0216_credit_shop_vat.sql', import.meta.url), 'utf8');
+  await db.exec(vat.match(/create function public\.charge_vat_totals\([\s\S]*?\n\$\$;/)[0]);
+  await db.exec(readFileSync(new URL('../supabase/migrations/0146_accounting_shop_daily_matrix.sql', import.meta.url), 'utf8'));
+  await db.exec(`
+    create role anon;
+    alter table public.casual_transactions add column ice_type_id uuid,
+      add column source_stock_location_id uuid, add column quantity numeric,
+      add column fulfillment_mode text, add column payment_method public.payment_method;
+    alter table public.casual_refund_confirmations add column refund_method public.payment_method;
+    create table public.casual_loose_stock_prices (service_date date, source_stock_location_id uuid, ice_type_id uuid);
+    create function public.casual_loose_stock_totals(date)
+      returns table (ice_type_id uuid, quantity numeric, remainder_amount numeric)
+      language sql as $$ select null::uuid, 0::numeric, 0::numeric where false $$;
+    create table public.shop_rented_tanks (shop_id uuid, rented_at date);
+    create table public.shop_tank_rentals (shop_id uuid, handed_out_on date, quantity numeric);
+    alter table public.event_participations add column id uuid;
+    create table public.event_tank_register (
+      event_participation_id uuid, service_date date, quantity numeric, movement_kind text
+    );
+  `);
+  if (withCasualWrapper) {
+    await db.exec(`insert into public.casual_transactions
+      (sale_amount, status, transaction_kind, service_date, recorded_at, payment_method)
+      values (15, 'active', 'paid', '2026-08-01', '2026-08-01T06:00:00Z', 'cash')`);
+    await db.exec(readFileSync(new URL('../supabase/migrations/0180_accounting_casual_daily_matrix.sql', import.meta.url), 'utf8'));
+  }
+  await db.exec(readFileSync(new URL('../supabase/migrations/0201_accounting_daily_tanks_payment_split.sql', import.meta.url), 'utf8'));
+  const netSales = readFileSync(new URL('../supabase/migrations/0223_accounting_sales_exclude_vat.sql', import.meta.url), 'utf8');
+  await db.exec(netSales);
+  await db.exec(netSales);
+  for (const limit of ['100', '500']) {
+    const summary = await getSummary(db, '{}', limit);
+    assert.equal(summary.totals.sales_amount, 160);
+    assert.equal(summary.rows[0].sales_amount, 160);
+    assert.equal(summary.groups[0].sales_amount, 160);
+    assert.equal(summary.totals.paid_amount, 32.10);
+    assert.equal(summary.totals.outstanding_amount, 132.10);
+    assert.equal(summary.totals.cash_received_in_period, 32.10);
+  }
+  const daily = await db.query(`select public.get_accounting_shop_daily_matrix(
+    '2026-08-01', '2026-08-01', array['${SHOP_ID}']::uuid[]) as result`);
+  assert.equal(daily.rows[0].result.rows[0].days[0].sales_amount, 160);
+  assert.equal(daily.rows[0].result.rows[0].days[0].cash_received, 32.10);
+  if (withCasualWrapper) {
+    assert.equal(daily.rows[0].result.casual_days[0].sales_amount, 15);
+    assert.equal(daily.rows[0].result.casual_days[0].cash_received, 15);
+  }
+  const detail = await db.query(`select public.get_accounting_shop_invoice_detail(
+    '${SHOP_ID}', '2026-08-01', '2026-08-01') as result`);
+  const invoices = detail.rows[0].result;
+  const credit = invoices.find((invoice) => invoice.charge_id === CREDIT_CHARGE_ID);
+  assert.equal(credit.sales_amount, 60);
+  assert.equal(credit.total_amount, 64.20);
+  assert.equal(credit.outstanding_amount, 32.10);
+});
