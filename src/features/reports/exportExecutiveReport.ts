@@ -12,10 +12,23 @@ const sheet = (rows: Array<Array<string | number>>) => rows.map((row, index) => 
 export async function exportExecutiveReport(
   report: ExecutiveReport,
   detailRows: Partial<Record<ReportMetric, ReportRow[]>>,
+  { demo }: { demo: boolean },
 ) {
   const { default: writeXlsxFile } = await import('write-excel-file');
   const summary = sheet([
     ['รายงานผู้บริหาร', `${report.from} ถึง ${report.to}`],
+    ['ขอบเขตข้อมูล', report.scopeName ?? 'ทั้งกิจการ'],
+    ['ฐานยอดขาย', report.financialVersion ? 'ไม่รวม VAT · รวมค่าเช่าถัง · หลังปรับปรุง' : 'ข้อมูลเดิมรวม VAT'],
+    ['ต้นทุนขาย', 'ยังคำนวณไม่ได้ · ขาดต้นทุนสินค้า'],
+    ['กำไรขั้นต้น', 'ยังคำนวณไม่ได้ · ขาดต้นทุนสินค้า'],
+    ['ค่าใช้จ่ายดำเนินงาน', 'ยังคำนวณไม่ได้ · ขาดรายการค่าใช้จ่าย'],
+    ['กำไรจากการดำเนินงาน', 'ยังคำนวณไม่ได้ · ขาดต้นทุนและค่าใช้จ่าย'],
+    ['เงินจ่ายจริง / กระแสเงินสดสุทธิ', 'ยังคำนวณไม่ได้ · เงินคืนไม่ใช่เงินจ่ายทั้งหมด'],
+    ['เงินคงเหลือ', 'ยังคำนวณไม่ได้ · ขาดยอดยกมาและรายการเคลื่อนไหวครบถ้วน'],
+    ['ช่วงก่อนหน้า', `${report.previousFrom} ถึง ${report.previousTo}`],
+    ['ยอดขายช่วงก่อน', report.previousSales],
+    ['เงินรับจริงช่วงก่อน', report.previousReceipts ?? 'ยังเปรียบเทียบไม่ได้'],
+    ['ยอดลูกหนี้ ณ', new Date(report.asOf).toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' })],
     ['สร้างเมื่อ', new Date(report.asOf).toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' })],
     ['ยอดขายสุทธิช่วงนี้', report.sales],
     ['เงินรับจริงช่วงนี้', report.receipts],
@@ -25,6 +38,7 @@ export async function exportExecutiveReport(
     ['เกินกำหนดปัจจุบัน', report.overdue],
     ['จำนวนลูกหนี้ปัจจุบัน', report.debtors],
     ['จำนวนรายการส่งช่วงนี้', report.deliveryCount],
+    ...(report.scopeShopId ? [['ปริมาณและของเสียรายร้าน', 'ยังแยกข้อมูลไม่ได้']] : []),
     ...(report.debtAging ? [
       ['--- อายุหนี้ปัจจุบัน ---', '---'],
       ...report.debtAging.map((b) => [
@@ -68,7 +82,14 @@ export async function exportExecutiveReport(
     ])),
     ...(report.volumeAreas ? [] : [['ข้อมูลแยกตึกยังไม่พร้อมใช้งาน']]),
   ]);
-  await writeXlsxFile([summary, trend, areas, details, volume, volumeAreas], {
+  const worksheets = [summary, trend, areas, details, volume, volumeAreas].map((rows) => demo ? [
+    ...sheet([
+      ['ข้อมูลสมมติ · ไม่ใช่รายงานการเงินจริง'],
+      ['รายการประกอบเป็นตัวอย่างบางส่วน ยอดรวมจึงอาจไม่ตรงกับสรุป'],
+    ]),
+    ...rows,
+  ] : rows);
+  await writeXlsxFile(worksheets, {
     sheets: ['สรุป', 'แนวโน้ม', 'พื้นที่', 'รายการ', 'ปริมาณรวม', 'ปริมาณแยกตึก'],
     columns: [
       [{ width: 32 }, { width: 24 }],
@@ -78,6 +99,6 @@ export async function exportExecutiveReport(
       Array.from({ length: 4 }, () => ({ width: 22 })),
       Array.from({ length: 6 }, () => ({ width: 22 })),
     ],
-    fileName: `executive-report-${report.from}-${report.to}.xlsx`,
+    fileName: `${demo ? 'demo-' : ''}executive-report-${report.from}-${report.to}.xlsx`,
   });
 }

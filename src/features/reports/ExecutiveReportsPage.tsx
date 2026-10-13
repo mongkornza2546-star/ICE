@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowClockwise, CaretLeft, CaretRight, ChartBar, CreditCard, DownloadSimple, Receipt, Truck, Warning, X, type Icon } from '@phosphor-icons/react';
+import { ArrowClockwise, CaretLeft, CaretRight, DownloadSimple, Receipt, X } from '@phosphor-icons/react';
 import { supabase } from '../../lib/supabase';
 import { subscribeToDataChange } from '../../lib/dataChange';
 import { toBangkokDateString } from '../../lib/serviceDate';
@@ -8,13 +8,13 @@ import { exportExecutiveReport } from './exportExecutiveReport';
 import { ReportSections, ReportTabs, type ReportSection } from './ExecutiveReportSections';
 import { ExecutiveFollowUps } from './ExecutiveFollowUps';
 import { ReportShopProfile } from './ReportShopProfile';
-import { formatReportDate, presetDates, reportRangeError, type Preset } from './reportDates';
+import { formatReportDate, presetDates, previousPeriod, reportRangeError, type Preset } from './reportDates';
 import type { DetailQuery, ExecutiveReport, ReportInvoice, ReportMetric, ReportRow } from './types';
+import { FinancialOverview } from './FinancialOverview';
+import { financialReconciliation, money as baht } from './financialReport';
+import { agingLabels } from './reportInsights';
 import './executiveReports.css';
 
-const baht = (value: number) => new Intl.NumberFormat('th-TH', {
-  style: 'currency', currency: 'THB', maximumFractionDigits: 0,
-}).format(value);
 const number = (value: number) => new Intl.NumberFormat('th-TH', { maximumFractionDigits: 1 }).format(value);
 const metricNames: Record<ReportMetric, string> = {
   sales: 'ยอดขายสุทธิ', receipts: 'เงินรับจริง', refunds: 'เงินคืนจริง',
@@ -28,6 +28,13 @@ const presetNames: Record<Exclude<Preset, 'custom'>, string> = {
 
 async function fetchDetails(from: string, to: string, query: DetailQuery, offset: number) {
   if (!supabase) throw new Error('ยังไม่ได้ตั้งค่าการเชื่อมต่อ Supabase');
+  if (query.agingBucket) {
+    const { data, error } = await supabase.rpc('get_executive_report_aged_details', {
+      p_bucket: query.agingBucket, p_shop_id: query.shopId ?? null, p_limit: 50, p_offset: offset,
+    });
+    if (error) throw new Error(error.message);
+    return data as { total: number; rows: ReportRow[] };
+  }
   const { data, error } = await supabase.rpc('get_executive_report_details', {
     p_from: from, p_to: to, p_metric: query.metric,
     p_limit: 50, p_offset: offset, p_bucket: query.bucket ?? null,
@@ -38,25 +45,14 @@ async function fetchDetails(from: string, to: string, query: DetailQuery, offset
   return data as { total: number; rows: ReportRow[] };
 }
 
-function MetricCard({ title, value, note, description, onClick, tone = 'blue', icon: Icon, count = false }: {
-  title: string; value: number; note?: string; description?: string; icon: Icon; count?: boolean;
-  onClick: (trigger: HTMLButtonElement) => void; tone?: string;
-}) {
-  return <button className={`executive-metric executive-metric--${tone}${count ? ' executive-metric--count' : ''}`}
-    onClick={(event) => onClick(event.currentTarget)} type="button">
-    <span className="executive-metric__heading"><span className="executive-metric__icon"><Icon size={23} aria-hidden="true" /></span>{title}</span>
-    <strong>{count ? number(value) : baht(value)}</strong>
-    {description ? <small>{description}</small> : null}
-    {note ? <small className="executive-metric__note">{note}</small> : null}
-  </button>;
-}
-
 export function ExecutiveReportsPage({ isActive, demoReport, demoRows }: {
   isActive: boolean; demoReport?: ExecutiveReport;
   demoRows?: Partial<Record<ReportMetric, ReportRow[]>>;
 }) {
   useLanguage();
   const initial = presetDates('month');
+  const [scopeShopId, setScopeShopId] = useState('');
+  const [scopeOptions, setScopeOptions] = useState<Array<{ id: string; name: string }>>([]);
   const [preset, setPreset] = useState<Preset>('month');
   const [from, setFrom] = useState(initial.from);
   const [to, setTo] = useState(initial.to);
@@ -86,14 +82,14 @@ export function ExecutiveReportsPage({ isActive, demoReport, demoRows }: {
   const reportHeading = useRef<HTMLHeadingElement | null>(null);
   const debtorListPage = useRef(0);
   const rangeError = reportRangeError(from, to);
-  const shownReport = !rangeError && report && report.from === from && report.to === to ? report : null;
+  const shownReport = !rangeError && report && report.from === from && report.to === to && (report.scopeShopId ?? '') === scopeShopId ? report : null;
 
   const refresh = useCallback(() => setRefreshKey((value) => value + 1), []);
 
   useEffect(() => {
     if (!isActive || rangeError) return;
     if (demoReport) {
-      setReport({ ...demoReport, from, to });
+      setReport({ ...demoReport, from, to, ...previousPeriod(from, to) });
       setLoading(false);
       return;
     }
@@ -105,10 +101,13 @@ export function ExecutiveReportsPage({ isActive, demoReport, demoRows }: {
       setLoading(false);
       return;
     }
-    void supabase.rpc('get_executive_report', { p_from: from, p_to: to }).then(({ data, error: rpcError }) => {
+    void supabase.rpc(scopeShopId ? 'get_executive_report_for_shop' : 'get_executive_report', { p_from: from, p_to: to, ...(scopeShopId ? { p_shop_id: scopeShopId } : {}) }).then(({ data, error: rpcError }) => {
       if (request !== reportRequest.current) return;
       if (rpcError) setError(rpcError.message);
-      else setReport(data as ExecutiveReport);
+      else {
+        setReport(data as ExecutiveReport);
+        setScopeOptions((data as ExecutiveReport).scopeOptions ?? []);
+      }
       setLoading(false);
     }, (cause: unknown) => {
       if (request !== reportRequest.current) return;
@@ -116,7 +115,7 @@ export function ExecutiveReportsPage({ isActive, demoReport, demoRows }: {
       setLoading(false);
     });
     return () => { reportRequest.current += 1; };
-  }, [isActive, from, to, refreshKey, rangeError, demoReport]);
+  }, [isActive, from, to, scopeShopId, refreshKey, rangeError, demoReport]);
 
   useEffect(() => {
     if (!isActive || demoReport) return;
@@ -151,9 +150,14 @@ export function ExecutiveReportsPage({ isActive, demoReport, demoRows }: {
     setDetailData(null);
     setDetailError(null);
     if (demoRows) {
+      const snapshot = report ? toBangkokDateString(new Date(report.asOf)) : toBangkokDateString();
       const rows = (demoRows[detail.metric] ?? []).filter((row) =>
         (!detail.bucket || row.day === detail.bucket)
         && (!detail.shopId || row.shopId === detail.shopId)
+        && (!detail.agingBucket || (() => {
+          const age = (Date.parse(snapshot) - Date.parse(row.dueDate ?? row.day)) / 86400000;
+          return (age <= 0 ? 'notDue' : age <= 7 ? 'days1to7' : age <= 30 ? 'days8to30' : 'days31plus') === detail.agingBucket;
+        })())
         && (!detail.areaKind || row.area === report?.areas.find((area) => area.kind === detail.areaKind && area.id === detail.areaId)?.name));
       setDetailData({ total: rows.length, rows: rows.slice(detailPage * 50, (detailPage + 1) * 50) });
       return;
@@ -198,7 +202,8 @@ export function ExecutiveReportsPage({ isActive, demoReport, demoRows }: {
     const dates = presetDates(next);
     setPreset(next); setFrom(dates.from); setTo(dates.to); setDetail(null);
   };
-  const openDetail = (query: DetailQuery, label?: string, trigger?: HTMLElement) => {
+  const openDetail = (requested: DetailQuery, label?: string, trigger?: HTMLElement) => {
+    const query = { ...requested, shopId: requested.shopId ?? (scopeShopId || undefined) };
     if (!detail) {
       detailTrigger.current = trigger ?? document.activeElement as HTMLElement | null;
       detailTriggerShop.current = detailTrigger.current?.getAttribute('data-follow-up-shop') ?? null;
@@ -216,11 +221,11 @@ export function ExecutiveReportsPage({ isActive, demoReport, demoRows }: {
   };
   const backDetail = () => {
     if (invoiceId) { setInvoiceId(null); return; }
-    if (detail?.shopId && (detail.metric === 'debt' || detail.metric === 'overdue')) {
-      setDetail({ metric: detail.metric });
+    if (!scopeShopId && detail?.shopId && (detail.metric === 'debt' || detail.metric === 'overdue')) {
+      setDetail({ metric: detail.metric, agingBucket: detail.agingBucket });
       setDetailPage(debtorListPage.current);
       setDebtorName(null);
-      setDetailLabel(null);
+      setDetailLabel(detail.agingBucket ? agingLabels[detail.agingBucket] : null);
       return;
     }
     closeDetail();
@@ -230,6 +235,7 @@ export function ExecutiveReportsPage({ isActive, demoReport, demoRows }: {
     if (!report || exporting || loading || error || rangeError) return;
     setExporting(true);
     try {
+      if (!financialReconciliation(report)) throw new Error('ยอดสรุปไม่ตรงกับข้อมูลแยกย่อย กรุณารีเฟรชก่อนส่งออก');
       const metrics: ReportMetric[] = ['sales', 'receipts', 'refunds', 'debt'];
       const all: Partial<Record<ReportMetric, ReportRow[]>> = {};
       for (const metric of metrics) {
@@ -237,7 +243,7 @@ export function ExecutiveReportsPage({ isActive, demoReport, demoRows }: {
         const rows: ReportRow[] = [];
         let total = 0;
         do {
-          const page = await fetchDetails(from, to, { metric }, rows.length);
+          const page = await fetchDetails(from, to, { metric, shopId: scopeShopId || undefined }, rows.length);
           total = page.total;
           rows.push(...page.rows);
           if (page.rows.length === 0) break;
@@ -249,11 +255,12 @@ export function ExecutiveReportsPage({ isActive, demoReport, demoRows }: {
         const expected = { sales: report.sales, receipts: report.receipts,
           refunds: report.refunds, debt: report.outstanding };
         if ((Object.keys(expected) as Array<keyof typeof expected>).some((metric) =>
-          Math.abs(amount(metric) - Number(expected[metric])) > 0.01)) {
+          !Number.isFinite(amount(metric)) || !Number.isFinite(expected[metric])
+          || Math.abs(amount(metric) - Number(expected[metric])) > 0.01)) {
           throw new Error('ข้อมูลเปลี่ยนระหว่างสร้างไฟล์ กรุณารีเฟรชรายงานแล้วลองอีกครั้ง');
         }
       }
-      await exportExecutiveReport(report, all);
+      await exportExecutiveReport(report, all, { demo: Boolean(demoReport) });
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'ส่งออก Excel ไม่สำเร็จ');
     } finally {
@@ -266,44 +273,30 @@ export function ExecutiveReportsPage({ isActive, demoReport, demoRows }: {
   const receiptRefunds = detail?.bucket ? receiptPoint?.refunds ?? 0 : shownReport?.refunds ?? 0;
   return <div className="executive-report">
     <header className="executive-report__heading">
-      <div><h1 ref={reportHeading} tabIndex={-1}>{translateUi('รายงานผู้บริหาร')}</h1><p>{translateUi('ยอดขาย เงินรับ ลูกหนี้ และปริมาณส่ง')}</p></div>
+      <div><h1 ref={reportHeading} tabIndex={-1}>{translateUi('รายงานผู้บริหาร')}</h1><p>{translateUi('ภาพรวมที่เข้าใจได้ แล้วเจาะตัวเลขเพื่อสั่งการต่อ')}</p></div>
       <div className="executive-report__actions">
         <button aria-label={translateUi('รีเฟรชรายงาน')} disabled={loading || Boolean(rangeError)} onClick={refresh} type="button"><ArrowClockwise size={19} />{translateUi(' รีเฟรช')}</button>
         <button disabled={!shownReport || loading || exporting || Boolean(error)} onClick={() => void handleExport()} type="button"><DownloadSimple size={19} /> {exporting ? translateUi('กำลังสร้าง Excel…') : translateUi('ส่งออก Excel')}</button>
       </div>
     </header>
 
+    {demoReport ? <p className="executive-demo-notice" role="status">{translateUi('โหมดตัวอย่าง · ตัวเลขสมมติสำหรับทดสอบหน้าจอ ไม่ใช่ข้อมูลจริง')}</p> : null}
     <section className="executive-filters" aria-label={translateUi('เลือกช่วงเวลารายงาน')}>
       <div className="executive-filter-controls"><div aria-label={translateUi('ช่วงวันที่ลัด')} className="executive-presets">{(Object.keys(presetNames) as Array<Exclude<Preset, 'custom'>>).map((key) =>
         <button aria-pressed={preset === key} key={key} onClick={() => choosePreset(key)} type="button">{translateUi(presetNames[key])}</button>)}</div>
       <div className="executive-dates"><label>{translateUi('จาก')}<input max={toBangkokDateString()} onChange={(event) => { setPreset('custom'); setFrom(event.target.value); setDetail(null); }} type="date" value={from} /></label>
-        <label>{translateUi('ถึง')}<input max={toBangkokDateString()} onChange={(event) => { setPreset('custom'); setTo(event.target.value); setDetail(null); }} type="date" value={to} /></label></div></div>
+        <label>{translateUi('ถึง')}<input max={toBangkokDateString()} onChange={(event) => { setPreset('custom'); setTo(event.target.value); setDetail(null); }} type="date" value={to} /></label></div>
+      <label className="executive-scope">{translateUi('ขอบเขตข้อมูล')}<select value={scopeShopId} onChange={(event) => { setScopeShopId(event.target.value); setDetail(null); setSection('overview'); }}><option value="">{translateUi('ทั้งกิจการ')}</option>{scopeOptions.map((shop) => <option key={shop.id} value={shop.id}>{shop.name}</option>)}</select></label></div>
       {rangeError ? <p className="executive-error" role="alert">{translateUi(rangeError)}</p> : null}
-      {shownReport ? <p className="executive-asof">{translateUi('ข้อมูล ณ ')}{uiDateTimeString(new Date(shownReport.asOf), { timeZone: 'Asia/Bangkok' })} · {formatReportDate(from)} – {formatReportDate(to)}</p> : null}
+      {shownReport ? <p className="executive-asof">{translateUi('อัปเดตข้อมูลล่าสุด ')}{uiDateTimeString(new Date(shownReport.asOf), { timeZone: 'Asia/Bangkok' })} · {formatReportDate(from)} – {formatReportDate(to)}</p> : null}
+      {shownReport?.previousFrom && shownReport.previousTo ? <p className="executive-asof">{translateUi('เทียบช่วงก่อนหน้าเท่ากัน')} {formatReportDate(shownReport.previousFrom)} – {formatReportDate(shownReport.previousTo)} · {translateUi('ยอดลูกหนี้ใช้วันที่อัปเดต ไม่ใช่วันสิ้นช่วง')}</p> : null}
     </section>
 
     {error ? <div className="executive-error" role="alert">{translateUi('โหลดรายงานไม่สำเร็จ: ')}{translateUi(error)} <button onClick={refresh} type="button">{translateUi('ลองใหม่')}</button></div> : null}
     {loading && !shownReport ? <p className="executive-status" role="status">{translateUi('กำลังโหลดรายงาน…')}</p> : null}
     {shownReport ? <>
       <ReportTabs active={section} onChange={setSection} />
-      <section className="executive-business-overview" aria-label={translateUi('ภาพรวมธุรกิจ')}>
-        <div className="executive-business-overview__heading"><h2>{translateUi('ภาพรวมธุรกิจ')}</h2><p>{formatReportDate(from)} – {formatReportDate(to)}</p></div>
-        <div className="executive-metrics" aria-label={translateUi('ตัวเลขสำคัญ')}>
-          <MetricCard title={translateUi('ยอดขายสุทธิ')} value={shownReport.sales} icon={ChartBar}
-            description={translateUi('ตามช่วงวันที่เลือก')} note={translateUi('รวมค่าน้ำถัง/VAT ที่เรียกเก็บ')}
-            onClick={(trigger) => openDetail({ metric: 'sales' }, undefined, trigger)} />
-          <MetricCard title={translateUi('เงินรับสุทธิ')} value={shownReport.netReceipts} icon={CreditCard} tone="green"
-            description={translateUi('วันที่รับเงินจริง')} note={translateUi('ไม่ใช่ยอดขายของวันเดียวกัน')}
-            onClick={(trigger) => openDetail({ metric: 'receipts' }, undefined, trigger)} />
-          <MetricCard title={translateUi('รายการส่ง')} value={shownReport.deliveryCount} icon={Truck} count
-            description={translateUi('จำนวนครั้งที่บันทึกส่ง')} note={translateUi('ไม่ใช่จำนวนถุง')}
-            onClick={() => setSection('volume')} />
-          <MetricCard description={`${number(shownReport.debtors)} ${translateUi('ร้าน')} · ${translateUi('ยอด ณ')} ${formatReportDate(toBangkokDateString())}`}
-            onClick={(trigger) => openDetail({ metric: 'debt' }, undefined, trigger)} title={translateUi('หนี้ค้างปัจจุบัน')} icon={Receipt} tone="amber" value={shownReport.outstanding} />
-          <MetricCard description={translateUi('ยอดค้างที่ต้องติดตาม')} onClick={(trigger) => openDetail({ metric: 'overdue' }, undefined, trigger)}
-            title={translateUi('หนี้เกินกำหนด')} icon={Warning} tone="red" value={shownReport.overdue} />
-        </div>
-      </section>
+      <FinancialOverview report={shownReport} openDetail={openDetail} onAnalyze={(target) => { setSection('finance'); window.requestAnimationFrame(() => document.getElementById(target)?.scrollIntoView({ behavior: 'smooth' })); }} />
       {section === 'sales' || section === 'volume' ? <nav className="executive-detail-nav" aria-label={translateUi('รายละเอียดรายงาน')}>
         <button onClick={() => setSection('overview')} type="button"><CaretLeft size={16} />{translateUi('กลับภาพรวม')}</button>
         <button aria-current={section === 'sales' ? 'page' : undefined} onClick={() => setSection('sales')} type="button">{translateUi('ยอดขาย')}</button>
@@ -327,7 +320,7 @@ export function ExecutiveReportsPage({ isActive, demoReport, demoRows }: {
         trendMetric={trendMetric}
       />
 
-      {section === 'finance' ? <ExecutiveFollowUps report={shownReport} isActive={isActive} demoRows={demoReport ? demoRows?.overdue ?? [] : undefined}
+      {section === 'finance' && !scopeShopId ? <ExecutiveFollowUps report={shownReport} isActive={isActive} demoRows={demoReport ? demoRows?.overdue ?? [] : undefined}
         onOpenAll={(trigger) => openDetail({ metric: 'overdue' }, undefined, trigger)}
         onOpenShop={(row, trigger) => {
           debtorListPage.current = 0;
@@ -344,14 +337,16 @@ export function ExecutiveReportsPage({ isActive, demoReport, demoRows }: {
       if (event.shiftKey && (document.activeElement === focusable[0] || document.activeElement === dialogRef.current)) { event.preventDefault(); focusable[focusable.length - 1].focus(); }
       else if (!event.shiftKey && document.activeElement === focusable[focusable.length - 1]) { event.preventDefault(); focusable[0].focus(); }
     }} ref={dialogRef} role="dialog" tabIndex={-1}>
-      <header><button aria-label={invoiceId || detail.shopId ? translateUi('กลับไปยังรายการ') : translateUi('ย้อนกลับไปยังรายงาน')} onClick={backDetail} type="button"><CaretLeft size={21} /></button><div><h2>{invoiceId ? (invoice?.number ?? translateUi('รายละเอียดบิล')) : debtorName ?? detailLabel ?? translateUi(metricNames[detail.metric])}</h2><p>{invoiceId ? invoice?.shop : detail.metric === 'debt' || detail.metric === 'overdue' ? translateUi('ยอดปัจจุบัน') : `${formatReportDate(from)} – ${formatReportDate(to)}`}{!invoiceId && detail.metric === 'receipts' ? translateUi(' · ก่อนหักเงินคืน') : ''}</p></div><button aria-label={translateUi('ปิดรายละเอียด')} onClick={closeDetail} type="button"><X size={21} /></button></header>
+      <header><button aria-label={invoiceId || detail.shopId ? translateUi('กลับไปยังรายการ') : translateUi('ย้อนกลับไปยังรายงาน')} onClick={backDetail} type="button"><CaretLeft size={21} /></button><div><h2>{invoiceId ? (invoice?.number ?? translateUi('รายละเอียดบิล')) : debtorName ?? detailLabel ?? translateUi(metricNames[detail.metric])}</h2><p>{invoiceId ? invoice?.shop : detail.metric === 'debt' || detail.metric === 'overdue' ? `${translateUi('ยอด ณ')} ${shownReport ? formatReportDate(toBangkokDateString(new Date(shownReport.asOf))) : '—'}` : `${formatReportDate(from)} – ${formatReportDate(to)}`}{!invoiceId && detail.metric === 'receipts' ? translateUi(' · ก่อนหักเงินคืน') : ''}</p></div><button aria-label={translateUi('ปิดรายละเอียด')} onClick={closeDetail} type="button"><X size={21} /></button></header>
       {invoiceId ? <>
         {invoiceError ? <p className="executive-error" role="alert">{translateUi(invoiceError)}</p> : null}
         {!invoice && !invoiceError ? <p className="executive-status">{translateUi('กำลังโหลดบิล…')}</p> : null}
         {invoice ? <div className="executive-invoice">
           <p>{translateUi('วันที่ขาย ')}{formatReportDate(invoice.serviceDate)} · {invoice.area}</p>
           <p>{translateUi('ครบกำหนด ')}{formatReportDate(invoice.dueDate)}</p>
-          <div><span>{translateUi('ยอดขายสุทธิ')}</span><strong>{baht(invoice.total)}</strong></div>
+          {invoice.sales !== undefined ? <div><span>{translateUi('ยอดขายไม่รวม VAT')}</span><strong>{baht(invoice.sales)}</strong></div> : null}
+          {invoice.vat !== undefined ? <div><span>VAT</span><strong>{baht(invoice.vat)}</strong></div> : null}
+          <div><span>{translateUi('ยอดบิลรวม VAT')}</span><strong>{baht(invoice.total)}</strong></div>
           <div><span>{translateUi('รับชำระแล้ว')}</span><strong>{baht(invoice.paid)}</strong></div>
           <div><span>{translateUi('คงค้าง')}</span><strong>{baht(Math.max(0, invoice.total - invoice.paid))}</strong></div>
           <h3>{translateUi('รายการสินค้า')}</h3>{invoice.items.map((item, index) => <div key={`${item.name}-${index}`}><span>{item.name}</span><strong>{number(item.quantity)} {item.unit}</strong></div>)}
@@ -360,9 +355,10 @@ export function ExecutiveReportsPage({ isActive, demoReport, demoRows }: {
       </> : <>
       {detail.shopId ? <ReportShopProfile key={detail.shopId} shopId={detail.shopId} demo={Boolean(demoReport)}
         demoArea={Object.values(demoRows ?? {}).flat().find((row) => row.shopId === detail.shopId && row.area)?.area} /> : null}
-      {detail.metric === 'receipts' && shownReport ? <div className="executive-receipt-breakdown">
+      <p className="executive-panel-note">{translateUi('3 · รายการประกอบ')} · {shownReport?.scopeName ?? translateUi('ทั้งกิจการ')}{detail.agingBucket ? ` · ${translateUi(agingLabels[detail.agingBucket])}` : ''}</p>
+      {detail.metric === 'receipts' && shownReport && (!detail.bucket || receiptPoint) && !detail.areaKind && (detail.shopId ?? '') === (shownReport.scopeShopId ?? '') ? <div className="executive-receipt-breakdown">
         <span>{translateUi('รับจริง ')}{baht(receiptGross)}</span>
-        <button onClick={() => openDetail({ metric: 'refunds', bucket: detail.bucket })} type="button">{translateUi('คืนเงิน ')}{baht(receiptRefunds)}{translateUi(' · ดูรายการ')}</button>
+        <button onClick={() => openDetail({ metric: 'refunds', bucket: detail.bucket, shopId: detail.shopId })} type="button">{translateUi('คืนเงิน ')}{baht(receiptRefunds)}{translateUi(' · ดูรายการ')}</button>
         <strong>{translateUi('รับสุทธิ ')}{baht(receiptGross - receiptRefunds)}</strong>
       </div> : null}
       {detailError ? <p className="executive-error" role="alert">{translateUi(detailError)} <button onClick={refresh} type="button">{translateUi('ลองใหม่')}</button></p> : null}

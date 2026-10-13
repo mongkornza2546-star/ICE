@@ -5,7 +5,7 @@ import type { ReportSection } from './ExecutiveReportSections';
 import type { DetailQuery, ExecutiveReport } from './types';
 
 const number = (value: number) => new Intl.NumberFormat('th-TH', { maximumFractionDigits: 1 }).format(value);
-const baht = (value: number) => new Intl.NumberFormat('th-TH', { style: 'currency', currency: 'THB', maximumFractionDigits: 0 }).format(value);
+const baht = (value: number) => new Intl.NumberFormat('th-TH', { style: 'currency', currency: 'THB', minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(value);
 const isSalesDestination = (area: { kind: string }) => ['building', 'event', 'casual'].includes(area.kind);
 
 export function ReportOverview({ report, openDetail, onNavigate }: {

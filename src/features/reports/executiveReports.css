@@ -395,3 +395,42 @@
   .executive-area-selection__actions button { min-height: 44px; }
   .executive-area-selection__products { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+
+/* Financial overview retains the existing blue/white executive report system. */
+.executive-report .executive-financial-metrics { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.executive-financial-metrics .executive-metric { min-height: 198px; background: #f0f6ff; }
+.executive-financial-metrics .executive-metric--unavailable { background: #f8fafc; border-color: #dce4ee; }
+.executive-financial-metrics .executive-metric--unavailable strong { font-size: 1.06rem; color: #51617a; }
+.executive-financial-metrics .executive-metric__heading { display: flex; align-items: center; gap: 7px; }
+.executive-financial-metrics .executive-metric__action { margin-top: auto; padding-top: 7px; font-size: .77rem; }
+.executive-financial-metrics small.executive-change { font-size: .78rem; line-height: 1.6; }
+.executive-change--good { color: #17603e !important; }
+.executive-change--bad { color: #a32c35 !important; }
+.executive-change--neutral { color: #57677e !important; }
+.executive-level { font-size: .78rem; border: 1px solid #d6e5f7; padding: 5px 9px; border-radius: 7px; background: #f0f6ff; color: #365577; white-space: nowrap; }
+.executive-scope { display: flex; align-items: center; gap: 8px; color: #465a73; font-size: .9rem; }
+.executive-scope select { min-height: 40px; max-width: 250px; border: 1px solid #c8d5e6; border-radius: 9px; padding: 6px 9px; background: white; color: #10233f; font: inherit; }
+.executive-analysis-links { display: flex; flex-wrap: wrap; gap: 8px; }
+.executive-analysis-links button { min-height: 44px; border: 1px solid #c8d5e6; border-radius: 10px; background: white; color: #075ed8; padding: 9px 14px; }
+.executive-profit-bridge { list-style: none; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 7px; padding: 0; margin: 5px 0; }
+.executive-profit-bridge li { display: flex; flex-direction: column; gap: 10px; border: 1px solid #dce4ee; border-radius: 10px; padding: 15px 12px; background: #fafcff; }
+.executive-profit-bridge li span { font-size: .85rem; }
+.executive-profit-bridge li strong { font-size: .98rem; color: #536780; }
+.executive-profit-bridge small { color: #57677e; }
+.executive-profit-bridge li.executive-profit-bridge__result { background: #eff6ff; }
+.executive-financial-gap { display: grid; gap: 6px; border-left: 3px solid #c9942c; background: #fff9ec; border-radius: 7px; padding: 14px; color: #614d24; font-size: .86rem; line-height: 1.65; }
+.executive-cash-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin-top: 12px; }
+.executive-cash-grid > div { padding: 14px; border: 1px solid #dfe6ef; border-radius: 10px; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; min-width: 0; }
+.executive-cash-grid span { font-size: .87rem; color: #526783; }
+.executive-cash-grid small { color: #57677e; line-height: 1.6; }
+.executive-methodology summary { cursor: pointer; font-weight: 700; color: #294867; min-height: 32px; align-content: center; }
+.executive-methodology summary:focus-visible, .executive-scope select:focus-visible { outline: 3px solid #0d6efd; outline-offset: 3px; }
+.executive-methodology ul { padding-left: 22px; display: grid; gap: 10px; color: #536780; line-height: 1.65; font-size: .88rem; }
+.executive-methodology[open] > .executive-overview { margin-top: 20px; }
+.executive-demo-notice { padding: 10px 14px; color: #614d24; background: #fff7e8; border: 1px solid #ecd8ac; border-radius: 9px; font-size: .85rem; }
+@media (max-width: 1100px) { .executive-report .executive-financial-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); } .executive-profit-bridge { grid-template-columns: 1fr; } .executive-profit-bridge li { flex-direction: row; justify-content: space-between; flex-wrap: wrap; } }
+@media (max-width: 740px) { .executive-cash-grid { grid-template-columns: 1fr; } .executive-scope, .executive-scope select { width: 100%; max-width: none; } .executive-analysis-links button { flex: 1 1 100%; } .executive-financial-metrics .executive-metric { min-height: 196px; } }
+@media (max-width: 430px) { .executive-report .executive-financial-metrics { grid-template-columns: 1fr; } .executive-financial-metrics .executive-metric { min-height: 160px; } }
+.executive-financial-metrics .executive-metric:nth-child(n) { grid-column: auto; }
+@container executive-report (max-width: 1020px) { .executive-report .executive-financial-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@container executive-report (max-width: 430px) { .executive-report .executive-financial-metrics { grid-template-columns: 1fr; } }

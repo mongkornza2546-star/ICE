@@ -76,6 +76,8 @@ async function database(t) {
   await db.exec(migration);
   await db.exec(readFileSync(new URL('../supabase/migrations/0224_executive_report_volume_by_building.sql', import.meta.url), 'utf8'));
   await db.exec(readFileSync(new URL('../supabase/migrations/0225_executive_report_insights.sql', import.meta.url), 'utf8'));
+  await db.exec('alter table public.delivery_charges add column vat_amount numeric not null default 0');
+  await db.exec(readFileSync(new URL('../supabase/migrations/0226_executive_financial_reporting.sql', import.meta.url), 'utf8'));
   await db.exec(`select set_config('test.app_role', 'admin', false)`);
   return db;
 }
@@ -89,7 +91,7 @@ test('executive report separates sales, old-debt receipts, refunds, and current 
     insert into public.delivery_events values
       ('40000000-0000-4000-8000-000000000001', '30000000-0000-4000-8000-000000000001', 'active', '2026-09-01T04:00:00Z'),
       ('40000000-0000-4000-8000-000000000002', '30000000-0000-4000-8000-000000000001', 'active', '2026-08-20T04:00:00Z');
-    insert into public.delivery_charges values
+    insert into public.delivery_charges (id, delivery_event_id, shop_id, service_date, due_date, status, original_amount, charge_number) values
       ('50000000-0000-4000-8000-000000000001', '40000000-0000-4000-8000-000000000001', '20000000-0000-4000-8000-000000000001', '2026-09-01', null, 'active', 100, null),
       ('50000000-0000-4000-8000-000000000002', '40000000-0000-4000-8000-000000000002', '20000000-0000-4000-8000-000000000001', '2026-08-20', null, 'active', 80, null);
     insert into public.payments values
@@ -139,6 +141,8 @@ test('only active admins can call the report endpoints as authenticated users', 
   for (const [role, active] of [['round_lead', 'true'], ['courier', 'true'], ['admin', 'false']]) {
     await db.query(`select set_config('test.app_role', $1, false), set_config('test.active', $2, false)`, [role, active]);
     await assert.rejects(db.query(`select public.get_executive_report('2026-09-01', '2026-09-02')`), /Only an active admin/);
+    await assert.rejects(db.query(`select public.get_executive_report_for_shop('2026-09-01', '2026-09-02', null)`), /Only an active admin/);
+    await assert.rejects(db.query(`select public.get_executive_report_aged_details('notDue')`), /Only an active admin/);
     await assert.rejects(db.query(`select public.get_executive_report_details('2026-09-01', '2026-09-02', 'debt')`), /Only an active admin/);
     await assert.rejects(db.query(`select public.get_executive_report_invoice('50000000-0000-4000-8000-000000000001')`), /Only an active admin/);
   }
@@ -151,6 +155,7 @@ test('only active admins can call the report endpoints as authenticated users', 
 test('the facts helper stays private under production default grants', async (t) => {
   const db = await database(t);
   await db.exec(`select set_config('test.app_role', 'courier', false); set role authenticated`);
+  await assert.rejects(db.query(`select * from public.executive_financial_balances()`), /permission denied/);
   await assert.rejects(db.query(`select * from public.executive_report_facts('2026-09-01', '2026-09-02')`), /permission denied for function executive_report_facts/);
   await assert.rejects(db.query(`select public.executive_report_volume_areas('2026-09-01', '2026-09-02')`), /permission denied for function executive_report_volume_areas/);
   await assert.rejects(db.query(`select public.executive_report_insights('2026-09-01', '2026-09-02')`), /permission denied for function executive_report_insights/);
@@ -430,3 +435,71 @@ function assertVolumeReconciles(report) {
   }
   for (const sum of totals.values()) assert.deepEqual(sum, { delivered: 0, damaged: 0 });
 }
+
+test('financial scope reconciles VAT-exclusive sales, gross collections, equal periods, aging and invoices', async (t) => {
+  const db = await database(t);
+  const id = (n) => `30000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
+  await db.exec(`
+    insert into buildings values ('${id(1)}', 'Building', 'B');
+    insert into shops values ('${id(2)}', 'Shop A', '${id(1)}'), ('${id(3)}', 'Shop B', '${id(1)}');
+    insert into delivery_events values
+      ('${id(4)}', null, 'active', '2026-09-01'), ('${id(5)}', null, 'active', '2026-09-01'),
+      ('${id(6)}', null, 'active', '2026-08-31'), ('${id(7)}', null, 'cancelled', '2026-09-01');
+    insert into delivery_charges (id, delivery_event_id, shop_id, service_date, due_date, status, original_amount, vat_amount) values
+      ('${id(10)}', '${id(4)}', '${id(2)}', '2026-09-01', (now() at time zone 'Asia/Bangkok')::date, 'active', 107, 7),
+      ('${id(11)}', '${id(5)}', '${id(3)}', '2026-09-01', '2026-09-01', 'active', 214, 14),
+      ('${id(12)}', '${id(6)}', '${id(2)}', '2026-08-31', (now() at time zone 'Asia/Bangkok')::date - 8, 'active', 80, 0),
+      ('${id(13)}', '${id(7)}', '${id(2)}', '2026-09-01', '2026-09-01', 'active', 999, 0);
+    insert into delivery_charge_adjustments values ('${id(14)}', '${id(12)}', 'active', -10);
+    insert into payments values ('${id(20)}', '${id(2)}', 20, 'cash', '2026-09-01T00:00:00Z', 'active'),
+      ('${id(21)}', '${id(2)}', 10, 'bank_transfer', '2026-08-31T00:00:00Z', 'active'),
+      ('${id(22)}', '${id(3)}', 99, 'cash', '2026-09-01T00:00:00Z', 'active');
+    insert into payment_allocations values ('${id(20)}', '${id(12)}', 20), ('${id(21)}', '${id(12)}', 10);
+    insert into refund_obligations values ('${id(23)}', '${id(20)}');
+    insert into refund_settlements values ('${id(24)}', '${id(23)}', 5, 'cash', '2026-09-01T01:00:00Z');
+    set role authenticated;
+  `);
+  const scoped = (await db.query(`select get_executive_report_for_shop('2026-09-01','2026-09-01',$1) as report`, [id(2)])).rows[0].report;
+  assert.equal(scoped.financialVersion, 1);
+  assert.equal(scoped.sales, 100);
+  assert.equal(scoped.receipts, 20);
+  assert.equal(scoped.refunds, 5);
+  assert.equal(scoped.netReceipts, 15);
+  assert.equal(scoped.previousSales, 70);
+  assert.equal(scoped.previousReceipts, 10);
+  assert.equal(scoped.previousFrom, '2026-08-31');
+  assert.equal(scoped.previousTo, '2026-08-31');
+  assert.equal(scoped.outstanding, 147);
+  assert.equal(scoped.overdue, 40);
+  assert.equal(scoped.debtors, 1);
+  assert.equal(scoped.deliveryCount, 1);
+  assert.deepEqual(scoped.products, []);
+  assert.equal(scoped.volumeAreas, null);
+  assert.equal(scoped.quietShops, null);
+  assert.equal(scoped.shops.length, 1);
+  assert.equal(scoped.trend.reduce((s, row) => s + row.sales, 0), scoped.sales);
+  assert.equal(scoped.areas.reduce((s, row) => s + row.sales, 0), scoped.sales);
+  assert.equal(scoped.receiptMethods.reduce((s, row) => s + row.amount, 0), scoped.receipts);
+  assert.equal(scoped.debtAging.reduce((s, row) => s + row.amount, 0), scoped.outstanding);
+  for (const [metric, expected] of [['sales', 100], ['receipts', 20], ['refunds', 5], ['debt', 147], ['overdue', 40]]) {
+    const details = (await db.query(`select get_executive_report_details('2026-09-01','2026-09-01',$1,50,0,null,null,null,$2) as d`, [metric, id(2)])).rows[0].d;
+    assert.equal(details.rows.reduce((s, row) => s + row.amount, 0), expected, metric);
+  }
+  for (const bucket of scoped.debtAging) {
+    const details = (await db.query('select get_executive_report_aged_details($1,$2) as d', [bucket.bucket, id(2)])).rows[0].d;
+    assert.equal(details.rows.reduce((s, row) => s + row.amount, 0), bucket.amount, bucket.bucket);
+  }
+  const notDue = (await db.query(`select get_executive_report_aged_details('notDue') as d`)).rows[0].d;
+  assert.equal(notDue.rows[0].amount, 107, 'due today is not overdue');
+  const invoice = (await db.query('select get_executive_report_invoice($1) as i', [id(10)])).rows[0].i;
+  assert.equal(invoice.sales, 100);
+  assert.equal(invoice.vat, 7);
+  assert.equal(invoice.total, 107);
+  const all = (await db.query(`select get_executive_report('2026-09-01','2026-09-01') as r`)).rows[0].r;
+  assert.equal(all.sales, 300);
+  assert.equal(all.receipts, 119);
+  assert.equal(all.scopeOptions.length, 2);
+  await assert.rejects(db.query(`select get_executive_report_for_shop('2026-09-02','2026-09-01',$1)`, [id(2)]), /valid date/);
+  await assert.rejects(db.query(`select get_executive_report_for_shop('2026-09-01','2026-09-01',$1)`, [id(99)]), /existing shop/);
+  await assert.rejects(db.query(`select get_executive_report_aged_details('invalid')`), /Invalid aging/);
+});

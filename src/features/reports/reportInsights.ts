@@ -1,7 +1,7 @@
 import type { DebtAgingBucket, ExecutiveReport } from './types';
 
 export const baht = (value: number) => new Intl.NumberFormat('th-TH', {
-  style: 'currency', currency: 'THB', maximumFractionDigits: 0,
+  style: 'currency', currency: 'THB', minimumFractionDigits: 0, maximumFractionDigits: 2,
 }).format(value);
 export const number = (value: number) => new Intl.NumberFormat('th-TH', { maximumFractionDigits: 1 }).format(value);
 export const percent = (value: number) => `${number(value)}%`;
@@ -59,6 +59,16 @@ export type AttentionItem = {
 /** Plain-language list of the few things an owner should look at first. */
 export function attentionItems(report: ExecutiveReport): AttentionItem[] {
   const items: AttentionItem[] = [];
+  if (report.sales < report.previousSales) {
+    items.push({ id: 'sales-down', tone: 'warning', title: 'ยอดขายลดลงจากช่วงก่อน',
+      value: baht(report.previousSales - report.sales), detail: 'เทียบช่วงก่อนหน้าที่มีจำนวนวันเท่ากัน · ตรวจลูกค้าและพื้นที่',
+      section: 'sales', target: '' });
+  }
+  if (report.previousReceipts !== undefined && report.sales > report.previousSales && report.receipts < report.previousReceipts) {
+    items.push({ id: 'collection-down', tone: 'warning', title: 'ยอดขายเพิ่ม แต่เงินรับจริงลด',
+      value: baht(report.previousReceipts - report.receipts), detail: 'เงินรับลดลงในช่วงที่ยาวเท่ากัน · ตรวจรอบเก็บเงินและลูกหนี้',
+      section: 'finance', target: 'executive-aging' });
+  }
   const oldDebt = report.debtAging?.find((bucket) => bucket.bucket === 'days31plus');
   if (oldDebt && oldDebt.amount > 0) {
     items.push({ id: 'old-debt', tone: 'danger', title: 'หนี้ค้างเกิน 30 วัน', value: baht(oldDebt.amount),
@@ -66,7 +76,7 @@ export function attentionItems(report: ExecutiveReport): AttentionItem[] {
       section: 'finance', target: 'executive-aging' });
   } else if (report.overdue > 0) {
     items.push({ id: 'overdue', tone: 'warning', title: 'มีหนี้เกินกำหนด', value: baht(report.overdue),
-      detail: 'ยังไม่มีหนี้ค้างเกิน 30 วัน', section: 'finance', target: 'executive-aging' });
+      detail: report.debtAging ? 'ยังไม่มีหนี้ค้างเกิน 30 วัน' : 'ข้อมูลอายุหนี้ยังไม่พร้อม · ตรวจบิลเกินกำหนด', section: 'finance', target: 'executive-aging' });
   }
   if (report.quietShops && report.quietShops.total > 0) {
     items.push({ id: 'quiet-shops', tone: 'warning', title: '{0} ร้านไม่ได้สั่งนานกว่าปกติ',
@@ -84,5 +94,5 @@ export function attentionItems(report: ExecutiveReport): AttentionItem[] {
       detailValues: { 0: worst.productName, 1: percent(worst.average), 2: number(places - 1) },
       section: 'volume', target: 'executive-volume-areas' });
   }
-  return items;
+  return items.slice(0, 5);
 }

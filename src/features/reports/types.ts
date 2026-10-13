@@ -23,6 +23,13 @@ export type ExecutiveReport = {
   netReceipts: number;
   previousSales: number;
   previousNetReceipts: number;
+  // Added by migration 0226. Absence means the legacy sales total includes VAT.
+  financialVersion?: 1;
+  previousReceipts?: number;
+  previousRefunds?: number;
+  scopeOptions?: Array<{ id: string; name: string }>;
+  scopeShopId?: string;
+  scopeName?: string;
   outstanding: number;
   overdue: number;
   debtors: number;
@@ -34,11 +41,11 @@ export type ExecutiveReport = {
   volumeAreas?: Array<{
     kind: string; id: string | null; name: string;
     products: ExecutiveReport['products'];
-  }>;
+  }> | null;
   // Optional until migration 0225 is applied.
   debtAging?: DebtAgingBucket[];
   receiptMethods?: Array<{ method: string; amount: number }>;
-  quietShops?: { total: number; monthlySales: number; rows: QuietShop[] };
+  quietShops?: { total: number; monthlySales: number; rows: QuietShop[] } | null;
 };
 
 export type DebtAgingBucket = {
@@ -63,6 +70,7 @@ export type DetailQuery = {
   areaKind?: string;
   areaId?: string | null;
   shopId?: string;
+  agingBucket?: DebtAgingBucket['bucket'];
 };
 
 export type ReportInvoice = {
@@ -72,6 +80,8 @@ export type ReportInvoice = {
   area: string;
   dueDate: string;
   total: number;
+  sales?: number;
+  vat?: number;
   paid: number;
   items: Array<{ name: string; unit: string; quantity: number }>;
   payments: Array<{ date: string; method: string; amount: number }>;

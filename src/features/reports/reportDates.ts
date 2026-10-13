@@ -3,6 +3,11 @@ import { shiftServiceDate, toBangkokDateString } from '../../lib/serviceDate';
 
 export type Preset = 'today' | 'week' | 'month' | 'year' | 'custom';
 
+export function previousPeriod(from: string, to: string) {
+  const days = Math.round((Date.parse(to) - Date.parse(from)) / 86400000) + 1;
+  return { previousFrom: shiftServiceDate(from, -days), previousTo: shiftServiceDate(from, -1) };
+}
+
 export function presetDates(preset: Exclude<Preset, 'custom'>, today = toBangkokDateString()) {
   const [year, month] = today.split('-');
   if (preset === 'today') return { from: today, to: today };

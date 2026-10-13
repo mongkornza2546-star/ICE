@@ -30,6 +30,7 @@ beforeEach(() => {
       payments: [{ date: new Date().toISOString(), method: 'cash', amount: 200 }],
     } : name === 'get_executive_report' ? {
       from: args.p_from ?? from, to: args.p_to ?? to, asOf: new Date().toISOString(),
+      previousFrom: '2026-09-18', previousTo: '2026-09-30', financialVersion: 1, previousReceipts: 160,
       sales: 500, receipts: 300, refunds: 20, netReceipts: 280,
       previousSales: 250, previousNetReceipts: 140,
       outstanding: 180, overdue: 80, debtors: 2, deliveryCount: 4,
@@ -50,7 +51,7 @@ beforeEach(() => {
       ],
     } : {
       total: 1,
-      rows: [{ id: 'item-1', day: args.p_bucket ?? from, label: 'ร้านหนึ่ง',
+      rows: [{ id: 'item-1', day: name === 'get_executive_report_aged_details' ? from : args.p_bucket ?? from, label: 'ร้านหนึ่ง',
         amount: args.p_metric === 'receipts' ? 300 : args.p_metric === 'refunds' ? 20
           : args.p_metric === 'debt' ? 180 : 500,
         area: 'อาคาร A', shopId: 'shop-1' }],
@@ -65,10 +66,10 @@ it('shows a simple summary and preserves the full selected dates for totals and 
   fireEvent.click(screen.getByRole('button', { name: '7 วัน' }));
   const sales = await screen.findByRole('button', { name: /ยอดขายสุทธิ/ });
   expect(sales.querySelector('strong')?.textContent).toBe('฿500');
-  expect(screen.getByRole('button', { name: /เงินรับสุทธิ/ }).querySelector('strong')?.textContent).toBe('฿280');
-  expect(sales.textContent).not.toContain('%');
+  expect(within(screen.getByLabelText('ตัวเลขสำคัญ')).getByRole('button', { name: 'เงินรับจริง' }).querySelector('strong')?.textContent).toBe('฿300');
+  expect(sales.textContent).toContain('ดีขึ้น');
   expect(screen.queryByRole('checkbox')).toBeNull();
-  expect(screen.queryByText(/เปรียบเทียบ|วันที่สิ้นสุดแล้ว|ช่วงก่อน/)).toBeNull();
+  expect(screen.getByText(/เทียบช่วงก่อนหน้าเท่ากัน/)).not.toBeNull();
   expect(screen.queryByRole('region', { name: 'ต้องติดตาม' })).toBeNull();
   expect(rpc).toHaveBeenCalledWith('get_executive_report', { p_from: '2026-10-07', p_to: '2026-10-13' });
   expect(rpc.mock.calls.every(([name]) => name === 'get_executive_report')).toBe(true);
@@ -79,7 +80,7 @@ it('shows a simple summary and preserves the full selected dates for totals and 
   }));
 });
 
-it('uses the selected dates for today and historical summaries without comparison settings', async () => {
+it('uses the selected dates for today and historical summaries with equal-period context', async () => {
   render(<ExecutiveReportsPage isActive />);
   await screen.findByRole('button', { name: /ยอดขายสุทธิ/ });
   rpc.mockClear();
@@ -93,10 +94,10 @@ it('uses the selected dates for today and historical summaries without compariso
   expect(historical.querySelector('strong')?.textContent).toBe('฿500');
   expect(rpc).toHaveBeenCalledWith('get_executive_report', { p_from: '2026-10-01', p_to: '2026-10-06' });
   expect(rpc.mock.calls.every(([name]) => name === 'get_executive_report')).toBe(true);
-  expect(screen.queryByText(/เปรียบเทียบ|วันที่สิ้นสุดแล้ว|ช่วงก่อน/)).toBeNull();
+  expect(screen.getByText(/เทียบช่วงก่อนหน้าเท่ากัน/)).not.toBeNull();
 });
 
-it('exports full selected-period totals without comparison configuration or requests', async () => {
+it('exports selected-period totals and comparison metadata without extra comparison requests', async () => {
   render(<ExecutiveReportsPage isActive />);
   await screen.findByRole('button', { name: /ยอดขายสุทธิ/ });
   const exportButton = screen.getByRole('button', { name: /ส่งออก Excel/ });
@@ -107,7 +108,9 @@ it('exports full selected-period totals without comparison configuration or requ
   expect(rows).toContainEqual(['รายงานผู้บริหาร', '2026-10-01 ถึง 2026-10-13']);
   expect(rows).toContainEqual(['ยอดขายสุทธิช่วงนี้', 500]);
   expect(rows).toContainEqual(['เงินรับสุทธิช่วงนี้', 280]);
-  expect(rows.flat().some((value: unknown) => typeof value === 'string' && /เปรียบเทียบ|ช่วงก่อน/.test(value))).toBe(false);
+  expect(rows).toContainEqual(['ยอดขายช่วงก่อน', 250]);
+  expect(rows.flat().join(' ')).not.toContain('ข้อมูลสมมติ');
+  expect(writeXlsxFile.mock.calls[0][1].fileName).toBe('executive-report-2026-10-01-2026-10-13.xlsx');
   expect(rpc.mock.calls.every(([name]) => name === 'get_executive_report' || name === 'get_executive_report_details')).toBe(true);
   const detailRequests = rpc.mock.calls.filter(([name]) => name === 'get_executive_report_details');
   expect(detailRequests).toHaveLength(4);
@@ -136,10 +139,12 @@ it('opens overdue shop invoices from finance and restores focus even after the r
 it('shows business totals and drills into the selected building', async () => {
   render(<ExecutiveReportsPage isActive />);
   expect(await screen.findByRole('button', { name: /ยอดขายสุทธิ/ })).not.toBeNull();
-  expect(screen.getByText('หนี้ค้างปัจจุบัน')).not.toBeNull();
-  fireEvent.click(screen.getByRole('button', { name: /รายการส่ง .*จำนวนครั้ง/ }));
+  expect(screen.getByText('ลูกหนี้ค้างชำระ')).not.toBeNull();
+  fireEvent.click(screen.queryByRole('button', { name: /รายการส่ง .*จำนวนครั้ง/ }) ?? screen.getByRole('button', { name: 'ภาพรวม' }));
+  if (!screen.queryByRole('table', { name: 'ปริมาณงานและน้ำแข็ง' })) fireEvent.click(screen.getByRole('button', { name: /รายการส่ง .*จำนวนครั้ง/ }));
   expect(within(screen.getByRole('table', { name: 'ปริมาณงานและน้ำแข็ง' })).getByText('น้ำแข็งหลอด')).not.toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'ภาพรวม' }));
+  await openVolumeAnalysis();
   fireEvent.click(within(screen.getByLabelText('ยอดขายและปริมาณน้ำแข็งตามพื้นที่')).getByRole('button', { name: /อาคาร A/ }));
   fireEvent.click(screen.getByRole('button', { name: 'ดูรายการขายพื้นที่นี้' }));
   await screen.findByRole('dialog', { name: 'รายละเอียดยอดขายสุทธิ' });
@@ -182,7 +187,7 @@ it('shows the receipt equation and pages through detail rows', async () => {
   render(<ExecutiveReportsPage isActive />);
   await screen.findByRole('button', { name: /ยอดขายสุทธิ/ });
   fireEvent.click(screen.getByRole('button', { name: 'การเงิน' }));
-  expect(screen.getByText('เงินรับจริง')).not.toBeNull();
+  expect(screen.getAllByText('เงินรับจริง').length).toBeGreaterThan(0);
   expect(screen.getByText('เงินคืนจริง')).not.toBeNull();
   fireEvent.click(screen.getByRole('button', { name: /ดูรายการรับเงิน/ }));
   const dialog = await screen.findByRole('dialog');
@@ -208,12 +213,12 @@ it('handles zero sales and a negative net receipt without misleading comparisons
   render(<ExecutiveReportsPage isActive />);
   await screen.findByRole('button', { name: /ยอดขายสุทธิ/ });
   expect(screen.getByRole('button', { name: /ยอดขายสุทธิ/ }).querySelector('strong')?.textContent).toBe('฿0');
-  expect(screen.getByRole('button', { name: /เงินรับสุทธิ/ }).querySelector('strong')?.textContent).toBe('-฿5');
+  expect(within(screen.getByLabelText('ตัวเลขสำคัญ')).getByRole('button', { name: 'เงินรับจริง' }).querySelector('strong')?.textContent).toBe('฿5');
   expect(screen.queryByText(/ไม่มีฐานเปรียบเทียบ/)).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'ดูยอดขาย' }));
   expect(within(screen.getByRole('table', { name: 'ตารางยอดขายตามพื้นที่' })).getByText('—')).not.toBeNull();
-  fireEvent.click(within(screen.getByLabelText('เลือกตัวเลขในกราฟ')).getByRole('button', { name: 'เงินรับสุทธิ' }));
-  expect(within(screen.getByLabelText('กราฟเงินรับสุทธิ')).getByRole('button', { name: /-฿5/ })).not.toBeNull();
+  fireEvent.click(within(screen.getByLabelText('เลือกตัวเลขในกราฟ')).getByRole('button', { name: 'เงินรับจริง', exact: true }));
+  expect(within(screen.getByLabelText('กราฟเงินรับจริง')).getByRole('button', { name: /฿5/ })).not.toBeNull();
 });
 
 it('does not request an invalid custom date range', async () => {
@@ -229,7 +234,7 @@ it('does not request an invalid custom date range', async () => {
 it('drills from current debtors to their invoices', async () => {
   render(<ExecutiveReportsPage isActive />);
   await screen.findByRole('button', { name: /ยอดขายสุทธิ/ });
-  fireEvent.click(screen.getByRole('button', { name: /หนี้ค้างปัจจุบัน/ }));
+  fireEvent.click(screen.getByRole('button', { name: /ลูกหนี้ค้างชำระ/ }));
   await screen.findByText('ทั้งหมด 1 รายการ');
   fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: /ร้านหนึ่ง/ }));
   await waitFor(() => expect(rpc).toHaveBeenCalledWith('get_executive_report_details', expect.objectContaining({
@@ -256,6 +261,7 @@ it('opens the report from the local demo entry point without a backend request',
   try {
     render(<LocalDemoApp />);
     expect(await screen.findByRole('heading', { name: 'รายงานผู้บริหาร' })).not.toBeNull();
+    await openVolumeAnalysis();
     expect(within(screen.getByLabelText('ยอดขายและปริมาณน้ำแข็งตามพื้นที่')).getByText('งานประชุมประจำปี')).not.toBeNull();
     expect(rpc).not.toHaveBeenCalled();
   } finally {
@@ -268,7 +274,8 @@ it('keeps the selected section when the date preset changes', async () => {
   try {
     render(<LocalDemoApp />);
     const tabs = await screen.findByRole('navigation', { name: 'หมวดรายงาน' });
-    fireEvent.click(screen.getByRole('button', { name: /รายการส่ง .*จำนวนครั้ง/ }));
+    fireEvent.click(screen.queryByRole('button', { name: /รายการส่ง .*จำนวนครั้ง/ }) ?? screen.getByRole('button', { name: 'ภาพรวม' }));
+  if (!screen.queryByRole('table', { name: 'ปริมาณงานและน้ำแข็ง' })) fireEvent.click(screen.getByRole('button', { name: /รายการส่ง .*จำนวนครั้ง/ }));
     fireEvent.click(screen.getByRole('button', { name: 'วันนี้' }));
     expect(within(screen.getByRole('navigation', { name: 'รายละเอียดรายงาน' })).getByRole('button', { name: 'ปริมาณส่ง' }).getAttribute('aria-current')).toBe('page');
     expect(within(tabs).getByRole('button', { name: 'ภาพรวม' }).getAttribute('aria-current')).toBe('page');
@@ -303,7 +310,7 @@ it('recovers from an invoice request failure and keeps the detail navigation', a
 it('traps keyboard focus in the detail panel and closes with Escape', async () => {
   render(<ExecutiveReportsPage isActive />);
   await screen.findByRole('button', { name: /ยอดขายสุทธิ/ });
-  const metric = screen.getByRole('button', { name: /หนี้ค้างปัจจุบัน/ });
+  const metric = screen.getByRole('button', { name: /ลูกหนี้ค้างชำระ/ });
   fireEvent.click(metric);
   const dialog = await screen.findByRole('dialog');
   await within(dialog).findByText('ทั้งหมด 1 รายการ');
@@ -383,7 +390,8 @@ it('shows the overall volume followed by each building and separate other activi
   render(<ExecutiveReportsPage isActive />);
   await screen.findByRole('button', { name: /ยอดขายสุทธิ/ });
   rpc.mockClear();
-  fireEvent.click(screen.getByRole('button', { name: /รายการส่ง .*จำนวนครั้ง/ }));
+  fireEvent.click(screen.queryByRole('button', { name: /รายการส่ง .*จำนวนครั้ง/ }) ?? screen.getByRole('button', { name: 'ภาพรวม' }));
+  if (!screen.queryByRole('table', { name: 'ปริมาณงานและน้ำแข็ง' })) fireEvent.click(screen.getByRole('button', { name: /รายการส่ง .*จำนวนครั้ง/ }));
   const total = screen.getByRole('table', { name: 'ปริมาณงานและน้ำแข็ง' });
   expect(within(total).getByText('10')).not.toBeNull();
   const buildings = screen.getByRole('region', { name: 'แยกตามตึก' });
@@ -407,7 +415,8 @@ it('distinguishes missing building data from an empty period', async () => {
   });
   render(<ExecutiveReportsPage isActive />);
   await screen.findByRole('button', { name: /ยอดขายสุทธิ/ });
-  fireEvent.click(screen.getByRole('button', { name: /รายการส่ง .*จำนวนครั้ง/ }));
+  fireEvent.click(screen.queryByRole('button', { name: /รายการส่ง .*จำนวนครั้ง/ }) ?? screen.getByRole('button', { name: 'ภาพรวม' }));
+  if (!screen.queryByRole('table', { name: 'ปริมาณงานและน้ำแข็ง' })) fireEvent.click(screen.getByRole('button', { name: /รายการส่ง .*จำนวนครั้ง/ }));
   expect(screen.getByText('ข้อมูลแยกตึกยังไม่พร้อมใช้งาน')).not.toBeNull();
   expect(within(screen.getByRole('table', { name: 'ปริมาณงานและน้ำแข็ง' })).getByText('10')).not.toBeNull();
 });
@@ -458,7 +467,8 @@ it('renders executive attention alerts, quiet shops, debt aging and payment mix'
   expect(within(banner).getByText(/1 ร้านไม่ได้สั่งนานกว่าปกติ/)).not.toBeNull();
 
   // Volume tab: Damage rate percentage
-  fireEvent.click(screen.getByRole('button', { name: /รายการส่ง .*จำนวนครั้ง/ }));
+  fireEvent.click(screen.queryByRole('button', { name: /รายการส่ง .*จำนวนครั้ง/ }) ?? screen.getByRole('button', { name: 'ภาพรวม' }));
+  if (!screen.queryByRole('table', { name: 'ปริมาณงานและน้ำแข็ง' })) fireEvent.click(screen.getByRole('button', { name: /รายการส่ง .*จำนวนครั้ง/ }));
   const volumeTable = screen.getByRole('table', { name: 'ปริมาณงานและน้ำแข็ง' });
   expect(within(volumeTable).getByText('10%')).not.toBeNull();
 
@@ -487,7 +497,7 @@ it('renders executive attention alerts, quiet shops, debt aging and payment mix'
 
 it('shows current shop location and contacts above dated invoices, preserving invoice navigation', async () => {
   render(<ExecutiveReportsPage isActive />);
-  fireEvent.click(await screen.findByRole('button', { name: /หนี้ค้างปัจจุบัน/ }));
+  fireEvent.click(await screen.findByRole('button', { name: /ลูกหนี้ค้างชำระ/ }));
   const dialog = await screen.findByRole('dialog');
   fireEvent.click(await within(dialog).findByRole('button', { name: /ร้านหนึ่ง/ }));
   const profile = await within(dialog).findByRole('region', { name: 'ข้อมูลร้านค้า' });
@@ -509,7 +519,7 @@ it('keeps invoices usable when the shop profile fails and supports retry and mis
   shopResult.mockResolvedValue({ data: { code: 'A-001', buildings: null, building_zones: null,
     floor_or_zone: null, contact_name: null, contact_phone: null }, error: null });
   render(<ExecutiveReportsPage isActive />);
-  fireEvent.click(await screen.findByRole('button', { name: /หนี้ค้างปัจจุบัน/ }));
+  fireEvent.click(await screen.findByRole('button', { name: /ลูกหนี้ค้างชำระ/ }));
   const dialog = await screen.findByRole('dialog');
   fireEvent.click(await within(dialog).findByRole('button', { name: /ร้านหนึ่ง/ }));
   const profile = await within(dialog).findByRole('region', { name: 'ข้อมูลร้านค้า' });
@@ -524,7 +534,7 @@ it('shows shop location from demo data without querying the backend', async () =
   window.history.replaceState(null, '', '/?screen=executive-report');
   try {
     render(<LocalDemoApp />);
-    fireEvent.click(await screen.findByRole('button', { name: /หนี้ค้างปัจจุบัน/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /ลูกหนี้ค้างชำระ/ }));
     const dialog = await screen.findByRole('dialog');
     fireEvent.click(await within(dialog).findByRole('button', { name: /ร้านกาแฟลานเล่า/ }));
     const profile = await within(dialog).findByRole('region', { name: 'ข้อมูลร้านค้า' });
@@ -536,8 +546,9 @@ it('shows shop location from demo data without querying the backend', async () =
   }
 });
 
-it('shows delivery quantities and destination breakdowns with their own units on the overview', async () => {
+it('shows delivery quantities and destination breakdowns in expandable sales analysis', async () => {
   render(<ExecutiveReportsPage isActive />);
+  await openVolumeAnalysis();
   const products = await screen.findByRole('region', { name: 'ยอดขายแยกตามประเภทน้ำแข็ง' });
   expect(within(products).getByText('10')).not.toBeNull();
   expect(within(products).getByText('ถุง')).not.toBeNull();
@@ -558,6 +569,7 @@ it('distinguishes unavailable destination data from a loaded destination without
     return name === 'get_executive_report' ? { ...result, data: { ...result.data, volumeAreas } } : result;
   });
   render(<ExecutiveReportsPage isActive />);
+  await openVolumeAnalysis();
   const locations = await screen.findByRole('region', { name: 'จำนวนส่งของพื้นที่ที่เลือก' });
   expect(within(locations).getByText('ข้อมูลแยกตึกยังไม่พร้อมใช้งาน')).not.toBeNull();
   expect(within(locations).queryByText('ยังไม่มีรายการส่งน้ำแข็ง')).toBeNull();
@@ -595,6 +607,7 @@ it('merges sales destinations while excluding stock holders and switches each ba
     } };
   });
   render(<ExecutiveReportsPage isActive />);
+  await openVolumeAnalysis();
   const graph = await screen.findByRole('group', { name: 'กราฟแท่งยอดขายตามพื้นที่' });
   expect(within(graph).getAllByRole('button')).toHaveLength(8);
   expect(within(graph).queryByRole('button', { name: /รถบรรทุก|จุดถือครองสต็อก/ })).toBeNull();
@@ -612,4 +625,132 @@ it('merges sales destinations while excluding stock holders and switches each ba
   fireEvent.click(within(graph).getByRole('button', { name: /ขายหน้ารถ/ }));
   expect(within(selected).getByText('1.5')).not.toBeNull();
   expect(within(selected).getByRole('button', { name: 'ดูรายการขายพื้นที่นี้' })).not.toBeNull();
+});
+
+async function openVolumeAnalysis() {
+  fireEvent.click(await screen.findByRole('button', { name: 'ดูยอดขาย' }));
+  fireEvent.click(screen.getByText('ปริมาณสินค้าและพื้นที่จัดส่ง'));
+}
+
+it('shows all eight financial measures and explains missing inputs without reporting zero profit', async () => {
+  render(<ExecutiveReportsPage isActive />);
+  const metrics = await screen.findByLabelText('ตัวเลขสำคัญ');
+  expect(within(metrics).getAllByRole('button')).toHaveLength(8);
+  for (const title of ['ต้นทุนขาย', 'กำไรขั้นต้น', 'ค่าใช้จ่ายดำเนินงาน', 'กำไรจากการดำเนินงาน', 'เงินจ่ายจริง']) {
+    const card = within(metrics).getByRole('button', { name: title, exact: true });
+    expect(card.textContent).toContain('ยังคำนวณไม่ได้');
+    expect(card.textContent).not.toContain('฿0');
+  }
+  expect(screen.queryByRole('table')).toBeNull();
+  fireEvent.click(within(metrics).getByRole('button', { name: 'กำไรจากการดำเนินงาน', exact: true }));
+  expect(screen.getByRole('region', { name: 'กำไรมาจากไหน' }).textContent).toContain('ขาดต้นทุนต่อสินค้า');
+  expect(screen.getByRole('region', { name: 'เงินสดอยู่ที่ไหน' }).textContent).toContain('ยังไม่ใช่กระแสเงินสดสุทธิของกิจการ');
+});
+
+it('preserves shop scope for cards, changing dates, detail pagination and export', async () => {
+  const original = rpc.getMockImplementation()!;
+  rpc.mockImplementation(async (name: string, args: { p_shop_id?: string }) => {
+    if (name !== 'get_executive_report' && name !== 'get_executive_report_for_shop') return original(name, args);
+    const result = await original('get_executive_report', args);
+    return { ...result, data: { ...result.data,
+      scopeOptions: [{ id: 'shop-1', name: 'ร้านหนึ่ง' }],
+      ...(args.p_shop_id ? { scopeShopId: args.p_shop_id, scopeName: 'ร้านหนึ่ง', products: [], volumeAreas: null } : {}),
+    } };
+  });
+  render(<ExecutiveReportsPage isActive />);
+  await screen.findByRole('button', { name: 'ยอดขายสุทธิ', exact: true });
+  fireEvent.change(screen.getByLabelText('ขอบเขตข้อมูล'), { target: { value: 'shop-1' } });
+  fireEvent.click(await screen.findByRole('button', { name: 'ยอดขายสุทธิ', exact: true }));
+  await screen.findByRole('dialog');
+  expect(rpc).toHaveBeenCalledWith('get_executive_report_details', expect.objectContaining({ p_shop_id: 'shop-1', p_metric: 'sales' }));
+  fireEvent.click(screen.getByRole('button', { name: 'ปิดรายละเอียด' }));
+  fireEvent.click(screen.getByRole('button', { name: '7 วัน' }));
+  await screen.findByRole('button', { name: 'ยอดขายสุทธิ', exact: true });
+  expect(rpc).toHaveBeenCalledWith('get_executive_report_for_shop', { p_from: '2026-10-07', p_to: '2026-10-13', p_shop_id: 'shop-1' });
+  rpc.mockClear();
+  fireEvent.click(screen.getByRole('button', { name: 'ส่งออก Excel' }));
+  await waitFor(() => expect(writeXlsxFile).toHaveBeenCalledTimes(1));
+  expect(rpc.mock.calls.filter(([name]) => name === 'get_executive_report_details')).toHaveLength(4);
+  for (const [, args] of rpc.mock.calls) expect(args.p_shop_id).toBe('shop-1');
+  const summary = writeXlsxFile.mock.calls[0][0][0].map((row: Array<{ value: unknown }>) => row.map((cell) => cell.value));
+  expect(summary).toContainEqual(['ขอบเขตข้อมูล', 'ร้านหนึ่ง']);
+});
+
+it('drills into the exact aging bucket and retains it when moving to a shop and back', async () => {
+  const original = rpc.getMockImplementation()!;
+  rpc.mockImplementation(async (name: string, args: unknown) => {
+    const result = await original(name, args);
+    if (name !== 'get_executive_report') return result;
+    return { ...result, data: { ...result.data, debtAging: [
+      { bucket: 'notDue', amount: 100, shops: 1 }, { bucket: 'days1to7', amount: 80, shops: 1 },
+    ] } };
+  });
+  render(<ExecutiveReportsPage isActive />);
+  await screen.findByRole('button', { name: 'ยอดขายสุทธิ', exact: true });
+  fireEvent.click(screen.getByRole('button', { name: 'การเงิน' }));
+  fireEvent.click(within(screen.getByRole('table', { name: 'ตารางวิเคราะห์อายุหนี้' })).getByRole('button', { name: /฿80/ }));
+  const dialog = await screen.findByRole('dialog');
+  expect(rpc).toHaveBeenCalledWith('get_executive_report_aged_details', expect.objectContaining({ p_bucket: 'days1to7', p_shop_id: null }));
+  fireEvent.click(await within(dialog).findByRole('button', { name: /ร้านหนึ่ง/ }));
+  await waitFor(() => expect(rpc).toHaveBeenCalledWith('get_executive_report_aged_details', expect.objectContaining({ p_bucket: 'days1to7', p_shop_id: 'shop-1' })));
+  fireEvent.click(within(dialog).getByRole('button', { name: 'กลับไปยังรายการ' }));
+  await within(dialog).findByRole('heading', { name: 'เกิน 1–7 วัน' });
+  expect(rpc.mock.lastCall?.[1]).toMatchObject({ p_bucket: 'days1to7', p_shop_id: null });
+});
+
+it('warns on reconciliation failure and does not export a misleading workbook', async () => {
+  const original = rpc.getMockImplementation()!;
+  rpc.mockImplementation(async (name: string, args: unknown) => {
+    const result = await original(name, args);
+    return name === 'get_executive_report' ? { ...result, data: { ...result.data, sales: 999 } } : result;
+  });
+  render(<ExecutiveReportsPage isActive />);
+  expect((await screen.findByRole('alert')).textContent).toContain('ยอดสรุปบางส่วนไม่ตรง');
+  fireEvent.click(screen.getByRole('button', { name: 'ส่งออก Excel' }));
+  await screen.findByText(/ยอดสรุปไม่ตรงกับข้อมูลแยกย่อย/);
+  expect(writeXlsxFile).not.toHaveBeenCalled();
+});
+
+it('keeps legacy aging amounts readable without calling the unavailable bucket endpoint', async () => {
+  const original = rpc.getMockImplementation()!;
+  rpc.mockImplementation(async (name: string, args: unknown) => {
+    if (name === 'get_executive_report_aged_details') return { data: null, error: { message: 'Function unavailable before migration 0226' } };
+    const result = await original(name, args);
+    if (name !== 'get_executive_report') return result;
+    return { ...result, data: { ...result.data, financialVersion: undefined, previousReceipts: undefined,
+      debtAging: [{ bucket: 'notDue', amount: 100, shops: 1 }, { bucket: 'days1to7', amount: 80, shops: 1 }] } };
+  });
+  render(<ExecutiveReportsPage isActive />);
+  await screen.findByRole('button', { name: 'ยอดขายสุทธิ', exact: true });
+  fireEvent.click(screen.getByRole('button', { name: 'การเงิน' }));
+  const aging = within(screen.getByRole('table', { name: 'ตารางวิเคราะห์อายุหนี้' }));
+  expect(aging.getByText('฿100')).not.toBeNull();
+  expect(aging.getByText('฿80')).not.toBeNull();
+  expect(aging.queryAllByRole('button')).toHaveLength(0);
+  fireEvent.click(aging.getByText('฿80'));
+  expect(rpc.mock.calls.some(([name]) => name === 'get_executive_report_aged_details')).toBe(false);
+  // The existing general debt drilldown remains available on the older backend.
+  fireEvent.click(screen.getByRole('button', { name: 'ลูกหนี้ค้างชำระ', exact: true }));
+  await within(screen.getByRole('dialog')).findByText('ทั้งหมด 1 รายการ');
+  expect(rpc).toHaveBeenCalledWith('get_executive_report_details', expect.objectContaining({ p_metric: 'debt' }));
+});
+
+it('labels every exported demo sheet and filename and explains incomplete supporting rows', async () => {
+  window.history.replaceState(null, '', '/?screen=executive-report');
+  try {
+    render(<LocalDemoApp />);
+    await screen.findByText('โหมดตัวอย่าง · ตัวเลขสมมติสำหรับทดสอบหน้าจอ ไม่ใช่ข้อมูลจริง');
+    fireEvent.click(screen.getByRole('button', { name: 'ส่งออก Excel' }));
+    await waitFor(() => expect(writeXlsxFile).toHaveBeenCalledTimes(1));
+    const [sheets, options] = writeXlsxFile.mock.calls[0];
+    expect(sheets).toHaveLength(6);
+    for (const sheet of sheets) {
+      expect(sheet[0][0].value).toBe('ข้อมูลสมมติ · ไม่ใช่รายงานการเงินจริง');
+      expect(sheet[1][0].value).toContain('รายการประกอบเป็นตัวอย่างบางส่วน');
+    }
+    expect(options.fileName).toBe('demo-executive-report-2026-10-01-2026-10-13.xlsx');
+    expect(rpc).not.toHaveBeenCalled();
+  } finally {
+    window.history.replaceState(null, '', '/');
+  }
 });
