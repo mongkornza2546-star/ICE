@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { ChartBar, ChartLine, CreditCard } from '@phosphor-icons/react';
 import { ReportOverview } from './ReportOverview';
 import { translateUi, useLanguage } from '../../i18n';
@@ -5,6 +6,7 @@ import { formatReportDate, reportBucketLabels } from './reportDates';
 import { agingLabels, damageFlags, damageRate, receiptMethodLabels, attentionItems } from './reportInsights';
 import { DataTable, Panel, StackBar } from './ReportPrimitives';
 import type { DetailQuery, ExecutiveReport } from './types';
+import { shiftServiceDate, toBangkokDateString } from '../../lib/serviceDate';
 
 const baht = (value: number) => new Intl.NumberFormat('th-TH', {
   style: 'currency', currency: 'THB', maximumFractionDigits: 0,
@@ -32,7 +34,7 @@ export function ReportTabs({ active, onChange }: { active: ReportSection; onChan
 function AreaTable({ report, openDetail }: { report: ExecutiveReport; openDetail: (query: DetailQuery, label?: string, trigger?: HTMLElement) => void }) {
   useLanguage();
   if (!report.areas.length) return <p className="executive-empty">{translateUi('ยังไม่มียอดขายตามพื้นที่')}</p>;
-  return <DataTable headings={['พื้นที่', 'ประเภท', 'ยอดขายสุทธิ', 'สัดส่วนยอดขาย']} label={translateUi('ตารางยอดขายตามพื้นที่')}>
+  return <DataTable headings={['พื้นที่', 'ประเภท', 'ยอดขายสุทธิ', 'สัดส่วนยอดขาย']} numericColumns={[2, 3]} label={translateUi('ตารางยอดขายตามพื้นที่')}>
     {report.areas.map((area) => <tr key={`${area.kind}-${area.id ?? 'casual'}`}>
       <td data-label={translateUi('พื้นที่')}><button className="executive-table-link" onClick={(event) => openDetail({ metric: 'sales', areaKind: area.kind, areaId: area.id }, area.name, event.currentTarget)} type="button">{area.name}<span aria-hidden="true"> ›</span></button></td>
       <td data-label={translateUi('ประเภท')}>{translateUi(areaType(area.kind))}</td>
@@ -76,22 +78,29 @@ function QuietShopsPanel({ report, openDetail }: {
 }) {
   useLanguage();
   const quiet = report.quietShops;
+  const [page, setPage] = useState(0);
+  const pageCount = Math.max(1, Math.ceil((quiet?.rows.length ?? 0) / 10));
+  const currentPage = Math.min(page, pageCount - 1);
+  const offset = currentPage * 10;
+  const asOf = toBangkokDateString(new Date(report.asOf));
+  const dateRange = { from: shiftServiceDate(asOf, -89), to: asOf };
   if (!quiet || quiet.total === 0) return null;
   return <Panel
     className="executive-panel--warning"
-    description={translateUi('ร้านค้าที่เคยสั่งสม่ำเสมอแต่เงียบไปนานผิดปกติ')}
+    description={`${translateUi('สถานะปัจจุบัน ณ')} ${formatReportDate(asOf)} · ${translateUi('ไม่ขึ้นกับช่วงวันที่เลือก')}`}
     id="executive-quiet-shops"
     title={translateUi('ร้านที่หยุดสั่งซื้อ / สัญญาณเตือน')}
   >
     <DataTable
       headings={['ร้านค้า', 'เงียบมาแล้ว', 'รอบปกติ', 'ยอดซื้อเฉลี่ย / เดือน', 'สั่งล่าสุด']}
+      numericColumns={[1, 2, 3]}
       label={translateUi('ตารางร้านที่หยุดสั่งซื้อ')}
     >
-      {quiet.rows.map((shop) => <tr key={shop.id}>
+      {quiet.rows.slice(offset, offset + 10).map((shop) => <tr key={shop.id}>
         <td data-label={translateUi('ร้านค้า')}>
           <button
             className="executive-table-link"
-            onClick={(event) => openDetail({ metric: 'sales', shopId: shop.id }, shop.name, event.currentTarget)}
+            onClick={(event) => openDetail({ metric: 'sales', shopId: shop.id, dateRange }, shop.name, event.currentTarget)}
             type="button"
           >
             <strong>{shop.name}</strong>
@@ -113,8 +122,18 @@ function QuietShopsPanel({ report, openDetail }: {
         </td>
       </tr>)}
     </DataTable>
+    <nav aria-label={translateUi('หน้าร้านที่หยุดสั่งซื้อ')} className="executive-quiet-pagination">
+      <span aria-live="polite">{translateUi('แสดง {0}–{1} จาก {2} ร้าน', {
+        0: number(quiet.rows.length ? offset + 1 : 0),
+        1: number(Math.min(offset + 10, quiet.rows.length)), 2: number(quiet.total),
+      })}</span>
+      <button disabled={currentPage === 0} onClick={() => setPage(currentPage - 1)} type="button">{translateUi('ก่อนหน้า')}</button>
+      <button disabled={currentPage + 1 >= pageCount} onClick={() => setPage(currentPage + 1)} type="button">{translateUi('ถัดไป')}</button>
+    </nav>
+    {quiet.total > quiet.rows.length ? <p className="executive-panel-note">{translateUi('แสดงรายชื่อได้บางส่วน กรุณาลองรีเฟรช')}</p> : null}
     <p className="executive-panel-note">
       {translateUi('ร้านค้าที่สั่งซื้ออย่างน้อย 4 วันในรอบ 90 วัน แต่เงียบไปนานกว่า 2 เท่าของรอบสั่งปกติ')}
+      {' · '}{translateUi('เลือกร้านเพื่อดูประวัติขายย้อนหลัง 90 วัน')}
     </p>
   </Panel>;
 }

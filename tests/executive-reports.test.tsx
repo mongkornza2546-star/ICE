@@ -616,3 +616,42 @@ it('merges sales destinations while excluding stock holders and switches each ba
   expect(within(selected).getByText('1.5')).not.toBeNull();
   expect(within(selected).getByRole('button', { name: 'ดูรายการขายพื้นที่นี้' })).not.toBeNull();
 });
+
+
+it('pages all quiet shops and opens their 90-day history without changing report dates', async () => {
+  const original = rpc.getMockImplementation();
+  rpc.mockImplementation(async (name: string, args: { p_from?: string; p_to?: string }) => {
+    const result = await original?.(name, args);
+    if (name !== 'get_executive_report') return result;
+    return { ...result, data: { ...result.data, quietShops: {
+      total: 12, monthlySales: 12000,
+      rows: Array.from({ length: 12 }, (_, index) => ({
+        id: `quiet-${index + 1}`, name: `Quiet shop ${index + 1}`, building: 'อาคาร A',
+        lastOrder: '2026-09-24', daysSince: 19, usualGap: 1, monthlySales: 1000,
+      })),
+    } } };
+  });
+  render(<ExecutiveReportsPage isActive />);
+  fireEvent.click(screen.getByRole('button', { name: 'วันนี้' }));
+  const tabs = await screen.findByRole('navigation', { name: 'หมวดรายงาน' });
+  fireEvent.click(within(tabs).getByRole('button', { name: 'ยอดขาย' }));
+  const panel = screen.getByRole('region', { name: 'ร้านที่หยุดสั่งซื้อ / สัญญาณเตือน' });
+  expect(within(panel).getByText('แสดง 1–10 จาก 12 ร้าน')).not.toBeNull();
+  expect(within(panel).queryByRole('button', { name: /Quiet shop 11/ })).toBeNull();
+  fireEvent.click(within(panel).getByRole('button', { name: 'ถัดไป' }));
+  expect(within(panel).getByText('แสดง 11–12 จาก 12 ร้าน')).not.toBeNull();
+  const shop = within(panel).getByRole('button', { name: /Quiet shop 11/ });
+  fireEvent.click(shop);
+  const dialog = await screen.findByRole('dialog');
+  await within(dialog).findByText('ทั้งหมด 1 รายการ');
+  expect(rpc).toHaveBeenCalledWith('get_executive_report_details', expect.objectContaining({
+    p_from: '2026-07-16', p_to: '2026-10-13', p_shop_id: 'quiet-11', p_metric: 'sales',
+  }));
+  expect(dialog.textContent).toContain(`${formatReportDate('2026-07-16')} – ${formatReportDate('2026-10-13')}`);
+  expect(screen.getByLabelText('จาก')).toHaveProperty('value', '2026-10-13');
+  fireEvent.click(within(dialog).getByRole('button', { name: 'ปิดรายละเอียด' }));
+  await waitFor(() => expect(document.activeElement).toBe(shop));
+  expect(within(panel).getByText('แสดง 11–12 จาก 12 ร้าน')).not.toBeNull();
+  fireEvent.click(within(panel).getByRole('button', { name: 'ก่อนหน้า' }));
+  expect(within(panel).getByRole('button', { name: /Quiet shop 1 ·/ })).not.toBeNull();
+});

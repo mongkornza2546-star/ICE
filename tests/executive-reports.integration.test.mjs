@@ -77,6 +77,7 @@ async function database(t) {
   await db.exec(readFileSync(new URL('../supabase/migrations/0224_executive_report_volume_by_building.sql', import.meta.url), 'utf8'));
   await db.exec(readFileSync(new URL('../supabase/migrations/0225_executive_report_insights.sql', import.meta.url), 'utf8'));
   await db.exec(readFileSync(new URL('../supabase/migrations/0226_executive_quiet_shops_exclude_event_booths.sql', import.meta.url), 'utf8'));
+  await db.exec(readFileSync(new URL('../supabase/migrations/0227_executive_sales_navigation.sql', import.meta.url), 'utf8'));
   await db.exec(`select set_config('test.app_role', 'admin', false)`);
   return db;
 }
@@ -468,3 +469,38 @@ function assertVolumeReconciles(report) {
   }
   for (const sum of totals.values()) assert.deepEqual(sum, { delivered: 0, damaged: 0 });
 }
+
+test('quiet shops retain all candidates and renamed areas reconcile with drilldowns', async (t) => {
+  const db =  await database(t);
+  await db.exec(`
+ create temporary table clock as select (now() at time zone 'Asia/Bangkok')::date as today;
+ insert into buildings values ('10000000-0000-4000-8000-000000000001', 'New A', 'A');
+ insert into shops (id,name,building_id) select gen_random_uuid(), 'Shop '||n, '10000000-0000-4000-8000-000000000001'::uuid from generate_series(1, 12) n;
+ create temporary table seeded as select gen_random_uuid() as eid,gen_random_uuid() as cid,shop.id as sid,today-age as day from shops shop,clock,generate_series(20,24) age;
+ insert into delivery_events(id,status,recorded_at) select eid,'active',day::timestamptz from seeded;
+ insert into delivery_charges(id,delivery_event_id,shop_id,service_date,status,original_amount) select cid,eid,sid,day,'active',72 from seeded;
+ `);
+  const report = (await db.query('select get_executive_report(today,today) r from clock')).rows[0].r;
+  const shop = report.quietShops.rows[0];
+  const detail = (await db.query("select get_executive_report_details(today,today,'sales',50,0,null,null,null,$1) d from clock",[shop.id])).rows[0].d;
+  const history = (await db.query("select get_executive_report_details(today-89,today,'sales',50,0,null,null,null,$1) d from clock",[shop.id])).rows[0].d;
+  await db.exec(`
+ insert into round_stops(id,building_id_snapshot,building_name_snapshot) values
+ ('30000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000001','Old A'),
+ ('30000000-0000-4000-8000-000000000002','10000000-0000-4000-8000-000000000001', 'New A');
+ update delivery_events set round_stop_id = case when recorded_at::date = (select today-20 from clock) then '30000000-0000-4000-8000-000000000002'::uuid else '30000000-0000-4000-8000-000000000001'::uuid end;
+ `);
+  const areas = (await db.query('select get_executive_report(today-30,today) r from clock')).rows[0].r.areas;
+  const areaDetails = (await db.query("select get_executive_report_details(today-30,today,'sales',100,0,null,'building','10000000-0000-4000-8000-000000000001') d from clock")).rows[0].d;
+  assert.equal(report.quietShops.total, 12);
+  assert.equal(report.quietShops.rows.length, 12);
+  assert.equal(detail.total, 0);
+  assert.equal(history.total, 5);
+  assert.equal(areas.length, 1);
+  assert.equal(areas[0].name, 'New A');
+  assert.equal(areas[0].sales,areaDetails.rows.reduce((sum,row)=>sum+row.amount, 0));
+  await db.exec(readFileSync(new URL('../supabase/migrations/0227_executive_sales_navigation.sql', import.meta.url), 'utf8'));
+  const rerun = (await db.query('select get_executive_report(today-30,today) r from clock')).rows[0].r;
+  assert.deepEqual(rerun.areas, areas);
+  assert.equal(rerun.quietShops.rows.length, 12);
+});

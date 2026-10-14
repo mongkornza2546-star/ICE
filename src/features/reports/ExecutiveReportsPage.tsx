@@ -87,6 +87,8 @@ export function ExecutiveReportsPage({ isActive, demoReport, demoRows }: {
   const debtorListPage = useRef(0);
   const rangeError = reportRangeError(from, to);
   const shownReport = !rangeError && report && report.from === from && report.to === to ? report : null;
+  const detailFrom = detail?.dateRange?.from ?? from;
+  const detailTo = detail?.dateRange?.to ?? to;
 
   const refresh = useCallback(() => setRefreshKey((value) => value + 1), []);
 
@@ -152,19 +154,20 @@ export function ExecutiveReportsPage({ isActive, demoReport, demoRows }: {
     setDetailError(null);
     if (demoRows) {
       const rows = (demoRows[detail.metric] ?? []).filter((row) =>
-        (!detail.bucket || row.day === detail.bucket)
+        (!detail.dateRange || (row.day >= detailFrom && row.day <= detailTo))
+        && (!detail.bucket || row.day === detail.bucket)
         && (!detail.shopId || row.shopId === detail.shopId)
         && (!detail.areaKind || row.area === report?.areas.find((area) => area.kind === detail.areaKind && area.id === detail.areaId)?.name));
       setDetailData({ total: rows.length, rows: rows.slice(detailPage * 50, (detailPage + 1) * 50) });
       return;
     }
-    void fetchDetails(from, to, detail, detailPage * 50).then((result) => {
+    void fetchDetails(detailFrom, detailTo, detail, detailPage * 50).then((result) => {
       if (request === detailRequest.current) setDetailData(result);
     }, (cause: unknown) => {
       if (request === detailRequest.current) setDetailError(cause instanceof Error ? cause.message : 'โหลดรายการไม่สำเร็จ');
     });
     return () => { detailRequest.current += 1; };
-  }, [detail, detailPage, from, to, isActive, rangeError, refreshKey, demoRows, report?.areas]);
+  }, [detail, detailPage, detailFrom, detailTo, isActive, rangeError, refreshKey, demoRows, report?.areas]);
 
   useEffect(() => {
     if (!invoiceId) return;
@@ -343,7 +346,7 @@ export function ExecutiveReportsPage({ isActive, demoReport, demoRows }: {
       if (event.shiftKey && (document.activeElement === focusable[0] || document.activeElement === dialogRef.current)) { event.preventDefault(); focusable[focusable.length - 1].focus(); }
       else if (!event.shiftKey && document.activeElement === focusable[focusable.length - 1]) { event.preventDefault(); focusable[0].focus(); }
     }} ref={dialogRef} role="dialog" tabIndex={-1}>
-      <header><button aria-label={invoiceId || detail.shopId ? translateUi('กลับไปยังรายการ') : translateUi('ย้อนกลับไปยังรายงาน')} onClick={backDetail} type="button"><CaretLeft size={21} /></button><div><h2>{invoiceId ? (invoice?.number ?? translateUi('รายละเอียดบิล')) : debtorName ?? detailLabel ?? translateUi(metricNames[detail.metric])}</h2><p>{invoiceId ? invoice?.shop : detail.metric === 'debt' || detail.metric === 'overdue' ? translateUi('ยอดปัจจุบัน') : `${formatReportDate(from)} – ${formatReportDate(to)}`}{!invoiceId && detail.metric === 'receipts' ? translateUi(' · ก่อนหักเงินคืน') : ''}</p></div><button aria-label={translateUi('ปิดรายละเอียด')} onClick={closeDetail} type="button"><X size={21} /></button></header>
+      <header><button aria-label={invoiceId || detail.shopId ? translateUi('กลับไปยังรายการ') : translateUi('ย้อนกลับไปยังรายงาน')} onClick={backDetail} type="button"><CaretLeft size={21} /></button><div><h2>{invoiceId ? (invoice?.number ?? translateUi('รายละเอียดบิล')) : debtorName ?? detailLabel ?? translateUi(metricNames[detail.metric])}</h2><p>{invoiceId ? invoice?.shop : detail.metric === 'debt' || detail.metric === 'overdue' ? translateUi('ยอดปัจจุบัน') : `${formatReportDate(detailFrom)} – ${formatReportDate(detailTo)}`}{!invoiceId && detail.metric === 'receipts' ? translateUi(' · ก่อนหักเงินคืน') : ''}</p></div><button aria-label={translateUi('ปิดรายละเอียด')} onClick={closeDetail} type="button"><X size={21} /></button></header>
       {invoiceId ? <>
         {invoiceError ? <p className="executive-error" role="alert">{translateUi(invoiceError)}</p> : null}
         {!invoice && !invoiceError ? <p className="executive-status">{translateUi('กำลังโหลดบิล…')}</p> : null}

@@ -395,3 +395,8 @@
   .executive-area-selection__actions button { min-height: 44px; }
   .executive-area-selection__products { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+
+.executive-quiet-pagination { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; }
+.executive-quiet-pagination > span { flex: 1 1 180px; color: #526783; font-size: .85rem; }
+.executive-quiet-pagination button { min-height: 40px; padding: 8px 12px; border: 1px solid #dce6f3; border-radius: 9px; background: #fff; color: #075ed8; }
+.executive-quiet-pagination button:disabled { color: #66758c; opacity: .55; cursor: default; }

@@ -59,6 +59,7 @@ export type QuietShop = {
 
 export type DetailQuery = {
   metric: ReportMetric;
+  dateRange?: { from: string; to: string };
   bucket?: string;
   areaKind?: string;
   areaId?: string | null;

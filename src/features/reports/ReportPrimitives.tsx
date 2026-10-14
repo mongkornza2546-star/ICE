@@ -12,10 +12,12 @@ export function Panel({ title, description, children, label, className = '', id,
   </section>;
 }
 
-export function DataTable({ headings, children, label }: { headings: string[]; children: ReactNode; label: string }) {
+export function DataTable({ headings, children, label, numericColumns = [] }: {
+  headings: string[]; children: ReactNode; label: string; numericColumns?: number[];
+}) {
   useLanguage();
   return <div className="executive-data-table__scroll"><table aria-label={label} className="executive-data-table">
-    <thead><tr>{headings.map((heading) => <th key={heading} scope="col">{translateUi(heading)}</th>)}</tr></thead>
+    <thead><tr>{headings.map((heading, index) => <th className={numericColumns.includes(index) ? 'executive-numeric' : undefined} key={heading} scope="col">{translateUi(heading)}</th>)}</tr></thead>
     <tbody>{children}</tbody>
   </table></div>;
 }
