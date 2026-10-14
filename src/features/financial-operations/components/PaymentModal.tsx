@@ -183,7 +183,19 @@ export function PaymentModal({
             <button onClick={onClose} type="button">{translateUi('เสร็จสิ้น')}</button>
           </div>
         ) : (
-          <div className="financial-ops__payment">
+          <form
+            className="financial-ops__payment"
+            noValidate
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' && (event.repeat || event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229)) {
+                event.preventDefault();
+              }
+            }}
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (!busy && canRecordPayment && paymentReady) onRecordPayment();
+            }}
+          >
             <section className="financial-ops__amount-due" aria-label={translateUi('ยอดที่ต้องชำระ')}>
               <span>{translateUi('ยอดบิลที่เลือก')}</span>
               <strong>{money.format(selectedOutstandingAmount)}</strong>
@@ -323,6 +335,7 @@ export function PaymentModal({
                 <span className="financial-ops__currency" aria-hidden="true">฿</span>
                 <input
                   aria-label={translateUi('ยอดรับเงินจริง')}
+                  autoFocus
                   disabled={busy || !canRecordPayment}
                   inputMode="decimal"
                   min="0.01"
@@ -426,12 +439,12 @@ export function PaymentModal({
 
             <footer className="financial-ops__payment-actions">
               <button disabled={busy} onClick={onClose} type="button">{translateUi('ยกเลิก')}</button>
-              <button disabled={busy || !canRecordPayment || !paymentReady} onClick={onRecordPayment} type="button">
+              <button disabled={busy || !canRecordPayment || !paymentReady} type="submit">
                 <FloppyDisk aria-hidden="true" size={21} weight="regular" />
                 {busy ? translateUi('กำลังบันทึก...') : translateUi('บันทึกรับเงินทันที')}
               </button>
             </footer>
-          </div>
+          </form>
         )}
       </article>
     </div>

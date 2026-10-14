@@ -209,10 +209,13 @@ export function EmployeeDeliveryReview({
     ));
 
   const enterDigit = (digit: string) => {
-    if (!selectedItem) return;
-    const current = String(deliveryQuantities[selectedItem.ice_type_id] ?? 0);
-    const next = Number(current === '0' ? digit : `${current}${digit}`);
-    onSetQuantity(selectedItem.ice_type_id, next);
+    if (!selectedItem || !canEditQuantity) return;
+    setQuantityInput((current) => current === '0' ? digit : `${current}${digit}`);
+  };
+
+  const eraseDigit = () => {
+    if (!selectedItem || !canEditQuantity) return;
+    setQuantityInput((current) => String(Number(current.slice(0, -1) || '0')));
   };
 
   useEffect(() => {
@@ -251,15 +254,26 @@ export function EmployeeDeliveryReview({
     };
   }, [paymentOpen, problemOpen, loadingPosContext, posContextError]);
 
-  const finishQuantity = (advanceToNext = false) => {
-    if (!selectedItem || !canEditQuantity) return;
+  const commitQuantity = () => {
+    if (!selectedItem || !canEditQuantity) return false;
     if (quantityInputRef.current && !quantityInputRef.current.checkValidity()) {
       quantityInputRef.current.reportValidity();
-      return;
+      return false;
     }
     const nextQuantity = quantityInput.trim() === '' ? 0 : inputQuantity;
-    if (!Number.isFinite(nextQuantity) || nextQuantity < 0 || (nextQuantity === 0 && !advanceToNext)) return;
+    if (!Number.isFinite(nextQuantity) || nextQuantity < 0) return false;
     onSetQuantity(selectedItem.ice_type_id, nextQuantity);
+    return true;
+  };
+
+  const selectIceType = (iceTypeId: string) => {
+    if (!canEditQuantity) return;
+    if (selectedIceTypeId !== iceTypeId && hasUncommittedQuantity && !commitQuantity()) return;
+    setSelectedIceTypeId(iceTypeId);
+  };
+
+  const finishQuantity = (advanceToNext = false) => {
+    if (!selectedItem || !commitQuantity()) return;
     if (advanceToNext) {
       const currentIndex = contextItems.findIndex((item) => item.ice_type_id === selectedItem.ice_type_id);
       const nextItem = [...contextItems.slice(currentIndex + 1), ...contextItems.slice(0, currentIndex)]
@@ -284,7 +298,7 @@ export function EmployeeDeliveryReview({
     if (event.key === 'Enter' && target.matches('input')) {
       // An input's Enter must never implicitly submit the delivery form.
       event.preventDefault();
-      if (target === quantityInputRef.current) finishQuantity(true);
+      if (!event.repeat && target === quantityInputRef.current) finishQuantity(true);
       return;
     }
     if (!canEditQuantity || !selectedItem || !target.closest('.employee-pos-entry')
@@ -294,10 +308,7 @@ export function EmployeeDeliveryReview({
       enterDigit(event.key);
     } else if (event.key === 'Backspace') {
       event.preventDefault();
-      onSetQuantity(selectedItem.ice_type_id, Number(String(selectedQuantity).slice(0, -1) || '0'));
-    } else if (event.key === 'Enter' && target.closest('.employee-pos-product-grid')) {
-      event.preventDefault();
-      finishQuantity();
+      eraseDigit();
     }
   };
 
@@ -624,7 +635,7 @@ export function EmployeeDeliveryReview({
                       className={selected ? 'employee-pos-product--selected' : ''}
                       disabled={submitting || round.status === 'closed' || iceType.unit_price == null && Boolean(posContext)}
                       key={iceType.ice_type_id}
-                      onClick={() => setSelectedIceTypeId(iceType.ice_type_id)}
+                      onClick={() => selectIceType(iceType.ice_type_id)}
                       type="button"
                     >
                       {iceType.image_url ? (
@@ -652,13 +663,13 @@ export function EmployeeDeliveryReview({
                   <button
                     aria-label={translateUi('ปิดแป้นใส่จำนวน')}
                     className="employee-pos-keypad-backdrop"
-                    onClick={() => setSelectedIceTypeId('')}
+                    onClick={() => { if (!hasUncommittedQuantity || commitQuantity()) setSelectedIceTypeId(''); }}
                     type="button"
                   />
                   <div className="employee-pos-quantity">
                     <span>{selectedItem.name}</span>
                     <strong aria-live="polite" className="employee-pos-quantity-display">
-                      {deliveryQuantities[selectedItem.ice_type_id] ?? 0}
+                      {quantityInput || '0'}
                     </strong>
                     <small>
                       {translateUi('คงเหลือ ')}{selectedItem.stock_quantity === Number.MAX_SAFE_INTEGER ? '—' : selectedItem.stock_quantity} {selectedItem.unit}
@@ -682,38 +693,35 @@ export function EmployeeDeliveryReview({
                   </label>
                   <div className="employee-pos-quick-quantities" role="group" aria-label={translateUi('เลือกจำนวนด่วน')}>
                     {[0.5, 1, 2, 3].map((quantity) => (
-                      <button disabled={!canEditQuantity} key={quantity} onClick={() => onSetQuantity(selectedItem.ice_type_id, quantity)} type="button">
+                      <button disabled={!canEditQuantity} key={quantity} onClick={() => setQuantityInput(String(quantity))} type="button">
                         {quantity === 0.5 ? '½' : quantity}
                       </button>
                     ))}
                   </div>
                   <div className="employee-keypad">
                     {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((digit) => (
-                      <button key={digit} onClick={() => enterDigit(digit)} type="button">{digit}</button>
+                      <button disabled={!canEditQuantity} key={digit} onClick={() => enterDigit(digit)} type="button">{digit}</button>
                     ))}
                     <button
                       aria-label={translateUi('ล้างจำนวน')}
-                      onClick={() => onSetQuantity(selectedItem.ice_type_id, 0)}
+                      disabled={!canEditQuantity}
+                      onClick={() => setQuantityInput('0')}
                       type="button"
                     >
                       {translateUi('ล้าง')}</button>
                     <button
                       aria-label={translateUi('เพิ่มครึ่งกระสอบ')}
-                      onClick={() => onSetQuantity(
-                        selectedItem.ice_type_id,
-                        (deliveryQuantities[selectedItem.ice_type_id] ?? 0) + 0.5,
-                      )}
+                      disabled={!canEditQuantity}
+                      onClick={() => setQuantityInput(String(inputQuantity + 0.5))}
                       type="button"
                     >
                       <span>½ <span className="employee-keypad-half-unit">{translateUi('กระสอบ')}</span></span>
                     </button>
-                    <button onClick={() => enterDigit('0')} type="button">0</button>
+                    <button disabled={!canEditQuantity} onClick={() => enterDigit('0')} type="button">0</button>
                     <button
                       aria-label={translateUi('ลบหนึ่งหลัก')}
-                      onClick={() => {
-                        const current = String(deliveryQuantities[selectedItem.ice_type_id] ?? 0);
-                        onSetQuantity(selectedItem.ice_type_id, Number(current.slice(0, -1) || '0'));
-                      }}
+                      disabled={!canEditQuantity}
+                      onClick={eraseDigit}
                       type="button"
                     >
                       <Backspace aria-hidden="true" size={24} />
@@ -721,7 +729,8 @@ export function EmployeeDeliveryReview({
                   </div>
                   <button
                     className="employee-pos-add-item"
-                    disabled={!canEditQuantity || !Number.isFinite(inputQuantity) || inputQuantity <= 0}
+                    disabled={!canEditQuantity || !Number.isFinite(inputQuantity) || inputQuantity < 0
+                      || (inputQuantity === 0 && !hasUncommittedQuantity)}
                     onClick={() => finishQuantity()}
                     type="button"
                   >

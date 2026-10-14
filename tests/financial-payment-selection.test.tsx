@@ -359,3 +359,84 @@ it('still opens cancellation for an unpaid delivery from the collection queue', 
   expect(await screen.findByRole('button', { name: 'ยืนยันยกเลิกใบส่งน้ำแข็ง' })).toBeTruthy();
   expect(supabaseMock.rpc).toHaveBeenCalledWith('get_delivery_correction_route', { p_event_id: 'unpaid-delivery' });
 });
+
+it.each([
+  { lastBill: false, refreshAlreadyRunning: true, saveFails: false, refreshFails: false },
+  { lastBill: true, refreshAlreadyRunning: true, saveFails: false, refreshFails: false },
+  { lastBill: false, refreshAlreadyRunning: false, saveFails: false, refreshFails: false },
+  { lastBill: false, refreshAlreadyRunning: true, saveFails: true, refreshFails: false },
+  { lastBill: false, refreshAlreadyRunning: true, saveFails: false, refreshFails: true },
+])('reconciles cancellation without waiting for a slow queue: %j', async ({ lastBill, refreshAlreadyRunning, saveFails, refreshFails }) => {
+  vi.spyOn(window, 'confirm').mockReturnValue(true);
+  const cancellableShop = {
+    ...shop,
+    outstanding_amount: lastBill ? 50 : 125,
+    charge_count: lastBill ? 1 : 2,
+    charges: (lastBill ? shop.charges.slice(0, 1) : shop.charges).map((charge, index) => ({
+      ...charge, delivery_event_id: `delivery-${index}`,
+    })),
+  };
+  let confirmCancellation!: (value: { data: null; error: Error | null }) => void;
+  const cancellation = new Promise<{ data: null; error: Error | null }>((resolve) => { confirmCancellation = resolve; });
+  supabaseMock.rpc.mockImplementation(async (name: string) => {
+    if (name === 'apply_open_delivery_correction') return cancellation;
+    if (name === 'get_delivery_correction_route') return { data: { destination_kind: 'regular' }, error: null };
+    if (name === 'get_payment_history') return { data: { items: [] }, error: null };
+    return { data: {
+      delivery_event_id: 'delivery-0', charge_id: shop.charges[0].charge_id,
+      charge_number: 'INV-OLD', shop_name: shop.shop_name, payment_term: 'credit',
+      round_status: 'open', day_closed: false, effective_amount: 50, allocated_amount: 0,
+      can_cancel: true, items: [],
+    }, error: null };
+  });
+  supabaseMock.loadQueue.mockResolvedValue({ runId: 'run-1', queue: [cancellableShop] });
+  render(<FinancialOperations userRole="admin" serviceDate={serviceDate} focusRequest={{
+    requestId: 'cancel-slow', source: 'pos-shortcut', shopId: shop.shop_id, queueKey: `regular:${shop.shop_id}`,
+  }} />);
+  await screen.findByRole('checkbox', { name: 'เลือกบิล INV-OLD' });
+  await act(async () => {});
+
+  // Hold an already-running refresh, then return its pre-cancellation snapshot.
+  let finishRefresh!: (value: { runId: string; queue: QueueShop[] }) => void;
+  let rejectRefresh!: (error: Error) => void;
+  supabaseMock.loadQueue.mockImplementation(() => new Promise((resolve, reject) => {
+    finishRefresh = resolve;
+    rejectRefresh = reject;
+  }));
+  if (refreshAlreadyRunning) act(() => publishDataChange(['payment']));
+  const detailToggle = screen.queryByRole('button', { name: 'ดูรายละเอียดบิลส่งของ INV-OLD' });
+  if (detailToggle?.getAttribute('aria-expanded') === 'false') fireEvent.click(detailToggle);
+  fireEvent.click(screen.getByRole('button', { name: 'ยกเลิกใบส่งน้ำแข็ง INV-OLD' }));
+  await screen.findByRole('button', { name: 'ยืนยันยกเลิกใบส่งน้ำแข็ง' });
+  fireEvent.change(screen.getByLabelText('เหตุผล'), { target: { value: 'ส่งซ้ำ' } });
+  fireEvent.click(screen.getByRole('button', { name: 'ยืนยันยกเลิกใบส่งน้ำแข็ง' }));
+  expect(screen.getByRole('checkbox', { name: 'เลือกบิล INV-OLD' })).toBeTruthy();
+
+  await act(async () => { confirmCancellation({ data: null, error: saveFails ? new Error('ยกเลิกไม่สำเร็จ') : null }); });
+  if (saveFails) {
+    expect(screen.getByText('ยกเลิกไม่สำเร็จ')).toBeTruthy();
+    expect(screen.getByRole('checkbox', { name: 'เลือกบิล INV-OLD' })).toBeTruthy();
+    expect((screen.getByRole('spinbutton', { name: 'ยอดรับเงินจริง' }) as HTMLInputElement).value).toBe('125.00');
+    await act(async () => { finishRefresh({ runId: 'run-1', queue: [cancellableShop] }); });
+    expect(screen.getByRole('checkbox', { name: 'เลือกบิล INV-OLD' })).toBeTruthy();
+    return;
+  }
+  expect(screen.queryByRole('checkbox', { name: 'เลือกบิล INV-OLD' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'ยืนยันยกเลิกใบส่งน้ำแข็ง' })).toBeNull();
+  if (lastBill) {
+    expect(screen.queryByRole('button', { name: 'บันทึกรับเงินทันที' })).toBeNull();
+  } else {
+    expect((screen.getByRole('spinbutton', { name: 'ยอดรับเงินจริง' }) as HTMLInputElement).value).toBe('75.00');
+    expect(screen.getByRole('button', { name: 'บันทึกรับเงินทันที' }).hasAttribute('disabled')).toBe(true);
+    expect(screen.getByRole('button', { name: 'ตรวจสอบแล้ว' })).toBeTruthy();
+  }
+
+  await act(async () => {
+    if (refreshFails) rejectRefresh(new Error('โหลดคิวไม่สำเร็จ'));
+    else finishRefresh({ runId: 'run-1', queue: [cancellableShop] });
+  });
+  expect(screen.queryByRole('checkbox', { name: 'เลือกบิล INV-OLD' })).toBeNull();
+  if (!lastBill) {
+    expect((screen.getByRole('spinbutton', { name: 'ยอดรับเงินจริง' }) as HTMLInputElement).value).toBe('75.00');
+  }
+});

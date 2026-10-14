@@ -547,6 +547,7 @@ export function RoleRouter({
       {visitedViews.has('delivery') && (
         <KeepAlive active={currentView === 'delivery'}>
           <EmployeeDeliveryWorkspace
+            canPrintCreditWithVat
             canCollectShopPayments={canCollectPayments}
             casualCustomerEnabled
             isActive={currentView === 'delivery'}

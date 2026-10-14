@@ -49,6 +49,15 @@ function queueIdentity(shop: QueueShop) {
   return shop.queue_key ?? `regular:${shop.shop_id}`;
 }
 
+function removeCancelledDeliveries(queue: QueueShop[], cancelledEventIds: Set<string>): QueueShop[] {
+  return queue.flatMap((shop) => {
+    const charges = shop.charges.filter((charge) => !charge.delivery_event_id || !cancelledEventIds.has(charge.delivery_event_id));
+    if (charges.length === shop.charges.length) return [shop];
+    if (charges.length === 0) return [];
+    return [{ ...shop, charges, charge_count: charges.length, outstanding_amount: sumChargeOutstanding(charges) }];
+  });
+}
+
 type PaymentHistoryPage = {
   items?: PaymentHistoryItem[];
   next_cursor?: { recorded_at: string; id: string } | null;
@@ -168,6 +177,9 @@ export function FinancialOperations({
   const autoRefreshRunningRef = useRef(false);
   const selectedShopRef = useRef<QueueShop | null>(selectedShop);
   const selectedChargeIdsRef = useRef(selectedChargeIds);
+  // Only server-confirmed cancellations belong here. Keep them excluded even if
+  // a refresh that began before cancellation returns its older snapshot later.
+  const cancelledEventIdsRef = useRef(new Set<string>());
   const busyRef = useRef(busy);
   const receiptRef = useRef<PaymentReceipt | null>(receipt);
   const handledFocusRequestIdRef = useRef<string | null>(null);
@@ -253,7 +265,8 @@ export function FinancialOperations({
     const nextRunId = collectionQueue.runId;
     setRunId(nextRunId);
     if (nextRunId) {
-      const nextQueue = await withPublicShopImages(collectionQueue.queue);
+      const queueWithImages = await withPublicShopImages(collectionQueue.queue);
+      const nextQueue = removeCancelledDeliveries(queueWithImages, cancelledEventIdsRef.current);
       if (focusLoadRequestId && focusLoadRequestId !== focusLoadRequestRef.current) return;
       const currentShop = selectedShopRef.current;
       const preferredShop = preferredQueueKey || preferredChargeId
@@ -469,7 +482,8 @@ export function FinancialOperations({
 
     if (page) page.inert = true;
     document.body.style.overflow = 'hidden';
-    closeButtonRef.current?.focus();
+    const amountInput = dialogRef.current?.querySelector<HTMLInputElement>('input[type="number"]:not([disabled])');
+    (amountInput ?? closeButtonRef.current)?.focus();
     window.addEventListener('keydown', closeOnKeydown);
     return () => {
       if (page) page.inert = false;
@@ -574,6 +588,24 @@ export function FinancialOperations({
 
   const openChargeCorrection = (charge: QueueShop['charges'][number]) => {
     if (charge.delivery_event_id) setCorrectionEventId(charge.delivery_event_id);
+  };
+
+  const completeChargeCancellation = (message: string) => {
+    setSuccess(message);
+    if (!correctionEventId) return;
+    cancelledEventIdsRef.current.add(correctionEventId);
+    setQueue((current) => removeCancelledDeliveries(current, cancelledEventIdsRef.current));
+    const currentShop = selectedShopRef.current;
+    if (!currentShop?.charges.some((charge) => charge.delivery_event_id === correctionEventId)) return;
+    const nextShop = removeCancelledDeliveries([currentShop], cancelledEventIdsRef.current)[0] ?? null;
+    const remainingIds = new Set(nextShop?.charges.map((charge) => charge.charge_id));
+    const nextSelectedIds = selectedChargeIdsRef.current.filter((id) => remainingIds.has(id));
+    selectedShopRef.current = nextShop;
+    selectedChargeIdsRef.current = nextSelectedIds;
+    setSelectedShop(nextShop);
+    setSelectedChargeIds(nextSelectedIds);
+    setAmount(sumChargeOutstanding(nextShop?.charges.filter((charge) => nextSelectedIds.includes(charge.charge_id)) ?? []).toFixed(2));
+    setSelectionReviewRequired(Boolean(nextShop));
   };
 
   const receivedAmount = Number(amount);
@@ -1056,7 +1088,7 @@ export function FinancialOperations({
             onVoidPayment={voidPayment}
             paymentHistory={paymentHistory}
             serviceDate={serviceDate}
-          /> : <DailyCreditAcknowledgementPanel printerName={printerName} serviceDate={serviceDate} />}
+          /> : <DailyCreditAcknowledgementPanel canPrintWithVat={false} printerName={printerName} serviceDate={serviceDate} />}
         </div>
       </div> : null}
 
@@ -1169,9 +1201,7 @@ export function FinancialOperations({
         <DeliveryCorrectionDialog
           eventId={correctionEventId}
           onClose={() => setCorrectionEventId(null)}
-          onSuccess={(message) => {
-            setSuccess(message);
-          }}
+          onSuccess={completeChargeCancellation}
           userRole={userRole}
         />,
         document.body,

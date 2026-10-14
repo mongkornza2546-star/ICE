@@ -332,7 +332,27 @@ export function EmployeeShopPicker({
             <h2>{destinationKind === 'event' ? translateUi('ร้านในอีเว้น') : translateUi('ร้านที่เลือกได้')}</h2>
             <span>{filteredCards.length}{translateUi(' ร้าน')}</span>
           </div>
-          <div className="employee-shop-grid">
+          <div
+            className="employee-shop-grid"
+            onKeyDown={(event) => {
+              if (previewImage || event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey
+                || event.shiftKey || event.nativeEvent.isComposing
+                || (event.key !== 'ArrowDown' && event.key !== 'ArrowUp')) return;
+              const buttons = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>(
+                '.employee-shop-tile__select:not(:disabled)',
+              ));
+              const currentButton = (event.target as HTMLElement).closest('.employee-shop-tile')
+                ?.querySelector<HTMLButtonElement>('.employee-shop-tile__select');
+              const currentIndex = currentButton ? buttons.indexOf(currentButton) : -1;
+              if (currentIndex < 0) return;
+              event.preventDefault();
+              const nextIndex = Math.max(0, Math.min(buttons.length - 1,
+                currentIndex + (event.key === 'ArrowDown' ? 1 : -1)));
+              const nextButton = buttons[nextIndex];
+              nextButton.focus({ preventScroll: true });
+              nextButton.scrollIntoView({ block: 'nearest' });
+            }}
+          >
             {shopTiles}
           </div>
         </section>

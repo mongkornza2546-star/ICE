@@ -42,11 +42,12 @@ const dateTime = uiDateTimeFormat({
   timeZone: 'Asia/Bangkok',
 });
 
-export function DailyCreditAcknowledgementPanel({ serviceDate, printerName, shopId, onBack }: {
+export function DailyCreditAcknowledgementPanel({ serviceDate, printerName, shopId, onBack, canPrintWithVat = true }: {
   serviceDate: string;
   printerName?: string;
   shopId?: string;
   onBack?: () => void;
+  canPrintWithVat?: boolean;
 }) {
   useLanguage();
   const [selectedDate, setSelectedDate] = useState(serviceDate);
@@ -277,7 +278,7 @@ export function DailyCreditAcknowledgementPanel({ serviceDate, printerName, shop
         <div className="daily-credit-signoff__actions">
           <span className={selectedShop.is_stale ? 'is-stale' : ''}>{selectedShop.is_stale ? translateUi('ยอดเปลี่ยน · พิมพ์ฉบับใหม่') : selectedShop.document_id ? translateUi('ฉบับที่ {0}', { 0: selectedShop.document_version ?? '—' }) : translateUi('ยังไม่ได้สร้างใบ')}{selectedShop.evidence_count ? translateUi(' · มีรูปใบเซ็น {0} รูป', { 0: selectedShop.evidence_count }) : ''}</span>
           <div>
-            <button disabled={busyShopId === selectedShopId} onClick={() => void print(selectedShop)} type="button"><Printer size={17} />{selectedShop.document_id && !selectedShop.is_stale ? translateUi('พิมพ์ซ้ำ') : translateUi('พิมพ์ใบรวม')}</button>
+            {canPrintWithVat ? <button disabled={busyShopId === selectedShopId} onClick={() => void print(selectedShop)} type="button"><Printer size={17} />{selectedShop.document_id && !selectedShop.is_stale ? translateUi('พิมพ์ซ้ำ') : translateUi('พิมพ์ใบรวม')}</button> : null}
             <button disabled={busyShopId === selectedShopId} onClick={() => void print(selectedShop, false)} type="button"><Printer size={17} />{translateUi('พิมพ์ไม่แสดง VAT')}</button>
             {selectedShop.latest_evidence_path ? <button disabled={busyShopId === selectedShopId} onClick={() => void viewEvidence(selectedShop)} type="button">{translateUi('ดูรูป')}</button> : null}
           </div>

@@ -763,6 +763,7 @@ const productionGateway = createSupabaseGateway();
 
 export function EmployeeDeliveryWorkspace({
   canCollectShopPayments = true,
+  canPrintCreditWithVat = false,
   casualCustomerEnabled = false,
   gateway = productionGateway,
   enableAssignedStockFlow = false,
@@ -780,6 +781,7 @@ export function EmployeeDeliveryWorkspace({
   viewMode,
 }: {
   canCollectShopPayments?: boolean;
+  canPrintCreditWithVat?: boolean;
   casualCustomerEnabled?: boolean;
   gateway?: EmployeeDeliveryGateway;
   enableAssignedStockFlow?: boolean;
@@ -973,6 +975,7 @@ export function EmployeeDeliveryWorkspace({
     return (
       <div className="employee-workspace">
         {creditSignoffOpen ? <DailyCreditAcknowledgementPanel
+          canPrintWithVat={canPrintCreditWithVat}
           onBack={() => setCreditSignoffOpen(false)}
           printerName={printerName}
           serviceDate={serviceDate}

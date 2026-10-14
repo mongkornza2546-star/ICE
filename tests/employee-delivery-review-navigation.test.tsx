@@ -143,6 +143,114 @@ function renderReview(canCollectImmediatePayment = true, card = shopCard, overri
 }
 
 describe('employee delivery review navigation', () => {
+  it('adds half to the typed draft and commits it only when confirmed', async () => {
+    const user = userEvent.setup();
+    const onSetQuantity = vi.fn();
+    renderReview(true, shopCard, { onSetQuantity });
+    await user.click(screen.getByRole('button', { name: /หลอดเล็ก.*คงเหลือ/ }));
+    const input = screen.getByRole('spinbutton', { name: 'จำนวนหลอดเล็ก' });
+    await user.clear(input);
+    await user.type(input, '3');
+    await user.click(screen.getByRole('button', { name: 'เพิ่มครึ่งกระสอบ' }));
+    expect((input as HTMLInputElement).value).toBe('3.5');
+    expect(document.querySelector('.employee-pos-quantity-display')?.textContent).toBe('3.5');
+    expect(onSetQuantity).not.toHaveBeenCalled();
+    expect(screen.getByText('2 ถุง × ฿60.00')).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: 'เพิ่มรายการ' }));
+    expect(onSetQuantity).toHaveBeenCalledExactlyOnceWith('ice-1', 3.5);
+    expect(screen.getByText('3.5 ถุง × ฿60.00')).toBeTruthy();
+  });
+
+  it('uses the typed draft for keypad digits and backspace', async () => {
+    const user = userEvent.setup();
+    renderReview();
+    await user.click(screen.getByRole('button', { name: /หลอดเล็ก.*คงเหลือ/ }));
+    const input = screen.getByRole('spinbutton', { name: 'จำนวนหลอดเล็ก' });
+    await user.clear(input);
+    await user.type(input, '3');
+    const keypad = document.querySelector('.employee-keypad')! as HTMLElement;
+    await user.click(within(keypad).getByRole('button', { name: '1', exact: true }));
+    expect((input as HTMLInputElement).value).toBe('31');
+    await user.click(screen.getByRole('button', { name: 'ลบหนึ่งหลัก' }));
+    expect((input as HTMLInputElement).value).toBe('3');
+    await user.click(screen.getByRole('button', { name: 'เพิ่มรายการ' }));
+    expect(screen.getByText('3 ถุง × ฿60.00')).toBeTruthy();
+  });
+
+  it.each(['click', 'Enter'])('commits the draft before selecting another product with %s', async (action) => {
+    const user = userEvent.setup();
+    const other = { ...posContext.items[0], ice_type_id: 'ice-2', name: 'หลอดใหญ่' };
+    const { onSubmit } = renderReview(true, shopCard, {
+      posContext: { ...posContext, items: [...posContext.items, other] },
+    });
+    await user.click(screen.getByRole('button', { name: /หลอดเล็ก.*คงเหลือ/ }));
+    const input = screen.getByRole('spinbutton', { name: 'จำนวนหลอดเล็ก' });
+    await user.clear(input);
+    await user.type(input, '3');
+    const otherButton = screen.getByRole('button', { name: /หลอดใหญ่.*คงเหลือ/ });
+    vi.spyOn(input, 'getClientRects').mockReturnValue(Object.assign([new DOMRect()], { item: () => new DOMRect() }));
+    if (action === 'click') await user.click(otherButton);
+    else {
+      otherButton.focus();
+      await user.keyboard('{Enter}');
+    }
+    expect(screen.getByText('3 ถุง × ฿60.00')).toBeTruthy();
+    expect(document.activeElement).toBe(screen.getByRole('spinbutton', { name: 'จำนวนหลอดใหญ่' }));
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it.each(['1.1', '168'])('keeps invalid draft %s open when another product is selected', async (value) => {
+    const user = userEvent.setup();
+    const other = { ...posContext.items[0], ice_type_id: 'ice-2', name: 'หลอดใหญ่' };
+    renderReview(true, shopCard, { posContext: { ...posContext, items: [...posContext.items, other] } });
+    await user.click(screen.getByRole('button', { name: /หลอดเล็ก.*คงเหลือ/ }));
+    const input = screen.getByRole('spinbutton', { name: 'จำนวนหลอดเล็ก' });
+    await user.clear(input);
+    await user.type(input, value);
+    await user.click(screen.getByRole('button', { name: /หลอดใหญ่.*คงเหลือ/ }));
+    expect(screen.queryByRole('spinbutton', { name: 'จำนวนหลอดใหญ่' })).toBeNull();
+    expect((input as HTMLInputElement).value).toBe(value);
+    expect(screen.getByRole('button', { name: 'ส่งอย่างเดียว' }).hasAttribute('disabled')).toBe(true);
+  });
+
+  it('cancels keypad edits without changing the existing cart', async () => {
+    const user = userEvent.setup();
+    renderReview();
+    await user.click(screen.getByRole('button', { name: /หลอดเล็ก.*คงเหลือ/ }));
+    await user.click(screen.getByRole('button', { name: 'เพิ่มครึ่งกระสอบ' }));
+    await user.click(screen.getByRole('button', { name: 'ยกเลิกการแก้จำนวน' }));
+    expect(screen.getByText('2 ถุง × ฿60.00')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'ส่งอย่างเดียว' }).hasAttribute('disabled')).toBe(false);
+  });
+
+  it('commits zero after clearing the keypad instead of leaving the old cart quantity', async () => {
+    const user = userEvent.setup();
+    const onSetQuantity = vi.fn();
+    renderReview(true, shopCard, { onSetQuantity });
+    await user.click(screen.getByRole('button', { name: /หลอดเล็ก.*คงเหลือ/ }));
+    await user.click(screen.getByRole('button', { name: 'ล้างจำนวน' }));
+    expect(onSetQuantity).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: 'เพิ่มรายการ' }));
+    expect(onSetQuantity).toHaveBeenCalledExactlyOnceWith('ice-1', 0);
+    expect(screen.queryByText('2 ถุง × ฿60.00')).toBeNull();
+  });
+
+  it('validates a keypad quantity over stock instead of silently reducing it', async () => {
+    const user = userEvent.setup();
+    const onSetQuantity = vi.fn();
+    renderReview(true, shopCard, { onSetQuantity });
+    await user.click(screen.getByRole('button', { name: /หลอดเล็ก.*คงเหลือ/ }));
+    const input = screen.getByRole('spinbutton', { name: 'จำนวนหลอดเล็ก' });
+    await user.clear(input);
+    await user.type(input, '167');
+    await user.click(screen.getByRole('button', { name: 'เพิ่มครึ่งกระสอบ' }));
+    await user.click(screen.getByRole('button', { name: 'เพิ่มรายการ' }));
+    expect((input as HTMLInputElement).value).toBe('167.5');
+    expect((input as HTMLInputElement).checkValidity()).toBe(false);
+    expect(onSetQuantity).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'ส่งอย่างเดียว' }).hasAttribute('disabled')).toBe(true);
+  });
+
   it('shows cancellation details without offering another cancellation even with stale permissions', () => {
     renderReview(true, {
       ...shopCard,
@@ -269,15 +377,17 @@ describe('employee delivery review navigation', () => {
     expect(document.activeElement).toBe(screen.getByRole('spinbutton', { name: 'จำนวนน้ำแข็งบด' }));
   });
 
-  it.each([[ '½', 0.5 ], [ '1', 1 ], [ '2', 2 ], [ '3', 3 ]])('sets the quick quantity %s without appending digits', async (label, quantity) => {
+  it.each([[ '½', 0.5 ], [ '1', 1 ], [ '2', 2 ], [ '3', 3 ]])('sets the quick draft %s without appending digits and commits on confirmation', async (label, quantity) => {
     const user = userEvent.setup();
     const onSetQuantity = vi.fn();
     renderReview(true, shopCard, { onSetQuantity });
     await user.click(screen.getByRole('button', { name: /หลอดเล็ก.*คงเหลือ/ }));
     const quick = screen.getByRole('group', { name: 'เลือกจำนวนด่วน' });
     await user.click(within(quick).getByRole('button', { name: String(label), exact: true }));
-    expect(onSetQuantity).toHaveBeenLastCalledWith('ice-1', quantity);
+    expect(onSetQuantity).not.toHaveBeenCalled();
     expect((screen.getByRole('spinbutton', { name: 'จำนวนหลอดเล็ก' }) as HTMLInputElement).value).toBe(String(quantity));
+    await user.click(screen.getByRole('button', { name: 'เพิ่มรายการ' }));
+    expect(onSetQuantity).toHaveBeenLastCalledWith('ice-1', quantity);
   });
 
   it.each(['', '0'])('commits an erased quantity (%s) as zero and advances on Enter', async (value) => {

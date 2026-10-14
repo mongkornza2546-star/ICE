@@ -22,7 +22,7 @@ const shop: ShopCard = {
   today_totals: {},
 };
 
-function renderPicker(openCard = vi.fn(), selectedRoundId = 'round-1', shopButtons = new Map<string, HTMLButtonElement>()) {
+function renderPicker(openCard = vi.fn(), selectedRoundId = 'round-1', shopButtons = new Map<string, HTMLButtonElement>(), cards = [shop]) {
   render(<EmployeeShopPicker
     casualCustomerEntryVisible
     enableAssignedStockFlow={false}
@@ -42,7 +42,7 @@ function renderPicker(openCard = vi.fn(), selectedRoundId = 'round-1', shopButto
     eventOptions={[]}
     eventCardsError={null}
     loadingCards={false}
-    filteredCards={[shop]}
+    filteredCards={cards}
     refreshShopImageUrl={vi.fn().mockResolvedValue(shop.image_url)}
     casualCustomerButtonRef={{ current: null }}
     openCasualCustomer={vi.fn()}
@@ -52,6 +52,71 @@ function renderPicker(openCard = vi.fn(), selectedRoundId = 'round-1', shopButto
   />);
   return openCard;
 }
+
+describe('employee shop picker keyboard navigation', () => {
+  const secondShop = { ...shop, round_stop_id: 'stop-2', shop_id: 'shop-2', shop_code: 'BB17' };
+  const thirdShop = { ...shop, round_stop_id: 'stop-3', shop_id: 'shop-3', shop_code: 'BB18' };
+
+  function setup(cards = [shop, secondShop, thirdShop]) {
+    const openCard = renderPicker(vi.fn(), 'round-1', new Map(), cards);
+    const buttons = screen.getAllByRole('button', { name: /^เลือกร้าน/ });
+    const scrollIntoView = vi.fn();
+    buttons.forEach((button) => { button.scrollIntoView = scrollIntoView; });
+    return { openCard, buttons, scrollIntoView };
+  }
+
+  it('moves between shops and opens only the focused shop with Enter', async () => {
+    const user = userEvent.setup();
+    const { openCard, buttons, scrollIntoView } = setup();
+    buttons[0].focus();
+
+    await user.keyboard('{ArrowDown}{ArrowDown}');
+    expect(document.activeElement).toBe(buttons[2]);
+    await user.keyboard('{ArrowUp}');
+    expect(document.activeElement).toBe(buttons[1]);
+    expect(scrollIntoView).toHaveBeenLastCalledWith({ block: 'nearest' });
+    expect(openCard).not.toHaveBeenCalled();
+
+    await user.keyboard('{Enter}');
+    expect(openCard).toHaveBeenCalledExactlyOnceWith(secondShop);
+  });
+
+  it('stays at the first and last shop instead of scrolling the page', () => {
+    const { buttons } = setup();
+    buttons[0].focus();
+    expect(fireEvent.keyDown(buttons[0], { key: 'ArrowUp' })).toBe(false);
+    expect(document.activeElement).toBe(buttons[0]);
+    buttons[2].focus();
+    expect(fireEvent.keyDown(buttons[2], { key: 'ArrowDown' })).toBe(false);
+    expect(document.activeElement).toBe(buttons[2]);
+  });
+
+  it('uses the displayed order and skips shops that cannot be opened', () => {
+    const { buttons } = setup([thirdShop, {
+      ...secondShop, destination_kind: 'event', event_delivery_enabled: false,
+    }, shop]);
+    buttons[0].focus();
+    fireEvent.keyDown(buttons[0], { key: 'ArrowDown' });
+    expect(document.activeElement).toBe(buttons[2]);
+    fireEvent.keyDown(buttons[2], { key: 'ArrowUp' });
+    expect(document.activeElement).toBe(buttons[0]);
+  });
+
+  it('does not intercept arrow keys in search or the image preview', async () => {
+    const user = userEvent.setup();
+    const { openCard } = setup();
+    const search = screen.getByRole('searchbox');
+    search.focus();
+    expect(fireEvent.keyDown(search, { key: 'ArrowDown' })).toBe(true);
+    expect(document.activeElement).toBe(search);
+
+    await user.click(screen.getByRole('button', { name: 'ดูรูปร้าน BB16 ร้านเล่าซา' }));
+    const closeButton = screen.getByRole('button', { name: 'ปิดรูปภาพ' });
+    expect(fireEvent.keyDown(closeButton, { key: 'ArrowDown' })).toBe(true);
+    expect(document.activeElement).toBe(closeButton);
+    expect(openCard).not.toHaveBeenCalled();
+  });
+});
 
 describe('employee shop picker image preview', () => {
   it('keeps the shop list intact while opening and closing a photo', () => {

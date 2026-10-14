@@ -2,6 +2,7 @@ import { createRef, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { LanguageProvider, LanguageSwitcher, translateUi } from '../src/i18n';
 import { fireEvent, render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { PaymentModal } from '../src/features/financial-operations/components/PaymentModal';
 import type { QueueShop } from '../src/features/financial-operations/types';
@@ -94,6 +95,52 @@ function renderModal(overrides: Partial<Parameters<typeof PaymentModal>[0]> = {}
 }
 
 describe('payment bill selection', () => {
+  it('records payment once with Enter from the initially focused amount', async () => {
+    const user = userEvent.setup();
+    const props = renderModal();
+
+    expect(document.activeElement).toBe(screen.getByRole('spinbutton', { name: 'ยอดรับเงินจริง' }));
+    await user.keyboard('{Enter}');
+
+    expect(props.onRecordPayment).toHaveBeenCalledOnce();
+    expect(props.onClose).not.toHaveBeenCalled();
+  });
+
+  it('records payment with Enter from the note', async () => {
+    const user = userEvent.setup();
+    const props = renderModal();
+    await user.click(screen.getByRole('textbox', { name: 'หมายเหตุ' }));
+    await user.keyboard('{Enter}');
+    expect(props.onRecordPayment).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    { busy: true },
+    { canRecordPayment: false },
+    { paymentReady: false },
+  ])('does not submit a payment when blocked: %o', (overrides) => {
+    const props = renderModal(overrides);
+    fireEvent.submit(screen.getByRole('spinbutton', { name: 'ยอดรับเงินจริง' }).closest('form')!);
+    expect(props.onRecordPayment).not.toHaveBeenCalled();
+  });
+
+  it.each([{ repeat: true }, { isComposing: true }, { keyCode: 229 }])('ignores held or composing Enter: %o', (keyboardState) => {
+    const props = renderModal();
+    expect(fireEvent.keyDown(screen.getByRole('spinbutton', { name: 'ยอดรับเงินจริง' }), {
+      key: 'Enter', ...keyboardState,
+    })).toBe(false);
+    expect(props.onRecordPayment).not.toHaveBeenCalled();
+  });
+
+  it('keeps Enter on the cancel button as cancel', async () => {
+    const user = userEvent.setup();
+    const props = renderModal();
+    screen.getByRole('button', { name: 'ยกเลิก' }).focus();
+    await user.keyboard('{Enter}');
+    expect(props.onClose).toHaveBeenCalledOnce();
+    expect(props.onRecordPayment).not.toHaveBeenCalled();
+  });
+
   it('shows the selected total, cash change, and whole-shop balance separately', () => {
     const props = renderModal();
 
