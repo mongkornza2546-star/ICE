@@ -155,7 +155,10 @@ it('shows business totals and drills into the selected building', async () => {
 it('switches report sections, opens a shop, and restores focus when details close', async () => {
   render(<ExecutiveReportsPage isActive />);
   await screen.findByRole('button', { name: /ยอดขายสุทธิ/ });
-  fireEvent.click(screen.getByRole('button', { name: 'ดูยอดขาย' }));
+  const tabs = screen.getByRole('navigation', { name: 'หมวดรายงาน' });
+  fireEvent.click(within(tabs).getByRole('button', { name: 'ยอดขาย' }));
+  expect(within(tabs).getByRole('button', { name: 'ภาพรวม' }).getAttribute('aria-current')).toBeNull();
+  expect(screen.queryByRole('navigation', { name: 'รายละเอียดรายงาน' })).toBeNull();
   expect(screen.getByRole('table', { name: 'ตารางยอดขายตามพื้นที่' })).not.toBeNull();
   expect(screen.getByText('100%')).not.toBeNull();
   const shop = within(screen.getByRole('table', { name: 'ร้านค้ายอดขายสูงสุด' }))
@@ -165,7 +168,7 @@ it('switches report sections, opens a shop, and restores focus when details clos
   expect(screen.getByRole('heading', { name: 'ร้านหนึ่ง' })).not.toBeNull();
   fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'ปิดรายละเอียด' }));
   await waitFor(() => expect(document.activeElement).toBe(shop));
-  expect(within(screen.getByRole('navigation', { name: 'รายละเอียดรายงาน' })).getByRole('button', { name: 'ยอดขาย' }).getAttribute('aria-current')).toBe('page');
+  expect(within(tabs).getByRole('button', { name: 'ยอดขาย' }).getAttribute('aria-current')).toBe('page');
 });
 
 it('shows the receipt equation and pages through detail rows', async () => {
@@ -541,7 +544,7 @@ it('shows delivery quantities and destination breakdowns with their own units on
   const products = await screen.findByRole('region', { name: 'ยอดขายแยกตามประเภทน้ำแข็ง' });
   expect(within(products).getByText('10')).not.toBeNull();
   expect(within(products).getByText('ถุง')).not.toBeNull();
-  expect(within(screen.getByRole('navigation', { name: 'หมวดรายงาน' })).getAllByRole('button').map((button) => button.textContent)).toEqual(['ภาพรวม', 'การเงิน']);
+  expect(within(screen.getByRole('navigation', { name: 'หมวดรายงาน' })).getAllByRole('button').map((button) => button.textContent)).toEqual(['ภาพรวม', 'ยอดขาย', 'การเงิน']);
   const locations = screen.getByRole('region', { name: 'จำนวนส่งของพื้นที่ที่เลือก' });
   expect(within(locations).getByRole('heading', { name: 'อาคาร A' })).not.toBeNull();
   expect(within(locations).getByText('6.5')).not.toBeNull();

@@ -1,4 +1,4 @@
-import { ChartBar, CreditCard } from '@phosphor-icons/react';
+import { ChartBar, ChartLine, CreditCard } from '@phosphor-icons/react';
 import { ReportOverview } from './ReportOverview';
 import { translateUi, useLanguage } from '../../i18n';
 import { formatReportDate, reportBucketLabels } from './reportDates';
@@ -17,14 +17,15 @@ export type ReportSection = 'overview' | 'sales' | 'finance' | 'volume';
 
 const sections: Array<{ id: ReportSection; label: string }> = [
   { id: 'overview', label: 'ภาพรวม' },
+  { id: 'sales', label: 'ยอดขาย' },
   { id: 'finance', label: 'การเงิน' },
 ];
 
 export function ReportTabs({ active, onChange }: { active: ReportSection; onChange: (section: ReportSection) => void }) {
   useLanguage();
   return <nav aria-label={translateUi('หมวดรายงาน')} className="executive-tabs">
-    {sections.map(({ id, label }) => <button aria-current={(active === id || (id === 'overview' && active !== 'finance')) ? 'page' : undefined}
-      key={id} onClick={() => onChange(id)} type="button">{id === 'overview' ? <ChartBar size={19} aria-hidden="true" /> : <CreditCard size={19} aria-hidden="true" />}{translateUi(label)}</button>)}
+    {sections.map(({ id, label }) => <button aria-current={(active === id || (id === 'overview' && active === 'volume')) ? 'page' : undefined}
+      key={id} onClick={() => onChange(id)} type="button">{id === 'overview' ? <ChartBar size={19} aria-hidden="true" /> : id === 'sales' ? <ChartLine size={19} aria-hidden="true" /> : <CreditCard size={19} aria-hidden="true" />}{translateUi(label)}</button>)}
   </nav>;
 }
 

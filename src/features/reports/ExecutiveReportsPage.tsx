@@ -304,9 +304,8 @@ export function ExecutiveReportsPage({ isActive, demoReport, demoRows }: {
             title={translateUi('หนี้เกินกำหนด')} icon={Warning} tone="red" value={shownReport.overdue} />
         </div>
       </section>
-      {section === 'sales' || section === 'volume' ? <nav className="executive-detail-nav" aria-label={translateUi('รายละเอียดรายงาน')}>
+      {section === 'volume' ? <nav className="executive-detail-nav" aria-label={translateUi('รายละเอียดรายงาน')}>
         <button onClick={() => setSection('overview')} type="button"><CaretLeft size={16} />{translateUi('กลับภาพรวม')}</button>
-        <button aria-current={section === 'sales' ? 'page' : undefined} onClick={() => setSection('sales')} type="button">{translateUi('ยอดขาย')}</button>
         <button aria-current={section === 'volume' ? 'page' : undefined} onClick={() => setSection('volume')} type="button">{translateUi('ปริมาณส่ง')}</button>
       </nav> : null}
       <ReportSections
