@@ -508,7 +508,7 @@ export function UserEditor({
                   <span>{translateUi('รับเงินร้านค้าได้')}</span>
                 </label>
               ) : (
-                <span className="ref-muted-note">{translateUi('หัวหน้ารอบและแอดมินมีสิทธิ์รับเงินร้านค้าตามบทบาท')}</span>
+                <span className="ref-muted-note">{translateUi('หัวหน้าและแอดมินมีสิทธิ์รับเงินร้านค้าตามบทบาท')}</span>
               )}
             </div>
 

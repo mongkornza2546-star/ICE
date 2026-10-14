@@ -196,7 +196,7 @@ export function ShopPaymentProfileEditor({ shopId, shopName, onSaved }: ShopPaym
                 onChange={(e) => setProfile({ ...profile, allow_outstanding: e.target.checked })}
                 type="checkbox"
               />
-              {translateUi('อนุญาตให้มียอดค้างชำระได้ (หากจ่ายไม่ครบในรอบส่ง)')}</label>
+              {translateUi('อนุญาตให้มียอดค้างชำระได้ (หากชำระไม่ครบเมื่อส่งสินค้า)')}</label>
           </div>
         ) : (
           <div className="field-grid" style={{ marginBottom: '1rem', background: 'var(--panel-bg, #f9f9f9)', padding: '1rem', borderRadius: '8px' }}>

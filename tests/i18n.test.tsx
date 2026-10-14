@@ -23,6 +23,43 @@ function Sample() {
 }
 
 describe('screen language', () => {
+  it.each(['constructor', 'toString', '__proto__', 'hasOwnProperty'])('does not interpret inherited property %s as UI copy', (source) => {
+    mount(<Sample />);
+    expect(translateUi(source)).toBe(source);
+    expect(localizeErrorMessage(source)).toBe(source);
+    expect(localizeErrorMessage(`DETAIL · ${source}`)).toBe(`DETAIL · ${source}`);
+    fireEvent.change(screen.getByLabelText('ภาษา'), { target: { value: 'my' } });
+    expect(translateUi(source)).toBe(source);
+    expect(localizeErrorMessage(source)).toBe(messages.genericError.my);
+  });
+
+  it.each([
+    ['รายการนี้ไม่ใช่รายการล่าสุดของร้านในรอบ', 'รายการนี้ไม่ใช่รายการล่าสุดของร้านในงานที่เลือก'],
+    ['บูธนี้เคยมีและถูกยกเลิกแล้ว กรุณาติดต่อหัวหน้ารอบ', 'บูธนี้เคยมีและถูกยกเลิกแล้ว กรุณาติดต่อหัวหน้า'],
+    ['รอบนี้ยกเลิกแล้ว ไม่สามารถบันทึกรายการสต๊อกใหม่ได้', 'งานนี้ยกเลิกแล้ว ไม่สามารถบันทึกรายการสต๊อกใหม่ได้'],
+    ['รอบที่ปิดแล้วไม่สามารถยกเลิกย้อนหลังได้', 'งานที่ปิดแล้วไม่สามารถยกเลิกย้อนหลังได้'],
+  ])('normalizes backend copy in both languages: %s', (source, current) => {
+    mount(<Sample />);
+    expect(translateUi(source)).toBe(current);
+    expect(localizeErrorMessage(source)).toBe(current);
+    fireEvent.change(screen.getByLabelText('ภาษา'), { target: { value: 'my' } });
+    expect(legacyUiTranslations[current]).toMatch(/[က-႟]/);
+    expect(translateUi(source)).toBe(legacyUiTranslations[current]);
+    expect(localizeErrorMessage(source)).toBe(legacyUiTranslations[current]);
+  });
+
+  it('presents legacy RPC messages as daily work without rewriting business values', () => {
+    mount(<Sample />);
+    const oldMessage = 'รอบส่งปิดแล้ว ไม่สามารถยกเลิกใบส่งได้';
+    expect(translateUi(oldMessage)).toBe('งานประจำวันปิดแล้ว ไม่สามารถยกเลิกใบส่งได้');
+    expect(localizeErrorMessage(`${oldMessage} · DETAIL`)).toBe('งานประจำวันปิดแล้ว ไม่สามารถยกเลิกใบส่งได้ · DETAIL');
+    expect(translateUi('ร้าน {0}', { 0: oldMessage })).toBe(`ร้าน ${oldMessage}`);
+    expect(translateUi('รอบเช้า')).toBe('รอบเช้า');
+    fireEvent.change(screen.getByLabelText('ภาษา'), { target: { value: 'my' } });
+    expect(translateUi(oldMessage)).toBe(legacyUiTranslations['งานประจำวันปิดแล้ว ไม่สามารถยกเลิกใบส่งได้']);
+    expect(localizeErrorMessage(oldMessage)).toBe(translateUi(oldMessage));
+  });
+
   it('has Thai and Myanmar copy for every catalog entry', () => {
     for (const entry of Object.values(messages)) {
       expect(entry.th.trim()).not.toBe('');

@@ -777,10 +777,10 @@ describe('employee delivery to collection handoff', () => {
     expect(amountDueSection.textContent).toContain('100.00');
 
     // Breakdown shows prior bills and latest delivery bill
-    const breakdownSection = screen.getByRole('region', { name: 'สรุปยอดหลังส่งรอบล่าสุด' });
+    const breakdownSection = screen.getByRole('region', { name: 'สรุปยอดหลังรายการส่งล่าสุด' });
     expect(breakdownSection.textContent).toContain('ยอดค้างก่อนหน้า');
     expect(breakdownSection.textContent).toContain('50.00');
-    expect(breakdownSection.textContent).toContain('ยอดส่งรอบล่าสุด');
+    expect(breakdownSection.textContent).toContain('ยอดรายการส่งล่าสุด');
     expect(breakdownSection.textContent).toContain('ยอดบิลที่เลือก');
 
     // Input default payment amount is pre-filled with the total 100.00

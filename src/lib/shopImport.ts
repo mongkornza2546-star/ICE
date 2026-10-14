@@ -18,9 +18,11 @@ export interface ShopImportRow {
 
 const STALL_HEADER = 'รหัสล็อก/พื้นที่ขาย';
 const LEGACY_STALL_HEADER = 'รหัสศูนย์ราชการ';
+const DELIVERY_COUNT_HEADER = 'จำนวนครั้งที่ส่งต่อวัน';
+const LEGACY_DELIVERY_COUNT_HEADER = 'รอบปกติต่อวัน';
 const HEADERS = [
   'รหัสตึก', 'ชื่อตึก', 'รหัสโซน', 'ชื่อโซนย่อย', 'ลำดับโซน', 'รหัสร้าน', STALL_HEADER,
-  'ชื่อร้าน', 'ผู้ติดต่อ', 'เบอร์โทร', 'รอบปกติต่อวัน', 'หมายเหตุการเข้าถึง', 'สถานะ',
+  'ชื่อร้าน', 'ผู้ติดต่อ', 'เบอร์โทร', DELIVERY_COUNT_HEADER, 'หมายเหตุการเข้าถึง', 'สถานะ',
 ] as const;
 
 const REQUIRED_TEXT_COLUMNS = [0, 1, 2, 3, 5, 7] as const;
@@ -31,14 +33,17 @@ export async function parseShopImportFile(file: File): Promise<ShopImportRow[]> 
   if (rows.length === 0) throw new Error('ไฟล์ไม่มีข้อมูล');
 
   const headerIndex = rows.findIndex((cells) => {
-    const values = cells.map(toText);
+    const values = cells.map((cell) => toText(cell) === LEGACY_DELIVERY_COUNT_HEADER ? DELIVERY_COUNT_HEADER : toText(cell));
     return HEADERS.every((name) => name === STALL_HEADER
       ? values.includes(STALL_HEADER) || values.includes(LEGACY_STALL_HEADER)
       : values.includes(name));
   });
   if (headerIndex < 0) throw new Error('ไม่พบหัวตาราง กรุณาใช้ไฟล์แม่แบบของระบบ');
 
-  const header = rows[headerIndex].map(toText);
+  const header = rows[headerIndex].map((cell) => toText(cell) === LEGACY_DELIVERY_COUNT_HEADER ? DELIVERY_COUNT_HEADER : toText(cell));
+  if (header.filter((name) => name === DELIVERY_COUNT_HEADER).length > 1) {
+    throw new Error('พบคอลัมน์จำนวนครั้งที่ส่งต่อวันซ้ำ กรุณาใช้เพียงคอลัมน์เดียว');
+  }
   const hasStallHeader = header.includes(STALL_HEADER);
   const hasLegacyStallHeader = header.includes(LEGACY_STALL_HEADER);
   if (hasStallHeader && hasLegacyStallHeader) {
@@ -71,9 +76,9 @@ export async function parseShopImportFile(file: File): Promise<ShopImportRow[]> 
     }
 
     const zoneSortOrder = toPositiveInteger(cells[column['ลำดับโซน']]);
-    const normalRounds = toPositiveInteger(cells[column['รอบปกติต่อวัน']]);
+    const normalRounds = toPositiveInteger(cells[column[DELIVERY_COUNT_HEADER]]);
     if (!zoneSortOrder) errors.push(`แถว ${rowNumber}: ลำดับโซนต้องเป็นจำนวนเต็มตั้งแต่ 1`);
-    if (!normalRounds) errors.push(`แถว ${rowNumber}: รอบปกติต่อวันต้องเป็นจำนวนเต็มตั้งแต่ 1`);
+    if (!normalRounds) errors.push(`แถว ${rowNumber}: จำนวนครั้งที่ส่งต่อวันต้องเป็นจำนวนเต็มตั้งแต่ 1`);
 
     const shopCode = toCode(cells[column['รหัสร้าน']]);
     const normalizedShopCode = shopCode;

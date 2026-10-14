@@ -52,7 +52,7 @@ function StockTransferHarness({ onSubmit, image = false, allowHalf = true }: { o
 }
 
 describe('employee stock damage', () => {
-  it('selects damage and warns without blocking above holding stock', async () => {
+  it('selects damage and stops increments at holding stock', async () => {
     const user = userEvent.setup();
     const onSubmit = vi.fn();
     render(<StockTransferHarness onSubmit={onSubmit} />);
@@ -64,11 +64,11 @@ describe('employee stock damage', () => {
     await user.click(add);
     expect((screen.getByLabelText('ครึ่งถุง หลอดเล็ก') as HTMLInputElement).value).toBe('1');
     for (let click = 0; click < 6; click += 1) await user.click(add);
-    expect((add as HTMLButtonElement).disabled).toBe(false);
-    expect(screen.getByText('จำนวนเกินสต๊อกคงเหลือ ต้องยืนยันก่อนบันทึก')).toBeTruthy();
+    expect((add as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByLabelText('ครึ่งถุง หลอดเล็ก') as HTMLInputElement).value).toBe('6');
 
-    await user.click(screen.getByRole('button', { name: /บันทึกละลาย · 3.5 ถุง/ }));
-    expect(onSubmit).toHaveBeenCalledWith(3.5);
+    await user.click(screen.getByRole('button', { name: /บันทึกละลาย · 3 ถุง/ }));
+    expect(onSubmit).toHaveBeenCalledWith(3);
   });
 });
 
@@ -146,7 +146,8 @@ describe('employee stock image recovery', () => {
    fireEvent.change(screen.getByLabelText('เต็มถุง หลอดเล็ก'), { target: { value: '14' } });
    fireEvent.change(screen.getByLabelText('ครึ่งถุง หลอดเล็ก'), { target: { value: '1' } });
    expect(screen.getByRole('button', { name: /บันทึกเติมจากรถ · 14.5 ถุง/ })).toBeTruthy();
-   expect(screen.getByText('เหลือบนรถ -4.5 ถุง')).toBeTruthy();
+   expect((screen.getByRole('button', { name: /บันทึกเติมจากรถ · 14.5 ถุง/ }) as HTMLButtonElement).disabled).toBe(true);
+   expect(screen.getByText('จำนวนเกินสต๊อกคงเหลือ ไม่สามารถบันทึกได้')).toBeTruthy();
    fireEvent.change(screen.getByLabelText('เต็มถุง หลอดเล็ก'), { target: { value: '-1' } });
    expect((screen.getByLabelText('เต็มถุง หลอดเล็ก') as HTMLInputElement).value).toBe('14');
  });

@@ -143,6 +143,83 @@ function renderReview(canCollectImmediatePayment = true, card = shopCard, overri
 }
 
 describe('employee delivery review navigation', () => {
+  it('does not open the keypad for an out-of-stock product with no cart quantity', async () => {
+    const user = userEvent.setup();
+    renderReview(true, shopCard, {
+      deliveryQuantities: {}, items: [],
+      posContext: { ...posContext, items: [{ ...posContext.items[0], stock_quantity: 0 }] },
+    });
+    const product = screen.getByRole('button', { name: /หลอดเล็ก.*คงเหลือ/ });
+    await user.click(product);
+    expect(product.hasAttribute('disabled')).toBe(true);
+    expect(screen.queryByRole('spinbutton', { name: 'จำนวนหลอดเล็ก' })).toBeNull();
+  });
+
+  it('keeps keypad digits and quick quantities within the available 1.5 bags', async () => {
+    const user = userEvent.setup();
+    const onSetQuantity = vi.fn();
+    renderReview(true, shopCard, {
+      onSetQuantity, deliveryQuantities: {}, items: [],
+      posContext: { ...posContext, items: [{ ...posContext.items[0], stock_quantity: 1.5 }] },
+    });
+    await user.click(screen.getByRole('button', { name: /หลอดเล็ก.*คงเหลือ/ }));
+    const keypad = document.querySelector('.employee-keypad')! as HTMLElement;
+    await user.click(within(keypad).getByRole('button', { name: '5', exact: true }));
+    expect((screen.getByRole('spinbutton', { name: 'จำนวนหลอดเล็ก' }) as HTMLInputElement).value).toBe('0');
+    expect(within(screen.getByRole('group', { name: 'เลือกจำนวนด่วน' })).getByRole('button', { name: '2', exact: true }).hasAttribute('disabled')).toBe(true);
+    await user.click(within(keypad).getByRole('button', { name: '1', exact: true }));
+    await user.keyboard('9');
+    expect((screen.getByRole('spinbutton', { name: 'จำนวนหลอดเล็ก' }) as HTMLInputElement).value).toBe('1');
+    await user.click(within(keypad).getByRole('button', { name: '0', exact: true }));
+    await user.click(screen.getByRole('button', { name: 'เพิ่มครึ่งกระสอบ' }));
+    await user.click(screen.getByRole('button', { name: 'เพิ่มครึ่งกระสอบ' }));
+    expect((screen.getByRole('spinbutton', { name: 'จำนวนหลอดเล็ก' }) as HTMLInputElement).value).toBe('1.5');
+    await user.click(screen.getByRole('button', { name: 'เพิ่มรายการ' }));
+    expect(onSetQuantity).toHaveBeenCalledExactlyOnceWith('ice-1', 1.5);
+  });
+
+  it('shows a visible error and disables adding a typed quantity over stock', async () => {
+    const user = userEvent.setup();
+    renderReview();
+    await user.click(screen.getByRole('button', { name: /หลอดเล็ก.*คงเหลือ/ }));
+    const input = screen.getByRole('spinbutton', { name: 'จำนวนหลอดเล็ก' });
+    await user.clear(input);
+    await user.type(input, '5855');
+    expect(screen.getByRole('button', { name: 'เพิ่มรายการ' }).hasAttribute('disabled')).toBe(true);
+    expect(screen.getByRole('alert').textContent).toContain('167');
+  });
+
+  it('blocks an existing cart after stock runs out but still allows clearing it', async () => {
+    const user = userEvent.setup();
+    const onSetQuantity = vi.fn();
+    const { onConfirmDelivery } = renderReview(true, shopCard, {
+      onSetQuantity,
+      posContext: { ...posContext, items: [{ ...posContext.items[0], stock_quantity: 0 }] },
+    });
+    const send = screen.getByRole('button', { name: 'ส่งอย่างเดียว' });
+    expect(send.hasAttribute('disabled')).toBe(true);
+    await user.click(send);
+    expect(onConfirmDelivery).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: /หลอดเล็ก.*คงเหลือ/ }));
+    await user.click(screen.getByRole('button', { name: 'ล้างจำนวน' }));
+    await user.click(screen.getByRole('button', { name: 'เพิ่มรายการ' }));
+    expect(onSetQuantity).toHaveBeenCalledExactlyOnceWith('ice-1', 0);
+    expect(screen.queryByText('2 ถุง × ฿60.00')).toBeNull();
+  });
+
+  it('rejects over-stock Enter even if native input validation does not reject it', async () => {
+    const user = userEvent.setup();
+    const onSetQuantity = vi.fn();
+    renderReview(true, shopCard, { onSetQuantity });
+    await user.click(screen.getByRole('button', { name: /หลอดเล็ก.*คงเหลือ/ }));
+    const input = screen.getByRole('spinbutton', { name: 'จำนวนหลอดเล็ก' });
+    vi.spyOn(input as HTMLInputElement, 'checkValidity').mockReturnValue(true);
+    await user.clear(input);
+    await user.type(input, '5855{Enter}');
+    expect(onSetQuantity).not.toHaveBeenCalled();
+    expect(screen.getByRole('spinbutton', { name: 'จำนวนหลอดเล็ก' })).toBe(input);
+  });
+
   it('adds half to the typed draft and commits it only when confirmed', async () => {
     const user = userEvent.setup();
     const onSetQuantity = vi.fn();
@@ -235,15 +312,14 @@ describe('employee delivery review navigation', () => {
     expect(screen.queryByText('2 ถุง × ฿60.00')).toBeNull();
   });
 
-  it('validates a keypad quantity over stock instead of silently reducing it', async () => {
+  it('validates a typed quantity over stock instead of silently reducing it', async () => {
     const user = userEvent.setup();
     const onSetQuantity = vi.fn();
     renderReview(true, shopCard, { onSetQuantity });
     await user.click(screen.getByRole('button', { name: /หลอดเล็ก.*คงเหลือ/ }));
     const input = screen.getByRole('spinbutton', { name: 'จำนวนหลอดเล็ก' });
     await user.clear(input);
-    await user.type(input, '167');
-    await user.click(screen.getByRole('button', { name: 'เพิ่มครึ่งกระสอบ' }));
+    await user.type(input, '167.5');
     await user.click(screen.getByRole('button', { name: 'เพิ่มรายการ' }));
     expect((input as HTMLInputElement).value).toBe('167.5');
     expect((input as HTMLInputElement).checkValidity()).toBe(false);
@@ -431,7 +507,7 @@ describe('employee delivery review navigation', () => {
     const onChangeShop = vi.fn();
     const otherCard = { ...shopCard, round_stop_id: 'stop-2', shop_code: 'SW-03', shop_name: 'ร้านน้ำปั่น', booth_number: 'C12' };
     const { onSubmit } = renderReview(true, shopCard, { shopCards: [shopCard, otherCard], onChangeShop });
-    const search = screen.getByRole('searchbox', { name: 'ค้นหาร้านในรอบ' });
+    const search = screen.getByRole('searchbox', { name: 'ค้นหาร้านในงานประจำวัน' });
     for (const query of ['sw-03', 'น้ำปั่น', 'c12']) {
       await user.clear(search);
       await user.type(search, query);

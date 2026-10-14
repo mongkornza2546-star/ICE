@@ -30,7 +30,7 @@ export function DeliveryRoundNameEditor({
     const name = draft.name.trim();
     const sortOrder = Number(draft.sortOrder);
     if (!name || !Number.isInteger(sortOrder) || sortOrder < 0) {
-      setError('กรุณาระบุชื่อรอบและลำดับเป็นจำนวนเต็มตั้งแต่ 0');
+      setError('กรุณาระบุชื่อรายการเดิมและลำดับเป็นจำนวนเต็มตั้งแต่ 0');
       return;
     }
     setSaving(true);
@@ -40,7 +40,7 @@ export function DeliveryRoundNameEditor({
       const saved = await saveDeliveryRoundName(draft.id, { name, sort_order: sortOrder, is_active: draft.isActive });
       onSaved(saved);
       setDraft(toDraft(saved));
-      setSuccess(draft.id ? 'บันทึกชื่อรอบแล้ว' : 'เพิ่มชื่อรอบแล้ว');
+      setSuccess(draft.id ? 'บันทึกชื่อรายการเดิมแล้ว' : 'เพิ่มชื่อรายการเดิมแล้ว');
     } catch (saveError) {
       setError(getErrorMessage(saveError));
     } finally {
@@ -50,7 +50,7 @@ export function DeliveryRoundNameEditor({
 
   return (
     <section className="reference-editor-panel">
-      <div className="reference-editor-panel__header"><span>3</span><h2>{translateUi('จัดการชื่อรอบส่ง')}</h2></div>
+      <div className="reference-editor-panel__header"><span>3</span><h2>{translateUi('จัดการชื่อรายการจากระบบเดิม')}</h2></div>
       <div className="reference-editor-panel__body">
         <div className="reference-editor-panel__column reference-editor-panel__column--list">
           <div className="reference-list">
@@ -66,13 +66,13 @@ export function DeliveryRoundNameEditor({
         </div>
         <div className="reference-editor-panel__divider" aria-hidden="true" />
         <div className="reference-editor-panel__column reference-editor-panel__column--form">
-          <div className="reference-form-heading"><h3>{translateUi('เพิ่ม/แก้ไขชื่อรอบ')}</h3></div>
+          <div className="reference-form-heading"><h3>{translateUi('เพิ่ม/แก้ไขชื่อรายการเดิม')}</h3></div>
           <form className="reference-form" onSubmit={handleSave}>
-            <div className="field-grid"><label>{translateUi('ชื่อรอบ')}<input placeholder={translateUi('เช่น เช้ามืด')} required value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} /></label><label>{translateUi('ลำดับ')}<input min="0" required type="number" value={draft.sortOrder} onChange={(event) => setDraft({ ...draft, sortOrder: event.target.value })} /></label></div>
+            <div className="field-grid"><label>{translateUi('ชื่อรายการเดิม')}<input placeholder={translateUi('เช่น เช้ามืด')} required value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} /></label><label>{translateUi('ลำดับ')}<input min="0" required type="number" value={draft.sortOrder} onChange={(event) => setDraft({ ...draft, sortOrder: event.target.value })} /></label></div>
             <label className="inline-check reference-checkbox"><input checked={draft.isActive} onChange={(event) => setDraft({ ...draft, isActive: event.target.checked })} type="checkbox" />{translateUi('เปิดใช้งานชื่อนี้')}</label>
-            <p className="reference-inline-note"><Info size={16} weight="fill" />{translateUi('ชื่อที่พักใช้งานจะไม่แสดงในรายการเลือกเปิดรอบใหม่')}</p>
+            <p className="reference-inline-note"><Info size={16} weight="fill" />{translateUi('ชื่อเหล่านี้ใช้กับข้อมูลระบบเดิม งานประจำวันใช้ชื่อที่ระบบกำหนด')}</p>
             {error ? <p className="error-text" role="alert">{translateUi(error)}</p> : null}{success ? <p aria-live="polite" className="success-text">{translateUi(success)}</p> : null}
-            <div className="reference-form__actions"><button className="secondary-button" onClick={() => setDraft(EMPTY_DELIVERY_ROUND_NAME)} type="button">{translateUi('เพิ่มชื่อรอบ')}</button><button className="primary-button" disabled={saving} type="submit">{saving ? translateUi('กำลังบันทึก...') : translateUi('บันทึกชื่อรอบ')}</button></div>
+            <div className="reference-form__actions"><button className="secondary-button" onClick={() => setDraft(EMPTY_DELIVERY_ROUND_NAME)} type="button">{translateUi('เพิ่มชื่อรายการเดิม')}</button><button className="primary-button" disabled={saving} type="submit">{saving ? translateUi('กำลังบันทึก...') : translateUi('บันทึกชื่อรายการเดิม')}</button></div>
           </form>
         </div>
       </div>

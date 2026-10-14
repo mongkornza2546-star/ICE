@@ -326,11 +326,11 @@ export function ManagerDashboard({
                 <button
                   disabled={!cancellationState.can_cancel}
                   onClick={() => { setShowCancelMenu(false); setShowCancelModal(true); }}
-                  title={cancellationState.blocker_reason ?? translateUi('ยกเลิกงานวันนี้')}
+                  title={cancellationState.blocker_reason ? translateUi(cancellationState.blocker_reason) : translateUi('ยกเลิกงานวันนี้')}
                   type="button"
                 >
                   <XCircle size={17} />{translateUi(' ยกเลิกงานวันนี้')}</button>
-                {!cancellationState.can_cancel && cancellationState.blocker_reason ? <p>{cancellationState.blocker_reason}</p> : null}
+                {!cancellationState.can_cancel && cancellationState.blocker_reason ? <p>{translateUi(cancellationState.blocker_reason)}</p> : null}
               </div>
             ) : null}
           </div>

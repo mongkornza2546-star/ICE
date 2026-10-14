@@ -6,7 +6,7 @@ import type { StockTransferMode, StockTransferSuccess } from './useEmployeeDeliv
 import { EmployeeState } from './EmployeeState';
 import { EmployeeStockProductImage } from './EmployeeStockProductImage';
 import './employee-stock-product-image.css';
-import { bagTotal, emptyBags, formatBags, type BagQuantity } from './bagQuantity';
+import { bagTotal, emptyBags, normalizeBags, formatBags, type BagQuantity } from './bagQuantity';
 import './employee-bag-transfer.css';
 import { stockQuantity } from './utils';
 
@@ -28,7 +28,9 @@ export function EmployeeStockTransferSection({
   success,
   variant,
   transferItems,
+  canRetryTransfer = false,
 }: {
+  canRetryTransfer?: boolean;
   stockError: string | null;
   transferSubmitting: boolean;
   loadStockState: (roundId: string) => void;
@@ -52,6 +54,10 @@ export function EmployeeStockTransferSection({
   const isReturn = stockTransferMode === 'return';
   const isDamage = stockTransferMode === 'damage';
   const usesHoldingStock = isReturn || isDamage;
+  const sourceBalances = stockState && (usesHoldingStock ? stockState.holding_location.balances : stockState.truck_location.balances);
+  const hasOverstock = !!sourceBalances && transferItems.some((item) => item.quantity > stockQuantity(sourceBalances, item.ice_type_id));
+  const isClosed = selectedRound?.status === 'closed';
+  const reconcilePending = canRetryTransfer && hasOverstock;
   const movementLabel = isReturn ? 'คืนขึ้นรถ' : isDamage ? 'ละลาย' : 'เติมจากรถ';
   const translatedStockError = stockError ? translateUi(stockError) : null;
   const stockErrorMessage = stockError && translatedStockError === stockError
@@ -111,7 +117,7 @@ export function EmployeeStockTransferSection({
           </div>
         ) : null}
         {!selectedRoundId ? (
-          <EmployeeState title={translateUi('เลือกรอบส่งก่อน')} detail={translateUi('ระบบจะหาจุดถือครองที่ผูกกับคุณให้อัตโนมัติ')} />
+          <EmployeeState title={translateUi('เลือกงานประจำวันก่อน')} detail={translateUi('ระบบจะหาจุดถือครองที่ผูกกับคุณให้อัตโนมัติ')} />
         ) : !stockState && !stockError ? (
           <EmployeeState title={translateUi('กำลังโหลดสต๊อกของคุณ')} detail={translateUi('ตรวจยอดรถและจุดถือครอง')} />
         ) : stockState ? (
@@ -135,7 +141,7 @@ export function EmployeeStockTransferSection({
             <div className="bag-transfer-list" role="list" aria-label={translateUi(movementLabel)}>
               {iceTypes.map((iceType) => {
                 const bags = transferQuantities[iceType.id] ?? emptyBags();
-                const quantity = bagTotal({ ...bags, halfBags: iceType.allowHalf === false ? 0 : bags.halfBags });
+                const quantity = bagTotal(normalizeBags(bags, iceType.allowHalf));
                 const before = stockQuantity(usesHoldingStock ? stockState.holding_location.balances : stockState.truck_location.balances, iceType.id);
                 const disabled = transferSubmitting || selectedRound?.status === 'closed';
                 return <div className="bag-transfer-card" key={iceType.id} role="listitem">
@@ -157,13 +163,13 @@ export function EmployeeStockTransferSection({
                             onChange={(event) => {
                               if (/^[0-9]*$/.test(event.target.value)) changeTransferQuantity(iceType.id, field, Number(event.target.value));
                             }} />
-                          <button type="button" aria-label={translateUi('เพิ่ม{0} {1}', { 0: label, 1: iceType.name })} disabled={disabled} onClick={() => changeTransferQuantity(iceType.id, field, bags[field] + 1)}>+</button>
+                          <button type="button" aria-label={translateUi('เพิ่ม{0} {1}', { 0: label, 1: iceType.name })} disabled={disabled || quantity + (field === 'fullBags' ? 1 : 0.5) > before} onClick={() => changeTransferQuantity(iceType.id, field, bags[field] + 1)}>+</button>
                         </span>
                       </label>;
                     })}
                   </div>
                   <div className="bag-transfer-warning" role={quantity > before ? 'status' : undefined}>
-                    {quantity > before ? translateUi('จำนวนเกินสต๊อกคงเหลือ ต้องยืนยันก่อนบันทึก') : '\u00a0'}
+                    {quantity > before ? translateUi(canRetryTransfer ? 'ตรวจสอบผลรายการเดิมก่อนทำรายการใหม่' : 'จำนวนเกินสต๊อกคงเหลือ ไม่สามารถบันทึกได้') : '\u00a0'}
                   </div>
                 </div>;
               })}
@@ -173,9 +179,9 @@ export function EmployeeStockTransferSection({
                 <button className="bag-transfer-undo" disabled={transferSubmitting || !canUndo || selectedRound?.status === 'closed'} onClick={undoTransferQuantity} type="button">
                   <ArrowClockwise aria-hidden="true" size={18} />{translateUi('ย้อนกลับ')}
                 </button>
-                <button className="employee-submit" disabled={transferSubmitting || selectedRound?.status === 'closed'} onClick={() => void handleStockTransfer()} type="button">
+                <button className="employee-submit" disabled={transferSubmitting || isClosed || (hasOverstock && !canRetryTransfer)} onClick={() => void handleStockTransfer()} type="button">
                   <Check aria-hidden="true" size={18} />
-                  {selectedRound?.status === 'closed' ? translateUi('รอบนี้ปิดแล้ว') : transferSubmitting ? translateUi('กำลังบันทึก...') : translateUi('บันทึก{0} · {1} ถุง', { 0: translateUi(movementLabel), 1: formatBags(transferItems.reduce((sum, item) => sum + item.quantity, 0)) })}
+                  {isClosed ? translateUi('งานประจำวันนี้ปิดแล้ว') : transferSubmitting ? translateUi('กำลังบันทึก...') : reconcilePending ? translateUi('ตรวจสอบผลรายการเดิม · {0} ถุง', { 0: formatBags(transferItems.reduce((sum, item) => sum + item.quantity, 0)) }) : translateUi('บันทึก{0} · {1} ถุง', { 0: translateUi(movementLabel), 1: formatBags(transferItems.reduce((sum, item) => sum + item.quantity, 0)) })}
                 </button>
               </div>
               {stockError ? <p className="bag-transfer-error" role="alert"><span>{stockErrorMessage}</span> <span>{translateUi('กรุณาลองบันทึกใหม่')}</span></p> : successMessage ? <p className="bag-transfer-success" role="status">{successMessage}</p> : null}

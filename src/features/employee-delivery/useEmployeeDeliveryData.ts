@@ -1,4 +1,4 @@
-import { bagTotal, emptyBags, restoreBags, type BagQuantity } from './bagQuantity';
+import { bagTotal, emptyBags, normalizeBags, restoreBags, type BagQuantity } from './bagQuantity';
 import { translateUi } from '../../i18n';
 import { deliveryLineTotal, deliverySubtotal, exclusiveVat } from '../../lib/vat';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent } from 'react';
@@ -543,11 +543,22 @@ export function useEmployeeDeliveryData({
   const transferItems = useMemo(() => iceTypes
     .map((iceType) => {
       const bags = transferQuantities[iceType.id] ?? emptyBags();
-      const counts = { fullBags: bags.fullBags, halfBags: iceType.allowHalf === false ? 0 : bags.halfBags };
+      const counts = normalizeBags(bags, iceType.allowHalf);
       return { ice_type_id: iceType.id, ...counts, quantity: bagTotal(counts) };
     })
     .filter((item) => item.quantity > 0), [iceTypes, transferQuantities]);
-  
+  const stockTransferOperation = stockTransferMode === 'return' ? 'stock-return'
+    : stockTransferMode === 'damage' ? 'stock-damage' : 'stock-transfer';
+  const splitTransferSignature = `${requestScope}:${stockTransferOperation}:${JSON.stringify({ roundId: selectedRound?.id, items: transferItems })}`;
+  // Preserve a recovered quantity-only request's original identity until acknowledged.
+  const legacyTransferItems = transferItems.map(({ ice_type_id, quantity }) => ({ ice_type_id, quantity }));
+  const legacyTransferSignature = `${requestScope}:${stockTransferOperation}:${JSON.stringify({ roundId: selectedRound?.id, items: legacyTransferItems })}`;
+  const legacyTransferRequest = selectedRound && transferItems.length > 0 ? getPendingRequest(legacyTransferSignature) : undefined;
+  const transferRequestSignature = legacyTransferRequest ? legacyTransferSignature : splitTransferSignature;
+  const transferRequestItems = legacyTransferRequest ? legacyTransferItems : transferItems;
+  const pendingTransferRequest = selectedRound && transferItems.length > 0 ? getPendingRequest(transferRequestSignature) : undefined;
+  const canRetryTransfer = Boolean(pendingTransferRequest);
+
   const anySubmitting = submitting || transferSubmitting || paymentSubmitting || approvalSubmitting;
   const dirty = items.length > 0
     || transferItems.length > 0
@@ -954,7 +965,7 @@ export function useEmployeeDeliveryData({
 
   const chooseRound = (roundId: string) => {
     if (anySubmitting) return;
-    if (dirty && !window.confirm('เปลี่ยนรอบแล้ว ยอดน้ำแข็งที่กรอกไว้จะถูกล้าง ต้องการเปลี่ยนรอบหรือไม่?')) return;
+    if (dirty && !window.confirm(translateUi('เปลี่ยนงานแล้ว ยอดน้ำแข็งที่กรอกไว้จะถูกล้าง ต้องการเปลี่ยนงานหรือไม่?'))) return;
     setSelectedRoundId(roundId);
   };
 
@@ -1029,12 +1040,20 @@ export function useEmployeeDeliveryData({
   };
 
   const changeTransferQuantity = (iceTypeId: string, field: keyof BagQuantity, value: number) => {
-    if (transferSubmitting || selectedRound?.status === 'closed' || !Number.isSafeInteger(value) || value < 0) return;
-    if (field === 'halfBags' && iceTypes.find((ice) => ice.id === iceTypeId)?.allowHalf === false) return;
+    if (!stockState || transferSubmitting || selectedRound?.status === 'closed' || !Number.isSafeInteger(value) || value < 0) return;
+    const iceType = iceTypes.find((ice) => ice.id === iceTypeId);
+    if (field === 'halfBags' && iceType?.allowHalf === false) return;
     const current = transferQuantities[iceTypeId] ?? emptyBags();
     if (current[field] === value) return;
+    const source = stockTransferMode === 'receive' ? stockState.truck_location : stockState.holding_location;
+    const next = normalizeBags({ ...current, [field]: value }, iceType?.allowHalf);
+    // A recovered draft can exceed refreshed stock; always allow reducing it.
+    if (value > current[field] && bagTotal(next) > stockQuantity(source.balances, iceTypeId)) {
+      setStockError('จำนวนเกินสต๊อกคงเหลือ ไม่สามารถบันทึกได้');
+      return;
+    }
     setTransferHistory((history) => [...history, transferQuantities]);
-    setTransferQuantities({ ...transferQuantities, [iceTypeId]: { ...current, [field]: value } });
+    setTransferQuantities({ ...transferQuantities, [iceTypeId]: next });
     setStockError(null);
     setTransferSuccess(null);
   };
@@ -1064,32 +1083,20 @@ export function useEmployeeDeliveryData({
   };
 
   const handleStockTransfer = async () => {
-    if (!selectedRound || !stockState || transferSubmitting) return;
+    if (!selectedRound || selectedRound.status === 'closed' || !stockState || transferSubmitting) return;
     if (transferItems.length === 0) {
       setStockError('ใส่จำนวนอย่างน้อยหนึ่งรายการก่อนบันทึก');
       return;
     }
     const source = stockTransferMode === 'receive' ? stockState.truck_location : stockState.holding_location;
     const overstock = transferItems.some((item) => item.quantity > stockQuantity(source.balances, item.ice_type_id));
-    if (overstock && !window.confirm(translateUi('จำนวนที่กรอกมากกว่าสต๊อกคงเหลือ ยืนยันบันทึกและให้ยอดคงเหลือติดลบหรือไม่?'))) return;
-    const operation = stockTransferMode === 'return'
-      ? 'stock-return'
-      : stockTransferMode === 'damage'
-        ? 'stock-damage'
-        : 'stock-transfer';
-    const splitSignature = `${requestScope}:${operation}:${JSON.stringify({
-      roundId: selectedRound.id,
-      items: transferItems,
-    })}`;
-    // A recovered pre-upgrade draft may already have committed. Preserve its
-    // quantity-only payload and key until acknowledged, then use splits for new saves.
-    const legacyItems = transferItems.map(({ ice_type_id, quantity }) => ({ ice_type_id, quantity }));
-    const legacySignature = `${requestScope}:${operation}:${JSON.stringify({ roundId: selectedRound.id, items: legacyItems })}`;
-    const legacyRequest = getPendingRequest(legacySignature);
-    const signature = legacyRequest ? legacySignature : splitSignature;
-    const confirmedItems = (legacyRequest ? legacyItems : transferItems)
-      .map((item) => ({ ...item, confirmedOverstock: overstock }));
-    const request = getOrCreatePendingRequest(signature);
+    if (overstock && !pendingTransferRequest) {
+      setStockError('จำนวนเกินสต๊อกคงเหลือ ไม่สามารถบันทึกได้');
+      return;
+    }
+    // Retry only the exact stored request. The RPC acknowledges committed keys
+    // before checking balances, and still rejects overdraw for uncommitted keys.
+    const request = pendingTransferRequest ?? getOrCreatePendingRequest(transferRequestSignature);
     const requestId = ++transferRequestId.current;
     setTransferSubmitting(true);
     setStockError(null);
@@ -1102,14 +1109,14 @@ export function useEmployeeDeliveryData({
           : gateway.recordEmployeeStockTransfer;
       const nextState = await recordStockMovement({
         roundId: selectedRound.id,
-        items: confirmedItems,
+        items: transferRequestItems,
         idempotencyKey: request.key,
       });
       publishDataChange(['accounting', 'stock']);
       if (requestId !== transferRequestId.current || activeStockRoundId.current !== selectedRound.id) return;
       const clearedTransferQuantities = Object.fromEntries(iceTypes.map((iceType) => [iceType.id, emptyBags()]));
       persistRecoveryNow({ transferQuantities: clearedTransferQuantities });
-      clearPendingRequest(signature, request.key);
+      clearPendingRequest(transferRequestSignature, request.key);
       setStockState(nextState);
       setTransferQuantities(clearedTransferQuantities);
       setTransferHistory([]);
@@ -1659,6 +1666,7 @@ export function useEmployeeDeliveryData({
     collectionOutstandingError,
     items,
     transferItems,
+    canRetryTransfer,
     anySubmitting,
     buildingOptions,
     eventOptions,

@@ -56,6 +56,18 @@ it.each([
   expect(screen.queryByRole('button', { name: 'ยืนยันยกเลิกใบส่งน้ำแข็ง' })).toBeNull();
 });
 
+it('shows a legacy backend blocker using daily-work terminology', async () => {
+  setup({ can_cancel: false, round_status: 'closed', blocker_reason: 'รอบส่งปิดแล้ว ไม่สามารถยกเลิกใบส่งได้' });
+  expect(await screen.findByRole('alert')).toHaveProperty('textContent', 'งานประจำวันปิดแล้ว ไม่สามารถยกเลิกใบส่งได้');
+  expect(screen.queryByText(/รอบส่ง/)).toBeNull();
+});
+
+it('normalizes the blocker when the delivery is no longer the latest', async () => {
+  setup({ can_cancel: false, blocker_reason: 'รายการนี้ไม่ใช่รายการล่าสุดของร้านในรอบ' });
+  expect(await screen.findByRole('alert')).toHaveProperty('textContent', 'รายการนี้ไม่ใช่รายการล่าสุดของร้านในงานที่เลือก');
+  expect(screen.queryByRole('button', { name: 'ยืนยันยกเลิกใบส่งน้ำแข็ง' })).toBeNull();
+});
+
 it('leaves the slip unchanged if the user declines confirmation', async () => {
   const user = userEvent.setup();
   const { onClose } = setup();

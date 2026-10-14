@@ -150,7 +150,7 @@ export function ManagerDeliveryAdjustments({ round }: { round: DeliveryRound | n
     await revisionAction.execute(args, { signature });
   }
 
-  if (!round) return <p className="empty-text">{translateUi('เลือกรอบเพื่อตรวจรายการส่ง')}</p>;
+  if (!round) return <p className="empty-text">{translateUi('เลือกงานประจำวันเพื่อตรวจรายการส่ง')}</p>;
   if (loading) return <p className="empty-text">{translateUi('กำลังโหลดรายการส่ง...')}</p>;
   if (!summary) return <p className="error-text">{error ?? translateUi('โหลดรายการไม่สำเร็จ')}</p>;
 
@@ -164,7 +164,7 @@ export function ManagerDeliveryAdjustments({ round }: { round: DeliveryRound | n
         <span className="status-badge status-badge--neutral">{summary.events.length}{translateUi(' รายการ')}</span>
       </div>
 
-      {summary.events.length === 0 ? <p className="empty-text">{translateUi('ยังไม่มีรายการส่งในรอบนี้')}</p> : (
+      {summary.events.length === 0 ? <p className="empty-text">{translateUi('ยังไม่มีรายการส่งในงานประจำวันนี้')}</p> : (
         <div className="manager-adjustment-grid">
           <div className="stock-ledger-list manager-event-list">
             {summary.events.map((deliveryEvent) => (
@@ -215,7 +215,7 @@ export function ManagerDeliveryAdjustments({ round }: { round: DeliveryRound | n
                 <button className="primary-button" disabled={revisionAction.isSubmitting || round.status === 'closed'} type="submit">{revisionAction.isSubmitting ? translateUi('กำลังบันทึก...') : translateUi('บันทึกการแก้ไข')}</button>
                 <button className="ghost-button danger-button" disabled={revisionAction.isSubmitting || round.status === 'closed'} onClick={() => void submitRevision(null, 'cancel')} type="button">{translateUi('ยกเลิกรายการ')}</button>
               </div>
-              {round.status === 'closed' ? <p className="muted">{translateUi('รอบปิดแล้ว รายการแก้ไขได้เฉพาะก่อนปิดรอบเพื่อไม่ให้ snapshot เปลี่ยนย้อนหลัง')}</p> : null}
+              {round.status === 'closed' ? <p className="muted">{translateUi('งานประจำวันปิดแล้ว แก้ไขรายการได้เฉพาะก่อนปิดงาน เพื่อรักษาข้อมูลย้อนหลัง')}</p> : null}
             </form>
           ) : null}
         </div>

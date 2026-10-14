@@ -69,8 +69,8 @@ export function employeeErrorMessage(error: unknown) {
   if (normalized.includes('no active truck')) return 'ยังไม่มีรถหลักที่เปิดใช้งาน กรุณาแจ้งหัวหน้า';
   if (normalized.includes('multiple active trucks')) return 'พบรถหลายคันแต่ยังไม่ได้กำหนดรถหลัก กรุณาแจ้งหัวหน้า';
   if (normalized.includes('active stock source')) return 'ยังไม่พบสต๊อกต้นทางที่ใช้งาน กรุณาแจ้งหัวหน้า';
-  if (normalized.includes('already closed') || normalized.includes('round is closed')) return 'รอบส่งนี้ปิดแล้ว จึงบันทึกเพิ่มไม่ได้';
-  if (normalized.includes('not assigned') || normalized.includes('permission') || normalized.includes('jwt')) return 'บัญชีนี้ไม่มีสิทธิ์ในรอบส่งที่เลือก';
+  if (normalized.includes('already closed') || normalized.includes('round is closed')) return 'งานประจำวันหรือสต๊อกของวันที่ทำรายการปิดแล้ว จึงบันทึกเพิ่มไม่ได้';
+  if (normalized.includes('not assigned') || normalized.includes('permission') || normalized.includes('jwt')) return 'บัญชีนี้ไม่มีสิทธิ์ทำรายการในงานที่เลือก กรุณาแจ้งหัวหน้า';
   if (normalized.includes('fetch') || normalized.includes('network') || normalized.includes('timeout')) return 'เชื่อมต่อไม่สำเร็จ ตรวจอินเทอร์เน็ตแล้วลองอีกครั้ง';
   return message || 'เกิดข้อผิดพลาด กรุณาลองอีกครั้ง';
 }

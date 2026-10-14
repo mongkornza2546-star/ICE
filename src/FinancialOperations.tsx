@@ -228,7 +228,7 @@ export function FinancialOperations({
         const preferredShop = demoData.queue.find((shop) => queueIdentity(shop) === preferredQueueKey);
         if (!preferredShop) throw new Error('ไม่พบร้านนี้ในคิวรับเงินล่าสุด');
         if (preferredChargeId && !preferredShop.charges.some((charge) => charge.charge_id === preferredChargeId)) {
-          throw new Error('ไม่พบยอดส่งรอบล่าสุดในคิวรับเงิน');
+          throw new Error('ไม่พบยอดรายการส่งล่าสุดในคิวรับเงิน');
         }
         if (focusLoadRequestId && focusLoadRequestId !== focusLoadRequestRef.current) return;
         setQueue(demoData.queue);
@@ -276,7 +276,7 @@ export function FinancialOperations({
       if (preferredQueueKey && !preferredShop) throw new Error('ไม่พบร้านนี้ในคิวรับเงินล่าสุด');
       if (preferredChargeId && preferredShop
         && !preferredShop.charges.some((charge) => charge.charge_id === preferredChargeId)) {
-        throw new Error('ไม่พบยอดส่งรอบล่าสุดในคิวรับเงิน');
+        throw new Error('ไม่พบยอดรายการส่งล่าสุดในคิวรับเงิน');
       }
       const nextSelectedShop = preferredShop ?? (currentShop
         ? nextQueue.find((shop) => queueIdentity(shop) === queueIdentity(currentShop)) ?? null

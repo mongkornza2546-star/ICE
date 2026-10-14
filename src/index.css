@@ -1667,7 +1667,8 @@ input:disabled, select:disabled, textarea:disabled { background: #f2f5f8; color:
 .employee-pos-heading > span { color: #6a7f94; font-size: .65rem; text-align: right; }
 .employee-pos-product-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
 .employee-pos-product-grid > button { position: relative; min-height: 132px; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-content: start; gap: 4px 8px; padding: 12px; border: 2px solid #dce7f1; border-radius: 12px; color: #254763; background: #fff; text-align: left; }
-.employee-pos-product-grid > button:hover { border-color: #91bde8; }
+.employee-pos-product-grid > button:hover:not(:disabled) { border-color: #91bde8; }
+.employee-pos-product-grid > button:disabled, .employee-pos-quick-quantities button:disabled, .employee-keypad button:disabled { cursor: not-allowed; opacity: .5; }
 .employee-pos-product-grid > button.employee-pos-product--selected { border-color: #0875db; box-shadow: 0 0 0 3px rgba(8, 117, 219, .13); background: #f3f9ff; }
 .employee-pos-product-image { width: 34px; height: 34px; display: grid; place-items: center; margin-bottom: 2px; border-radius: 9px; color: #2677bd; background: #eaf4ff; object-fit: cover; }
 .employee-pos-product-selected { position: absolute; top: 8px; right: 8px; color: #0875db; }
@@ -1688,8 +1689,8 @@ input:disabled, select:disabled, textarea:disabled { background: #f2f5f8; color:
 .employee-pos-quantity > small { font-size: .64rem; }
 .employee-keypad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .employee-keypad button { min-width: 48px; min-height: 56px; display: grid; place-items: center; padding: 6px; border: 1px solid #cbdbea; border-radius: 10px; color: #183f63; background: #fff; font-size: 1.1rem; font-weight: 800; }
-.employee-keypad button:hover { border-color: #6aa4dc; background: #f1f8ff; }
-.employee-keypad button:active { transform: translateY(1px); }
+.employee-keypad button:hover:not(:disabled) { border-color: #6aa4dc; background: #f1f8ff; }
+.employee-keypad button:active:not(:disabled) { transform: translateY(1px); }
 .employee-pos-add-item { min-height: 50px; border: 1px solid #0875db; border-radius: 10px; color: #fff; background: #0875db; font-weight: 800; }
 .employee-pos-add-item:disabled { cursor: not-allowed; opacity: .5; }
 .employee-cart-lines { display: grid; gap: 7px; }

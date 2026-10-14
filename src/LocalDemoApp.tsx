@@ -227,7 +227,7 @@ const demoRounds: DeliveryRound[] = [
   {
     id: 'demo-round-afternoon',
     service_date: '2026-08-07',
-    name: 'รอบบ่าย',
+    name: 'งานประจำวัน',
     status: 'closed',
     opened_at: '2026-08-07T06:00:00.000Z',
     closed_at: '2026-08-07T10:00:00.000Z',
@@ -336,7 +336,7 @@ const demoCardsByRound: Record<string, ShopCard[]> = {
           {
             event_id: 'history-aa02-1',
             recorded_at: '2026-07-18T02:10:00.000Z',
-            round_name: 'รอบเช้า',
+            round_name: 'งานประจำวัน',
             recorded_by: 'เดโม่ พนักงานส่ง',
             stop_status: 'delivered',
             note: null,
@@ -360,7 +360,7 @@ const demoCardsByRound: Record<string, ShopCard[]> = {
           {
             event_id: 'history-bb01-1',
             recorded_at: '2026-07-18T02:35:00.000Z',
-            round_name: 'รอบเช้า',
+            round_name: 'งานประจำวัน',
             recorded_by: 'เดโม่ พนักงานส่ง',
             stop_status: 'closed_shop',
             note: 'ปิดช่วงเช้า',
@@ -411,7 +411,7 @@ const demoCardsByRound: Record<string, ShopCard[]> = {
           {
             event_id: 'history-cc02-1',
             recorded_at: '2026-07-18T07:15:00.000Z',
-            round_name: 'รอบบ่าย',
+            round_name: 'งานประจำวัน',
             recorded_by: 'เดโม่ พนักงานส่ง',
             stop_status: 'delivered',
             note: null,
@@ -460,7 +460,7 @@ const demoOpeningStockState: EmployeeStockState = {
 const managerStockDemoRound: DeliveryRound = {
   id: 'demo-manager-round',
   service_date: '2026-07-20',
-  name: 'รอบงานวันนี้',
+  name: 'งานประจำวัน',
   status: 'open',
   opened_at: '2026-07-20T01:00:00.000Z',
 };
@@ -644,7 +644,7 @@ function buildDemoGateway(): EmployeeDeliveryGateway & { reset(): void } {
       const round = demoRounds.find((entry) => (cardsByRound[entry.id] ?? [])
         .some((card) => card.round_stop_id === roundStopId));
       const shop = (cardsByRound[round?.id ?? ''] ?? []).find((card) => card.round_stop_id === roundStopId);
-      if (!round || !shop) throw new Error('ไม่พบร้านในรอบเดโม่');
+      if (!round || !shop) throw new Error('ไม่พบร้านในงานประจำวันเดโม่');
       return {
         round_id: round.id,
         round_stop_id: roundStopId,
@@ -700,6 +700,9 @@ function buildDemoGateway(): EmployeeDeliveryGateway & { reset(): void } {
     async recordEmployeeStockTransfer(payload: EmployeeStockTransferPayload) {
       await delay(180);
       if (!transferKeys.has(payload.idempotencyKey)) {
+        if (payload.items.some((item) => item.quantity > (stockState.truck_location.balances.find((balance) => balance.ice_type_id === item.ice_type_id)?.quantity ?? 0))) {
+          throw new Error('The truck does not have enough stock');
+        }
         transferKeys.add(payload.idempotencyKey);
         for (const item of payload.items) {
           const withdrawn = stockState.withdrawn_balances.find((balance) => balance.ice_type_id === item.ice_type_id);
@@ -715,6 +718,9 @@ function buildDemoGateway(): EmployeeDeliveryGateway & { reset(): void } {
     async recordEmployeeStockReturn(payload: EmployeeStockTransferPayload) {
       await delay(180);
       if (!transferKeys.has(payload.idempotencyKey)) {
+        if (payload.items.some((item) => item.quantity > (stockState.holding_location.balances.find((balance) => balance.ice_type_id === item.ice_type_id)?.quantity ?? 0))) {
+          throw new Error('The employee holding does not have enough stock');
+        }
         transferKeys.add(payload.idempotencyKey);
         for (const item of payload.items) {
           const truck = stockState.truck_location.balances.find((balance) => balance.ice_type_id === item.ice_type_id);
@@ -728,6 +734,9 @@ function buildDemoGateway(): EmployeeDeliveryGateway & { reset(): void } {
     async recordEmployeeStockDamage(payload: EmployeeStockTransferPayload) {
       await delay(180);
       if (!transferKeys.has(payload.idempotencyKey)) {
+        if (payload.items.some((item) => item.quantity > (stockState.holding_location.balances.find((balance) => balance.ice_type_id === item.ice_type_id)?.quantity ?? 0))) {
+          throw new Error('The employee holding does not have enough stock');
+        }
         transferKeys.add(payload.idempotencyKey);
         for (const item of payload.items) {
           const holding = stockState.holding_location.balances.find((balance) => balance.ice_type_id === item.ice_type_id);
@@ -741,7 +750,7 @@ function buildDemoGateway(): EmployeeDeliveryGateway & { reset(): void } {
       const round = demoRounds.find((entry) =>
         (cardsByRound[entry.id] ?? []).some((card) => card.round_stop_id === payload.roundStopId),
       );
-      const roundName = round?.name ?? 'รอบเดโม่';
+      const roundName = round?.name ?? 'งานประจำวัน';
 
       if (payload.status === 'delivered') {
         for (const item of payload.items) {

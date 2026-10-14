@@ -202,9 +202,9 @@ export function PaymentModal({
             </section>
 
             {focusedCharge ? (
-              <section className="financial-ops__payment-breakdown" aria-label={translateUi('สรุปยอดหลังส่งรอบล่าสุด')}>
+              <section className="financial-ops__payment-breakdown" aria-label={translateUi('สรุปยอดหลังรายการส่งล่าสุด')}>
                 <span><small>{translateUi('ยอดค้างก่อนหน้า')}</small><b>{money.format(priorOutstandingAmount)}</b></span>
-                <span><small>{translateUi('ยอดส่งรอบล่าสุด')}</small><b>{money.format(focusedCharge.outstanding_amount)}</b></span>
+                <span><small>{translateUi('ยอดรายการส่งล่าสุด')}</small><b>{money.format(focusedCharge.outstanding_amount)}</b></span>
                 <span><small>{translateUi('ยอดบิลที่เลือก')}</small><strong>{money.format(selectedOutstandingAmount)}</strong></span>
               </section>
             ) : null}

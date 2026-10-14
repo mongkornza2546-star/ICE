@@ -87,7 +87,7 @@ export function EventPreparationPanel({ detail, gateway, onSaved }: {
       }); }}>
         <fieldset disabled={busy}>
           <label>{translateUi('วันเริ่มรับของล่วงหน้า')}<input type="date" required max={latestPreparationDate} value={date} onChange={(e) => setDate(e.target.value)} /></label>
-          <p>{translateUi('ร้านที่เลือกจะปรากฏในรอบส่งตั้งแต่วันนี้ เมื่อเผยแพร่งานแล้ว เลื่อนวันให้เร็วขึ้นได้ แต่เลื่อนช้าลงไม่ได้เพื่อรักษาประวัติ')}</p>
+          <p>{translateUi('ร้านที่เลือกจะปรากฏในรายการส่งประจำวันตั้งแต่วันที่นี้ เมื่อเผยแพร่งานแล้ว เลื่อนวันให้เร็วขึ้นได้ แต่เลื่อนช้าลงไม่ได้เพื่อรักษาประวัติ')}</p>
           <label>{translateUi('ค้นหาร้านหรือบูธ')}<input value={query} onChange={(e) => setQuery(e.target.value)} /></label>
           <button type="button" className="secondary-button" onClick={() => setSelected(Array.from(new Set([...selected, ...visible.map((row) => row.id)])))}>{translateUi('เลือกทั้งหมดที่แสดง')}</button>
           <button type="button" className="secondary-button" onClick={() => setSelected([])}>{translateUi('ล้างที่เลือก')}</button>

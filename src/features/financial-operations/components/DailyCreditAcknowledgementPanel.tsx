@@ -258,7 +258,7 @@ export function DailyCreditAcknowledgementPanel({ serviceDate, printerName, shop
           </div>
           <div className="daily-credit-signoff__shop-total"><small>{selectedShop.invoice_count} INV</small><strong>{money.format(Number(selectedShop.total_amount))}</strong></div>
         </div>
-        {selectedShop.open_round_count > 0 ? <p className="daily-credit-signoff__warning"><WarningCircle size={15} />{translateUi('ยังมีรอบส่งเปิดอยู่ ยอดอาจเพิ่มได้')}</p> : null}
+        {selectedShop.open_round_count > 0 ? <p className="daily-credit-signoff__warning"><WarningCircle size={15} />{translateUi('งานประจำวันยังไม่ปิด ยอดอาจเพิ่มได้')}</p> : null}
         {error ? <p className="credit-ar__action-error" role="alert"><WarningCircle size={18} />{translateUi(error)}</p> : null}
         <div className="daily-credit-signoff__details">
           <h3>{translateUi('รายละเอียดของ ')}{selectedShop.shop_name}</h3>
@@ -320,7 +320,7 @@ export function DailyCreditAcknowledgementPanel({ serviceDate, printerName, shop
             </div>
             <span className="daily-credit-signoff__amount"><b>{money.format(Number(item.total_amount))}</b><CaretRight size={20} /></span>
           </div>
-          {item.open_round_count > 0 ? <p className="daily-credit-signoff__warning"><WarningCircle size={15} />{translateUi('ยังมีรอบส่งเปิดอยู่ ยอดอาจเพิ่มได้')}</p> : null}
+          {item.open_round_count > 0 ? <p className="daily-credit-signoff__warning"><WarningCircle size={15} />{translateUi('งานประจำวันยังไม่ปิด ยอดอาจเพิ่มได้')}</p> : null}
           <span className={item.is_stale ? 'daily-credit-signoff__status is-stale' : 'daily-credit-signoff__status'}>{label}{item.evidence_count ? translateUi(' · มีรูปใบเซ็น {0} รูป', { 0: item.evidence_count }) : ''}</span>
           </button>
         </article>;

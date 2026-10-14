@@ -176,6 +176,11 @@ export function EmployeeDeliveryReview({
   const canEditQuantity = !submitting && round.status !== 'closed';
   const shopQuery = shopSearch.trim().toLocaleLowerCase('th-TH');
   const inputQuantity = Number(quantityInput);
+  const isQuantityWithinStock = (quantity: number) => selectedItem != null
+    && Number.isFinite(quantity) && quantity >= 0
+    && quantity <= Math.max(0, selectedItem.stock_quantity);
+  const isValidQuantity = isQuantityWithinStock(inputQuantity) && Number.isInteger(inputQuantity * 2);
+  const exceedsStock = selectedItem && inputQuantity > Math.max(0, selectedItem.stock_quantity);
   const hasUncommittedQuantity = Boolean(selectedItem)
     && (quantityInput.trim() === '' || !Number.isFinite(inputQuantity) || inputQuantity !== selectedQuantity);
   const visibleShopCards = shopCards.filter((card) => [
@@ -185,6 +190,8 @@ export function EmployeeDeliveryReview({
   const missingPrice = items.some((item) => (
     contextItems.find((candidate) => candidate.ice_type_id === item.ice_type_id)?.unit_price == null
   ));
+  const cartExceedsStock = items.some((item) => item.quantity > Math.max(0,
+    contextItems.find((candidate) => candidate.ice_type_id === item.ice_type_id)?.stock_quantity ?? 0));
   const isCreditShop = Boolean(posContext?.payment_profile?.allowed_payment_terms.includes('credit'));
   const vatRate = isCreditShop && posContext?.payment_profile?.vat_enabled ? 7 : 0;
   const tax = exclusiveVat(subtotalAmount, vatRate);
@@ -196,6 +203,7 @@ export function EmployeeDeliveryReview({
   const canSubmit = !submitting
     && round.status !== 'closed'
     && !hasUncommittedQuantity
+    && (!isDelivery || !cartExceedsStock)
     && (!isDelivery || (
       !financialContextRequired
       || (
@@ -210,7 +218,10 @@ export function EmployeeDeliveryReview({
 
   const enterDigit = (digit: string) => {
     if (!selectedItem || !canEditQuantity) return;
-    setQuantityInput((current) => current === '0' ? digit : `${current}${digit}`);
+    setQuantityInput((current) => {
+      const next = current === '0' ? digit : `${current}${digit}`;
+      return isQuantityWithinStock(Number(next)) ? next : current;
+    });
   };
 
   const eraseDigit = () => {
@@ -255,7 +266,7 @@ export function EmployeeDeliveryReview({
   }, [paymentOpen, problemOpen, loadingPosContext, posContextError]);
 
   const commitQuantity = () => {
-    if (!selectedItem || !canEditQuantity) return false;
+    if (!selectedItem || !canEditQuantity || !isValidQuantity) return false;
     if (quantityInputRef.current && !quantityInputRef.current.checkValidity()) {
       quantityInputRef.current.reportValidity();
       return false;
@@ -588,10 +599,10 @@ export function EmployeeDeliveryReview({
         {!problemOpen ? (
           <>
             <section aria-label={translateUi('เลือกร้านอื่น')} className="employee-pos-shops">
-              <div className="employee-pos-heading"><div><p>{translateUi('ร้าน')}</p><h2>{translateUi('ร้านในรอบ')}</h2></div><span>{shopCards.length}{translateUi(' ร้าน')}</span></div>
+              <div className="employee-pos-heading"><div><p>{translateUi('ร้าน')}</p><h2>{translateUi('ร้านในงานประจำวัน')}</h2></div><span>{shopCards.length}{translateUi(' ร้าน')}</span></div>
               <label className="employee-search employee-pos-shop-search">
                 <MagnifyingGlass aria-hidden="true" size={18} />
-                <input aria-label={translateUi('ค้นหาร้านในรอบ')} disabled={submitting} onChange={(event) => setShopSearch(event.target.value)} placeholder={translateUi('รหัส / ชื่อร้าน')} type="search" value={shopSearch} />
+                <input aria-label={translateUi('ค้นหาร้านในงานประจำวัน')} disabled={submitting} onChange={(event) => setShopSearch(event.target.value)} placeholder={translateUi('รหัส / ชื่อร้าน')} type="search" value={shopSearch} />
               </label>
               <div className="employee-pos-shop-list">
                 {visibleShopCards.length === 0 ? <p className="employee-pos-no-shops">{translateUi('ไม่พบร้านที่ค้นหา')}</p> : null}
@@ -633,7 +644,8 @@ export function EmployeeDeliveryReview({
                     <button
                       aria-pressed={selected}
                       className={selected ? 'employee-pos-product--selected' : ''}
-                      disabled={submitting || round.status === 'closed' || iceType.unit_price == null && Boolean(posContext)}
+                      disabled={submitting || round.status === 'closed' || iceType.unit_price == null && Boolean(posContext)
+                        || (iceType.stock_quantity <= 0 && quantity <= 0)}
                       key={iceType.ice_type_id}
                       onClick={() => selectIceType(iceType.ice_type_id)}
                       type="button"
@@ -675,10 +687,16 @@ export function EmployeeDeliveryReview({
                       {translateUi('คงเหลือ ')}{selectedItem.stock_quantity === Number.MAX_SAFE_INTEGER ? '—' : selectedItem.stock_quantity} {selectedItem.unit}
                     </small>
                   </div>
+                  {exceedsStock ? (
+                    <p className="employee-error" role="alert">
+                      {translateUi('จำนวนเกินสต๊อกคงเหลือ {0} {1}', { 0: Math.max(0, selectedItem.stock_quantity), 1: selectedItem.unit })}
+                    </p>
+                  ) : null}
                   <label className="employee-pos-quantity-input">
                     <span>{translateUi('จำนวน (')}{selectedItem.unit})</span>
                     <input
                       aria-label={translateUi('จำนวน{0}', { 0: selectedItem.name })}
+                      aria-invalid={!isValidQuantity}
                       disabled={!canEditQuantity}
                       inputMode="decimal"
                       min="0"
@@ -693,14 +711,14 @@ export function EmployeeDeliveryReview({
                   </label>
                   <div className="employee-pos-quick-quantities" role="group" aria-label={translateUi('เลือกจำนวนด่วน')}>
                     {[0.5, 1, 2, 3].map((quantity) => (
-                      <button disabled={!canEditQuantity} key={quantity} onClick={() => setQuantityInput(String(quantity))} type="button">
+                      <button disabled={!canEditQuantity || !isQuantityWithinStock(quantity)} key={quantity} onClick={() => setQuantityInput(String(quantity))} type="button">
                         {quantity === 0.5 ? '½' : quantity}
                       </button>
                     ))}
                   </div>
                   <div className="employee-keypad">
                     {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((digit) => (
-                      <button disabled={!canEditQuantity} key={digit} onClick={() => enterDigit(digit)} type="button">{digit}</button>
+                      <button disabled={!canEditQuantity || !isQuantityWithinStock(Number(`${quantityInput}${digit}`))} key={digit} onClick={() => enterDigit(digit)} type="button">{digit}</button>
                     ))}
                     <button
                       aria-label={translateUi('ล้างจำนวน')}
@@ -711,13 +729,13 @@ export function EmployeeDeliveryReview({
                       {translateUi('ล้าง')}</button>
                     <button
                       aria-label={translateUi('เพิ่มครึ่งกระสอบ')}
-                      disabled={!canEditQuantity}
+                      disabled={!canEditQuantity || !isQuantityWithinStock(inputQuantity + 0.5)}
                       onClick={() => setQuantityInput(String(inputQuantity + 0.5))}
                       type="button"
                     >
                       <span>½ <span className="employee-keypad-half-unit">{translateUi('กระสอบ')}</span></span>
                     </button>
-                    <button disabled={!canEditQuantity} onClick={() => enterDigit('0')} type="button">0</button>
+                    <button disabled={!canEditQuantity || !isQuantityWithinStock(Number(`${quantityInput}0`))} onClick={() => enterDigit('0')} type="button">0</button>
                     <button
                       aria-label={translateUi('ลบหนึ่งหลัก')}
                       disabled={!canEditQuantity}
@@ -729,7 +747,7 @@ export function EmployeeDeliveryReview({
                   </div>
                   <button
                     className="employee-pos-add-item"
-                    disabled={!canEditQuantity || !Number.isFinite(inputQuantity) || inputQuantity < 0
+                    disabled={!canEditQuantity || !isValidQuantity
                       || (inputQuantity === 0 && !hasUncommittedQuantity)}
                     onClick={() => finishQuantity()}
                     type="button"
@@ -807,6 +825,7 @@ export function EmployeeDeliveryReview({
                 </div>
               ) : null}
               {entryError ? <p className="employee-error" role="alert"><WarningCircle aria-hidden="true" />{translateUi(entryError)}</p> : null}
+              {cartExceedsStock ? <p className="employee-error" role="alert">{translateUi('จำนวนในรายการเกินสต๊อกคงเหลือ กรุณาแก้จำนวนก่อนส่ง')}</p> : null}
               <div className="employee-delivery-actions">
                 <button className="employee-submit" disabled={!canSubmit || hasPendingDelivery} onClick={() => onConfirmDelivery(isCreditShop ? 'credit' : 'end_of_day')} type="button">
                   {submitting ? translateUi('กำลังบันทึก...') : translateUi('ส่งอย่างเดียว')}
@@ -886,7 +905,7 @@ export function EmployeeDeliveryReview({
                   <small>{translateUi('ยกเลิกโดย ')}{entry.cancelled_by ?? '—'}
                     {entry.cancelled_at ? ` · ${uiDateTimeFormat({ day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Bangkok' }).format(new Date(entry.cancelled_at))}` : ''}</small>
                   {entry.cancellation_reason ? <small>{translateUi('เหตุผล')}: {entry.cancellation_reason}</small> : null}
-                </div> : entry.correction_blocker && !(entry.can_cancel || entry.can_correct) ? <small title={entry.correction_blocker}>{entry.correction_blocker}</small> : null}
+                </div> : entry.correction_blocker && !(entry.can_cancel || entry.can_correct) ? <small title={translateUi(entry.correction_blocker)}>{translateUi(entry.correction_blocker)}</small> : null}
               </article>
             ))}
           </div>

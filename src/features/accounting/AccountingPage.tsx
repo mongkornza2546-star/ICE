@@ -836,7 +836,7 @@ const dailyStatusLabels: Record<AccountingShopDailyStatus, string> = {
   no_purchase: 'ไม่ซื้อ',
   closed_shop: 'ปิดร้าน',
   not_recorded: 'ยังไม่บันทึก',
-  not_scheduled: 'ไม่อยู่ในรอบ',
+  not_scheduled: 'ร้านไม่อยู่ในรายการงานประจำวัน',
   skipped: 'ข้ามร้าน',
 };
 

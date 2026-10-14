@@ -119,7 +119,7 @@ export interface EmployeeApprovalPayload {
 
 export interface EmployeeStockTransferPayload {
   roundId: string;
-  items: Array<{ ice_type_id: string; quantity: number; fullBags?: number; halfBags?: number; confirmedOverstock?: boolean }>;
+  items: Array<{ ice_type_id: string; quantity: number; fullBags?: number; halfBags?: number }>;
   idempotencyKey: string;
 }
 
@@ -1164,12 +1164,12 @@ export function EmployeeDeliveryWorkspace({
         <section className="employee-state" aria-labelledby="employee-no-open-round">
           <WarningCircle aria-hidden="true" size={42} />
           <h2 id="employee-no-open-round">{isBackdatedBilling
-            ? translateUi('วันที่นี้ไม่มีรอบส่งที่เปิดอยู่')
-            : translateUi('ยังไม่มีรอบส่งที่เปิดอยู่')}</h2>
+            ? translateUi('วันที่นี้ไม่มีงานประจำวันที่เปิดอยู่')
+            : translateUi('ยังไม่มีงานประจำวันที่เปิดอยู่')}</h2>
           <p>{isBackdatedBilling
-            ? translateUi('ไม่สามารถเพิ่มบิลลงในวันที่ปิดรอบแล้วได้ เพื่อไม่ให้ยอดสต๊อกที่ปิดวันเปลี่ยนย้อนหลัง')
-            : translateUi('หัวหน้ารอบต้องเปิดรอบส่งและเพิ่มคุณเข้ารอบก่อน จึงจะเลือกร้านและบันทึกส่งได้')}</p>
-          <button className="employee-text-button" disabled={data.loadingReference} onClick={data.retryLoad} type="button">{translateUi('โหลดรอบอีกครั้ง')}</button>
+            ? translateUi('ตรวจสอบว่าวันที่เลือกเริ่มงานแล้วและยังไม่ปิดงานหรือปิดสต๊อกสิ้นวัน จึงจะเพิ่มบิลได้')
+            : translateUi('ให้หัวหน้าตรวจสอบการเริ่มงานและสถานะงานประจำวันของวันที่เลือก แล้วโหลดข้อมูลอีกครั้ง')}</p>
+          <button className="employee-text-button" disabled={data.loadingReference} onClick={data.retryLoad} type="button">{translateUi('โหลดงานประจำวันอีกครั้ง')}</button>
         </section>
       ) : (
         <>
@@ -1191,6 +1191,7 @@ export function EmployeeDeliveryWorkspace({
               canUndo={data.canUndoTransfer}
               success={data.transferSuccess}
               variant={resolvedViewMode === 'withdrawal' ? 'cards' : 'table'}
+              canRetryTransfer={data.canRetryTransfer}
               transferItems={data.transferItems}
             />
           ) : null}

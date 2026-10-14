@@ -95,16 +95,42 @@ export function getActiveLanguage() {
   return activeLanguage;
 }
 
+// Older RPCs still return these fixed UI messages. Normalize only known copy,
+// never stored names, user notes, or interpolation values.
+const dailyWorkCopy: Record<string, string> = {
+  'รอบส่งปิดแล้ว': 'งานประจำวันปิดแล้ว',
+  'รอบส่งปิดแล้ว ไม่สามารถยกเลิกใบส่งได้': 'งานประจำวันปิดแล้ว ไม่สามารถยกเลิกใบส่งได้',
+  'รอบส่งปิดแล้ว ต้องสร้างเอกสารปรับปรุง': 'งานประจำวันปิดแล้ว ต้องสร้างเอกสารปรับปรุง',
+  'เฉพาะหัวหน้ารอบหรือแอดมินเท่านั้นที่ยกเลิกรอบส่งได้': 'เฉพาะหัวหน้าหรือแอดมินเท่านั้นที่ยกเลิกรายการได้',
+  'ไม่พบรอบส่งที่เลือก': 'ไม่พบงานที่เลือก',
+  'รอบนี้มีการทำรายการแล้ว จึงไม่สามารถยกเลิกการเปิดรอบได้': 'งานนี้มีการทำรายการแล้ว จึงไม่สามารถยกเลิกงานได้',
+  'ปรับบิลหลังปิดรอบ': 'ปรับบิลหลังปิดงานประจำวัน',
+  'รายการนี้ไม่ใช่รายการล่าสุดของร้านในรอบ': 'รายการนี้ไม่ใช่รายการล่าสุดของร้านในงานที่เลือก',
+  'บูธนี้เคยมีและถูกยกเลิกแล้ว กรุณาติดต่อหัวหน้ารอบ': 'บูธนี้เคยมีและถูกยกเลิกแล้ว กรุณาติดต่อหัวหน้า',
+  'รอบนี้ยกเลิกแล้ว ไม่สามารถบันทึกรายการสต๊อกใหม่ได้': 'งานนี้ยกเลิกแล้ว ไม่สามารถบันทึกรายการสต๊อกใหม่ได้',
+  'รอบที่ปิดแล้วไม่สามารถยกเลิกย้อนหลังได้': 'งานที่ปิดแล้วไม่สามารถยกเลิกย้อนหลังได้',
+};
+
+function getOwnCopy(catalog: Record<string, string>, key: string): string | undefined {
+  return Object.prototype.hasOwnProperty.call(catalog, key) ? catalog[key] : undefined;
+}
+
 export function translateUi(source: string, values?: Record<string, string | number>) {
   const key = source.trim();
-  const copy = activeLanguage === 'my' && legacyUiTranslations[key]
-    ? source.replace(key, legacyUiTranslations[key]) : source;
+  const currentKey = getOwnCopy(dailyWorkCopy, key) ?? key;
+  const copy = source.replace(key, () => activeLanguage === 'my'
+    ? getOwnCopy(legacyUiTranslations, currentKey) ?? currentKey : currentKey);
   // Substitute only after translating the UI template. Values are business data.
   return values ? copy.replace(/\{(\w+)\}/g, (token, key: string) => String(values[key] ?? token)) : copy;
 }
 
 export function localizeErrorMessage(message: string): string {
-  if (activeLanguage === 'th') return message;
+  const currentMessage = message.split(' · ').map((part) => {
+    const key = part.trim();
+    return part.replace(key, () => getOwnCopy(dailyWorkCopy, key) ?? key);
+  }).join(' · ');
+  if (activeLanguage === 'th') return currentMessage;
+  if (currentMessage !== message && getOwnCopy(legacyUiTranslations, currentMessage.trim())) return translateUi(currentMessage);
   if (/jwt has expired|invalid refresh token|refresh token.*not found|เซสชันหมดอายุ/i.test(message)) {
     return 'အကောင့်ဝင်ချိန် သက်တမ်းကုန်သွားပါပြီ။ ထပ်မံဝင်ပါ။';
   }

@@ -163,6 +163,9 @@ test('quick entry creates and publishes 300 booths atomically without regular de
   await db.exec(definition('sync_daily_round_active_shops', migration('0157_event_destination_compatibility_fence')));
   await db.exec(migration('0176_event_quick_entry_and_bulk_booths'));
   await db.exec(migration('0184_event_participation_booth_uniqueness'));
+  await db.exec(definition('resolve_event_shop_zone_internal', migration('0197_employee_event_operations')));
+  await db.exec(definition('create_event_shops', migration('0197_employee_event_operations')));
+  await db.exec(definition('resolve_event_shop_zone_internal', migration('0230_deduplicate_event_work_sites')));
   await db.exec(definition('audit_row_update', migration('0001_phase_1_foundation')));
   await db.exec('create trigger shops_audit_update after update on public.shops for each row execute function public.audit_row_update()');
   const createEvent = async () => (await db.query(`select public.save_event_job(null, '', null, '', null, '', '2026-09-07', '2026-09-07', null, null, null, null, false, false, false, false, false, false) as value`)).rows[0].value;
@@ -173,6 +176,49 @@ test('quick entry creates and publishes 300 booths atomically without regular de
   assert.deepEqual(saved.configuration.allowed_payment_methods, ['cash']);
   const rows = ['A', 'F', 'T'].flatMap((prefix, i) => Array.from({length: [250,40,10][i]}, (_, n) => ({ name: '', booth_number: `${prefix}${n+1}`, event_zone: 'ตึก B', start_date: '2026-09-07', end_date: '2026-09-07' })));
   const createShops = async (eventId, data, request = randomUUID()) => (await db.query('select public.create_event_shops($1, $2, $3) as value', [eventId, request, JSON.stringify(data)])).rows[0].value;
+  // Alternate labels must reuse permanent buildings, even when an older event
+  // already generated a compatibility building with the same display name.
+  await db.exec('begin');
+  await db.exec("insert into public.buildings(code,name) values ('A','A'), ('C','ตึก C'), ('EVENT-old','ตึก A')");
+  for (const [label, expectedCode] of [['ตึก A','A'], [' ตึก  a ','A'], ['C','C']]) {
+    const event = await createEvent();
+    await createShops(event.event_job.id, [{...rows[0], event_zone:label}]);
+    const actual = (await db.query(`select building.code from public.shops shop
+      join public.buildings building on building.id=shop.building_id
+      where shop.event_job_id=$1`, [event.event_job.id])).rows[0].code;
+    assert.equal(actual, expectedCode, `reuse permanent building for ${label}`);
+  }
+  // Unknown/ambiguous labels stay event-owned; another event's matching name
+  // must not accidentally become this event's building.
+  await db.exec("insert into public.buildings(code,name,is_active) values ('D1','D',true), ('D2','ตึก D',true), ('E','E',false)");
+  for (const label of ['ตึก  D', 'ตึก E', 'พื้นที่ใหม่', 'พื้นที่ใหม่']) {
+    const event = await createEvent();
+    const eventId = event.event_job.id;
+    await createShops(eventId, [{...rows[0], event_zone:label}]);
+    await createShops(eventId, [{...rows[0], booth_number:'EXTRA', event_zone:label}]);
+    const actual = (await db.query(`select distinct building.code from public.shops shop
+      join public.buildings building on building.id=shop.building_id
+      where shop.event_job_id=$1`, [eventId])).rows;
+    assert.deepEqual(actual, [{code:`EVENT-${eventId}`}]);
+  }
+  // The event location takes precedence over booth zones; keep distinct readable zones.
+  const locatedEvent = await createEvent();
+  await db.query("update event_jobs set location='ตึก A' where id=$1", [locatedEvent.event_job.id]);
+  await createShops(locatedEvent.event_job.id, [
+    {...rows[0], event_zone:'ชั้น 1'}, {...rows[0], event_zone:'ชั้น 2'},
+  ]);
+  assert.deepEqual((await db.query(`select building.code, zone.name from public.shops shop
+    join public.buildings building on building.id=shop.building_id
+    join public.building_zones zone on zone.id=shop.zone_id
+    where shop.event_job_id=$1 order by zone.name`, [locatedEvent.event_job.id])).rows,
+  [{code:'A',name:'ชั้น 1'}, {code:'A',name:'ชั้น 2'}]);
+  // An exact permanent match takes precedence over ambiguous normalized names.
+  const exactEvent = await createEvent();
+  await createShops(exactEvent.event_job.id, [{...rows[0], event_zone:'ตึก D'}]);
+  assert.equal((await db.query(`select building.code from public.shops shop
+    join public.buildings building on building.id=shop.building_id
+    where shop.event_job_id=$1`, [exactEvent.event_job.id])).rows[0].code, 'D2');
+  await db.exec('rollback');
   await db.exec("select set_config('app.test_role', 'courier', false)");
   await assert.rejects(createShops(id, rows), /Only an active admin or round lead/);
   await db.exec("select set_config('app.test_role', 'round_lead', false)");

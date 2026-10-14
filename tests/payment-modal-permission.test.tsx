@@ -140,9 +140,9 @@ describe('PaymentModal collection capability', () => {
       serviceDate="2026-08-27"
     />);
 
-    const summary = screen.getByRole('region', { name: 'สรุปยอดหลังส่งรอบล่าสุด' });
+    const summary = screen.getByRole('region', { name: 'สรุปยอดหลังรายการส่งล่าสุด' });
     expect(summary.textContent).toContain('ยอดค้างก่อนหน้า฿120.00');
-    expect(summary.textContent).toContain('ยอดส่งรอบล่าสุด฿30.00');
+    expect(summary.textContent).toContain('ยอดรายการส่งล่าสุด฿30.00');
     expect(summary.textContent).toContain('ยอดบิลที่เลือก฿150.00');
   });
 
@@ -183,8 +183,8 @@ describe('PaymentModal collection capability', () => {
       serviceDate="2026-08-27"
     />);
 
-    const summary = screen.getByRole('region', { name: 'สรุปยอดหลังส่งรอบล่าสุด' });
+    const summary = screen.getByRole('region', { name: 'สรุปยอดหลังรายการส่งล่าสุด' });
     expect(summary.textContent).toContain('ยอดค้างก่อนหน้า฿0.00');
-    expect(summary.textContent).toContain('ยอดส่งรอบล่าสุด฿120.00');
+    expect(summary.textContent).toContain('ยอดรายการส่งล่าสุด฿120.00');
   });
 });

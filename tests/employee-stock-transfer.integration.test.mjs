@@ -158,6 +158,7 @@ async function createDatabase(t, { migrateBagCounts = true, iceTypeName = 'Ice' 
   if (migrateBagCounts) {
     await db.exec(readFileSync(new URL('../supabase/migrations/0218_employee_stock_bag_counts.sql', import.meta.url), 'utf8'));
     await db.exec(readFileSync(new URL('../supabase/migrations/0219_correct_stock_half_bag_ice_types.sql', import.meta.url), 'utf8'));
+    await db.exec(readFileSync(new URL('../supabase/migrations/0229_employee_stock_no_overdraw.sql', import.meta.url), 'utf8'));
   }
   return db;
 }
@@ -207,7 +208,7 @@ test('employee transfer rejects invalid fractions and overdraw without writing s
 });
 
 for (const operation of ['transfer', 'return', 'damage']) {
-  test(`employee ${operation} preserves split, verifies retries, and permits confirmed overstock`, async (t) => {
+  test(`employee ${operation} preserves split, verifies retries, and rejects confirmed overstock`, async (t) => {
     const db = await createDatabase(t);
     await db.exec('update test_location_balances set quantity = 20; update test_aggregate_balances set quantity = 20');
     const item = { ice_type_id: ICE_ID, quantity: 14.5, fullBags: 14, halfBags: 1 };
@@ -225,8 +226,9 @@ for (const operation of ['transfer', 'return', 'damage']) {
     await assert.rejects(run({ ...item, fullBags: 13, halfBags: 3 }), /different employee stock/);
     const key = '60000000-0000-4000-8000-000000000002';
     await assert.rejects(run(item, key), /enough stock/);
-    await run({ ...item, confirmedOverstock: true }, key);
-    assert.equal((await db.query('select count(*)::int as count from stock_movements')).rows[0].count, 2);
+    await assert.rejects(run({ ...item, confirmedOverstock: true }, key), /enough stock/);
+    assert.equal((await db.query('select count(*)::int as count from stock_movements')).rows[0].count, 1);
+    assert.equal((await db.query('select stock_balance_at($1, $2, $3) as quantity', [SERVICE_DATE, source, ICE_ID])).rows[0].quantity, '5.5');
   });
 }
 test('bag split validation and allowHalf reject invalid data; old totals stay readable', async (t) => {
@@ -260,6 +262,7 @@ for (const operation of ['transfer', 'return', 'damage']) {
     await run();
     await run();
     await db.exec(readFileSync(new URL('../supabase/migrations/0218_employee_stock_bag_counts.sql', import.meta.url), 'utf8'));
+    await db.exec(readFileSync(new URL('../supabase/migrations/0229_employee_stock_no_overdraw.sql', import.meta.url), 'utf8'));
     await run();
     await run({ ...item, confirmedOverstock: true });
     await assert.rejects(run({ ...item, quantity: 1 }), /different employee stock/);
@@ -271,3 +274,15 @@ for (const operation of ['transfer', 'return', 'damage']) {
     assert.equal((await db.query('select count(*)::int as count from stock_movements')).rows[0].count, 1);
   });
 }
+
+
+test('damage cannot bypass aggregate stock with an old confirmation flag', async (t) => {
+  const db = await createDatabase(t);
+  await db.exec('update test_location_balances set quantity = 20');
+  await assert.rejects(db.query('select record_employee_stock_damage($1, $2::jsonb, $3)', [
+    ROUND_ID, JSON.stringify([{ ice_type_id: ICE_ID, quantity: 3.5, fullBags: 3, halfBags: 1, confirmedOverstock: true }]),
+    '60000000-0000-4000-8000-000000000005',
+  ]), /Daily aggregate stock does not have enough stock/);
+  assert.equal((await db.query('select count(*)::int as count from stock_movements')).rows[0].count, 0);
+  assert.equal((await db.query('select count(*)::int as count from audit_logs')).rows[0].count, 0);
+});

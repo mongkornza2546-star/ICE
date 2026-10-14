@@ -100,7 +100,7 @@ export async function exportAccountingShopDaily(
   const statusLabels = {
     purchased: 'ซื้อแล้ว', no_purchase: 'ไม่ซื้อ', closed_shop: 'ปิดร้าน',
     recorded_no_sale: 'มีบันทึกแต่ไม่มีการขาย', not_recorded: 'ยังไม่บันทึก',
-    not_scheduled: 'ไม่อยู่ในรอบ', skipped: 'ข้ามร้าน',
+    not_scheduled: 'ร้านไม่อยู่ในรายการงานประจำวัน', skipped: 'ข้ามร้าน',
   } as const;
   const unavailableLabel = 'ไม่มีข้อมูล';
   const headerStyle = { fontWeight: 'bold' as const, backgroundColor: '#DCE9E3', align: 'center' as const, wrap: true, borderStyle: 'thin' as const, borderColor: '#B7C9C0' };

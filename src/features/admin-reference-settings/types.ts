@@ -125,6 +125,6 @@ export const SHOP_FIELDS = 'id, code, name, image_path, status';
 
 export const ROLE_OPTIONS: Array<{ value: AppRole; label: string }> = [
   { value: 'courier', label: 'พนักงานส่ง' },
-  { value: 'round_lead', label: 'หัวหน้ารอบ' },
+  { value: 'round_lead', label: 'หัวหน้า' },
   { value: 'admin', label: 'แอดมิน' },
 ];

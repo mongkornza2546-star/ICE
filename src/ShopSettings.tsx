@@ -1106,7 +1106,7 @@ export function ShopSettings({
               <EditorStat icon={<User size={24} />} label={translateUi('ผู้ติดต่อ')} value={draft.contact_name || '—'} />
               <EditorStat icon={<Phone size={24} />} label={translateUi('เบอร์โทร')} value={draft.contact_phone || '—'} />
               <EditorStat icon={<ListBullets size={24} />} label={translateUi('ลำดับส่งในโซน')} value={draft.delivery_sequence?.toLocaleString('th-TH') ?? 'ยังไม่กำหนด'} />
-              <EditorStat icon={<Clock size={24} />} label={translateUi('รอบปกติต่อวัน')} value={`${draft.normal_rounds_per_day} รอบ`} />
+              <EditorStat icon={<Clock size={24} />} label={translateUi('จำนวนครั้งที่ส่งต่อวัน')} value={translateUi('{0} ครั้ง', { 0: draft.normal_rounds_per_day })} />
               <EditorStat icon={<Storefront size={24} />} label={translateUi('สถานะร้าน')} value={draft.status === 'active' ? 'ใช้งาน' : 'พักใช้งาน'} tone={draft.status} />
               <EditorStat icon={<FileText size={24} />} label={translateUi('หมายเหตุการเข้าถึง')} value={draft.access_note || '—'} />
             </section>
@@ -1150,7 +1150,7 @@ export function ShopSettings({
                 <TextField label={translateUi('เบอร์โทร')} value={draft.contact_phone} onChange={(contact_phone) => setDraft({ ...draft, contact_phone })} />
                 <label>{translateUi('สถานะร้าน')}<select value={draft.status} onChange={(event) => setDraft({ ...draft, status: event.target.value as ShopDraft['status'] })}><option value="active">{translateUi('ใช้งาน')}</option><option value="inactive">{translateUi('พักใช้งาน')}</option></select></label>
                 <label>{translateUi('ลำดับส่งในโซน')}<input min={1} placeholder={translateUi('ยังไม่กำหนด')} step={1} type="number" value={draft.delivery_sequence ?? ''} onChange={(event) => setDraft({ ...draft, delivery_sequence: event.target.value === '' ? null : Math.max(1, Math.floor(Number(event.target.value) || 1)) })} /></label>
-                <label className="shop-editor-field--rounds">{translateUi('รอบปกติต่อวัน')}<input min={1} required type="number" value={draft.normal_rounds_per_day} onChange={(event) => setDraft({ ...draft, normal_rounds_per_day: Math.max(1, Number(event.target.value) || 1) })} /></label>
+                <label className="shop-editor-field--rounds">{translateUi('จำนวนครั้งที่ส่งต่อวัน')}<input min={1} required type="number" value={draft.normal_rounds_per_day} onChange={(event) => setDraft({ ...draft, normal_rounds_per_day: Math.max(1, Number(event.target.value) || 1) })} /></label>
               </div>
               <label>{translateUi('หมายเหตุการเข้าถึง')}<textarea rows={3} placeholder={translateUi('ระบุหมายเหตุการเข้าถึง (ถ้ามี)')} value={draft.access_note} onChange={(event) => setDraft({ ...draft, access_note: event.target.value })} /></label>
               <footer className="shop-editor-savebar"><button className="secondary-button" disabled={saving} onClick={closeEditor} type="button">{translateUi('ยกเลิก')}</button><button className="primary-button" disabled={saving || activeStallConflict} type="submit">{saving ? translateUi('กำลังบันทึก...') : translateUi('บันทึกข้อมูลร้าน')}</button></footer>

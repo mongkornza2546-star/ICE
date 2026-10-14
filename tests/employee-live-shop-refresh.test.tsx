@@ -1,10 +1,11 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { EmployeeDeliveryGateway } from '../src/EmployeeDeliveryWorkspace';
 import type { DeliveryPosContext, EmployeeStockState, ShopCard } from '../src/types/app';
 import { LanguageProvider, LanguageSwitcher, translateUi } from '../src/i18n';
 import { writeRecovery } from '../src/lib/recoveryStorage';
+import { useEmployeeDeliveryData } from '../src/features/employee-delivery/useEmployeeDeliveryData';
 import { publishDataChange } from '../src/lib/dataChange';
 
 const supabaseMock = vi.hoisted(() => {
@@ -976,7 +977,7 @@ it('stock form rejects zero, undoes edits, retains failed input and updates stoc
   expect(screen.getByText('เหลือบนรถ 5.5 ถุง')).toBeTruthy();
   expect(screen.getAllByText('บันทึกแล้ว เติมไป 14.5 ถุง').length).toBeGreaterThan(0);
   expect((screen.getByRole('button', { name: 'ย้อนกลับ' }) as HTMLButtonElement).disabled).toBe(true);
-  expect(save.mock.calls[0][0].items).toEqual([{ ice_type_id: 'ice-1', fullBags: 14, halfBags: 1, quantity: 14.5, confirmedOverstock: false }]);
+  expect(save.mock.calls[0][0].items).toEqual([{ ice_type_id: 'ice-1', fullBags: 14, halfBags: 1, quantity: 14.5 }]);
   expect(save.mock.calls[0][0].idempotencyKey).toBe(save.mock.calls[1][0].idempotencyKey);
 });
 
@@ -1016,7 +1017,7 @@ it.each([
   const button = await screen.findByRole('button', { name: `บันทึก${label} · 2.5 ถุง` });
   fireEvent.click(button);
   await waitFor(() => expect(screen.getAllByText(/กรุณาลองบันทึกใหม่/).length).toBeGreaterThan(0));
-  expect(save.mock.calls[0][0]).toEqual({ roundId: 'round-1', items: legacyItems.map(item => ({ ...item, confirmedOverstock: false })), idempotencyKey: key });
+  expect(save.mock.calls[0][0]).toEqual({ roundId: 'round-1', items: legacyItems, idempotencyKey: key });
   fireEvent.click(button);
   await waitFor(() => expect((screen.getByLabelText('เต็มถุง น้ำแข็ง') as HTMLInputElement).value).toBe('0'));
   expect(save.mock.calls[1][0]).toEqual(save.mock.calls[0][0]);
@@ -1031,7 +1032,7 @@ it.each([
   expect(save.mock.calls[2][0].items[0]).toMatchObject({ quantity: 2.5, fullBags: 2, halfBags: 1 });
 });
 
-it('localizes stock controls, confirmation and feedback in Burmese', async () => {
+it('localizes stock controls and blocked overstock feedback in Burmese', async () => {
   window.localStorage.setItem('ice-delivery.language.v1', 'my');
   const save = vi.fn().mockRejectedValueOnce(new Error('Failed to fetch')).mockResolvedValue(stockState);
   const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
@@ -1045,6 +1046,10 @@ it('localizes stock controls, confirmation and feedback in Burmese', async () =>
     fireEvent.click(document.querySelector('.bag-transfer-buttons .employee-submit')!);
     expect(document.querySelector('.bag-transfer-error')!.textContent).not.toMatch(/[ก-๙]/);
     fireEvent.change(full, { target: { value: '14' } });
+    expect(full.value).toBe('0');
+    expect(document.querySelector('.bag-transfer-error')!.textContent).not.toMatch(/[ก-๙]/);
+    expect(confirm).not.toHaveBeenCalled();
+    fireEvent.change(full, { target: { value: '1' } });
     fireEvent.change(screen.getByLabelText(`${translateUi('ครึ่งถุง')} น้ำแข็ง`), { target: { value: '1' } });
     for (const selector of ['.bag-transfer-warning', '.bag-transfer-total', '.bag-transfer-buttons', '.bag-product-name small']) {
       expect(document.querySelector(selector)!.textContent).not.toMatch(/[ก-๙]/);
@@ -1053,17 +1058,219 @@ it('localizes stock controls, confirmation and feedback in Burmese', async () =>
     await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(document.querySelector('.bag-transfer-error')).not.toBeNull());
     expect(document.querySelector('.bag-transfer-error')!.textContent).not.toMatch(/[ก-๙]/);
-    expect(confirm.mock.calls[0][0]).not.toMatch(/[ก-๙]/);
+    expect(confirm).not.toHaveBeenCalled();
     fireEvent.click(document.querySelector('.bag-transfer-buttons .employee-submit')!);
     await waitFor(() => expect(full.value).toBe('0'));
     const success = document.querySelector('.bag-transfer-success')!;
-    expect(success.textContent).toContain('14.5');
+    expect(success.textContent).toContain('1.5');
     expect(success.textContent).not.toMatch(/[ก-๙]/);
     fireEvent.change(document.querySelector('.language-switcher select')!, { target: { value: 'th' } });
-    expect(success.textContent).toBe('บันทึกแล้ว เติมไป 14.5 ถุง');
+    expect(success.textContent).toBe('บันทึกแล้ว เติมไป 1.5 ถุง');
   } finally {
     confirm.mockRestore();
     const switcher = document.querySelector('.language-switcher select');
     if (switcher) fireEvent.change(switcher, { target: { value: 'th' } });
   }
+});
+
+
+it.each([
+  ['receive', 'เติมจากรถ'], ['return', 'คืนขึ้นรถ'], ['damage', 'ละลาย'],
+])('limits %s edits to available full and half bags', async (mode, label) => {
+  const save = vi.fn().mockResolvedValue(stockState);
+  const gateway = stockRetryGateway(save);
+  gateway.loadEmployeeStockState = vi.fn().mockResolvedValue({
+    ...stockState,
+    truck_location: { ...stockState.truck_location, balances: [{ ...stockState.truck_location.balances[0], quantity: mode === 'receive' ? 1.5 : 100 }] },
+    holding_location: { ...stockState.holding_location, balances: [{ ...stockState.holding_location.balances[0], quantity: mode === 'receive' ? 100 : 1.5 }] },
+  });
+  render(<EmployeeDeliveryWorkspace enableAssignedStockFlow gateway={gateway} requestScope={`stock-limit-${mode}`} serviceDate="2026-08-11" viewMode="withdrawal" />);
+  await screen.findByLabelText('เต็มถุง น้ำแข็ง');
+  fireEvent.click(screen.getByRole('button', { name: label }));
+  const full = screen.getByLabelText('เต็มถุง น้ำแข็ง') as HTMLInputElement;
+  const half = screen.getByLabelText('ครึ่งถุง น้ำแข็ง') as HTMLInputElement;
+  fireEvent.change(full, { target: { value: '7' } });
+  expect(full.value).toBe('0');
+  expect(save).not.toHaveBeenCalled();
+  fireEvent.change(full, { target: { value: '1' } });
+  expect((screen.getByRole('button', { name: 'เพิ่มเต็มถุง น้ำแข็ง' }) as HTMLButtonElement).disabled).toBe(true);
+  const addHalf = screen.getByRole('button', { name: 'เพิ่มครึ่งถุง น้ำแข็ง' }) as HTMLButtonElement;
+  expect(addHalf.disabled).toBe(false);
+  fireEvent.change(half, { target: { value: '2' } });
+  expect(half.value).toBe('0');
+  fireEvent.click(addHalf);
+  expect(half.value).toBe('1');
+  expect(addHalf.disabled).toBe(true);
+  fireEvent.click(screen.getByRole('button', { name: `บันทึก${label} · 1.5 ถุง` }));
+  await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+  expect(save.mock.calls[0][0].items).toEqual([{ ice_type_id: 'ice-1', quantity: 1.5, fullBags: 1, halfBags: 1 }]);
+});
+
+it.each(['receive', 'return', 'damage'] as const)('blocks recovered %s overstock even when the submit handler is called directly', async (mode) => {
+  const scope = `stock-recovered-overdraw-${mode}`;
+  writeRecovery(scope, '2026-08-11', 'withdrawal', {
+    selectedRoundId: 'round-1', selectedBuildingId: '', selectedZone: '', query: '', selectedCardId: null,
+    selectedIceTypeId: 'ice-1', deliveryQuantities: {}, transferQuantities: { 'ice-1': { fullBags: 7, halfBags: 0 } },
+    stockTransferMode: mode, status: 'delivered', note: '', paymentOpen: false,
+  });
+  const save = vi.fn();
+  const gateway = stockRetryGateway(save);
+  gateway.loadEmployeeStockState = vi.fn().mockResolvedValue({
+    ...stockState,
+    truck_location: { ...stockState.truck_location, balances: [] },
+    holding_location: { ...stockState.holding_location, balances: [] },
+  });
+  const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+  try {
+    const { result } = renderHook(() => useEmployeeDeliveryData({
+      gateway, enableAssignedStockFlow: true, requestScope: scope, serviceDate: '2026-08-11',
+    }));
+    await waitFor(() => expect(result.current.stockState).not.toBeNull());
+    expect(result.current.transferItems[0].quantity).toBe(7);
+    await act(async () => { await result.current.handleStockTransfer(); });
+    expect(save).not.toHaveBeenCalled();
+    expect(confirm).not.toHaveBeenCalled();
+    expect(result.current.stockError).toBe('จำนวนเกินสต๊อกคงเหลือ ไม่สามารถบันทึกได้');
+    act(() => result.current.changeTransferQuantity('ice-1', 'fullBags', 6));
+    expect(result.current.transferItems[0].quantity).toBe(6);
+    act(() => result.current.changeTransferQuantity('ice-1', 'fullBags', 0));
+    expect(result.current.transferItems).toEqual([]);
+    act(() => result.current.changeTransferQuantity('ice-1', 'halfBags', 1));
+    expect(result.current.transferItems).toEqual([]);
+  } finally {
+    confirm.mockRestore();
+  }
+});
+
+it.each([
+  ['receive', 'เติมจากรถ'], ['return', 'คืนขึ้นรถ'], ['damage', 'ละลาย'],
+])('acknowledges a committed %s request after response loss and stock refresh', async (mode, label) => {
+  let balance = 20;
+  const committed = new Set<string>();
+  const currentStock = () => ({
+    ...stockState,
+    truck_location: { ...stockState.truck_location, balances: [{ ...stockState.truck_location.balances[0], quantity: balance }] },
+    holding_location: { ...stockState.holding_location, balances: [{ ...stockState.holding_location.balances[0], quantity: balance }] },
+  });
+  const save = vi.fn(async (payload) => {
+    if (!committed.has(payload.idempotencyKey)) {
+      balance -= payload.items[0].quantity;
+      committed.add(payload.idempotencyKey);
+      throw new Error('Failed to fetch');
+    }
+    return currentStock();
+  });
+  const gateway = stockRetryGateway(save);
+  gateway.loadEmployeeStockState = vi.fn(async () => currentStock());
+  render(<EmployeeDeliveryWorkspace enableAssignedStockFlow gateway={gateway} requestScope={`stock-lost-response-${mode}`} serviceDate="2026-08-11" viewMode="withdrawal" />);
+  await screen.findByLabelText('เต็มถุง น้ำแข็ง');
+  fireEvent.click(screen.getByRole('button', { name: label }));
+  const full = screen.getByLabelText('เต็มถุง น้ำแข็ง') as HTMLInputElement;
+  fireEvent.change(full, { target: { value: '14' } });
+  fireEvent.change(screen.getByLabelText('ครึ่งถุง น้ำแข็ง'), { target: { value: '1' } });
+  fireEvent.click(screen.getByRole('button', { name: `บันทึก${label} · 14.5 ถุง` }));
+  await screen.findAllByText(/กรุณาลองบันทึกใหม่/);
+  expect(committed.size).toBe(1);
+  fireEvent.click(screen.getByRole('button', { name: 'ลองใหม่' }));
+  const retry = await screen.findByRole('button', { name: 'ตรวจสอบผลรายการเดิม · 14.5 ถุง' });
+  expect((retry as HTMLButtonElement).disabled).toBe(false);
+  // A changed payload must not inherit the pending request's exception.
+  fireEvent.change(full, { target: { value: '6' } });
+  expect((screen.getByRole('button', { name: `บันทึก${label} · 6.5 ถุง` }) as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.click(screen.getByRole('button', { name: 'ย้อนกลับ' }));
+  fireEvent.click(screen.getByRole('button', { name: 'ตรวจสอบผลรายการเดิม · 14.5 ถุง' }));
+  await waitFor(() => expect(full.value).toBe('0'));
+  expect(save).toHaveBeenCalledTimes(2);
+  expect(save.mock.calls[1][0]).toEqual(save.mock.calls[0][0]);
+  expect(committed.size).toBe(1);
+  expect(balance).toBe(5.5);
+  expect(Object.values(JSON.parse(window.localStorage.getItem('ice-delivery.pending-requests.v1')!)))
+    .not.toContainEqual(expect.objectContaining({ key: save.mock.calls[0][0].idempotencyKey }));
+});
+
+it.each([
+  ['receive', 'stock-transfer'], ['return', 'stock-return'], ['damage', 'stock-damage'],
+])('reconciles a recovered legacy %s request even when stock is now zero', async (mode, operation) => {
+  const scope = `stock-legacy-lost-response-${mode}`;
+  const key = crypto.randomUUID();
+  const items = [{ ice_type_id: 'ice-1', quantity: 7 }];
+  const signature = `${scope}:${operation}:${JSON.stringify({ roundId: 'round-1', items })}`;
+  window.localStorage.setItem('ice-delivery.pending-requests.v1', JSON.stringify({
+    [signature]: { key, clientRecordedAt: new Date().toISOString() },
+  }));
+  writeRecovery(scope, '2026-08-11', 'withdrawal', {
+    selectedRoundId: 'round-1', selectedBuildingId: '', selectedZone: '', query: '', selectedCardId: null,
+    selectedIceTypeId: 'ice-1', deliveryQuantities: {}, transferQuantities: { 'ice-1': 7 },
+    stockTransferMode: mode, status: 'delivered', note: '', paymentOpen: false,
+  });
+  const empty = { ...stockState, truck_location: { ...stockState.truck_location, balances: [] }, holding_location: { ...stockState.holding_location, balances: [] } };
+  const save = vi.fn().mockResolvedValue(empty);
+  const gateway = stockRetryGateway(save);
+  gateway.loadEmployeeStockState = vi.fn().mockResolvedValue(empty);
+  render(<EmployeeDeliveryWorkspace enableAssignedStockFlow gateway={gateway} requestScope={scope} serviceDate="2026-08-11" viewMode="withdrawal" />);
+  fireEvent.click(await screen.findByRole('button', { name: 'ตรวจสอบผลรายการเดิม · 7 ถุง' }));
+  await waitFor(() => expect(save).toHaveBeenCalledWith({ roundId: 'round-1', items, idempotencyKey: key }));
+  await waitFor(() => expect((screen.getByLabelText('เต็มถุง น้ำแข็ง') as HTMLInputElement).value).toBe('0'));
+});
+
+it('ignores hidden recovered half bags when validating a full bag edit', async () => {
+  const scope = 'stock-hidden-half-bags';
+  writeRecovery(scope, '2026-08-11', 'withdrawal', {
+    selectedRoundId: 'round-1', selectedBuildingId: '', selectedZone: '', query: '', selectedCardId: null,
+    selectedIceTypeId: 'ice-1', deliveryQuantities: {}, transferQuantities: { 'ice-1': { fullBags: 0, halfBags: 1 } },
+    stockTransferMode: 'receive', status: 'delivered', note: '', paymentOpen: false,
+  });
+  const save = vi.fn().mockResolvedValue(stockState);
+  const gateway = stockRetryGateway(save);
+  gateway.loadReferenceData = vi.fn().mockResolvedValue({
+    rounds: [{ id: 'round-1', service_date: '2026-08-11', name: 'งานประจำวัน', status: 'open' }],
+    iceTypes: [{ id: 'ice-1', code: 'ICE', name: 'น้ำแข็ง', unit: 'ถุง', allowHalf: false }],
+  });
+  gateway.loadEmployeeStockState = vi.fn().mockResolvedValue({
+    ...stockState, truck_location: { ...stockState.truck_location, balances: [{ ...stockState.truck_location.balances[0], quantity: 1 }] },
+  });
+  render(<EmployeeDeliveryWorkspace enableAssignedStockFlow gateway={gateway} requestScope={scope} serviceDate="2026-08-11" viewMode="withdrawal" />);
+  await screen.findByLabelText('เต็มถุง น้ำแข็ง');
+  expect(screen.queryByLabelText('ครึ่งถุง น้ำแข็ง')).toBeNull();
+  const add = screen.getByRole('button', { name: 'เพิ่มเต็มถุง น้ำแข็ง' }) as HTMLButtonElement;
+  expect(add.disabled).toBe(false);
+  fireEvent.click(add);
+  expect((screen.getByLabelText('เต็มถุง น้ำแข็ง') as HTMLInputElement).value).toBe('1');
+  expect(add.disabled).toBe(true);
+  fireEvent.click(screen.getByRole('button', { name: 'บันทึกเติมจากรถ · 1 ถุง' }));
+  await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+  expect(save.mock.calls[0][0].items).toEqual([{ ice_type_id: 'ice-1', fullBags: 1, halfBags: 0, quantity: 1 }]);
+});
+
+it.each([
+  ['receive', 'เติมจากรถ'], ['return', 'คืนขึ้นรถ'], ['damage', 'ละลาย'],
+])('does not clear or complete an uncommitted %s retry rejected by the server', async (mode, label) => {
+  let balance = 20;
+  const currentStock = () => ({
+    ...stockState,
+    truck_location: { ...stockState.truck_location, balances: [{ ...stockState.truck_location.balances[0], quantity: balance }] },
+    holding_location: { ...stockState.holding_location, balances: [{ ...stockState.holding_location.balances[0], quantity: balance }] },
+  });
+  const save = vi.fn()
+    .mockRejectedValueOnce(new Error('Failed to fetch'))
+    .mockRejectedValue(new Error('The employee holding does not have enough stock'));
+  const gateway = stockRetryGateway(save);
+  gateway.loadEmployeeStockState = vi.fn(async () => currentStock());
+  render(<EmployeeDeliveryWorkspace enableAssignedStockFlow gateway={gateway} requestScope={`stock-uncommitted-${mode}`} serviceDate="2026-08-11" viewMode="withdrawal" />);
+  await screen.findByLabelText('เต็มถุง น้ำแข็ง');
+  fireEvent.click(screen.getByRole('button', { name: label }));
+  const full = screen.getByLabelText('เต็มถุง น้ำแข็ง') as HTMLInputElement;
+  fireEvent.change(full, { target: { value: '14' } });
+  fireEvent.click(screen.getByRole('button', { name: `บันทึก${label} · 14 ถุง` }));
+  await screen.findAllByText(/กรุณาลองบันทึกใหม่/);
+  balance = 0; // Another request consumed the available stock.
+  fireEvent.click(screen.getByRole('button', { name: 'ลองใหม่' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'ตรวจสอบผลรายการเดิม · 14 ถุง' }));
+  await waitFor(() => expect(save).toHaveBeenCalledTimes(2));
+  await waitFor(() => expect(document.querySelector('.bag-transfer-error')).not.toBeNull());
+  expect(save.mock.calls[1][0]).toEqual(save.mock.calls[0][0]);
+  expect(full.value).toBe('14');
+  expect(document.querySelector('.bag-transfer-success')).toBeNull();
+  expect(Object.values(JSON.parse(window.localStorage.getItem('ice-delivery.pending-requests.v1')!)))
+    .toContainEqual(expect.objectContaining({ key: save.mock.calls[0][0].idempotencyKey }));
 });

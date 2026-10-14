@@ -7,6 +7,17 @@ import { employeeEventGateway } from '../src/features/employee-events/employeeEv
 
 beforeEach(() => supabaseMock.rpc.mockReset());
 
+it('presents the cancelled-booth RPC error without the legacy role name', async () => {
+  supabaseMock.rpc.mockResolvedValueOnce({
+    data: null,
+    error: { code: 'P0001', message: 'บูธนี้เคยมีและถูกยกเลิกแล้ว กรุณาติดต่อหัวหน้ารอบ' },
+  });
+  await expect(employeeEventGateway.createBooth({
+    eventJobId: 'event-1', requestId: 'request-booth', boothNumber: 'A1', shopName: '',
+    eventZone: 'Hall A', contactName: '', contactPhone: '',
+  })).rejects.toEqual(new Error('บูธนี้เคยมีและถูกยกเลิกแล้ว กรุณาติดต่อหัวหน้า'));
+});
+
 it('loads published events and an event without requiring a round id', async () => {
   supabaseMock.rpc
     .mockResolvedValueOnce({ data: { events: [{ id: 'event-1' }] }, error: null })

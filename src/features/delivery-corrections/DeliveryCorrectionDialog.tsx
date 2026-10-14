@@ -176,7 +176,7 @@ export function DeliveryCorrectionDialog({
           <span><small>{translateUi('รับชำระแล้ว')}</small><strong>{money.format(Number(context.allocated_amount))}</strong></span>
         </div>
         {Number(context.vat_rate) > 0 ? <VatBreakdown subtotal={Number(context.subtotal_amount)} vat={Number(context.vat_amount)} total={context.effective_amount} rate={context.vat_rate} paid={context.allocated_amount} /> : null}
-        {isClosed && !canCancel ? <p className="delivery-correction-dialog__notice"><WarningCircle size={18} />{translateUi('รอบหรือวันนี้ปิดแล้ว ไม่สามารถยกเลิกใบส่งนี้ได้')}</p> : null}
+        {isClosed && !canCancel ? <p className="delivery-correction-dialog__notice"><WarningCircle size={18} />{translateUi('งานประจำวันหรือสต๊อกของวันที่ทำรายการปิดแล้ว ไม่สามารถยกเลิกใบส่งนี้ได้')}</p> : null}
         {hasPayment ? <p className="delivery-correction-dialog__notice"><WarningCircle size={18} />{translateUi('บิลนี้รับชำระแล้วทั้งหมดหรือบางส่วน จึงยกเลิกใบส่งไม่ได้ ให้หัวหน้าหรือแอดมินตรวจสอบรายการรับเงินก่อน หากบันทึกรับเงินผิด ให้ยกเลิกใบเสร็จที่ผิดก่อนดำเนินการต่อ')}</p>
           : immediateSale ? <p className="delivery-correction-dialog__notice"><WarningCircle size={18} />{translateUi('รายการนี้ไม่มียอดรับชำระที่ยังใช้งานอยู่ ให้ยกเลิกรายการส่งก่อนบันทึกขายใหม่')}</p> : null}
         {canCancel ? <p className="muted">{translateUi('หากบันทึกผิด ให้ยกเลิกใบส่งนี้ แล้วบันทึกส่งใหม่')}</p> : null}
@@ -185,7 +185,7 @@ export function DeliveryCorrectionDialog({
           {context.items.map((ice) => <span key={ice.ice_type_id}>{ice.name} {Number(ice.quantity ?? 0).toLocaleString('th-TH')} {ice.unit}</span>)}
         </div>
         <label>{translateUi('เหตุผล')}<input disabled={!canCancel || submitting} onChange={(event) => setReason(event.target.value)} required value={reason} /></label>
-        {context.blocker_reason ? <p className="credit-ar__action-error" role="alert">{context.blocker_reason}</p> : null}
+        {context.blocker_reason ? <p className="credit-ar__action-error" role="alert">{translateUi(context.blocker_reason)}</p> : null}
       </> : null}
       {error ? <p className="credit-ar__action-error" role="alert">{translateUi(error)}</p> : null}
       <div className="modal-actions">

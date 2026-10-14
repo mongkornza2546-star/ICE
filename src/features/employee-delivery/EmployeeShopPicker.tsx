@@ -321,7 +321,7 @@ export function EmployeeShopPicker({
       ) : null}
 
       {!selectedRoundId ? (
-        <EmployeeState title={translateUi('เลือกรอบส่งก่อน')} detail={translateUi('หากมีหลายรอบ ต้องเลือกรอบที่กำลังทำงาน')} />
+        <EmployeeState title={translateUi('เลือกงานประจำวันก่อน')} detail={translateUi('เลือกงานของวันที่ต้องการบันทึกส่ง')} />
       ) : loadingCards ? (
         <EmployeeState title={translateUi('กำลังโหลดร้าน')} detail={translateUi('รอสักครู่')} />
       ) : filteredCards.length === 0 ? (
