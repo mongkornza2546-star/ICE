@@ -23,7 +23,7 @@ async function database(t) {
       $$ select coalesce(current_setting('test.active', true), 'true')::boolean $$;
     create function public.current_app_role() returns text language sql stable as
       $$ select current_setting('test.app_role', true) $$;
-    create table public.shops (id uuid primary key, name text, building_id uuid, status text default 'active');
+    create table public.shops (id uuid primary key, name text, building_id uuid, status text default 'active', event_job_id uuid);
     create table public.buildings (id uuid primary key, name text, code text);
     create table public.round_stops (id uuid primary key, building_id_snapshot uuid,
       building_name_snapshot text, event_participation_id uuid);
@@ -76,6 +76,7 @@ async function database(t) {
   await db.exec(migration);
   await db.exec(readFileSync(new URL('../supabase/migrations/0224_executive_report_volume_by_building.sql', import.meta.url), 'utf8'));
   await db.exec(readFileSync(new URL('../supabase/migrations/0225_executive_report_insights.sql', import.meta.url), 'utf8'));
+  await db.exec(readFileSync(new URL('../supabase/migrations/0226_executive_quiet_shops_exclude_event_booths.sql', import.meta.url), 'utf8'));
   await db.exec(`select set_config('test.app_role', 'admin', false)`);
   return db;
 }
@@ -225,6 +226,43 @@ test('insights age current debt, split receipts by method and flag shops that st
   assert.deepEqual(report.quietShops.rows.map((row) => [row.name, row.building, row.daysSince, row.usualGap, row.monthlySales]),
     [['ร้านหายไป', 'อาคาร A', 30, 2, 981.82]]);
   assert.equal(report.quietShops.monthlySales, 981.82);
+});
+
+test('quiet-shop alerts exclude event booths while retaining their sales and debt', async (t) => {
+  const db = await database(t);
+  const id = (n) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
+  await db.exec(`
+    create temporary table clock as select (now() at time zone 'Asia/Bangkok')::date as today;
+    insert into buildings values ('${id(1)}', 'ตึก C', 'C');
+    insert into event_jobs values ('${id(2)}', 'งานตึก C');
+    insert into shops (id, name, building_id, status, event_job_id) values
+      ('${id(3)}', 'บูธ 18', '${id(1)}', 'active', '${id(2)}'),
+      ('${id(4)}', 'ร้านประจำ', '${id(1)}', 'active', null);
+    -- Booth records stay active after the event ends. Both customers have
+    -- the same five-day history, reproducing the 20-day false alert.
+    create temporary table seeded_orders as
+      select gen_random_uuid() as event_id, gen_random_uuid() as charge_id,
+        shop.id as shop_id, today - age as day
+      from clock, shops shop, generate_series(20, 24) age;
+    insert into delivery_events (id, status, recorded_at)
+      select event_id, 'active', day::timestamptz from seeded_orders;
+    insert into delivery_charges (id, delivery_event_id, shop_id, service_date, due_date, status, original_amount)
+      select charge_id, event_id, shop_id, day, day, 'active', 72 from seeded_orders;
+  `);
+  const report = (await db.query('select get_executive_report(today - 30, today) as report from clock')).rows[0].report;
+  assert.equal(report.quietShops.total, 1);
+  assert.deepEqual(report.quietShops.rows.map((row) => [row.id, row.daysSince, row.usualGap, row.monthlySales]),
+    [[id(4), 20, 1, 2160]]);
+  assert.equal(report.quietShops.monthlySales, 2160);
+  assert.equal(report.sales, 720);
+  assert.equal(report.outstanding, 720);
+  assert.equal(report.debtAging.reduce((sum, row) => sum + row.amount, 0), 720);
+  assert.equal(report.deliveryCount, 10);
+  assert.equal(report.shops.find((shop) => shop.id === id(3)).sales, 360);
+  // SQL Editor users may re-run the migration after it was already applied.
+  await db.exec(readFileSync(new URL('../supabase/migrations/0226_executive_quiet_shops_exclude_event_booths.sql', import.meta.url), 'utf8'));
+  const rerun = (await db.query('select get_executive_report(today - 30, today) as report from clock')).rows[0].report;
+  assert.deepEqual({ ...rerun, asOf: report.asOf }, report);
 });
 
 test('shop and event rentals reconcile across sales, debt, invoices, and export detail pages', async (t) => {
