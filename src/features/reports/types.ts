@@ -28,6 +28,9 @@ export type ExecutiveReport = {
   debtors: number;
   deliveryCount: number;
   trend: Array<{ date: string; sales: number; receipts: number; refunds: number }>;
+  // Added by migration 0228. Absence means daily quantities are unavailable.
+  dailyTrend?: Array<{ date: string; sales: number;
+    products: Array<{ id: string; name: string; unit: string; delivered: number }> }>;
   areas: Array<{ kind: string; id: string | null; name: string; sales: number }>;
   shops: Array<{ id: string; name: string; sales: number }>;
   products: Array<{ id: string; name: string; unit: string; delivered: number; damaged: number }>;

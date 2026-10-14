@@ -78,6 +78,7 @@ async function database(t) {
   await db.exec(readFileSync(new URL('../supabase/migrations/0225_executive_report_insights.sql', import.meta.url), 'utf8'));
   await db.exec(readFileSync(new URL('../supabase/migrations/0226_executive_quiet_shops_exclude_event_booths.sql', import.meta.url), 'utf8'));
   await db.exec(readFileSync(new URL('../supabase/migrations/0227_executive_sales_navigation.sql', import.meta.url), 'utf8'));
+  await db.exec(readFileSync(new URL('../supabase/migrations/0228_executive_daily_comparison.sql', import.meta.url), 'utf8'));
   await db.exec(`select set_config('test.app_role', 'admin', false)`);
   return db;
 }
@@ -117,6 +118,8 @@ test('executive report separates sales, old-debt receipts, refunds, and current 
   assert.equal(report.deliveryCount, 1);
   assert.equal(report.trend.length, 2);
   assert.equal(report.products[0].delivered, 5);
+  assert.deepEqual(report.dailyTrend.map(day => [day.date, day.sales, day.products[0]?.delivered]),
+    [['2026-09-01', 100, 4], ['2026-09-02', 20, 1]]);
   assertVolumeReconciles(report);
   const oldDebtPayment = await db.query(`select public.get_executive_report_details(
     '2026-09-01', '2026-09-02', 'receipts') as details`);
@@ -156,7 +159,9 @@ test('the facts helper stays private under production default grants', async (t)
   await assert.rejects(db.query(`select * from public.executive_report_facts('2026-09-01', '2026-09-02')`), /permission denied for function executive_report_facts/);
   await assert.rejects(db.query(`select public.executive_report_volume_areas('2026-09-01', '2026-09-02')`), /permission denied for function executive_report_volume_areas/);
   await assert.rejects(db.query(`select public.executive_report_insights('2026-09-01', '2026-09-02')`), /permission denied for function executive_report_insights/);
+  await assert.rejects(db.query(`select public.executive_report_daily_trend('2026-09-01', '2026-09-02')`), /permission denied for function executive_report_daily_trend/);
   await db.exec('reset role; set role anon');
+  await assert.rejects(db.query(`select public.executive_report_daily_trend('2026-09-01', '2026-09-02')`), /permission denied for function executive_report_daily_trend/);
   await assert.rejects(db.query(`select * from public.executive_report_facts('2026-09-01', '2026-09-02')`), /permission denied for function executive_report_facts/);
   await assert.rejects(db.query(`select public.executive_report_volume_areas('2026-09-01', '2026-09-02')`), /permission denied for function executive_report_volume_areas/);
   await assert.rejects(db.query(`select public.executive_report_insights('2026-09-01', '2026-09-02')`), /permission denied for function executive_report_insights/);
@@ -456,6 +461,13 @@ test('volume reconciles by destination with corrections, events, damage-only bui
 });
 
 function assertVolumeReconciles(report) {
+  assert.equal(report.dailyTrend.length, (Date.parse(report.to) - Date.parse(report.from)) / 86400000 + 1);
+  assert.equal(report.dailyTrend.reduce((sum, day) => sum + day.sales, 0), report.sales);
+  for (const product of report.products) {
+    const delivered = report.dailyTrend.flatMap(day => day.products).filter(row => row.id === product.id)
+      .reduce((sum, row) => sum + row.delivered, 0);
+    assert.equal(delivered, product.delivered, `Daily quantity must reconcile for ${product.name}`);
+  }
   const totals = new Map();
   for (const area of report.volumeAreas) for (const product of area.products) {
     const sum = totals.get(product.id) ?? { delivered: 0, damaged: 0 };
@@ -500,7 +512,20 @@ test('quiet shops retain all candidates and renamed areas reconcile with drilldo
   assert.equal(areas[0].name, 'New A');
   assert.equal(areas[0].sales,areaDetails.rows.reduce((sum,row)=>sum+row.amount, 0));
   await db.exec(readFileSync(new URL('../supabase/migrations/0227_executive_sales_navigation.sql', import.meta.url), 'utf8'));
+  await db.exec(readFileSync(new URL('../supabase/migrations/0228_executive_daily_comparison.sql', import.meta.url), 'utf8'));
   const rerun = (await db.query('select get_executive_report(today-30,today) r from clock')).rows[0].r;
   assert.deepEqual(rerun.areas, areas);
   assert.equal(rerun.quietShops.rows.length, 12);
+});
+
+
+test('daily comparison remains daily for long ranges, includes empty days, and migration is repeatable', async (t) => {
+  const db = await database(t);
+  await db.exec(readFileSync(new URL('../supabase/migrations/0228_executive_daily_comparison.sql', import.meta.url), 'utf8'));
+  const report = (await db.query(`select public.get_executive_report('2024-01-01', '2024-12-31') as report`)).rows[0].report;
+  assert.equal(report.trend.length, 12);
+  assert.equal(report.dailyTrend.length, 366);
+  assert.deepEqual(report.dailyTrend.find(day => day.date === '2024-02-29'), { date: '2024-02-29', sales: 0, products: [] });
+  assertVolumeReconciles(report);
+  await assert.rejects(db.query(`select public.get_executive_report('2024-01-01', '2025-01-01')`), /valid date range/);
 });

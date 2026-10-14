@@ -8,6 +8,9 @@ import { exportExecutiveReport } from './exportExecutiveReport';
 import { ReportSections, ReportTabs, type ReportSection } from './ExecutiveReportSections';
 import { ExecutiveFollowUps } from './ExecutiveFollowUps';
 import { ReportShopProfile } from './ReportShopProfile';
+import { ReportComparison } from './ReportComparison';
+import { comparisonRange, type ComparisonSelection } from './comparisonData';
+import { demoComparisonReport } from './demoComparisonReport';
 import { formatReportDate, presetDates, reportRangeError, type Preset } from './reportDates';
 import type { DetailQuery, ExecutiveReport, ReportInvoice, ReportMetric, ReportRow } from './types';
 import './executiveReports.css';
@@ -22,7 +25,7 @@ const metricNames: Record<ReportMetric, string> = {
 };
 const paymentMethod = (method?: string | null) => method === 'cash' ? 'เงินสด'
   : method === 'bank_transfer' ? 'โอนเงิน' : method === 'qr' ? 'QR' : null;
-const presetNames: Record<Exclude<Preset, 'custom'>, string> = {
+const presetNames: Record<Exclude<Preset, 'custom' | 'calendarWeek'>, string> = {
   today: 'วันนี้', week: '7 วัน', month: 'เดือนนี้', year: 'ปีนี้',
 };
 
@@ -66,6 +69,10 @@ export function ExecutiveReportsPage({ isActive, demoReport, demoRows }: {
   const [refreshKey, setRefreshKey] = useState(0);
   const [showTrendTable, setShowTrendTable] = useState(false);
   const [section, setSection] = useState<ReportSection>('overview');
+  const [comparing, setComparing] = useState(false);
+  const [comparisonSelection, setComparisonSelection] = useState<ComparisonSelection>(() => ({
+    preset: 'previous', custom: comparisonRange(initial, 'previous'),
+  }));
   const [detail, setDetail] = useState<DetailQuery | null>(null);
   const [detailLabel, setDetailLabel] = useState<string | null>(null);
   const [detailPage, setDetailPage] = useState(0);
@@ -89,12 +96,20 @@ export function ExecutiveReportsPage({ isActive, demoReport, demoRows }: {
   const detailFrom = detail?.dateRange?.from ?? from;
   const detailTo = detail?.dateRange?.to ?? to;
 
-  const refresh = useCallback(() => setRefreshKey((value) => value + 1), []);
+  const refresh = useCallback(() => {
+    if (preset !== 'custom') {
+      const dates = presetDates(preset);
+      if (dates.from !== from || dates.to !== to) {
+        setFrom(dates.from); setTo(dates.to); setDetail(null);
+      }
+    }
+    setRefreshKey((value) => value + 1);
+  }, [preset, from, to]);
 
   useEffect(() => {
     if (!isActive || rangeError) return;
     if (demoReport) {
-      setReport({ ...demoReport, from, to });
+      setReport(demoComparisonReport(demoReport, { from, to }));
       setLoading(false);
       return;
     }
@@ -123,25 +138,18 @@ export function ExecutiveReportsPage({ isActive, demoReport, demoRows }: {
     if (!isActive || demoReport) return;
     const doRefresh = () => {
       if (document.visibilityState !== 'visible') return;
-      if (preset !== 'custom') {
-        const dates = presetDates(preset);
-        if (dates.from !== from || dates.to !== to) {
-          setFrom(dates.from);
-          setTo(dates.to);
-          setDetail(null);
-          return;
-        }
-      }
       refresh();
     };
     const timer = window.setInterval(doRefresh, 60_000);
     window.addEventListener('focus', doRefresh);
     window.addEventListener('online', doRefresh);
+    document.addEventListener('visibilitychange', doRefresh);
     const unsubscribe = subscribeToDataChange(['accounting', 'payment', 'receivable', 'refund', 'stock', 'pos'], doRefresh);
     return () => {
       window.clearInterval(timer);
       window.removeEventListener('focus', doRefresh);
       window.removeEventListener('online', doRefresh);
+      document.removeEventListener('visibilitychange', doRefresh);
       unsubscribe();
     };
   }, [isActive, refresh, demoReport, preset, from, to]);
@@ -271,12 +279,12 @@ export function ExecutiveReportsPage({ isActive, demoReport, demoRows }: {
       <div><h1 ref={reportHeading} tabIndex={-1}>{translateUi('รายงานผู้บริหาร')}</h1><p>{translateUi('ยอดขาย เงินรับ ลูกหนี้ และปริมาณส่ง')}</p></div>
       <div className="executive-report__actions">
         <button aria-label={translateUi('รีเฟรชรายงาน')} disabled={loading || Boolean(rangeError)} onClick={refresh} type="button"><ArrowClockwise size={19} />{translateUi(' รีเฟรช')}</button>
-        <button disabled={!shownReport || loading || exporting || Boolean(error)} onClick={() => void handleExport()} type="button"><DownloadSimple size={19} /> {exporting ? translateUi('กำลังสร้าง Excel…') : translateUi('ส่งออก Excel')}</button>
+        {!(section === 'sales' && comparing) ? <button disabled={!shownReport || loading || exporting || Boolean(error)} onClick={() => void handleExport()} type="button"><DownloadSimple size={19} /> {exporting ? translateUi('กำลังสร้าง Excel…') : translateUi('ส่งออก Excel')}</button> : null}
       </div>
     </header>
 
     <section className="executive-filters" aria-label={translateUi('เลือกช่วงเวลารายงาน')}>
-      <div className="executive-filter-controls"><div aria-label={translateUi('ช่วงวันที่ลัด')} className="executive-presets">{(Object.keys(presetNames) as Array<Exclude<Preset, 'custom'>>).map((key) =>
+      <div className="executive-filter-controls"><div aria-label={translateUi('ช่วงวันที่ลัด')} className="executive-presets">{(Object.keys(presetNames) as Array<keyof typeof presetNames>).map((key) =>
         <button aria-pressed={preset === key} key={key} onClick={() => choosePreset(key)} type="button">{translateUi(presetNames[key])}</button>)}</div>
       <div className="executive-dates"><label>{translateUi('จาก')}<input max={toBangkokDateString()} onChange={(event) => { setPreset('custom'); setFrom(event.target.value); setDetail(null); }} type="date" value={from} /></label>
         <label>{translateUi('ถึง')}<input max={toBangkokDateString()} onChange={(event) => { setPreset('custom'); setTo(event.target.value); setDetail(null); }} type="date" value={to} /></label></div></div>
@@ -286,8 +294,17 @@ export function ExecutiveReportsPage({ isActive, demoReport, demoRows }: {
 
     {error ? <div className="executive-error" role="alert">{translateUi('โหลดรายงานไม่สำเร็จ: ')}{translateUi(error)} <button onClick={refresh} type="button">{translateUi('ลองใหม่')}</button></div> : null}
     {loading && !shownReport ? <p className="executive-status" role="status">{translateUi('กำลังโหลดรายงาน…')}</p> : null}
-    {shownReport ? <>
-      <ReportTabs active={section} onChange={setSection} />
+    <ReportTabs active={section} onChange={setSection} />
+    {section === 'sales' ? <div className="executive-segment" aria-label={translateUi('รูปแบบรายงานยอดขาย')}>
+      <button type="button" aria-pressed={!comparing} onClick={() => setComparing(false)}>{translateUi('ช่วงเดียว')}</button>
+      <button type="button" aria-pressed={comparing} onClick={() => setComparing(true)}>{translateUi('เปรียบเทียบสองช่วง')}</button>
+    </div> : null}
+    {section === 'sales' && comparing ? <ReportComparison from={from} to={to}
+      report={!loading && !error ? shownReport : null} refreshKey={refreshKey} isActive={isActive}
+      demoReport={demoReport} reportError={error} openDetail={openDetail}
+      selection={comparisonSelection} onSelectionChange={setComparisonSelection}
+      rangePreset={preset} onChoosePreset={choosePreset} /> : null}
+    {shownReport && !(section === 'sales' && comparing) ? <>
       <section className="executive-business-overview" aria-label={translateUi('ภาพรวมธุรกิจ')}>
         <div className="executive-business-overview__heading"><h2>{translateUi('ภาพรวมธุรกิจ')}</h2><p>{formatReportDate(from)} – {formatReportDate(to)}</p></div>
         <div className="executive-metrics" aria-label={translateUi('ตัวเลขสำคัญ')}>

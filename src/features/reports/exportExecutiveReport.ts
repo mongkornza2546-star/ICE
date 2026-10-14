@@ -1,5 +1,6 @@
 import { safeSpreadsheetText } from '../accounting/exportAccounting';
 import type { ExecutiveReport, ReportMetric, ReportRow } from './types';
+import { changePercent, rangeDays, comparisonTimeline, timelineProducts, type ComparisonRow, type comparisonRows } from './comparisonData';
 
 const cell = (value: string | number) => typeof value === 'number'
   ? { value, type: Number }
@@ -79,5 +80,51 @@ export async function exportExecutiveReport(
       Array.from({ length: 6 }, () => ({ width: 22 })),
     ],
     fileName: `executive-report-${report.from}-${report.to}.xlsx`,
+  });
+}
+
+/** Export the same two report snapshots and joined rows shown in comparison mode. */
+export async function exportReportComparison(
+  current: ExecutiveReport,
+  previous: ExecutiveReport,
+  rows: ReturnType<typeof comparisonRows>,
+  demo = false,
+) {
+  const { default: writeXlsxFile } = await import('write-excel-file');
+  const header = ['รายการ', 'หน่วย', 'ช่วง A', 'ช่วง B', 'ส่วนต่าง A − B', 'เปลี่ยนแปลง (%)', 'เฉลี่ย/วัน A', 'เฉลี่ย/วัน B'];
+  const rowValues = (row: ComparisonRow) => [row.name, row.unit,
+    row.current ?? 'ข้อมูลไม่พร้อม', row.previous ?? 'ข้อมูลไม่พร้อม',
+    row.current === null || row.previous === null ? 'ข้อมูลไม่พร้อม' : row.current - row.previous,
+    changePercent(row.current, row.previous) ?? '—',
+    row.current === null ? 'ข้อมูลไม่พร้อม' : row.current / rangeDays(current),
+    row.previous === null ? 'ข้อมูลไม่พร้อม' : row.previous / rangeDays(previous)];
+  const metadata: Array<Array<string | number>> = [
+    ...(demo ? [['ข้อมูลจำลอง · ไม่ใช่ข้อมูลจริงตามวันที่']] : []),
+    ['ช่วง A', current.from, current.to, rangeDays(current)],
+    ['ช่วง B', previous.from, previous.to, rangeDays(previous)],
+    ['ข้อมูล ณ A', current.asOf, 'ข้อมูล ณ B', previous.asOf],
+    ['หมายเหตุ', 'ปริมาณแยกชนิดและหน่วย · ฐานเป็นศูนย์ไม่คิดเปอร์เซ็นต์'],
+  ];
+  const summary: ComparisonRow[] = [
+    { key: 'sales', name: 'ยอดขายสุทธิ', unit: 'บาท', current: current.sales, previous: previous.sales },
+    { key: 'deliveries', name: 'รายการส่ง', unit: 'รายการ', current: current.deliveryCount, previous: previous.deliveryCount },
+    ...rows.products,
+  ];
+  const volumeNote = !current.volumeAreas || !previous.volumeAreas ? [['ข้อมูลแยกพื้นที่ไม่ครบทั้งสองช่วง']] : [];
+  const sheets = [summary, rows.areas, rows.products, rows.volumeAreas].map((items, index) =>
+    sheet([...metadata, ...(index === 3 ? volumeNote : []), header, ...items.map(rowValues)]));
+  const dailyHeader = ['ลำดับวัน', 'วันที่ A', 'ยอด A', 'วันที่ B', 'ยอด B'];
+  const dailyValues = (point: ReturnType<typeof comparisonTimeline>[number]) => [point.day,
+    point.currentDate ?? 'นอกช่วง', point.current ?? 'ข้อมูลไม่พร้อม',
+    point.previousDate ?? 'นอกช่วง', point.previous ?? 'ข้อมูลไม่พร้อม'];
+  sheets.push(sheet([...metadata, ['ยอดขายรายวัน', 'บาท'], dailyHeader,
+    ...comparisonTimeline(current, previous, { kind: 'sales' }).map(dailyValues)]));
+  sheets.push(sheet([...metadata, ['ชนิดน้ำแข็ง', 'หน่วย', ...dailyHeader],
+    ...timelineProducts(current, previous).flatMap((product) => comparisonTimeline(current, previous,
+      { kind: 'volume', productId: product.id, unit: product.unit }).map((point) => [product.name, product.unit, ...dailyValues(point)]))]));
+  await writeXlsxFile(sheets, {
+    sheets: ['สรุปเปรียบเทียบ', 'ยอดขายแยกพื้นที่', 'น้ำแข็งแยกชนิด', 'น้ำแข็งแยกพื้นที่', 'ยอดขายรายวัน', 'น้ำแข็งรายวัน'],
+    columns: sheets.map(() => Array.from({ length: 8 }, (_, index) => ({ width: index === 0 ? 40 : 23 }))),
+    fileName: `${demo ? 'demo-' : ''}sales-comparison-${current.from}-${current.to}-vs-${previous.from}-${previous.to}.xlsx`,
   });
 }

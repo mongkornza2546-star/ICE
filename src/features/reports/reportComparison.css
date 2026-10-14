@@ -1,0 +1,38 @@
+.report-comparison__quick { margin-bottom: 16px; }
+.report-comparison__controls { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; margin-bottom: 16px; }
+.report-comparison__controls label { display: grid; gap: 6px; color: #465a73; font-size: .9rem; }
+.report-comparison__controls input, .report-comparison__controls select { min-width: 0; min-height: 44px; max-width: 100%; border: 1px solid #c8d5e6; border-radius: 9px; padding: 8px 10px; background: white; color: #10233f; font: inherit; }
+.report-comparison__controls :is(input, select):focus-visible { outline: 3px solid #0d6efd; outline-offset: 2px; }
+.report-comparison__periods { display: flex; flex-wrap: wrap; gap: 8px 24px; font-size: .9rem; }
+.report-comparison__periods b { color: #075ed8; }
+.report-comparison__periods p:last-child b { color: #9b5a04; }
+.report-comparison__cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+.report-comparison__card { padding: 18px; border: 1px solid #d6e5f7; background: white; border-radius: 15px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.report-comparison__card h3 { margin: 0; font-size: .95rem; color: #465a73; }
+.report-comparison__card > strong { font-size: 1.7rem; overflow-wrap: anywhere; }
+.report-comparison__card > p, .report-comparison__card > small { color: #57677e; }
+.report-comparison__delta { display: inline-flex; flex-direction: column; gap: 3px; font-weight: 600; }
+.report-comparison__delta small { font-weight: 400; }
+.report-comparison__delta.is-up { color: #08734e; }
+.report-comparison__delta.is-down { color: #b02c44; }
+.report-comparison__legend { display: flex; flex-wrap: wrap; gap: 10px 24px; margin: 12px 0 !important; color: #465a73; font-size: .9rem; }
+.report-comparison__legend span::before { content: ''; display: inline-block; width: 14px; height: 10px; background: #1769e8; border-radius: 2px; margin-right: 6px; }
+.report-comparison__legend span:last-child::before { background: #f4ce8c; border: 1px dashed #a26405; }
+.report-comparison__chart { display: grid; gap: 18px; max-height: 480px; overflow-y: auto; padding: 4px; }
+.report-comparison__chart-row > strong { display: block; font-size: .9rem; margin-bottom: 6px; }
+.report-comparison__bar-row { display: grid; grid-template-columns: 16px minmax(30px, 1fr) minmax(115px, auto); align-items: center; gap: 8px; margin-top: 4px; font-size: .83rem; font-variant-numeric: tabular-nums; }
+.report-comparison__bar-row > span:last-child { text-align: right; }
+.report-comparison__track { height: 18px; background: #f3f6fa; border-radius: 3px; overflow: hidden; }
+.report-comparison__track i { display: block; height: 100%; background: #1769e8; box-sizing: border-box; }
+.report-comparison__bar-row.is-previous i { background: #f4ce8c; border: 1px dashed #a26405; }
+@media (max-width: 600px) {
+  .report-comparison__controls { display: grid; grid-template-columns: 1fr; }
+  .report-comparison__controls label { min-width: 0; }
+  .report-comparison__cards { grid-template-columns: 1fr; }
+  .report-comparison__bar-row { grid-template-columns: 16px minmax(24px, 1fr) minmax(95px, auto); font-size: .8rem; }
+  .report-comparison .report-comparison__quick { display: grid; grid-template-columns: 1fr; }
+  .report-comparison .report-comparison__quick button { width: 100%; text-align: left; }
+}
+.report-comparison__timeline-scroll { max-width: 100%; overflow-x: auto; }
+.report-comparison__timeline { display: block; width: 100%; min-width: 650px; height: auto; }
+.report-comparison__timeline text { font: 11px sans-serif; fill: #536780; }

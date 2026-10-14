@@ -69,3 +69,48 @@ node --test tests/executive-reports.integration.test.mjs
 npx vitest run tests/executive-reports.test.tsx tests/executive-financial.test.tsx tests/executive-follow-ups.test.tsx --maxWorkers=1 --no-file-parallelism
 npm run build
 ```
+
+## Sales comparison UI
+
+The Sales tab offers a single-period view and a two-period comparison. Period A
+uses the existing date filter; B can be the immediately preceding inclusive
+period of equal length, shifted back a week/month/year, or manually selected.
+The week shortcut uses Monday through today versus the same weekdays last week.
+Month/year shifts clamp to the last valid day (including leap years). Each range
+retains the report endpoint's 366-day limit and excludes future dates.
+
+Both snapshots come from the existing `get_executive_report` RPC. Apply migration
+`0228_executive_daily_comparison.sql` after 0227 for daily sales and ice series.
+It adds `dailyTrend` without changing the existing monthly-bucketed `trend`.
+Sales retain that endpoint's accounting basis. Volume is
+its delivered quantity projection, including adjustments and casual sales, not
+the count of delivery records. Tables join by area kind/ID and ice type ID/unit,
+include identities present in only one period, and never sum different units.
+Missing `volumeAreas` metadata remains unavailable rather than zero. Zero
+percentage bases show absolute differences and an unavailable percentage.
+Unequal periods also show averages per calendar day. Today is marked incomplete.
+
+Summary cards, daily line charts, grouped comparison bars by area/type,
+three breakdown tables and the comparison Excel export share the same snapshots.
+The daily chart aligns day 1 of A with day 1 of B and labels both actual dates;
+ice selection keeps each type/unit separate. Missing daily metadata or dates
+outside the shorter period appear as gaps, while confirmed zero days show zero.
+An expandable daily table exposes every date and value. Legacy sales trend data
+is usable only for ranges of at most 31 days; monthly buckets are never presented
+as daily values. Daily volume requires migration 0228.
+Sales amounts open the existing detail drawer using the clicked period's dates.
+The export records both date ranges, day counts and snapshot timestamps on every
+sheet, including the two daily sheets. It exports summary comparisons, not invoice-level reconciliation. Demo
+comparison data is labeled and exported with a `demo-` prefix. Comparison failures
+hide totals and disable export; stale responses after date changes are ignored.
+
+Comparison selection lives in the report page so custom B dates survive switching
+report tabs or single-period mode. Relative shortcuts retain their preset identity
+and recalculate on refresh, focus and visible-page polling across Bangkok midnight;
+manual ranges remain fixed. This corrects the earlier component-local B state and
+the week shortcut incorrectly being stored as a custom range. Daily projections
+are tested against summary totals, including adjustments, cancelled entries,
+casual sales, leap years and the 366-day limit. Demo daily allocations reconcile
+to their explicitly simulated totals and are never used for production failures.
+
+Validation: `npx vitest run tests/report-comparison.test.tsx tests/executive-reports.test.tsx tests/executive-follow-ups.test.tsx --maxWorkers=1 --no-file-parallelism`.
