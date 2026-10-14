@@ -215,8 +215,7 @@ it('handles zero sales and a negative net receipt without misleading comparisons
   expect(screen.queryByText(/ไม่มีฐานเปรียบเทียบ/)).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'ดูยอดขาย' }));
   expect(within(screen.getByRole('table', { name: 'ตารางยอดขายตามพื้นที่' })).getByText('—')).not.toBeNull();
-  fireEvent.click(within(screen.getByLabelText('เลือกตัวเลขในกราฟ')).getByRole('button', { name: 'เงินรับสุทธิ' }));
-  expect(within(screen.getByLabelText('กราฟเงินรับสุทธิ')).getByRole('button', { name: /-฿5/ })).not.toBeNull();
+  expect(within(screen.getByLabelText('กราฟยอดขายและเงินรับสุทธิ')).getByRole('button', { name: /-฿5/ })).not.toBeNull();
 });
 
 it('does not request an invalid custom date range', async () => {
@@ -339,17 +338,17 @@ it.each([
   fireEvent.change(screen.getByLabelText('จาก'), { target: { value: from } });
   fireEvent.change(screen.getByLabelText('ถึง'), { target: { value: to } });
   fireEvent.click(await screen.findByRole('button', { name: 'ดูยอดขาย' }));
-  const graph = await screen.findByRole('group', { name: 'กราฟยอดขาย' });
+  const graph = await screen.findByRole('group', { name: 'กราฟยอดขายและเงินรับสุทธิ' });
   const label = month
     ? start && end ? `${month} (${formatReportDate(start)} – ${formatReportDate(end)})` : month
     : formatReportDate(bucket);
-  fireEvent.click(within(graph).getByRole('button'));
+  fireEvent.click(within(graph).getByRole('button', { name: /^ยอดขาย / }));
   expect(within(await screen.findByRole('dialog')).getByRole('heading').textContent).toBe(label);
   expect(rpc).toHaveBeenCalledWith('get_executive_report_details', expect.objectContaining({
     p_from: from, p_to: to, p_bucket: bucket,
   }));
   fireEvent.click(screen.getByRole('button', { name: 'ปิดรายละเอียด' }));
-  expect(within(graph).getByRole('button').getAttribute('aria-label')).toContain(label);
+  expect(within(graph).getByRole('button', { name: /^ยอดขาย / }).getAttribute('aria-label')).toContain(label);
   fireEvent.click(screen.getByRole('button', { name: 'ดูตารางตัวเลข' }));
   expect(within(screen.getByRole('table', { name: 'ตารางแนวโน้ม' })).getByText(label)).not.toBeNull();
 });
@@ -371,8 +370,8 @@ it('uses monthly headings after selecting the year preset', async () => {
     await screen.findByRole('button', { name: /ยอดขายสุทธิ/ });
     fireEvent.click(screen.getByRole('button', { name: 'ปีนี้' }));
     fireEvent.click(await screen.findByRole('button', { name: 'ดูยอดขาย' }));
-  const graph = await screen.findByRole('group', { name: 'กราฟยอดขาย' });
-    fireEvent.click(within(graph).getByRole('button', { name: 'ม.ค. 2567 ฿500' }));
+  const graph = await screen.findByRole('group', { name: 'กราฟยอดขายและเงินรับสุทธิ' });
+    fireEvent.click(within(graph).getByRole('button', { name: 'ยอดขาย ม.ค. 2567 ฿500' }));
     expect(within(await screen.findByRole('dialog')).getByRole('heading').textContent).toBe('ม.ค. 2567');
     expect(rpc).toHaveBeenCalledWith('get_executive_report_details', expect.objectContaining({
       p_from: '2024-01-01', p_to: '2024-03-10', p_bucket: '2024-01-01',
@@ -654,4 +653,29 @@ it('pages all quiet shops and opens their 90-day history without changing report
   expect(within(panel).getByText('แสดง 11–12 จาก 12 ร้าน')).not.toBeNull();
   fireEvent.click(within(panel).getByRole('button', { name: 'ก่อนหน้า' }));
   expect(within(panel).getByRole('button', { name: /Quiet shop 1 ·/ })).not.toBeNull();
+});
+
+
+it('shows sales and net receipts together on one scale and drills into each series', async () => {
+  render(<ExecutiveReportsPage isActive />);
+  fireEvent.click(await screen.findByRole('button', { name: 'ดูยอดขาย' }));
+  const graph = screen.getByRole('group', { name: 'กราฟยอดขายและเงินรับสุทธิ' });
+  const sales = within(graph).getByRole('button', { name: /^ยอดขาย / });
+  const receipts = within(graph).getByRole('button', { name: /^เงินรับสุทธิ / });
+  expect(sales.querySelector('i')?.style.height).toBe('100%');
+  expect(Number.parseFloat(receipts.querySelector('i')?.style.height ?? '0')).toBeCloseTo(56);
+  fireEvent.click(receipts);
+  const dialog = await screen.findByRole('dialog');
+  await within(dialog).findByText('ทั้งหมด 1 รายการ');
+  expect(rpc).toHaveBeenCalledWith('get_executive_report_details', expect.objectContaining({
+    p_metric: 'receipts', p_bucket: presetDates('month').from,
+  }));
+  expect(within(dialog).getByText('รับสุทธิ ฿280')).not.toBeNull();
+  fireEvent.click(within(dialog).getByRole('button', { name: 'ปิดรายละเอียด' }));
+  await waitFor(() => expect(document.activeElement).toBe(receipts));
+  fireEvent.click(sales);
+  await screen.findByRole('dialog');
+  await waitFor(() => expect(rpc).toHaveBeenCalledWith('get_executive_report_details', expect.objectContaining({
+    p_metric: 'sales', p_bucket: presetDates('month').from,
+  })));
 });

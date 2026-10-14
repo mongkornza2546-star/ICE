@@ -64,7 +64,6 @@ export function ExecutiveReportsPage({ isActive, demoReport, demoRows }: {
   const [loading, setLoading] = useState(!demoReport);
   const [error, setError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
-  const [trendMetric, setTrendMetric] = useState<'sales' | 'receipts'>('sales');
   const [showTrendTable, setShowTrendTable] = useState(false);
   const [section, setSection] = useState<ReportSection>('overview');
   const [detail, setDetail] = useState<DetailQuery | null>(null);
@@ -323,10 +322,8 @@ export function ExecutiveReportsPage({ isActive, demoReport, demoRows }: {
         openDetail={openDetail}
         report={shownReport}
         section={section}
-        setTrendMetric={setTrendMetric}
         showTrendTable={showTrendTable}
         toggleTrendTable={() => setShowTrendTable((value) => !value)}
-        trendMetric={trendMetric}
       />
 
       {section === 'finance' ? <ExecutiveFollowUps report={shownReport} isActive={isActive} demoRows={demoReport ? demoRows?.overdue ?? [] : undefined}

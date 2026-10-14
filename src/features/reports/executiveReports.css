@@ -400,3 +400,18 @@
 .executive-quiet-pagination > span { flex: 1 1 180px; color: #526783; font-size: .85rem; }
 .executive-quiet-pagination button { min-height: 40px; padding: 8px 12px; border: 1px solid #dce6f3; border-radius: 9px; background: #fff; color: #075ed8; }
 .executive-quiet-pagination button:disabled { color: #66758c; opacity: .55; cursor: default; }
+
+.executive-trend-legend { display: flex; flex-wrap: wrap; gap: 20px; margin-bottom: 14px; color: #526783; font-size: .9rem; }
+.executive-trend-legend span { display: inline-flex; align-items: center; gap: 8px; }
+.executive-trend-legend i { width: 12px; height: 12px; border-radius: 3px; }
+.executive-trend-legend__sales { background: #0d6efd; }
+.executive-trend-legend__receipts { background: #099b7a; }
+.executive-chart--grouped { height: 240px; gap: 12px; padding-bottom: 8px; }
+.executive-chart__bucket { flex: 1 0 62px; min-width: 62px; display: flex; flex-direction: column; align-items: stretch; gap: 8px; }
+.executive-chart__bucket > small { text-align: center; white-space: nowrap; color: #536780; font-size: .7rem; }
+.executive-chart__pair { flex: 1; min-height: 0; display: flex; justify-content: center; gap: 4px; }
+.executive-chart--grouped .executive-chart__item { flex: 1; min-width: 0; max-width: 36px; padding: 0; }
+.executive-chart--grouped .executive-chart__plot { height: 100%; }
+.executive-chart--grouped .executive-chart__item--receipts i { background: #099b7a; }
+.executive-chart--grouped .executive-chart__item--sales i { background: #0d6efd; }
+.executive-chart--grouped .executive-chart__item:focus-visible { outline: 2px solid #073869; outline-offset: 2px; }

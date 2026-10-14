@@ -63,7 +63,7 @@ function VolumeTable({ products, label }: { products: ExecutiveReport['products'
 function ShopTable({ report, openDetail }: { report: ExecutiveReport; openDetail: (query: DetailQuery, label?: string, trigger?: HTMLElement) => void }) {
   useLanguage();
   if (!report.shops.length) return <p className="executive-empty">{translateUi('ยังไม่มีร้านที่มียอดขาย')}</p>;
-  return <DataTable headings={['อันดับ', 'ร้านค้า', 'ยอดขายสุทธิ']} label={translateUi('ร้านค้ายอดขายสูงสุด')}>
+  return <DataTable headings={['อันดับ', 'ร้านค้า', 'ยอดขายสุทธิ']} numericColumns={[2]} label={translateUi('ร้านค้ายอดขายสูงสุด')}>
     {report.shops.map((shop, index) => <tr key={shop.id}>
       <td data-label={translateUi('อันดับ')}>{index + 1}</td>
       <td data-label={translateUi('ร้านค้า')}><button className="executive-table-link" onClick={(event) => openDetail({ metric: 'sales', shopId: shop.id }, shop.name, event.currentTarget)} type="button">{shop.name}<span aria-hidden="true"> ›</span></button></td>
@@ -217,37 +217,45 @@ function ReceiptMethodsPanel({ report }: { report: ExecutiveReport }) {
   </Panel>;
 }
 
-function TrendPanel({ report, metric, onMetricChange, showTable, onTableChange, openDetail }: {
-  report: ExecutiveReport; metric: 'sales' | 'receipts'; onMetricChange: (metric: 'sales' | 'receipts') => void;
+function TrendPanel({ report, showTable, onTableChange, openDetail }: {
+  report: ExecutiveReport;
   showTable: boolean; onTableChange: () => void; openDetail: (query: DetailQuery, label?: string, trigger?: HTMLElement) => void;
 }) {
   useLanguage();
-  const values = report.trend.map((point) => metric === 'sales' ? point.sales : point.receipts - point.refunds);
+  const values = report.trend.flatMap((point) => [point.sales, point.receipts - point.refunds]);
   const maxPositive = Math.max(0, ...values);
   const maxNegative = Math.max(0, ...values.map((value) => -value));
   const hasNegative = maxNegative > 0;
   const scale = Math.max(1, maxPositive, maxNegative);
   return <Panel description={translateUi('เลือกแท่งเพื่อดูรายการในช่วงนั้น')} label={translateUi('แนวโน้มยอดขายและเงินรับ')} title={translateUi('แนวโน้ม')}>
-    <div aria-label={translateUi('เลือกตัวเลขในกราฟ')} className="executive-segment">
-      <button aria-pressed={metric === 'sales'} onClick={() => onMetricChange('sales')} type="button">{translateUi('ยอดขาย')}</button>
-      <button aria-pressed={metric === 'receipts'} onClick={() => onMetricChange('receipts')} type="button">{translateUi('เงินรับสุทธิ')}</button>
+    <div aria-label={translateUi('คำอธิบายกราฟ')} className="executive-trend-legend">
+      <span><i className="executive-trend-legend__sales" />{translateUi('ยอดขาย')}</span>
+      <span><i className="executive-trend-legend__receipts" />{translateUi('เงินรับสุทธิ')}</span>
     </div>
     {report.trend.length ? <>
-      <div aria-label={translateUi('กราฟ{0}', { 0: metric === 'sales' ? translateUi('ยอดขาย') : translateUi('เงินรับสุทธิ') })} className={`executive-chart ${hasNegative ? 'executive-chart--signed' : ''}`} role="group">
+      <div aria-label={translateUi('กราฟยอดขายและเงินรับสุทธิ')} className={`executive-chart executive-chart--grouped ${hasNegative ? 'executive-chart--signed' : ''}`} role="group">
         {report.trend.map((point) => {
-          const value = metric === 'sales' ? point.sales : point.receipts - point.refunds;
           const { label, axisLabel } = reportBucketLabels(point.date, report.from, report.to);
-          const height = value === 0 ? 0 : Math.max(3, Math.abs(value) / scale * 100);
-          return <button aria-label={`${label} ${baht(value)}`} className="executive-chart__item" key={point.date}
-            onClick={(event) => openDetail({ metric, bucket: point.date }, label, event.currentTarget)} type="button">
-            <span className="executive-chart__plot"><span className="executive-chart__positive">{value > 0 ? <i style={{ height: `${height}%` }} /> : null}</span>
-              <span className="executive-chart__negative">{value < 0 ? <i style={{ height: `${height}%` }} /> : null}</span></span>
+          return <div className="executive-chart__bucket" key={point.date}>
+            <div className="executive-chart__pair">
+              {(['sales', 'receipts'] as const).map((metric) => {
+                const value = metric === 'sales' ? point.sales : point.receipts - point.refunds;
+                const metricLabel = translateUi(metric === 'sales' ? 'ยอดขาย' : 'เงินรับสุทธิ');
+                const height = Math.abs(value) / scale * 100;
+                const description = `${metricLabel} ${label} ${baht(value)}`;
+                return <button aria-label={description} title={description} className={`executive-chart__item executive-chart__item--${metric}`} key={metric}
+                  onClick={(event) => openDetail({ metric, bucket: point.date }, label, event.currentTarget)} type="button">
+                  <span className="executive-chart__plot"><span className="executive-chart__positive">{value > 0 ? <i style={{ height: `${height}%` }} /> : null}</span>
+                    <span className="executive-chart__negative">{value < 0 ? <i style={{ height: `${height}%` }} /> : null}</span></span>
+                </button>;
+              })}
+            </div>
             <small>{axisLabel}</small>
-          </button>;
+          </div>;
         })}
       </div>
       <button aria-expanded={showTable} className="executive-text-button" onClick={onTableChange} type="button">{showTable ? translateUi('ซ่อนตารางตัวเลข') : translateUi('ดูตารางตัวเลข')}</button>
-      {showTable ? <DataTable headings={['ช่วง', 'ยอดขาย', 'เงินรับจริง', 'คืนเงินจริง', 'เงินรับสุทธิ']} label={translateUi('ตารางแนวโน้ม')}>
+      {showTable ? <DataTable headings={['ช่วง', 'ยอดขาย', 'เงินรับจริง', 'คืนเงินจริง', 'เงินรับสุทธิ']} numericColumns={[1, 2, 3, 4]} label={translateUi('ตารางแนวโน้ม')}>
         {report.trend.map((row) => <tr key={row.date}><td data-label={translateUi('ช่วง')}>{reportBucketLabels(row.date, report.from, report.to).label}</td>
           <td className="executive-numeric" data-label={translateUi('ยอดขาย')}>{baht(row.sales)}</td>
           <td className="executive-numeric" data-label={translateUi('เงินรับจริง')}>{baht(row.receipts)}</td>
@@ -295,10 +303,9 @@ function AttentionBanner({
 }
 
 export function ReportSections({
-  section, report, trendMetric, setTrendMetric, showTrendTable, toggleTrendTable, openDetail, onNavigateSection,
+  section, report, showTrendTable, toggleTrendTable, openDetail, onNavigateSection,
 }: {
-  section: ReportSection; report: ExecutiveReport; trendMetric: 'sales' | 'receipts';
-  setTrendMetric: (metric: 'sales' | 'receipts') => void; showTrendTable: boolean; toggleTrendTable: () => void;
+  section: ReportSection; report: ExecutiveReport; showTrendTable: boolean; toggleTrendTable: () => void;
   openDetail: (query: DetailQuery, label?: string, trigger?: HTMLElement) => void;
   onNavigateSection?: (section: ReportSection, targetId?: string) => void;
 }) {
@@ -309,7 +316,7 @@ export function ReportSections({
 
   if (section === 'sales') {
     return <div className="executive-report__stack">
-      <TrendPanel metric={trendMetric} onMetricChange={setTrendMetric} onTableChange={toggleTrendTable} openDetail={openDetail} report={report} showTable={showTrendTable} />
+      <TrendPanel onTableChange={toggleTrendTable} openDetail={openDetail} report={report} showTable={showTrendTable} />
       <QuietShopsPanel openDetail={openDetail} report={report} />
       <Panel description={translateUi('อาคาร อีเวนต์ และขายหน้ารถ · เลือกชื่อพื้นที่เพื่อดูรายการ')} label={translateUi('ยอดขายตามพื้นที่')} title={translateUi('ยอดขายตามพื้นที่')}>
         <AreaTable openDetail={openDetail} report={report} />
