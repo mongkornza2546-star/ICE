@@ -192,7 +192,7 @@ export function DailyCreditAcknowledgementPanel({ serviceDate, printerName, shop
     setSelectedShopId(shopId);
   };
 
-  const print = async (item: DailyCreditAcknowledgementSummary) => {
+  const print = async (item: DailyCreditAcknowledgementSummary, showVat = true) => {
     const nativeAndroid = isAndroidApp();
     const printWindow = nativeAndroid ? null : window.open('', '_blank', 'popup,width=360,height=680');
     if (!nativeAndroid && !printWindow) {
@@ -211,7 +211,7 @@ export function DailyCreditAcknowledgementPanel({ serviceDate, printerName, shop
       if (!await printDailyCreditAcknowledgementForCurrentPlatform({
         ...(data as DailyCreditAcknowledgementDocument),
         printed_by_nickname: printerName,
-      }, printWindow)) {
+      }, printWindow, { showVat })) {
         throw new Error('ไม่สามารถเปิดหน้าต่างพิมพ์ได้');
       }
       await load();
@@ -278,6 +278,7 @@ export function DailyCreditAcknowledgementPanel({ serviceDate, printerName, shop
           <span className={selectedShop.is_stale ? 'is-stale' : ''}>{selectedShop.is_stale ? translateUi('ยอดเปลี่ยน · พิมพ์ฉบับใหม่') : selectedShop.document_id ? translateUi('ฉบับที่ {0}', { 0: selectedShop.document_version ?? '—' }) : translateUi('ยังไม่ได้สร้างใบ')}{selectedShop.evidence_count ? translateUi(' · มีรูปใบเซ็น {0} รูป', { 0: selectedShop.evidence_count }) : ''}</span>
           <div>
             <button disabled={busyShopId === selectedShopId} onClick={() => void print(selectedShop)} type="button"><Printer size={17} />{selectedShop.document_id && !selectedShop.is_stale ? translateUi('พิมพ์ซ้ำ') : translateUi('พิมพ์ใบรวม')}</button>
+            <button disabled={busyShopId === selectedShopId} onClick={() => void print(selectedShop, false)} type="button"><Printer size={17} />{translateUi('พิมพ์ไม่แสดง VAT')}</button>
             {selectedShop.latest_evidence_path ? <button disabled={busyShopId === selectedShopId} onClick={() => void viewEvidence(selectedShop)} type="button">{translateUi('ดูรูป')}</button> : null}
           </div>
         </div>

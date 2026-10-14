@@ -214,10 +214,14 @@ it('opens the requested POS shop directly with its date and returns to POS', asy
   await user.click(screen.getByRole('button', { name: 'พิมพ์ใบรวม' }));
   await waitFor(() => expect(printDailyCreditAcknowledgementForCurrentPlatform).toHaveBeenCalledWith({
     ...document, printed_by_nickname: 'พนักงานทดสอบ',
-  }, printWindow));
+  }, printWindow, { showVat: true }));
   expect(supabaseMock.client.rpc).toHaveBeenCalledWith('prepare_daily_credit_acknowledgement', {
     p_shop_id: 'shop-1', p_service_date: '2026-08-21',
   });
+  await user.click(screen.getByRole('button', { name: 'พิมพ์ไม่แสดง VAT' }));
+  await waitFor(() => expect(printDailyCreditAcknowledgementForCurrentPlatform).toHaveBeenLastCalledWith({
+    ...document, printed_by_nickname: 'พนักงานทดสอบ',
+  }, printWindow, { showVat: false }));
   openWindow.mockRestore();
   await user.click(screen.getByRole('button', { name: 'กลับ POS' }));
   expect(onBack).toHaveBeenCalledOnce();

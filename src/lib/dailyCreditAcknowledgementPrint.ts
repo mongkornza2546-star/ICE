@@ -42,6 +42,8 @@ export type DailyCreditAcknowledgementDocument = {
   printed_by_nickname?: string | null;
 };
 
+export type DailyCreditPrintOptions = { showVat?: boolean };
+
 const money = new Intl.NumberFormat('th-TH', {
   style: 'currency',
   currency: 'THB',
@@ -51,8 +53,10 @@ const money = new Intl.NumberFormat('th-TH', {
 export function printDailyCreditAcknowledgement(
   payload: DailyCreditAcknowledgementDocument,
   existingPrintWindow?: Window | null,
+  { showVat = true }: DailyCreditPrintOptions = {},
 ) {
-  const heightMm = Math.max(90, 70 + payload.item_totals.length * 9 + (Number(payload.vat_amount) > 0 ? 12 : 0));
+  const hasVatBreakdown = showVat && Number(payload.vat_amount) > 0;
+  const heightMm = Math.max(90, 70 + payload.item_totals.length * 9 + (hasVatBreakdown ? 12 : 0));
   const printWindow = existingPrintWindow
     ?? window.open('', '_blank', `popup,width=360,height=${Math.ceil(heightMm * 3.78)}`);
   if (!printWindow) return false;
@@ -113,7 +117,7 @@ export function printDailyCreditAcknowledgement(
   }
   root.append(totals);
 
-  if (Number(payload.vat_amount) > 0) {
+  if (hasVatBreakdown) {
     line(`ค่าสินค้าก่อน VAT ${money.format(Number(payload.subtotal_amount))}`);
     line(`VAT ${money.format(Number(payload.vat_amount))}`);
   }
@@ -122,7 +126,9 @@ export function printDailyCreditAcknowledgement(
   const grandTotalLabel = printDocument.createElement('span');
   grandTotalLabel.textContent = 'ยอดเครดิตวันนี้';
   const grandTotalAmount = printDocument.createElement('span');
-  grandTotalAmount.textContent = money.format(Number(payload.total_amount));
+  const total = showVat ? Number(payload.total_amount)
+    : Number(payload.subtotal_amount ?? (Number(payload.total_amount) - Number(payload.vat_amount ?? 0)));
+  grandTotalAmount.textContent = money.format(total);
   grandTotal.append(grandTotalLabel, grandTotalAmount);
   root.append(grandTotal);
   line('ร้านได้รับสินค้าตามรายการและรับทราบยอดเครดิตข้างต้น', undefined, 'small');
@@ -139,10 +145,11 @@ export function printDailyCreditAcknowledgement(
 export async function printDailyCreditAcknowledgementForCurrentPlatform(
   payload: DailyCreditAcknowledgementDocument,
   existingPrintWindow?: Window | null,
+  options: DailyCreditPrintOptions = {},
 ) {
-  if (!isAndroidApp()) return printDailyCreditAcknowledgement(payload, existingPrintWindow);
+  if (!isAndroidApp()) return printDailyCreditAcknowledgement(payload, existingPrintWindow, options);
   existingPrintWindow?.close();
-  const imageBase64 = await renderDailyCreditRaster(payload);
+  const imageBase64 = await renderDailyCreditRaster(payload, options);
   await printThermalImage(imageBase64);
   return true;
 }

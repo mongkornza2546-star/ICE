@@ -71,6 +71,22 @@ beforeEach(() => {
 });
 
 describe('thermal receipt raster', () => {
+  it.each([true, false])('prints daily credit with showVat=%s and the corresponding total', async (showVat) => {
+    await renderDailyCreditRaster({
+      document_id: 'vat-document', document_title: 'ใบส่งของ', version: 1,
+      generated_at: '2026-10-14T06:38:00.000Z', service_date: '2026-10-14',
+      shop_code: 'BB27', shop_name: 'ร้านเครดิต', invoices: [],
+      item_totals: [{ name: 'หลอดเล็ก', unit: 'ถุง', quantity: 3, line_total: 180 }],
+      subtotal_amount: 180, vat_amount: 12.6, total_amount: 192.6,
+    }, { showVat });
+    const text = drawnText.join('');
+    expect(text.includes('VAT')).toBe(showVat);
+    expect(text).toContain('฿180.00หลอดเล็ก 3 ถุง');
+    expect(text).toContain(showVat ? '฿192.60ยอดเครดิตวันนี้' : '฿180.00ยอดเครดิตวันนี้');
+    if (!showVat) expect(text).not.toContain('192.60');
+    expect(text).toContain('ชื่อผู้รับ ____________________');
+  });
+
   it('keeps receipt references and payment-specific totals in Android output', async () => {
     await renderSalesDocumentRaster(receipt);
 

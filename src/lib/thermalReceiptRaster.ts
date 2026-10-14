@@ -1,4 +1,4 @@
-import type { DailyCreditAcknowledgementDocument } from './dailyCreditAcknowledgementPrint';
+import type { DailyCreditAcknowledgementDocument, DailyCreditPrintOptions } from './dailyCreditAcknowledgementPrint';
 import type { SalesDocumentPayload } from './salesDocumentPrint';
 import {
   compactDocumentNumbers,
@@ -302,7 +302,7 @@ export async function renderSalesDocumentRaster(payload: SalesDocumentPayload) {
   return receipt.finish();
 }
 
-export async function renderDailyCreditRaster(payload: DailyCreditAcknowledgementDocument) {
+export async function renderDailyCreditRaster(payload: DailyCreditAcknowledgementDocument, { showVat = true }: DailyCreditPrintOptions = {}) {
   await loadReceiptFonts();
   const receipt = new ReceiptRaster();
   receipt.text('Super Ice', { align: 'center', bold: true, size: 31 });
@@ -317,11 +317,13 @@ export async function renderDailyCreditRaster(payload: DailyCreditAcknowledgemen
   receipt.gap(6);
   for (const item of payload.item_totals) receipt.row(`${item.name} ${Number(item.quantity)} ${item.unit}`, money.format(Number(item.line_total)), { size: 25 });
   receipt.rule();
-  if (Number(payload.vat_amount) > 0) {
+  if (showVat && Number(payload.vat_amount) > 0) {
     receipt.row('ค่าสินค้าก่อน VAT', money.format(Number(payload.subtotal_amount)));
     receipt.row('VAT', money.format(Number(payload.vat_amount)));
   }
-  receipt.row('ยอดเครดิตวันนี้', money.format(Number(payload.total_amount)), { bold: true, size: 26 });
+  const total = showVat ? Number(payload.total_amount)
+    : Number(payload.subtotal_amount ?? (Number(payload.total_amount) - Number(payload.vat_amount ?? 0)));
+  receipt.row('ยอดเครดิตวันนี้', money.format(total), { bold: true, size: 26 });
   receipt.gap(8);
   receipt.text('ร้านได้รับสินค้าตามรายการและรับทราบยอดเครดิตข้างต้น', { size: 20 });
   receipt.gap(26);
