@@ -52,7 +52,6 @@ async function enterCountDraft() {
   await user.type(stock, '8');
   await user.type(screen.getByLabelText(/^หัวหน้านับจริง/), '90');
   await user.type(screen.getByLabelText('เหตุผลส่วนต่าง *'), 'เงินขาด');
-  await user.type(screen.getByLabelText('หมายเหตุ *'), 'น้ำแข็งละลาย');
   return { user, stock };
 }
 
@@ -61,7 +60,6 @@ function expectCountDraft(stock: HTMLInputElement) {
   expect(stock.value).toBe('8');
   expect((screen.getByLabelText(/^หัวหน้านับจริง/) as HTMLInputElement).value).toBe('90');
   expect((screen.getByLabelText('เหตุผลส่วนต่าง *') as HTMLInputElement).value).toBe('เงินขาด');
-  expect((screen.getByLabelText('หมายเหตุ *') as HTMLTextAreaElement).value).toBe('น้ำแข็งละลาย');
 }
 
 it.each(['โอนระหว่างจุด', 'เสียหาย / ละลาย'])('preserves the count draft when switching to %s and back', async (tab) => {
@@ -104,7 +102,6 @@ it.each(['browser', 'workspace', 'data change'])('keeps count inputs mounted and
   fireEvent.change(stock, { target: { value: '8' } });
   fireEvent.change(cash, { target: { value: '90' } });
   fireEvent.change(screen.getByLabelText('เหตุผลส่วนต่าง *'), { target: { value: 'เงินขาด' } });
-  fireEvent.change(screen.getByLabelText('หมายเหตุ *'), { target: { value: 'น้ำแข็งละลาย' } });
   stock.focus();
   stockQuantity = 12;
   holdRefresh = true;
@@ -138,11 +135,10 @@ it.each(['browser', 'workspace', 'data change'])('keeps count inputs mounted and
     expect(stock.value).toBe('7');
     expect(cash.value).toBe('90');
     expect((screen.getByLabelText('เหตุผลส่วนต่าง *') as HTMLInputElement).value).toBe('เงินขาด');
-    expect((screen.getByLabelText('หมายเหตุ *') as HTMLTextAreaElement).value).toBe('น้ำแข็งละลาย');
     expect(screen.getByText(/ตามระบบ 12 ถุง/)).not.toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'ปิดยอดสต๊อกและเงินสดวันนี้' }));
     await waitFor(() => expect(db.rpc).toHaveBeenCalledWith('close_daily_reconciliation_v2', expect.objectContaining({
-      p_stock_counts: [{ ice_type_id: 'ice', actual_quantity: 7, note: 'น้ำแข็งละลาย' }],
+      p_stock_counts: [{ ice_type_id: 'ice', actual_quantity: 7, note: 'ส่วนต่างยังไม่ทราบสาเหตุ' }],
       p_cash_counts: [{ employee_id: 'employee', actual_cash_amount: 90, reason: 'เงินขาด' }],
     })));
   } finally {
@@ -156,13 +152,11 @@ it('starts a fresh count and note when changing the service date', async () => {
   fireEvent.change(await screen.findByLabelText(/^นับจริง/), { target: { value: '8' } });
   fireEvent.change(screen.getByLabelText(/^หัวหน้านับจริง/), { target: { value: '90' } });
   fireEvent.change(screen.getByLabelText('เหตุผลส่วนต่าง *'), { target: { value: 'เงินขาด' } });
-  fireEvent.change(screen.getByLabelText('หมายเหตุ *'), { target: { value: 'น้ำแข็งละลาย' } });
 
   await act(async () => { view.rerender(<DailyAggregateStockClose serviceDate="2026-10-16" />); });
 
   expect((screen.getByLabelText(/^นับจริง/) as HTMLInputElement).value).toBe('0');
   expect((screen.getByLabelText(/^หัวหน้านับจริง/) as HTMLInputElement).value).toBe('');
-  expect((screen.getByLabelText('หมายเหตุ *') as HTMLTextAreaElement).value).toBe('');
   expect(screen.queryByLabelText('เหตุผลส่วนต่าง *')).toBeNull();
 });
 

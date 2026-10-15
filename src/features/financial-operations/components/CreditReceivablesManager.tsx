@@ -349,18 +349,18 @@ function ReceivableDrawer({
         {receivable.credit_suspended && receivable.credit_suspension_reason ? <p className="credit-ar__suspension-reason"><Prohibit size={16} />{translateUi('เหตุผลที่ระงับ: ')}{receivable.credit_suspension_reason}</p> : null}
       </section>
 
-      {canAdminister && onCreateBillingStatement && onVoidBillingStatement ? <BillingStatementsSection
-        busy={busy || actionBusy}
+      {(userRole === 'admin' || userRole === 'round_lead') && onCreateBillingStatement ? <BillingStatementsSection
+        busy={busy || actionBusy || detailLoading}
         charges={detail.charges}
         onCreate={async (chargeIds) => {
           const statement = await onCreateBillingStatement(receivable, chargeIds);
           await refreshDetail();
           return statement;
         }}
-        onVoid={async (statement, reason) => {
+        onVoid={canAdminister && onVoidBillingStatement ? async (statement, reason) => {
           await onVoidBillingStatement(receivable, statement, reason);
           await refreshDetail();
-        }}
+        } : undefined}
         serviceDate={serviceDate}
         statements={detail.billing_statements ?? []}
       /> : null}

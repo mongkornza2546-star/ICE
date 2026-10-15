@@ -1,3 +1,5 @@
+import type { BillingStatement } from '../features/financial-operations/types';
+import { billingStatementDailyTotals } from './billingStatementSummary';
 import type { DailyCreditAcknowledgementDocument, DailyCreditPrintOptions } from './dailyCreditAcknowledgementPrint';
 import type { SalesDocumentPayload } from './salesDocumentPrint';
 import {
@@ -343,5 +345,27 @@ export async function renderPrinterTestRaster(printerName: string) {
   receipt.text('English: Bluetooth ESC/POS');
   receipt.rule();
   receipt.text('ทดสอบสำเร็จ', { align: 'center', bold: true });
+  return receipt.finish();
+}
+
+export async function renderBillingStatementSummaryRaster(statement: BillingStatement) {
+  await loadReceiptFonts();
+  const receipt = new ReceiptRaster();
+  receipt.text('Super Ice', { align: 'center', bold: true, size: 31 });
+  receipt.text('ใบวางบิล', { align: 'center', bold: true, size: 26 });
+  receipt.text(`เลขที่ ${statement.statement_number}`);
+  receipt.text(`วันที่ออก ${formatReceiptDate(statement.issued_service_date)}`);
+  if (statement.status === 'voided') receipt.text(`ยกเลิกแล้ว · ${statement.void_reason ?? ''}`, { bold: true });
+  receipt.text(`${statement.shop_code} · ${statement.shop_name}`, { bold: true });
+  if (statement.shop_location) receipt.text(statement.shop_location);
+  receipt.rule();
+  for (const day of billingStatementDailyTotals(statement)) {
+    receipt.row(formatReceiptDate(day.serviceDate), money.format(day.amount));
+  }
+  receipt.rule();
+  receipt.row('ยอดวางบิลทั้งสิ้น', money.format(Number(statement.total_amount)), { bold: true, size: 24 });
+  receipt.text('เอกสารนี้เป็นใบวางบิล ไม่ใช่ใบเสร็จรับเงิน', { size: 20 });
+  receipt.gap(26);
+  receipt.text('ผู้รับวางบิล ____________________', { align: 'center', size: 21 });
   return receipt.finish();
 }

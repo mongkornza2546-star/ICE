@@ -1,3 +1,4 @@
+import './admin-sidebar.css';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   ClipboardText,

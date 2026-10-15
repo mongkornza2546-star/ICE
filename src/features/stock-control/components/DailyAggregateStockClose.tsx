@@ -90,7 +90,6 @@ export function DailyAggregateStockClose({
   const [counts, setCounts] = useState<Record<string, string>>({});
   const [cashCounts, setCashCounts] = useState<Record<string, string>>({});
   const [cashReasons, setCashReasons] = useState<Record<string, string>>({});
-  const [note, setNote] = useState('');
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -142,7 +141,6 @@ export function DailyAggregateStockClose({
   }, [serviceDate]);
 
   useEffect(() => {
-    setNote('');
     pendingRequest.current = null;
   }, [serviceDate]);
 
@@ -153,10 +151,6 @@ export function DailyAggregateStockClose({
 
   const hasMissingCounts = !summary?.items.length || summary.items.some((item) => !isValidCount(counts[item.ice_type_id], 0.5))
     || (featureEnabled && employees.some((employee) => !isValidCount(cashCounts[employee.employee_id], 0.01)));
-
-  const hasVariance = useMemo(() => summary?.items.some(
-    (item) => isValidCount(counts[item.ice_type_id], 0.5) && Number(counts[item.ice_type_id]) !== Number(item.available_quantity),
-  ) ?? false, [counts, summary]);
 
   const hasMissingCashReason = useMemo(() => employees.some((employee) => (
     isValidCount(cashCounts[employee.employee_id], 0.01) && Number(cashCounts[employee.employee_id]) !== Number(employee.expected_cash_amount)
@@ -169,10 +163,6 @@ export function DailyAggregateStockClose({
       setError('กรอกยอดนับจริงให้ครบทุกช่อง รวมถึงยอดที่เป็นศูนย์');
       return;
     }
-    if (hasVariance && !note.trim()) {
-      setError('กรอกหมายเหตุเมื่อยอดนับจริงต่างจากยอดตามระบบ');
-      return;
-    }
     if (featureEnabled && hasMissingCashReason) {
       setError('กรอกเหตุผลของพนักงานทุกคนที่ยอดเงินสดไม่ตรง');
       return;
@@ -182,7 +172,7 @@ export function DailyAggregateStockClose({
     const closeItems = summary.items.map((item) => ({
         ice_type_id: item.ice_type_id,
         actual_quantity: Number(counts[item.ice_type_id]),
-        note: hasVariance ? note.trim() || 'ส่วนต่างยังไม่ทราบสาเหตุ' : null,
+        note: Number(counts[item.ice_type_id]) !== Number(item.available_quantity) ? 'ส่วนต่างยังไม่ทราบสาเหตุ' : null,
       }));
     const signature = JSON.stringify({
       serviceDate,
@@ -192,7 +182,6 @@ export function DailyAggregateStockClose({
         actual_cash_amount: Number(cashCounts[employee.employee_id]),
         reason: cashReasons[employee.employee_id]?.trim() || null,
       })),
-      note: note.trim() || null,
     });
     if (pendingRequest.current?.signature !== signature) {
       pendingRequest.current = { signature, key: crypto.randomUUID() };
@@ -207,13 +196,13 @@ export function DailyAggregateStockClose({
             actual_cash_amount: Number(cashCounts[employee.employee_id]),
             reason: cashReasons[employee.employee_id]?.trim() || null,
           })),
-          p_stock_note: note.trim() || null,
+          p_stock_note: null,
           p_idempotency_key: pendingRequest.current.key,
         })
         : await supabase.rpc('close_daily_aggregate_stock', {
           p_service_date: serviceDate,
           p_counts: closeItems,
-          p_note: note.trim() || null,
+          p_note: null,
           p_idempotency_key: pendingRequest.current.key,
         });
       if (closeError) {
@@ -505,21 +494,11 @@ export function DailyAggregateStockClose({
           })}
         </div>
       </section>
-      <label style={{ display: 'grid', gap: 6, marginTop: 16 }}>
-        {translateUi('หมายเหตุ')}{hasVariance ? ' *' : translateUi(' (ถ้ามี)')}
-        <textarea
-          disabled={submitting}
-          onChange={(event) => setNote(event.target.value)}
-          placeholder={hasVariance ? translateUi('เช่น ส่วนต่างยังไม่ทราบสาเหตุ') : ''}
-          rows={2}
-          value={note}
-        />
-      </label>
       {hasMissingCounts ? <p className="muted">{translateUi('กรอกยอดนับจริงให้ครบทุกช่อง รวมถึงยอดที่เป็นศูนย์ ก่อนปิดยอด')}</p> : null}
       {error ? <p className="error-text" role="alert"><Warning size={18} />{translateUi(error)}</p> : null}
       <button
         className="primary-button"
-        disabled={loading || submitting || hasMissingCounts || (hasVariance && !note.trim()) || (featureEnabled && hasMissingCashReason)}
+        disabled={loading || submitting || hasMissingCounts || (featureEnabled && hasMissingCashReason)}
         onClick={() => void close()}
         style={{ marginTop: 16 }}
         type="button"

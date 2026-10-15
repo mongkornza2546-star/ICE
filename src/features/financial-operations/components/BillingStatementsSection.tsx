@@ -2,6 +2,8 @@ import { VatBreakdown } from './VatBreakdown';
 import { uiDateTimeFormat, translateUi, useLanguage } from '../../../i18n';
 import { FileText, Printer, Prohibit, X } from '@phosphor-icons/react';
 import { useMemo, useState } from 'react';
+import { isAndroidApp } from '../../../lib/thermalPrinter';
+import { printEmployeeBillingStatement } from '../../../lib/employeeBillingStatementPrint';
 import { printBillingStatement } from '../../../lib/billingStatementPrint';
 import type { BillingStatement, ReceivableCharge } from '../types';
 import { money } from '../utils';
@@ -19,13 +21,15 @@ export function BillingStatementsSection({
   statements,
   onCreate,
   onVoid,
+  dailySummary = false,
 }: {
+  dailySummary?: boolean;
   busy: boolean;
   charges: ReceivableCharge[];
   serviceDate: string;
   statements: BillingStatement[];
   onCreate: (chargeIds: string[]) => Promise<BillingStatement>;
-  onVoid: (statement: BillingStatement, reason: string) => Promise<void>;
+  onVoid?: (statement: BillingStatement, reason: string) => Promise<void>;
 }) {
   useLanguage();
   const [editorOpen, setEditorOpen] = useState(false);
@@ -55,15 +59,31 @@ export function BillingStatementsSection({
     setEditorOpen(true);
   };
 
+  const printStatement = async (statement: BillingStatement, printWindow?: Window | null) => {
+    setWorking(true);
+    setError(null);
+    try {
+      const printed = dailySummary
+        ? await printEmployeeBillingStatement(statement, printWindow)
+        : printBillingStatement(statement, printWindow, charges);
+      if (!printed) setError('เปิดหน้าพิมพ์ไม่สำเร็จ กรุณาอนุญาตป๊อปอัปแล้วกดพิมพ์อีกครั้ง');
+    } catch (printError) {
+      printWindow?.close();
+      setError(printError instanceof Error ? printError.message : 'พิมพ์ใบวางบิลไม่สำเร็จ');
+    } finally {
+      setWorking(false);
+    }
+  };
+
   const create = async () => {
     if (selectedIds.length === 0) return;
-    const printWindow = window.open('', '_blank', 'popup,width=900,height=720');
+    const printWindow = dailySummary && isAndroidApp() ? null : window.open('', '_blank', dailySummary ? 'popup,width=360,height=720' : 'popup,width=900,height=720');
     setWorking(true);
     setError(null);
     try {
       const statement = await onCreate(selectedIds);
       setEditorOpen(false);
-      printBillingStatement(statement, printWindow, charges);
+      await printStatement(statement, printWindow);
     } catch (createError) {
       printWindow?.close();
       setError(createError instanceof Error ? createError.message : 'ออกใบวางบิลไม่สำเร็จ');
@@ -73,6 +93,7 @@ export function BillingStatementsSection({
   };
 
   const voidStatement = async (statement: BillingStatement) => {
+    if (!onVoid) return;
     const reason = window.prompt(`เหตุผลที่ยกเลิก ${statement.statement_number}`)?.trim();
     if (!reason) return;
     setWorking(true);
@@ -97,8 +118,8 @@ export function BillingStatementsSection({
         {statements.map((statement) => <article key={statement.id}>
           <span><strong>{statement.statement_number}</strong><small>{serviceDate(statement.issued_service_date)} · {statement.items.length}{translateUi(' บิล')}{statement.status === 'voided' ? translateUi(' · ยกเลิก: {0}', { 0: statement.void_reason ?? '—' }) : ''}</small></span>
           <span><b>{money.format(Number(statement.total_amount))}</b><small>{translateUi('คงเหลือ ')}{money.format(Number(statement.outstanding_amount))}</small></span>
-          <button aria-label={translateUi('พิมพ์ {0}', { 0: statement.statement_number })} onClick={() => printBillingStatement(statement, undefined, charges)} type="button"><Printer size={16} />{translateUi('พิมพ์')}</button>
-          {statement.status === 'active' ? <button aria-label={translateUi('ยกเลิก {0}', { 0: statement.statement_number })} className="is-danger" disabled={working} onClick={() => void voidStatement(statement)} type="button"><Prohibit size={16} />{translateUi('ยกเลิก')}</button> : <em>{translateUi('ยกเลิกแล้ว')}</em>}
+          <button aria-label={translateUi('พิมพ์ {0}', { 0: statement.statement_number })} disabled={working} onClick={() => void printStatement(statement)} type="button"><Printer size={16} />{translateUi('พิมพ์')}</button>
+          {statement.status === 'voided' ? <em>{translateUi('ยกเลิกแล้ว')}</em> : onVoid ? <button aria-label={translateUi('ยกเลิก {0}', { 0: statement.statement_number })} className="is-danger" disabled={working} onClick={() => void voidStatement(statement)} type="button"><Prohibit size={16} />{translateUi('ยกเลิก')}</button> : null}
         </article>)}
       </div>}
     </section>

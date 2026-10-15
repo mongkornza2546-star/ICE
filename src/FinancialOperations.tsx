@@ -1,5 +1,6 @@
+import { EmployeeBillingStatementsPanel } from './features/financial-operations/components/EmployeeBillingStatementsPanel';
 import { translateUi, useLanguage } from './i18n';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ArrowLeft, CheckCircle, ClockCounterClockwise, FileText, ListBullets, WarningCircle } from '@phosphor-icons/react';
 import { supabase } from './lib/supabase';
@@ -10,13 +11,11 @@ import { printSalesDocumentForCurrentPlatform } from './lib/salesDocumentPrint';
 import { isAndroidApp } from './lib/thermalPrinter';
 import { usePendingRequests } from './features/employee-delivery/usePendingRequests';
 import { CollectionRunSection } from './features/financial-operations/components/CollectionRunSection';
-import { CollectionDesk } from './features/financial-operations/components/CollectionDesk';
-import { ManagerFinancialSections, PaymentHistorySection } from './features/financial-operations/components/FinancialOperationsPanels';
+import { PaymentHistorySection } from './features/financial-operations/components/FinancialOperationsPanels';
 import { HistoryReceiptModal } from './features/financial-operations/components/HistoryReceiptModal';
 import { PaymentModal } from './features/financial-operations/components/PaymentModal';
 import { DailyCreditAcknowledgementPanel } from './features/financial-operations/components/DailyCreditAcknowledgementPanel';
 import { DeliveryCorrectionDialog } from './features/delivery-corrections/DeliveryCorrectionDialog';
-import { AccountingPage } from './features/accounting/AccountingPage';
 import type {
   Approval,
   BillingStatement,
@@ -42,6 +41,10 @@ import type { AppRole, CollectionCloseResult, CollectionFocusRequest, CreditDueR
 import { publishDataChange, subscribeToDataChange } from './lib/dataChange';
 import { invalidateCurrentCollectionContext } from './lib/collectionContext';
 import { loadCurrentCollectionQueue } from './lib/collectionQueue';
+
+const FinancialManagerWorkspace = import.meta.env.VITE_EMPLOYEE_ONLY === 'true'
+  ? null
+  : lazy(() => import('./features/financial-operations/FinancialManagerWorkspace'));
 
 const COLLECTION_AUTO_REFRESH_MS = 2 * 60_000;
 
@@ -126,7 +129,7 @@ export function FinancialOperations({
 }) {
   useLanguage();
   const serviceDate = demoData?.serviceDate ?? propServiceDate ?? toBangkokDateString();
-  const isManager = userRole === 'admin' || userRole === 'round_lead';
+  const isManager = import.meta.env.VITE_EMPLOYEE_ONLY !== 'true' && (userRole === 'admin' || userRole === 'round_lead');
   const initialDemoRunId = demoData
     ? demoData.runId === undefined ? 'demo-collection-run' : demoData.runId
     : null;
@@ -140,7 +143,7 @@ export function FinancialOperations({
   const [approvals, setApprovals] = useState<Approval[]>(demoData?.approvals ?? []);
   const [dueDateRequests, setDueDateRequests] = useState<DueDateRequest[]>(demoData?.dueDateRequests ?? []);
   const [historyDate, setHistoryDate] = useState(serviceDate);
-  const [employeeView, setEmployeeView] = useState<'queue' | 'history' | 'credit_signoff'>('queue');
+  const [employeeView, setEmployeeView] = useState<'queue' | 'history' | 'credit_signoff' | 'billing'>('queue');
   const [paymentHistory, setPaymentHistory] = useState<PaymentHistoryItem[]>(() => demoData?.paymentHistory.filter((payment) => (
     toBangkokDateString(new Date(payment.recorded_at)) === serviceDate
   )) ?? []);
@@ -1060,13 +1063,18 @@ export function FinancialOperations({
             <FileText aria-hidden="true" size={21} weight="duotone" />
             <span>{translateUi('ใบเซ็นเครดิต')}</span>
           </button>
+          <button aria-current={employeeView === 'billing' ? 'page' : undefined}
+            onClick={() => setEmployeeView('billing')} type="button">
+            <FileText aria-hidden="true" size={21} weight="duotone" />
+            <span>{translateUi('ใบวางบิล')}</span>
+          </button>
         </nav>
 
         <div className="financial-ops__employee-page">
           <header className="financial-ops__header">
             <div>
               <p className="eyebrow">{translateUi('การเงินหน้าร้าน')}</p>
-              <h1>{employeeView === 'queue' ? translateUi('คิวเก็บเงินของฉัน') : employeeView === 'history' ? translateUi('ประวัติรับเงิน') : translateUi('ใบเซ็นเครดิตรายวัน')}</h1>
+              <h1>{employeeView === 'queue' ? translateUi('คิวเก็บเงินของฉัน') : employeeView === 'history' ? translateUi('ประวัติรับเงิน') : employeeView === 'billing' ? translateUi('ใบวางบิล') : translateUi('ใบเซ็นเครดิตรายวัน')}</h1>
               <span>{translateUi('วันที่ธุรกิจ ')}{serviceDate}</span>
             </div>
             <button disabled={busy} onClick={() => void refreshFinancialData().catch((loadError: unknown) => setError(getErrorMessage(loadError)))} type="button">{translateUi('รีเฟรชยอดล่าสุด')}</button>
@@ -1088,49 +1096,53 @@ export function FinancialOperations({
             onVoidPayment={voidPayment}
             paymentHistory={paymentHistory}
             serviceDate={serviceDate}
-          /> : <DailyCreditAcknowledgementPanel canPrintWithVat={false} printerName={printerName} serviceDate={serviceDate} />}
+          /> : employeeView === 'billing' ? <EmployeeBillingStatementsPanel isActive={isActive} /> : <DailyCreditAcknowledgementPanel canPrintWithVat={false} printerName={printerName} serviceDate={serviceDate} />}
         </div>
       </div> : null}
 
-      {isManager && managerPage === 'collection' ? <CollectionDesk
-        busy={busy}
-        historyDate={historyDate}
-        onHistoryDateChange={changeHistoryDate}
-        onOpenReceipt={openHistoryReceipt}
-        onPrintReceipt={printHistoryReceipt}
-        onRefresh={() => void refreshFinancialData().catch((loadError: unknown) => setError(getErrorMessage(loadError)))}
-        onClearShop={closePayment}
-        onSelectShop={chooseShop}
-        onVoidPayment={voidPayment}
-        paymentPanel={null}
-        paymentHistory={paymentHistory}
-        queue={queue}
-        runId={runId}
-        selectedShop={selectedShop}
-        serviceDate={serviceDate}
-        todayPayments={todayPayments}
-      /> : null}
-
-      {isManager && managerPage === 'transactions' ? <AccountingPage userRole={userRole} demoMode={Boolean(demoData)} /> : null}
-
-      {isManager && managerPage === 'credit_signoff' ? <DailyCreditAcknowledgementPanel printerName={printerName} serviceDate={serviceDate} /> : null}
-
-      {isManager && managerPage === 'credit' ? <ManagerFinancialSections
-        approvals={approvals}
-        busy={busy}
-        dueDateRequests={dueDateRequests}
-        onDecide={decide}
-        onDecideDueDateRequest={decideDueDateRequest}
-        onCreateBillingStatement={createBillingStatement}
-        onLoadDetail={loadCreditReceivableDetail}
-        onOpenCollection={(receivable, queueKey) => { void openReceivableCollection(receivable, queueKey).catch((openError: unknown) => setError(getErrorMessage(openError))); }}
-        onRefreshReceivables={() => load()}
-        onUpdateCreditSettings={updateCreditSettings}
-        onVoidBillingStatement={voidBillingStatement}
-        receivables={receivables}
-        serviceDate={serviceDate}
-        userRole={userRole}
-      /> : null}
+      {isManager && FinancialManagerWorkspace ? (
+        <Suspense fallback={<p role="status">{translateUi('กำลังโหลด')}</p>}>
+          <FinancialManagerWorkspace
+            page={managerPage}
+            collection={{
+              busy,
+              historyDate,
+              onHistoryDateChange: changeHistoryDate,
+              onOpenReceipt: openHistoryReceipt,
+              onPrintReceipt: printHistoryReceipt,
+              onRefresh: () => void refreshFinancialData().catch((loadError: unknown) => setError(getErrorMessage(loadError))),
+              onClearShop: closePayment,
+              onSelectShop: chooseShop,
+              onVoidPayment: voidPayment,
+              paymentPanel: null,
+              paymentHistory,
+              queue,
+              runId,
+              selectedShop,
+              serviceDate,
+              todayPayments,
+            }}
+            accounting={{ userRole, demoMode: Boolean(demoData) }}
+            signoff={{ printerName, serviceDate }}
+            credit={{
+              approvals,
+              busy,
+              dueDateRequests,
+              onDecide: decide,
+              onDecideDueDateRequest: decideDueDateRequest,
+              onCreateBillingStatement: createBillingStatement,
+              onLoadDetail: loadCreditReceivableDetail,
+              onOpenCollection: (receivable, queueKey) => { void openReceivableCollection(receivable, queueKey).catch((openError: unknown) => setError(getErrorMessage(openError))); },
+              onRefreshReceivables: () => load(),
+              onUpdateCreditSettings: updateCreditSettings,
+              onVoidBillingStatement: voidBillingStatement,
+              receivables,
+              serviceDate,
+              userRole,
+            }}
+          />
+        </Suspense>
+      ) : null}
 
       {isActive && selectedShop && (!isManager || managerPage === 'collection') ? createPortal(
         <PaymentModal

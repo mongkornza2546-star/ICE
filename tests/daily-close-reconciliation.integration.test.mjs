@@ -33,7 +33,7 @@ const runId = '10000000-0000-0000-0000-000000000001';
 const shopId = '50000000-0000-0000-0000-000000000001';
 const serviceDate = '2026-01-02';
 
-async function createDatabase({ applyCashFix = true } = {}) {
+async function createDatabase({ applyCashFix = true, applyFingerprintFix = true } = {}) {
   const db = new PGlite({ extensions: { pgcrypto } });
   await db.exec(`
     create extension if not exists pgcrypto;
@@ -80,7 +80,7 @@ async function createDatabase({ applyCashFix = true } = {}) {
       received_amount numeric(12,2) not null,
       allocated_amount numeric(12,2) not null,
       change_amount numeric(12,2) not null default 0,
-      status text not null,
+      status public.financial_record_status not null,
       recorded_by uuid not null references public.users(id),
       recorded_role public.app_role not null,
       recorded_at timestamptz not null,
@@ -254,6 +254,9 @@ async function createDatabase({ applyCashFix = true } = {}) {
   if (applyCashFix) {
     await db.exec(migration('0235_daily_close_casual_cash_and_legacy_guard.sql'));
   }
+  if (applyFingerprintFix) {
+    await db.exec(migration('0238_daily_close_payment_fingerprint_enum.sql'));
+  }
   return db;
 }
 
@@ -277,6 +280,54 @@ async function addPayment(db, {
     ${receivedAmount}, ${amount}, ${changeAmount}, '${status}', '${employeeId}', '${role}', '${recordedAt}'
   )`);
 }
+
+test('enum fingerprint migration repairs failed closes without changing hashes or granting client access', async (t) => {
+  const db = await createDatabase({ applyFingerprintFix: false });
+  t.after(() => db.close());
+  await addPayment(db, { id: '20000000-0000-0000-0000-000000000001', amount: 100 });
+  await db.exec(`set app.test_user_id = '${managerId}'`);
+  const stockCounts = JSON.stringify([{ ice_type_id: '40000000-0000-0000-0000-000000000001', actual_quantity: 10 }]);
+  const cashCounts = JSON.stringify([{ employee_id: courierId, actual_cash_amount: 100 }]);
+  const closeSql = `select public.close_daily_reconciliation_v2(
+    date '${serviceDate}', '${stockCounts}'::jsonb, '${cashCounts}'::jsonb,
+    null, '30000000-0000-0000-0000-000000000099'
+  ) result`;
+  await assert.rejects(db.query(closeSql), {
+    code: '42883',
+    message: 'function public.daily_close_payment_fingerprint(uuid, financial_record_status, payment_method, numeric, uuid, app_role, date) does not exist',
+  });
+  for (const table of ['daily_aggregate_stock_closures', 'daily_close_reconciliation_requests', 'daily_close_employee_snapshots', 'daily_close_payment_items']) {
+    assert.equal((await db.query(`select count(*)::integer count from public.${table}`)).rows[0].count, 0);
+  }
+
+  const fix = migration('0238_daily_close_payment_fingerprint_enum.sql');
+  await db.exec(fix);
+  await db.exec(fix);
+  const hashes = (await db.query(`select status,
+    public.daily_close_payment_fingerprint(p.id, status, p.payment_method,
+      p.allocated_amount, p.recorded_by, p.recorded_role, date '${serviceDate}') enum_hash,
+    public.daily_close_payment_fingerprint(p.id, status::text, p.payment_method,
+      p.allocated_amount, p.recorded_by, p.recorded_role, date '${serviceDate}') text_hash
+    from (select id, payment_method, allocated_amount, recorded_by, recorded_role from public.payments) p
+    cross join unnest(enum_range(null::public.financial_record_status)) status
+  `)).rows;
+  assert.equal(hashes.length, 2);
+  for (const row of hashes) assert.equal(row.enum_hash, row.text_hash);
+  for (const role of ['anon', 'authenticated']) {
+    const access = (await db.query(`select has_function_privilege('${role}',
+      'public.daily_close_payment_fingerprint(uuid,public.financial_record_status,public.payment_method,numeric,uuid,public.app_role,date)',
+      'EXECUTE') allowed`)).rows[0];
+    assert.equal(access.allowed, false);
+  }
+
+  await db.exec('set role authenticated');
+  assert.equal((await db.query(closeSql)).rows[0].result.status, 'closed');
+  assert.equal((await db.query(closeSql)).rows[0].result.status, 'closed');
+  await db.exec('reset role');
+  const snapshots = (await db.query('select payment_fingerprint from public.daily_close_payment_items')).rows;
+  assert.equal(snapshots.length, 1);
+  assert.equal(snapshots[0].payment_fingerprint, hashes.find(row => row.status === 'active').text_hash);
+});
 
 test('summary counts only active allocated courier cash for the service date', async (t) => {
   const db = await createDatabase();

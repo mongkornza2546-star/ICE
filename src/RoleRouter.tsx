@@ -1,19 +1,11 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
+import { KeepAlive } from './KeepAlive';
 import { Session } from '@supabase/supabase-js';
 import { supabase } from './lib/supabase';
-import { AdminLayout, type AdminView, type FinancialPage } from './AdminLayout';
-import { ManagerDashboard } from './ManagerDashboard';
-import { ExecutiveReportsPage } from './features/reports/ExecutiveReportsPage';
-import { FactoryOrderPage } from './FactoryOrderPage';
-import { AdminReferenceSettings } from './AdminReferenceSettings';
+import type { AdminView, FinancialPage } from './AdminLayout';
 import { EmployeeLayout } from './EmployeeLayout';
 import { EmployeeDeliveryWorkspace } from './EmployeeDeliveryWorkspace';
-import { LocationManagementSettings } from './LocationManagementSettings';
-import { ShopSettings } from './ShopSettings';
-import { RoundWorkspace } from './RoundWorkspace';
-import { ManagerStockAudit } from './ManagerStockAudit';
 import { FinancialOperations } from './FinancialOperations';
-import { EventManagementPage } from './EventManagementPage';
 import { EmployeeEventPage } from './EmployeeEventPage';
 import { CalendarBlank, Coins, Package, Storefront } from '@phosphor-icons/react';
 import type { CollectionCloseResult, CollectionFocusRequest, UserProfile } from './types/app';
@@ -30,19 +22,10 @@ import { initGlobalRealtimeSync } from './lib/realtimeSync';
 import { clearPosCollectionReturn, readPosCollectionReturn } from './lib/posCollectionReturn';
 import { LanguageSwitcher, localizeErrorMessage, useLanguage } from './i18n';
 
-/**
- * Wrapper that keeps its children mounted once rendered,
- * but hides them with display:none when not active.
- * This preserves component state (fetched data, scroll position, form input)
- * across tab switches without re-mounting / re-fetching.
- */
-function KeepAlive({ active, children }: { active: boolean; children: ReactNode }) {
-  return (
-    <div style={{ display: active ? undefined : 'none' }}>
-      {children}
-    </div>
-  );
-}
+// The employee build removes this import and all admin screens from its output.
+const AdminRoleWorkspace = import.meta.env.VITE_EMPLOYEE_ONLY === 'true'
+  ? null
+  : lazy(() => import('./AdminRoleWorkspace'));
 
 export function canUserProfileCollectPayments(
   profile: Pick<UserProfile, 'role' | 'can_collect_shop_payments'> | null | undefined,
@@ -403,194 +386,45 @@ export function RoleRouter({
     );
   }
 
-  const canManageRounds = profile.role === 'admin' || profile.role === 'round_lead';
-  const currentView = canManageRounds
-    ? (activeView === 'executive_reports' && profile.role !== 'admin' ? 'manager_overview' : activeView)
-    : 'delivery';
-
-  // Mark the current view as visited (lazy mount)
-  if (!visitedViews.has(currentView)) {
-    setVisitedViews((prev) => {
-      const next = new Set(prev);
-      next.add(currentView);
-      return next;
-    });
+  if (!AdminRoleWorkspace) {
+    return (
+      <div className="app-shell">
+        <section className="panel center-panel">
+          <h1>แอปสำหรับพนักงานส่งน้ำแข็ง</h1>
+          <p>กรุณาเข้าสู่ระบบด้วยบัญชีพนักงาน ส่วนแอดมินและหัวหน้าให้ใช้งานผ่านเว็บ</p>
+          <button className="ghost-button" onClick={signOut} type="button">{t('signOut')}</button>
+        </section>
+      </div>
+    );
   }
 
-  const allowedViews: AdminView[] = canManageRounds
-    ? profile.role === 'admin'
-      ? [
-          'manager_overview',
-          'executive_reports',
-          'events',
-          'factory_order',
-          'delivery',
-          'financial_operations',
-          'stock_operations',
-          'location_management',
-          'shops',
-          'stock_audit',
-          'reference_settings',
-        ]
-      : [
-          'manager_overview',
-          'events',
-          'factory_order',
-          'delivery',
-          'financial_operations',
-          'stock_operations',
-          'stock_audit',
-          'location_management',
-        ]
-    : ['delivery'];
-
-  const navigate = (view: AdminView) => {
-    if (view !== currentView && currentView === 'delivery' && !confirmLeavingDelivery()) return;
-    if (view !== 'financial_operations') {
-      clearPosCollectionReturn(profile.id);
-      setAdminCollectionFocus(null);
-    }
-    if (view === 'delivery' && currentView !== 'delivery') {
-      setBillingServiceDate(currentBangkokDate);
-    }
-    setActiveView(view);
-  };
-
-  const changeBillingServiceDate = (serviceDate: string) => {
-    if (serviceDate === billingServiceDate) return;
-    if (serviceDate > toBangkokDateString()) return;
-    if (!confirmLeavingDelivery()) return;
-    setBillingServiceDate(serviceDate);
-  };
-
-  const changeFinancialPage = (page: FinancialPage) => {
-    if (adminCollectionFocus && page !== 'collection') {
-      clearPosCollectionReturn(profile.id);
-      setAdminCollectionFocus(null);
-      setFocusedCollectionServiceDate(null);
-    }
-    setFinancialPage(page);
-  };
-
   return (
-    <AdminLayout
-      activeView={currentView}
-      allowedViews={allowedViews}
-      financialPage={financialPage}
-      onNavigate={navigate}
-      onFinancialPageChange={changeFinancialPage}
-      onServiceDateChange={profile.role === 'admin' && currentView === 'delivery'
-        ? changeBillingServiceDate
-        : undefined}
-      onSignOut={signOut}
-      profileLabel={profile.display_name}
-      serviceDate={profile.role === 'admin' && currentView === 'delivery'
-        ? billingServiceDate
-        : undefined}
-      signOutDisabled={deliveryDraftState.submitting}
-    >
-      {/* Keep-alive views: mount on first visit, stay mounted (hidden) on tab switch */}
-      {visitedViews.has('manager_overview') && (
-        <KeepAlive active={currentView === 'manager_overview'}>
-          <ManagerDashboard
-            isActive={currentView === 'manager_overview'}
-            onNavigate={setActiveView}
-            profileRole={profile.role === 'admin' ? 'admin' : 'round_lead'}
-          />
-        </KeepAlive>
-      )}
-      {profile.role === 'admin' && visitedViews.has('executive_reports') && (
-        <KeepAlive active={currentView === 'executive_reports'}>
-          <ExecutiveReportsPage isActive={currentView === 'executive_reports'} />
-        </KeepAlive>
-      )}
-      {visitedViews.has('events') && (
-        <KeepAlive active={currentView === 'events'}>
-          <EventManagementPage
-            initialSelectedId={selectedEventJobId}
-            isActive={currentView === 'events'}
-            onSelectedIdChange={setSelectedEventJobId}
-            profileRole={profile.role === 'admin' ? 'admin' : 'round_lead'}
-          />
-        </KeepAlive>
-      )}
-      {visitedViews.has('factory_order') && (
-        <KeepAlive active={currentView === 'factory_order'}>
-          <FactoryOrderPage />
-        </KeepAlive>
-      )}
-      {visitedViews.has('location_management') && (
-        <KeepAlive active={currentView === 'location_management'}>
-          <LocationManagementSettings canManageBuildings={profile.role === 'admin'} />
-        </KeepAlive>
-      )}
-      {visitedViews.has('shops') && (
-        <KeepAlive active={currentView === 'shops'}>
-          <ShopSettings isActive={currentView === 'shops'} />
-        </KeepAlive>
-      )}
-      {visitedViews.has('reference_settings') && (
-        <KeepAlive active={currentView === 'reference_settings'}>
-          <AdminReferenceSettings />
-        </KeepAlive>
-      )}
-      {visitedViews.has('stock_operations') && (
-        <KeepAlive active={currentView === 'stock_operations'}>
-          <RoundWorkspace isActive={currentView === 'stock_operations'} />
-        </KeepAlive>
-      )}
-      {visitedViews.has('stock_audit') && (
-        <KeepAlive active={currentView === 'stock_audit'}>
-          <ManagerStockAudit />
-        </KeepAlive>
-      )}
-      {visitedViews.has('delivery') && (
-        <KeepAlive active={currentView === 'delivery'}>
-          <EmployeeDeliveryWorkspace
-            canPrintCreditWithVat
-            canCollectShopPayments={canCollectPayments}
-            casualCustomerEnabled
-            isActive={currentView === 'delivery'}
-            onDraftStateChange={setDeliveryDraftState}
-            onOpenCollection={(request) => {
-              setCollectionCloseResult(null);
-              setAdminCollectionFocus(request);
-              setFocusedCollectionServiceDate(request.source === 'pos-shortcut' ? currentBangkokDate : billingServiceDate);
-              setVisitedViews((views) => new Set([...views, 'financial_operations']));
-              setFinancialPage('collection');
-              setActiveView('financial_operations');
-            }}
-            requestScope={profile.id}
-            collectionReturnOrigin="admin-delivery"
-            collectionCloseResult={collectionCloseResult}
-            serviceDate={profile.role === 'admin' ? billingServiceDate : undefined}
-            stockSourceLabel="สต๊อกรวมประจำวัน"
-            printerName={profile.nickname?.trim() || profile.display_name}
-          />
-        </KeepAlive>
-      )}
-      {visitedViews.has('financial_operations') && (
-        <KeepAlive active={currentView === 'financial_operations'}>
-          <FinancialOperations
-            canCollectShopPayments={canCollectPayments}
-            currentUserId={profile.id}
-            printerName={profile.nickname?.trim() || profile.display_name}
-            focusRequest={adminCollectionFocus}
-            isActive={currentView === 'financial_operations'}
-            managerPage={financialPage}
-            onFocusedCollectionClose={(result) => {
-              setCollectionCloseResult(result);
-              setAdminCollectionFocus(null);
-              setFocusedCollectionServiceDate(null);
-              setActiveView('delivery');
-            }}
-            onManagerPageChange={changeFinancialPage}
-            serviceDate={adminCollectionFocus ? focusedCollectionServiceDate ?? undefined : profile.role === 'admin' ? billingServiceDate : undefined}
-            userRole={profile.role}
-          />
-        </KeepAlive>
-      )}
-    </AdminLayout>
+    <Suspense fallback={<div className="app-shell" role="status">{t('loadingPermissions')}</div>}>
+      <AdminRoleWorkspace
+        profile={profile}
+        activeView={activeView}
+        setActiveView={setActiveView}
+        financialPage={financialPage}
+        setFinancialPage={setFinancialPage}
+        visitedViews={visitedViews}
+        setVisitedViews={setVisitedViews}
+        adminCollectionFocus={adminCollectionFocus}
+        setAdminCollectionFocus={setAdminCollectionFocus}
+        focusedCollectionServiceDate={focusedCollectionServiceDate}
+        setFocusedCollectionServiceDate={setFocusedCollectionServiceDate}
+        billingServiceDate={billingServiceDate}
+        setBillingServiceDate={setBillingServiceDate}
+        currentBangkokDate={currentBangkokDate}
+        selectedEventJobId={selectedEventJobId}
+        setSelectedEventJobId={setSelectedEventJobId}
+        deliveryDraftState={deliveryDraftState}
+        setDeliveryDraftState={setDeliveryDraftState}
+        collectionCloseResult={collectionCloseResult}
+        setCollectionCloseResult={setCollectionCloseResult}
+        canCollectPayments={canCollectPayments}
+        confirmLeavingDelivery={confirmLeavingDelivery}
+        signOut={signOut}
+      />
+    </Suspense>
   );
-
 }

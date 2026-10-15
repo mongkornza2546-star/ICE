@@ -169,6 +169,7 @@ async function createDatabase(t, { applyDateFix = true, applyCreditHistoryFix = 
   ));
   await db.exec(migration('0198_allow_selected_credit_bill_payments'));
   await db.exec(migration('0199_credit_billing_statements'));
+  await db.exec(migration('0236_round_lead_billing_statements'));
   await db.exec(migration('0202_admin_backdated_collection_payments'));
   await db.exec(migration('0110_payment_receipt_numbers'));
   const numbering = migration('0134_monthly_sales_documents_and_atomic_immediate_sales');
@@ -192,6 +193,7 @@ async function createDatabase(t, { applyDateFix = true, applyCreditHistoryFix = 
   if (applyDateFix) await db.exec(migration('0204_payment_date_presentation_and_replay'));
   if (applyCreditHistoryFix) await db.exec(migration('0208_preserve_former_credit_customer_history'));
   if (applyUnifiedCollections) await db.exec(migration('0220_unified_shop_collections'));
+  await db.exec(migration('0237_employee_billing_statements'));
   return db;
 }
 
@@ -520,9 +522,8 @@ test('future bills keep due dates, queues stay separate, and roles and allocatio
   const dueDate = (await db.query('select due_date::text as due_date from delivery_charges where id=$1', [newBill])).rows[0].due_date;
   assert.equal((await queue(db)).length, 1);
   await db.exec("set test.role = 'courier'");
-  await assert.rejects(issue(db), /only an admin/i);
-  await db.exec("set test.role = 'admin'");
   const statement = await issue(db);
+  await db.exec("set test.role = 'admin'");
   assert.equal((await queue(db)).length, 2);
   await assert.rejects(issue(db), /already on an active/i);
   await assert.rejects(pay(db, { statement: statement.id, bill: oldBill }), /outside the billing statement/i);
@@ -839,4 +840,58 @@ test('former credit history retains role, shop and credit-charge boundaries afte
     values ($1, $2, 'immediate', '2026-10-05', now(), 10, 10, $3, '2026-10-05')`,
   [otherRunBill, shopId, oldBill]);
   assert.deepEqual(await creditDetail(db), settled);
+});
+
+
+test('round leads can issue statements but cannot void them', async (t) => {
+  const db = await createDatabase(t);
+  await db.exec("set test.role = 'round_lead'");
+  const statement = await issue(db);
+  assert.equal(statement.status, 'active');
+  assert.equal(statement.shop_id, shopId);
+  assert.ok(statement.items.length > 0);
+  await assert.rejects(issue(db), /already on an active/i);
+  await assert.rejects(voidStatement(db, statement.id), /only an admin/i);
+  await db.exec("set test.role = 'admin'");
+  await voidStatement(db, statement.id);
+  assert.equal((await db.query('select status from billing_statements where id=$1', [statement.id])).rows[0].status, 'voided');
+});
+
+test('inactive round leads cannot issue billing statements', async (t) => {
+  const db = await createDatabase(t);
+  await db.exec("set test.role = 'round_lead'; create or replace function public.is_active_user() returns boolean language sql as $$ select false $$");
+  await assert.rejects(issue(db), /only active employees or managers/i);
+  assert.equal((await db.query('select * from billing_statements')).rows.length, 0);
+});
+
+
+test('employees can list, issue and reprint visible bills without payment permission, but cannot void', async (t) => {
+  const db = await createDatabase(t);
+  await db.exec("set test.role = 'courier'; set test.can_collect = 'false'; set role authenticated");
+  const accounts = (await db.query('select public.get_employee_billing_accounts() as result')).rows[0].result;
+  assert.equal(accounts.length, 1);
+  assert.equal(accounts[0].charges.length, 2);
+  const statement = await issue(db, [oldBill, newBill]);
+  assert.equal(Number(statement.total_amount), 125);
+  assert.equal((await db.query('select public.get_billing_statements($1) as result', [shopId])).rows[0].result[0].id, statement.id);
+  await assert.rejects(voidStatement(db, statement.id), /only an admin/i);
+  await db.exec('reset role');
+  assert.equal((await db.query('select count(*) from public.payments')).rows[0].count, 0);
+});
+
+test('employee billing excludes inaccessible charges and rejects mixed authorized selections atomically', async (t) => {
+  const db = await createDatabase(t);
+  const statement = await issue(db, [newBill]);
+  await db.exec(`set test.role = 'courier'; set test.can_collect = 'false';
+    create or replace function public.is_financial_charge_visible(uuid) returns boolean language sql as $$ select $1 = '${oldBill}'::uuid $$`);
+  const accounts = (await db.query('select public.get_employee_billing_accounts() as result')).rows[0].result;
+  assert.deepEqual(accounts[0].charges.map((charge) => charge.charge_id), [oldBill]);
+  assert.deepEqual(accounts[0].statements, []);
+  assert.deepEqual((await db.query('select public.get_billing_statements($1) as result', [shopId])).rows[0].result, []);
+  await assert.rejects(issue(db, [oldBill, newBill]), /invalid, paid, or already/);
+  assert.equal((await db.query('select count(*) from billing_statements')).rows[0].count, 1);
+  await db.exec("create or replace function public.is_active_user() returns boolean language sql as $$ select false $$");
+  await assert.rejects(db.query('select public.get_employee_billing_accounts()'), /Only active employees/);
+  await assert.rejects(issue(db, [oldBill]), /Only active employees/);
+  assert.ok(statement.id);
 });

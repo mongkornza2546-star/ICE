@@ -7,7 +7,7 @@ vi.mock('../src/lib/supabase', () => ({ supabase: supabaseMock }));
 
 import { DailyAggregateStockClose } from '../src/features/stock-control/components/DailyAggregateStockClose';
 
-it('records manager-counted courier cash in the atomic daily close', async () => {
+it.each([10, 9])('records courier cash with only employee reasons when stock count is %s', async (stockCount) => {
   supabaseMock.rpc.mockImplementation((name: string) => {
     if (name === 'get_daily_close_reconciliation') return Promise.resolve({
       data: {
@@ -43,10 +43,12 @@ it('records manager-counted courier cash in the atomic daily close', async () =>
   expect(screen.getByText('3 รายการเงินสด')).toBeTruthy();
   expect((cashInput as HTMLInputElement).value).toBe('');
   expect((screen.getByRole('button', { name: 'ปิดยอดสต๊อกและเงินสดวันนี้' }) as HTMLButtonElement).disabled).toBe(true);
-  await user.type(screen.getByLabelText(/^นับจริง/), '10');
-  expect((screen.getByLabelText(/^นับจริง/) as HTMLInputElement).value).toBe('10');
+  expect(screen.queryByLabelText(/^หมายเหตุ/)).toBeNull();
+  await user.type(screen.getByLabelText(/^นับจริง/), String(stockCount));
+  expect((screen.getByLabelText(/^นับจริง/) as HTMLInputElement).value).toBe(String(stockCount));
   await user.clear(cashInput);
   await user.type(cashInput, '90');
+  expect((screen.getByRole('button', { name: 'ปิดยอดสต๊อกและเงินสดวันนี้' }) as HTMLButtonElement).disabled).toBe(true);
   await user.type(screen.getByLabelText('เหตุผลส่วนต่าง *'), 'ลูกค้ายังค้างเงิน');
   await user.click(screen.getByRole('button', { name: 'ปิดยอดสต๊อกและเงินสดวันนี้' }));
 
@@ -54,7 +56,8 @@ it('records manager-counted courier cash in the atomic daily close', async () =>
     'close_daily_reconciliation_v2',
     expect.objectContaining({
       p_service_date: '2026-08-26',
-      p_stock_counts: [{ ice_type_id: 'ice-1', actual_quantity: 10, note: null }],
+      p_stock_counts: [{ ice_type_id: 'ice-1', actual_quantity: stockCount, note: stockCount === 10 ? null : 'ส่วนต่างยังไม่ทราบสาเหตุ' }],
+      p_stock_note: null,
       p_cash_counts: [{
         employee_id: 'courier-1', actual_cash_amount: 90, reason: 'ลูกค้ายังค้างเงิน',
       }],
@@ -84,7 +87,7 @@ it('keeps the legacy stock close during dark launch without recording cash', asy
   const user = userEvent.setup();
   render(<DailyAggregateStockClose serviceDate="2026-08-26" />);
   await screen.findByText('Dark launch');
-  expect((screen.getByRole('button', { name: 'ปิดสต๊อกและจบงานวันนี้' }) as HTMLButtonElement).disabled).toBe(true);
+  expect((screen.getByRole('button', { name: 'ปิดสต๊อกและจบงานวันนี้' }) as HTMLButtonElement).disabled).toBe(false);
   const stockInputs = screen.getAllByLabelText(/^นับจริง/);
   expect(stockInputs.map((input) => (input as HTMLInputElement).value)).toEqual(['0', '0']);
   await user.type(stockInputs[0], '10');

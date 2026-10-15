@@ -134,7 +134,7 @@ describe('RoleRouter profile validation', () => {
 
     render(<RoleRouter onRecoverableSessionError={vi.fn().mockResolvedValue(false)} session={session} />);
     await act(async () => { await Promise.resolve(); });
-    expect(screen.getByTestId('admin-layout')).not.toBeNull();
+    expect(await screen.findByTestId('admin-layout')).not.toBeNull();
 
     await act(async () => {
       vi.advanceTimersByTime(USER_PROFILE_REVALIDATE_MS);

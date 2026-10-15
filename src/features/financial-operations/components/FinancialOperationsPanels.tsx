@@ -217,8 +217,6 @@ export function LegacyManagerFinancialSections({
   );
 }
 
-export { CreditReceivablesManager as ManagerFinancialSections } from './CreditReceivablesManager';
-
 export function PaymentHistorySection({
   paymentHistory,
   historyDate,

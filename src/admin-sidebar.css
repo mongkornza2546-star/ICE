@@ -1,0 +1,1 @@
+.admin-sidebar::after { content: ''; position: absolute; inset: auto 0 0; height: 48%; pointer-events: none; opacity: .92; background: url('./assets/ice-sidebar-water.png') bottom center / 100% auto no-repeat; }
