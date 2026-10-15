@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { ArrowClockwise, Check, Truck, WarningCircle, CaretRight, X } from '@phosphor-icons/react';
 import type { DeliveryRound, EmployeeStockState, IceTypeOption } from '../../types/app';
 import type { StockTransferMode, StockTransferSuccess } from './useEmployeeDeliveryData';
+import { StockBagQuantityCard } from '../stock-control/components/StockBagQuantityCard';
 import { EmployeeState } from './EmployeeState';
 import { EmployeeStockProductImage } from './EmployeeStockProductImage';
 import './employee-stock-product-image.css';
@@ -144,34 +145,21 @@ export function EmployeeStockTransferSection({
                 const quantity = bagTotal(normalizeBags(bags, iceType.allowHalf));
                 const before = stockQuantity(usesHoldingStock ? stockState.holding_location.balances : stockState.truck_location.balances, iceType.id);
                 const disabled = transferSubmitting || selectedRound?.status === 'closed';
-                return <div className="bag-transfer-card" key={iceType.id} role="listitem">
-                  <div className="bag-transfer-heading">
-                    {iceType.image_url || iceType.image_path ? <EmployeeStockProductImage key={`${iceType.id}:${iceType.image_path}:${iceType.image_url}`} iceType={iceType} onPreview={setPreviewImage} />
-                      : <span className="bag-product-fallback" aria-hidden="true">{Array.from(iceType.name).slice(0, 2).join('')}</span>}
-                    <div className="bag-product-name"><strong>{iceType.name}</strong><small>{translateUi(usesHoldingStock ? 'เหลือที่ถือ {0} ถุง' : 'เหลือบนรถ {0} ถุง', { 0: formatBags(before - quantity) })}</small></div>
-                    <div className="bag-transfer-total"><small>{translateUi(isReturn ? 'คืนครั้งนี้' : isDamage ? 'ละลายครั้งนี้' : 'เติมครั้งนี้')}</small><strong>{formatBags(quantity)} <small>{translateUi('ถุง')}</small></strong></div>
-                  </div>
-                  <div className="bag-transfer-inputs">
-                    {(['fullBags', ...(iceType.allowHalf === false ? [] : ['halfBags'])] as Array<keyof BagQuantity>).map((field) => {
-                      const label = translateUi(field === 'fullBags' ? 'เต็มถุง' : 'ครึ่งถุง');
-                      return <label className="bag-counter" key={field}>
-                        <span>{label} <small>{field === 'fullBags' ? '×1' : '×½'}</small></span>
-                        <span className="bag-counter-controls">
-                          <button type="button" aria-label={translateUi('ลด{0} {1}', { 0: label, 1: iceType.name })} disabled={disabled || bags[field] === 0} onClick={() => changeTransferQuantity(iceType.id, field, bags[field] - 1)}>−</button>
-                          <input aria-label={`${label} ${iceType.name}`} type="text" inputMode="numeric" pattern="[0-9]*" value={bags[field]} disabled={disabled}
-                            onFocus={(event) => event.currentTarget.select()}
-                            onChange={(event) => {
-                              if (/^[0-9]*$/.test(event.target.value)) changeTransferQuantity(iceType.id, field, Number(event.target.value));
-                            }} />
-                          <button type="button" aria-label={translateUi('เพิ่ม{0} {1}', { 0: label, 1: iceType.name })} disabled={disabled || quantity + (field === 'fullBags' ? 1 : 0.5) > before} onClick={() => changeTransferQuantity(iceType.id, field, bags[field] + 1)}>+</button>
-                        </span>
-                      </label>;
-                    })}
-                  </div>
-                  <div className="bag-transfer-warning" role={quantity > before ? 'status' : undefined}>
-                    {quantity > before ? translateUi(canRetryTransfer ? 'ตรวจสอบผลรายการเดิมก่อนทำรายการใหม่' : 'จำนวนเกินสต๊อกคงเหลือ ไม่สามารถบันทึกได้') : '\u00a0'}
-                  </div>
-                </div>;
+                return <StockBagQuantityCard
+                  key={iceType.id}
+                  name={iceType.name}
+                  unit={iceType.unit}
+                  image={iceType.image_url || iceType.image_path ? <EmployeeStockProductImage key={`${iceType.id}:${iceType.image_path}:${iceType.image_url}`} iceType={iceType} onPreview={setPreviewImage} />
+                    : <span className="bag-product-fallback" aria-hidden="true">{Array.from(iceType.name).slice(0, 2).join('')}</span>}
+                  bags={bags}
+                  allowHalf={iceType.allowHalf}
+                  before={before}
+                  disabled={disabled}
+                  remainingLabel={translateUi(usesHoldingStock ? 'เหลือที่ถือ {0} {1}' : 'เหลือบนรถ {0} {1}', { 0: formatBags(before - quantity), 1: translateUi(iceType.unit) })}
+                  movementLabel={translateUi(isReturn ? 'คืนครั้งนี้' : isDamage ? 'ละลายครั้งนี้' : 'เติมครั้งนี้')}
+                  warning={translateUi(canRetryTransfer ? 'ตรวจสอบผลรายการเดิมก่อนทำรายการใหม่' : 'จำนวนเกินสต๊อกคงเหลือ ไม่สามารถบันทึกได้')}
+                  onChange={(field, value) => changeTransferQuantity(iceType.id, field, value)}
+                />;
               })}
             </div>
             <div className="bag-transfer-actions">

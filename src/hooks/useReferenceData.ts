@@ -27,7 +27,7 @@ export function useReferenceData(canCreateRound: boolean) {
         .order('opened_at', { ascending: false }),
       supabase
         .from('ice_types')
-        .select('id, code, name, unit')
+        .select('id, code, name, unit, allowHalf:allow_half')
         .eq('is_active', true)
         .order('code'),
       supabase

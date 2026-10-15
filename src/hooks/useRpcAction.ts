@@ -115,6 +115,12 @@ export function useRpcAction<TArgs, TResult = any>(
     setIsSubmitting(false);
   }, []);
 
+  // Let callers reconcile the exact pending request without relaxing validation
+  // for a new payload. execute() reuses this request's existing idempotency key.
+  const hasPendingRequest = useCallback((signature: string) => (
+    pendingRequestRef.current?.signature === signature
+  ), []);
+
   return {
     execute,
     isSubmitting,
@@ -123,5 +129,6 @@ export function useRpcAction<TArgs, TResult = any>(
     success,
     setSuccess,
     reset,
+    hasPendingRequest,
   };
 }

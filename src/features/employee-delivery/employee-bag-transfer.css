@@ -29,13 +29,14 @@
 .bag-transfer-success { color: #138348; }
 @media (max-width: 759px) { .bag-transfer-actions { bottom: calc(76px + env(safe-area-inset-bottom)); } }
 @media (prefers-color-scheme: dark) {
-  .bag-transfer-card, .bag-transfer-actions { background: #172638; color: #e4edf8; border-color: #3a526e; }
-  .bag-counter-controls { border-color: #3a526e; }
-  .bag-counter-controls button, .bag-product-fallback { background: #233c58; color: #9ac7ff; }
-  .bag-transfer-total, .bag-transfer-undo { color: #9ac7ff; }
-  .bag-transfer-warning[role] { background: #4a3c16; color: #ffda7b; }
-  .bag-transfer-error { color: #ffaaaa; }
-  .bag-transfer-success { color: #79e7aa; }
+  /* Employee dark colors must not override the manager/admin light workspace. */
+  .employee-task-section .bag-transfer-card, .employee-task-section .bag-transfer-actions { background: #172638; color: #e4edf8; border-color: #3a526e; }
+  .employee-task-section .bag-counter-controls { border-color: #3a526e; }
+  .employee-task-section .bag-counter-controls button, .employee-task-section .bag-product-fallback { background: #233c58; color: #9ac7ff; }
+  .employee-task-section .bag-transfer-total, .employee-task-section .bag-transfer-undo { color: #9ac7ff; }
+  .employee-task-section .bag-transfer-warning[role] { background: #4a3c16; color: #ffda7b; }
+  .employee-task-section .bag-transfer-error { color: #ffaaaa; }
+  .employee-task-section .bag-transfer-success { color: #79e7aa; }
 }
 .employee-workspace--withdrawal .bag-transfer-heading .employee-stock-product-image-button { grid-column: 1; grid-row: 1; }
 .bag-counter { color: inherit; }

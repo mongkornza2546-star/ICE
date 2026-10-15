@@ -20,11 +20,17 @@ import { publishDataChange } from './lib/dataChange';
 import { useRpcAction } from './hooks/useRpcAction';
 import type {
   DeliveryRound,
+  IceTypeOption,
   StockControlSummary,
   StockLocationBalance,
 } from './types/app';
 
 import { DailyAggregateStockClose } from './features/stock-control/components/DailyAggregateStockClose';
+
+import { StockBagQuantityCard } from './features/stock-control/components/StockBagQuantityCard';
+import { EmployeeStockProductImage } from './features/employee-delivery/EmployeeStockProductImage';
+import { bagTotal, emptyBags, normalizeBags, restoreBags, formatBags, type BagQuantity } from './features/employee-delivery/bagQuantity';
+import './features/employee-delivery/employee-stock-product-image.css';
 
 const USER_AVATAR_BUCKET = 'user-avatars';
 const ICE_TYPE_IMAGE_BUCKET = 'ice-type-images';
@@ -36,7 +42,7 @@ const MOVEMENT_LABELS: Record<StockOperationKind, string> = {
   damage: 'เสียหาย / ละลาย',
 };
 
-type QuantityDraft = Record<string, number>;
+type QuantityDraft = Record<string, BagQuantity>;
 
 export function ManagerStockControl({
   operationRound,
@@ -44,12 +50,14 @@ export function ManagerStockControl({
   serviceDate,
   demoSummary,
   refreshId = 0,
+  iceTypeOptions = [],
 }: {
   operationRound: DeliveryRound | null;
   round: DeliveryRound | null;
   serviceDate: string;
   demoSummary?: StockControlSummary;
   refreshId?: number;
+  iceTypeOptions?: IceTypeOption[];
 }) {
   useLanguage();
   const isRoundSnapshot = round?.status === 'closed';
@@ -176,7 +184,7 @@ export function ManagerStockControl({
   useEffect(() => {
     if (!summary) return;
     setQuantities((current) =>
-      Object.fromEntries(iceTypes.map((ice) => [ice.ice_type_id, current[ice.ice_type_id] ?? 0])),
+      Object.fromEntries(iceTypes.map((ice) => [ice.ice_type_id, current[ice.ice_type_id] ?? emptyBags()])),
     );
     const truckId = truckLocations.find((location) => location.is_courier_source === true)?.id
       || truckLocations[0]?.id
@@ -269,6 +277,21 @@ export function ManagerStockControl({
     }
   );
 
+  const getBags = (iceTypeId: string) => normalizeBags(
+    quantities[iceTypeId] ?? emptyBags(),
+    kind === 'transfer' ? iceTypeOptions.find((ice) => ice.id === iceTypeId)?.allowHalf : true,
+  );
+  const getQuantity = (iceTypeId: string) => bagTotal(getBags(iceTypeId));
+
+  const movementBalances = summary?.locations.find((location) => location.id === fromLocationId)?.balances
+    ?? iceTypes;
+  const items = movementBalances
+    .map((ice) => ({ ice_type_id: ice.ice_type_id, quantity: getQuantity(ice.ice_type_id) }))
+    .filter((item) => item.quantity > 0);
+  const movementArgs = { kind, fromLocationId, toLocationId, items, note: note.trim() };
+  const movementSignature = JSON.stringify({ roundId: actionRound?.id, serviceDate, ...movementArgs });
+  const canRetryTransfer = kind === 'transfer' && stockMovementAction.hasPendingRequest(movementSignature);
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (isRoundSnapshot) {
@@ -287,12 +310,6 @@ export function ManagerStockControl({
       stockMovementAction.setError('สต๊อกของวันนี้ปิดแล้ว ไม่สามารถเพิ่มรายการเคลื่อนไหวได้');
       return;
     }
-
-    const movementBalances = summary?.locations.find((location) => location.id === fromLocationId)?.balances
-      ?? iceTypes;
-    const items = movementBalances
-      .map((ice) => ({ ice_type_id: ice.ice_type_id, quantity: quantities[ice.ice_type_id] ?? 0 }))
-      .filter((item) => item.quantity > 0);
 
     if (items.length === 0) {
       stockMovementAction.setError('กรอกจำนวนน้ำแข็งอย่างน้อย 1 รายการ');
@@ -314,10 +331,11 @@ export function ManagerStockControl({
       stockMovementAction.setError('ต้นทางและปลายทางต้องเป็นคนละจุด');
       return;
     }
-    const args = { kind, fromLocationId, toLocationId, items, note: note.trim() };
-    const signature = JSON.stringify({ roundId: actionRound.id, ...args });
-
-    await stockMovementAction.execute(args, { signature });
+    if (kind === 'transfer' && !canRetryTransfer && items.some((item) => item.quantity > (movementBalances.find((ice) => ice.ice_type_id === item.ice_type_id)?.quantity ?? 0))) {
+      stockMovementAction.setError('จำนวนเกินสต๊อกคงเหลือ ไม่สามารถบันทึกได้');
+      return;
+    }
+    await stockMovementAction.execute(movementArgs, { signature: movementSignature });
   };
 
   const selectMovementKind = (nextTab: TabKind) => {
@@ -391,12 +409,13 @@ export function ManagerStockControl({
   const isDamageOperation = activeTab === 'damage';
   const damageSourceLocations = stockHolderLocations;
   const movementIceTypes = selectedSource?.balances ?? iceTypes;
-  const cartItems = movementIceTypes.filter((ice) => (quantities[ice.ice_type_id] ?? 0) > 0);
-  const cartTotal = cartItems.reduce((total, ice) => total + (quantities[ice.ice_type_id] ?? 0), 0);
+  const cartItems = movementIceTypes.filter((ice) => getQuantity(ice.ice_type_id) > 0);
+  const hasOverstock = kind === 'transfer' && cartItems.some((ice) => getQuantity(ice.ice_type_id) > ice.quantity);
+  const cartTotal = cartItems.reduce((total, ice) => total + getQuantity(ice.ice_type_id), 0);
 
   const updateQuantity = (iceTypeId: string, value: number, available: number) => {
     const nextValue = Math.min(available, Math.max(0, Math.round(value * 2) / 2));
-    setQuantities((current) => ({ ...current, [iceTypeId]: nextValue }));
+    setQuantities((current) => ({ ...current, [iceTypeId]: restoreBags(nextValue) }));
     stockMovementAction.reset();
   };
 
@@ -610,9 +629,37 @@ export function ManagerStockControl({
                     <span>2.</span>
                     <h3 id="product-step-title">{translateUi('เลือกชนิดและจำนวน')}</h3>
                   </div>
-                  <div className="product-card-grid">
+                  {!isDamageOperation ? <div className="manager-bag-transfer-list" role="list" aria-label={translateUi('โอนระหว่างจุด')}>
+                    {movementIceTypes.map((ice) => {
+                      const bags = getBags(ice.ice_type_id);
+                      const option = iceTypeOptions.find((item) => item.id === ice.ice_type_id);
+                      const imagePath = ice.image_path ?? imagePathByIceTypeId[ice.ice_type_id];
+                      return <StockBagQuantityCard
+                        key={ice.ice_type_id}
+                        name={ice.ice_type_name}
+                        unit={ice.unit}
+                        image={imagePath && imageUrls[imagePath] ? <EmployeeStockProductImage
+                          key={`${ice.ice_type_id}:${imagePath}:${imageUrls[imagePath]}`}
+                          iceType={{ id: ice.ice_type_id, code: option?.code ?? '', name: ice.ice_type_name, unit: ice.unit, image_path: imagePath, image_url: imageUrls[imagePath] }}
+                          onPreview={setPreviewImage}
+                        /> : <span className="bag-product-fallback" aria-hidden="true">{Array.from(ice.ice_type_name).slice(0, 2).join('')}</span>}
+                        bags={bags}
+                        allowHalf={option?.allowHalf}
+                        before={ice.quantity}
+                        disabled={stockMovementAction.isSubmitting || isRoundSnapshot || !!closeState?.is_closed || !actionRound}
+                        remainingLabel={translateUi(selectedSource?.kind === 'truck' ? 'เหลือบนรถ {0} {1}' : 'เหลือที่ถือ {0} {1}', { 0: formatBags(ice.quantity - bagTotal(bags)), 1: translateUi(ice.unit) })}
+                        movementLabel={translateUi(isReturningToTruck ? 'คืนครั้งนี้' : 'โอนระหว่างจุด')}
+                        warning={canRetryTransfer ? translateUi('ตรวจสอบผลรายการเดิมก่อนทำรายการใหม่') : undefined}
+                        onChange={(field, value) => {
+                          if (bags[field] === value) return;
+                          setQuantities((current) => ({ ...current, [ice.ice_type_id]: { ...bags, [field]: value } }));
+                          stockMovementAction.reset();
+                        }}
+                      />;
+                    })}
+                  </div> : <div className="product-card-grid">
                     {movementIceTypes.map((ice, index) => {
-                      const quantity = quantities[ice.ice_type_id] ?? 0;
+                      const quantity = getQuantity(ice.ice_type_id);
                       const selected = quantity > 0;
                       const ProductIcon = index % 2 === 0 ? Cube : Snowflake;
                       return (
@@ -685,7 +732,7 @@ export function ManagerStockControl({
                         </article>
                       );
                     })}
-                  </div>
+                  </div>}
                 </section>
 
                 <label className="holder-pos__note">
@@ -742,7 +789,7 @@ export function ManagerStockControl({
                       <div className="holder-cart__item" key={ice.ice_type_id}>
                         <ProductIcon aria-hidden="true" size={31} weight="duotone" />
                         <span>{ice.ice_type_name}</span>
-                        <strong>{formatStockQuantity(quantities[ice.ice_type_id] ?? 0)} <small>{ice.unit}</small></strong>
+                        <strong>{formatStockQuantity(getQuantity(ice.ice_type_id))} <small>{ice.unit}</small></strong>
                       </div>
                     );
                   })}
@@ -765,9 +812,9 @@ export function ManagerStockControl({
                 {stockMovementAction.success ? <p className="holder-cart__feedback success-text" role="status">{translateUi(stockMovementAction.success)}</p> : null}
 
                 <button
-                  aria-label={translateUi(isDamageOperation ? 'ยืนยัน เสียหาย / ละลาย' : isReturningToTruck ? 'ยืนยัน คืนของเข้ารถบรรทุก' : 'ยืนยัน โอนระหว่างจุด')}
+                  aria-label={translateUi(canRetryTransfer ? 'ตรวจสอบผลรายการเดิม' : isDamageOperation ? 'ยืนยัน เสียหาย / ละลาย' : isReturningToTruck ? 'ยืนยัน คืนของเข้ารถบรรทุก' : 'ยืนยัน โอนระหว่างจุด')}
                   className="primary-button holder-cart__confirm"
-                  disabled={!actionRound || (isDamageOperation ? !selectedSource : !selectedRecipient) || cartItems.length === 0 || stockMovementAction.isSubmitting || closeState?.is_closed}
+                  disabled={isRoundSnapshot || (hasOverstock && !canRetryTransfer) || !actionRound || (isDamageOperation ? !selectedSource : !selectedRecipient) || cartItems.length === 0 || stockMovementAction.isSubmitting || closeState?.is_closed}
                   type="submit"
                 >
                   <Check size={19} weight="bold" />
@@ -775,6 +822,8 @@ export function ManagerStockControl({
                     ? translateUi('ปิดสต๊อกวันนี้แล้ว')
                     : stockMovementAction.isSubmitting
                       ? translateUi('กำลังบันทึก...')
+                      : canRetryTransfer
+                        ? translateUi('ตรวจสอบผลรายการเดิม')
                       : isDamageOperation
                         ? translateUi('ยืนยัน เสียหาย / ละลาย')
                       : isReturningToTruck
@@ -785,7 +834,7 @@ export function ManagerStockControl({
                   className="holder-cart__clear"
                   disabled={cartItems.length === 0 && !selectedRecipient}
                   onClick={() => {
-                    setQuantities(Object.fromEntries(movementIceTypes.map((ice) => [ice.ice_type_id, 0])));
+                    setQuantities({});
                     setToLocationId('');
                     setNote('');
                     stockMovementAction.reset();
@@ -834,10 +883,10 @@ export function ManagerStockControl({
                           step={0.5}
                           onChange={(event) => setQuantities((current) => ({
                             ...current,
-                            [ice.ice_type_id]: Math.max(0, Number(event.target.value) || 0),
+                            [ice.ice_type_id]: restoreBags(Math.max(0, Number(event.target.value) || 0)),
                           }))}
                           type="number"
-                          value={quantities[ice.ice_type_id] || ''}
+                          value={getQuantity(ice.ice_type_id) || ''}
                           placeholder="0"
                         />
                         <small>{ice.unit}</small>

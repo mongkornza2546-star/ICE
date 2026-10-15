@@ -1375,3 +1375,10 @@
 .stock-action-panel { order: 1; }
 .stock-current-summary-panel { order: 2; }
 .daily-close-section { order: 3; }
+
+/* Match employee bag counters, with room for both controls at each breakpoint. */
+.manager-bag-transfer-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr));
+  gap: 12px;
+}

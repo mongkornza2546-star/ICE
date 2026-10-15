@@ -15,6 +15,7 @@ export function RoundWorkspace({ isActive }: { isActive: boolean }) {
   useLanguage();
   const {
     rounds,
+    iceTypes,
     selectedRoundId,
     setSelectedRoundId,
     loadingRounds,
@@ -103,7 +104,7 @@ export function RoundWorkspace({ isActive }: { isActive: boolean }) {
                 />
               </section>
             ) : null}
-            <ManagerStockControl key={stockServiceDate} operationRound={stockRound?.status === 'open' ? stockRound : null} refreshId={stockRefreshId} round={stockRound} serviceDate={stockServiceDate} />
+            <ManagerStockControl iceTypeOptions={iceTypes} key={stockServiceDate} operationRound={stockRound?.status === 'open' ? stockRound : null} refreshId={stockRefreshId} round={stockRound} serviceDate={stockServiceDate} />
         </div>
       </section>
     </div>
