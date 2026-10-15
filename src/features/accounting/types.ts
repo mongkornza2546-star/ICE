@@ -283,8 +283,26 @@ export type HolderReconciliation = {
   items: ReconciliationLine[];
 };
 
+export type CashCloseReconciliation = {
+  service_date: string;
+  status: string;
+  feature_enabled: boolean;
+  employees: Array<{
+    employee_id: string;
+    employee_name: string;
+    is_active: boolean;
+    expected_cash_amount: number;
+    actual_cash_amount: number | null;
+    cash_variance_amount: number | null;
+    cash_reason: string | null;
+    recorded_at: string | null;
+  }>;
+};
+
 export type AccountingReconciliation = {
   service_date: string;
+  cash_close?: CashCloseReconciliation | null;
+  cash_close_error?: string | null;
   aggregate: ReconciliationLine[];
   holders: HolderReconciliation[];
   financial: {

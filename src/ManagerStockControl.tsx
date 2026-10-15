@@ -65,6 +65,7 @@ export function ManagerStockControl({
   const [summary, setSummary] = useState<StockControlSummary | null>(demoSummary ?? null);
   const [summaryRoundId, setSummaryRoundId] = useState<string | null>(demoSummary ? round?.id ?? null : null);
   const [activeTab, setActiveTab] = useState<TabKind>('transfer');
+  const [hasOpenedCount, setHasOpenedCount] = useState(false);
   const [kind, setKind] = useState<StockOperationKind>('transfer');
   const [isReturningToTruck, setIsReturningToTruck] = useState(false);
   const [fromLocationId, setFromLocationId] = useState('');
@@ -217,31 +218,34 @@ export function ManagerStockControl({
     const currentRequest = ++requestId.current;
     setLoading(true);
     setError(null);
-    const [summaryResponse, closeResponse] = await Promise.all([
-      supabase.rpc('get_stock_control_summary', {
-        p_round_id: roundId,
-        p_service_date: requestedServiceDate,
-      }),
-      supabase.rpc('get_daily_stock_close_state', {
-        p_round_id: roundId,
-        p_service_date: requestedServiceDate,
-      }),
-    ]);
-    if (currentRequest !== requestId.current) return;
+    try {
+      const [summaryResponse, closeResponse] = await Promise.all([
+        supabase.rpc('get_stock_control_summary', {
+          p_round_id: roundId,
+          p_service_date: requestedServiceDate,
+        }),
+        supabase.rpc('get_daily_stock_close_state', {
+          p_round_id: roundId,
+          p_service_date: requestedServiceDate,
+        }),
+      ]);
+      if (currentRequest !== requestId.current) return;
 
-    const firstError = summaryResponse.error
-      ?? closeResponse.error;
-    if (firstError) {
-      setError(firstError.message);
-      setSummary(null);
-      setSummaryRoundId(null);
-    } else {
+      const firstError = summaryResponse.error ?? closeResponse.error;
+      if (firstError) {
+        setError(firstError.message);
+        return;
+      }
       setSummary(summaryResponse.data as StockControlSummary);
       setCloseState(closeResponse.data as { is_closed: boolean });
       setSummaryRoundId(roundId);
       setLoadedAt(new Date().toISOString());
+    } catch (loadError) {
+      if (currentRequest !== requestId.current) return;
+      setError(loadError instanceof Error ? loadError.message : 'โหลดข้อมูลสต๊อกไม่สำเร็จ');
+    } finally {
+      if (currentRequest === requestId.current) setLoading(false);
     }
-    setLoading(false);
   }
 
   const stockMovementAction = useRpcAction(
@@ -343,6 +347,7 @@ export function ManagerStockControl({
     setActiveTab(nextTab);
 
     if (nextTab === 'count') {
+      setHasOpenedCount(true);
       return;
     }
 
@@ -421,6 +426,7 @@ export function ManagerStockControl({
 
   return (
     <div className="stock-control">
+      {error ? <p className="error-text" role="alert">{translateUi(error)}</p> : null}
       {activeTab !== 'transfer' ? <div className="stock-layout-panel stock-current-summary-panel">
         <div className="stock-layout-header">
           <h3 className="stock-layout-title">
@@ -918,18 +924,22 @@ export function ManagerStockControl({
                 </button>
               </div>
             </form>
-          ) : (
-            <DailyAggregateStockClose
-              refreshId={refreshId}
-              failedImagePaths={failedImagePaths}
-              imagePathByIceTypeId={imagePathByIceTypeId}
-              imageUrls={imageUrls}
-              onClosed={() => void loadSummary(serviceDate, round?.id ?? null)}
-              onImageError={(path) => setFailedImagePaths((current) => new Set(current).add(path))}
-              onPreviewImage={(image) => setPreviewImage(image)}
-              serviceDate={serviceDate}
-            />
-          )}
+          ) : null}
+          {hasOpenedCount ? (
+            <div hidden={activeTab !== 'count'}>
+              <DailyAggregateStockClose
+                key={serviceDate}
+                refreshId={refreshId}
+                failedImagePaths={failedImagePaths}
+                imagePathByIceTypeId={imagePathByIceTypeId}
+                imageUrls={imageUrls}
+                onClosed={() => void loadSummary(serviceDate, round?.id ?? null)}
+                onImageError={(path) => setFailedImagePaths((current) => new Set(current).add(path))}
+                onPreviewImage={(image) => setPreviewImage(image)}
+                serviceDate={serviceDate}
+              />
+            </div>
+          ) : null}
         </div>
       ) : null}
 

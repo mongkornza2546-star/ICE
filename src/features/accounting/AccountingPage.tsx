@@ -10,8 +10,10 @@ import { getErrorMessage } from '../../lib/errorMessage';
 import { publishDataChange, subscribeToDataChange } from '../../lib/dataChange';
 import { toBangkokDateString } from '../../lib/serviceDate';
 import { exportAccountingShopDaily, exportAccountingTransactions } from './exportAccounting';
+import { CashReconciliationPanel } from './CashReconciliationPanel';
 import type {
   AccountingFilters,
+  CashCloseReconciliation,
   AccountingReconciliation,
   AccountingReviewResponse,
   AccountingShopDailyCell,
@@ -263,7 +265,7 @@ export function AccountingPage({ userRole = 'round_lead', demoMode = false }: { 
     try {
       if (demoMode) {
         if (loadRequestId.current !== requestId) return;
-        setReconciliation({ service_date: serviceDate, aggregate: [], holders: [], financial: { effective_sales: 0, allocated_to_sales: 0, outstanding_collectible: 0, outstanding_credit: 0, cash_received: 0, cash_refunded: 0, net_cash: 0, pending_refunds: 0 } });
+        setReconciliation({ service_date: serviceDate, cash_close: { service_date: serviceDate, status: 'open', feature_enabled: true, employees: [] }, aggregate: [], holders: [], financial: { effective_sales: 0, allocated_to_sales: 0, outstanding_collectible: 0, outstanding_credit: 0, cash_received: 0, cash_refunded: 0, net_cash: 0, pending_refunds: 0 } });
         setShopSummary(emptyShopSummary());
         setShopDaily(emptyShopDaily());
         setTransactions(emptyTransactions());
@@ -297,10 +299,20 @@ export function AccountingPage({ userRole = 'round_lead', demoMode = false }: { 
         setShopSummary(summaryData);
         setShopDaily(dailyResponse.data as unknown as AccountingShopDailyResponse);
       } else if (tab === 'reconciliation') {
-        const response = await supabase.rpc('get_accounting_reconciliation', { p_service_date: serviceDate });
+        const [report, cash] = await Promise.allSettled([
+          supabase.rpc('get_accounting_reconciliation', { p_service_date: serviceDate }),
+          supabase.rpc('get_daily_close_reconciliation', { p_service_date: serviceDate }),
+        ]);
         if (loadRequestId.current !== requestId) return;
+        if (report.status === 'rejected') throw report.reason;
+        const response = report.value;
         if (response.error) throw response.error;
-        setReconciliation(response.data as AccountingReconciliation);
+        const cashError = cash.status === 'rejected' ? cash.reason : cash.value.error;
+        setReconciliation({
+          ...response.data as AccountingReconciliation,
+          cash_close: cash.status === 'fulfilled' && !cashError ? cash.value.data as CashCloseReconciliation : null,
+          cash_close_error: cashError ? getErrorMessage(cashError) : null,
+        });
       } else {
         validateRange();
         if (tab === 'transactions') {
@@ -748,7 +760,7 @@ function ShopSummaryPanel({ daily, data, loading, unavailable, view, onViewChang
     {loading ? <AccountingLoading /> : unavailable || rangeError ? null : <>
       <div className="accounting-overview" aria-label={translateUi('สรุปยอดการเงิน')}>
         <article className="accounting-metric accounting-metric--sales"><span>{translateUi('ยอดขายรายร้านในช่วง')}</span><strong>{money.format(totals.sales_amount)}</strong><div className="accounting-metric__breakdown"><span>{translateUi('รับชำระแล้ว ')}<b>{money.format(totals.paid_amount)}</b></span><span>{translateUi('ค้างของบิลช่วงนี้ ')}<b>{money.format(totals.outstanding_amount)}</b></span></div><small>{translateUi('รับชำระและค้างเป็นยอดปัจจุบัน รวมการชำระหลังช่วงรายงาน')}</small></article>
-        <article className="accounting-metric accounting-metric--received"><span>{translateUi('เงินรับจริงจากร้านในช่วง')}</span><strong>{money.format(totals.cash_received_in_period)}</strong><div className="accounting-metric__breakdown"><span>{translateUi('เงินสด ')}<b>{money.format(totals.cash_in_period ?? 0)}</b></span><span>{translateUi('โอน ')}<b>{money.format(totals.transfer_in_period ?? 0)}</b></span></div><small>{translateUi('ตามวันที่รับเงิน รวมรับหนี้เก่าและร้านปิดใช้งาน')}</small><small>{translateUi('ตามร้าน/พื้นที่ · ไม่ตามสถานะหรือเงื่อนไขชำระ')}</small></article>
+        <article className="accounting-metric accounting-metric--received"><span>{translateUi('ยอดรับชำระจากร้านตามระบบในช่วง')}</span><strong>{money.format(totals.cash_received_in_period)}</strong><div className="accounting-metric__breakdown"><span>{translateUi('เงินสด ')}<b>{money.format(totals.cash_in_period ?? 0)}</b></span><span>{translateUi('โอน ')}<b>{money.format(totals.transfer_in_period ?? 0)}</b></span></div><small>{translateUi('ตามวันที่รับเงิน รวมรับหนี้เก่าและร้านปิดใช้งาน')}</small><small>{translateUi('ตามร้าน/พื้นที่ · ไม่ตามสถานะหรือเงื่อนไขชำระ')}</small></article>
         <article className="accounting-metric accounting-metric--debt"><span>{translateUi('ยอดค้างสะสมของร้าน')}</span><strong>{money.format(totals.cumulative_outstanding_amount)}</strong><div className="accounting-metric__breakdown"><span>{totals.cumulative_outstanding_shop_count.toLocaleString('th-TH')}{translateUi(' ร้าน ')}<b>{translateUi('เกินกำหนด ')}{money.format(totals.cumulative_overdue_amount)}</b></span></div><small>{translateUi('หนี้ปัจจุบันทุกวันที่ขาย · เกินกำหนดรวมอยู่ในยอดค้าง')}</small></article>
         <button className="accounting-metric accounting-metric--review" aria-label={translateUi('เปิดหน้ารายการตรวจสอบ')} onClick={onOpenReview} type="button"><span>{translateUi('รายการต้องตรวจสอบ')}</span><strong>{reviewCount == null ? '—' : reviewCount.toLocaleString('th-TH')}<small>{translateUi(' รายการ')}</small></strong><small>{translateUi('ทั้งช่วงวันที่ · ไม่ตามตัวกรองร้าน')}</small><b>{translateUi('เปิดรายการตรวจสอบ →')}</b></button>
       </div>
@@ -983,7 +995,7 @@ function ShopDailyMatrix({ collapsedGroups, daily, data, fromDate, grouped, onOp
             return counts;
           }, { purchased: 0, recorded_no_sale: 0, no_purchase: 0, closed_shop: 0, not_recorded: 0, not_scheduled: 0, skipped: 0 } as Record<AccountingShopDailyStatus, number>);
           return <Fragment key={key}>
-            <tr className="accounting-shop-group accounting-daily-matrix__group"><th colSpan={totalColumnCount}><button aria-expanded={!collapsed} onClick={() => onToggleGroup(key)} type="button"><span aria-hidden="true">{collapsed ? '▶' : '▼'}</span><strong>{formatAccountingGroupTitle(group.building_name, group.current_zone_name)}</strong><span>{translateUi('หน้านี้ ')}{group.total_shop_count.toLocaleString('th-TH')}{translateUi(' ร้าน')}</span>{groupDailyComplete ? <><span>{translateUi('ซื้อแล้ว ')}{statusCounts.purchased.toLocaleString('th-TH')}</span>{statusCounts.recorded_no_sale ? <span>{translateUi('มีบันทึกแต่ไม่มีการขาย ')}{statusCounts.recorded_no_sale.toLocaleString('th-TH')}</span> : null}<span>{translateUi('ไม่ซื้อ ')}{statusCounts.no_purchase.toLocaleString('th-TH')}</span><span>{translateUi('ยังไม่บันทึก ')}{statusCounts.not_recorded.toLocaleString('th-TH')}</span></> : <span>{translateUi('ข้อมูลรายวันไม่ครบ')}</span>}<span>{translateUi('ยอดขาย ')}{money.format(group.sales_amount)}</span><span>{translateUi('รับจริงเฉพาะร้านในหน้านี้ ')}{groupReceived == null ? '—' : money.format(groupReceived)}</span><span>{translateUi('ค้าง ')}{money.format(group.cumulative_outstanding_amount)}</span></button></th></tr>
+            <tr className="accounting-shop-group accounting-daily-matrix__group"><th colSpan={totalColumnCount}><button aria-expanded={!collapsed} onClick={() => onToggleGroup(key)} type="button"><span aria-hidden="true">{collapsed ? '▶' : '▼'}</span><strong>{formatAccountingGroupTitle(group.building_name, group.current_zone_name)}</strong><span>{translateUi('หน้านี้ ')}{group.total_shop_count.toLocaleString('th-TH')}{translateUi(' ร้าน')}</span>{groupDailyComplete ? <><span>{translateUi('ซื้อแล้ว ')}{statusCounts.purchased.toLocaleString('th-TH')}</span>{statusCounts.recorded_no_sale ? <span>{translateUi('มีบันทึกแต่ไม่มีการขาย ')}{statusCounts.recorded_no_sale.toLocaleString('th-TH')}</span> : null}<span>{translateUi('ไม่ซื้อ ')}{statusCounts.no_purchase.toLocaleString('th-TH')}</span><span>{translateUi('ยังไม่บันทึก ')}{statusCounts.not_recorded.toLocaleString('th-TH')}</span></> : <span>{translateUi('ข้อมูลรายวันไม่ครบ')}</span>}<span>{translateUi('ยอดขาย ')}{money.format(group.sales_amount)}</span><span>{translateUi('รับชำระตามระบบเฉพาะร้านในหน้านี้ ')}{groupReceived == null ? '—' : money.format(groupReceived)}</span><span>{translateUi('ค้าง ')}{money.format(group.cumulative_outstanding_amount)}</span></button></th></tr>
             {collapsed ? null : <>
               {rows.map(renderShopRow)}
               <tr className="accounting-daily-matrix__totals"><th colSpan={2}>{translateUi('รวมร้านในหน้านี้ ')}{formatAccountingGroupTitle(group.building_name, group.current_zone_name)}</th>
@@ -1111,12 +1123,13 @@ function ReconciliationPanel({ data, loading, serviceDate, setServiceDate }: { d
   const financial = data?.financial;
   const sections = financial ? [
     { title: 'ยอดขายและการชำระบิล', rows: [['ยอดขายหลังปรับปรุง', financial.effective_sales], ['รับชำระบิลของวันนี้แล้ว', financial.allocated_to_sales], ['ค้างที่ต้องเก็บ', financial.outstanding_collectible], ['ลูกหนี้เครดิต', financial.outstanding_credit]], note: 'ตามวันที่ขาย · ยอดรับชำระเป็นยอดปัจจุบัน' },
-    { title: 'เงินรับและคืน', rows: [['รับเงินจริง', financial.cash_received], ['คืนเงินจริง', financial.cash_refunded], ['เงินสุทธิ', financial.net_cash], ['ยอดรอคืน', financial.pending_refunds]], note: 'ตามวันที่รับและคืนเงินจริง' },
-    { title: 'ลูกค้าขาจร', rows: [['ยอดขายขาจร', financial.casual_sales], ['รับเงินจริงขาจร', financial.casual_received], ['คืนเงินจริงขาจร', financial.casual_refunded]], note: 'รวมอยู่ในยอดขายและเงินรับ–คืนด้านซ้ายแล้ว' },
+    { title: 'ยอดรับชำระและคืนเงินตามระบบ', rows: [['ยอดรับชำระตามระบบ', financial.cash_received], ['ยอดคืนเงินตามระบบ', financial.cash_refunded], ['ยอดรับสุทธิตามระบบ', financial.net_cash], ['ยอดรอคืน', financial.pending_refunds]], note: 'ตามรายการรับชำระและคืนเงินที่บันทึก รวมเงินสดและโอน/QR · ยอดที่หัวหน้านับแสดงแยกด้านล่าง' },
+    { title: 'ลูกค้าขาจร', rows: [['ยอดขายขาจร', financial.casual_sales], ['ยอดรับชำระขาจรตามระบบ', financial.casual_received], ['ยอดคืนเงินขาจรตามระบบ', financial.casual_refunded]], note: 'รวมอยู่ในยอดขายและยอดรับชำระ–คืนเงินตามระบบแล้ว' },
   ] : [];
   return <div className="accounting-reconciliation">
     <label className="accounting-reconciliation__date">{translateUi('วันที่เทียบยอด ')}<input aria-label={translateUi('วันที่เทียบยอด')} max={toBangkokDateString()} onChange={(event) => { if (dateKeyTimestamp(event.target.value) != null && event.target.value <= toBangkokDateString()) setServiceDate(event.target.value); }} type="date" value={serviceDate} /></label>
     {loading ? <AccountingLoading /> : data ? <><div className="accounting-reconciliation-groups">{sections.map((section) => <article key={section.title}><h3>{translateUi(section.title)}</h3><small>{translateUi(section.note)}</small><dl>{section.rows.map(([label, value]) => <div key={String(label)}><dt>{translateUi(String(label))}</dt><dd>{value == null ? '—' : money.format(Number(value))}</dd></div>)}</dl></article>)}</div>
+      <CashReconciliationPanel data={data.cash_close ?? null} error={data.cash_close_error ?? null} />
       <ReconciliationTable heading={translateUi('สต๊อกรวมประจำวัน')} rows={data.aggregate} />
       <details className="accounting-holder-details"><summary>{translateUi('สต๊อกแยกจุดถือครอง ')}<span>{data.holders.length}{translateUi(' จุด')}</span></summary>{data.holders.length ? data.holders.map((holder) => <ReconciliationTable key={holder.location_id} heading={`${holder.location_name}${holder.employee_name ? ` · ${holder.employee_name}` : ''}`} rows={holder.items} />) : <p>{translateUi('ไม่มีข้อมูลจุดถือครองในวันนี้')}</p>}</details>
     </> : null}

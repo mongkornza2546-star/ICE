@@ -385,7 +385,7 @@ describe('accounting shop summary', () => {
     expect(screen.getByRole('button', { name: 'ยอดรวมช่วงวันที่' }).getAttribute('aria-pressed')).toBe('true');
     expect(screen.getByText(/รับชำระแล้ว/, { selector: '.accounting-metric__breakdown span' })).toBeTruthy();
     expect(screen.getByText('ยอดค้างสะสมของร้าน', { selector: 'article span' })).toBeTruthy();
-    const broadReceipts = screen.getByText('เงินรับจริงจากร้านในช่วง', { selector: 'article span' }).closest('article');
+    const broadReceipts = screen.getByText('ยอดรับชำระจากร้านตามระบบในช่วง', { selector: 'article span' }).closest('article');
     expect(broadReceipts?.textContent).toMatch(/ร้านปิดใช้งาน.*ไม่ตามสถานะหรือเงื่อนไขชำระ/);
     expect(screen.getByText(/เงินสด/, { selector: '.accounting-metric--received .accounting-metric__breakdown span' })).toBeTruthy();
     expect(screen.getByText(/โอน/, { selector: '.accounting-metric--received .accounting-metric__breakdown span' })).toBeTruthy();

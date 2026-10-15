@@ -13,6 +13,7 @@ const receipt: AccountingTransaction = { occurred_at: `${today}T17:00:00+07:00`,
 const ok = (data: unknown) => ({ data, error: null });
 const transactions = { rows: [receipt], total_count: 1, facets: { shops: [], employees: [], types: [], ice_types: [] } };
 function baseRpc(name: string, args: Record<string, any>) {
+  if (name === 'get_daily_close_reconciliation') return ok({ service_date: args.p_service_date, status: 'open', feature_enabled: true, employees: [] });
   if (name === 'get_accounting_shop_summary') return ok(summary);
   if (name === 'get_accounting_shop_daily_matrix') return ok({ rows: [], ice_types: [] });
   if (name === 'get_accounting_review_queue') return ok({ rows: args.p_limit === 1 ? [] : [issue], total_count: args.p_limit === 1 ? 74 : args.p_filters.document ? 1 : 2 });
@@ -143,10 +144,48 @@ describe('accounting workspace interactions', () => {
     fireEvent.change(screen.getByLabelText('ถึง'), { target: { value: previousDay } });
     await user.click(screen.getByRole('button', { name: 'สรุปเทียบยอด' }));
     await waitFor(() => expect(rpc).toHaveBeenCalledWith('get_accounting_reconciliation', { p_service_date: previousDay }));
+    expect(rpc).toHaveBeenCalledWith('get_daily_close_reconciliation', { p_service_date: previousDay });
     await user.click(await screen.findByText('สต๊อกแยกจุดถือครอง'));
     expect(screen.getByText('รถส่ง 1 · พนักงาน')).toBeTruthy();
     expect(screen.getByText('ยังนับไม่ครบ')).toBeTruthy();
     expect(screen.getAllByRole('cell', { name: '—' }).length).toBe(2);
+  });
+
+  it('shows manager-counted cash separately from system receipts and refreshes after closing', async () => {
+    let closed = false;
+    rpc.mockImplementation(async (name, args) => {
+      if (name === 'get_accounting_reconciliation') return ok({ service_date: args.p_service_date, financial: { effective_sales: 100, cash_received: 100, cash_refunded: 0, net_cash: 100 }, aggregate: [], holders: [] });
+      if (name === 'get_daily_close_reconciliation') return ok({ service_date: args.p_service_date, status: closed ? 'closed' : 'open', feature_enabled: true, employees: [{ employee_id: 'employee-1', employee_name: 'พนักงานหนึ่ง', is_active: true, expected_cash_amount: 90, actual_cash_amount: closed ? 80 : null, cash_variance_amount: closed ? -10 : null, cash_reason: closed ? 'ส่งเงินขาด 10 บาท' : null, recorded_at: closed ? `${today}T18:00:00+07:00` : null }] });
+      return baseRpc(name, args);
+    });
+    const user = userEvent.setup();
+    render(<AccountingPage />);
+    await user.click(screen.getByRole('button', { name: 'สรุปเทียบยอด' }));
+    const table = await screen.findByRole('table', { name: 'เทียบยอดเงินสดรายพนักงาน' });
+    expect(within(table).getByText('ยังไม่บันทึกยอดนับเงิน')).toBeTruthy();
+    expect(screen.queryByText('รับเงินจริง', { exact: true })).toBeNull();
+    expect(screen.getByText('ยอดรับชำระตามระบบ').parentElement?.textContent).toContain('฿100.00');
+    closed = true;
+    act(() => publishDataChange(['accounting', 'payment', 'stock']));
+    await within(table).findByText('เงินขาด');
+    expect(within(table).getByText('฿80.00')).toBeTruthy();
+    expect(within(table).getByText('-฿10.00')).toBeTruthy();
+    expect(within(table).getByText('ส่งเงินขาด 10 บาท')).toBeTruthy();
+    expect(screen.getByText('หัวหน้าได้รับจริงตามยอดนับ').parentElement?.textContent).toContain('฿80.00');
+  });
+
+  it('keeps the system report but reports cash lookup failure instead of showing zero received', async () => {
+    rpc.mockImplementation(async (name, args) => {
+      if (name === 'get_accounting_reconciliation') return ok({ service_date: args.p_service_date, financial: { cash_received: 100 }, aggregate: [], holders: [] });
+      if (name === 'get_daily_close_reconciliation') return { data: null, error: { message: 'cash lookup unavailable' } };
+      return baseRpc(name, args);
+    });
+    const user = userEvent.setup();
+    render(<AccountingPage />);
+    await user.click(screen.getByRole('button', { name: 'สรุปเทียบยอด' }));
+    expect(await screen.findByRole('alert')).toHaveProperty('textContent', expect.stringContaining('โหลดข้อมูลยอดนับเงินไม่สำเร็จ'));
+    expect(screen.getByText('ยอดรับชำระตามระบบ').parentElement?.textContent).toContain('฿100.00');
+    expect(screen.queryByText('หัวหน้าได้รับจริงตามยอดนับ')).toBeNull();
   });
 
   it('restores the report period after opening an older source and retains the shop view', async () => {

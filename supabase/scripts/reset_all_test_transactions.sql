@@ -43,6 +43,8 @@ select 'daily close employee snapshots', count(*) from public.daily_close_employ
 union all
 select 'daily close payment items', count(*) from public.daily_close_payment_items
 union all
+select 'daily close casual cash items', count(*) from public.daily_close_casual_cash_items
+union all
 select 'daily close reconciliation issues', count(*) from public.daily_close_reconciliation_issues
 union all
 select 'payment allocation changes', count(*) from public.payment_allocation_changes
@@ -112,6 +114,7 @@ truncate table
   public.delivery_charge_document_snapshots,
   public.daily_close_reconciliation_issues,
   public.daily_close_payment_items,
+  public.daily_close_casual_cash_items,
   public.daily_close_employee_snapshots,
   public.daily_close_reconciliation_requests,
   public.payments,
@@ -177,6 +180,7 @@ select
   (select count(*) from public.daily_close_reconciliation_requests) as daily_close_requests,
   (select count(*) from public.daily_close_employee_snapshots) as daily_close_employee_snapshots,
   (select count(*) from public.daily_close_payment_items) as daily_close_payment_items,
+  (select count(*) from public.daily_close_casual_cash_items) as daily_close_casual_cash_items,
   (select count(*) from public.daily_close_reconciliation_issues) as daily_close_reconciliation_issues,
   (select count(*) from public.payment_allocation_changes) as payment_allocation_changes,
   (select count(*) from public.refund_obligations) as refund_obligations,

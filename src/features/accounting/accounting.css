@@ -82,6 +82,16 @@
 .accounting-reconciliation-groups dl { display: grid; gap: 12px; margin-bottom: 0; }
 .accounting-reconciliation-groups dl > div { display: flex; justify-content: space-between; gap: 12px; font-size: .82rem; }
 .accounting-reconciliation-groups dd { margin: 0; font-weight: 700; font-variant-numeric: tabular-nums; }
+.accounting-cash-close { margin: 18px 0; border: 1px solid #c9d7e3; border-radius: 12px; padding: 16px; background: #fff; }
+.accounting-cash-close__header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
+.accounting-cash-close__header h3 { margin: 0; }
+.accounting-cash-close__header > span { border-radius: 6px; padding: 5px 9px; background: #edf5ff; color: #145aa6; font-size: .78rem; }
+.accounting-cash-close__totals { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr)); gap: 12px; }
+.accounting-cash-close__totals > div { padding: 12px; border-radius: 8px; background: #f0f6fd; }
+.accounting-cash-close__totals dt { color: #435a70; font-size: .8rem; }
+.accounting-cash-close__totals dd { margin: 6px 0 0; color: #173e60; font-size: 1.3rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.accounting-cash-close__table td:nth-child(n+2):nth-child(-n+4) { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.accounting-cash-close__table th:first-child, .accounting-cash-close__table td:nth-child(6) { min-width: 160px; white-space: normal; overflow-wrap: anywhere; }
 .accounting-holder-details > summary { min-height: 44px; cursor: pointer; padding: 10px 0; font-weight: 700; }
 .accounting-holder-details > summary span { font-weight: 400; color: #526476; }
 .accounting-holder-details > article { margin: 12px 0; }

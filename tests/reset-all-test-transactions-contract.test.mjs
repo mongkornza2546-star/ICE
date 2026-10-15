@@ -15,6 +15,7 @@ test('transaction reset follows the implemented daily-close schema', () => {
     'daily_close_reconciliation_requests',
     'daily_close_employee_snapshots',
     'daily_close_payment_items',
+    'daily_close_casual_cash_items',
     'daily_close_reconciliation_issues',
   ]) {
     assert.equal(

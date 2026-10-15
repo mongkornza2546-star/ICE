@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
+import { randomUUID } from 'node:crypto';
 import { PGlite } from '@electric-sql/pglite';
 import { pgcrypto } from '@electric-sql/pglite/contrib/pgcrypto';
 
@@ -17,6 +18,13 @@ const accountingQueueMigration = readFileSync(
   'utf8',
 );
 
+const migration = (name) => readFileSync(new URL(`../supabase/migrations/${name}`, import.meta.url), 'utf8');
+const sqlFunction = (sql, name) => {
+  const start = sql.indexOf(`create function public.${name}(`);
+  assert.notEqual(start, -1);
+  return sql.slice(start, sql.indexOf('\n$$;', start) + 4);
+};
+
 const courierId = '00000000-0000-0000-0000-000000000001';
 const inactiveCourierId = '00000000-0000-0000-0000-000000000002';
 const managerId = '00000000-0000-0000-0000-000000000003';
@@ -25,12 +33,16 @@ const runId = '10000000-0000-0000-0000-000000000001';
 const shopId = '50000000-0000-0000-0000-000000000001';
 const serviceDate = '2026-01-02';
 
-async function createDatabase() {
+async function createDatabase({ applyCashFix = true } = {}) {
   const db = new PGlite({ extensions: { pgcrypto } });
   await db.exec(`
     create extension if not exists pgcrypto;
     create schema auth;
     create role authenticated;
+    create role anon;
+    create schema storage;
+    create type public.financial_record_status as enum ('active', 'voided');
+    create table storage.objects (bucket_id text, name text);
     create type public.app_role as enum ('courier', 'round_lead', 'admin');
     create type public.payment_method as enum ('cash', 'bank_transfer', 'qr');
 
@@ -165,26 +177,6 @@ async function createDatabase() {
           on item.service_date = p_service_date and item.ice_type_id = ice.id), '[]'::jsonb)
       )
     $$;
-    create function public.close_daily_aggregate_stock(
-      p_service_date date, p_counts jsonb, p_note text, p_idempotency_key uuid
-    ) returns jsonb language plpgsql as $$
-    begin
-      if exists (select 1 from public.daily_aggregate_stock_closures where service_date = p_service_date) then
-        raise exception 'Stock for this service date is already closed';
-      end if;
-      insert into public.daily_aggregate_stock_closures
-        (service_date, status, note, idempotency_key, closed_by)
-      values (p_service_date, 'closed', p_note, p_idempotency_key, auth.uid());
-      insert into public.daily_aggregate_stock_closure_items
-        (service_date, ice_type_id, system_quantity, actual_quantity, variance_quantity, note)
-      select p_service_date, input.ice_type_id, 10, input.actual_quantity,
-        input.actual_quantity - 10, input.note
-      from jsonb_to_recordset(p_counts) input(ice_type_id uuid, actual_quantity numeric, note text);
-      update public.collection_runs set status = 'closed', closed_by = auth.uid(), closed_at = now()
-      where service_date = p_service_date and status = 'open';
-      return public.get_daily_aggregate_stock_summary(p_service_date);
-    end;
-    $$;
     create function public.effective_delivery_charge_amount(p_charge_id uuid)
     returns numeric language sql stable as $$ select 0::numeric $$;
     create function public.accounting_aggregate_reconciliation_rows(p_service_date date)
@@ -215,11 +207,53 @@ async function createDatabase() {
     insert into public.ice_types (id, code, name, unit)
       values ('40000000-0000-0000-0000-000000000001', 'ICE', 'Ice', 'bag');
   `);
+  // Use the production casual schema/write RPCs and stock-close functions.
+  // Stock balances and context are fixed fixtures; cash mutations are real SQL.
+  await db.exec(`
+    create table public.stock_locations (id uuid primary key);
+    insert into public.stock_locations values ('60000000-0000-0000-0000-000000000001');
+    create table public.delivery_rounds (
+      id uuid primary key, service_date date not null, status text not null,
+      cancelled_at timestamptz, closed_by uuid, closed_at timestamptz
+    );
+    insert into public.delivery_rounds (id, service_date, status)
+      values ('${runId}', '${serviceDate}', 'open');
+    create function public.daily_aggregate_stock_balance_at(date, uuid)
+      returns numeric language sql as $$ select 10::numeric $$;
+    create function public.stock_balance_at(date, uuid, uuid)
+      returns numeric language sql as $$ select 100::numeric $$;
+    create sequence receipt_seq;
+    create function public.next_sales_document_number(text, date)
+      returns text language sql as $$ select 'REC-' || nextval('receipt_seq') $$;
+    create function public.get_casual_transaction_context(p_round_id uuid)
+      returns jsonb language sql as $$ select jsonb_build_object(
+        'stock_closed', exists (select 1 from public.daily_aggregate_stock_closures
+          where service_date = (select service_date from public.delivery_rounds where id = p_round_id)),
+        'stock_source', jsonb_build_object('id', '60000000-0000-0000-0000-000000000001', 'name', 'Truck')
+      ) $$;
+  `);
+  await db.exec(migration('0153_casual_transaction_foundation.sql'));
+  const casual = migration('0154_casual_measured_transactions.sql');
+  await db.exec(casual.slice(casual.indexOf('create table public.casual_void_requests'), casual.indexOf('create function public.get_casual_transaction_capability')));
+  await db.exec(`create function public.casual_transaction_response(p_id uuid)
+    returns jsonb language sql as $$ select jsonb_build_object('transaction', to_jsonb(t))
+    from public.casual_transactions t where id = p_id $$;`);
+  await db.exec(sqlFunction(casual, 'record_casual_transaction'));
+  await db.exec(sqlFunction(casual, 'void_casual_transaction'));
+  await db.exec(sqlFunction(migration('0155_casual_loose_transactions.sql'), 'record_casual_loose_transaction'));
+  const stock = migration('0107_daily_aggregate_stock.sql').replace('create or replace function public.close_daily_aggregate_stock(', 'create function public.close_daily_aggregate_stock(');
+  await db.exec(sqlFunction(stock, 'close_daily_aggregate_stock'));
+  const wrapper = migration('0159_automatic_collection_context_authorization.sql');
+  await db.exec(wrapper.slice(wrapper.indexOf('alter function public.close_daily_aggregate_stock('), wrapper.indexOf('revoke all on function public.ensure_daily_collection_context(date)')));
+  await db.exec('grant execute on function public.close_daily_aggregate_stock(date,jsonb,text,uuid) to authenticated');
   await db.exec(foundationMigration);
   await db.exec(workflowMigration);
   await db.exec(accountingQueueMigration);
   await db.exec(`update public.daily_close_reconciliation_configuration
     set enabled_from_service_date = date '${serviceDate}' where singleton`);
+  if (applyCashFix) {
+    await db.exec(migration('0235_daily_close_casual_cash_and_legacy_guard.sql'));
+  }
   return db;
 }
 
@@ -389,4 +423,165 @@ test('closed summary stays on the immutable roster and payment snapshot', async 
     actual_cash_amount: 100,
     payment_ids: [paymentId],
   }]);
+});
+
+const iceId = '40000000-0000-0000-0000-000000000001';
+const stockCounts = [{ ice_type_id: iceId, actual_quantity: 10, note: null }];
+
+async function recordCasual(db, { amount = 50, received = amount, method = 'cash', loose = false, free = false, actor = courierId, round = runId } = {}) {
+  await db.exec(`set app.test_user_id = '${actor}'`);
+  const evidence = method === 'cash' || free ? null : `${actor}/${randomUUID()}`;
+  if (evidence) await db.query("insert into storage.objects values ('payment-evidence', $1)", [evidence]);
+  const values = [round, iceId, ...(loose ? [] : [1]), free ? 'free' : 'paid', free ? 0 : amount,
+    free ? null : method, free ? null : received, null, evidence, null, null, randomUUID()];
+  const name = loose ? 'record_casual_loose_transaction' : 'record_casual_transaction';
+  const result = await db.query(`select public.${name}(${values.map((_, i) => `$${i + 1}`).join(',')}) result`, values);
+  return result.rows[0].result.transaction.id;
+}
+
+async function refundCasual(db, id, { method = 'cash', actor = courierId } = {}) {
+  await db.exec(`set app.test_user_id = '${actor}'`);
+  const evidence = method == null || method === 'cash' ? null : `${actor}/${randomUUID()}`;
+  if (evidence) await db.query("insert into storage.objects values ('payment-evidence', $1)", [evidence]);
+  await db.query('select public.void_casual_transaction($1,$2,$3,$4,$5,$6)',
+    [id, 'Customer returned sale', method, null, evidence, randomUUID()]);
+}
+
+async function cashSummary(db) {
+  await db.exec(`set app.test_user_id = '${managerId}'`);
+  return (await db.query('select public.get_daily_close_reconciliation($1) result', [serviceDate])).rows[0].result;
+}
+
+async function closeCash(db, counts, key = randomUUID(), date = serviceDate) {
+  await db.exec(`set app.test_user_id = '${managerId}'; set role authenticated;`);
+  try {
+    return (await db.query('select public.close_daily_reconciliation_v2($1,$2,$3,$4,$5) result',
+      [date, JSON.stringify(stockCounts), JSON.stringify(counts), null, key])).rows[0].result;
+  } finally {
+    await db.exec('reset role');
+  }
+}
+
+test('measured and loose casual cash join regular receipts, net of change, with immutable idempotent close', async (t) => {
+  const db = await createDatabase(); t.after(() => db.close());
+  await addPayment(db, { id: randomUUID(), amount: 100 });
+  const measuredId = await recordCasual(db, { amount: 50, received: 100 });
+  await recordCasual(db, { amount: 20, loose: true });
+  await recordCasual(db, { amount: 70, method: 'bank_transfer' });
+  await recordCasual(db, { amount: 80, method: 'qr', loose: true });
+  await recordCasual(db, { free: true });
+  await recordCasual(db, { free: true, loose: true });
+  await recordCasual(db, { amount: 90, actor: managerId });
+  await db.exec(`insert into public.delivery_rounds (id, service_date, status)
+    values ('${newCourierId}', date '${serviceDate}' + 1, 'open')`);
+  await recordCasual(db, { amount: 500, round: newCourierId });
+
+  const open = await cashSummary(db);
+  assert.equal(Number(open.employees[0].expected_cash_amount), 170);
+  assert.equal(open.employees[0].cash_source_count, 3);
+  const counts = [{ employee_id: courierId, actual_cash_amount: 170, reason: null }];
+  await assert.rejects(db.query('select public.close_daily_reconciliation_v2($1,$2,$3,null,$4)',
+    [serviceDate, JSON.stringify([{ ice_type_id: iceId, actual_quantity: 9, note: null }]), JSON.stringify(counts), randomUUID()]), /note is required/);
+  for (const table of ['daily_close_reconciliation_requests', 'daily_close_employee_snapshots', 'daily_close_casual_cash_items']) {
+    assert.equal((await db.query(`select count(*)::int n from public.${table}`)).rows[0].n, 0);
+  }
+  const key = randomUUID();
+  const closed = await closeCash(db, counts, key);
+  assert.equal(closed.status, 'closed');
+  assert.equal(closed.employees[0].cash_source_count, 3);
+  assert.equal(Number(closed.employees[0].cash_variance_amount), 0);
+  assert.deepEqual(await closeCash(db, counts, key), closed);
+  assert.equal((await db.query('select count(*)::int n from public.daily_close_casual_cash_items')).rows[0].n, 2);
+  assert.equal((await db.query('select count(*)::int n from public.daily_close_reconciliation_issues')).rows[0].n, 0);
+  await assert.rejects(db.exec('update public.daily_close_casual_cash_items set cash_amount = 1'), /cannot be changed/);
+  await assert.rejects(db.exec('delete from public.daily_close_casual_cash_items'), /cannot be changed/);
+  await assert.rejects(refundCasual(db, measuredId), /after stock is closed/);
+  await db.exec(`update public.users set is_active = false where id = '${courierId}';
+    insert into public.users values ('${newCourierId}', 'New', 'courier', true)`);
+  const frozen = await cashSummary(db);
+  assert.deepEqual(frozen.employees.map(e => [e.employee_id, Number(e.expected_cash_amount), Number(e.actual_cash_amount)]), [[courierId, 170, 170]]);
+});
+
+test('casual refunds follow cash movement and the refund actor, including cross-method refunds', async (t) => {
+  const db = await createDatabase(); t.after(() => db.close());
+  await addPayment(db, { id: randomUUID(), amount: 100 });
+  const cashCash = await recordCasual(db, { amount: 50 });
+  await refundCasual(db, cashCash); // 50 received, 50 cash returned = 0
+  const cashTransfer = await recordCasual(db, { amount: 30, loose: true });
+  await refundCasual(db, cashTransfer, { method: 'bank_transfer' }); // cash remains with courier
+  const transferCash = await recordCasual(db, { amount: 20, method: 'bank_transfer' });
+  await refundCasual(db, transferCash); // 20 cash paid out
+  const managerRefund = await recordCasual(db, { amount: 40 });
+  await refundCasual(db, managerRefund, { actor: managerId }); // manager's refund is not courier cash
+  const transferTransfer = await recordCasual(db, { amount: 60, method: 'qr' });
+  await refundCasual(db, transferTransfer, { method: 'qr' });
+  const free = await recordCasual(db, { free: true });
+  await refundCasual(db, free, { method: null });
+
+  assert.equal(Number((await cashSummary(db)).employees[0].expected_cash_amount), 150);
+  const result = await closeCash(db, [{ employee_id: courierId, actual_cash_amount: 150, reason: null }]);
+  assert.equal(Number(result.employees[0].cash_variance_amount), 0);
+  const sources = (await db.query('select source_kind, cash_amount from public.daily_close_casual_cash_items')).rows;
+  assert.equal(sources.length, 5);
+  assert.equal(sources.reduce((sum, row) => sum + Number(row.cash_amount), 0), 50);
+});
+
+test('a casual-only inactive courier remains accountable and variance is atomic and auditable', async (t) => {
+  const db = await createDatabase(); t.after(() => db.close());
+  await recordCasual(db, { amount: 50 });
+  await db.exec(`update public.users set is_active = false where id = '${courierId}'`);
+  assert.equal(Number((await cashSummary(db)).employees[0].expected_cash_amount), 50);
+  await assert.rejects(closeCash(db, [{ employee_id: courierId, actual_cash_amount: 40, reason: null }]), /reason is required/);
+  assert.equal((await db.query('select count(*)::int n from public.daily_aggregate_stock_closures')).rows[0].n, 0);
+  assert.equal((await db.query('select count(*)::int n from public.daily_close_casual_cash_items')).rows[0].n, 0);
+  await closeCash(db, [{ employee_id: courierId, actual_cash_amount: 40, reason: 'Short 10' }]);
+  const issue = (await db.query("select expected_value, actual_value, variance_value from public.daily_close_reconciliation_issues where issue_type = 'CASH_VARIANCE'")).rows[0];
+  assert.deepEqual(Object.values(issue).map(Number), [50, 40, -10]);
+  const queue = (await db.query("select public.get_accounting_review_queue($1,$1,'{}',100,0) result", [serviceDate])).rows[0].result;
+  assert.equal(queue.rows[0].issue_type, 'CASH_VARIANCE');
+});
+
+test('refund-only courier cash can be negative without losing the refund or blocking a reasoned close', async (t) => {
+  const db = await createDatabase(); t.after(() => db.close());
+  const id = await recordCasual(db, { amount: 20, method: 'bank_transfer' });
+  await refundCasual(db, id);
+  assert.equal(Number((await cashSummary(db)).employees[0].expected_cash_amount), -20);
+  const result = await closeCash(db, [{ employee_id: courierId, actual_cash_amount: 0, reason: 'Refund funded separately' }]);
+  assert.equal(Number(result.employees[0].cash_variance_amount), 20);
+});
+
+test('legacy RPC rejects enabled dates and internal close is inaccessible, while historical stock-only close still works', async (t) => {
+  const db = await createDatabase(); t.after(() => db.close());
+  await db.exec(`set app.test_user_id = '${managerId}'; set role authenticated`);
+  await assert.rejects(db.query('select public.close_daily_aggregate_stock($1,$2,null,$3)',
+    [serviceDate, JSON.stringify(stockCounts), randomUUID()]), /cash reconciliation/i);
+  await assert.rejects(db.query('select public.close_daily_aggregate_stock_internal($1,$2,null,$3)',
+    [serviceDate, JSON.stringify(stockCounts), randomUUID()]), /permission denied/);
+  await db.exec('reset role');
+  assert.equal((await db.query('select count(*)::int n from public.daily_aggregate_stock_closures')).rows[0].n, 0);
+  assert.equal((await db.query('select status from public.collection_runs')).rows[0].status, 'open');
+  await closeCash(db, [{ employee_id: courierId, actual_cash_amount: 0, reason: null }]);
+  await db.exec('set role authenticated');
+  const key = randomUUID();
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const result = (await db.query('select public.close_daily_aggregate_stock($1::date - 1,$2,null,$3) result',
+      [serviceDate, JSON.stringify(stockCounts), key])).rows[0].result;
+    assert.equal(result.status, 'closed');
+  }
+  await db.exec('reset role');
+  assert.equal((await db.query('select count(*)::int n from public.daily_close_reconciliation_requests')).rows[0].n, 1);
+});
+
+test('installing the fix preserves old closed cash snapshots and idempotent retries', async (t) => {
+  const db = await createDatabase({ applyCashFix: false }); t.after(() => db.close());
+  await addPayment(db, { id: randomUUID(), amount: 100 });
+  await recordCasual(db, { amount: 50 });
+  const key = randomUUID();
+  const counts = [{ employee_id: courierId, actual_cash_amount: 100, reason: null }];
+  const before = await closeCash(db, counts, key);
+  await db.exec(migration('0235_daily_close_casual_cash_and_legacy_guard.sql'));
+  const expected = { ...before, employees: before.employees.map(employee => ({ ...employee, cash_source_count: 1 })) };
+  assert.deepEqual(await cashSummary(db), expected);
+  assert.deepEqual(await closeCash(db, counts, key), expected);
+  assert.equal((await db.query('select count(*)::int n from public.daily_close_casual_cash_items')).rows[0].n, 0);
 });

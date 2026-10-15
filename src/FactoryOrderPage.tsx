@@ -403,9 +403,10 @@ export function FactoryOrderPage() {
                           disabled={isActionSubmitting}
                           min={0}
                           onChange={(event) => updateQuantity(ice, Number(event.target.value) || 0)}
+                          placeholder="0"
                           step={1}
                           type="number"
-                          value={draftQuantity}
+                          value={draftQuantity === 0 ? '' : draftQuantity}
                         />
                         <button
                           aria-label={translateUi('เพิ่มจำนวน {0}', { 0: ice.ice_type_name })}

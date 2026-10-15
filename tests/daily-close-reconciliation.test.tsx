@@ -26,7 +26,7 @@ it('records manager-counted courier cash in the atomic daily close', async () =>
         employees: [{
           employee_id: 'courier-1', employee_name: 'สมชาย', is_active: true,
           expected_cash_amount: 100, actual_cash_amount: null,
-          cash_variance_amount: null, cash_reason: null, payment_ids: ['payment-1'],
+          cash_variance_amount: null, cash_reason: null, payment_ids: ['payment-1'], cash_source_count: 3,
         }],
       },
       error: null,
@@ -40,9 +40,11 @@ it('records manager-counted courier cash in the atomic daily close', async () =>
   render(<DailyAggregateStockClose serviceDate="2026-08-26" />);
 
   const cashInput = await screen.findByLabelText(/^หัวหน้านับจริง/);
+  expect(screen.getByText('3 รายการเงินสด')).toBeTruthy();
   expect((cashInput as HTMLInputElement).value).toBe('');
   expect((screen.getByRole('button', { name: 'ปิดยอดสต๊อกและเงินสดวันนี้' }) as HTMLButtonElement).disabled).toBe(true);
   await user.type(screen.getByLabelText(/^นับจริง/), '10');
+  expect((screen.getByLabelText(/^นับจริง/) as HTMLInputElement).value).toBe('10');
   await user.clear(cashInput);
   await user.type(cashInput, '90');
   await user.type(screen.getByLabelText('เหตุผลส่วนต่าง *'), 'ลูกค้ายังค้างเงิน');
@@ -69,6 +71,8 @@ it('keeps the legacy stock close during dark launch without recording cash', asy
         enabled_from_service_date: null,
         stock: { service_date: '2026-08-26', status: 'open', items: [{
           ice_type_id: 'ice-1', code: 'ICE', name: 'น้ำแข็งหลอด', unit: 'ถุง', available_quantity: 10,
+        }, {
+          ice_type_id: 'ice-2', code: 'BLOCK', name: 'น้ำแข็งก้อน', unit: 'แถว', available_quantity: 0,
         }] },
         employees: [],
       },
@@ -81,16 +85,60 @@ it('keeps the legacy stock close during dark launch without recording cash', asy
   render(<DailyAggregateStockClose serviceDate="2026-08-26" />);
   await screen.findByText('Dark launch');
   expect((screen.getByRole('button', { name: 'ปิดสต๊อกและจบงานวันนี้' }) as HTMLButtonElement).disabled).toBe(true);
-  await user.type(screen.getByLabelText(/^นับจริง/), '10');
+  const stockInputs = screen.getAllByLabelText(/^นับจริง/);
+  expect(stockInputs.map((input) => (input as HTMLInputElement).value)).toEqual(['0', '0']);
+  await user.type(stockInputs[0], '10');
+  expect((stockInputs[0] as HTMLInputElement).value).toBe('10');
   await user.click(screen.getByRole('button', { name: 'ปิดสต๊อกและจบงานวันนี้' }));
 
   await waitFor(() => expect(supabaseMock.rpc).toHaveBeenCalledWith(
-    'close_daily_aggregate_stock', expect.objectContaining({ p_service_date: '2026-08-26' }),
+    'close_daily_aggregate_stock', expect.objectContaining({
+      p_service_date: '2026-08-26',
+      p_counts: [
+        { ice_type_id: 'ice-1', actual_quantity: 10, note: null },
+        { ice_type_id: 'ice-2', actual_quantity: 0, note: null },
+      ],
+    }),
   ));
   expect(supabaseMock.rpc).not.toHaveBeenCalledWith('close_daily_reconciliation_v2', expect.anything());
 });
 
-it('distinguishes explicit zero from a blank count and rejects invalid precision', async () => {
+it.each(['click', 'keyboard'])('replaces default zero without deletion via %s and restores an untouched zero', async (entry) => {
+  supabaseMock.rpc.mockImplementation((name: string) => Promise.resolve({ error: null, data:
+    name === 'get_daily_close_reconciliation' ? {
+      stock: { service_date: '2026-08-26', status: 'open', items: [
+        { ice_type_id: 'ice-1', name: 'หลอด', unit: 'ถุง', available_quantity: 10.5 },
+        { ice_type_id: 'ice-2', name: 'ก้อน', unit: 'แถว', available_quantity: 0 },
+      ] },
+      employees: [], feature_enabled: false,
+    } : [],
+  }));
+  const user = userEvent.setup();
+  render(<DailyAggregateStockClose serviceDate="2026-08-26" />);
+  const [stock, emptyStock] = await screen.findAllByLabelText(/^นับจริง/) as HTMLInputElement[];
+  if (entry === 'keyboard') await user.tab();
+  else await user.click(stock);
+  expect(document.activeElement).toBe(stock);
+  expect(stock.value).toBe('');
+  await user.keyboard('10.5');
+  expect(stock.value).toBe('10.5');
+  await user.tab();
+  expect(document.activeElement).toBe(emptyStock);
+  expect(emptyStock.value).toBe('');
+  await user.tab();
+  expect(emptyStock.value).toBe('0');
+  await user.click(stock);
+  expect(stock.value).toBe('10.5');
+  await user.click(screen.getByRole('button', { name: 'ปิดสต๊อกและจบงานวันนี้' }));
+  await waitFor(() => expect(supabaseMock.rpc).toHaveBeenCalledWith('close_daily_aggregate_stock', expect.objectContaining({
+    p_counts: [
+      { ice_type_id: 'ice-1', actual_quantity: 10.5, note: null },
+      { ice_type_id: 'ice-2', actual_quantity: 0, note: null },
+    ],
+  })));
+});
+
+it('defaults stock to zero, still requires cash counts, and rejects blank or invalid stock counts', async () => {
   supabaseMock.rpc.mockImplementation((name: string) => Promise.resolve({ error: null, data:
     name === 'get_daily_close_reconciliation' ? {
       service_date: '2026-08-26', status: 'open', feature_enabled: true,
@@ -106,7 +154,8 @@ it('distinguishes explicit zero from a blank count and rejects invalid precision
   const stock = await screen.findByLabelText(/^นับจริง/);
   const cash = screen.getByLabelText(/^หัวหน้านับจริง/);
   const close = screen.getByRole('button', { name: 'ปิดยอดสต๊อกและเงินสดวันนี้' }) as HTMLButtonElement;
-  await user.type(stock, '0');
+  expect((stock as HTMLInputElement).value).toBe('0');
+  expect((cash as HTMLInputElement).value).toBe('');
   expect(close.disabled).toBe(true);
   await user.type(cash, '0');
   expect(close.disabled).toBe(false);

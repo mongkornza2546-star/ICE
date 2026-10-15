@@ -33,6 +33,7 @@ interface DailyCloseEmployee {
   cash_variance_amount?: number | null;
   cash_reason?: string | null;
   payment_ids: string[];
+  cash_source_count?: number;
   recorded_at?: string | null;
 }
 
@@ -94,6 +95,7 @@ export function DailyAggregateStockClose({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const loadRequest = useRef(0);
+  const loadedServiceDate = useRef<string | null>(null);
   const pendingRequest = useRef<{ signature: string; key: string } | null>(null);
 
   const load = useCallback(async () => {
@@ -101,7 +103,7 @@ export function DailyAggregateStockClose({
     const request = ++loadRequest.current;
     setLoading(true);
     setError(null);
-    setSummary(null);
+    if (loadedServiceDate.current !== serviceDate) setSummary(null);
     const [reconciliationResponse, legacyRefillsResponse] = await Promise.all([
       supabase.rpc('get_daily_close_reconciliation', { p_service_date: serviceDate }),
       supabase.rpc('get_daily_stock_refill_history', { p_service_date: serviceDate }),
@@ -111,22 +113,28 @@ export function DailyAggregateStockClose({
     if (loadError) setError(loadError.message);
     if (reconciliationResponse.data) {
       const next = reconciliationResponse.data as DailyCloseReconciliation;
+      // Focus/realtime refreshes update system totals without discarding this day's count draft.
+      const preserveDraft = loadedServiceDate.current === serviceDate && next.stock.status === 'open';
+      loadedServiceDate.current = serviceDate;
       setSummary(next.stock);
       setEmployees(next.employees);
       setFeatureEnabled(next.feature_enabled);
-      setCounts(Object.fromEntries(
+      setCounts((current) => Object.fromEntries(
         next.stock.items.map((item) => [
           item.ice_type_id,
-          item.actual_quantity == null ? '' : String(item.actual_quantity),
+          preserveDraft && item.ice_type_id in current ? current[item.ice_type_id]
+            : String(item.actual_quantity ?? 0),
         ]),
       ));
-      setCashCounts(Object.fromEntries(next.employees.map((employee) => [
+      setCashCounts((current) => Object.fromEntries(next.employees.map((employee) => [
         employee.employee_id,
-        employee.actual_cash_amount == null ? '' : String(employee.actual_cash_amount),
+        preserveDraft && employee.employee_id in current ? current[employee.employee_id]
+          : employee.actual_cash_amount == null ? '' : String(employee.actual_cash_amount),
       ])));
-      setCashReasons(Object.fromEntries(next.employees.map((employee) => [
+      setCashReasons((current) => Object.fromEntries(next.employees.map((employee) => [
         employee.employee_id,
-        employee.cash_reason ?? '',
+        preserveDraft && employee.employee_id in current ? current[employee.employee_id]
+          : employee.cash_reason ?? '',
       ])));
     } else if (!loadError) setError('ไม่พบยอดสต๊อกรวมสำหรับวันที่เลือก');
     setLegacyRefills((legacyRefillsResponse.data ?? []) as LegacyRefillHistoryItem[]);
@@ -136,6 +144,9 @@ export function DailyAggregateStockClose({
   useEffect(() => {
     setNote('');
     pendingRequest.current = null;
+  }, [serviceDate]);
+
+  useEffect(() => {
     void load();
     return () => { loadRequest.current += 1; };
   }, [load, refreshId]);
@@ -288,7 +299,7 @@ export function DailyAggregateStockClose({
     </section>
   ) : null;
 
-  if (loading) return <p className="muted">{translateUi('กำลังโหลดยอดสต๊อกรวม...')}</p>;
+  if (loading && !summary) return <p className="muted">{translateUi('กำลังโหลดยอดสต๊อกรวม...')}</p>;
   if (!summary) return <p className="error-text">{error ?? translateUi('โหลดยอดสต๊อกรวมไม่สำเร็จ')}</p>;
   if (summary.status === 'closed') {
     return (
@@ -399,6 +410,16 @@ export function DailyAggregateStockClose({
                     disabled={submitting}
                     inputMode="decimal"
                     min={0}
+                    onFocus={(event) => {
+                      if (event.currentTarget.value === '0') {
+                        setCounts((current) => ({ ...current, [item.ice_type_id]: '' }));
+                      }
+                    }}
+                    onBlur={(event) => {
+                      if (event.currentTarget.value === '' && !event.currentTarget.validity.badInput) {
+                        setCounts((current) => ({ ...current, [item.ice_type_id]: '0' }));
+                      }
+                    }}
                     onChange={(event) => setCounts((current) => ({
                       ...current,
                       [item.ice_type_id]: event.target.value,
@@ -425,7 +446,7 @@ export function DailyAggregateStockClose({
           </span>
         </div>
         <p className="muted">
-          {translateUi('ยอดที่ควรส่งนับเฉพาะเงินสดที่พนักงานรับจริง ไม่รวมเงินทอน โอน QR รายการ void หรือเงินที่หัวหน้ารับเอง')}</p>
+          {translateUi('ยอดควรส่งตามระบบรวมเงินสดร้านประจำและลูกค้าขาจร หลังหักเงินทอนและเงินสดที่พนักงานคืน ไม่รวมโอน/QR และเงินที่หัวหน้ารับหรือคืนเอง')}</p>
         {!featureEnabled ? (
           <p className="daily-close-cash__rollout" role="status">
             {translateUi('กำลังเปรียบเทียบยอดกับรายงานเดิม ช่องเงินสดยังไม่ถูกบันทึกจนกว่าจะเปิดใช้ reconciliation')}</p>
@@ -441,7 +462,7 @@ export function DailyAggregateStockClose({
                 <div className="daily-close-cash__identity">
                   <span>
                     <strong>{employee.employee_name}</strong>
-                    <small>{employee.payment_ids.length}{translateUi(' รายการเงินสด')}{!employee.is_active ? translateUi(' · พนักงานที่ยกเลิกแล้ว') : ''}</small>
+                    <small>{employee.cash_source_count ?? employee.payment_ids.length}{translateUi(' รายการเงินสด')}{!employee.is_active ? translateUi(' · พนักงานที่ยกเลิกแล้ว') : ''}</small>
                   </span>
                   <b className={variance ? 'daily-close-cash__variance' : ''}>{counted ? formatSignedBaht(variance) : translateUi('ยังไม่กรอกยอดนับ')}</b>
                 </div>
@@ -498,7 +519,7 @@ export function DailyAggregateStockClose({
       {error ? <p className="error-text" role="alert"><Warning size={18} />{translateUi(error)}</p> : null}
       <button
         className="primary-button"
-        disabled={submitting || hasMissingCounts || (hasVariance && !note.trim()) || (featureEnabled && hasMissingCashReason)}
+        disabled={loading || submitting || hasMissingCounts || (hasVariance && !note.trim()) || (featureEnabled && hasMissingCashReason)}
         onClick={() => void close()}
         style={{ marginTop: 16 }}
         type="button"
