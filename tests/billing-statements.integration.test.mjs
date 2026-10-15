@@ -231,6 +231,80 @@ async function shopPay(db, allocations, { expected = 125, received = allocations
   [shopId, JSON.stringify(allocations), received, runId, expected, requestKey(key)])).rows[0].result;
 }
 
+test('shared employee history supports another collector receipts without granting void access', async (t) => {
+  const db = await createDatabase(t);
+  const active = await shopPay(db, [{ charge_id: oldBill, amount: 50 }]);
+  const cancelled = await shopPay(db, [{ charge_id: newBill, amount: 25 }], { expected: 75, key: 91 });
+  await voidPayment(db, cancelled.payment_id);
+  const date = (await db.query(`select (recorded_at at time zone 'Asia/Bangkok')::date::text as date
+    from payments where id=$1`, [active.payment_id])).rows[0].date;
+  const history = async (cursor = null) => (await db.query(
+    'select get_payment_history($1::date, $1::date, 1, $2::timestamptz, $3::uuid) as result',
+    [date, cursor?.recorded_at ?? null, cursor?.id ?? null],
+  )).rows[0].result;
+  const snapshot = async (id) => (await db.query('select get_payment_receipt_snapshot($1) as result', [id])).rows[0].result;
+  const originalReceipt = await snapshot(active.payment_id);
+
+  const authorization = migration('0159_automatic_collection_context_authorization');
+  await db.exec(authorization.slice(
+    authorization.indexOf('create or replace function public.is_payment_visible('),
+    authorization.indexOf('create or replace function public.is_charge_collectible_in_run('),
+  ));
+  await db.exec(`
+    create or replace function auth.uid() returns uuid language sql as $$
+      select '50000000-0000-4000-8000-000000000002'::uuid
+    $$;
+    create or replace function public.is_active_user() returns boolean language sql as $$
+      select coalesce(current_setting('test.active', true), 'true') = 'true'
+    $$;
+    set test.role = 'courier';
+    set test.can_collect = 'false';
+  `);
+  assert.equal((await history()).items.length, 0, 'previous owner restriction hides the receipt');
+  await assert.rejects(snapshot(active.payment_id), /cannot be viewed/i);
+
+  await db.exec(migration('0232_shared_employee_payment_history'));
+  for (const role of ['courier', 'round_lead', 'admin']) {
+    await db.query("select set_config('test.role', $1, false)", [role]);
+    const first = await history();
+    const second = await history(first.next_cursor);
+    assert.ok(first.next_cursor);
+    assert.equal(second.next_cursor, null);
+    assert.deepEqual(new Set([...first.items, ...second.items].map(p => p.id)),
+      new Set([active.payment_id, cancelled.payment_id]));
+    assert.equal(first.range_summary.visible_payment_count, 2);
+    assert.equal(first.range_summary.active_payment_count, 1);
+    assert.equal(first.range_summary.active_allocated_amount, 50);
+    assert.deepEqual(await snapshot(active.payment_id), originalReceipt);
+    assert.equal((await snapshot(cancelled.payment_id)).status, 'voided');
+  }
+  await db.exec("set test.role = 'courier'");
+  await assert.rejects(voidPayment(db, active.payment_id), /cannot collect/i);
+  await db.exec("set test.can_collect = 'true'");
+  await assert.rejects(voidPayment(db, active.payment_id), /only void payments they recorded/i);
+
+  // Exercise actual payment/allocation/snapshot RLS as the authenticated role.
+  await db.exec(`
+    alter table public.payments enable row level security;
+    create policy "assigned users read payments" on public.payments for select
+      using (public.is_payment_visible(id));
+    alter table public.payment_allocations enable row level security;
+    grant select on public.payments, public.payment_allocations, public.payment_receipt_snapshots to authenticated;
+    set role authenticated;
+  `);
+  for (const table of ['payments', 'payment_allocations', 'payment_receipt_snapshots']) {
+    assert.equal((await db.query(`select count(*)::int as count from ${table}`)).rows[0].count, 2);
+  }
+  assert.deepEqual(await snapshot(active.payment_id), originalReceipt);
+  assert.equal((await db.query('select is_payment_visible($1) as visible', [requestKey(999)])).rows[0].visible, false);
+  await db.exec("set test.active = 'false'");
+  await assert.rejects(history(), /active user is required/i);
+  await assert.rejects(snapshot(active.payment_id), /cannot be viewed/i);
+  for (const table of ['payments', 'payment_allocations', 'payment_receipt_snapshots']) {
+    assert.equal((await db.query(`select count(*)::int as count from ${table}`)).rows[0].count, 0);
+  }
+});
+
 test('shop collection includes billed debt and a later backdated bill without voiding the statement', async (t) => {
   const db = await createDatabase(t);
   await db.query('update delivery_charges set original_amount=1800 where id=$1', [oldBill]);

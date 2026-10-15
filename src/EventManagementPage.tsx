@@ -254,9 +254,7 @@ export function EventManagementPage({
         ? preferredId
         : selectedId && nextEvents.some((event) => event.id === selectedId)
           ? selectedId
-          : nextEvents.find((event) => !['ended', 'cancelled'].includes(displayStatus(event).tone))?.id
-            ?? nextEvents[0]?.id
-            ?? null;
+          : null;
       setSelectedId(nextSelectedId);
       onSelectedIdChange?.(nextSelectedId);
       if (!nextSelectedId) {

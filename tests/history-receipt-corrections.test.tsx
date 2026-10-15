@@ -1,12 +1,19 @@
 import { createRef } from 'react';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { FinancialOperations } from '../src/FinancialOperations';
 import { HistoryReceiptModal } from '../src/features/financial-operations/components/HistoryReceiptModal';
 import type { HistoryReceiptDetail } from '../src/features/financial-operations/types';
 
-const { rpc } = vi.hoisted(() => ({ rpc: vi.fn() }));
-vi.mock('../src/lib/supabase', () => ({ supabase: { rpc } }));
+const { rpc, from, single, createSignedUrl, storageFrom, invoke } = vi.hoisted(() => ({
+  rpc: vi.fn(), from: vi.fn(), single: vi.fn(), createSignedUrl: vi.fn(), storageFrom: vi.fn(), invoke: vi.fn(),
+}));
+vi.mock('../src/lib/supabase', () => ({ supabase: { rpc, from,
+  storage: { from: storageFrom }, functions: { invoke },
+} }));
+vi.mock('../src/lib/thermalPrinter', () => ({ isAndroidApp: () => true }));
+vi.mock('../src/lib/salesDocumentPrint', () => ({ printSalesDocumentForCurrentPlatform: vi.fn().mockResolvedValue(true) }));
+import { printSalesDocumentForCurrentPlatform } from '../src/lib/salesDocumentPrint';
 
 const receipt: HistoryReceiptDetail = {
   payment: {
@@ -25,6 +32,12 @@ const notice = 'บิลที่มีการรับชำระอยู�
 
 beforeEach(() => {
   rpc.mockReset();
+  single.mockReset();
+  createSignedUrl.mockReset();
+  invoke.mockReset();
+  from.mockReturnValue({ select: () => ({ eq: () => ({ single }) }) });
+  storageFrom.mockReturnValue({ createSignedUrl });
+  vi.mocked(printSalesDocumentForCurrentPlatform).mockClear();
   rpc.mockImplementation(async (name: string) => {
     if (name === 'get_payment_correction_targets') return { data: [{
       charge_id: 'charge-1', charge_number: 'INV2610-00237', delivery_event_id: 'delivery-1',
@@ -40,6 +53,59 @@ beforeEach(() => {
     }, error: null };
     throw new Error(`Unexpected RPC: ${name}`);
   });
+});
+
+it.each([false, true])('lets an employee open and reprint another collector receipt (can collect: %s)', async (canCollectShopPayments) => {
+  render(<FinancialOperations userRole="courier" currentUserId="printer-user"
+    canCollectShopPayments={canCollectShopPayments} demoData={{
+      serviceDate: '2026-10-09', queue: [],
+      paymentHistory: [{ ...receipt.payment, recorded_by: 'collector-user' }],
+    }} />);
+  fireEvent.click(screen.getByRole('button', { name: 'ประวัติรับเงิน' }));
+  expect(screen.getByRole('heading', { level: 1, name: 'ประวัติรับเงิน' })).toBeTruthy();
+  expect(screen.queryByRole('button', { name: 'ยกเลิกรายการ' })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: /ดูบิล.*ร้านยอดชา/ }));
+  const dialog = screen.getByRole('dialog', { name: 'รายละเอียดใบเสร็จ REC2610-00572' });
+  await within(dialog).findByText('หลอดเล็ก × 4 ถุง');
+  expect(within(dialog).queryByRole('button', { name: 'ยกเลิกรายการ' })).toBeNull();
+  fireEvent.click(within(dialog).getByRole('button', { name: 'พิมพ์ซ้ำ' }));
+  await waitFor(() => expect(printSalesDocumentForCurrentPlatform).toHaveBeenCalledWith(
+    expect.objectContaining({ documentType: 'REC', documentNumber: 'REC2610-00572',
+      shop: expect.objectContaining({ code: 'BB72', name: 'ร้านยอดชา' }) }), null,
+  ));
+  expect(rpc).toHaveBeenCalledWith('get_payment_receipt_snapshot', { p_payment_id: 'payment-1' });
+  expect(rpc).not.toHaveBeenCalledWith('void_payment', expect.anything());
+});
+
+it.each([
+  ['bank_transfer', 'collector-user/transfer.webp'],
+  ['bank_transfer', 'collector-user/r2/transfer.webp'],
+  ['qr', 'collector-user/qr.webp'],
+  ['qr', 'collector-user/r2/qr.webp'],
+] as const)('opens another collector %s slip and prints its receipt (%s)', async (payment_method, path) => {
+  const url = 'https://example.com/shared-slip.webp';
+  single.mockResolvedValue({ data: { evidence_path: path }, error: null });
+  createSignedUrl.mockResolvedValue({ data: { signedUrl: url }, error: null });
+  invoke.mockResolvedValue({ data: { signedUrl: url }, error: null });
+  render(<FinancialOperations userRole="courier" currentUserId="printer-user" canCollectShopPayments={false}
+    demoData={{ serviceDate: '2026-10-09', queue: [],
+      paymentHistory: [{ ...receipt.payment, payment_method, recorded_by: 'collector-user' }],
+    }} />);
+  fireEvent.click(screen.getByRole('button', { name: 'ประวัติรับเงิน' }));
+  fireEvent.click(screen.getByRole('button', { name: /ดูบิล.*ร้านยอดชา/ }));
+  const dialog = screen.getByRole('dialog', { name: 'รายละเอียดใบเสร็จ REC2610-00572' });
+  expect((await within(dialog).findByRole('img', { name: 'สลิปการชำระเงิน' })).getAttribute('src')).toBe(url);
+  if (path.includes('/r2/')) {
+    expect(invoke).toHaveBeenCalledWith('r2-storage', { body: { action: 'sign', namespace: 'payment-evidence', path } });
+    expect(createSignedUrl).not.toHaveBeenCalled();
+  } else {
+    expect(createSignedUrl).toHaveBeenCalledWith(path, 3600);
+    expect(invoke).not.toHaveBeenCalled();
+  }
+  expect(within(dialog).queryByRole('alert')).toBeNull();
+  expect(within(dialog).queryByRole('button', { name: 'ยกเลิกรายการ' })).toBeNull();
+  fireEvent.click(within(dialog).getByRole('button', { name: 'พิมพ์ซ้ำ' }));
+  await waitFor(() => expect(printSalesDocumentForCurrentPlatform).toHaveBeenCalledOnce());
 });
 
 it.each(['admin', 'round_lead'] as const)('opens a paid receipt for %s without offering the blocked delivery cancellation', async (userRole) => {

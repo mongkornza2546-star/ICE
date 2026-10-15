@@ -2030,6 +2030,8 @@ input:disabled, select:disabled, textarea:disabled { background: #f2f5f8; color:
 .financial-ops__history-info { min-width: 0; flex: 1; display: grid; gap: 3px; }
 .financial-ops__history-info strong { overflow: hidden; color: #193653; font-size: .88rem; text-overflow: ellipsis; white-space: nowrap; }
 .financial-ops__history-info small { overflow: hidden; color: #687c94; font-size: .68rem; text-overflow: ellipsis; white-space: nowrap; }
+.financial-ops__history-cancellation { display: grid; gap: 4px; margin-top: 4px; }
+.financial-ops__history-cancellation small { overflow: visible; color: #a92d35; white-space: normal; overflow-wrap: anywhere; }
 .financial-ops__history-summary:hover .financial-ops__history-info strong, .financial-ops__history-summary:focus-visible .financial-ops__history-info strong { color: #0865d5; }
 .financial-ops__history-summary:focus-visible { outline: 2px solid #0875db; outline-offset: 3px; border-radius: 5px; }
 .financial-ops__history-open-label { flex: 0 0 auto; margin-left: auto; display: inline-flex !important; align-items: center; gap: 1px !important; color: #0865d5; font-size: .68rem; font-weight: 800; }
@@ -2483,6 +2485,7 @@ input:disabled, select:disabled, textarea:disabled { background: #f2f5f8; color:
 .employee-history-list { display: grid; gap: 8px; }
 .employee-history-list article { display: grid; grid-template-columns: minmax(130px, .7fr) minmax(0, 1fr) auto; gap: 10px; padding: 10px 12px; border: 1px solid #e0e8f1; border-radius: 10px; background: #f9fbfd; color: #3c5570; font-size: .73rem; }
 .employee-history-list article small { color: #78879a; }
+.employee-history-list article > div:first-child { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .employee-history-cancellation { grid-column: 1 / -1; display: grid; gap: 3px; overflow-wrap: anywhere; }
 .employee-empty-history { padding: 16px; border-radius: 10px; color: #75869b; background: #f5f7fa; font-size: .76rem; text-align: center; }
 

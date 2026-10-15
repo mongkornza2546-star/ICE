@@ -128,6 +128,56 @@ describe('EventManagementPage', () => {
     vi.restoreAllMocks();
   });
 
+  it.each(['draft', 'published', 'cancelled'] as const)(
+    'opens the overview without automatically selecting a %s event',
+    async (status) => {
+      const fair = { ...event, name: 'งานแฟร์', status, start_date: '2020-01-01', end_date: '2020-01-02' };
+      const api = gateway({ ...detail(), event: fair });
+      vi.mocked(api.loadOverview).mockResolvedValue([fair]);
+      const onSelectedIdChange = vi.fn();
+      render(<EventManagementPage gateway={api} onSelectedIdChange={onSelectedIdChange} profileRole="admin" />);
+
+      expect(await screen.findByRole('region', { name: 'รายการงานอีเวนต์' })).not.toBeNull();
+      expect(api.loadDetail).not.toHaveBeenCalled();
+      expect(onSelectedIdChange).toHaveBeenLastCalledWith(null);
+      expect(screen.queryByRole('button', { name: 'กลับไปหน้ารวมงาน' })).toBeNull();
+    },
+  );
+
+  it('returns to the overview when the saved event no longer exists', async () => {
+    const api = gateway();
+    render(<EventManagementPage gateway={api} initialSelectedId="missing-event" profileRole="admin" />);
+
+    expect(await screen.findByRole('region', { name: 'รายการงานอีเวนต์' })).not.toBeNull();
+    expect(api.loadDetail).not.toHaveBeenCalled();
+  });
+
+  it('opens only the clicked event and stays on the overview after going back and revisiting', async () => {
+    const api = gateway();
+    const otherEvent = { ...event, id: 'other-event', name: 'งานอื่น' };
+    vi.mocked(api.loadOverview).mockResolvedValue([otherEvent, event]);
+    const onSelectedIdChange = vi.fn();
+    const user = userEvent.setup();
+    const page = (isActive: boolean) => (
+      <EventManagementPage gateway={api} isActive={isActive} onSelectedIdChange={onSelectedIdChange} profileRole="admin" />
+    );
+    const { rerender } = render(page(true));
+
+    await user.click(await screen.findByRole('button', { name: /งานอาหารเมืองทอง/ }));
+    expect(await screen.findByRole('heading', { name: event.name })).not.toBeNull();
+    expect(api.loadDetail).toHaveBeenCalledTimes(1);
+    expect(api.loadDetail).toHaveBeenCalledWith(event.id);
+    await user.click(screen.getByRole('button', { name: 'กลับไปหน้ารวมงาน' }));
+    expect(onSelectedIdChange).toHaveBeenLastCalledWith(null);
+    rerender(page(false));
+    rerender(page(true));
+
+    await waitFor(() => expect(api.loadOverview).toHaveBeenCalledTimes(2));
+    expect(screen.getByRole('region', { name: 'รายการงานอีเวนต์' })).not.toBeNull();
+    expect(api.loadDetail).toHaveBeenCalledTimes(1);
+    expect(onSelectedIdChange).toHaveBeenLastCalledWith(null);
+  });
+
   it('restores the selected event after the page is remounted', async () => {
     const eventC = { ...event, id: 'event-c', name: 'C' };
     const selectedEvent = { ...event, id: 'event-selected', name: 'งานที่เลือก' };
@@ -149,7 +199,7 @@ describe('EventManagementPage', () => {
 
   it('shows actionable readiness and blocks publish until every check passes', async () => {
     const blockedGateway = gateway(detail(false));
-    render(<EventManagementPage gateway={blockedGateway} profileRole="admin" />);
+    render(<EventManagementPage initialSelectedId={event.id} gateway={blockedGateway} profileRole="admin" />);
 
     expect(await screen.findByText('ราคากลางยังไม่ครอบคลุมทุกวันของงาน')).not.toBeNull();
     expect(screen.getByText(/ICE น้ำแข็งหลอด/)).not.toBeNull();
@@ -160,7 +210,7 @@ describe('EventManagementPage', () => {
     const readyGateway = gateway();
     vi.spyOn(window, 'confirm').mockReturnValue(true);
     const user = userEvent.setup();
-    render(<EventManagementPage gateway={readyGateway} profileRole="round_lead" />);
+    render(<EventManagementPage initialSelectedId={event.id} gateway={readyGateway} profileRole="round_lead" />);
 
     await user.click(await screen.findByRole('button', { name: 'Publish' }));
 
@@ -219,7 +269,7 @@ describe('EventManagementPage', () => {
   it('adds an existing active shop with event dates and no tank rental', async () => {
     const shopGateway = gateway();
     const user = userEvent.setup();
-    render(<EventManagementPage gateway={shopGateway} profileRole="round_lead" />);
+    render(<EventManagementPage initialSelectedId={event.id} gateway={shopGateway} profileRole="round_lead" />);
 
     await user.click(await screen.findByRole('button', { name: 'เพิ่มร้าน' }));
     expect(screen.queryByRole('listbox')).toBeNull();
@@ -248,7 +298,7 @@ describe('EventManagementPage', () => {
     tankDetail.participations[0].rents_tank_from_us = true;
     const editGateway = gateway(tankDetail);
     const user = userEvent.setup();
-    render(<EventManagementPage gateway={editGateway} profileRole="round_lead" />);
+    render(<EventManagementPage initialSelectedId={event.id} gateway={editGateway} profileRole="round_lead" />);
 
     await user.click(await screen.findByRole('button', { name: 'แก้ไข S01 ร้านหนึ่ง' }));
     await user.click(screen.getByRole('button', { name: 'บันทึกร้าน' }));
@@ -274,7 +324,7 @@ describe('EventManagementPage', () => {
       { id: 'shop-3', code: 'S03', name: 'ร้านสาม', contact_name: 'คุณสาม', contact_phone: '0800000003', status: 'active' },
     ]);
     const user = userEvent.setup();
-    render(<EventManagementPage gateway={cancelledGateway} profileRole="round_lead" />);
+    render(<EventManagementPage initialSelectedId={event.id} gateway={cancelledGateway} profileRole="round_lead" />);
 
     await user.click(await screen.findByRole('button', { name: 'เพิ่มร้าน' }));
 
@@ -286,7 +336,7 @@ describe('EventManagementPage', () => {
   it('requires a reason before cancelling an event', async () => {
     const cancelGateway = gateway();
     const user = userEvent.setup();
-    render(<EventManagementPage gateway={cancelGateway} profileRole="admin" />);
+    render(<EventManagementPage initialSelectedId={event.id} gateway={cancelGateway} profileRole="admin" />);
 
     await user.click(await screen.findByRole('button', { name: 'ยกเลิกงาน' }));
     const submit = screen.getByRole('button', { name: 'ยืนยันยกเลิก' });
@@ -311,7 +361,7 @@ it.each(['admin', 'round_lead'] as const)('saves an event with only dates for %s
 it('creates a typed new shop and clears an earlier regular-shop selection when typing', async () => {
   const api = gateway();
   const user = userEvent.setup();
-  render(<EventManagementPage gateway={api} profileRole="round_lead" />);
+  render(<EventManagementPage initialSelectedId={event.id} gateway={api} profileRole="round_lead" />);
   await user.click(await screen.findByRole('button', { name: 'เพิ่มร้าน' }));
   await user.click(screen.getByRole('button', { name: 'เลือกร้านประจำ' }));
   await user.click(await screen.findByRole('option', { name: /S03.*ร้านสาม/ }));
@@ -325,7 +375,7 @@ it('creates a typed new shop and clears an earlier regular-shop selection when t
 it('allows a nameless shop using the event dates', async () => {
   const api = gateway();
   const user = userEvent.setup();
-  render(<EventManagementPage gateway={api} profileRole="admin" />);
+  render(<EventManagementPage initialSelectedId={event.id} gateway={api} profileRole="admin" />);
   await user.click(await screen.findByRole('button', { name: 'เพิ่มร้าน' }));
   await user.click(screen.getByRole('button', { name: 'บันทึกร้าน' }));
   await waitFor(() => expect(api.createEventShops).toHaveBeenCalledWith('event-1', expect.any(String), [expect.objectContaining({ name: '', start_date: event.start_date, end_date: event.end_date })]));
@@ -335,7 +385,7 @@ it('creates 300 booths across three ranges in building B with one request', asyn
   const api = gateway();
   vi.mocked(api.createEventShops).mockResolvedValue({ created_count: 300, skipped_count: 0 });
   const user = userEvent.setup();
-  render(<EventManagementPage gateway={api} profileRole="admin" />);
+  render(<EventManagementPage initialSelectedId={event.id} gateway={api} profileRole="admin" />);
   await user.click(await screen.findByRole('button', { name: 'เพิ่มร้าน' }));
   await user.click(screen.getByRole('button', { name: 'เพิ่มหลายร้าน' }));
   await user.type(screen.getByLabelText('ช่วงรหัสบูธ'), 'A1-250\nF1-40\nT1-10');
@@ -354,14 +404,14 @@ it('creates 300 booths across three ranges in building B with one request', asyn
 it('still offers adding shops after 50 participations', async () => {
   const value = detail();
   value.participations = Array.from({ length: 300 }, (_, i) => ({ ...value.participations[0], id: `p-${i}` }));
-  render(<EventManagementPage gateway={gateway(value)} profileRole="admin" />);
+  render(<EventManagementPage initialSelectedId={event.id} gateway={gateway(value)} profileRole="admin" />);
   expect(await screen.findByRole('button', { name: 'เพิ่มร้าน' })).not.toBeNull();
 });
 
 it('opens and selects regular-shop suggestions with the keyboard', async () => {
   const api = gateway();
   const user = userEvent.setup();
-  render(<EventManagementPage gateway={api} profileRole="admin" />);
+  render(<EventManagementPage initialSelectedId={event.id} gateway={api} profileRole="admin" />);
   await user.click(await screen.findByRole('button', { name: 'เพิ่มร้าน' }));
   await user.click(screen.getByRole('combobox', { name: 'ชื่อร้าน' }));
   await user.keyboard('{ArrowDown}');
@@ -380,7 +430,7 @@ it.each(['draft', 'published'] as const)('renames an event-only shop in a %s eve
   value.participations[0] = { ...value.participations[0], shop_code: 'EV-placeholder', shop_name: 'บูธ A1', shop_event_job_id: event.id };
   const api = gateway(value);
   const user = userEvent.setup();
-  render(<EventManagementPage gateway={api} profileRole="round_lead" />);
+  render(<EventManagementPage initialSelectedId={event.id} gateway={api} profileRole="round_lead" />);
   await user.click(await screen.findByRole('button', { name: 'แก้ไข EV-placeholder บูธ A1' }));
   const name = screen.getByRole('textbox', { name: 'ชื่อร้าน' });
   await user.clear(name);
@@ -395,7 +445,7 @@ it.each(['draft', 'published'] as const)('renames an event-only shop in a %s eve
 it('keeps regular-shop names read-only in the event editor', async () => {
   const api = gateway();
   const user = userEvent.setup();
-  render(<EventManagementPage gateway={api} profileRole="round_lead" />);
+  render(<EventManagementPage initialSelectedId={event.id} gateway={api} profileRole="round_lead" />);
   await user.click(await screen.findByRole('button', { name: 'แก้ไข S01 ร้านหนึ่ง' }));
   expect(screen.queryByRole('textbox', { name: 'ชื่อร้าน' })).toBeNull();
   await user.click(screen.getByRole('button', { name: 'บันทึกร้าน' }));
@@ -406,7 +456,7 @@ it('keeps regular-shop names read-only in the event editor', async () => {
 
 it('opens the Excel import dialog from the event shop section', async () => {
   const user = userEvent.setup();
-  render(<EventManagementPage gateway={gateway()} profileRole="admin" />);
+  render(<EventManagementPage initialSelectedId={event.id} gateway={gateway()} profileRole="admin" />);
   await user.click(await screen.findByRole('button', { name: 'อัปโหลด Excel' }));
   expect(screen.getByRole('dialog', { name: 'อัปโหลด Excel ร้านในงาน' })).toBeTruthy();
   await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'ยกเลิก', exact: true }));

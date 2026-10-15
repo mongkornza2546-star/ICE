@@ -1066,7 +1066,7 @@ export function FinancialOperations({
           <header className="financial-ops__header">
             <div>
               <p className="eyebrow">{translateUi('การเงินหน้าร้าน')}</p>
-              <h1>{employeeView === 'queue' ? translateUi('คิวเก็บเงินของฉัน') : employeeView === 'history' ? translateUi('ประวัติรับเงินของฉัน') : translateUi('ใบเซ็นเครดิตรายวัน')}</h1>
+              <h1>{employeeView === 'queue' ? translateUi('คิวเก็บเงินของฉัน') : employeeView === 'history' ? translateUi('ประวัติรับเงิน') : translateUi('ใบเซ็นเครดิตรายวัน')}</h1>
               <span>{translateUi('วันที่ธุรกิจ ')}{serviceDate}</span>
             </div>
             <button disabled={busy} onClick={() => void refreshFinancialData().catch((loadError: unknown) => setError(getErrorMessage(loadError)))} type="button">{translateUi('รีเฟรชยอดล่าสุด')}</button>

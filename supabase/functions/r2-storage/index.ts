@@ -3,7 +3,7 @@ import { DeleteObjectsCommand, GetObjectCommand, PutObjectCommand, S3Client } fr
 import { getSignedUrl } from 'npm:@aws-sdk/s3-request-presigner@3.864.0';
 import {
   canDeleteR2Objects,
-  canSignR2Object,
+  canSignR2Objects,
   canUploadR2Object,
   isAllowedR2MimeType,
   R2_NAMESPACES,
@@ -96,9 +96,18 @@ Deno.serve(async (request) => {
   }
   const namespace = payload.namespace as R2Namespace;
 
+  const canSignPaths = (paths: string[]) => canSignR2Objects(
+    namespace, paths, user.id, profile.role, async (sharedPaths) => {
+      const { data, error } = await authClient.from('payments')
+        .select('evidence_path').in('evidence_path', sharedPaths);
+      if (error) return [];
+      return (data ?? []).map((payment) => payment.evidence_path as string);
+    },
+  );
+
   if (payload.action === 'sign' && typeof payload.path === 'string') {
     const path = payload.path;
-    if (!canSignR2Object(namespace, path, user.id, profile.role)) {
+    if (!await canSignPaths([path])) {
       return json({ error: 'ไม่มีสิทธิ์เปิดไฟล์นี้' }, 403);
     }
     const signedUrl = await getSignedUrl(s3, new GetObjectCommand({
@@ -113,7 +122,7 @@ Deno.serve(async (request) => {
     if (paths.length === 0 || paths.length > 100 || paths.length !== payload.paths.length) {
       return json({ error: 'รายการไฟล์ไม่ถูกต้อง' }, 400);
     }
-    if (!paths.every((path) => canSignR2Object(namespace, path, user.id, profile.role))) {
+    if (!await canSignPaths(paths)) {
       return json({ error: 'ไม่มีสิทธิ์เปิดไฟล์นี้' }, 403);
     }
     const signedUrls = await Promise.all(paths.map(async (path) => ({

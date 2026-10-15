@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { PaymentHistorySection } from '../src/features/financial-operations/components/FinancialOperationsPanels';
@@ -99,6 +99,44 @@ const historyItems: PaymentHistoryItem[] = [
 ];
 
 describe('PaymentHistorySection filters and photos', () => {
+  it('shows cancelled receipt status and full reason to employees while keeping it read-only', async () => {
+    const user = userEvent.setup();
+    const onOpenReceipt = vi.fn();
+    const onPrintReceipt = vi.fn();
+    const onVoidPayment = vi.fn();
+    const cancelledPayment: PaymentHistoryItem = {
+      ...historyItems[1],
+      recorded_by: 'user-1',
+      status: 'voided',
+      void_reason: 'บันทึกรับเงินซ้ำกับใบเสร็จก่อนหน้า จึงยกเลิกรายการนี้และเก็บประวัติไว้ตรวจสอบ',
+    };
+    render(
+      <PaymentHistorySection
+        busy={false}
+        currentUserId="user-1"
+        historyDate="2026-07-31"
+        isManager={false}
+        onHistoryDateChange={vi.fn()}
+        onOpenReceipt={onOpenReceipt}
+        onPrintReceipt={onPrintReceipt}
+        onVoidPayment={onVoidPayment}
+        paymentHistory={[{ ...historyItems[0], recorded_by: 'user-1' }, cancelledPayment]}
+        serviceDate="2026-07-31"
+      />,
+    );
+    const cancelled = screen.getByText('ยกเลิกแล้ว').closest('article')!;
+    expect(within(cancelled).getByText(`เหตุผล: ${cancelledPayment.void_reason}`)).toBeTruthy();
+    expect(within(cancelled).queryByRole('button', { name: 'พิมพ์ซ้ำ' })).toBeNull();
+    expect(within(cancelled).queryByRole('button', { name: 'ยกเลิกรายการ' })).toBeNull();
+    await user.click(within(cancelled).getByRole('button', { name: 'ดูบิล RC-002 ของ ร้านกาแฟ A' }));
+    expect(onOpenReceipt).toHaveBeenCalledWith(cancelledPayment, expect.any(HTMLButtonElement));
+    expect(onPrintReceipt).not.toHaveBeenCalled();
+    expect(onVoidPayment).not.toHaveBeenCalled();
+    // The employee can still reprint and cancel their own active receipt.
+    expect(screen.getAllByRole('button', { name: 'พิมพ์ซ้ำ' })).toHaveLength(1);
+    expect(screen.getAllByRole('button', { name: 'ยกเลิกรายการ' })).toHaveLength(1);
+  });
+
   it('renders shop thumbnails, placeholders, and legacy payloads gracefully', () => {
     const { container } = render(
       <PaymentHistorySection

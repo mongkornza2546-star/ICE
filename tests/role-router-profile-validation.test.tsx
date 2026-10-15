@@ -35,7 +35,12 @@ vi.mock('../src/AdminLayout', () => ({
   ),
 }));
 vi.mock('../src/EmployeeLayout', () => ({
-  EmployeeLayout: ({ children }: { children: ReactNode }) => <div data-testid="employee-layout">{children}</div>,
+  EmployeeLayout: ({ children, onSignOut }: { children: ReactNode; onSignOut?: () => void }) => (
+    <div data-testid="employee-layout">
+      <button onClick={onSignOut} type="button">ออกจากระบบ</button>
+      {children}
+    </div>
+  ),
 }));
 vi.mock('../src/ManagerDashboard', () => ({ ManagerDashboard: () => null }));
 vi.mock('../src/FactoryOrderPage', () => ({ FactoryOrderPage: () => null }));
@@ -91,6 +96,7 @@ function deferred<T>() {
 describe('RoleRouter profile validation', () => {
   beforeEach(() => {
     supabaseMock.maybeSingle.mockReset();
+    supabaseMock.client.auth.signOut.mockReset();
   });
 
   afterEach(() => vi.useRealTimers());
@@ -109,6 +115,15 @@ describe('RoleRouter profile validation', () => {
     profileResponse.resolve({ data: courierProfile, error: null });
     expect(await screen.findByTestId('employee-layout')).not.toBeNull();
     expect(screen.queryByTestId('admin-layout')).toBeNull();
+  });
+
+  it('signs out only the current device', async () => {
+    supabaseMock.maybeSingle.mockResolvedValueOnce({ data: courierProfile, error: null });
+
+    render(<RoleRouter onRecoverableSessionError={vi.fn().mockResolvedValue(false)} session={session} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'ออกจากระบบ' }));
+
+    expect(supabaseMock.client.auth.signOut).toHaveBeenCalledWith({ scope: 'local' });
   });
 
   it('revalidates an open app every five minutes', async () => {

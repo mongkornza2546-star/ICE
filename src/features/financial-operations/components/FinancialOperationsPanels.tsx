@@ -409,7 +409,13 @@ export function PaymentHistorySection({
                         <small>{[payment.building_name, payment.zone_name].filter(Boolean).join(' · ')}</small>
                       ) : null
                     )}
-                    <small>{payment.receipt_number} · {translateUi(paymentMethodLabel(payment.payment_method))} · {formatPaymentReceivedAt(payment)}{payment.status === 'voided' ? translateUi(' · ยกเลิก: {0}', { 0: payment.void_reason ?? '—' }) : ''}</small>
+                    <small>{payment.receipt_number} · {translateUi(paymentMethodLabel(payment.payment_method))} · {formatPaymentReceivedAt(payment)}</small>
+                    {payment.status === 'voided' ? (
+                      <span className="financial-ops__history-cancellation">
+                        <span className="status-badge status-badge--danger">{translateUi('ยกเลิกแล้ว')}</span>
+                        <small>{translateUi('เหตุผล')}: {payment.void_reason ?? '—'}</small>
+                      </span>
+                    ) : null}
                   </span>
                   <span className="financial-ops__history-open-label">{translateUi('ดูบิล ')}<CaretRight aria-hidden="true" size={19} /></span>
                 </button>

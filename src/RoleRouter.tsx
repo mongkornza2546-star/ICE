@@ -245,7 +245,7 @@ export function RoleRouter({
       clearRecoveryForOwner(profile.id);
       clearCachedUserProfile(profile.id);
     }
-    await supabase?.auth.signOut();
+    await supabase?.auth.signOut({ scope: 'local' });
   };
 
   if (profileLoading || (profile && navigationReadyOwner !== profile.id)) {

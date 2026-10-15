@@ -55,6 +55,23 @@ export function canSignR2Object(
   return true;
 }
 
+// Call only after authenticating an active user. The lookup must use that
+// user's database session so payment RLS controls which attachments are shared.
+export async function canSignR2Objects(
+  namespace: R2Namespace,
+  paths: string[],
+  userId: string,
+  role: string,
+  visiblePaymentEvidence: (paths: string[]) => Promise<string[]>,
+) {
+  if (!paths.every(isValidR2Path)) return false;
+  const sharedPaths = [...new Set(paths.filter((path) => !canSignR2Object(namespace, path, userId, role)))];
+  if (sharedPaths.length === 0) return true;
+  if (namespace !== 'payment-evidence') return false;
+  const visiblePaths = new Set(await visiblePaymentEvidence(sharedPaths));
+  return sharedPaths.every((path) => visiblePaths.has(path));
+}
+
 export function canDeleteR2Objects(
   namespace: R2Namespace,
   paths: string[],

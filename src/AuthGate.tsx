@@ -21,7 +21,7 @@ export function AuthGate() {
     setAuthNotice(notice);
     if (lastSessionUserId.current) clearCachedUserProfile(lastSessionUserId.current);
     lastSessionUserId.current = null;
-    await supabase?.auth.signOut();
+    await supabase?.auth.signOut({ scope: 'local' });
     return true;
   }, []);
 

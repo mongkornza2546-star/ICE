@@ -11,7 +11,7 @@ const cardFence = fence.slice(fence.lastIndexOf('do $fence$'), fence.indexOf('$f
 const migration = readMigration('0178_live_shop_delivery_order.sql');
 const id = (n) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 
-test('only admins see cancelled daily deliveries, preserving totals, scopes and read-only history', async (t) => {
+test('authorized employees see cancelled daily deliveries like admins, preserving totals, scopes and read-only history', async (t) => {
   const db = new PGlite();
   t.after(() => db.close());
   await db.exec(`
@@ -83,17 +83,29 @@ test('only admins see cancelled daily deliveries, preserving totals, scopes and 
   assert.equal(cancelled.can_correct, false);
   assert.equal(card.today_history[1].can_cancel, true);
   assert.deepEqual(await cards(id(999)), [], 'building filter is preserved');
+  await db.exec(readMigration('0231_employee_cancelled_delivery_history.sql'));
+  assert.deepEqual((await cards())[0].today_history, card.today_history, 'admin history is unchanged');
   for (const role of ['round_lead', 'courier']) {
     await db.exec(`set test.role = '${role}'`);
     if (role === 'courier') {
       await assert.rejects(cards(), /not assigned/);
       await db.exec(`create or replace function public.is_round_member(uuid) returns boolean language sql as $$ select true $$;`);
     }
-    assert.deepEqual((await cards())[0].today_history.map((entry) => entry.event_id), [id(20)]);
+    const [employeeCard] = await cards();
+    assert.deepEqual(employeeCard.today_history.map((entry) => entry.event_id), [id(21), id(20)]);
+    assert.deepEqual(employeeCard.today_history[0], cancelled, 'employees see the same cancellation details with no edit actions');
+    assert.deepEqual(employeeCard.today_totals, { [id(30)]: 2 }, 'employee totals exclude cancelled deliveries');
+    assert.deepEqual(await cards(id(999)), [], 'employee building filter is preserved');
+    await db.exec(`set test.active = 'false'`);
+    await assert.rejects(cards(), /not assigned/);
+    await db.exec(`set test.active = 'true'`);
   }
   await db.exec(`set test.role = 'admin'; set test.active = 'false'`);
   await assert.rejects(cards(), /not assigned/);
   await db.exec(`set test.active = 'true'; update public.delivery_events set status = 'cancelled' where id = '${id(20)}'`);
   assert.equal((await cards())[0].today_history.length, 2, 'a shop with only cancelled deliveries retains history');
+  assert.deepEqual((await cards())[0].today_totals, {});
+  await db.exec(`set test.role = 'courier'`);
+  assert.equal((await cards())[0].today_history.length, 2, 'employees retain history when all deliveries are cancelled');
   assert.deepEqual((await cards())[0].today_totals, {});
 });

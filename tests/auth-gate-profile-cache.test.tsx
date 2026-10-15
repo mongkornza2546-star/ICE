@@ -59,6 +59,9 @@ describe('AuthGate profile cache cleanup', () => {
   beforeEach(() => {
     authMock.state.session = session;
     authMock.state.listener = null;
+    authMock.client.auth.getSession.mockReset();
+    authMock.client.auth.getSession.mockImplementation(async () => ({ data: { session: authMock.state.session }, error: null }));
+    authMock.client.auth.signOut.mockReset();
   });
 
   it('clears the last user profile after an automatic sign-out', async () => {
@@ -70,6 +73,18 @@ describe('AuthGate profile cache cleanup', () => {
 
     expect(readCachedUserProfile(profile.id)).toBeNull();
     expect(screen.getByText('เข้าสู่ระบบหน้างาน')).not.toBeNull();
+  });
+
+  it('clears an invalid session locally without logging out the same user elsewhere', async () => {
+    authMock.client.auth.getSession.mockResolvedValueOnce({
+      data: { session },
+      error: new Error('invalid refresh token'),
+    });
+
+    render(<AuthGate />);
+
+    expect(await screen.findByText('เซสชันหมดอายุแล้ว โปรดเข้าสู่ระบบใหม่อีกครั้ง')).not.toBeNull();
+    expect(authMock.client.auth.signOut).toHaveBeenCalledWith({ scope: 'local' });
   });
 });
 
