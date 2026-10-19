@@ -46,7 +46,7 @@ export function EmployeeBillingStatementsPanel({ isActive = true }: { isActive?:
   const create = async (chargeIds: string[]) => {
     if (!supabase || !selected) throw new Error('ไม่พบการเชื่อมต่อฐานข้อมูล');
     const response = await supabase.rpc('create_billing_statement', {
-      p_shop_id: selected.shop_id, p_charge_ids: chargeIds, p_issued_service_date: serviceDate,
+      p_shop_id: selected.shop_id, p_charge_ids: chargeIds,
     });
     if (response.error) throw response.error;
     const statement = response.data as BillingStatement;

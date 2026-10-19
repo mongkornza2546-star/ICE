@@ -3,6 +3,7 @@ import { uiDateTimeFormat, translateUi, useLanguage } from '../../../i18n';
 import { FileText, Printer, Prohibit, X } from '@phosphor-icons/react';
 import { useMemo, useState } from 'react';
 import { isAndroidApp } from '../../../lib/thermalPrinter';
+import { getErrorMessage } from '../../../lib/errorMessage';
 import { printEmployeeBillingStatement } from '../../../lib/employeeBillingStatementPrint';
 import { printBillingStatement } from '../../../lib/billingStatementPrint';
 import type { BillingStatement, ReceivableCharge } from '../types';
@@ -86,7 +87,7 @@ export function BillingStatementsSection({
       await printStatement(statement, printWindow);
     } catch (createError) {
       printWindow?.close();
-      setError(createError instanceof Error ? createError.message : 'ออกใบวางบิลไม่สำเร็จ');
+      setError(getErrorMessage(createError, 'ออกใบวางบิลไม่สำเร็จ'));
     } finally {
       setWorking(false);
     }

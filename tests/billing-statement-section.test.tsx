@@ -83,3 +83,18 @@ describe('BillingStatementsSection', () => {
     await waitFor(() => expect(printBillingStatement).toHaveBeenCalledWith(createdStatement, printWindow, [due, future, alreadyBilled]));
   });
 });
+
+it('shows the database error instead of hiding a plain RPC error behind a generic message', async () => {
+  const message = 'Billing statements must be issued for today';
+  const printWindow = { close: vi.fn() } as unknown as Window;
+  vi.spyOn(window, 'open').mockReturnValue(printWindow);
+  render(<BillingStatementsSection busy={false} charges={[charge('bill', 'INV-1', '2026-10-15', 480)]}
+    serviceDate="2026-10-15" statements={[]}
+    onCreate={vi.fn().mockRejectedValue({ code: 'P0001', message, details: null, hint: null })} />);
+  fireEvent.click(screen.getByRole('button', { name: 'ออกใบวางบิล' }));
+  fireEvent.click(screen.getByRole('button', { name: 'ออกและพิมพ์ใบวางบิล' }));
+  await waitFor(() => expect(screen.getAllByRole('alert').every((alert) => alert.textContent === message)).toBe(true));
+  expect(printWindow.close).toHaveBeenCalled();
+  expect(printBillingStatement).not.toHaveBeenCalled();
+  expect(screen.getByRole('dialog', { name: 'ออกใบวางบิล' })).toBeTruthy();
+});

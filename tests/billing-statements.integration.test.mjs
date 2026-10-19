@@ -895,3 +895,19 @@ test('employee billing excludes inaccessible charges and rejects mixed authorize
   await assert.rejects(issue(db, [oldBill]), /Only active employees/);
   assert.ok(statement.id);
 });
+
+test('server dates new statements today when the client omits its stale business date', async (t) => {
+  const db = await createDatabase(t);
+  const { today, stale } = (await db.query(`select
+    (clock_timestamp() at time zone 'Asia/Bangkok')::date::text as today,
+    ((clock_timestamp() at time zone 'Asia/Bangkok')::date - 4)::text as stale`)).rows[0];
+  await assert.rejects(db.query('select public.create_billing_statement($1, $2::uuid[], $3::date)',
+    [shopId, [oldBill, newBill], stale]), /Billing statements must be issued for today/);
+  assert.equal((await db.query('select count(*) from billing_statements')).rows[0].count, 0);
+  const statement = await issue(db, [oldBill, newBill]);
+  assert.equal(statement.issued_service_date, today);
+  assert.equal(Number(statement.total_amount), 125);
+  assert.equal(statement.items.length, 2);
+  const stored = (await db.query('select issued_service_date::text as date from billing_statements where id=$1', [statement.id])).rows[0];
+  assert.equal(stored.date, today);
+});

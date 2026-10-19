@@ -26,7 +26,7 @@ it('lets employees issue and reprint the saved statement after a printer failure
   fireEvent.click(screen.getByRole('button', { name: 'ออกใบวางบิล' }));
   fireEvent.click(screen.getByRole('button', { name: 'ออกและพิมพ์ใบวางบิล' }));
   expect(await screen.findByRole('alert')).toHaveProperty('textContent', 'เครื่องพิมพ์ไม่พร้อม');
-  expect(mocks.rpc).toHaveBeenCalledWith('create_billing_statement', expect.objectContaining({ p_shop_id: 'shop', p_charge_ids: ['bill'] }));
+  expect(mocks.rpc).toHaveBeenCalledWith('create_billing_statement', { p_shop_id: 'shop', p_charge_ids: ['bill'] });
   expect(open).not.toHaveBeenCalled();
   expect(screen.queryByRole('button', { name: 'ยกเลิก BIL-1' })).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'พิมพ์ BIL-1' }));

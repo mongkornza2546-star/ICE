@@ -982,7 +982,7 @@ export function FinancialOperations({
     const response = await supabase.rpc('create_billing_statement', {
       p_shop_id: receivable.shop_id,
       p_charge_ids: chargeIds,
-      p_issued_service_date: serviceDate,
+      // Use the server's current Bangkok date, not the selected business date.
     });
     if (response.error) throw response.error;
     invalidateCurrentCollectionContext(true);
