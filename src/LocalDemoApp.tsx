@@ -561,6 +561,8 @@ const managerDashboardDemo: DailyWorkDashboard = {
     cashReceivedValue: 1400,
     transferReceivedValue: 1600,
     creditSalesValue: 860,
+    creditSalesSubtotalValue: 825,
+    creditSalesVatValue: 35,
     iceTypeSales: [
       { ice_type_id: 'ice-block', ice_type_name: 'หลอดเล็ก', unit: 'ถุง', quantity: 72 },
       { ice_type_id: 'ice-small', ice_type_name: 'หลอดเล็กโม่', unit: 'ถุง', quantity: 28 },

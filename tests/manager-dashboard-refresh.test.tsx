@@ -7,7 +7,7 @@ import { LocalDemoApp } from '../src/LocalDemoApp';
 
 afterEach(() => vi.useRealTimers());
 
-function setup(status = 'open') {
+function setup(status = 'open', creditBreakdown: { creditSalesSubtotalValue?: number; creditSalesVatValue?: number } = { creditSalesSubtotalValue: 290, creditSalesVatValue: 10 }) {
   client.rpc.mockImplementation((name: string, args: { p_service_date: string }) => Promise.resolve({ error: null, data:
     name === 'get_daily_work_dashboard' ? {
       session: { status: status === 'closed' ? 'completed' : 'in_progress', service_date: args.p_service_date },
@@ -26,7 +26,7 @@ function setup(status = 'open') {
       }, cancellationState: { can_cancel: false }, problems: [],
       readiness: [{ status: 'uncounted', location_id: 'legacy-location' }],
     } : name === 'get_stock_control_summary' ? { locations: [] } : name === 'get_daily_payment_method_summary' ? {
-      cashReceivedValue: 200, transferReceivedValue: 300, creditSalesValue: 300,
+      cashReceivedValue: 200, transferReceivedValue: 300, creditSalesValue: 300, ...creditBreakdown,
     } : {
       service_date: args.p_service_date, status, items: [{ ice_type_id: 'ice', name: 'หลอด', unit: 'ถุง', available_quantity: status === 'closed' ? 0 : 10 }],
     } }));
@@ -93,4 +93,23 @@ it('shows per-building ice quantities through the actual demo entry point', asyn
   } finally {
     window.history.replaceState(null, '', '/');
   }
+});
+
+it('shows the credit goods price prominently with the actual VAT and gross total', async () => {
+  setup();
+  render(<ManagerDashboard isActive profileRole="admin" onNavigate={vi.fn()} />);
+  const card = (await screen.findByText('เครดิต')).closest('article')!;
+  expect(card.querySelector('strong')?.textContent).toBe('฿290.00');
+  expect(within(card).getByText('ค่าน้ำแข็ง (ไม่รวม VAT)')).toBeTruthy();
+  expect(within(card).getByText('฿10.00')).toBeTruthy();
+  expect(within(card).getByText('฿300.00')).toBeTruthy();
+});
+
+it('does not present gross credit as goods price when the server has no VAT breakdown', async () => {
+  setup('open', {});
+  render(<ManagerDashboard isActive profileRole="admin" onNavigate={vi.fn()} />);
+  const card = (await screen.findByText('เครดิต')).closest('article')!;
+  expect(card.querySelector('strong')?.textContent).toBe('—');
+  expect(within(card).getAllByText('—')).toHaveLength(2);
+  expect(within(card).getByText('฿300.00')).toBeTruthy();
 });

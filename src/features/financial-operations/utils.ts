@@ -175,6 +175,35 @@ export function sumChargeOutstanding(charges: QueueShop['charges']) {
   return charges.reduce((sum, charge) => sum + Math.round(Number(charge.outstanding_amount) * 100), 0) / 100;
 }
 
+export function collectionBillGroups(shop: QueueShop) {
+  const groups = new Map<string, {
+    id: string;
+    statementNumber: string | null;
+    charges: QueueShop['charges'];
+  }>();
+  for (const charge of shop.charges) {
+    const statementId = charge.billing_statement_id ?? shop.billing_statement_id;
+    const id = statementId ? `statement:${statementId}` : `charge:${charge.charge_id}`;
+    const group = groups.get(id);
+    if (group) group.charges.push(charge);
+    else groups.set(id, {
+      id,
+      statementNumber: statementId ? charge.billing_statement_number ?? shop.billing_statement_number ?? statementId : null,
+      charges: [charge],
+    });
+  }
+  return [...groups.values()];
+}
+
+export function expandCollectionBillSelection(shop: QueueShop, chargeIds: string[]) {
+  const selected = new Set(chargeIds);
+  const expanded = new Set(collectionBillGroups(shop)
+    .filter((group) => group.charges.some((charge) => selected.has(charge.charge_id)))
+    .flatMap((group) => group.charges.map((charge) => charge.charge_id)));
+  // Preserve the queue's allocation order even when statement items interleave.
+  return shop.charges.filter((charge) => expanded.has(charge.charge_id)).map((charge) => charge.charge_id);
+}
+
 export function allocateOldestFirst(charges: QueueShop['charges'], amount: number) {
   let remaining = Math.round(amount * 100);
   const allocations: Array<{ charge_id: string; amount: number }> = [];
@@ -204,6 +233,7 @@ function chargeSelectionFingerprint(charges: QueueShop['charges']) {
   return charges.map((charge) => [
     charge.charge_id,
     Number(charge.outstanding_amount).toFixed(2),
+    charge.billing_statement_id ?? null,
   ]);
 }
 

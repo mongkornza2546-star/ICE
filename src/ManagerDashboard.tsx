@@ -142,6 +142,8 @@ export function ManagerDashboard({
         cashReceivedValue: demoDashboard.salesSummary.cashReceivedValue ?? 0,
         transferReceivedValue: demoDashboard.salesSummary.transferReceivedValue ?? 0,
         creditSalesValue: demoDashboard.salesSummary.creditSalesValue ?? 0,
+        creditSalesSubtotalValue: demoDashboard.salesSummary.creditSalesSubtotalValue,
+        creditSalesVatValue: demoDashboard.salesSummary.creditSalesVatValue,
       });
       setAggregateStockSummary(demoAggregateStockSummary);
       setError(null);
@@ -353,7 +355,18 @@ export function ManagerDashboard({
       <section className="dashboard-payment-grid" aria-label={translateUi('สรุปการรับชำระและเครดิตวันนี้')}>
         <OverviewCard icon={CurrencyDollar} label={translateUi('เงินสด')} value={formatCurrency(paymentSummary.cashReceivedValue)} detail={translateUi('รับชำระแล้ววันนี้')} tone="green" />
         <OverviewCard icon={CreditCard} label={translateUi('โอนเงิน')} value={formatCurrency(paymentSummary.transferReceivedValue)} detail={translateUi('รับชำระแล้ววันนี้')} tone="sky" />
-        <OverviewCard icon={CreditCard} label={translateUi('เครดิต')} value={formatCurrency(paymentSummary.creditSalesValue)} detail={translateUi('ยอดขายเครดิตที่บันทึกวันนี้')} tone="purple" />
+        <OverviewCard
+          icon={CreditCard}
+          label={translateUi('เครดิต')}
+          value={paymentSummary.creditSalesSubtotalValue == null ? '—' : formatCurrency(paymentSummary.creditSalesSubtotalValue)}
+          detail={translateUi('ค่าน้ำแข็ง (ไม่รวม VAT)')}
+          tone="purple"
+        >
+          <dl className="dashboard-credit-breakdown">
+            <div><dt>VAT</dt><dd>{paymentSummary.creditSalesVatValue == null ? '—' : formatCurrency(paymentSummary.creditSalesVatValue)}</dd></div>
+            <div><dt>{translateUi('ยอดรวม (รวม VAT)')}</dt><dd>{formatCurrency(paymentSummary.creditSalesValue)}</dd></div>
+          </dl>
+        </OverviewCard>
       </section>
 
       <section className="dashboard-panel dashboard-product-sales-panel" aria-label={translateUi('ยอดขายแยกตามประเภทน้ำแข็ง')}>
@@ -450,9 +463,9 @@ function DashboardHeading({ title, detail, status, statusTone, children }: { tit
   return <header className="dashboard-heading"><div><h1>{title}</h1><p>{detail}</p></div><div className="dashboard-heading__actions">{status ? <span className={`dashboard-session-status dashboard-session-status--${statusTone}`}><i />{status}</span> : null}{children}</div></header>;
 }
 
-function OverviewCard({ icon: IconComponent, label, value, unit, detail, tone }: { icon: Icon; label: string; value: string; unit?: string; detail: string; tone: 'blue' | 'green' | 'sky' | 'orange' | 'purple' }) {
+function OverviewCard({ icon: IconComponent, label, value, unit, detail, tone, children }: { icon: Icon; label: string; value: string; unit?: string; detail: string; children?: ReactNode; tone: 'blue' | 'green' | 'sky' | 'orange' | 'purple' }) {
   useLanguage();
-  return <article className={`dashboard-overview-card dashboard-overview-card--${tone}`}><span className="dashboard-overview-card__icon"><IconComponent size={28} weight="fill" /></span><div><small>{label}</small><strong>{value}</strong>{unit ? <em>{unit}</em> : null}<p>{detail}</p><span className="dashboard-mini-bars" aria-hidden="true"><i /><i /><i /><i /><i /><i /><i /><i /></span></div></article>;
+  return <article className={`dashboard-overview-card dashboard-overview-card--${tone}`}><span className="dashboard-overview-card__icon"><IconComponent size={28} weight="fill" /></span><div><small>{label}</small><strong>{value}</strong>{unit ? <em>{unit}</em> : null}<p>{detail}</p>{children ?? <span className="dashboard-mini-bars" aria-hidden="true"><i /><i /><i /><i /><i /><i /><i /><i /></span>}</div></article>;
 }
 
 function PanelHeading({ title, detail }: { title: string; detail?: string }) {

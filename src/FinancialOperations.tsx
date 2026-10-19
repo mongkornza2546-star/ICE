@@ -30,6 +30,8 @@ import type {
 } from './features/financial-operations/types';
 import {
   allocateOldestFirst,
+  collectionBillGroups,
+  expandCollectionBillSelection,
   isPaymentAmountValidForSelection,
   methodRequires,
   reconcileChargeSelection,
@@ -300,11 +302,12 @@ export function FinancialOperations({
             selectedChargeIdsRef.current,
           );
           if (reconciled.changed) {
-            const selected = new Set(reconciled.selectedChargeIds);
+            const chargeIds = expandCollectionBillSelection(nextSelectedShop, reconciled.selectedChargeIds);
+            const selected = new Set(chargeIds);
             const selectedOutstanding = sumChargeOutstanding(nextSelectedShop.charges
               .filter((charge) => selected.has(charge.charge_id)));
-            setSelectedChargeIds(reconciled.selectedChargeIds);
-            selectedChargeIdsRef.current = reconciled.selectedChargeIds;
+            setSelectedChargeIds(chargeIds);
+            selectedChargeIdsRef.current = chargeIds;
             setAmount(selectedOutstanding.toFixed(2));
             setSelectionReviewRequired(true);
           }
@@ -570,10 +573,7 @@ export function FinancialOperations({
 
   const changeSelectedCharges = (nextChargeIds: string[]) => {
     if (!selectedShop || busy) return;
-    const requested = new Set(nextChargeIds);
-    const chargeIds = selectedShop.charges
-      .filter((charge) => requested.has(charge.charge_id))
-      .map((charge) => charge.charge_id);
+    const chargeIds = expandCollectionBillSelection(selectedShop, nextChargeIds);
     const selected = new Set(chargeIds);
     const selectedOutstanding = sumChargeOutstanding(selectedShop.charges
       .filter((charge) => selected.has(charge.charge_id)));
@@ -583,9 +583,15 @@ export function FinancialOperations({
   };
 
   const toggleSelectedCharge = (chargeId: string) => {
+    if (!selectedShop) return;
+    const group = collectionBillGroups(selectedShop).find((bill) => bill.charges.some((charge) => charge.charge_id === chargeId));
+    if (!group) return;
     const selected = new Set(selectedChargeIds);
-    if (selected.has(chargeId)) selected.delete(chargeId);
-    else selected.add(chargeId);
+    const allSelected = group.charges.every((charge) => selected.has(charge.charge_id));
+    for (const charge of group.charges) {
+      if (allSelected) selected.delete(charge.charge_id);
+      else selected.add(charge.charge_id);
+    }
     changeSelectedCharges([...selected]);
   };
 
@@ -1183,7 +1189,9 @@ export function FinancialOperations({
           onClearChargeSelection={() => changeSelectedCharges([])}
           onConfirmSelectionReview={() => setSelectionReviewRequired(false)}
           onSelectAllCharges={() => changeSelectedCharges(selectedShop.charges.map((charge) => charge.charge_id))}
-          onSelectTodayCharges={() => changeSelectedCharges(selectedShop.charges
+          onSelectTodayCharges={() => changeSelectedCharges(collectionBillGroups(selectedShop)
+            .filter((group) => !group.statementNumber)
+            .flatMap((group) => group.charges)
             .filter((charge) => charge.service_date === serviceDate)
             .map((charge) => charge.charge_id))}
           onToggleCharge={toggleSelectedCharge}

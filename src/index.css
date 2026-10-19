@@ -420,6 +420,10 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .dashboard-overview-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 13px; }
 .dashboard-payment-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 13px; }
 .dashboard-overview-card { min-width: 0; min-height: 160px; display: flex; align-items: flex-start; gap: 14px; padding: 17px; border: 1px solid #dbe6f2; border-radius: 16px; background: #fff; box-shadow: 0 5px 15px rgba(28, 65, 107, .055); }
+.dashboard-credit-breakdown { display: grid; gap: 5px; margin: 10px 0 0; color: #66768b; font-size: .7rem; }
+.dashboard-credit-breakdown > div { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 10px; }
+.dashboard-credit-breakdown dt, .dashboard-credit-breakdown dd { margin: 0; }
+.dashboard-credit-breakdown dd { color: #344961; font-weight: 700; font-variant-numeric: tabular-nums; }
 .dashboard-overview-card__icon { width: 49px; height: 49px; display: grid; place-items: center; flex: 0 0 auto; border-radius: 50%; }
 .dashboard-overview-card > div { min-width: 0; flex: 1; }
 .dashboard-overview-card small { display: block; overflow: hidden; color: #344961; font-size: .77rem; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
@@ -2096,6 +2100,11 @@ input:disabled, select:disabled, textarea:disabled { background: #f2f5f8; color:
 .financial-ops__charge-edit:disabled { cursor: not-allowed; opacity: .52; }
 .financial-ops__charge-items { display: grid; gap: 5px; padding-top: 7px; border-top: 1px dashed #dce7ef; }
 .financial-ops__charge-items[hidden] { display: none; }
+.financial-ops__statement-items { display: grid; gap: 10px; padding-top: 7px; border-top: 1px dashed #dce7ef; }
+.financial-ops__statement-items[hidden] { display: none; }
+.financial-ops__statement-items > div { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 12px; }
+.financial-ops__statement-items > div > span { display: grid; gap: 2px; overflow-wrap: anywhere; }
+.financial-ops__statement-items .financial-ops__due-date-request { grid-column: 1 / -1; }
 .financial-ops__charge-items > div, .financial-ops__current-order > div { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: #536f87; font-size: .7rem; }
 .financial-ops__charge-items > div > span, .financial-ops__current-order > div > span { min-width: 0; }
 .financial-ops__charge-items > div > b, .financial-ops__current-order > div > b { flex: 0 0 auto; color: #294867; font-size: .7rem; }

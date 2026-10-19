@@ -16,7 +16,7 @@ import {
 } from '@phosphor-icons/react';
 import type { PaymentMethod } from '../../../types/app';
 import type { PaymentReceipt, QueueShop } from '../types';
-import { formatCollectionShopIdentity, formatServiceDate, money, paymentMethodLabel } from '../utils';
+import { collectionBillGroups, formatCollectionShopIdentity, formatServiceDate, money, paymentMethodLabel, sumChargeOutstanding } from '../utils';
 import { AutoRefreshShopImage } from './AutoRefreshShopImage';
 import { toBangkokDateString } from '../../../lib/serviceDate';
 import { visiblePaymentMethods } from '../../../lib/paymentMethods';
@@ -107,6 +107,7 @@ export function PaymentModal({
   useLanguage();
   const isPanel = presentation === 'panel';
   const [expandedChargeId, setExpandedChargeId] = useState<string | null>(null);
+  const [expandedStatementId, setExpandedStatementId] = useState<string | null>(null);
   const [evidencePreviewUrl, setEvidencePreviewUrl] = useState<string | null>(null);
 
   useEffect(() => {
@@ -128,6 +129,8 @@ export function PaymentModal({
   const identity = formatCollectionShopIdentity(selectedShop);
   const availablePaymentMethods = visiblePaymentMethods(selectedShop.payment_profile.allowed_payment_methods);
   const selectedChargeIdSet = new Set(selectedChargeIds);
+  const bills = collectionBillGroups(selectedShop);
+  const selectedBillCount = bills.filter((bill) => bill.charges.every((charge) => selectedChargeIdSet.has(charge.charge_id))).length;
   return (
     <div
       aria-label={translateUi('รับเงิน {0}', { 0: identity.title })}
@@ -216,11 +219,11 @@ export function PaymentModal({
             <section className="financial-ops__charge-list" aria-label={translateUi('รายละเอียดบิลและรายการที่สั่ง')}>
               <div className="financial-ops__charge-list-title">
                 <strong><ListNumbers aria-hidden="true" size={18} />{translateUi(' เลือกบิลที่ต้องการรับชำระ')}</strong>
-                <small>{translateUi('เลือกแล้ว ')}{selectedChargeIds.length}{translateUi(' จาก ')}{selectedShop.charges.length}{translateUi(' บิล')}</small>
+                <small>{translateUi('เลือกแล้ว ')}{selectedBillCount}{translateUi(' จาก ')}{bills.length}{translateUi(' บิล')}</small>
               </div>
               <div className="financial-ops__charge-selection-actions" aria-label={translateUi('คำสั่งเลือกบิล')}>
                 <button disabled={busy || !canRecordPayment} onClick={onSelectAllCharges} type="button">{translateUi('เลือกทั้งหมด')}</button>
-                <button disabled={busy || !canRecordPayment} onClick={onSelectTodayCharges} type="button">{translateUi('เฉพาะบิลวันนี้')}</button>
+                {bills.some((bill) => !bill.statementNumber) ? <button disabled={busy || !canRecordPayment} onClick={onSelectTodayCharges} type="button">{translateUi('เฉพาะบิลวันนี้')}</button> : null}
                 <button disabled={busy || !canRecordPayment} onClick={onClearChargeSelection} type="button">{translateUi('ล้างการเลือก')}</button>
               </div>
               {selectionReviewRequired ? (
@@ -232,7 +235,64 @@ export function PaymentModal({
               {selectedChargeIds.length === 0 ? (
                 <p className="financial-ops__selection-empty" role="status">{translateUi('กรุณาเลือกอย่างน้อย 1 บิลเพื่อรับชำระ')}</p>
               ) : null}
-              {selectedShop.charges.map((charge) => {
+              {bills.map((bill) => {
+                const charge = bill.charges[0];
+                if (bill.statementNumber) {
+                  const isSelected = bill.charges.every((item) => selectedChargeIdSet.has(item.charge_id));
+                  const isExpanded = expandedStatementId === bill.id;
+                  return <article className={`${isSelected ? 'is-selected ' : ''}${isExpanded ? 'is-expanded' : ''}`.trim()} key={bill.id}>
+                    <div className="financial-ops__charge-heading">
+                      <label className="financial-ops__charge-selector">
+                        <input
+                          aria-label={translateUi('เลือกใบวางบิล {0}', { 0: bill.statementNumber })}
+                          checked={isSelected}
+                          disabled={busy || !canRecordPayment}
+                          onChange={() => onToggleCharge(charge.charge_id)}
+                          type="checkbox"
+                        />
+                        <span>
+                          <b>{translateUi('ใบวางบิล ')}{bill.statementNumber}</b>
+                          <small>{translateUi('รวม ')}{bill.charges.length}{translateUi(' บิล')}</small>
+                        </span>
+                        <span className="financial-ops__charge-total"><small>{translateUi('ยอดค้างใบวางบิล')}</small><b>{money.format(sumChargeOutstanding(bill.charges))}</b></span>
+                      </label>
+                      <button
+                        aria-controls={`financial-statement-items-${bill.id}`}
+                        aria-expanded={isExpanded}
+                        aria-label={translateUi('ดูรายละเอียดใบวางบิล {0}', { 0: bill.statementNumber })}
+                        className="financial-ops__charge-toggle"
+                        onClick={() => setExpandedStatementId((current) => current === bill.id ? null : bill.id)}
+                        type="button"
+                      >
+                        <CaretDown aria-hidden="true" className="financial-ops__charge-caret" size={17} weight="bold" />
+                      </button>
+                    </div>
+                    <div
+                      aria-label={translateUi('ดูรายละเอียดใบวางบิล {0}', { 0: bill.statementNumber })}
+                      className="financial-ops__statement-items"
+                      hidden={!isExpanded}
+                      id={`financial-statement-items-${bill.id}`}
+                      role="region"
+                    >
+                      {isExpanded ? bill.charges.map((item) => (
+                        <div key={item.charge_id}>
+                          <span>
+                            <b>{translateUi('เลขที่บิล {0}', { 0: item.charge_number ?? translateUi('ขายสด') })}</b>
+                            <small>{translateUi('ส่งวันที่ ')}{formatServiceDate(item.service_date)}</small>
+                          </span>
+                          <b>{money.format(item.outstanding_amount)}</b>
+                          {item.payment_term === 'credit' ? <button
+                            aria-label={translateUi('ขอเลื่อนกำหนดบิล {0}', { 0: item.charge_number ?? translateUi('ขายสด') })}
+                            className="financial-ops__due-date-request"
+                            disabled={busy || !canRecordPayment}
+                            onClick={() => onRequestDueDate(item)}
+                            type="button"
+                          >{translateUi('ขอเลื่อนกำหนด')}{item.due_date ? ` · ${formatServiceDate(item.due_date)}` : ''}</button> : null}
+                        </div>
+                      )) : null}
+                    </div>
+                  </article>;
+                }
                 const isPriorBalance = charge.service_date !== serviceDate;
                 const isExpanded = !isPanel || expandedChargeId === charge.charge_id;
                 const isSelected = selectedChargeIdSet.has(charge.charge_id);

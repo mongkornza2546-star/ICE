@@ -149,6 +149,14 @@ test('credit VAT through real migrations, delivery writers, billing, collection 
   assert.equal(dailyDocument.vat_amount, 70);
   assert.equal(dailyDocument.total_amount, 1170);
  });
+ await t.test('daily credit summary splits mixed VAT bills and returns zero for an empty day', async () => {
+  const summary = await value(db, `select public.get_daily_payment_method_summary(${today}) as value`);
+  assert.equal(summary.creditSalesSubtotalValue, 1100);
+  assert.equal(summary.creditSalesVatValue, 70);
+  assert.equal(summary.creditSalesValue, 1170);
+  const empty = await value(db, `select public.get_daily_payment_method_summary(${today} - 1) as value`);
+  assert.deepEqual(empty, { cashReceivedValue: 0, transferReceivedValue: 0, creditSalesValue: 0, creditSalesSubtotalValue: 0, creditSalesVatValue: 0 });
+ });
  await t.test('stale VAT settings roll the entire sale back; successful replay uses original snapshot', async () => {
   const before = await value(db, 'select count(*)::int as value from public.delivery_events');
   await assert.rejects(record(db, 4, 0), /VAT/);
@@ -175,6 +183,11 @@ test('credit VAT through real migrations, delivery writers, billing, collection 
   const replay = await pay(db, sale.charge_id, 500, 1070, null, paymentKey);
   assert.equal(payment.payment_id, replay.payment_id);
   nonVat = await record(db, 2, 0);
+  const summary = await value(db, `select public.get_daily_payment_method_summary(${today}) as value`);
+  assert.equal(summary.creditSalesSubtotalValue, 1150);
+  assert.equal(summary.creditSalesVatValue, 70);
+  assert.equal(summary.creditSalesValue, 1220);
+  assert.equal(summary.cashReceivedValue, 500);
   const receivable = (await value(db, 'select public.get_credit_receivables() as value'))[0];
   assert.equal(receivable.vat_enabled, false);
   assert.equal(receivable.outstanding_amount, 720);
@@ -228,7 +241,11 @@ test('credit VAT through real migrations, delivery writers, billing, collection 
   await db.exec(`update public.shop_payment_profiles set vat_enabled=true, credit_limit=200 where shop_id='${shop}'`);
   await assert.rejects(record(db, 2, 7), /credit-limit/); // existing 150 + gross 53.50 > 200
   await db.exec(`update public.shop_payment_profiles set credit_limit=null where shop_id='${shop}'`);
+  const before = await value(db, `select public.get_daily_payment_method_summary(${today}) as value`);
   const half = await record(db, .5, 7);
+  const withVat = await value(db, `select public.get_daily_payment_method_summary(${today}) as value`);
+  assert.equal(withVat.creditSalesSubtotalValue, before.creditSalesSubtotalValue + 12.5);
+  assert.equal(withVat.creditSalesVatValue, before.creditSalesVatValue + .88);
   assert.equal(half.subtotal_amount, 12.5);
   assert.equal(half.vat_amount, .88);
   assert.equal(half.total_amount, 13.38);
@@ -242,6 +259,7 @@ test('credit VAT through real migrations, delivery writers, billing, collection 
   const cancelled = await value(db, 'select public.get_charge_print_document($1) as value', [half.charge_id]);
   assert.equal(cancelled.total_amount, 13.38);
   assert.equal(cancelled.status, 'voided');
+  assert.deepEqual(await value(db, `select public.get_daily_payment_method_summary(${today}) as value`), before);
   const afterCancellation = (await value(db, 'select public.get_credit_receivables() as value'))[0];
   assert.equal(afterCancellation.outstanding_subtotal_amount, 150);
   assert.equal(afterCancellation.outstanding_amount, 150);

@@ -697,12 +697,16 @@ export interface DailyWorkSalesSummary {
   cashReceivedValue?: number;
   transferReceivedValue?: number;
   creditSalesValue?: number;
+  creditSalesSubtotalValue?: number;
+  creditSalesVatValue?: number;
 }
 
 export interface DailyPaymentMethodSummary {
   cashReceivedValue: number;
   transferReceivedValue: number;
   creditSalesValue: number;
+  creditSalesSubtotalValue?: number;
+  creditSalesVatValue?: number;
 }
 
 export interface DailyWorkRecentDelivery {

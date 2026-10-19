@@ -115,7 +115,8 @@ it('shows statement membership and submits selected billed and unbilled charges 
   render(<FinancialOperations userRole="courier" serviceDate={serviceDate}
     focusRequest={{ requestId: 'unified-1', source: 'pos-shortcut', shopId: shop.shop_id, queueKey: `regular:${shop.shop_id}` }} />);
   expect(await screen.findByText('ใบวางบิล BIL2610-00004')).not.toBeNull();
-  expect(screen.getAllByRole('checkbox', { name: /เลือกบิล INV/ })).toHaveLength(2);
+  expect(screen.getAllByRole('checkbox', { name: /เลือกบิล INV/ })).toHaveLength(1);
+  expect(screen.getByRole('checkbox', { name: 'เลือกใบวางบิล BIL2610-00004' })).toBeTruthy();
   expect((screen.getByRole('spinbutton', { name: 'ยอดรับเงินจริง' }) as HTMLInputElement).value).toBe('125.00');
   fireEvent.click(screen.getByRole('checkbox', { name: 'เลือกบิล INV-TODAY' }));
   expect((screen.getByRole('spinbutton', { name: 'ยอดรับเงินจริง' }) as HTMLInputElement).value).toBe('50.00');
@@ -438,5 +439,82 @@ it.each([
   expect(screen.queryByRole('checkbox', { name: 'เลือกบิล INV-OLD' })).toBeNull();
   if (!lastBill) {
     expect((screen.getByRole('spinbutton', { name: 'ยอดรับเงินจริง' }) as HTMLInputElement).value).toBe('75.00');
+  }
+});
+
+it('selects whole statements, keeps unbilled invoices separate, and allocates a partial payment only inside the selected statement', async () => {
+  const billed = shop.charges.map((charge) => ({ ...charge, billing_statement_id: 'statement-1', billing_statement_number: 'BIL-001' }));
+  const otherStatement = { ...shop.charges[0], charge_id: 'other-statement', charge_number: 'INV-OTHER', outstanding_amount: 60, billing_statement_id: 'statement-2', billing_statement_number: 'BIL-002' };
+  const unbilled = { ...shop.charges[1], charge_id: 'unbilled', charge_number: 'INV-UNBILLED', outstanding_amount: 20 };
+  const groupedShop: QueueShop = { ...shop, collection_scope: 'shop', outstanding_amount: 205, charge_count: 4,
+    charges: [billed[0], otherStatement, billed[1], unbilled] };
+  render(<FinancialOperations userRole="round_lead" demoData={{ serviceDate, runId: 'run-1', queue: [groupedShop], paymentHistory: [] }} />);
+  const amount = screen.getByRole('spinbutton', { name: 'ยอดรับเงินจริง' }) as HTMLInputElement;
+  expect(screen.getAllByRole('checkbox')).toHaveLength(3);
+  expect(screen.getByText('เลือกแล้ว 3 จาก 3 บิล')).toBeTruthy();
+  expect(screen.queryByRole('checkbox', { name: 'เลือกบิล INV-OLD' })).toBeNull();
+  expect(screen.queryByRole('checkbox', { name: 'เลือกบิล INV-TODAY' })).toBeNull();
+  const statement = screen.getByRole('checkbox', { name: 'เลือกใบวางบิล BIL-001' }) as HTMLInputElement;
+  expect(statement.closest('article')?.textContent).toContain('฿125.00');
+  fireEvent.click(statement);
+  expect(amount.value).toBe('80.00');
+  fireEvent.click(statement);
+  expect(amount.value).toBe('205.00');
+  fireEvent.click(screen.getByRole('button', { name: 'เฉพาะบิลวันนี้' }));
+  expect(amount.value).toBe('20.00');
+  expect(statement.checked).toBe(false);
+  fireEvent.click(screen.getByRole('button', { name: 'ล้างการเลือก' }));
+  fireEvent.click(statement);
+  expect(amount.value).toBe('125.00');
+  expect(screen.getByText('เลือกแล้ว 1 จาก 3 บิล')).toBeTruthy();
+  fireEvent.change(amount, { target: { value: '60' } });
+  fireEvent.click(screen.getByRole('button', { name: 'บันทึกรับเงินทันที' }));
+  await waitFor(() => expect(supabaseMock.rpc).toHaveBeenCalledWith('record_shop_collection_payment', expect.objectContaining({
+    p_allocations: [{ charge_id: billed[0].charge_id, amount: 50 }, { charge_id: billed[1].charge_id, amount: 10 }],
+    p_expected_outstanding_amount: 205, p_received_amount: 60,
+  })));
+});
+
+it('requires review and selects the whole statement when refreshed invoices become grouped', async () => {
+  supabaseMock.loadQueue.mockResolvedValue({ runId: 'run-1', queue: [shop] });
+  render(<FinancialOperations userRole="courier" serviceDate={serviceDate}
+    focusRequest={{ requestId: 'group-refresh', source: 'pos-shortcut', shopId: shop.shop_id, queueKey: `regular:${shop.shop_id}` }} />);
+  await screen.findByRole('button', { name: 'บันทึกรับเงินทันที' });
+  await act(async () => {});
+  fireEvent.click(screen.getByRole('button', { name: 'เฉพาะบิลวันนี้' }));
+  supabaseMock.loadQueue.mockResolvedValue({ runId: 'run-1', queue: [{ ...shop, collection_scope: 'shop',
+    charges: shop.charges.map((charge) => ({ ...charge, billing_statement_id: 'statement-1', billing_statement_number: 'BIL-001' })),
+  }] });
+  act(() => publishDataChange(['receivable']));
+  await screen.findByRole('button', { name: 'ตรวจสอบแล้ว' });
+  expect(screen.getAllByRole('checkbox')).toHaveLength(1);
+  expect((screen.getByRole('checkbox', { name: 'เลือกใบวางบิล BIL-001' }) as HTMLInputElement).checked).toBe(true);
+  expect((screen.getByRole('spinbutton', { name: 'ยอดรับเงินจริง' }) as HTMLInputElement).value).toBe('125.00');
+  expect(screen.getByRole('button', { name: 'บันทึกรับเงินทันที' }).hasAttribute('disabled')).toBe(true);
+});
+
+it('requests a due-date extension for the chosen invoice inside a statement without changing the payment draft', async () => {
+  const groupedShop: QueueShop = { ...shop, collection_scope: 'shop',
+    charges: shop.charges.map((charge) => ({ ...charge, payment_term: 'credit', due_date: serviceDate,
+      billing_statement_id: 'statement-1', billing_statement_number: 'BIL-001' })),
+  };
+  const prompt = vi.spyOn(window, 'prompt').mockReturnValueOnce('2026-10-15').mockReturnValueOnce('ขอขยายเวลา');
+  try {
+    render(<FinancialOperations userRole="round_lead" demoData={{ serviceDate, runId: 'run-1', queue: [groupedShop], paymentHistory: [] }} />);
+    const amount = screen.getByRole('spinbutton', { name: 'ยอดรับเงินจริง' }) as HTMLInputElement;
+    fireEvent.change(amount, { target: { value: '60' } });
+    fireEvent.click(screen.getByRole('button', { name: 'ดูรายละเอียดใบวางบิล BIL-001' }));
+    fireEvent.click(screen.getByRole('button', { name: 'ขอเลื่อนกำหนดบิล INV-TODAY' }));
+    await screen.findByText('ส่งคำขอเลื่อนกำหนดชำระแล้ว');
+    expect(supabaseMock.rpc).toHaveBeenCalledExactlyOnceWith('request_credit_due_date_change', {
+      p_charge_id: groupedShop.charges[1].charge_id,
+      p_requested_due_date: '2026-10-15',
+      p_reason: 'ขอขยายเวลา',
+    });
+    expect(screen.getAllByRole('checkbox')).toHaveLength(1);
+    expect((screen.getByRole('checkbox', { name: 'เลือกใบวางบิล BIL-001' }) as HTMLInputElement).checked).toBe(true);
+    expect(amount.value).toBe('60');
+  } finally {
+    prompt.mockRestore();
   }
 });

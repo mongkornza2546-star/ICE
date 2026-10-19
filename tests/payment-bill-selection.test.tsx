@@ -247,3 +247,49 @@ it('translates payment copy inside a body portal without translating customer or
   expect(screen.getByRole('checkbox', { name: 'เลือกบิล INV-TODAY' })).toBe(checkbox);
   expect((checkbox as HTMLInputElement).checked).toBe(true);
 });
+
+it.each(['modal', 'panel'] as const)('keeps statement selection grouped while exposing invoice due-date requests in %s view', (presentation) => {
+  const props = renderModal({ presentation, selectedShop: { ...shop,
+    billing_statement_id: 'statement-1', billing_statement_number: 'BIL-001',
+    charges: shop.charges.map((charge, index) => ({ ...charge, outstanding_amount: index === 0 ? 10 : 75, delivery_event_id: 'delivery' })),
+  }, selectedChargeIds: shop.charges.map((charge) => charge.charge_id), onEditCharge: vi.fn() });
+  expect(screen.getAllByRole('checkbox')).toHaveLength(1);
+  const statement = screen.getByRole('checkbox', { name: 'เลือกใบวางบิล BIL-001' });
+  expect(statement.closest('article')?.textContent).toContain('฿85.00');
+  expect(screen.getByText('เลือกแล้ว 1 จาก 1 บิล')).toBeTruthy();
+  expect(screen.queryByText(/INV-OLD/)).toBeNull();
+  expect(screen.queryByText(/INV-TODAY/)).toBeNull();
+  expect(screen.queryByRole('button', { name: /ยกเลิกใบส่งน้ำแข็ง/ })).toBeNull();
+  expect(screen.queryByRole('button', { name: /ขอเลื่อนกำหนด/ })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'เฉพาะบิลวันนี้' })).toBeNull();
+  const details = screen.getByRole('button', { name: 'ดูรายละเอียดใบวางบิล BIL-001' });
+  expect(details.getAttribute('aria-expanded')).toBe('false');
+  fireEvent.click(details);
+  expect(details.getAttribute('aria-expanded')).toBe('true');
+  expect(screen.getAllByRole('checkbox')).toHaveLength(1);
+  expect(screen.getAllByRole('button', { name: /ขอเลื่อนกำหนด/ })).toHaveLength(1);
+  fireEvent.click(screen.getByRole('button', { name: 'ขอเลื่อนกำหนดบิล INV-OLD' }));
+  expect(props.onRequestDueDate).toHaveBeenCalledExactlyOnceWith(props.selectedShop.charges[0]);
+  expect(props.onToggleCharge).not.toHaveBeenCalled();
+  expect(props.onRecordPayment).not.toHaveBeenCalled();
+  fireEvent.click(details);
+  expect(screen.queryByRole('button', { name: /ขอเลื่อนกำหนด/ })).toBeNull();
+  fireEvent.click(statement);
+  expect(props.onToggleCharge).toHaveBeenCalledWith('old-50');
+});
+
+it.each([
+  { presentation: 'modal' as const, busy: true, canRecordPayment: true },
+  { presentation: 'panel' as const, busy: true, canRecordPayment: true },
+  { presentation: 'modal' as const, busy: false, canRecordPayment: false },
+  { presentation: 'panel' as const, busy: false, canRecordPayment: false },
+])('disables statement invoice due-date requests when blocked: %o', (overrides) => {
+  const props = renderModal({ ...overrides, selectedShop: { ...shop,
+    billing_statement_id: 'statement-1', billing_statement_number: 'BIL-001',
+  } });
+  fireEvent.click(screen.getByRole('button', { name: 'ดูรายละเอียดใบวางบิล BIL-001' }));
+  const request = screen.getByRole('button', { name: 'ขอเลื่อนกำหนดบิล INV-OLD' });
+  expect(request.hasAttribute('disabled')).toBe(true);
+  fireEvent.click(request);
+  expect(props.onRequestDueDate).not.toHaveBeenCalled();
+});
