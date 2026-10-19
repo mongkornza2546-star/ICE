@@ -6,10 +6,10 @@
 npm run android:apk:employee
 ```
 
-ไฟล์ติดตั้งปัจจุบัน: `outputs/android/ice-delivery-employee-1.0.3.apk`
+ไฟล์ติดตั้งปัจจุบัน: `outputs/android/ice-delivery-employee-1.0.4.apk`
 
 - Android 7.0 ขึ้นไป (`minSdkVersion 24`)
-- เวอร์ชัน 1.0.3 (`versionCode 4`), package `com.superice.delivery`
+- เวอร์ชัน 1.0.4 (`versionCode 5`), package `com.superice.delivery`
 - ใช้ debug signing เดิมของโปรเจกต์สำหรับแจกติดตั้งภายใน สามารถอัปเดตทับ APK เดิมที่ใช้ package และใบรับรองเดียวกัน โดยไม่ถอนการติดตั้ง/ล้างข้อมูล
 - บัญชีที่เปิดงานได้คือพนักงาน (`courier`) ที่ยังใช้งานอยู่; แอดมินและหัวหน้าใช้งานผ่านเว็บ
 - เก็บงาน POS, ลูกค้าจร, เติม/คืน/ละลายน้ำแข็ง, อีเวนต์, รับชำระตามสิทธิ์, ประวัติรับเงิน, ใบเซ็นเครดิต และเครื่องพิมพ์ Bluetooth เดิม
@@ -25,10 +25,11 @@ npm run android:apk:employee
 
 คำสั่ง `npm run build` และ `npm run android:apk` ยังคงสร้างระบบเต็มตามเดิม อย่าใช้คำสั่งหลังเพื่อแจก APK เฉพาะพนักงาน
 
-## ตรวจสอบรุ่นนี้
+## ตรวจสอบรุ่น 1.0.4 (18 ตุลาคม 2026)
 
-- TypeScript และ production build ทั้งเว็บและ employee ผ่าน
-- ชุดทดสอบ UI ที่เกี่ยวข้อง 33 ไฟล์ 343 เคสผ่าน รวมสิทธิ์, คืนจากรับชำระไป POS, รายการค้าง, งานอีเวนต์, ลูกค้าจร, สต๊อก และบิล
-- ชุดทดสอบการบรรจุฟอนต์/ตำแหน่งปุ่มพิมพ์/viewport 3 เคสผ่าน
+- สร้างใหม่จากโค้ดปัจจุบันในโปรเจกต์ พร้อมเพิ่มเลขเวอร์ชันสำหรับอัปเดต
+- TypeScript และ production build สำหรับ employee ผ่าน
+- ชุดทดสอบ `employee-apk-router.test.tsx` ผ่านทั้ง 5 เคส
 - Android unit tests ผ่าน; สร้าง instrumentation test APK ได้ แต่ยังไม่ได้รันบนอุปกรณ์
+- ตรวจลายเซ็น APK ตรงกับรุ่น 1.0.3 และไฟล์เว็บภายใน APK ตรงกับ employee build ใหม่ทุกไฟล์
 - ต้องทดสอบติดตั้งและพิมพ์ Bluetooth บนมือถือจริงก่อนแจกครบทุกเครื่อง
