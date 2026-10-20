@@ -89,9 +89,11 @@ test('credit VAT through real migrations, delivery writers, billing, collection 
       building_id_snapshot, building_name_snapshot, floor_or_zone_snapshot, sequence_no, updated_by)
     values('${stop}', '50000000-0000-4000-8000-000000000001', '${shop}', 'EV01', 'VAT shop',
       '20000000-0000-4000-8000-000000000001', 'VAT building', 'Hall', 1, '${admin}');
+    update public.stock_locations set is_active=true,holds_inventory=true,is_courier_source=true
+      where code='TRUCK-MAIN';
     insert into public.stock_movements(id, service_date, round_id, kind, to_location_id, idempotency_key, recorded_by)
     values('80000000-0000-4000-8000-000000000001', ${today}, '50000000-0000-4000-8000-000000000001',
-      'factory_order', '22000000-0000-4000-8000-000000000001', gen_random_uuid(), '${admin}');
+      'factory_order', (select id from public.stock_locations where code='TRUCK-MAIN'), gen_random_uuid(), '${admin}');
     insert into public.stock_movement_items(movement_id, ice_type_id, quantity)
     values('80000000-0000-4000-8000-000000000001', '${ice}', 10000);
     insert into public.collection_runs(id, service_date, opened_by) values('${run}', ${today}, '${admin}');

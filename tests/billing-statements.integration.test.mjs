@@ -194,6 +194,7 @@ async function createDatabase(t, { applyDateFix = true, applyCreditHistoryFix = 
   if (applyCreditHistoryFix) await db.exec(migration('0208_preserve_former_credit_customer_history'));
   if (applyUnifiedCollections) await db.exec(migration('0220_unified_shop_collections'));
   await db.exec(migration('0237_employee_billing_statements'));
+  await db.exec(migration('0240_employee_billing_account_eligibility'));
   return db;
 }
 
@@ -877,6 +878,45 @@ test('employees can list, issue and reprint visible bills without payment permis
   await assert.rejects(voidStatement(db, statement.id), /only an admin/i);
   await db.exec('reset role');
   assert.equal((await db.query('select count(*) from public.payments')).rows[0].count, 0);
+});
+
+test('employee billing hides settled shops without statements and restores them when payment is voided', async (t) => {
+  const db = await createDatabase(t);
+  await db.exec("alter table shop_payment_profiles add allowed_payment_terms text[] default '{immediate}'");
+  const accounts = async () => (await db.query('select get_employee_billing_accounts() as result')).rows[0].result;
+  assert.equal((await accounts()).length, 1, 'former credit shops with outstanding debt remain available');
+  const payment = await shopPay(db, [{ charge_id: oldBill, amount: 50 }, { charge_id: newBill, amount: 75 }]);
+  await db.exec("set test.role='courier'");
+  assert.deepEqual(await accounts(), [], 'settled credit history alone does not qualify for billing');
+  await db.exec("set test.role='admin'");
+  await voidPayment(db, payment.payment_id);
+  assert.equal((await accounts()).length, 1);
+  assert.equal((await accounts())[0].statements.length, 0);
+});
+
+test('employee billing retains settled statements for reprinting with charge visibility enforced', async (t) => {
+  const db = await createDatabase(t);
+  const statement = await issue(db, [oldBill, newBill]);
+  await shopPay(db, [{ charge_id: oldBill, amount: 50 }, { charge_id: newBill, amount: 75 }]);
+  const accounts = async () => (await db.query('select get_employee_billing_accounts() as result')).rows[0].result;
+  await db.exec("set test.role='courier'");
+  assert.equal((await accounts())[0].statements[0].id, statement.id);
+  assert.equal(Number((await accounts())[0].statements[0].outstanding_amount), 0);
+  await db.exec(`set test.can_collect='false';
+    create or replace function public.is_financial_charge_visible(uuid) returns boolean language sql as $$ select $1 = '${oldBill}'::uuid $$`);
+  assert.deepEqual(await accounts(), [], 'a hidden statement cannot keep a settled shop in the list');
+});
+
+test('employee billing keeps cancelled statement history even without active credit charges', async (t) => {
+  const db = await createDatabase(t);
+  const statement = await issue(db, [oldBill, newBill]);
+  await voidStatement(db, statement.id);
+  await db.exec("update delivery_charges set status='voided'; set test.role='courier'");
+  const accounts = (await db.query('select get_employee_billing_accounts() as result')).rows[0].result;
+  assert.equal(accounts.length, 1);
+  assert.deepEqual(accounts[0].charges, []);
+  assert.equal(accounts[0].statements[0].id, statement.id);
+  assert.equal(accounts[0].statements[0].status, 'voided');
 });
 
 test('employee billing excludes inaccessible charges and rejects mixed authorized selections atomically', async (t) => {

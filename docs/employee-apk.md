@@ -6,10 +6,10 @@
 npm run android:apk:employee
 ```
 
-ไฟล์ติดตั้งปัจจุบัน: `outputs/android/ice-delivery-employee-1.0.5.apk`
+ไฟล์ติดตั้งปัจจุบัน: `outputs/android/ice-delivery-employee-1.0.6.apk`
 
 - Android 7.0 ขึ้นไป (`minSdkVersion 24`)
-- เวอร์ชัน 1.0.5 (`versionCode 6`), package `com.superice.delivery`
+- เวอร์ชัน 1.0.6 (`versionCode 7`), package `com.superice.delivery`
 - ใช้ debug signing เดิมของโปรเจกต์สำหรับแจกติดตั้งภายใน สามารถอัปเดตทับ APK เดิมที่ใช้ package และใบรับรองเดียวกัน โดยไม่ถอนการติดตั้ง/ล้างข้อมูล
 - บัญชีที่เปิดงานได้คือพนักงาน (`courier`) ที่ยังใช้งานอยู่; แอดมินและหัวหน้าใช้งานผ่านเว็บ
 - เก็บงาน POS, ลูกค้าจร, เติม/คืน/ละลายน้ำแข็ง, อีเวนต์, รับชำระตามสิทธิ์, ประวัติรับเงิน, ใบเซ็นเครดิต และเครื่องพิมพ์ Bluetooth เดิม
@@ -24,6 +24,17 @@ npm run android:apk:employee
 ขั้นตอน build ตรวจรายชื่อโมดูลที่ถูกบรรจุจริงและหยุดหากพบหน้าจัดการที่ห้ามรวม บันทึกรายชื่อไว้ใน `dist-employee/employee-build.json` ซึ่งถูกบรรจุใน APK ด้วย ไฟล์รูปพื้นหลังแอดมินและเทมเพลตนำเข้าร้านค้าไม่ถูกบรรจุในรุ่นพนักงาน
 
 คำสั่ง `npm run build` และ `npm run android:apk` ยังคงสร้างระบบเต็มตามเดิม อย่าใช้คำสั่งหลังเพื่อแจก APK เฉพาะพนักงาน
+
+## ตรวจสอบรุ่น 1.0.6 (20 ตุลาคม 2026)
+
+- สร้างจากโค้ดปัจจุบันในโปรเจกต์ รวมการปรับหน้าต่างใบวางบิลให้เลื่อนแนวตั้งได้
+- TypeScript และ production build สำหรับ employee ผ่าน; ไฟล์เว็บใน APK ตรงกับ `dist-employee` ทั้ง 12 ไฟล์
+- ชุดทดสอบ employee router, ใบวางบิลพนักงาน, พิมพ์ใบวางบิล และเลือกบิลรับชำระผ่าน 34 เคส; ทดสอบ layout หน้ารับเงินผ่านอีก 1 เคส
+- Gradle build และ Android unit test task ผ่าน (ใช้ผลที่ยังเป็นปัจจุบันจาก Gradle cache); สร้าง instrumentation test APK ได้ แต่ยังไม่ได้รันบนอุปกรณ์
+- ตรวจ APK signature ผ่าน และ certificate SHA-256 ตรงกับรุ่น 1.0.5; package เดิมและ versionCode เพิ่มจาก 6 เป็น 7
+- SHA-256 ของ APK: `a01b94048dbb2ea53417a89e872a11ce9d24bb6c7893f26230f4486996669fcd`
+- การกรองร้านในหน้าใบวางบิลตาม migration `0240_employee_billing_account_eligibility.sql` เป็นการเปลี่ยนฝั่งเซิร์ฟเวอร์; ขั้นตอนสร้าง APK นี้ไม่ได้ deploy migration
+- ยังไม่ได้ทดสอบติดตั้งทับและพิมพ์ Bluetooth บนมือถือจริง
 
 ## ตรวจสอบรุ่น 1.0.5 (19 ตุลาคม 2026)
 
