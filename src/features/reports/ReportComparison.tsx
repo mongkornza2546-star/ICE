@@ -103,7 +103,8 @@ export function ReportComparison({ from, to, report, refreshKey, isActive, demoR
 
   const previous = !loading && !error && !rangeError && !baseError && result?.from === compared.from && result.to === compared.to ? result : null;
   const current = !baseError && report?.from === from && report.to === to ? report : null;
-  const rows = current && previous ? comparisonRows(current, previous) : null;
+  const basisMismatch = Boolean(current && previous && current.salesBasis !== previous.salesBasis);
+  const rows = current && previous && !basisMismatch ? comparisonRows(current, previous) : null;
   const sorted = (items: ComparisonRow[]) => [...items].sort((a, b) => sort === 'name' ? a.name.localeCompare(b.name, 'th')
     : a.unit.localeCompare(b.unit, 'th') || ((a.current ?? 0) - (a.previous ?? 0) - ((b.current ?? 0) - (b.previous ?? 0))) * (sort === 'up' ? -1 : 1));
   const units = [...new Set((rows?.[view] ?? []).map((row) => row.unit))];
@@ -128,7 +129,7 @@ export function ReportComparison({ from, to, report, refreshKey, isActive, demoR
 
   return <section className="report-comparison executive-report__stack" aria-label={translateUi('เปรียบเทียบยอดขายและน้ำแข็ง')}>
     <Panel title={translateUi('เปรียบเทียบยอดขายและน้ำแข็ง')} description={translateUi('ช่วง A ใช้วันที่ด้านบน · เลือกช่วง B ที่ต้องการเทียบ')}
-      action={<div className="executive-report__actions"><button type="button" disabled={!current || !previous || exporting} onClick={() => void exportComparison()}>{translateUi(exporting ? 'กำลังสร้าง Excel…' : 'ส่งออก Excel เปรียบเทียบ')}</button></div>}>
+      action={<div className="executive-report__actions"><button type="button" disabled={!rows || exporting} onClick={() => void exportComparison()}>{translateUi(exporting ? 'กำลังสร้าง Excel…' : 'ส่งออก Excel เปรียบเทียบ')}</button></div>}>
       <div className="executive-presets report-comparison__quick">
         <button type="button" aria-pressed={rangePreset === 'calendarWeek' && preset === 'week'} onClick={() => { onChoosePreset('calendarWeek'); onSelectionChange({ ...selection, preset: 'week' }); }}>{translateUi('สัปดาห์นี้เทียบสัปดาห์ก่อน')}</button>
         <button type="button" aria-pressed={rangePreset === 'week' && preset === 'previous'} onClick={() => { onChoosePreset('week'); onSelectionChange({ ...selection, preset: 'previous' }); }}>{translateUi('7 วันล่าสุดเทียบ 7 วันก่อน')}</button>
@@ -155,6 +156,7 @@ export function ReportComparison({ from, to, report, refreshKey, isActive, demoR
       {demoReport ? <p className="executive-panel-note">{translateUi('ข้อมูลจำลอง · ใช้ชุดตัวอย่างเดียวกันในทั้งสองช่วง ไม่ใช่ข้อมูลจริงตามวันที่')}</p> : null}
     </Panel>
     {error ? <p role="alert" className="executive-error">{translateUi('โหลดช่วง B ไม่สำเร็จ: ')}{error} <button type="button" onClick={() => setRetry((value) => value + 1)}>{translateUi('ลองใหม่')}</button></p> : null}
+    {basisMismatch ? <p role="alert" className="executive-error">{translateUi('ฐาน VAT ของสองช่วงไม่ตรงกัน กรุณารีเฟรชรายงานก่อนเปรียบเทียบ')}</p> : null}
     {exportError ? <p role="alert" className="executive-error">{exportError}</p> : null}
     {!baseError && !rangeError && !error && !reportError && (!current || !previous) ? <p role="status" className="executive-status">{translateUi('กำลังโหลดข้อมูลสองช่วง…')}</p> : null}
     {current && previous && rows ? <>

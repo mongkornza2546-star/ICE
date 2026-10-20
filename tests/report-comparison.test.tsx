@@ -11,6 +11,7 @@ vi.mock('../src/lib/supabase', () => ({ supabase: { rpc } }));
 vi.mock('write-excel-file', () => ({ default: writeXlsxFile }));
 function report(from = '2026-10-01', to = '2026-10-14', old = false): ExecutiveReport {
   return {
+    salesBasis: 'excluding_vat', agingDetailsVersion: 1,
     from, to, asOf: '2026-10-14T10:00:00Z', previousFrom: '2026-09-17', previousTo: '2026-09-30',
     sales: old ? 100 : 200, receipts: 0, refunds: 0, netReceipts: 0, previousSales: 0, previousNetReceipts: 0,
     outstanding: 0, overdue: 0, debtors: 0, deliveryCount: old ? 5 : 10,
@@ -201,7 +202,7 @@ it('preserves custom B when returning from another report tab or single-period v
   await openComparison();
   fireEvent.change(screen.getByLabelText('ช่วง B จาก'), { target: { value: '2026-09-01' } });
   await screen.findByRole('table', { name: 'เปรียบเทียบยอดขายแยกพื้นที่' });
-  fireEvent.click(screen.getByRole('button', { name: 'การเงิน', exact: true }));
+  fireEvent.click(screen.getByRole('button', { name: 'เงินรับและลูกหนี้', exact: true }));
   fireEvent.click(screen.getByRole('button', { name: 'ยอดขาย', exact: true }));
   await screen.findByRole('table', { name: 'เปรียบเทียบยอดขายแยกพื้นที่' });
   expect(screen.getByLabelText<HTMLInputElement>('ช่วง B จาก').value).toBe('2026-09-01');
@@ -311,4 +312,27 @@ it('keeps demo daily quantities and sales reconciled to their explicitly simulat
   expect(rebased.dailyTrend?.reduce((sum, point) => sum + point.sales, 0)).toBeCloseTo(fixture.sales);
   for (const product of fixture.products) expect(rebased.dailyTrend?.flatMap(point => point.products)
     .filter(item => item.id === product.id).reduce((sum, item) => sum + item.delivered, 0)).toBeCloseTo(product.delivered);
+});
+
+it('blocks mixed VAT bases until both comparison snapshots use the accounting basis', async () => {
+  const original = rpc.getMockImplementation()!;
+  let legacyPrevious = true;
+  rpc.mockImplementation(async (name, args) => {
+    const result = await original(name, args);
+    if (name === 'get_executive_report' && args.p_from < '2026-10-01' && legacyPrevious) delete result.data.salesBasis;
+    return result;
+  });
+  render(<ExecutiveReportsPage isActive />);
+  await screen.findByRole('button', { name: /ยอดขายสุทธิ/ });
+  fireEvent.click(screen.getByRole('button', { name: 'ยอดขาย', exact: true }));
+  fireEvent.click(screen.getByRole('button', { name: 'เปรียบเทียบสองช่วง' }));
+  expect(await screen.findByText('ฐาน VAT ของสองช่วงไม่ตรงกัน กรุณารีเฟรชรายงานก่อนเปรียบเทียบ')).not.toBeNull();
+  expect(screen.queryByRole('table', { name: 'เปรียบเทียบยอดขายแยกพื้นที่' })).toBeNull();
+  expect((screen.getByRole('button', { name: 'ส่งออก Excel เปรียบเทียบ' }) as HTMLButtonElement).disabled).toBe(true);
+  expect(writeXlsxFile).not.toHaveBeenCalled();
+  legacyPrevious = false;
+  fireEvent.click(screen.getByRole('button', { name: 'รีเฟรชรายงาน' }));
+  await screen.findByRole('table', { name: 'เปรียบเทียบยอดขายแยกพื้นที่' });
+  expect(screen.queryByText('ฐาน VAT ของสองช่วงไม่ตรงกัน กรุณารีเฟรชรายงานก่อนเปรียบเทียบ')).toBeNull();
+  expect((screen.getByRole('button', { name: 'ส่งออก Excel เปรียบเทียบ' }) as HTMLButtonElement).disabled).toBe(false);
 });

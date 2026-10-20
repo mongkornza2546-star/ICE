@@ -12,6 +12,9 @@ export type ReportRow = {
 };
 
 export type ExecutiveReport = {
+  // Added by migration 0244; absence identifies the legacy VAT-inclusive reader.
+  salesBasis?: 'excluding_vat';
+  agingDetailsVersion?: 1;
   from: string;
   to: string;
   asOf: string;
@@ -62,6 +65,7 @@ export type QuietShop = {
 
 export type DetailQuery = {
   metric: ReportMetric;
+  agingBucket?: DebtAgingBucket['bucket'];
   dateRange?: { from: string; to: string };
   bucket?: string;
   areaKind?: string;
@@ -76,6 +80,8 @@ export type ReportInvoice = {
   area: string;
   dueDate: string;
   total: number;
+  salesAmount?: number;
+  vatAmount?: number;
   paid: number;
   items: Array<{ name: string; unit: string; quantity: number }>;
   payments: Array<{ date: string; method: string; amount: number }>;

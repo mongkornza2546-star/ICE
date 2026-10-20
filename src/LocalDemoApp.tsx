@@ -913,6 +913,7 @@ export function LocalDemoApp() {
   if (new URLSearchParams(window.location.search).get('screen') === 'executive-report') {
     const { from, to } = presetDates('month');
     const report: ExecutiveReport = {
+      salesBasis: 'excluding_vat', agingDetailsVersion: 1,
       from, to, asOf: new Date().toISOString(), previousFrom: from, previousTo: to,
       sales: 188500, receipts: 147200, refunds: 1200, netReceipts: 146000,
       previousSales: 165000, previousNetReceipts: 135000,

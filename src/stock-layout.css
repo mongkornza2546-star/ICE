@@ -1012,7 +1012,9 @@
   gap: 12px;
 }
 .daily-close-cash__card {
+  min-width: 0;
   display: grid;
+  align-content: start;
   gap: 12px;
   padding: 14px;
   border: 1px solid #dce6ef;
@@ -1022,13 +1024,22 @@
 .daily-close-cash__card > div:first-child,
 .daily-close-cash__card > div:first-child > span,
 .daily-close-cash__card label {
+  min-width: 0;
   display: grid;
   gap: 4px;
 }
+.daily-close-cash__card > div:first-child strong {
+  overflow-wrap: anywhere;
+}
 .daily-close-cash__card small { color: #66758c; }
 .daily-close-cash__identity {
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr);
   align-items: start;
+}
+.daily-close-cash__identity > b {
+  margin-top: 4px;
+  font-size: .875rem;
+  overflow-wrap: anywhere;
 }
 .daily-close-cash__expected {
   display: flex;

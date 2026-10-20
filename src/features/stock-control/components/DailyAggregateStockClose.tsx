@@ -27,6 +27,7 @@ interface AggregateSummary {
 interface DailyCloseEmployee {
   employee_id: string;
   employee_name: string;
+  employee_nickname?: string | null;
   is_active: boolean;
   expected_cash_amount: number;
   actual_cash_amount?: number | null;
@@ -331,7 +332,7 @@ export function DailyAggregateStockClose({
                 return (
                   <article className="daily-close-cash__card" key={employee.employee_id}>
                     <div>
-                      <strong>{employee.employee_name}</strong>
+                      <strong title={employee.employee_name}>{employee.employee_nickname?.trim() || employee.employee_name}</strong>
                       {!employee.is_active ? <small>{translateUi('พนักงานที่ยกเลิกแล้ว')}</small> : null}
                     </div>
                     <dl>
@@ -450,7 +451,7 @@ export function DailyAggregateStockClose({
               <article className="daily-close-cash__card" key={employee.employee_id}>
                 <div className="daily-close-cash__identity">
                   <span>
-                    <strong>{employee.employee_name}</strong>
+                    <strong title={employee.employee_name}>{employee.employee_nickname?.trim() || employee.employee_name}</strong>
                     <small>{employee.cash_source_count ?? employee.payment_ids.length}{translateUi(' รายการเงินสด')}{!employee.is_active ? translateUi(' · พนักงานที่ยกเลิกแล้ว') : ''}</small>
                   </span>
                   <b className={variance ? 'daily-close-cash__variance' : ''}>{counted ? formatSignedBaht(variance) : translateUi('ยังไม่กรอกยอดนับ')}</b>

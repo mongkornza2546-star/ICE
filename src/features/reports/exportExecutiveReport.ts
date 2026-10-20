@@ -50,9 +50,20 @@ export async function exportDailyQuantities(data: {
 export async function exportExecutiveReport(
   report: ExecutiveReport,
   detailRows: Partial<Record<ReportMetric, ReportRow[]>>,
+  demo = false,
 ) {
   const { default: writeXlsxFile } = await import('write-excel-file');
+  const metadata: Array<Array<string | number>> = [
+    ...(demo ? [['ข้อมูลจำลอง · ไม่ใช่ผลประกอบการจริง'],
+      ['รายการประกอบเป็นตัวอย่างบางส่วน ยอดรวมอาจไม่ตรงกับสรุป']] : []),
+    ['ช่วงวันที่', report.from, report.to],
+    ['ข้อมูล ณ', report.asOf],
+    ['ฐานยอดขาย', report.salesBasis === 'excluding_vat' ? 'ไม่รวม VAT · รวมค่าเช่าถัง · ฐานเดียวกับบัญชี'
+      : 'ฐานเดิมรวม VAT · ยังเทียบกับบัญชีไม่ได้'],
+    ['ฐานเงินรับและหนี้', 'รวม VAT · หนี้เป็นยอดปัจจุบัน ไม่ขึ้นกับช่วงวันที่'],
+  ];
   const summary = sheet([
+    ...metadata,
     ['รายงานผู้บริหาร', `${report.from} ถึง ${report.to}`],
     ['สร้างเมื่อ', new Date(report.asOf).toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' })],
     ['ยอดขายสุทธิช่วงนี้', report.sales],
@@ -80,24 +91,29 @@ export async function exportExecutiveReport(
     ] : []),
   ]);
   const trend = sheet([
+    ...metadata,
     ['วัน / เดือน', 'ยอดขายสุทธิ', 'เงินรับจริง', 'เงินคืนจริง', 'เงินรับสุทธิ'],
     ...report.trend.map((row) => [row.date, row.sales, row.receipts, row.refunds, row.receipts - row.refunds]),
   ]);
   const areas = sheet([
+    ...metadata,
     ['ประเภทพื้นที่', 'ชื่อพื้นที่', 'ยอดขายสุทธิ'],
     ...report.areas.map((row) => [row.kind === 'event' ? 'อีเวนต์' : row.kind === 'casual' ? 'ขายหน้ารถ' : 'อาคาร', row.name, row.sales]),
   ]);
   const details = sheet([
+    ...metadata,
     ['ประเภท', 'วันที่', 'ร้าน / รายการ', 'พื้นที่', 'วิธีชำระ', 'ครบกำหนด', 'จำนวนเงิน', 'รหัสรายการ'],
     ...(['sales', 'receipts', 'refunds', 'debt'] as ReportMetric[]).flatMap((metric) =>
       (detailRows[metric] ?? []).map((row) => [metric, row.day, row.label, row.area ?? '',
         row.method ?? '', row.dueDate ?? '', row.amount, row.id])),
   ]);
   const volume = sheet([
+    ...metadata,
     ['ชนิดน้ำแข็ง', 'หน่วย', 'จำนวนส่ง', 'เสียหาย'],
     ...report.products.map((row) => [row.name, row.unit, row.delivered, row.damaged]),
   ]);
   const volumeAreas = sheet([
+    ...metadata,
     ['ประเภทพื้นที่', 'ตึก / พื้นที่', 'ชนิดน้ำแข็ง', 'หน่วย', 'จำนวนส่ง', 'เสียหาย'],
     ...(report.volumeAreas ?? []).flatMap((area) => area.products.map((row) => [
       area.kind === 'building' ? 'ตึก' : area.kind === 'event' ? 'อีเวนต์'
@@ -116,7 +132,7 @@ export async function exportExecutiveReport(
       Array.from({ length: 4 }, () => ({ width: 22 })),
       Array.from({ length: 6 }, () => ({ width: 22 })),
     ],
-    fileName: `executive-report-${report.from}-${report.to}.xlsx`,
+    fileName: `${demo ? 'demo-' : ''}executive-report-${report.from}-${report.to}.xlsx`,
   });
 }
 
@@ -140,6 +156,8 @@ export async function exportReportComparison(
     ['ช่วง A', current.from, current.to, rangeDays(current)],
     ['ช่วง B', previous.from, previous.to, rangeDays(previous)],
     ['ข้อมูล ณ A', current.asOf, 'ข้อมูล ณ B', previous.asOf],
+    ['ฐานยอดขาย A', current.salesBasis === 'excluding_vat' ? 'ไม่รวม VAT' : 'ฐานเดิมรวม VAT',
+      'ฐานยอดขาย B', previous.salesBasis === 'excluding_vat' ? 'ไม่รวม VAT' : 'ฐานเดิมรวม VAT'],
     ['หมายเหตุ', 'ปริมาณแยกชนิดและหน่วย · ฐานเป็นศูนย์ไม่คิดเปอร์เซ็นต์'],
   ];
   const summary: ComparisonRow[] = [

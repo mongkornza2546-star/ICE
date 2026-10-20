@@ -91,7 +91,7 @@ export function ReportDailyQuantities({ report, demo = false, selectedDate, onDa
   };
 
   return <Panel title={translateUi('จำนวนขายน้ำแข็งรายวัน')}
-    description={translateUi('แยกชนิดและหน่วย เพื่อใช้วางแผนเตรียมน้ำแข็ง')}
+    description={translateUi('แยกชนิดและหน่วย · ตารางนี้ใช้เดือนที่เลือกในกล่อง แยกจากช่วงวันที่หลัก')}
     className="executive-daily-quantities"
     action={<div className="executive-quantity-actions"><label className="executive-quantity-month">{translateUi('เดือนที่ต้องการดู')}
       <input type="month" value={month} max={today.slice(0, 7)} onChange={(event) => {

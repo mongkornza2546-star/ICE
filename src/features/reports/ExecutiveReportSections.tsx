@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ChartBar, ChartLine, CreditCard } from '@phosphor-icons/react';
+import { ChartBar, ChartLine, CreditCard, Cube } from '@phosphor-icons/react';
 import { ReportOverview } from './ReportOverview';
 import { translateUi, useLanguage } from '../../i18n';
 import { formatReportDate, reportBucketLabels } from './reportDates';
@@ -9,7 +9,7 @@ import type { DetailQuery, ExecutiveReport } from './types';
 import { shiftServiceDate, toBangkokDateString } from '../../lib/serviceDate';
 
 const baht = (value: number) => new Intl.NumberFormat('th-TH', {
-  style: 'currency', currency: 'THB', maximumFractionDigits: 0,
+  style: 'currency', currency: 'THB', minimumFractionDigits: 0, maximumFractionDigits: 2,
 }).format(value);
 const number = (value: number) => new Intl.NumberFormat('th-TH', { maximumFractionDigits: 1 }).format(value);
 const percent = (value: number) => new Intl.NumberFormat('th-TH', { maximumFractionDigits: 1 }).format(value);
@@ -20,14 +20,15 @@ export type ReportSection = 'overview' | 'sales' | 'finance' | 'volume';
 const sections: Array<{ id: ReportSection; label: string }> = [
   { id: 'overview', label: 'ภาพรวม' },
   { id: 'sales', label: 'ยอดขาย' },
-  { id: 'finance', label: 'การเงิน' },
+  { id: 'finance', label: 'เงินรับและลูกหนี้' },
+  { id: 'volume', label: 'ปริมาณ' },
 ];
 
 export function ReportTabs({ active, onChange }: { active: ReportSection; onChange: (section: ReportSection) => void }) {
   useLanguage();
   return <nav aria-label={translateUi('หมวดรายงาน')} className="executive-tabs">
-    {sections.map(({ id, label }) => <button aria-current={(active === id || (id === 'overview' && active === 'volume')) ? 'page' : undefined}
-      key={id} onClick={() => onChange(id)} type="button">{id === 'overview' ? <ChartBar size={19} aria-hidden="true" /> : id === 'sales' ? <ChartLine size={19} aria-hidden="true" /> : <CreditCard size={19} aria-hidden="true" />}{translateUi(label)}</button>)}
+    {sections.map(({ id, label }) => <button aria-current={active === id ? 'page' : undefined}
+      key={id} onClick={() => onChange(id)} type="button">{id === 'overview' ? <ChartBar size={19} aria-hidden="true" /> : id === 'sales' ? <ChartLine size={19} aria-hidden="true" /> : id === 'volume' ? <Cube size={19} aria-hidden="true" /> : <CreditCard size={19} aria-hidden="true" />}{translateUi(label)}</button>)}
   </nav>;
 }
 
@@ -160,7 +161,6 @@ function DebtAgingPanel({ report, openDetail }: {
     <StackBar label={translateUi('อายุหนี้ปัจจุบัน')} segments={segments} />
     <DataTable headings={['อายุหนี้ปัจจุบัน', 'จำนวนเงิน', 'สัดส่วน', 'ลูกหนี้']} label={translateUi('ตารางวิเคราะห์อายุหนี้')}>
       {aging.map((row) => {
-        const isOverdue = row.bucket !== 'notDue';
         return <tr key={row.bucket}>
           <td data-label={translateUi('อายุหนี้ปัจจุบัน')}>
             <span className={`executive-aging-tag executive-aging-tag--${row.bucket}`}>
@@ -168,10 +168,12 @@ function DebtAgingPanel({ report, openDetail }: {
             </span>
           </td>
           <td className="executive-numeric" data-label={translateUi('จำนวนเงิน')}>
-            {row.amount > 0 && isOverdue ? (
+            {row.amount > 0 && report.agingDetailsVersion === 1 ? (
               <button
                 className="executive-table-link"
-                onClick={(event) => openDetail({ metric: 'overdue' }, undefined, event.currentTarget)}
+                onClick={(event) => openDetail({
+                  metric: row.bucket === 'notDue' ? 'debt' : 'overdue', agingBucket: row.bucket,
+                }, translateUi(agingLabels[row.bucket]), event.currentTarget)}
                 type="button"
               >
                 {baht(row.amount)}<span aria-hidden="true"> ›</span>
@@ -187,6 +189,9 @@ function DebtAgingPanel({ report, openDetail }: {
         </tr>;
       })}
     </DataTable>
+    {report.agingDetailsVersion !== 1 ? <p className="executive-panel-note">
+      {translateUi('ยังเปิดรายการแยกอายุหนี้ไม่ได้ กรุณารีเฟรช หากยังไม่ได้ ระบบข้อมูลยังไม่รองรับตัวกรองนี้')}
+    </p> : null}
   </Panel>;
 }
 
@@ -226,14 +231,22 @@ function TrendPanel({ report, showTable, onTableChange, openDetail }: {
   const maxPositive = Math.max(0, ...values);
   const maxNegative = Math.max(0, ...values.map((value) => -value));
   const hasNegative = maxNegative > 0;
-  const scale = Math.max(1, maxPositive, maxNegative);
-  return <Panel description={translateUi('เลือกแท่งเพื่อดูรายการในช่วงนั้น')} label={translateUi('แนวโน้มยอดขายและเงินรับ')} title={translateUi('แนวโน้ม')}>
+  const maximum = Math.max(1, maxPositive, maxNegative);
+  const step = 10 ** Math.floor(Math.log10(maximum));
+  const scale = Math.ceil(maximum / step) * step;
+  const ticks = hasNegative ? [scale, scale / 2, 0, -scale / 2, -scale] : [scale, scale * .75, scale / 2, scale * .25, 0];
+  return <Panel description={translateUi('เลือกแท่งเพื่อดูรายการในช่วงนั้น')} label={translateUi('แนวโน้มยอดขายและเงินรับ')} title={translateUi('แนวโน้มยอดขายและเงินรับ')}>
     <div aria-label={translateUi('คำอธิบายกราฟ')} className="executive-trend-legend">
       <span><i className="executive-trend-legend__sales" />{translateUi('ยอดขาย')}</span>
       <span><i className="executive-trend-legend__receipts" />{translateUi('เงินรับสุทธิ')}</span>
     </div>
     {report.trend.length ? <>
-      <div aria-label={translateUi('กราฟยอดขายและเงินรับสุทธิ')} className={`executive-chart executive-chart--grouped ${hasNegative ? 'executive-chart--signed' : ''}`} role="group">
+      <p className="executive-trend-unit">{translateUi('หน่วย: บาท')}</p>
+      <div className="executive-trend-frame">
+        <div aria-hidden="true" className="executive-trend-axis">
+          {ticks.map((value, index) => <span key={index} style={{ top: `${index * 25}%` }}>{number(value)}</span>)}
+        </div>
+        <div aria-label={translateUi('กราฟยอดขายและเงินรับสุทธิ')} className={`executive-chart executive-chart--grouped ${hasNegative ? 'executive-chart--signed' : ''}`} role="group">
         {report.trend.map((point) => {
           const { label, axisLabel } = reportBucketLabels(point.date, report.from, report.to);
           return <div className="executive-chart__bucket" key={point.date}>
@@ -253,6 +266,7 @@ function TrendPanel({ report, showTable, onTableChange, openDetail }: {
             <small>{axisLabel}</small>
           </div>;
         })}
+        </div>
       </div>
       <button aria-expanded={showTable} className="executive-text-button" onClick={onTableChange} type="button">{showTable ? translateUi('ซ่อนตารางตัวเลข') : translateUi('ดูตารางตัวเลข')}</button>
       {showTable ? <DataTable headings={['ช่วง', 'ยอดขาย', 'เงินรับจริง', 'คืนเงินจริง', 'เงินรับสุทธิ']} numericColumns={[1, 2, 3, 4]} label={translateUi('ตารางแนวโน้ม')}>
@@ -274,7 +288,7 @@ function AttentionBanner({
   onNavigate?: (section: ReportSection, targetId?: string) => void;
 }) {
   useLanguage();
-  const items = attentionItems(report);
+  const items = attentionItems(report).slice(0, 5);
   if (!items.length) return null;
 
   return <section aria-label={translateUi('สัญญาณเตือนและสิ่งที่ต้องติดตาม')} className="executive-attention">
@@ -311,7 +325,11 @@ export function ReportSections({
 }) {
   useLanguage();
   if (section === 'overview') {
-    return <ReportOverview report={report} openDetail={openDetail} onNavigate={onNavigateSection} />;
+    return <div className="executive-report__stack">
+      <TrendPanel onTableChange={toggleTrendTable} openDetail={openDetail} report={report} showTable={showTrendTable} />
+      <AttentionBanner onNavigate={onNavigateSection} report={report} />
+      <ReportOverview report={report} openDetail={openDetail} onNavigate={onNavigateSection} />
+    </div>;
   }
 
   if (section === 'sales') {
@@ -329,7 +347,6 @@ export function ReportSections({
 
   if (section === 'finance') {
     return <div className="executive-report__stack">
-      <AttentionBanner onNavigate={onNavigateSection} report={report} />
       <Panel description={translateUi('เงินรับสุทธิหลังหักเงินคืน')} title={translateUi('เงินรับช่วงนี้')}>
         <div className="executive-finance-flow">
           <button onClick={(event) => openDetail({ metric: 'receipts' }, undefined, event.currentTarget)} type="button"><span>{translateUi('เงินรับจริง')}</span><strong>{baht(report.receipts)}</strong><small>{translateUi('ดูรายการรับเงิน ›')}</small></button>
@@ -359,8 +376,7 @@ export function ReportSections({
       <strong>{translateUi('พบจุดส่งที่มีของเสียสูงกว่าปกติ')}</strong>
       <p>{flags.slice(0, 3).map((f) => `${f.areaName}: ${f.productName} (${percent(f.rate)}% · ${translateUi('ของเสียเฉลี่ยรวม {0}', { 0: `${percent(f.average)}%` })})`).join(' · ')}</p>
     </div> : null}
-    <Panel description={translateUi('จำนวนส่งและเสียหาย แยกตามชนิดและหน่วย')} title={translateUi('ปริมาณงานและน้ำแข็ง · รวมทั้งหมด')}>
-      <p className="executive-feature-number">{number(report.deliveryCount)} <small>{translateUi('รายการส่งร้าน')}</small></p>
+    <Panel description={translateUi('จำนวนส่งและเสียหาย แยกตามชนิดและหน่วย')} title={translateUi('ปริมาณขายแยกชนิด')}>
       {report.products.length ? <VolumeTable label={translateUi('ปริมาณงานและน้ำแข็ง')} products={report.products} />
         : <p className="executive-empty">{translateUi('ยังไม่มีปริมาณน้ำแข็งในช่วงนี้')}</p>}
     </Panel>

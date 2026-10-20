@@ -7,6 +7,29 @@ vi.mock('../src/lib/supabase', () => ({ supabase: supabaseMock }));
 
 import { DailyAggregateStockClose } from '../src/features/stock-control/components/DailyAggregateStockClose';
 
+it.each(['open', 'closed'])('prefers nicknames with full-name fallback on %s cash cards', async (status) => {
+  supabaseMock.rpc.mockImplementation((name: string) => Promise.resolve({
+    error: null,
+    data: name === 'get_daily_close_reconciliation' ? {
+      service_date: '2026-10-20', status, feature_enabled: true,
+      stock: { service_date: '2026-10-20', status, items: [] },
+      employees: [
+        { employee_id: '1', employee_name: 'long.employee@example.com', employee_nickname: '  ชาย  ' },
+        { employee_id: '2', employee_name: 'Empty nickname', employee_nickname: '   ' },
+        { employee_id: '3', employee_name: 'Legacy response' },
+        { employee_id: '4', employee_name: 'Null nickname', employee_nickname: null },
+      ].map(employee => ({ ...employee, is_active: true, expected_cash_amount: 0, payment_ids: [] })),
+    } : [],
+  }));
+  render(<DailyAggregateStockClose serviceDate="2026-10-20" />);
+  const nickname = await screen.findByText('ชาย', { exact: true });
+  expect(nickname.title).toBe('long.employee@example.com');
+  expect(screen.queryByText('long.employee@example.com', { exact: true })).toBeNull();
+  for (const name of ['Empty nickname', 'Legacy response', 'Null nickname']) {
+    expect(screen.getByText(name, { exact: true })).toBeTruthy();
+  }
+});
+
 it('requires explicit counts for courier, admin and lead, including zero and variance reasons', async () => {
   supabaseMock.rpc.mockImplementation((name: string) => Promise.resolve({
     error: null,

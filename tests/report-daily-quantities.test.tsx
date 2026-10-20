@@ -20,6 +20,7 @@ function ReportDailyQuantities({ report: data }: { report: ExecutiveReport }) {
 
 function report(from = '2026-10-01', to = '2026-10-20'): ExecutiveReport {
   return {
+    salesBasis: 'excluding_vat', agingDetailsVersion: 1,
     from, to, asOf: '2026-10-20T11:00:00Z', previousFrom: from, previousTo: to,
     sales: 0, receipts: 0, refunds: 0, netReceipts: 0, previousSales: 0, previousNetReceipts: 0,
     outstanding: 0, overdue: 0, debtors: 0, deliveryCount: 0, trend: [], shops: [], areas: [],
@@ -155,12 +156,20 @@ it('disables export while the selected month is loading or daily data is unavail
 
 it('retains the selected month/day across tabs and exports that month rather than the main range', async () => {
   render(<ExecutiveReportsPage isActive />);
+  await screen.findByRole('region', { name: 'ผลประกอบการตามช่วงวันที่' });
+  expect(screen.queryByRole('region', { name: 'ตารางจำนวนขายรายวันทั้งเดือน' })).toBeNull();
+  expect(screen.queryByLabelText('เดือนที่ต้องการดู')).toBeNull();
+  expect(rpc).toHaveBeenCalledTimes(1);
+  fireEvent.click(screen.getByRole('button', { name: 'ปริมาณ', exact: true }));
   await screen.findByRole('region', { name: 'ตารางจำนวนขายรายวันทั้งเดือน' });
+  expect(screen.queryByRole('region', { name: 'ผลประกอบการตามช่วงวันที่' })).toBeNull();
   fireEvent.change(screen.getByLabelText('เดือนที่ต้องการดู'), { target: { value: '2026-09' } });
   await screen.findByRole('region', { name: 'ตารางจำนวนขายรายวันทั้งเดือน' });
   fireEvent.change(screen.getByLabelText('วันที่เปรียบเทียบ'), { target: { value: '2026-09-15' } });
   fireEvent.click(screen.getByRole('button', { name: 'ยอดขาย', exact: true }));
   fireEvent.click(screen.getByRole('button', { name: 'ภาพรวม', exact: true }));
+  expect(screen.queryByRole('region', { name: 'ตารางจำนวนขายรายวันทั้งเดือน' })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'ปริมาณ', exact: true }));
   await screen.findByRole('region', { name: 'ตารางจำนวนขายรายวันทั้งเดือน' });
   expect((screen.getByLabelText('เดือนที่ต้องการดู') as HTMLInputElement).value).toBe('2026-09');
   expect((screen.getByLabelText('วันที่เปรียบเทียบ') as HTMLInputElement).value).toBe('2026-09-15');

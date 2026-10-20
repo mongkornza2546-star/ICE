@@ -443,3 +443,37 @@
   .executive-daily-quantities > .executive-panel__head { flex-wrap: wrap; gap: 14px; }
   .executive-quantity-table th, .executive-quantity-table td { padding: 10px; font-size: 12px; }
 }
+
+/* Keep the executive overview focused on the selected period and current balances. */
+.executive-volume-daily { min-width: 0; }
+.executive-metrics.executive-metrics--period,
+.executive-metrics.executive-metrics--balance { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.executive-metrics--period .executive-metric,
+.executive-metrics--balance .executive-metric { grid-column: auto; min-height: 144px; }
+.executive-metric .executive-metric__change { color: #526783; font-size: 12px; font-weight: 650; }
+.executive-metric .executive-metric__change[data-direction="increase"] { color: #08705a; }
+.executive-metric .executive-metric__change[data-direction="decrease"] { color: #a83c35; }
+.executive-current-balances { display: grid; gap: 12px; }
+.executive-current-balances h2 { margin: 0; font-size: 16px; color: #234568; }
+.executive-current-balances p,
+.executive-period-description { margin: 0; color: #64758b; font-size: 12px; line-height: 1.6; }
+.executive-trend-unit { margin: 0 0 8px !important; color: #64758b; font-size: 11px; }
+.executive-trend-frame { display: grid; grid-template-columns: 65px minmax(0, 1fr); gap: 8px; }
+.executive-trend-axis { position: relative; height: 180px; color: #74859b; font-size: 11px; font-variant-numeric: tabular-nums; }
+.executive-trend-axis span { position: absolute; right: 0; transform: translateY(-50%); }
+.executive-trend-frame .executive-chart--grouped { height: auto; padding: 0 0 8px; }
+.executive-trend-frame .executive-chart__pair { flex: none; height: 180px; }
+.executive-trend-frame .executive-chart__item { height: 180px; }
+.executive-overview--summary .executive-area-chart__axis { height: 150px; }
+.executive-overview--summary .executive-area-chart__grid { height: 150px; }
+.executive-overview--summary .executive-area-chart__column { grid-template-rows: 32px 150px auto; }
+.executive-overview--summary .executive-area-chart__plot { height: 150px; }
+.executive-overview--summary .executive-area-selection { margin-top: 12px; padding: 12px 16px; }
+@container executive-report (max-width: 520px) {
+  .executive-tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 12px; overflow: visible; }
+  .executive-tabs button { justify-content: flex-start; padding-inline: 8px; font-size: 13px; }
+  .executive-trend-frame { grid-template-columns: 48px minmax(0, 1fr); gap: 3px; }
+  .executive-trend-axis { font-size: 10px; }
+  .executive-metrics--period .executive-metric,
+  .executive-metrics--balance .executive-metric { min-height: 140px; }
+}

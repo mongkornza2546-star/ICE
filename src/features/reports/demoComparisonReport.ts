@@ -1,5 +1,5 @@
 import { shiftServiceDate } from '../../lib/serviceDate';
-import { rangeDays, type DateRange } from './comparisonData';
+import { comparisonRange, rangeDays, type DateRange } from './comparisonData';
 import type { ExecutiveReport } from './types';
 
 /** Demo-only daily fixtures. Never called as a fallback for a failed live RPC. */
@@ -17,5 +17,6 @@ export function demoComparisonReport(report: ExecutiveReport, range: DateRange):
     before = after;
     return point;
   });
-  return { ...report, ...range, dailyTrend };
+  const previous = comparisonRange(range, 'previous');
+  return { ...report, ...range, previousFrom: previous.from, previousTo: previous.to, dailyTrend };
 }

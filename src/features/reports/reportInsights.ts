@@ -1,7 +1,7 @@
 import type { DebtAgingBucket, ExecutiveReport } from './types';
 
 export const baht = (value: number) => new Intl.NumberFormat('th-TH', {
-  style: 'currency', currency: 'THB', maximumFractionDigits: 0,
+  style: 'currency', currency: 'THB', minimumFractionDigits: 0, maximumFractionDigits: 2,
 }).format(value);
 export const number = (value: number) => new Intl.NumberFormat('th-TH', { maximumFractionDigits: 1 }).format(value);
 export const percent = (value: number) => `${number(value)}%`;

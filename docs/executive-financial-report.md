@@ -13,7 +13,11 @@ do not infer comparative receivables from the selected period's sales or receipt
 ## Reporting basis
 
 - Net sales: effective active charge amount minus the bill's stored VAT, plus active
-  paid casual sales. Includes tank rental charges. Matches accounting migration 0223.
+  paid casual sales. Includes regular and event tank rental charges. Migration
+  0223 aligns VAT arithmetic; 0245 aligns accounting's charge and shop scope.
+  With the same dates and no shop filters, executive `sales` equals accounting
+  `totals.sales_amount + totals.casual_sales_amount` (casual sales remain separate
+  in the accounting UI). Deactivating a shop does not erase its sales history.
 - Active adjustments (including stored discounts/returns) affect the sale on its
   service date. Cancelled charges/deliveries are excluded. Settled refunds are not
   deducted from sales a second time.
@@ -31,31 +35,60 @@ do not infer comparative receivables from the selected period's sales or receipt
 
 ## Scope and navigation
 
-The top filter selects the entire business or a shop. Scoped summaries, trends,
-aging, rankings, drilldowns and exports all carry the same shop and dates.
-Quantities/damage and quiet-shop signals are suppressed in shop scope because the
-existing whole-business projections cannot safely be reused there. Aged drilldowns
-preserve the selected bucket through customer, invoice, and back navigation.
+The top date filter applies to whole-business period sales and collections.
+The four tabs are Overview, Sales, Collections and Receivables, and Volume.
+Overview shows sales and net collections with changes against the preceding
+equal-length period, then a separate current receivables section with its own
+snapshot date. Trends, evidence-based follow-ups and a compact area chart follow.
+Zero comparison baselines show an absolute difference without a percentage.
+The repeated five-card block no longer appears in every tab.
 
-Overview shows eight metrics and at most five evidence-based follow-ups. Analysis
-contains the profit equation, cash limits, aging and receipt channels. Raw records
-remain in the existing paginated detail drawer. Quantity charts are expandable.
-All amounts use baht with up to two decimal places; missing measures have no amount.
+Sales retains single-period trends, shop and area breakdowns, quiet-shop signals
+and two-period comparison. Collections and Receivables contains the receipts
+equation, payment channels, current aging and overdue-shop follow-up list.
+Aged drilldowns preserve the selected bucket through shop, invoice, pagination
+and back navigation; due-today invoices belong to the not-due bucket.
+
+The Volume tab contains daily quantities and the monthly table, delivery count,
+per-product quantities/damage and area breakdowns. The table explicitly uses its
+own selected month, separate from the top period filter, and retains selection
+when switching tabs. Missing daily metadata remains unavailable, never zero.
+All currency values retain up to two decimal places. Profit is deferred until
+cost and expense data exists.
 
 ## Deployment and validation
 
-Apply `0226_executive_financial_reporting.sql` after 0225 before releasing the UI.
-It patches the existing sales fact projection, adds previous gross collections,
-shop choices and invoice VAT breakdown, and introduces scoped/aging read-only RPCs.
-Active-admin checks protect both new endpoints; the balance helper is private.
-Existing installations without 0226 retain a visible legacy VAT-basis notice and
-cannot offer a shop filter until the new metadata exists. Aging amounts remain
-readable as plain text until `financialVersion: 1` enables bucket drilldowns;
-the existing general debt drilldown remains available.
+Apply `0244_executive_sales_and_aging.sql` after the existing report migrations
+before releasing the UI. It patches the shared sales fact projection to the
+same VAT basis as accounting migration 0223, so summaries, daily/monthly trends,
+areas, rankings and sales detail rows remain consistent. It adds
+`salesBasis: 'excluding_vat'`, `agingDetailsVersion: 1`, invoice sales/VAT
+breakdown and the admin-only `get_executive_report_aging_details` endpoint.
+Existing report signatures remain compatible, and internal helpers remain private.
 
-Summary validation checks complete trend, area, receipt-method and aging totals.
+Then apply `0245_accounting_executive_sales_parity.sql`. Accounting summary,
+daily matrix and invoice details include active rental charges on their invoice
+service dates. Tank quantities still use physical handoff dates. Inactive shops
+and closed event booths remain visible when they have active invoices in the
+period, current outstanding debt or active collections in the period. Empty
+inactive shops are not added to the operating registry. Invoice items use the
+existing charge-line reader, so rental descriptions, payments and source bills
+remain inspectable. These are read-model changes; they do not reactivate shops
+or rewrite historical financial records.
+
+Existing installations without 0244 show a visible legacy VAT-basis notice.
+Aging amounts stay plain text until the new version metadata enables bucket
+drilldowns; the existing general debt drilldown remains available. If the VAT
+basis differs across two fetched comparison snapshots, totals and export are
+withheld until refresh.
+
+Integration tests reconcile summary trends, areas and aging with detail rows.
+Cross-report tests run the actual accounting summary, daily and invoice RPCs
+alongside the executive RPC on the same fixture. They cover VAT, adjustments,
+cancelled charges/deliveries, casual sales, both rental types, inactive shops,
+closed events, pagination, historical collections and idempotent migration runs.
 Do not reconcile a top-ten customer ranking as if it included all customers.
-Excel additionally loads all relevant detail pages and compares sums before saving.
+Excel loads all relevant detail pages and compares sums before saving.
 A discrepancy blocks export and prompts a refresh. Demo fixtures are labeled as
 simulated; they are never substituted for production RPC failures. Demo exports
 use a `demo-` filename prefix and start every sheet with a simulated-data notice
@@ -66,7 +99,7 @@ Validation commands:
 
 ```
 node --test tests/executive-reports.integration.test.mjs
-npx vitest run tests/executive-reports.test.tsx tests/executive-financial.test.tsx tests/executive-follow-ups.test.tsx --maxWorkers=1 --no-file-parallelism
+npx vitest run tests/executive-reports.test.tsx tests/executive-follow-ups.test.tsx tests/report-daily-quantities.test.tsx tests/report-comparison.test.tsx --maxWorkers=1 --no-file-parallelism
 npm run build
 ```
 

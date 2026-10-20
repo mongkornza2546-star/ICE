@@ -196,7 +196,7 @@ export type AccountingCasualDailyCell = {
 };
 
 export type AccountingShopInvoiceDetailEntry = {
-  delivery_event_id: string;
+  delivery_event_id: string | null;
   delivery_status?: 'active' | 'replaced' | 'cancelled';
   charge_id: string | null;
   charge_number: string | null;

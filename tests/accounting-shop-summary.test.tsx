@@ -150,6 +150,35 @@ beforeEach(() => {
 });
 
 describe('accounting shop summary', () => {
+  it('shows separate rental invoices without delivery events, including their items and payments', async () => {
+    const rentals = ['RENT-1', 'RENT-2'].map((number, index) => ({
+      ...purchaseHistory[0], delivery_event_id: null, charge_id: `rental-${index}`, charge_number: number,
+      sales_amount: 50, total_amount: 53.5, allocated_amount: 10, outstanding_amount: 43.5,
+      items: [{ ice_type_id: `tank-${index}`, name: 'ค่าเช่าถังรายครั้ง', unit: 'ใบ', quantity: 1, unit_price: 50, line_total: 50 }],
+      payments: [{ ...purchaseHistory[0].payments[0], amount: 10 }],
+    }));
+    mockSuccessfulShopSummary();
+    const original = rpcMock.getMockImplementation()!;
+    rpcMock.mockImplementation(async (name: string, ...args: unknown[]) =>
+      name === 'get_accounting_shop_invoice_detail' ? { data: rentals, error: null } : original(name, ...args));
+    const errors = vi.spyOn(console, 'error');
+    try {
+      const user = userEvent.setup();
+      render(<AccountingPage />);
+      await user.click(await screen.findByRole('button', { name: 'S001 · ร้านสมใจ' }));
+      await screen.findByText('RENT-1');
+      for (const number of ['RENT-1', 'RENT-2']) {
+        const invoice = screen.getByText(number).closest('details')!;
+        fireEvent.click(screen.getByText(number));
+        expect(within(invoice).getByText(/ค่าเช่าถังรายครั้ง/)).toBeTruthy();
+        expect(within(invoice).getByText('ประวัติรับชำระ')).toBeTruthy();
+      }
+      expect(errors.mock.calls.some((call) => /same key|unique.*key/.test(call.join(' ')))).toBe(false);
+    } finally {
+      errors.mockRestore();
+    }
+  });
+
   it('opens the stored slip for a bank transfer in the invoice payment history', async () => {
     const evidencePath = 'employee-1/transfer-slip.jpg';
     mockSuccessfulShopSummary([{ ...purchaseHistory[0], payments: [
@@ -945,6 +974,7 @@ describe('accounting shop summary', () => {
     const firstHistoryPage = Array.from({ length: 100 }, (_, index) => ({
       ...purchaseHistory[0],
       delivery_event_id: `delivery-page-1-${index}`,
+      charge_id: `charge-page-1-${index}`,
       charge_number: `INV-PAGE-1-${index}`,
       service_date: bangkokDate(-1),
       recorded_at: `${bangkokDate(-1)}T09:30:00+07:00`,
@@ -953,6 +983,7 @@ describe('accounting shop summary', () => {
     const secondHistoryPage = [{
       ...purchaseHistory[0],
       delivery_event_id: 'delivery-page-2',
+      charge_id: 'charge-page-2',
       charge_number: 'INV-PAGE-2',
       service_date: bangkokDate(-6),
       recorded_at: `${bangkokDate(-6)}T09:30:00+07:00`,
@@ -997,6 +1028,7 @@ describe('accounting shop summary', () => {
     const outOfCohortInvoice = {
       ...purchaseHistory[0],
       delivery_event_id: 'delivery-other-cohort',
+      charge_id: 'charge-other-cohort',
       charge_number: 'INV-IMMEDIATE-BUILDING-2',
       payment_term: 'immediate',
       building_id: 'building-2',

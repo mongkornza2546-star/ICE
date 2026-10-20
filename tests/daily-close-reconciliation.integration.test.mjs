@@ -655,6 +655,22 @@ async function allReceiversDatabase(t) {
   return db;
 }
 
+test('cash reconciliation includes trimmed nicknames without replacing full names', async (t) => {
+  const db = await allReceiversDatabase(t);
+  await db.exec(`
+    alter table public.users add column nickname text;
+    update public.users set nickname = '  ชาย  ' where id = '${courierId}';
+    update public.users set nickname = '   ' where id = '${adminId}';
+  `);
+  await db.exec(migration('0243_daily_close_employee_nicknames.sql'));
+  const summary = await cashSummary(db);
+  const courier = summary.employees.find(employee => employee.employee_id === courierId);
+  assert.equal(courier.employee_nickname, 'ชาย');
+  assert.equal(courier.employee_name, 'Courier One');
+  assert.equal(summary.employees.find(employee => employee.employee_id === adminId).employee_nickname, null);
+  assert.equal(summary.employees.find(employee => employee.employee_id === managerId).employee_nickname, null);
+});
+
 test('all cash receivers: regular and casual cash belong to each recorder, refunds to the confirming actor', async (t) => {
   const db = await allReceiversDatabase(t);
   for (const [employeeId, role, amount] of [
