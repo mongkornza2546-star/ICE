@@ -55,10 +55,12 @@ async function createDatabase({ applyCashFix = true, applyFingerprintFix = true 
       role public.app_role not null,
       is_active boolean not null
     );
-    create function public.current_app_role() returns public.app_role language sql stable as $$
+    create function public.current_app_role() returns public.app_role language sql stable
+    security definer set search_path = public as $$
       select role from public.users where id = auth.uid() and is_active
     $$;
-    create function public.is_active_user() returns boolean language sql stable as $$
+    create function public.is_active_user() returns boolean language sql stable
+    security definer set search_path = public as $$
       select exists (select 1 from public.users where id = auth.uid() and is_active)
     $$;
     create table public.collection_runs (
@@ -498,9 +500,9 @@ async function refundCasual(db, id, { method = 'cash', actor = courierId } = {})
     [id, 'Customer returned sale', method, null, evidence, randomUUID()]);
 }
 
-async function cashSummary(db) {
+async function cashSummary(db, date = serviceDate) {
   await db.exec(`set app.test_user_id = '${managerId}'`);
-  return (await db.query('select public.get_daily_close_reconciliation($1) result', [serviceDate])).rows[0].result;
+  return (await db.query('select public.get_daily_close_reconciliation($1) result', [date])).rows[0].result;
 }
 
 async function closeCash(db, counts, key = randomUUID(), date = serviceDate) {
@@ -635,4 +637,222 @@ test('installing the fix preserves old closed cash snapshots and idempotent retr
   assert.deepEqual(await cashSummary(db), expected);
   assert.deepEqual(await closeCash(db, counts, key), expected);
   assert.equal((await db.query('select count(*)::int n from public.daily_close_casual_cash_items')).rows[0].n, 0);
+});
+
+const allReceiversMigration = migration('0242_daily_close_all_cash_receivers.sql');
+const adminId = '00000000-0000-0000-0000-000000000005';
+
+async function allReceiversDatabase(t) {
+  const db = await createDatabase();
+  t.after(() => db.close());
+  await db.exec(migration('0202_admin_backdated_collection_payments.sql'));
+  const refunds = migration('0128_delivery_corrections_refunds_and_adjustments.sql');
+  const start = refunds.indexOf('create table public.refund_settlements (');
+  await db.exec(refunds.slice(start, refunds.indexOf('\n);', start) + 3));
+  await db.exec(sqlFunction(refunds, 'settle_refund'));
+  await db.exec(allReceiversMigration);
+  await db.exec(`insert into public.users values ('${adminId}', 'Admin', 'admin', true)`);
+  return db;
+}
+
+test('all cash receivers: regular and casual cash belong to each recorder, refunds to the confirming actor', async (t) => {
+  const db = await allReceiversDatabase(t);
+  for (const [employeeId, role, amount] of [
+    [courierId, 'courier', 100], [managerId, 'round_lead', 200], [adminId, 'admin', 300],
+  ]) {
+    await addPayment(db, { id: randomUUID(), employeeId, role, amount, receivedAmount: amount + 20, changeAmount: 20 });
+    await addPayment(db, { id: randomUUID(), employeeId, role, amount: 500, method: 'qr' });
+    await addPayment(db, { id: randomUUID(), employeeId, role, amount: 500, method: 'bank_transfer' });
+    await addPayment(db, { id: randomUUID(), employeeId, role, amount: 500, status: 'voided' });
+    await addPayment(db, { id: randomUUID(), employeeId, role, amount: 500,
+      recordedAt: '2026-01-03 03:00:00+00', collectionRunId: null });
+  }
+  const courierSale = await recordCasual(db, { amount: 40 });
+  await refundCasual(db, courierSale, { actor: managerId });
+  await recordCasual(db, { amount: 60, received: 100, actor: managerId });
+  await recordCasual(db, { amount: 70, loose: true, actor: adminId });
+  const transferSale = await recordCasual(db, { amount: 20, method: 'bank_transfer', actor: managerId });
+  await refundCasual(db, transferSale, { actor: adminId });
+  const cashSale = await recordCasual(db, { amount: 30, actor: adminId });
+  await refundCasual(db, cashSale, { method: 'bank_transfer', actor: adminId });
+
+  const open = await cashSummary(db);
+  assert.deepEqual(Object.fromEntries(open.employees.map(e => [e.employee_id, Number(e.expected_cash_amount)])), {
+    [adminId]: 380, [courierId]: 140, [managerId]: 220,
+  });
+  const counts = open.employees.map(e => ({
+    employee_id: e.employee_id, actual_cash_amount: Number(e.expected_cash_amount), reason: null,
+  }));
+  const key = randomUUID();
+  const closed = await closeCash(db, counts, key);
+  assert.equal(closed.status, 'closed');
+  assert.ok(closed.employees.every(e => Number(e.cash_variance_amount) === 0));
+  assert.equal((await db.query('select count(*)::int n from public.daily_close_payment_items')).rows[0].n, 3);
+  assert.equal((await db.query('select count(*)::int n from public.daily_close_casual_cash_items')).rows[0].n, 6);
+  assert.equal((await db.query('select status from public.collection_runs')).rows[0].status, 'closed');
+  assert.deepEqual(await closeCash(db, counts, key), closed);
+  await assert.rejects(db.exec('update public.payments set allocated_amount = 1'), /ปิดตรวจนับเงินสดแล้ว/);
+  await db.exec(`update public.users set is_active = false where id = '${adminId}';
+    insert into public.users values ('${newCourierId}', 'New admin', 'admin', true)`);
+  const frozen = await cashSummary(db);
+  assert.deepEqual(frozen.employees.map(e => [e.employee_id, e.expected_cash_amount, e.actual_cash_amount, e.payment_ids]),
+    closed.employees.map(e => [e.employee_id, e.expected_cash_amount, e.actual_cash_amount, e.payment_ids]));
+});
+
+test('all cash receivers: zero counts are mandatory for every active role and stale courier-only requests fail atomically', async (t) => {
+  const db = await allReceiversDatabase(t);
+  const open = await cashSummary(db);
+  assert.deepEqual(open.employees.map(e => e.employee_id).sort(), [courierId, managerId, adminId].sort());
+  const counts = open.employees.map(e => ({ employee_id: e.employee_id, actual_cash_amount: 0, reason: null }));
+  for (const id of [courierId, managerId, adminId]) {
+    await assert.rejects(closeCash(db, counts.filter(e => e.employee_id !== id)), /every eligible employee/);
+  }
+  await assert.rejects(closeCash(db, [{ employee_id: courierId, actual_cash_amount: 0 }]), /every eligible employee/);
+  await assert.rejects(closeCash(db, [...counts, counts[0]]), /one non-negative cash count/);
+  await assert.rejects(closeCash(db, counts.map(e => e.employee_id === adminId ? { ...e, actual_cash_amount: null } : e)), /one non-negative cash count/);
+  await assert.rejects(closeCash(db, counts.map(e => e.employee_id === adminId ? { ...e, actual_cash_amount: -1 } : e)), /one non-negative cash count/);
+  for (const table of ['daily_close_reconciliation_requests', 'daily_close_employee_snapshots', 'daily_aggregate_stock_closures']) {
+    assert.equal((await db.query(`select count(*)::int n from public.${table}`)).rows[0].n, 0);
+  }
+  assert.equal((await db.query('select status from public.collection_runs')).rows[0].status, 'open');
+  assert.equal((await closeCash(db, counts)).employees.length, 3);
+});
+
+test('all cash receivers: inactive admins with cash remain eligible and manager variances require reasons', async (t) => {
+  const db = await allReceiversDatabase(t);
+  await recordCasual(db, { amount: 50, actor: adminId });
+  await addPayment(db, { id: randomUUID(), employeeId: managerId, role: 'round_lead', amount: 100 });
+  await db.exec(`update public.users set is_active = false where id = '${adminId}'`);
+  const open = await cashSummary(db);
+  assert.equal(open.employees.find(e => e.employee_id === adminId).is_active, false);
+  const counts = [
+    { employee_id: courierId, actual_cash_amount: 0, reason: null },
+    { employee_id: managerId, actual_cash_amount: 90, reason: null },
+    { employee_id: adminId, actual_cash_amount: 40, reason: null },
+  ];
+  await assert.rejects(closeCash(db, counts), /reason is required/);
+  counts[1].reason = 'Lead short 10';
+  await assert.rejects(closeCash(db, counts), /reason is required/);
+  counts[2].reason = 'Admin short 10';
+  await closeCash(db, counts);
+  const issues = (await db.query(`select employee_id, variance_value, reason
+    from public.daily_close_reconciliation_issues where issue_type = 'CASH_VARIANCE' order by employee_id`)).rows;
+  assert.deepEqual(issues.map(e => [e.employee_id, Number(e.variance_value), e.reason]), [
+    [managerId, -10, 'Lead short 10'], [adminId, -10, 'Admin short 10'],
+  ]);
+  const queue = (await db.query("select public.get_accounting_review_queue($1,$1,'{}',100,0) result", [serviceDate])).rows[0].result;
+  assert.equal(queue.total_count, 2);
+});
+
+test('all cash receivers: migrating preserves historical courier-only snapshots and retries', async (t) => {
+  const db = await createDatabase();
+  t.after(() => db.close());
+  await addPayment(db, { id: randomUUID(), amount: 100 });
+  await addPayment(db, { id: randomUUID(), employeeId: managerId, role: 'round_lead', amount: 200 });
+  await recordCasual(db, { amount: 50, actor: managerId });
+  const counts = [{ employee_id: courierId, actual_cash_amount: 100, reason: null }];
+  const key = randomUUID();
+  const before = await closeCash(db, counts, key);
+  await db.exec(migration('0202_admin_backdated_collection_payments.sql'));
+  const refunds = migration('0128_delivery_corrections_refunds_and_adjustments.sql');
+  const start = refunds.indexOf('create table public.refund_settlements (');
+  await db.exec(refunds.slice(start, refunds.indexOf('\n);', start) + 3));
+  await db.exec(allReceiversMigration);
+  assert.deepEqual(await cashSummary(db), before);
+  assert.deepEqual(await closeCash(db, counts, key), before);
+  assert.equal((await db.query('select count(*)::int n from public.daily_close_payment_items')).rows[0].n, 1);
+  assert.equal((await db.query('select count(*)::int n from public.daily_close_casual_cash_items')).rows[0].n, 0);
+});
+
+async function settleRegularRefund(db, { amount = 20, actor = managerId, method = 'cash', key = randomUUID() } = {}) {
+  const charge = randomUUID(), obligation = randomUUID();
+  await db.query(`insert into delivery_charges(id,shop_id,service_date,status,payment_term)
+    values ($1,$2,$3,'active','immediate')`, [charge, shopId, serviceDate]);
+  await db.query(`insert into refund_obligations(id,source_charge_id,created_at,amount,reason,status)
+    values ($1,$2,now(),$3,'Returned goods','pending')`, [obligation, charge, amount]);
+  await db.exec(`set app.test_user_id = '${actor}'`);
+  const result = (await db.query('select settle_refund($1,$2,null,$3) result', [obligation, method, key])).rows[0].result;
+  return { key, obligation, result };
+}
+
+test('all cash receivers: regular refunds reduce the confirming person on the refund date and freeze their sources', async (t) => {
+  const db = await allReceiversDatabase(t);
+  const today = (await db.query("select (clock_timestamp() at time zone 'Asia/Bangkok')::date::text as date")).rows[0].date;
+  await db.query('update collection_runs set service_date=$1', [today]);
+  await addPayment(db, { id: randomUUID(), amount: 100, employeeId: managerId, role: 'round_lead' });
+  await addPayment(db, { id: randomUUID(), amount: 50, employeeId: adminId, role: 'admin' });
+  const refund = await settleRegularRefund(db);
+  await settleRegularRefund(db, { actor: adminId, method: 'bank_transfer' });
+  const open = await cashSummary(db, today);
+  assert.equal(Number(open.employees.find(e => e.employee_id === managerId).expected_cash_amount), 80);
+  assert.equal(Number(open.employees.find(e => e.employee_id === adminId).expected_cash_amount), 50);
+  // The sale being refunded belongs to an old day; today's cash is what changed.
+  assert.equal(Number((await cashSummary(db)).employees.find(e => e.employee_id === managerId).expected_cash_amount), 0);
+  const counts = open.employees.map(e => ({ employee_id: e.employee_id, actual_cash_amount: Number(e.expected_cash_amount), reason: null }));
+  const key = randomUUID();
+  const closed = await closeCash(db, counts, key, today);
+  const manager = closed.employees.find(e => e.employee_id === managerId);
+  assert.equal(manager.cash_source_count, 2);
+  assert.equal(Number(manager.cash_variance_amount), 0);
+  const items = (await db.query('select * from daily_close_refund_cash_items')).rows;
+  assert.equal(items.length, 1);
+  assert.equal(items[0].refund_id, refund.key);
+  assert.equal(Number(items[0].cash_amount), -20);
+  assert.equal(items[0].source_snapshot.settled_by, managerId);
+  await assert.rejects(db.exec('update daily_close_refund_cash_items set cash_amount=-1'), /cannot be changed/);
+  await assert.rejects(db.exec('delete from daily_close_refund_cash_items'), /cannot be changed/);
+  await db.exec(`set app.test_user_id='${managerId}'; set role authenticated`);
+  assert.equal((await db.query('select count(*)::int n from daily_close_refund_cash_items')).rows[0].n, 1);
+  await assert.rejects(db.exec('delete from daily_close_refund_cash_items'), /permission denied/);
+  await db.exec(`set app.test_user_id='${courierId}'`);
+  assert.equal((await db.query('select count(*)::int n from daily_close_refund_cash_items')).rows[0].n, 0);
+  await db.exec('reset role');
+  assert.deepEqual(await closeCash(db, counts, key, today), closed);
+  // Replaying an existing refund is allowed; a new cash refund after close is not.
+  await db.exec(`set app.test_user_id = '${managerId}'`);
+  assert.equal((await db.query("select settle_refund($1,'cash',null,$2) result", [refund.obligation, refund.key])).rows[0].result.idempotent_replay, true);
+  await assert.rejects(settleRegularRefund(db), /ปิดตรวจนับเงินสดแล้ว/);
+  await settleRegularRefund(db, { method: 'qr' });
+  assert.deepEqual(await cashSummary(db, today), closed);
+});
+
+test('all cash receivers: a refund-only inactive admin is counted even with no receipts', async (t) => {
+  const db = await allReceiversDatabase(t);
+  const today = (await db.query("select (clock_timestamp() at time zone 'Asia/Bangkok')::date::text as date")).rows[0].date;
+  await settleRegularRefund(db, { actor: adminId, amount: 20 });
+  await db.exec(`update users set is_active=false where id='${adminId}'`);
+  const open = await cashSummary(db, today);
+  const admin = open.employees.find(e => e.employee_id === adminId);
+  assert.equal(Number(admin.expected_cash_amount), -20);
+  assert.equal(admin.is_active, false);
+  const counts = open.employees.map(e => ({ employee_id: e.employee_id, actual_cash_amount: 0, reason: e.employee_id === adminId ? 'Refund funded separately' : null }));
+  const closed = await closeCash(db, counts, randomUUID(), today);
+  assert.equal(closed.employees.find(e => e.employee_id === adminId).cash_source_count, 1);
+});
+
+test('all cash receivers: backdated receipts use the received day and cannot change a closed cash day', async (t) => {
+  const db = await allReceiversDatabase(t);
+  const receivedDay = '2026-01-01';
+  const paymentId = randomUUID();
+  await db.query('update daily_close_reconciliation_configuration set enabled_from_service_date=$1', [receivedDay]);
+  await db.exec(`set app.test_user_id='${adminId}'; set app.payment_received_date='${receivedDay}'`);
+  await addPayment(db, { id: paymentId, amount: 25, employeeId: adminId, role: 'admin' });
+  await db.exec("set app.payment_received_date=''");
+  assert.equal(Number((await cashSummary(db)).employees.find(e => e.employee_id === adminId).expected_cash_amount), 0);
+  const open = await cashSummary(db, receivedDay);
+  assert.equal(Number(open.employees.find(e => e.employee_id === adminId).expected_cash_amount), 25);
+  const counts = open.employees.map(e => ({ employee_id: e.employee_id, actual_cash_amount: Number(e.expected_cash_amount), reason: null }));
+  const key = randomUUID();
+  const closed = await closeCash(db, counts, key, receivedDay);
+  const snapshot = (await db.query('select * from daily_close_payment_items where payment_id=$1', [paymentId])).rows[0];
+  assert.equal(Number(snapshot.allocated_amount), 25);
+  assert.deepEqual(closed.employees.find(e => e.employee_id === adminId).payment_ids, [paymentId]);
+  await db.exec(`set app.test_user_id='${adminId}'; set app.payment_received_date='${receivedDay}'`);
+  await assert.rejects(addPayment(db, { id: randomUUID(), amount: 25, employeeId: adminId, role: 'admin' }), /ปิดตรวจนับเงินสดแล้ว/);
+  await addPayment(db, { id: randomUUID(), amount: 25, employeeId: adminId, role: 'admin', method: 'bank_transfer' });
+  await assert.rejects(db.query("update payments set status='voided' where id=$1", [paymentId]), /ปิดตรวจนับเงินสดแล้ว/);
+  await assert.rejects(db.query('delete from payments where id=$1', [paymentId]), /ปิดตรวจนับเงินสดแล้ว/);
+  await assert.rejects(db.query("update payments set received_date_override=null, recorded_at='2026-01-02T03:00:00Z' where id=$1", [paymentId]), /ปิดตรวจนับเงินสดแล้ว/);
+  assert.deepEqual(await cashSummary(db, receivedDay), closed);
+  assert.deepEqual(await closeCash(db, counts, key, receivedDay), closed);
 });

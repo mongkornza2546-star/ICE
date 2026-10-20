@@ -164,7 +164,7 @@ export function DailyAggregateStockClose({
       return;
     }
     if (featureEnabled && hasMissingCashReason) {
-      setError('กรอกเหตุผลของพนักงานทุกคนที่ยอดเงินสดไม่ตรง');
+      setError('กรอกเหตุผลของทุกคนที่ยอดเงินสดไม่ตรง');
       return;
     }
     setSubmitting(true);
@@ -322,7 +322,7 @@ export function DailyAggregateStockClose({
             <div className="panel-header">
               <div>
                 <p className="eyebrow">{translateUi('Snapshot เงินสดสิ้นวัน')}</p>
-                <h3 id="daily-cash-closed-title">{translateUi('เงินสดรายพนักงาน')}</h3>
+                <h3 id="daily-cash-closed-title">{translateUi('เงินสดรายบุคคล')}</h3>
               </div>
             </div>
             <div className="daily-close-cash__grid">
@@ -335,7 +335,7 @@ export function DailyAggregateStockClose({
                       {!employee.is_active ? <small>{translateUi('พนักงานที่ยกเลิกแล้ว')}</small> : null}
                     </div>
                     <dl>
-                      <div><dt>{translateUi('ควรส่ง')}</dt><dd>{formatBaht(employee.expected_cash_amount)}</dd></div>
+                      <div><dt>{translateUi('ควรมีตามระบบ')}</dt><dd>{formatBaht(employee.expected_cash_amount)}</dd></div>
                       <div><dt>{translateUi('นับจริง')}</dt><dd>{formatBaht(employee.actual_cash_amount ?? 0)}</dd></div>
                       <div><dt>{translateUi('ส่วนต่าง')}</dt><dd className={variance ? 'daily-close-cash__variance' : ''}>{formatSignedBaht(variance)}</dd></div>
                     </dl>
@@ -428,14 +428,14 @@ export function DailyAggregateStockClose({
         <div className="panel-header">
           <div>
             <p className="eyebrow">{translateUi('ตรวจเงินพร้อมปิดยอด')}</p>
-            <h3 id="daily-cash-count-title">{translateUi('เงินสดรายพนักงาน')}</h3>
+            <h3 id="daily-cash-count-title">{translateUi('เงินสดรายบุคคล')}</h3>
           </div>
           <span className={`status-badge ${featureEnabled ? 'status-badge--success' : 'status-badge--neutral'}`}>
             {featureEnabled ? translateUi('ใช้งานจริง') : 'Dark launch'}
           </span>
         </div>
         <p className="muted">
-          {translateUi('ยอดควรส่งตามระบบรวมเงินสดร้านประจำและลูกค้าขาจร หลังหักเงินทอนและเงินสดที่พนักงานคืน ไม่รวมโอน/QR และเงินที่หัวหน้ารับหรือคืนเอง')}</p>
+          {translateUi('ตรวจเงินสดของพนักงานส่งของ แอดมิน และหัวหน้า แยกตามผู้บันทึกรับเงิน รวมร้านประจำและลูกค้าขาจร หลังหักเงินทอนและเงินสดที่แต่ละคนคืน ไม่รวมโอน/QR กรอกยอดนับให้ครบทุกคน แม้ยอดเป็นศูนย์ และไม่นับเงินส่งมอบระหว่างกันซ้ำ')}</p>
         {!featureEnabled ? (
           <p className="daily-close-cash__rollout" role="status">
             {translateUi('กำลังเปรียบเทียบยอดกับรายงานเดิม ช่องเงินสดยังไม่ถูกบันทึกจนกว่าจะเปิดใช้ reconciliation')}</p>
@@ -455,7 +455,7 @@ export function DailyAggregateStockClose({
                   </span>
                   <b className={variance ? 'daily-close-cash__variance' : ''}>{counted ? formatSignedBaht(variance) : translateUi('ยังไม่กรอกยอดนับ')}</b>
                 </div>
-                <div className="daily-close-cash__expected">{translateUi('ควรส่ง ')}<strong>{formatBaht(expected)}</strong></div>
+                <div className="daily-close-cash__expected">{translateUi('ควรมีตามระบบ ')}<strong>{formatBaht(expected)}</strong></div>
                 <label>
                   <span>{translateUi('หัวหน้านับจริง')}</span>
                   <div className="input-wrapper">

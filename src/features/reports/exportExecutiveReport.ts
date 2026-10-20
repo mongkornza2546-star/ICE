@@ -10,6 +10,43 @@ const sheet = (rows: Array<Array<string | number>>) => rows.map((row, index) => 
   ...cell(value), ...(index === 0 ? { fontWeight: 'bold' as const, backgroundColor: '#DBEAFE' } : {}),
 })));
 
+/** The caller supplies the exact snapshot and quantities currently rendered. */
+export async function exportDailyQuantities(data: {
+  month: string; selectedDate: string; previousDate: string; end: string; asOf: string;
+  days: string[]; demo: boolean;
+  products: Array<{ name: string; unit: string; current: number | null; previous: number | null;
+    total: number | null; daily: Array<number | null> }>;
+}) {
+  const { default: writeXlsxFile } = await import('write-excel-file');
+  const metadata: Array<Array<string | number>> = [
+    ['จำนวนขายน้ำแข็งรายวัน', data.month],
+    ...(data.demo ? [['ข้อมูลจำลอง · ไม่ใช่ข้อมูลจริงตามวันที่']] : []),
+    ['ข้อมูล ณ', data.asOf],
+    ['รวมเดือนถึงวันที่', data.end],
+    ['หมายเหตุ', '0 = ไม่มีจำนวนขาย · — = ยังไม่มีข้อมูลหรือยังไม่ถึงวันนั้น · วันนี้ยังไม่ครบวัน'],
+  ];
+  const daily = sheet([
+    ...metadata,
+    ['วันที่', ...data.products.map((product) => `${product.name} (${product.unit})`)],
+    ...data.days.map((date, index) => [date, ...data.products.map((product) => product.daily[index] ?? '—')]),
+    ['รวมเดือน', ...data.products.map((product) => product.total ?? '—')],
+  ]);
+  const comparison = sheet([
+    ...metadata,
+    ['ชนิดน้ำแข็ง', 'หน่วย', data.selectedDate, data.previousDate, 'เพิ่ม / ลด'],
+    ...data.products.map((product) => [product.name, product.unit, product.current ?? '—', product.previous ?? '—',
+      product.current === null || product.previous === null ? '—' : product.current - product.previous]),
+  ]);
+  await writeXlsxFile([daily, comparison], {
+    sheets: ['จำนวนขายรายวัน', 'เทียบวันก่อนหน้า'],
+    columns: [
+      Array.from({ length: data.products.length + 1 }, () => ({ width: 25 })),
+      Array.from({ length: 5 }, () => ({ width: 25 })),
+    ],
+    fileName: `${data.demo ? 'demo-' : ''}ice-daily-quantities-${data.month}-compare-${data.selectedDate}.xlsx`,
+  });
+}
+
 export async function exportExecutiveReport(
   report: ExecutiveReport,
   detailRows: Partial<Record<ReportMetric, ReportRow[]>>,

@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expect, it, vi } from 'vitest';
 
@@ -6,6 +6,44 @@ const supabaseMock = vi.hoisted(() => ({ rpc: vi.fn() }));
 vi.mock('../src/lib/supabase', () => ({ supabase: supabaseMock }));
 
 import { DailyAggregateStockClose } from '../src/features/stock-control/components/DailyAggregateStockClose';
+
+it('requires explicit counts for courier, admin and lead, including zero and variance reasons', async () => {
+  supabaseMock.rpc.mockImplementation((name: string) => Promise.resolve({
+    error: null,
+    data: name === 'get_daily_close_reconciliation' ? {
+      service_date: '2026-10-20', status: 'open', feature_enabled: true,
+      stock: { service_date: '2026-10-20', status: 'open', items: [
+        { ice_type_id: 'ice-1', name: 'หลอด', unit: 'ถุง', available_quantity: 0 },
+      ] },
+      employees: [
+        { employee_id: 'courier-1', employee_name: 'พนักงานส่งของ', expected_cash_amount: 100 },
+        { employee_id: 'admin-1', employee_name: 'แอดมิน', expected_cash_amount: 50 },
+        { employee_id: 'lead-1', employee_name: 'หัวหน้า', expected_cash_amount: 0 },
+      ].map(employee => ({ ...employee, is_active: true, actual_cash_amount: null, payment_ids: [] })),
+    } : name === 'get_daily_stock_refill_history' ? [] : { status: 'closed' },
+  }));
+  const user = userEvent.setup();
+  render(<DailyAggregateStockClose serviceDate="2026-10-20" />);
+  await screen.findByRole('heading', { name: 'เงินสดรายบุคคล' });
+  const card = (name: string) => within(screen.getByText(name, { exact: true }).closest('article')!);
+  const close = screen.getByRole('button', { name: 'ปิดยอดสต๊อกและเงินสดวันนี้' }) as HTMLButtonElement;
+  expect(close.disabled).toBe(true);
+  await user.type(card('พนักงานส่งของ').getByLabelText(/^หัวหน้านับจริง/), '100');
+  expect(close.disabled).toBe(true);
+  await user.type(card('แอดมิน').getByLabelText(/^หัวหน้านับจริง/), '40');
+  expect(close.disabled).toBe(true);
+  await user.type(card('หัวหน้า').getByLabelText(/^หัวหน้านับจริง/), '0');
+  expect(close.disabled).toBe(true);
+  await user.type(card('แอดมิน').getByLabelText('เหตุผลส่วนต่าง *'), 'เงินขาด 10 บาท');
+  expect(close.disabled).toBe(false);
+  await user.click(close);
+  await waitFor(() => expect(supabaseMock.rpc).toHaveBeenCalledWith('close_daily_reconciliation_v2',
+    expect.objectContaining({ p_cash_counts: [
+      { employee_id: 'courier-1', actual_cash_amount: 100, reason: null },
+      { employee_id: 'admin-1', actual_cash_amount: 40, reason: 'เงินขาด 10 บาท' },
+      { employee_id: 'lead-1', actual_cash_amount: 0, reason: null },
+    ] })));
+});
 
 it.each([10, 9])('records courier cash with only employee reasons when stock count is %s', async (stockCount) => {
   supabaseMock.rpc.mockImplementation((name: string) => {

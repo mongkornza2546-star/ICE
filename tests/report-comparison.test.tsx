@@ -194,7 +194,7 @@ it('rejects future and excessive B ranges and restores the single-period view', 
   expect(rpc).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole('button', { name: 'ช่วงเดียว' }));
   expect(screen.getByRole('table', { name: 'ตารางยอดขายตามพื้นที่' })).not.toBeNull();
-  expect(screen.getByRole('button', { name: 'ส่งออก Excel', exact: true })).not.toBeNull();
+  expect(screen.getByRole('button', { name: 'ส่งออก Excel ตามช่วงวันที่หลัก', exact: true })).not.toBeNull();
 });
 
 it('preserves custom B when returning from another report tab or single-period view', async () => {

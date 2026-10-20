@@ -9,6 +9,7 @@ import { ReportSections, ReportTabs, type ReportSection } from './ExecutiveRepor
 import { ExecutiveFollowUps } from './ExecutiveFollowUps';
 import { ReportShopProfile } from './ReportShopProfile';
 import { ReportComparison } from './ReportComparison';
+import { ReportDailyQuantities } from './ReportDailyQuantities';
 import { comparisonRange, type ComparisonSelection } from './comparisonData';
 import { demoComparisonReport } from './demoComparisonReport';
 import { formatReportDate, presetDates, reportRangeError, type Preset } from './reportDates';
@@ -69,6 +70,7 @@ export function ExecutiveReportsPage({ isActive, demoReport, demoRows }: {
   const [refreshKey, setRefreshKey] = useState(0);
   const [showTrendTable, setShowTrendTable] = useState(false);
   const [section, setSection] = useState<ReportSection>('overview');
+  const [quantitySelection, setQuantitySelection] = useState<{ reportTo: string; date: string } | null>(null);
   const [comparing, setComparing] = useState(false);
   const [comparisonSelection, setComparisonSelection] = useState<ComparisonSelection>(() => ({
     preset: 'previous', custom: comparisonRange(initial, 'previous'),
@@ -279,7 +281,7 @@ export function ExecutiveReportsPage({ isActive, demoReport, demoRows }: {
       <div><h1 ref={reportHeading} tabIndex={-1}>{translateUi('รายงานผู้บริหาร')}</h1><p>{translateUi('ยอดขาย เงินรับ ลูกหนี้ และปริมาณส่ง')}</p></div>
       <div className="executive-report__actions">
         <button aria-label={translateUi('รีเฟรชรายงาน')} disabled={loading || Boolean(rangeError)} onClick={refresh} type="button"><ArrowClockwise size={19} />{translateUi(' รีเฟรช')}</button>
-        {!(section === 'sales' && comparing) ? <button disabled={!shownReport || loading || exporting || Boolean(error)} onClick={() => void handleExport()} type="button"><DownloadSimple size={19} /> {exporting ? translateUi('กำลังสร้าง Excel…') : translateUi('ส่งออก Excel')}</button> : null}
+        {!(section === 'sales' && comparing) ? <button disabled={!shownReport || loading || exporting || Boolean(error)} onClick={() => void handleExport()} type="button"><DownloadSimple size={19} /> {exporting ? translateUi('กำลังสร้าง Excel…') : translateUi('ส่งออก Excel ตามช่วงวันที่หลัก')}</button> : null}
       </div>
     </header>
 
@@ -327,6 +329,9 @@ export function ExecutiveReportsPage({ isActive, demoReport, demoRows }: {
         <button onClick={() => setSection('overview')} type="button"><CaretLeft size={16} />{translateUi('กลับภาพรวม')}</button>
         <button aria-current={section === 'volume' ? 'page' : undefined} onClick={() => setSection('volume')} type="button">{translateUi('ปริมาณส่ง')}</button>
       </nav> : null}
+      {section === 'overview' ? <ReportDailyQuantities report={shownReport} demo={Boolean(demoReport)}
+        selectedDate={quantitySelection?.reportTo === to ? quantitySelection.date : to}
+        onDateChange={(date) => setQuantitySelection({ reportTo: to, date })} /> : null}
       <ReportSections
         onNavigateSection={(nextSection, targetId) => {
           setSection(nextSection);

@@ -11,9 +11,23 @@ const employee: CashCloseReconciliation['employees'][number] = {
 const data: CashCloseReconciliation = { service_date: '2026-10-15', status: 'open', feature_enabled: true, employees: [employee] };
 
 describe('manager cash reconciliation', () => {
+  it('totals all cash receivers without presenting admin cash as a handover', () => {
+    render(<CashReconciliationPanel data={{ ...data, status: 'closed', employees: [
+      { ...employee, employee_name: 'พนักงานส่งของ', actual_cash_amount: 90 },
+      { ...employee, employee_id: 'admin', employee_name: 'แอดมิน', expected_cash_amount: 50, actual_cash_amount: 50 },
+      { ...employee, employee_id: 'lead', employee_name: 'หัวหน้า', expected_cash_amount: 0, actual_cash_amount: 0 },
+    ] }} error={null} />);
+    expect(screen.getByText('เงินสดรวมตามยอดนับจริง').parentElement?.textContent).toContain('฿140.00');
+    expect(screen.getByText('เงินสดควรมีตามระบบ').parentElement?.textContent).toContain('฿140.00');
+    const table = screen.getByRole('table', { name: 'เทียบยอดเงินสดรายบุคคล' });
+    expect(within(table).getAllByText('ตรงยอด')).toHaveLength(3);
+    expect(within(table).getByText('แอดมิน')).toBeTruthy();
+    expect(within(table).getByText('หัวหน้า')).toBeTruthy();
+  });
+
   it('does not turn a missing or partially completed count into a received total', () => {
     render(<CashReconciliationPanel data={{ ...data, employees: [employee, { ...employee, employee_id: 'two', employee_name: 'คนสอง', expected_cash_amount: 0, actual_cash_amount: 0 }] }} error={null} />);
-    expect(screen.getByText('หัวหน้าได้รับจริงตามยอดนับ').parentElement?.textContent).toContain('—');
+    expect(screen.getByText('เงินสดรวมตามยอดนับจริง').parentElement?.textContent).toContain('—');
     const table = screen.getByRole('table');
     expect(within(table).getByText('ตรงยอด')).toBeTruthy();
     expect(within(table).getByText('ยังไม่บันทึกยอดนับเงิน')).toBeTruthy();
@@ -21,7 +35,7 @@ describe('manager cash reconciliation', () => {
 
   it('shows recorded zero as a real count and retains an inactive employee from the snapshot', () => {
     render(<CashReconciliationPanel data={{ ...data, status: 'closed', employees: [{ ...employee, is_active: false, actual_cash_amount: 0, cash_reason: 'ยังไม่ได้ส่งเงิน' }] }} error={null} />);
-    expect(screen.getByText('หัวหน้าได้รับจริงตามยอดนับ').parentElement?.textContent).toContain('฿0.00');
+    expect(screen.getByText('เงินสดรวมตามยอดนับจริง').parentElement?.textContent).toContain('฿0.00');
     expect(screen.getByText('บันทึกยอดนับเงินแล้ว')).toBeTruthy();
     expect(screen.getByText('พนักงานที่ยกเลิกแล้ว')).toBeTruthy();
     expect(screen.getByText('ยังไม่ได้ส่งเงิน')).toBeTruthy();
@@ -32,7 +46,7 @@ describe('manager cash reconciliation', () => {
       { ...employee, expected_cash_amount: 10.10, actual_cash_amount: 9.90, cash_reason: 'ขาด' },
       { ...employee, employee_id: 'two', employee_name: 'คนสอง', expected_cash_amount: 10.10, actual_cash_amount: 10.30, cash_reason: 'เกิน' },
     ] }} error={null} />);
-    expect(screen.getByText('ส่วนต่างสุทธิ (นับจริง − ควรส่ง)').parentElement?.textContent).toContain('฿0.00');
+    expect(screen.getByText('ส่วนต่างสุทธิ (นับจริง − ตามระบบ)').parentElement?.textContent).toContain('฿0.00');
     expect(screen.getByText(/เงินขาดรวม/).textContent).toContain('฿0.20');
     expect(screen.getByRole('cell', { name: 'เงินขาด', exact: true })).toBeTruthy();
     expect(screen.getByRole('cell', { name: 'เงินเกิน', exact: true })).toBeTruthy();
@@ -42,6 +56,6 @@ describe('manager cash reconciliation', () => {
   it('explains historical stock-only closing without inventing a cash count', () => {
     render(<CashReconciliationPanel data={{ ...data, status: 'closed', feature_enabled: false }} error={null} />);
     expect(screen.getByText('วันที่นี้ยังไม่เปิดใช้การบันทึกยอดนับเงิน')).toBeTruthy();
-    expect(screen.getByText('หัวหน้าได้รับจริงตามยอดนับ').parentElement?.textContent).toContain('—');
+    expect(screen.getByText('เงินสดรวมตามยอดนับจริง').parentElement?.textContent).toContain('—');
   });
 });

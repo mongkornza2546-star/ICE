@@ -604,17 +604,57 @@ test('regular and statement balances exclude separate event collections for the 
 });
 
 
-async function backdate(db, { date, statement, key = 1, method = 'cash', evidence = null, amount = 25 } = {}) {
+async function backdate(db, { date, statement, key = 1, method = 'cash', evidence = null, amount = 25, expected = statement ? 75 : 125 } = {}) {
   return (await db.query(`select public.record_backdated_collection_payment($1, $2::date, $3::jsonb) as result`, [
     statement ? 'record_billing_statement_payment' : 'record_regular_collection_payment', date,
     JSON.stringify({
       p_shop_id: shopId, p_billing_statement_id: statement,
       p_allocations: [{ charge_id: newBill, amount }], p_payment_method: method,
       p_received_amount: amount, p_evidence_path: evidence, p_collection_run_id: runId,
-      p_expected_outstanding_amount: statement ? 75 : 125, p_idempotency_key: requestKey(key),
+      p_expected_outstanding_amount: expected, p_idempotency_key: requestKey(key),
     }),
   ])).rows[0].result;
 }
+
+test('cash close uses the actual backdated writer, preserves retries and rejects late cash without blocking transfers', async (t) => {
+  const db = await createDatabase(t);
+  const rules = migration('0242_daily_close_all_cash_receivers');
+  // Keep the actual payment writers, received-date trigger and receipt snapshots.
+  // Only the surrounding daily-close schema is a fixture in this writer suite.
+  await db.exec(`
+    alter table payments add recorded_role text default 'admin';
+    alter table users add role text default 'admin';
+    create table daily_close_reconciliation_requests(service_date date primary key);
+    create table casual_transactions(id uuid, recorded_by uuid, service_date date,
+      transaction_kind text, payment_method payment_method, sale_amount numeric);
+    create table casual_refund_confirmations(transaction_id uuid, confirmed_by uuid,
+      refund_method payment_method, refunded_amount numeric);
+    create table refund_settlements(idempotency_key uuid, settled_by uuid, settled_at timestamptz,
+      amount numeric, refund_method payment_method);
+  `);
+  await db.exec(rules.slice(rules.indexOf('create function public.daily_close_payment_date('),
+    rules.indexOf('create function public.guard_refund_cash_close(')));
+  const start = rules.indexOf('create or replace function public.daily_close_cash_sources(');
+  await db.exec(rules.slice(start, rules.indexOf('\n$$;', start) + 4));
+  const dates = (await db.query(`select (clock_timestamp() at time zone 'Asia/Bangkok')::date::text as today,
+    ((clock_timestamp() at time zone 'Asia/Bangkok')::date - 1)::text as received`)).rows[0];
+  const receipt = await backdate(db, { date: dates.received });
+  const total = async date => Number((await db.query('select coalesce(sum(cash_amount),0) amount from daily_close_cash_sources($1)', [date])).rows[0].amount);
+  assert.equal(await total(dates.received), 25);
+  assert.equal(await total(dates.today), 0);
+  await db.query('insert into daily_close_reconciliation_requests values ($1)', [dates.received]);
+  assert.deepEqual(await backdate(db, { date: dates.received }), receipt);
+  await assert.rejects(backdate(db, { date: dates.received, key: 2, expected: 100 }), /ปิดตรวจนับเงินสดแล้ว/);
+  await assert.rejects(voidPayment(db, receipt.payment_id), /ปิดตรวจนับเงินสดแล้ว/);
+  assert.equal((await db.query('select count(*)::int n from payments')).rows[0].n, 1);
+  assert.equal((await db.query('select count(*)::int n from payment_receipt_snapshots')).rows[0].n, 1);
+  const evidence = '50000000-0000-4000-8000-000000000001/transfer';
+  await db.query("insert into storage.objects values ('payment-evidence',$1)", [evidence]);
+  const transfer = await backdate(db, { date: dates.received, key: 2, method: 'bank_transfer', evidence, expected: 100 });
+  assert.equal(transfer.received_date_override, dates.received);
+  assert.equal(await total(dates.received), 25);
+  assert.equal(await total(dates.today), 0);
+});
 
 for (const withStatement of [false, true]) {
   test(`admin backdating preserves entry time, receipt date, and retry identity (statement: ${withStatement})`, async (t) => {

@@ -161,7 +161,7 @@ describe('accounting workspace interactions', () => {
     const user = userEvent.setup();
     render(<AccountingPage />);
     await user.click(screen.getByRole('button', { name: 'สรุปเทียบยอด' }));
-    const table = await screen.findByRole('table', { name: 'เทียบยอดเงินสดรายพนักงาน' });
+    const table = await screen.findByRole('table', { name: 'เทียบยอดเงินสดรายบุคคล' });
     expect(within(table).getByText('ยังไม่บันทึกยอดนับเงิน')).toBeTruthy();
     expect(screen.queryByText('รับเงินจริง', { exact: true })).toBeNull();
     expect(screen.getByText('ยอดรับชำระตามระบบ').parentElement?.textContent).toContain('฿100.00');
@@ -171,7 +171,7 @@ describe('accounting workspace interactions', () => {
     expect(within(table).getByText('฿80.00')).toBeTruthy();
     expect(within(table).getByText('-฿10.00')).toBeTruthy();
     expect(within(table).getByText('ส่งเงินขาด 10 บาท')).toBeTruthy();
-    expect(screen.getByText('หัวหน้าได้รับจริงตามยอดนับ').parentElement?.textContent).toContain('฿80.00');
+    expect(screen.getByText('เงินสดรวมตามยอดนับจริง').parentElement?.textContent).toContain('฿80.00');
   });
 
   it('keeps the system report but reports cash lookup failure instead of showing zero received', async () => {
@@ -185,7 +185,7 @@ describe('accounting workspace interactions', () => {
     await user.click(screen.getByRole('button', { name: 'สรุปเทียบยอด' }));
     expect(await screen.findByRole('alert')).toHaveProperty('textContent', expect.stringContaining('โหลดข้อมูลยอดนับเงินไม่สำเร็จ'));
     expect(screen.getByText('ยอดรับชำระตามระบบ').parentElement?.textContent).toContain('฿100.00');
-    expect(screen.queryByText('หัวหน้าได้รับจริงตามยอดนับ')).toBeNull();
+    expect(screen.queryByText('เงินสดรวมตามยอดนับจริง')).toBeNull();
   });
 
   it('restores the report period after opening an older source and retains the shop view', async () => {

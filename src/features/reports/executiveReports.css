@@ -415,3 +415,31 @@
 .executive-chart--grouped .executive-chart__item--receipts i { background: #099b7a; }
 .executive-chart--grouped .executive-chart__item--sales i { background: #0d6efd; }
 .executive-chart--grouped .executive-chart__item:focus-visible { outline: 2px solid #073869; outline-offset: 2px; }
+
+.executive-quantity-month, .executive-quantity-controls label { display: grid; gap: 6px; color: #526783; font-size: 13px; }
+.executive-quantity-actions { display: flex; align-items: end; flex-wrap: wrap; gap: 12px; }
+.executive-quantity-actions button { min-height: 44px; padding: 8px 12px; border: 1px solid #dce6f3; border-radius: 8px; background: #fff; color: #075ed8; font: inherit; font-size: 13px; }
+.executive-quantity-actions button:disabled { opacity: .55; cursor: default; }
+.executive-quantity-month input, .executive-quantity-controls input { min-height: 44px; padding: 8px 12px; border: 1px solid #dce6f3; border-radius: 8px; background: #fff; color: #234568; font: inherit; }
+.executive-quantity-controls { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 14px; margin-bottom: 16px; }
+.executive-daily-quantities h3 { color: #234568; font-size: 16px; margin: 0; }
+.executive-daily-quantities .executive-quantity-month-heading { margin: 26px 0 8px; }
+.executive-quantity-scroll { overflow: auto; border: 1px solid #dce6f3; border-radius: 10px; }
+.executive-quantity-scroll--month { max-height: 540px; margin-top: 12px; }
+.executive-quantity-table { width: 100%; border-collapse: separate; border-spacing: 0; color: #234568; font-size: 14px; font-variant-numeric: tabular-nums; }
+.executive-quantity-table th, .executive-quantity-table td { padding: 13px 16px; white-space: nowrap; text-align: right; border-bottom: 1px solid #e8eef6; background: #fff; }
+.executive-quantity-table th:first-child { text-align: left; position: sticky; left: 0; z-index: 1; }
+.executive-quantity-table thead th { position: sticky; top: 0; z-index: 2; background: #f0f6ff; }
+.executive-quantity-table thead th:first-child { z-index: 3; }
+.executive-quantity-table small { display: block; color: #61758e; font-weight: 400; margin-top: 3px; }
+.executive-quantity-table tbody tr:nth-child(even) > * { background: #f8faff; }
+.executive-quantity-table tbody .executive-quantity-selected > * { background: #eaf3ff; }
+.executive-quantity-table tfoot > tr > * { background: #f0f6ff; font-weight: 700; }
+.executive-quantity-table button { padding: 6px 0; min-height: 36px; border: 0; background: transparent; color: #075ed8; font: inherit; text-align: left; }
+.executive-quantity-table .executive-quantity-up { color: #08705a; }
+.executive-quantity-table .executive-quantity-down { color: #b04435; }
+.executive-quantity-scroll:focus-visible, .executive-quantity-table button:focus-visible { outline: 2px solid #075ed8; outline-offset: -2px; }
+@container executive-report (max-width: 620px) {
+  .executive-daily-quantities > .executive-panel__head { flex-wrap: wrap; gap: 14px; }
+  .executive-quantity-table th, .executive-quantity-table td { padding: 10px; font-size: 12px; }
+}
