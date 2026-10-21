@@ -249,3 +249,73 @@ test('bulk updates are atomic, preserve unselected settings, and enforce admin a
   assert.equal(created.bank_transfer_evidence_required, true);
   assert.equal(created.created_by, admin);
 });
+
+test('dashboard includes paid casual quantities and receipts without double counting or cash change', async (t) => {
+  const db = await database(t);
+  const ice = 'a0000000-0000-4000-8000-000000000001';
+  const casualOnly = 'a0000000-0000-4000-8000-000000000002';
+  const location = 'b0000000-0000-4000-8000-000000000001';
+  const otherLocation = 'b0000000-0000-4000-8000-000000000002';
+  await db.exec(`
+    create table public.payments(status text, payment_method text, allocated_amount numeric, recorded_at timestamptz);
+    alter table public.delivery_charges add column vat_amount numeric default 0;
+    create function public.charge_vat_totals(uuid) returns jsonb language sql as $$select '{"subtotal_amount":1000}'::jsonb$$;
+    create table public.casual_transactions(service_date date, ice_type_id uuid, source_stock_location_id uuid,
+      status text default 'active', transaction_kind text default 'paid', fulfillment_mode text default 'measured',
+      quantity numeric, sale_amount numeric, payment_method text default 'cash', received_amount numeric,
+      recorded_at timestamptz default '2026-09-06T12:00:00+07');
+    create table public.casual_loose_stock_prices(service_date date, source_stock_location_id uuid, ice_type_id uuid, unit_price numeric);
+    insert into public.ice_types values ('${ice}', 'หลอดเล็ก', 'SMALL', 'ถุง', true),
+      ('${casualOnly}', 'โม่', 'CRUSHED', 'ถุง', true),
+      ('a0000000-0000-4000-8000-000000000003', 'ไม่มีขาย', 'EMPTY', 'ถุง', true);
+    insert into public.delivery_items values ('${charge}', '${ice}', 10), ('${charge}', '${ice}', 2);
+    insert into public.casual_transactions(service_date, ice_type_id, source_stock_location_id, quantity, sale_amount, received_amount)
+      values ('2026-09-06', '${ice}', '${location}', 2.5, 60, 100),
+        ('2026-09-06', '${casualOnly}', '${location}', 1, 25, 25);
+    insert into public.casual_transactions(service_date, ice_type_id, source_stock_location_id, quantity, sale_amount, payment_method)
+      values ('2026-09-06', '${ice}', '${location}', 1, 30, 'bank_transfer'),
+        ('2026-09-06', '${ice}', '${location}', 0.5, 15, 'qr'),
+        ('2026-09-06', '${ice}', '${location}', 0, 5, 'cash');
+    insert into public.casual_transactions(service_date, ice_type_id, source_stock_location_id, fulfillment_mode, sale_amount)
+      values ('2026-09-06', '${ice}', '${location}', 'loose', 20),
+        ('2026-09-06', '${ice}', '${location}', 'loose', 20),
+        ('2026-09-06', '${ice}', '${otherLocation}', 'loose', 20);
+    insert into public.casual_loose_stock_prices values
+      ('2026-09-06', '${location}', '${ice}', 25), ('2026-09-06', '${otherLocation}', '${ice}', 25);
+    insert into public.casual_transactions(service_date, ice_type_id, source_stock_location_id, quantity, sale_amount, status, transaction_kind, recorded_at)
+      values ('2026-09-06', '${ice}', '${location}', 99, 990, 'voided', 'paid', '2026-09-06T12:00:00+07'),
+        ('2026-09-06', '${ice}', '${location}', 99, 0, 'active', 'free', '2026-09-06T12:00:00+07'),
+        ('2026-09-05', '${ice}', '${location}', 99, 990, 'active', 'paid', '2026-09-05T23:59:59+07'),
+        ('2026-09-07', '${ice}', '${location}', 99, 990, 'active', 'paid', '2026-09-07T00:00:00+07');
+    insert into public.payments values
+      ('active','cash',200,'2026-09-06T00:00:00+07'),
+      ('active','bank_transfer',300,'2026-09-06T23:59:59+07'),
+      ('active','qr',50,'2026-09-06T12:00:00+07'),
+      ('voided','cash',999,'2026-09-06T12:00:00+07'),
+      ('active','cash',999,'2026-09-07T00:00:00+07');
+  `);
+  const looseSource = readMigration('0179_casual_loose_stock_conversion.sql');
+  const start = looseSource.indexOf('create function public.casual_loose_stock_totals(');
+  await db.exec(looseSource.slice(start, looseSource.indexOf('\n$$;', start) + 4));
+  await db.exec(readMigration('0239_daily_credit_sales_vat_breakdown.sql'));
+  await db.exec(readMigration('0247_dashboard_include_casual_sales.sql'));
+  const read = async (name, date = '2026-09-06') => (await db.query(`select public.${name}($1::date) as result`, [date])).rows[0].result;
+  const dashboard = await read('get_daily_work_dashboard');
+  const quantities = Object.fromEntries(dashboard.salesSummary.iceTypeSales.map(item => [item.ice_type_name, item.quantity]));
+  assert.deepEqual(quantities, { 'หลอดเล็ก': 17, 'โม่': 1, 'ไม่มีขาย': 0 });
+  const payments = await read('get_daily_payment_method_summary');
+  assert.deepEqual(payments, { cashReceivedValue: 350, transferReceivedValue: 395,
+    creditSalesValue: 0, creditSalesSubtotalValue: 0, creditSalesVatValue: 0 });
+  assert.equal((await read('get_daily_payment_method_summary', '2026-09-08')).cashReceivedValue, 0);
+  assert.ok((await read('get_daily_work_dashboard', '2026-09-08')).salesSummary.iceTypeSales.every(item => item.quantity === 0));
+  // Receipts follow recorded day even if the service date differs.
+  await db.exec(`insert into public.casual_transactions(service_date, ice_type_id, quantity, sale_amount, recorded_at)
+    values ('2026-09-05', '${ice}', 4, 100, '2026-09-06T00:00:00+07')`);
+  assert.equal((await read('get_daily_payment_method_summary')).cashReceivedValue, 450);
+  assert.deepEqual((await read('get_daily_work_dashboard')).salesSummary.iceTypeSales, dashboard.salesSummary.iceTypeSales);
+  await db.exec(`set test.role = 'round_lead'`);
+  assert.equal((await read('get_daily_payment_method_summary')).cashReceivedValue, 450);
+  await db.exec(`set test.role = 'courier'`);
+  await assert.rejects(read('get_daily_payment_method_summary'), /Only a round lead or admin/);
+  await assert.rejects(read('get_daily_work_dashboard'), /Only a round lead or admin/);
+});

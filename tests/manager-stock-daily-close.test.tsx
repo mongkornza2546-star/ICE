@@ -37,11 +37,11 @@ it.each(['closed', 'open', 'no round'] as const)('shows the daily closing counts
   render(<ManagerStockControl operationRound={null} round={selectedRound} serviceDate={serviceDate} />);
 
   expect(await screen.findByText(/ปิดสต๊อกรวมวันที่ 2026-10-20/)).toBeTruthy();
-  const small = screen.getByText(/หลอดเล็ก: นับจริง 23 ถุง/).closest('.daily-stock-closed-item')! as HTMLElement;
-  expect(within(small).getByText(/ตามระบบ 17 ถุง/)).toBeTruthy();
-  expect(within(small).getByText(/ส่วนต่าง \+6/)).toBeTruthy();
-  expect(screen.getByText(/ตามระบบ 10.5 ถุง/)).toBeTruthy();
-  expect(screen.getByText(/ตามระบบ 20 ถุง/)).toBeTruthy();
+  const small = screen.getByRole('row', { name: /หลอดเล็ก 17 ถุง 23 ถุง เกิน 6 ถุง/ })! as HTMLElement;
+  expect(within(small).getByRole('cell', { name: '17 ถุง' })).toBeTruthy();
+  expect(within(small).getByRole('cell', { name: 'เกิน 6 ถุง' })).toBeTruthy();
+  expect(screen.getByRole('cell', { name: '10.5 ถุง' })).toBeTruthy();
+  expect(screen.getByRole('cell', { name: '20 ถุง' })).toBeTruthy();
   expect(screen.queryByText(/does not have a stock snapshot/)).toBeNull();
   expect(screen.queryByText('สต๊อกทั้งวัน ณ เวลาปิดงาน')).toBeNull();
   expect(screen.queryByRole('button', { name: 'โอนระหว่างจุด' })).toBeNull();
@@ -67,7 +67,7 @@ it('does not show the previous day closing counts while a different date is load
   await screen.findByText(/ปิดสต๊อกรวมวันที่ 2026-10-20/);
   db.rpc.mockImplementation(() => new Promise(() => {}));
   view.rerender(<ManagerStockControl operationRound={null} round={null} serviceDate="2026-10-21" />);
-  expect(screen.queryByText(/นับจริง 23 ถุง/)).toBeNull();
+  expect(screen.queryByRole('cell', { name: '23 ถุง' })).toBeNull();
   expect(screen.queryByText(/ปิดสต๊อกรวมวันที่/)).toBeNull();
 });
 
@@ -83,7 +83,7 @@ it('shows a failed refresh and allows retrying the closed-day data', async () =>
   db.rpc.mockImplementation(originalRpc);
   fireEvent.click(screen.getByRole('button', { name: 'รีเฟรชข้อมูลสต๊อก' }));
   await waitFor(() => expect(screen.queryByText('temporary network error')).toBeNull());
-  expect(screen.getByText(/นับจริง 23 ถุง/)).toBeTruthy();
+  expect(screen.getByRole('cell', { name: '23 ถุง' })).toBeTruthy();
 });
 
 it('uses the saved system quantity and close time from the initial stock response', async () => {
@@ -93,7 +93,7 @@ it('uses the saved system quantity and close time from the initial stock respons
     items: [{ ...closedStock.items[0], system_quantity: 17, variance_quantity: null, note: 'ตรวจนับแล้ว' }],
   } });
   render(<ManagerStockControl operationRound={null} round={round} serviceDate={serviceDate} />);
-  await screen.findByText(/ตามระบบ 17 ถุง/);
+  await screen.findByRole('cell', { name: '17 ถุง' });
   expect(screen.getByText(/23:48/)).toBeTruthy();
   expect(screen.getByText('ตรวจนับแล้ว')).toBeTruthy();
   expect(db.rpc).toHaveBeenCalledTimes(1);

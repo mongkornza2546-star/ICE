@@ -18,7 +18,7 @@ it.each(['open', 'closed'])('prefers nicknames with full-name fallback on %s cas
         { employee_id: '2', employee_name: 'Empty nickname', employee_nickname: '   ' },
         { employee_id: '3', employee_name: 'Legacy response' },
         { employee_id: '4', employee_name: 'Null nickname', employee_nickname: null },
-      ].map(employee => ({ ...employee, is_active: true, expected_cash_amount: 0, payment_ids: [] })),
+      ].map(employee => ({ ...employee, is_active: true, expected_cash_amount: 0, payment_ids: [], cash_source_count: 1 })),
     } : [],
   }));
   render(<DailyAggregateStockClose serviceDate="2026-10-20" />);
@@ -30,7 +30,7 @@ it.each(['open', 'closed'])('prefers nicknames with full-name fallback on %s cas
   }
 });
 
-it('requires explicit counts for courier, admin and lead, including zero and variance reasons', async () => {
+it('hides accounts without cash activity and submits zero while requiring receiver counts and reasons', async () => {
   supabaseMock.rpc.mockImplementation((name: string) => Promise.resolve({
     error: null,
     data: name === 'get_daily_close_reconciliation' ? {
@@ -55,8 +55,7 @@ it('requires explicit counts for courier, admin and lead, including zero and var
   expect(close.disabled).toBe(true);
   await user.type(card('แอดมิน').getByLabelText(/^หัวหน้านับจริง/), '40');
   expect(close.disabled).toBe(true);
-  await user.type(card('หัวหน้า').getByLabelText(/^หัวหน้านับจริง/), '0');
-  expect(close.disabled).toBe(true);
+  expect(screen.queryByText('หัวหน้า', { exact: true })).toBeNull();
   await user.type(card('แอดมิน').getByLabelText('เหตุผลส่วนต่าง *'), 'เงินขาด 10 บาท');
   expect(close.disabled).toBe(false);
   await user.click(close);
@@ -210,7 +209,7 @@ it('defaults stock to zero, still requires cash counts, and rejects blank or inv
         { ice_type_id: 'ice-1', name: 'หลอด', unit: 'ถุง', available_quantity: 0 },
       ] },
       employees: [{ employee_id: 'courier-1', employee_name: 'สมชาย', is_active: true,
-        expected_cash_amount: 0, actual_cash_amount: null, payment_ids: [] }],
+        expected_cash_amount: 0, actual_cash_amount: null, payment_ids: [], cash_source_count: 2 }],
     } : name === 'get_daily_stock_refill_history' ? [] : { status: 'closed' },
   }));
   const user = userEvent.setup();
@@ -234,4 +233,57 @@ it('defaults stock to zero, still requires cash counts, and rejects blank or inv
     p_stock_counts: [{ ice_type_id: 'ice-1', actual_quantity: 0, note: null }],
     p_cash_counts: [{ employee_id: 'courier-1', actual_cash_amount: 0, reason: null }],
   })));
+});
+
+it('allows a day without cash activity to close, then requires a count when a receipt arrives on refresh', async () => {
+  let hasReceipt = false;
+  supabaseMock.rpc.mockImplementation((name: string) => Promise.resolve({ error: null, data:
+    name === 'get_daily_close_reconciliation' ? {
+      stock: { service_date: '2026-10-20', status: 'open', items: [
+        { ice_type_id: 'ice-1', name: 'หลอด', unit: 'ถุง', available_quantity: 0 },
+      ] },
+      feature_enabled: true,
+      employees: [{ employee_id: 'admin-1', employee_name: 'แอดมิน', is_active: true,
+        expected_cash_amount: hasReceipt ? 100 : 0, actual_cash_amount: null,
+        payment_ids: hasReceipt ? ['payment-1'] : [], cash_source_count: hasReceipt ? 1 : 0 }],
+    } : [],
+  }));
+  const user = userEvent.setup();
+  const { rerender } = render(<DailyAggregateStockClose serviceDate="2026-10-20" />);
+  await screen.findByText('ไม่มีรายการเงินสดในวันที่เลือก');
+  expect(screen.queryByLabelText(/^หัวหน้านับจริง/)).toBeNull();
+  const close = screen.getByRole('button', { name: 'ปิดยอดสต๊อกและเงินสดวันนี้' }) as HTMLButtonElement;
+  expect(close.disabled).toBe(false);
+  await user.click(close);
+  await waitFor(() => expect(supabaseMock.rpc).toHaveBeenCalledWith('close_daily_reconciliation_v2', expect.objectContaining({
+    p_cash_counts: [{ employee_id: 'admin-1', actual_cash_amount: 0, reason: null }],
+  })));
+  hasReceipt = true;
+  rerender(<DailyAggregateStockClose serviceDate="2026-10-20" refreshId={1} />);
+  const cash = await screen.findByLabelText(/^หัวหน้านับจริง/) as HTMLInputElement;
+  expect(cash.value).toBe('');
+  expect((screen.getByRole('button', { name: 'ปิดยอดสต๊อกและเงินสดวันนี้' }) as HTMLButtonElement).disabled).toBe(true);
+  expect(screen.queryByText('ไม่มีรายการเงินสดในวันที่เลือก')).toBeNull();
+});
+
+it.each([
+  { expected: 0, sourceCount: 2, paymentIds: [], active: true },
+  { expected: -50, sourceCount: 1, paymentIds: [], active: false },
+  { expected: 0, sourceCount: undefined, paymentIds: ['legacy-payment'], active: false },
+])('keeps cash activity visible even with zero net cash or an inactive account: %j', async ({ expected, sourceCount, paymentIds, active }) => {
+  supabaseMock.rpc.mockImplementation((name: string) => Promise.resolve({ error: null, data:
+    name === 'get_daily_close_reconciliation' ? {
+      stock: { service_date: '2026-10-20', status: 'open', items: [
+        { ice_type_id: 'ice-1', name: 'หลอด', unit: 'ถุง', available_quantity: 0 },
+      ] },
+      feature_enabled: true,
+      employees: [{ employee_id: 'receiver-1', employee_name: 'ผู้รับเงิน', is_active: active,
+        expected_cash_amount: expected, actual_cash_amount: null,
+        payment_ids: paymentIds, cash_source_count: sourceCount }],
+    } : [],
+  }));
+  render(<DailyAggregateStockClose serviceDate="2026-10-20" />);
+  expect(await screen.findByLabelText(/^หัวหน้านับจริง/)).toBeTruthy();
+  expect(screen.getByText('ผู้รับเงิน', { exact: true })).toBeTruthy();
+  expect((screen.getByRole('button', { name: 'ปิดยอดสต๊อกและเงินสดวันนี้' }) as HTMLButtonElement).disabled).toBe(true);
 });

@@ -172,5 +172,5 @@ it('replaces an open draft with the server snapshot when another manager closes 
   await act(async () => { view.rerender(<DailyAggregateStockClose serviceDate="2026-10-15" refreshId={1} />); });
   expect(screen.queryByLabelText(/^นับจริง/)).toBeNull();
   expect(screen.getByText(/ปิดสต๊อกรวมวันที่ 2026-10-15/)).not.toBeNull();
-  expect(screen.getByText(/หลอด: นับจริง 6 ถุง/)).not.toBeNull();
+  expect(screen.getByRole('row', { name: /หลอด 10 ถุง 6 ถุง ขาด 4 ถุง/ })).not.toBeNull();
 });

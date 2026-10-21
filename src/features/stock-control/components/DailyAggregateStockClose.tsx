@@ -132,13 +132,15 @@ export function DailyAggregateStockClose({
     return () => { loadRequest.current += 1; };
   }, [load, refreshId]);
 
-  const hasMissingCounts = !summary?.items.length || summary.items.some((item) => !isValidCount(counts[item.ice_type_id], 0.5))
-    || (featureEnabled && employees.some((employee) => !isValidCount(cashCounts[employee.employee_id], 0.01)));
+  const cashEmployees = useMemo(() => employees.filter(hasCashActivity), [employees]);
 
-  const hasMissingCashReason = useMemo(() => employees.some((employee) => (
+  const hasMissingCounts = !summary?.items.length || summary.items.some((item) => !isValidCount(counts[item.ice_type_id], 0.5))
+    || (featureEnabled && cashEmployees.some((employee) => !isValidCount(cashCounts[employee.employee_id], 0.01)));
+
+  const hasMissingCashReason = useMemo(() => cashEmployees.some((employee) => (
     isValidCount(cashCounts[employee.employee_id], 0.01) && Number(cashCounts[employee.employee_id]) !== Number(employee.expected_cash_amount)
       && !cashReasons[employee.employee_id]?.trim()
-  )), [cashCounts, cashReasons, employees]);
+  )), [cashCounts, cashReasons, cashEmployees]);
 
   const close = async () => {
     if (!supabase || !summary || submitting) return;
@@ -157,14 +159,17 @@ export function DailyAggregateStockClose({
         actual_quantity: Number(counts[item.ice_type_id]),
         note: Number(counts[item.ice_type_id]) !== Number(item.available_quantity) ? 'ส่วนต่างยังไม่ทราบสาเหตุ' : null,
       }));
+    // The RPC still requires all eligible accounts; accounts without cash activity
+    // are submitted as zero without requiring an empty card to be counted.
+    const closeCashCounts = employees.map((employee) => ({
+      employee_id: employee.employee_id,
+      actual_cash_amount: hasCashActivity(employee) ? Number(cashCounts[employee.employee_id]) : 0,
+      reason: hasCashActivity(employee) ? cashReasons[employee.employee_id]?.trim() || null : null,
+    }));
     const signature = JSON.stringify({
       serviceDate,
       items: closeItems,
-      cash: employees.map((employee) => ({
-        employee_id: employee.employee_id,
-        actual_cash_amount: Number(cashCounts[employee.employee_id]),
-        reason: cashReasons[employee.employee_id]?.trim() || null,
-      })),
+      cash: closeCashCounts,
     });
     if (pendingRequest.current?.signature !== signature) {
       pendingRequest.current = { signature, key: crypto.randomUUID() };
@@ -174,11 +179,7 @@ export function DailyAggregateStockClose({
         ? await supabase.rpc('close_daily_reconciliation_v2', {
           p_service_date: serviceDate,
           p_stock_counts: closeItems,
-          p_cash_counts: employees.map((employee) => ({
-            employee_id: employee.employee_id,
-            actual_cash_amount: Number(cashCounts[employee.employee_id]),
-            reason: cashReasons[employee.employee_id]?.trim() || null,
-          })),
+          p_cash_counts: closeCashCounts,
           p_stock_note: null,
           p_idempotency_key: pendingRequest.current.key,
         })
@@ -408,13 +409,14 @@ export function DailyAggregateStockClose({
           </span>
         </div>
         <p className="muted">
-          {translateUi('ตรวจเงินสดของพนักงานส่งของ แอดมิน และหัวหน้า แยกตามผู้บันทึกรับเงิน รวมร้านประจำและลูกค้าขาจร หลังหักเงินทอนและเงินสดที่แต่ละคนคืน ไม่รวมโอน/QR กรอกยอดนับให้ครบทุกคน แม้ยอดเป็นศูนย์ และไม่นับเงินส่งมอบระหว่างกันซ้ำ')}</p>
+          {translateUi('ตรวจเงินสดของพนักงานส่งของ แอดมิน และหัวหน้า แยกตามผู้บันทึกรับเงิน รวมร้านประจำและลูกค้าขาจร หลังหักเงินทอนและเงินสดที่แต่ละคนคืน ไม่รวมโอน/QR แสดงเฉพาะคนที่มีรายการเงินสด กรอกยอดนับให้ครบคนที่แสดง แม้ยอดสุทธิเป็นศูนย์ และไม่นับเงินส่งมอบระหว่างกันซ้ำ')}</p>
         {!featureEnabled ? (
           <p className="daily-close-cash__rollout" role="status">
             {translateUi('กำลังเปรียบเทียบยอดกับรายงานเดิม ช่องเงินสดยังไม่ถูกบันทึกจนกว่าจะเปิดใช้ reconciliation')}</p>
         ) : null}
+        {cashEmployees.length === 0 ? <p className="muted">{translateUi('ไม่มีรายการเงินสดในวันที่เลือก')}</p> : null}
         <div className="daily-close-cash__grid">
-          {employees.map((employee) => {
+          {cashEmployees.map((employee) => {
             const expected = Number(employee.expected_cash_amount);
             const actual = cashCounts[employee.employee_id] ?? '';
             const counted = isValidCount(actual, 0.01);
@@ -537,6 +539,12 @@ function IceTypeImage({
   ) : (
     <span className="daily-stock-count-card__image">{image}</span>
   );
+}
+
+function hasCashActivity(employee: DailyCloseEmployee) {
+  return (employee.cash_source_count ?? employee.payment_ids.length) > 0
+    || Number(employee.expected_cash_amount) !== 0
+    || Number(employee.actual_cash_amount ?? 0) !== 0;
 }
 
 function formatBaht(value: number) {
