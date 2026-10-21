@@ -26,6 +26,7 @@ import type {
 } from './types/app';
 
 import { DailyAggregateStockClose } from './features/stock-control/components/DailyAggregateStockClose';
+import { DailyAggregateStockSnapshot, type AggregateSummary } from './features/stock-control/components/DailyAggregateStockSnapshot';
 
 import { StockBagQuantityCard } from './features/stock-control/components/StockBagQuantityCard';
 import { EmployeeStockProductImage } from './features/employee-delivery/EmployeeStockProductImage';
@@ -60,7 +61,7 @@ export function ManagerStockControl({
   iceTypeOptions?: IceTypeOption[];
 }) {
   useLanguage();
-  const isRoundSnapshot = round?.status === 'closed';
+  const isRoundClosed = round?.status === 'closed';
   const actionRound = operationRound ?? round;
   const [summary, setSummary] = useState<StockControlSummary | null>(demoSummary ?? null);
   const [summaryRoundId, setSummaryRoundId] = useState<string | null>(demoSummary ? round?.id ?? null : null);
@@ -72,7 +73,8 @@ export function ManagerStockControl({
   const [toLocationId, setToLocationId] = useState('');
   const [quantities, setQuantities] = useState<QuantityDraft>({});
   const [note, setNote] = useState('');
-  const [closeState, setCloseState] = useState<{ is_closed: boolean } | null>(null);
+  const [closeState, setCloseState] = useState<{ service_date: string; is_closed: boolean } | null>(null);
+  const [closedSummary, setClosedSummary] = useState<AggregateSummary | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loadedAt, setLoadedAt] = useState<string | null>(null);
@@ -85,7 +87,8 @@ export function ManagerStockControl({
   useEffect(() => {
     if (demoSummary) return;
     void loadSummary(serviceDate, round?.id ?? null);
-  }, [demoSummary, refreshId, round?.id, serviceDate]);
+    return () => { requestId.current += 1; };
+  }, [demoSummary, refreshId, round?.id, round?.status, serviceDate]);
 
   useEffect(() => {
     if (!summary || !supabase?.storage) {
@@ -219,25 +222,38 @@ export function ManagerStockControl({
     setLoading(true);
     setError(null);
     try {
-      const [summaryResponse, closeResponse] = await Promise.all([
-        supabase.rpc('get_stock_control_summary', {
-          p_round_id: roundId,
-          p_service_date: requestedServiceDate,
-        }),
-        supabase.rpc('get_daily_stock_close_state', {
-          p_round_id: roundId,
-          p_service_date: requestedServiceDate,
-        }),
-      ]);
+      // Daily close writes aggregate counts, not the legacy round snapshots.
+      const closeResponse = await supabase.rpc('get_daily_aggregate_stock_summary', {
+        p_service_date: requestedServiceDate,
+      });
       if (currentRequest !== requestId.current) return;
-
-      const firstError = summaryResponse.error ?? closeResponse.error;
-      if (firstError) {
-        setError(firstError.message);
+      if (closeResponse.error) {
+        setError(closeResponse.error.message);
+        return;
+      }
+      if (!closeResponse.data) {
+        setError('ไม่พบยอดสต๊อกรวมสำหรับวันที่เลือก');
+        return;
+      }
+      const isClosed = closeResponse.data.status === 'closed';
+      setCloseState({ service_date: requestedServiceDate, is_closed: isClosed });
+      if (isClosed) {
+        setClosedSummary(closeResponse.data as AggregateSummary);
+        setSummary(null);
+        setSummaryRoundId(roundId);
+        return;
+      }
+      setClosedSummary(null);
+      const summaryResponse = await supabase.rpc('get_stock_control_summary', {
+        p_round_id: null,
+        p_service_date: requestedServiceDate,
+      });
+      if (currentRequest !== requestId.current) return;
+      if (summaryResponse.error) {
+        setError(summaryResponse.error.message);
         return;
       }
       setSummary(summaryResponse.data as StockControlSummary);
-      setCloseState(closeResponse.data as { is_closed: boolean });
       setSummaryRoundId(roundId);
       setLoadedAt(new Date().toISOString());
     } catch (loadError) {
@@ -298,7 +314,7 @@ export function ManagerStockControl({
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (isRoundSnapshot) {
+    if (isRoundClosed) {
       stockMovementAction.setError('งานวันนี้ปิดแล้วและเป็นประวัติอ่านอย่างเดียว');
       return;
     }
@@ -306,7 +322,7 @@ export function ManagerStockControl({
       stockMovementAction.setError('ต้องเริ่มงานวันนี้ก่อนบันทึกรายการสต๊อก');
       return;
     }
-    if (!demoSummary && (!supabase || summaryRoundId !== (round?.id ?? null))) {
+    if (!demoSummary && (!supabase || summaryRoundId !== (round?.id ?? null) || summary?.service_date !== serviceDate)) {
       stockMovementAction.setError('ข้อมูลสต๊อกยังโหลดไม่ครบ กรุณารอสักครู่แล้วลองใหม่');
       return;
     }
@@ -391,10 +407,36 @@ export function ManagerStockControl({
     stockMovementAction.reset();
   };
 
-  if (loading && !summary) {
+  if (closedSummary?.service_date === serviceDate) {
+    return (
+      <div className="stock-control">
+        {error ? <p className="error-text" role="alert">{translateUi(error)}</p> : null}
+        <div className="stock-layout-panel">
+          <div className="stock-layout-header">
+            <h3 className="stock-layout-title">{translateUi('สต๊อกรวม ณ เวลาปิดวัน')}</h3>
+            <button
+              aria-label={translateUi('รีเฟรชข้อมูลสต๊อก')}
+              className="stock-refresh-button"
+              disabled={loading}
+              onClick={() => void loadSummary(serviceDate, round?.id ?? null)}
+              type="button"
+            >↻</button>
+          </div>
+          <section aria-labelledby="aggregate-closed-title">
+            <DailyAggregateStockSnapshot summary={closedSummary} />
+          </section>
+        </div>
+      </div>
+    );
+  }
+  if (!demoSummary && closeState?.service_date !== serviceDate) {
+    return error ? <p className="error-text" role="alert">{translateUi(error)}</p>
+      : <p className="empty-text">{translateUi('กำลังโหลดยอดสต๊อกรวม...')}</p>;
+  }
+  if (loading && (!summary || summary.service_date !== serviceDate)) {
     return <p className="empty-text">{translateUi('กำลังรวมยอดสต๊อกทุกจุด...')}</p>;
   }
-  if (!summary) {
+  if (!summary || (!demoSummary && summary.service_date !== serviceDate)) {
     return <p className="error-text">{error ?? translateUi('ไม่พบข้อมูลสต๊อก')}</p>;
   }
   const requiresSource = true;
@@ -408,7 +450,7 @@ export function ManagerStockControl({
       ? truckLocations.filter((location) => isAllowedTransferDestination(selectedSource, location))
       : stockHolderLocations.filter((location) => isAllowedTransferDestination(selectedSource, location))
     : [];
-  const stockTimestamp = isRoundSnapshot ? summary.snapshot_at : loadedAt;
+  const stockTimestamp = loadedAt;
   const selectedRecipient = destinationLocations.find((location) => location.id === toLocationId) ?? null;
   const recipientLocations = destinationLocations;
   const isDamageOperation = activeTab === 'damage';
@@ -427,13 +469,13 @@ export function ManagerStockControl({
   return (
     <div className="stock-control">
       {error ? <p className="error-text" role="alert">{translateUi(error)}</p> : null}
-      {activeTab !== 'transfer' ? <div className="stock-layout-panel stock-current-summary-panel">
+      {isRoundClosed || activeTab !== 'transfer' ? <div className="stock-layout-panel stock-current-summary-panel">
         <div className="stock-layout-header">
           <h3 className="stock-layout-title">
-            {isRoundSnapshot ? translateUi('สต๊อกทั้งวัน ณ เวลาปิดงาน') : translateUi('สต๊อกปัจจุบันของวัน')}
+            {translateUi('สต๊อกปัจจุบันของวัน')}
           </h3>
           <div className="stock-layout-subtitle">
-            <span>{isRoundSnapshot ? translateUi('ข้อมูล ณ') : translateUi('โหลดล่าสุด')} {stockTimestamp ? formatStockTime(stockTimestamp) : '-'}{translateUi(' น.')}</span>
+            <span>{translateUi('โหลดล่าสุด')} {stockTimestamp ? formatStockTime(stockTimestamp) : '-'}{translateUi(' น.')}</span>
             <button
               aria-label={translateUi('รีเฟรชข้อมูลสต๊อก')}
               className="stock-refresh-button"
@@ -446,10 +488,6 @@ export function ManagerStockControl({
           </div>
         </div>
 
-        {isRoundSnapshot ? (
-          <p className="muted" style={{ marginBottom: 16 }}>{translateUi('ยอดนี้หยุดที่ ')}{summary.snapshot_at ? formatStockDateTime(summary.snapshot_at) : translateUi('เวลาปิดงาน')}{translateUi(' และจะไม่เปลี่ยนตามรายการปัจจุบัน')}</p>
-        ) : null}
-
         <div className="stock-location-grid-custom">
           {summary.locations.map((location) => {
             const hasNegative = location.balances.some((balance) => balance.quantity < 0);
@@ -461,10 +499,10 @@ export function ManagerStockControl({
                   </div>
                   {formatHolderName(location)}
                 </div>
-                {!isRoundSnapshot && location.kind === 'work_site' && (location.assigned_employees?.length ?? 0) > 0 ? (
+                {location.kind === 'work_site' && (location.assigned_employees?.length ?? 0) > 0 ? (
                   <p className="stock-location-responsibility">{translateUi('ผู้ดูแล: ')}{location.assigned_employees?.map(formatEmployeeName).join(', ')}</p>
                 ) : null}
-                {!isRoundSnapshot && location.assigned_employee ? (
+                {location.assigned_employee ? (
                   <p className="stock-location-responsibility">{translateUi('ผู้รับผิดชอบ: ')}{formatLocationResponsibility(location)}</p>
                 ) : null}
                 <div className="stock-location-card-custom-body">
@@ -482,7 +520,7 @@ export function ManagerStockControl({
         </div>
       </div> : null}
 
-      {!isRoundSnapshot ? (
+      {!isRoundClosed ? (
         <div className="stock-layout-panel stock-action-panel">
           <div className="action-tabs">
             <button
@@ -652,7 +690,7 @@ export function ManagerStockControl({
                         bags={bags}
                         allowHalf={option?.allowHalf}
                         before={ice.quantity}
-                        disabled={stockMovementAction.isSubmitting || isRoundSnapshot || !!closeState?.is_closed || !actionRound}
+                        disabled={stockMovementAction.isSubmitting || isRoundClosed || !!closeState?.is_closed || !actionRound}
                         remainingLabel={translateUi(selectedSource?.kind === 'truck' ? 'เหลือบนรถ {0} {1}' : 'เหลือที่ถือ {0} {1}', { 0: formatBags(ice.quantity - bagTotal(bags)), 1: translateUi(ice.unit) })}
                         movementLabel={translateUi(isReturningToTruck ? 'คืนครั้งนี้' : 'โอนระหว่างจุด')}
                         warning={canRetryTransfer ? translateUi('ตรวจสอบผลรายการเดิมก่อนทำรายการใหม่') : undefined}
@@ -820,7 +858,7 @@ export function ManagerStockControl({
                 <button
                   aria-label={translateUi(canRetryTransfer ? 'ตรวจสอบผลรายการเดิม' : isDamageOperation ? 'ยืนยัน เสียหาย / ละลาย' : isReturningToTruck ? 'ยืนยัน คืนของเข้ารถบรรทุก' : 'ยืนยัน โอนระหว่างจุด')}
                   className="primary-button holder-cart__confirm"
-                  disabled={isRoundSnapshot || (hasOverstock && !canRetryTransfer) || !actionRound || (isDamageOperation ? !selectedSource : !selectedRecipient) || cartItems.length === 0 || stockMovementAction.isSubmitting || closeState?.is_closed}
+                  disabled={isRoundClosed || (hasOverstock && !canRetryTransfer) || !actionRound || (isDamageOperation ? !selectedSource : !selectedRecipient) || cartItems.length === 0 || stockMovementAction.isSubmitting || closeState?.is_closed}
                   type="submit"
                 >
                   <Check size={19} weight="bold" />
@@ -991,13 +1029,6 @@ function formatStockTime(value: string) {
   return uiDateTimeFormat({
     hour: '2-digit',
     minute: '2-digit',
-  }).format(new Date(value));
-}
-
-function formatStockDateTime(value: string) {
-  return uiDateTimeFormat({
-    dateStyle: 'medium',
-    timeStyle: 'short',
   }).format(new Date(value));
 }
 

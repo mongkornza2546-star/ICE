@@ -22,11 +22,11 @@ it.each([true, false])('refreshes stock on return and data changes (has round: %
     return query;
   });
   db.rpc.mockImplementation((name: string) => Promise.resolve({
-    error: null, data: name === 'get_stock_control_summary' ? { locations: [] }
+    error: null, data: name === 'get_stock_control_summary' ? { service_date: toBangkokDateString(), locations: [] }
       : name === 'get_daily_close_reconciliation' ? {
         stock: { service_date: toBangkokDateString(), status: 'open', items: [] },
         employees: [], feature_enabled: false,
-      } : name === 'get_daily_stock_refill_history' ? [] : { is_closed: false },
+      } : name === 'get_daily_stock_refill_history' ? [] : { service_date: toBangkokDateString(), status: 'open', items: [] },
   }));
   const view = render(<RoundWorkspace isActive />);
   await waitFor(() => expect(db.rpc).toHaveBeenCalledWith('get_stock_control_summary', expect.anything()));

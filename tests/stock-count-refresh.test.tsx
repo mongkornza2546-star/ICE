@@ -37,8 +37,8 @@ beforeEach(() => {
         feature_enabled: true,
       } };
     }
-    return { error: null, data: name === 'get_stock_control_summary' ? { locations: [] }
-      : name === 'get_daily_stock_refill_history' ? [] : { is_closed: false } };
+    return { error: null, data: name === 'get_stock_control_summary' ? { service_date: toBangkokDateString(), locations: [] }
+      : name === 'get_daily_stock_refill_history' ? [] : { service_date: toBangkokDateString(), status: 'open', items: [] } };
   });
 });
 
@@ -73,7 +73,7 @@ it.each(['โอนระหว่างจุด', 'เสียหาย / ล
   expect(db.rpc.mock.calls.filter(([name]) => name === 'get_daily_close_reconciliation')).toHaveLength(before);
 });
 
-it.each(['get_stock_control_summary', 'get_daily_stock_close_state', 'rejected request'])('preserves the count draft after a transient %s failure and retry', async (failure) => {
+it.each(['get_stock_control_summary', 'get_daily_aggregate_stock_summary', 'rejected request'])('preserves the count draft after a transient %s failure and retry', async (failure) => {
   const { stock } = await enterCountDraft();
   const originalRpc = db.rpc.getMockImplementation()!;
   let shouldFail = true;

@@ -30,7 +30,7 @@ const options = [
 
 beforeEach(() => {
   mocks.rpc.mockImplementation(async (name: string) => ({
-    data: name === 'get_stock_control_summary' ? summary : name === 'get_daily_stock_close_state' ? { is_closed: false } : {},
+    data: name === 'get_stock_control_summary' ? summary : name === 'get_daily_aggregate_stock_summary' ? { status: 'open' } : {},
     error: null,
   }));
 });
@@ -79,11 +79,17 @@ it('limits increments, blocks typed overstock, and clears counts when changing s
   expect(screen.getAllByText('เหลือที่ถือ 1.5 ถุง')).toHaveLength(2);
 });
 
-it('disables bag selection after the daily stock is closed', async () => {
-  mocks.rpc.mockImplementation(async (name: string) => ({ data: name === 'get_stock_control_summary' ? summary : { is_closed: true }, error: null }));
-  await openTransfer();
-  expect((screen.getByLabelText('เต็มถุง หลอดเล็ก') as HTMLInputElement).disabled).toBe(true);
-  expect((screen.getByRole('button', { name: 'เพิ่มครึ่งถุง หลอดเล็ก' }) as HTMLButtonElement).disabled).toBe(true);
+it('replaces bag selection with the daily closing summary after stock is closed', async () => {
+  const stock = { service_date: round.service_date, status: 'closed', items: [] };
+  mocks.rpc.mockImplementation(async (name: string) => ({
+    data: name === 'get_daily_aggregate_stock_summary' ? stock
+      : name === 'get_daily_close_reconciliation' ? { stock, employees: [], feature_enabled: false } : [],
+    error: null,
+  }));
+  render(<ManagerStockControl operationRound={round} round={round} serviceDate={round.service_date} />);
+  await screen.findByText(/ปิดสต๊อกรวมวันที่/);
+  expect(screen.queryByLabelText('เต็มถุง หลอดเล็ก')).toBeNull();
+  expect(screen.queryByRole('button', { name: 'ยืนยัน โอนระหว่างจุด' })).toBeNull();
 });
 
 it('replays the exact pending request after a lost response even when refreshed stock is lower', async () => {
@@ -101,7 +107,7 @@ it('replays the exact pending request after a lost response even when refreshed 
         : location) } : summary,
       error: null,
     };
-    return { data: { is_closed: false }, error: null };
+    return { data: { status: 'open' }, error: null };
   });
   const view = render(<ManagerStockControl operationRound={round} round={round} serviceDate={round.service_date} iceTypeOptions={options} refreshId={0} />);
   await screen.findByRole('button', { name: 'เพิ่มเต็มถุง หลอดเล็ก' });
@@ -135,7 +141,7 @@ it('uses the real stock unit in the picker and summary without changing the subm
   const rowSummary = { ...summary, locations: summary.locations.map((location) => ({ ...location,
     balances: location.balances.filter((ice) => ice.ice_type_id === 'small').map((ice) => ({ ...ice, unit: 'แถว', ice_type_name: 'น้ำแข็งก้อน', quantity: 4 })),
   })) };
-  mocks.rpc.mockImplementation(async (name: string) => ({ data: name === 'get_stock_control_summary' ? rowSummary : { is_closed: false }, error: null }));
+  mocks.rpc.mockImplementation(async (name: string) => ({ data: name === 'get_stock_control_summary' ? rowSummary : { status: 'open' }, error: null }));
   render(<ManagerStockControl operationRound={round} round={round} serviceDate={round.service_date} iceTypeOptions={options.map((ice) => ({ ...ice, allowHalf: false }))} />);
   await screen.findByRole('button', { name: 'เพิ่มเต็มแถว น้ำแข็งก้อน' });
   await user.click(screen.getByRole('button', { name: /สมชาย/ }));

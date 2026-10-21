@@ -1,28 +1,10 @@
 import { uiDateTimeFormat, translateUi, useLanguage } from '../../../i18n';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { CheckCircle, Cube, Warning } from '@phosphor-icons/react';
+import { Cube, Warning } from '@phosphor-icons/react';
 import { supabase } from '../../../lib/supabase';
 import { publishDataChange } from '../../../lib/dataChange';
 
-interface AggregateItem {
-  ice_type_id: string;
-  code: string;
-  name: string;
-  unit: string;
-  ordered_quantity?: number;
-  sold_quantity?: number;
-  damaged_quantity?: number;
-  returned_quantity?: number;
-  available_quantity: number;
-  actual_quantity?: number | null;
-  variance_quantity?: number | null;
-}
-
-interface AggregateSummary {
-  service_date: string;
-  status: 'open' | 'closed';
-  items: AggregateItem[];
-}
+import { DailyAggregateStockSnapshot, type AggregateSummary } from './DailyAggregateStockSnapshot';
 
 interface DailyCloseEmployee {
   employee_id: string;
@@ -294,30 +276,20 @@ export function DailyAggregateStockClose({
   if (summary.status === 'closed') {
     return (
       <section aria-labelledby="aggregate-closed-title">
-        <div className="employee-success" role="status">
-          <CheckCircle size={22} weight="fill" />
-          <span id="aggregate-closed-title">
-            {translateUi('ปิดสต๊อกรวมวันที่ ')}{serviceDate}{translateUi(' แล้ว ยอดพร้อมใช้เป็นศูนย์')}</span>
-        </div>
-        <div className="daily-stock-closed-list">
-          {summary.items.map((item) => (
-            <div className="daily-stock-closed-item" key={item.ice_type_id}>
-              <IceTypeImage
-                itemName={item.name}
-                imagePath={imagePathByIceTypeId[item.ice_type_id]}
-                imageUrls={imageUrls}
-                failedImagePaths={failedImagePaths}
-                onImageError={onImageError}
-                onPreviewImage={onPreviewImage}
-              />
-              <p className="muted">
-                {item.name}{translateUi(': นับจริง ')}{item.actual_quantity ?? 0} {item.unit}
-                {' · '}{translateUi('ส่วนต่าง ')}{Number(item.variance_quantity ?? 0) > 0 ? '+' : ''}
-                {item.variance_quantity ?? 0}
-              </p>
-            </div>
-          ))}
-        </div>
+        {error ? <p className="error-text" role="alert">{translateUi(error)}</p> : null}
+        <DailyAggregateStockSnapshot
+          summary={summary}
+          renderImage={(item) => (
+            <IceTypeImage
+              itemName={item.name}
+              imagePath={imagePathByIceTypeId[item.ice_type_id]}
+              imageUrls={imageUrls}
+              failedImagePaths={failedImagePaths}
+              onImageError={onImageError}
+              onPreviewImage={onPreviewImage}
+            />
+          )}
+        />
         {featureEnabled ? (
           <section aria-labelledby="daily-cash-closed-title" className="daily-close-cash" style={{ marginTop: 18 }}>
             <div className="panel-header">
