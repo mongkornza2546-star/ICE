@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { EmployeeCasualCustomerPage } from '../src/features/employee-delivery/EmployeeCasualCustomerPage';
 import type { CasualTransactionContext, CasualTransactionHistoryItem } from '../src/types/app';
 
-function setup(historyCount = 1) {
+function setup(historyCount = 1, extra: Partial<CasualTransactionContext> = {}) {
   const historyRead = vi.fn();
   const history: CasualTransactionHistoryItem[] = Array.from({ length: historyCount }, (_, index) => ({
     id: `sale-${index}`, ice_type_id: 'ice', ice_type_name: 'หลอดเล็ก', ice_type_unit: 'ถุง',
@@ -17,7 +17,7 @@ function setup(historyCount = 1) {
     round_id: 'round-1', service_date: '2026-10-12', round_status: 'open', stock_closed: false,
     stock_source: { id: 'holding', code: 'holding', name: 'จุดถือครอง' },
     items: [{ ice_type_id: 'ice', code: 'ice', name: 'หลอดเล็ก', unit: 'ถุง', available_quantity: 36.5 }],
-    history,
+    history, ...extra,
   };
   const loadContext = vi.fn().mockResolvedValue(context);
   const voidTransaction = vi.fn().mockResolvedValue({});
@@ -202,4 +202,26 @@ describe('casual cancellation input', () => {
     expect(deleteEvidence).not.toHaveBeenCalled();
     expect(onDraftStateChange).toHaveBeenLastCalledWith({ dirty: false, submitting: false });
   });
+});
+
+it('records the actual cash refunder and changes retry identity when that person changes', async () => {
+  const { user, voidTransaction } = setup(1, {
+    supports_cash_refunder: true, default_receiver_id: 'admin',
+    cash_receivers: [{ id: 'admin', name: 'แอดมิน' }, { id: 'worker', name: 'คนคืนเงินจริง' }],
+  });
+  voidTransaction.mockRejectedValueOnce(new Error('Failed to fetch'));
+  const dialog = await openDialog(user);
+  await user.type(dialog.getByRole('textbox', { name: 'เหตุผลการยกเลิก' }), 'คืนสินค้า');
+  await user.selectOptions(dialog.getByRole('combobox', { name: 'ผู้คืนเงินจริง' }), 'worker');
+  await user.click(dialog.getByRole('button', { name: 'ยืนยันยกเลิก' }));
+  await screen.findByText('Failed to fetch');
+  expect(voidTransaction.mock.calls[0][0].cashRefundedBy).toBe('worker');
+  await user.click(dialog.getByRole('button', { name: 'กลับ', exact: true }));
+  const reopened = await openDialog(user);
+  expect((reopened.getByRole('combobox', { name: 'ผู้คืนเงินจริง' }) as HTMLSelectElement).value).toBe('worker');
+  await user.selectOptions(reopened.getByRole('combobox', { name: 'ผู้คืนเงินจริง' }), 'admin');
+  await user.click(reopened.getByRole('button', { name: 'ยืนยันยกเลิก' }));
+  await waitFor(() => expect(voidTransaction).toHaveBeenCalledTimes(2));
+  expect(voidTransaction.mock.calls[1][0].cashRefundedBy).toBe('admin');
+  expect(voidTransaction.mock.calls[1][0].idempotencyKey).not.toBe(voidTransaction.mock.calls[0][0].idempotencyKey);
 });

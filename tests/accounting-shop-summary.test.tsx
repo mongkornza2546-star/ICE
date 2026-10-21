@@ -1207,7 +1207,7 @@ it('places new casual sales once after a building with multiple zones, keeps leg
     if (name === 'get_accounting_shop_daily_matrix') {
       const day = { service_date: String(args.p_from_date), items: [], sales_amount: 48,
         cash_received: 48, cash_refunded: 0, transfer_received: 0, transaction_count: 1 };
-      const group = { building_id: 'building-1', building_name: 'อาคาร A', days: [day], transactions: [{
+      const group = { building_id: 'building-1', building_name: 'อาคาร A', days: [day], shop_days: [{ service_date: day.service_date, items: [], sales_amount: 1350, cash_received: 0, transfer_received: 0 }], transactions: [{
         id: 'casual-a', service_date: day.service_date, recorded_at: `${day.service_date}T12:00:00+07:00`,
         ice_type_name: 'หลอดเล็ก', quantity: 0.5, sale_amount: 48, payment_method: 'cash', status: 'active',
         receiver_name: 'คนรับเงิน A', recorder_name: 'แอดมินลงแทน', refunded_at: null, refunded_amount: null, refund_method: null,
@@ -1235,4 +1235,51 @@ it('places new casual sales once after a building with multiple zones, keeps leg
   await user.selectOptions(screen.getByRole('combobox', { name: 'อาคาร' }), 'building-1');
   await waitFor(() => expect(screen.queryByRole('button', { name: 'ขายสด/ขาจร — อาคาร B' })).toBeNull());
   expect(screen.getAllByRole('button', { name: 'ขายสด/ขาจร — อาคาร A' })).toHaveLength(1);
+});
+
+it('keeps full building totals constant across shop pages', async () => {
+  const shops = Array.from({ length: 101 }, (_, i) => ({ ...populatedSummary.rows[0], shop_id: `shop-${i}`, shop_code: `S${i}`, sales_amount: 10 }));
+  rpcMock.mockImplementation(async (name: string, args: Record<string, unknown>) => {
+    if (name === 'get_accounting_shop_summary') return { data: { ...populatedSummary,
+      rows: shops.slice(Number(args.p_offset), Number(args.p_offset) + Number(args.p_limit)), total_count: shops.length }, error: null };
+    if (name === 'get_accounting_review_queue') return { data: { rows: [], total_count: 0 }, error: null };
+    if (name === 'get_accounting_shop_daily_matrix') {
+      const selected = shops.filter(shop => (args.p_shop_ids as string[]).includes(shop.shop_id));
+      const daily = completeDailyMatrix(args, selected);
+      daily.rows.forEach(row => row.days.forEach(day => { day.cash_received = day.sales_amount; }));
+      return { data: { ...daily, casual_legacy_days: [], casual_buildings: [{ building_id: 'building-1', building_name: 'อาคาร A', transactions: [], shop_days: [{ service_date: String(args.p_from_date), items: [], sales_amount: 1010, cash_received: 1010, transfer_received: 0, tank_quantity: 0 }], days: [{ service_date: String(args.p_from_date), items: [], sales_amount: 50, cash_received: 50, cash_refunded: 0, transaction_count: 1 }] }] }, error: null };
+    }
+    throw Error(name);
+  });
+  const user = userEvent.setup(); render(<AccountingPage />);
+  await user.click(await screen.findByRole('button', { name: 'วันนี้', exact: true }));
+  await user.click(await screen.findByRole('button', { name: 'ตารางรายวัน' }));
+  const totalText = () => screen.getByText('รวม อาคาร A รวมขาจรแล้ว').closest('tr')!.textContent;
+  await waitFor(() => expect(totalText()).toContain('฿1,060.00'));
+  const first = totalText();
+  await user.click(screen.getByRole('button', { name: 'ถัดไป', exact: true }));
+  await screen.findByRole('button', { name: /S100 ·/ });
+  await waitFor(() => expect(totalText()).toContain('฿1,060.00'));
+  expect(totalText()).toBe(first);
+});
+
+it('does not substitute visible-page amounts when full building totals are unavailable', async () => {
+  rpcMock.mockImplementation(async (name: string, args: Record<string, unknown>) => {
+    if (name === 'get_accounting_shop_summary') return { data: populatedSummary, error: null };
+    if (name === 'get_accounting_review_queue') return { data: { rows: [], total_count: 0 }, error: null };
+    if (name === 'get_accounting_shop_daily_matrix') return { data: {
+      ...completeDailyMatrix(args), casual_legacy_days: [], casual_buildings: [{
+        building_id: 'building-1', building_name: 'อาคาร A', transactions: [], days: [{
+          service_date: String(args.p_from_date), items: [], sales_amount: 50, cash_received: 50,
+          cash_refunded: 0, transaction_count: 1,
+        }],
+      }],
+    }, error: null };
+    throw Error(name);
+  });
+  const user = userEvent.setup(); render(<AccountingPage />);
+  await user.click(await screen.findByRole('button', { name: 'ตารางรายวัน' }));
+  const total = (await screen.findByText('รวม อาคาร A รวมขาจรแล้ว')).closest('tr')!;
+  expect(total.textContent).toContain('ยังไม่มียอดรวมทั้งตึก');
+  expect(total.textContent).not.toContain('฿');
 });

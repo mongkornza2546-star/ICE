@@ -177,6 +177,7 @@ export interface CasualTransactionHistoryItem {
 }
 
 export interface CasualTransactionContext {
+  supports_cash_refunder?: boolean;
   sale_buildings?: Array<{ id: string; name: string }>;
   cash_receivers?: Array<{ id: string; name: string }>;
   default_receiver_id?: string;

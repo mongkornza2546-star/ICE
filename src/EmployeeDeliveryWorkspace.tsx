@@ -101,6 +101,7 @@ export interface EmployeeCasualTransactionPayload {
 }
 
 export interface EmployeeCasualVoidPayload {
+  cashRefundedBy?: string | null;
   transactionId: string;
   reason: string;
   refundMethod: PaymentMethod | null;
@@ -728,6 +729,7 @@ export function createSupabaseGateway(): EmployeeDeliveryGateway {
     async voidCasualTransaction(payload) {
       if (!supabase) throw new Error('ยังไม่ได้ตั้งค่า Supabase');
       const { data, error } = await supabase.rpc('void_casual_transaction', {
+        ...(payload.cashRefundedBy !== undefined ? { p_cash_refunded_by: payload.cashRefundedBy } : {}),
         p_transaction_id: payload.transactionId,
         p_reason: payload.reason,
         p_refund_method: payload.refundMethod,

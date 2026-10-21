@@ -11,8 +11,9 @@ import type { ExecutiveReport } from './types';
 const number = (value: number) => new Intl.NumberFormat('th-TH', { maximumFractionDigits: 2 }).format(value);
 
 /** One column per product: bags and rows must never be added together. */
-export function ReportDailyQuantities({ report, demo = false, selectedDate, onDateChange }: {
+export function ReportDailyQuantities({ report, demo = false, selectedDate, onDateChange, reportLoading = false, reportError }: {
   report: ExecutiveReport; demo?: boolean; selectedDate: string; onDateChange: (date: string) => void;
+  reportLoading?: boolean; reportError?: string | null;
 }) {
   useLanguage();
   const today = toBangkokDateString();
@@ -68,7 +69,8 @@ export function ReportDailyQuantities({ report, demo = false, selectedDate, onDa
     return values.some((value) => value === null) ? null : values.reduce<number>((sum, value) => sum + (value ?? 0), 0);
   };
   const display = (value: number | null) => value === null ? '—' : number(value);
-  const canExport = Boolean(source?.dailyTrend && columns.length && !error);
+  const canExport = Boolean(source?.dailyTrend && columns.length && !error
+    && !(reuseReport && (reportLoading || reportError)));
   const handleExport = async () => {
     if (!source || !canExport || exporting) return;
     setExporting(true);

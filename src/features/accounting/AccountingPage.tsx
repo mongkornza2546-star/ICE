@@ -949,10 +949,10 @@ function ShopDailyMatrix({ collapsedGroups, daily, data, filters, fromDate, grou
               {daily.ice_types.map((iceType) => {
                 const item = day?.items.find((item) => item.ice_type_id === iceType.ice_type_id);
                 return <td className="accounting-daily-matrix__quantity" key={iceType.ice_type_id} aria-label={`${label} ${date} ${iceType.name}`}>
-                  {day ? number.format(Number(item?.quantity ?? 0)) : '—'}
+                  {day && !(building && Number(item?.loose_count) > 0 && !Number(item?.quantity)) ? number.format(Number(item?.quantity ?? 0)) : '—'}
                   {Number(item?.automatic_quantity) > 0 ? <small>{translateUi('รวมจากยอดเงิน ')}{number.format(item!.automatic_quantity)} {iceType.unit}</small> : null}
                   {Number(item?.free_quantity) > 0 ? <small>{translateUi('รวมแจกฟรี ')}{number.format(item!.free_quantity)} {iceType.unit}</small> : null}
-                  {Number(item?.loose_count) > 0 ? <small>{translateUi('แบ่งขาย/แจก ')}{item!.loose_count}{translateUi(' ครั้ง · ')}{money.format(item!.loose_sales_amount)}</small> : null}
+                  {Number(item?.loose_count) > 0 ? <small>{building ? translateUi('ไม่ระบุจำนวน · ') : null}{translateUi('แบ่งขาย/แจก ')}{item!.loose_count}{translateUi(' ครั้ง · ')}{money.format(item!.loose_sales_amount)}</small> : null}
                   {Number(item?.remainder_amount) > 0 ? <small>{translateUi('ยังไม่ครบถุง ')}{money.format(item!.remainder_amount)}</small> : null}
                   {Number(item?.unconverted_amount) > 0 ? <small>{translateUi('ยังไม่แปลงเป็นถุง ')}{money.format(item!.unconverted_amount!)}{translateUi(' · รายการเดิมปิดวันแล้วหรือไม่มีราคากลาง')}</small> : null}
                 </td>;
@@ -979,20 +979,19 @@ function ShopDailyMatrix({ collapsedGroups, daily, data, filters, fromDate, grou
   </Fragment>;
 
   const renderBuildingCasual = (building: AccountingCasualBuilding) => {
-    const shops = data.rows.filter((shop) => shop.building_id === building.building_id);
     return <Fragment key={`building:${building.building_id}`}>
       {renderCasualRow(building.days, `${translateUi('ขายสด/ขาจร — ')}${building.building_name}`, building)}
-      <tr className="accounting-daily-matrix__totals accounting-daily-matrix__building-total"><th colSpan={2}>{translateUi('รวม ')}{building.building_name}{translateUi(' รวมขาจรแล้ว')}<small>{translateUi('ร้านที่แสดงในหน้านี้ + ขาจรทั้งตึก')}</small></th>
+      <tr className="accounting-daily-matrix__totals accounting-daily-matrix__building-total"><th colSpan={2}>{translateUi('รวม ')}{building.building_name}{translateUi(' รวมขาจรแล้ว')}<small>{translateUi(building.shop_days ? 'ทุกร้านที่เปิดใช้งานในตึก + ขาจรทั้งตึก' : 'ยังไม่มียอดรวมทั้งตึก')}</small></th>
         {dates.map((date) => {
-          const cells = shops.map((shop) => dailyRows.get(shop.shop_id)?.days.find((day) => day.service_date === date));
-          const complete = cells.every(Boolean);
+          const shopDay = building.shop_days?.find((day) => day.service_date === date);
+          const complete = Boolean(shopDay);
           const casual = building.days.find((day) => day.service_date === date);
           return <Fragment key={date}>
-            {daily.ice_types.map((ice) => <td key={ice.ice_type_id}>{complete ? number.format(cells.reduce((sum, day) => sum + dayItemQuantity(day, ice.ice_type_id), 0) + Number(casual?.items.find((item) => item.ice_type_id === ice.ice_type_id)?.quantity ?? 0)) : '—'}</td>)}
-            <td>{complete ? number.format(cells.reduce((sum, day) => sum + Number(day?.tank_quantity ?? 0), 0)) : '—'}</td>
-            <td>{complete ? money.format(cells.reduce((sum, day) => sum + Number(day?.sales_amount ?? 0), 0) + Number(casual?.sales_amount ?? 0)) : '—'}</td>
-            <td>{complete ? money.format(cells.reduce((sum, day) => sum + Number(day?.cash_received ?? 0), 0) + Number(casual?.cash_received ?? 0)) : '—'}{Number(casual?.cash_refunded) > 0 ? <small>{translateUi('คืนเงินขาจร ')}{money.format(casual!.cash_refunded)}</small> : null}</td>
-            <td>{complete ? money.format(cells.reduce((sum, day) => sum + Number(day?.transfer_received ?? 0), 0) + Number(casual?.transfer_received ?? 0)) : '—'}{Number(casual?.transfer_refunded) > 0 ? <small>{translateUi('คืนเงินขาจร ')}{money.format(casual!.transfer_refunded!)}</small> : null}</td>
+            {daily.ice_types.map((ice) => <td key={ice.ice_type_id}>{complete ? number.format(Number(shopDay?.items.find((item) => item.ice_type_id === ice.ice_type_id)?.quantity ?? 0) + Number(casual?.items.find((item) => item.ice_type_id === ice.ice_type_id)?.quantity ?? 0)) : '—'}</td>)}
+            <td>{complete ? number.format(Number(shopDay?.tank_quantity ?? 0)) : '—'}</td>
+            <td>{complete ? money.format(Number(shopDay?.sales_amount ?? 0) + Number(casual?.sales_amount ?? 0)) : '—'}</td>
+            <td>{complete ? money.format(Number(shopDay?.cash_received ?? 0) + Number(casual?.cash_received ?? 0)) : '—'}{Number(casual?.cash_refunded) > 0 ? <small>{translateUi('คืนเงินขาจร ')}{money.format(casual!.cash_refunded)}</small> : null}</td>
+            <td>{complete ? money.format(Number(shopDay?.transfer_received ?? 0) + Number(casual?.transfer_received ?? 0)) : '—'}{Number(casual?.transfer_refunded) > 0 ? <small>{translateUi('คืนเงินขาจร ')}{money.format(casual!.transfer_refunded!)}</small> : null}</td>
           </Fragment>;
         })}
       </tr>
@@ -1070,7 +1069,7 @@ function ShopDailyMatrix({ collapsedGroups, daily, data, filters, fromDate, grou
       </tbody>
     </table></div>
     <div className="accounting-daily-matrix__legend" aria-label={translateUi('ความหมายสถานะ')}>
-      <span>{translateUi(daily.casual_buildings ? 'ขาจรใหม่แยกตามตึก · แถวลูกค้าขาจรเดิมคงไว้ตามข้อมูลเดิม · ยอดรวมตึกใช้เฉพาะร้านที่แสดงในหน้านี้' : 'แถวลูกค้าขาจรรวมยอดทุกจุดถือครองในช่วงวันที่เลือก ไม่รวมซ้ำในยอดของกลุ่มร้าน')}</span>
+      <span>{translateUi(daily.casual_buildings ? 'ขาจรใหม่แยกตามตึก · แถวลูกค้าขาจรเดิมคงไว้ตามข้อมูลเดิม · ยอดรวมตึกครบทุกร้านที่เปิดใช้งาน ไม่เปลี่ยนตามหน้า · จำนวนถุงรวมเฉพาะรายการที่ระบุจำนวน' : 'แถวลูกค้าขาจรรวมยอดทุกจุดถือครองในช่วงวันที่เลือก ไม่รวมซ้ำในยอดของกลุ่มร้าน')}</span>
       {(Object.entries(dailyStatusLabels) as Array<[AccountingShopDailyStatus, string]>).filter(([status]) => status !== 'purchased').map(([status, label]) => <span key={status}><i className={`accounting-daily-status accounting-daily-status--${status}`} />{translateUi(label)}</span>)}
     </div>
   </div>;

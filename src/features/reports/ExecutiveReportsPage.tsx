@@ -83,7 +83,7 @@ export function ExecutiveReportsPage({ isActive, demoReport, demoRows }: {
   const [showTrendTable, setShowTrendTable] = useState(false);
   const [section, setSection] = useState<ReportSection>('overview');
   const [hasViewedVolume, setHasViewedVolume] = useState(false);
-  const [quantitySelection, setQuantitySelection] = useState<{ reportTo: string; date: string } | null>(null);
+  const [quantitySelection, setQuantitySelection] = useState<string | null>(null);
   const [comparing, setComparing] = useState(false);
   const [comparisonSelection, setComparisonSelection] = useState<ComparisonSelection>(() => ({
     preset: 'previous', custom: comparisonRange(initial, 'previous'),
@@ -366,8 +366,9 @@ export function ExecutiveReportsPage({ isActive, demoReport, demoRows }: {
         <p className="executive-panel-note">{formatReportDate(from)} – {formatReportDate(to)} · {translateUi('จำนวนครั้งที่บันทึกส่ง ไม่ใช่จำนวนถุง')}</p>
       </section> : null}
       {section === 'volume' || hasViewedVolume ? <div className="executive-volume-daily" hidden={section !== 'volume'}><ReportDailyQuantities report={shownReport} demo={Boolean(demoReport)}
-        selectedDate={quantitySelection?.reportTo === to ? quantitySelection.date : to}
-        onDateChange={(date) => setQuantitySelection({ reportTo: to, date })} /></div> : null}
+        reportLoading={loading} reportError={error}
+        selectedDate={quantitySelection ?? to}
+        onDateChange={setQuantitySelection} /></div> : null}
       <ReportSections
         onNavigateSection={(nextSection, targetId) => {
           if (nextSection === 'sales') setComparing(false);

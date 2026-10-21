@@ -656,7 +656,7 @@ test('stores the employee name in the immutable casual receipt snapshot', async 
 
 const BUILDING_A = 'a0000000-0000-4000-8000-000000000001';
 const BUILDING_B = 'a0000000-0000-4000-8000-000000000002';
-async function createBuildingDatabase(t) {
+async function createBuildingDatabase(t, applyFix = true) {
   const db = await createConvertedDatabase(t);
   // Existing writers, history protection, stock conversion and receipts are real.
   // The shop-only reader is irrelevant to these no-shop casual scenarios.
@@ -671,17 +671,23 @@ async function createBuildingDatabase(t) {
       if $2 - $1 > 30 then raise exception '31 days'; end if;
       return jsonb_build_object('rows', '[]'::jsonb, 'ice_types', '[]'::jsonb);
     end $$;
-    create function public.daily_close_cash_sources(p_service_date date)
-    returns table(source_kind text, source_id uuid, employee_id uuid, cash_amount numeric, source_snapshot jsonb)
-    language sql as $$
-      select 'casual_receipt', sale.id, sale.recorded_by, sale.sale_amount, to_jsonb(sale)
-      from public.casual_transactions sale join public.users recorder on recorder.id = sale.recorded_by
-      where sale.service_date = p_service_date and sale.transaction_kind = 'paid' and sale.payment_method = 'cash'
-    $$;
+    create table public.shops (id uuid primary key, building_id uuid, status text);
+    alter table public.payments add column recorded_by uuid, add column allocated_amount numeric,
+      add column collection_run_id uuid, add column received_date_override date,
+      add column recorded_at timestamptz, add column status text, add column payment_method public.payment_method,
+      add column recorded_role public.app_role;
+    create table public.collection_runs(id uuid, service_date date);
+    create table public.refund_settlements(idempotency_key uuid, settled_by uuid, amount numeric, settled_at timestamptz, refund_method public.payment_method);
   `);
+  const cashSql = readFileSync(new URL('../supabase/migrations/0242_daily_close_all_cash_receivers.sql', import.meta.url), 'utf8');
+  for (const anchor of ['create function public.daily_close_payment_date(', 'create or replace function public.daily_close_cash_sources(']) {
+    const start = cashSql.indexOf(anchor);
+    await db.exec(cashSql.slice(start, cashSql.indexOf('\n$$;', start) + 4));
+  }
   await db.exec(readFileSync(new URL('../supabase/migrations/0180_accounting_casual_daily_matrix.sql', import.meta.url), 'utf8'));
   const legacy = await recordLoose(db, 10, 901);
   await db.exec(readFileSync(new URL('../supabase/migrations/0249_casual_sales_by_building.sql', import.meta.url), 'utf8'));
+  if (applyFix) await db.exec(readFileSync(new URL('../supabase/migrations/0251_casual_building_review_fixes.sql', import.meta.url), 'utf8'));
   return { db, legacy };
 }
 function recordAtBuilding(db, { building = BUILDING_A, receiver = USER_ID, index = 902, measured = false, amount = 60 } = {}) {
@@ -718,7 +724,7 @@ test('building sales preserve old rows, store receiver separately and keep stock
   await assert.rejects(recordAtBuilding(db, { building: BUILDING_B, index: 905 }), /ตึกที่เปิดใช้งาน/);
 });
 
-test('building matrix isolates legacy and building totals including converted stock and refunds', async (t) => {
+test('building matrix preserves global conversion while reporting measured building quantities and refunds', async (t) => {
   const { db } = await createBuildingDatabase(t);
   await recordAtBuilding(db, { amount: 60 });
   const second = (await recordAtBuilding(db, { building: BUILDING_B, amount: 50, index: 906 })).rows[0].result.transaction.id;
@@ -728,8 +734,8 @@ test('building matrix isolates legacy and building totals including converted st
   assert.equal(sales.casual_legacy_days[0].sales_amount, 10);
   assert.equal(sales.casual_buildings.find((b) => b.building_id === BUILDING_A).days[0].sales_amount, 60);
   assert.equal(sales.casual_buildings.find((b) => b.building_id === BUILDING_B).days[0].sales_amount, 50);
-  const allDays = [...sales.casual_legacy_days, ...sales.casual_buildings.flatMap((b) => b.days)];
-  assert.equal(allDays.reduce((sum, day) => sum + day.items.reduce((q, item) => q + item.quantity, 0), 0), sales.casual_days[0].items[0].quantity);
+  assert.equal(sales.casual_days[0].items[0].quantity, 1);
+  assert.equal(sales.casual_buildings.flatMap(b => b.days).reduce((sum, day) => sum + day.items.reduce((q, item) => q + item.quantity, 0), 0), 0);
   const receiptDate = (await db.query(`select (recorded_at at time zone 'Asia/Bangkok')::date::text as value from public.casual_transactions where id = '${second}'`)).rows[0].value;
   await db.query(`select public.void_casual_transaction('${second}', 'คืนแล้ว', 'cash', null, null, '70000000-0000-4000-8000-000000000906')`);
   const receipts = await read(receiptDate);
@@ -759,4 +765,99 @@ test('building attribution keeps transfers separate from cash and supports free 
   assert.equal(a.days[0].transfer_received, 45);
   const free = (await db.query(`select cash_received_by from public.casual_transactions where sale_building_id = '${BUILDING_B}'`)).rows[0];
   assert.equal(free.cash_received_by, null);
+});
+
+test('building quantities stay unchanged when another building sale is voided', async (t) => {
+  const { db } = await createBuildingDatabase(t);
+  const a = (await recordAtBuilding(db, { amount: 60, index: 950 })).rows[0].result.transaction.id;
+  await recordAtBuilding(db, { building: BUILDING_B, amount: 50, index: 951 });
+  await db.exec(`create or replace function public.current_app_role() returns public.app_role language sql stable as $$ select 'admin'::public.app_role $$;`);
+  const readB = async () => (await db.query(`select public.get_accounting_shop_daily_matrix('${SERVICE_DATE}', '${SERVICE_DATE}', '{}'::uuid[]) as result`)).rows[0].result.casual_buildings.find(b => b.building_id === BUILDING_B).days[0];
+  const before = await readB();
+  await db.query(`select public.void_casual_transaction('${a}', 'คืนเฉพาะ A', 'cash', null, null, '70000000-0000-4000-8000-000000000950')`);
+  const after = await readB();
+  assert.equal(before.sales_amount, after.sales_amount);
+  assert.equal(before.items[0].quantity, 0);
+  assert.equal(after.items[0].quantity, 0);
+  assert.deepEqual(after.items, before.items);
+});
+
+
+test('cash refunds can be recorded on behalf of the actual refunder', async (t) => {
+  const { db } = await createBuildingDatabase(t);
+  await db.exec(`create or replace function public.current_app_role() returns public.app_role language sql stable as $$ select 'admin'::public.app_role $$;`);
+  const id = (await recordAtBuilding(db, { receiver: OTHER_USER_ID, amount: 60, index: 960 })).rows[0].result.transaction.id;
+  const refund = () => db.query(`select public.void_casual_transaction('${id}', 'ลงแทนคนคืนเงิน', 'cash', null, null, '70000000-0000-4000-8000-000000000960', '${OTHER_USER_ID}')`);
+  await refund();
+  await refund();
+  const row = (await db.query(`select cash_refunded_by, confirmed_by from public.casual_refund_confirmations where transaction_id = '${id}'`)).rows[0];
+  assert.deepEqual(row, { cash_refunded_by: OTHER_USER_ID, confirmed_by: USER_ID });
+  const cash = (await db.query(`select source_kind, employee_id, cash_amount::float8 from public.daily_close_cash_sources('${SERVICE_DATE}') where source_id = '${id}'`)).rows;
+  assert.equal(cash.length, 2);
+  assert.ok(cash.every(item => item.employee_id === OTHER_USER_ID));
+  assert.equal(cash.reduce((sum, item) => sum + item.cash_amount, 0), 0);
+  await assert.rejects(db.query(`select public.void_casual_transaction('${id}', 'ลงแทนคนคืนเงิน', 'cash', null, null, '70000000-0000-4000-8000-000000000960', '${USER_ID}')`), /different casual void request/);
+  const audit = (await db.query(`select actor_id from public.audit_logs where entity_id = '${id}' and action = 'voided'`)).rows;
+  assert.deepEqual(audit, [{ actor_id: USER_ID }]);
+  await assert.rejects(db.query(`update public.casual_refund_confirmations set cash_refunded_by = '${USER_ID}' where transaction_id = '${id}'`), /immutable/);
+});
+
+
+test('the actual recipient can find, print and refund an admin-entered sale but cannot assign someone else', async (t) => {
+  const { db } = await createBuildingDatabase(t);
+  await db.exec(`create or replace function public.current_app_role() returns public.app_role language sql stable as $$ select 'admin'::public.app_role $$;`);
+  const id = (await recordAtBuilding(db, { receiver: OTHER_USER_ID, amount: 60, index: 970 })).rows[0].result.transaction.id;
+  const unrelated = (await recordAtBuilding(db, { receiver: USER_ID, building: BUILDING_B, amount: 20, index: 971 })).rows[0].result.transaction.id;
+  await db.exec(`
+    insert into public.stock_locations(id, code, name, kind, assigned_user_id) values ('40000000-0000-4000-8000-000000000099','OTHER','Other holding','team','${OTHER_USER_ID}');
+    create or replace function auth.uid() returns uuid language sql stable as $$ select '${OTHER_USER_ID}'::uuid $$;
+    create or replace function public.current_app_role() returns public.app_role language sql stable as $$ select 'courier'::public.app_role $$;
+  `);
+  const context = (await db.query(`select public.get_casual_transaction_context('${ROUND_ID}') as result`)).rows[0].result;
+  assert.equal(context.supports_cash_refunder, true);
+  assert.deepEqual(context.cash_receivers.map(person => person.id), [OTHER_USER_ID]);
+  assert.ok(context.history.some(item => item.id === id));
+  assert.ok(!context.history.some(item => item.id === unrelated));
+  const receipt = (await db.query(`select public.get_casual_receipt_snapshot('${id}') as result`)).rows[0].result;
+  assert.equal(receipt.recorded_by_name, 'พนักงาน');
+  await assert.rejects(db.query(`select public.get_casual_receipt_snapshot('${unrelated}')`), /cannot view/);
+  await assert.rejects(db.query(`select public.void_casual_transaction('${unrelated}', 'คืน', 'cash', null, null, '70000000-0000-4000-8000-000000000971', '${OTHER_USER_ID}')`), /cannot void/);
+  await assert.rejects(db.query(`select public.void_casual_transaction('${id}', 'คืน', 'cash', null, null, '70000000-0000-4000-8000-000000000970', '${USER_ID}')`), /ไม่สามารถระบุผู้คืนเงิน/);
+  await db.query(`select public.void_casual_transaction('${id}', 'คืน', 'cash', null, null, '70000000-0000-4000-8000-000000000970', '${OTHER_USER_ID}')`);
+  const cash = (await db.query(`select employee_id, sum(cash_amount)::float8 as net from public.daily_close_cash_sources('${SERVICE_DATE}') where source_id = '${id}' group by employee_id`)).rows;
+  assert.deepEqual(cash, [{ employee_id: OTHER_USER_ID, net: 0 }]);
+});
+
+test('forward migration leaves existing transactions and refunds unchanged and retains old retries', async (t) => {
+  const { db, legacy } = await createBuildingDatabase(t, false);
+  const id = (await recordAtBuilding(db, { amount: 60, index: 980 })).rows[0].result.transaction.id;
+  const voidOld = () => db.query(`select public.void_casual_transaction('${id}', 'คืนก่อนอัปเดต', 'cash', null, null, '70000000-0000-4000-8000-000000000980')`);
+  await voidOld();
+  const before = (await db.query(`select (select jsonb_agg(to_jsonb(t) order by id) from public.casual_transactions t) as sales,
+    (select jsonb_agg(to_jsonb(r) order by transaction_id) from public.casual_refund_confirmations r) as refunds,
+    (select jsonb_agg(to_jsonb(s) order by transaction_id) from public.casual_receipt_snapshots s) as receipts`)).rows[0];
+  await db.exec(readFileSync(new URL('../supabase/migrations/0251_casual_building_review_fixes.sql', import.meta.url), 'utf8'));
+  const after = (await db.query(`select (select jsonb_agg(to_jsonb(t) order by id) from public.casual_transactions t) as sales,
+    (select jsonb_agg(to_jsonb(r) - 'cash_refunded_by' order by transaction_id) from public.casual_refund_confirmations r) as refunds,
+    (select jsonb_agg(to_jsonb(s) order by transaction_id) from public.casual_receipt_snapshots s) as receipts`)).rows[0];
+  assert.deepEqual(after, before);
+  assert.equal(await recordLoose(db, 10, 901), legacy);
+  await voidOld();
+  assert.equal((await db.query(`select cash_refunded_by from public.casual_refund_confirmations where transaction_id = '${id}'`)).rows[0].cash_refunded_by, null);
+  const refundSource = (await db.query(`select employee_id from public.daily_close_cash_sources('${SERVICE_DATE}') where source_id = '${id}' and source_kind = 'casual_refund'`)).rows[0];
+  assert.equal(refundSource.employee_id, USER_ID);
+  const privileges = (await db.query(`select
+    has_function_privilege('authenticated', 'public.void_casual_transaction_without_refunder(uuid,text,payment_method,text,text,uuid)', 'execute') as old_void,
+    has_function_privilege('authenticated', 'public.accounting_building_shop_days(date,date,uuid)', 'execute') as internal_totals,
+    has_function_privilege('anon', 'public.void_casual_transaction(uuid,text,payment_method,text,text,uuid,uuid)', 'execute') as anon_void`)).rows[0];
+  assert.deepEqual(privileges, { old_void: false, internal_totals: false, anon_void: false });
+});
+
+test('new refund ownership preserves closed-day and non-cash validation', async (t) => {
+  const { db } = await createBuildingDatabase(t);
+  const id = (await recordAtBuilding(db, { amount: 60, index: 990 })).rows[0].result.transaction.id;
+  await assert.rejects(db.query(`select public.void_casual_transaction('${id}', 'คืนโอน', 'bank_transfer', null, null, '70000000-0000-4000-8000-000000000990', '${USER_ID}')`), /ไม่สามารถระบุผู้คืนเงิน/);
+  await assert.rejects(db.query(`select public.void_casual_transaction('${id}', 'คืนโอน', 'bank_transfer', null, null, '70000000-0000-4000-8000-000000000990', null)`), /require evidence/);
+  await db.exec(`insert into public.daily_aggregate_stock_closures values ('${SERVICE_DATE}', 'closed')`);
+  await assert.rejects(db.query(`select public.void_casual_transaction('${id}', 'คืนเงิน', 'cash', null, null, '70000000-0000-4000-8000-000000000990', '${USER_ID}')`), /stock is closed/);
 });

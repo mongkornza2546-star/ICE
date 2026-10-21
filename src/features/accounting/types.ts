@@ -179,6 +179,7 @@ export type AccountingShopDailyRow = {
 };
 
 export type AccountingCasualBuilding = {
+  shop_days?: Array<Pick<AccountingShopDailyCell, 'service_date' | 'items' | 'sales_amount' | 'cash_received' | 'transfer_received' | 'tank_quantity'>>;
   building_id: string;
   building_name: string;
   days: AccountingCasualDailyCell[];

@@ -64,6 +64,7 @@ type RecordPayload = {
 };
 
 type VoidPayload = {
+  cashRefundedBy?: string | null;
   transactionId: string;
   reason: string;
   refundMethod: PaymentMethod | null;
@@ -79,6 +80,7 @@ type PendingEvidenceRequest = {
 };
 
 type VoidForm = {
+  cashRefundedBy: string;
   voidReason: string;
   refundMethod: PaymentMethod;
   refundReference: string;
@@ -95,6 +97,8 @@ function fileIdentity(file: File | null) {
 }
 
 function CasualVoidDialog({
+  cashReceivers,
+  defaultRefunderId,
   busy,
   initialForm,
   onBack,
@@ -108,9 +112,13 @@ function CasualVoidDialog({
   onSubmit: (form: VoidForm) => Promise<void>;
   selectEvidence: (file: File | null, setFile: (file: File | null) => void) => void;
   target: CasualTransactionHistoryItem;
+  cashReceivers?: Array<{ id: string; name: string }>;
+  defaultRefunderId?: string;
 }) {
   useLanguage();
   // Keep typing independent of the product grid and potentially long daily history.
+  const [cashRefundedBy, setCashRefundedBy] = useState(initialForm?.cashRefundedBy ?? defaultRefunderId ?? '');
+  const validCashRefunder = !cashReceivers || cashReceivers.some((person) => person.id === cashRefundedBy);
   const [voidReason, setVoidReason] = useState(initialForm?.voidReason ?? '');
   const [refundMethod, setRefundMethod] = useState<PaymentMethod>(initialForm?.refundMethod ?? 'cash');
   const [refundReference, setRefundReference] = useState(initialForm?.refundReference ?? '');
@@ -123,13 +131,14 @@ function CasualVoidDialog({
       <label><span>{translateUi('เหตุผลการยกเลิก')}</span><textarea autoFocus onChange={(event) => setVoidReason(event.target.value)} value={voidReason} /></label>
       {target.transaction_kind === 'paid' ? <>
         <div className="employee-casual-methods">{(['cash', 'bank_transfer'] as PaymentMethod[]).map((method) => <button className={refundMethod === method ? 'is-selected' : ''} key={method} onClick={() => setRefundMethod(method)} type="button">{translateUi('คืน')}{translateUi(paymentLabels[method])}</button>)}</div>
+        {refundMethod === 'cash' && cashReceivers ? <label><span>{translateUi('ผู้คืนเงินจริง')}</span><select disabled={busy || cashReceivers.length === 1} value={cashRefundedBy} onChange={(event) => setCashRefundedBy(event.target.value)}><option value="">{translateUi('เลือกผู้คืนเงิน')}</option>{cashReceivers.map((person) => <option key={person.id} value={person.id}>{person.name}</option>)}</select></label> : null}
         <label><span>{translateUi('เลขอ้างอิงการคืน (ไม่บังคับ)')}</span><input onChange={(event) => setRefundReference(event.target.value)} value={refundReference} /></label>
         {refundMethod !== 'cash' ? <>
           <label><span>{translateUi('หลักฐานการคืนเงิน')}</span><input accept="image/*,application/pdf" aria-describedby={refundEvidence ? 'casual-refund-evidence-name' : undefined} onChange={(event) => selectEvidence(event.target.files?.[0] ?? null, setRefundEvidence)} type="file" /></label>
           {refundEvidence ? <small id="casual-refund-evidence-name">{refundEvidence.name}</small> : null}
         </> : null}
       </> : null}
-      <div className="employee-casual-void__actions"><button disabled={busy} onClick={onBack} type="button">{translateUi('กลับ')}</button><button disabled={!voidReason.trim() || busy || (target.transaction_kind === 'paid' && refundMethod !== 'cash' && !refundEvidence)} onClick={() => { void onSubmit({ voidReason, refundMethod, refundReference, refundEvidence }); }} type="button">{translateUi('ยืนยันยกเลิก')}</button></div>
+      <div className="employee-casual-void__actions"><button disabled={busy} onClick={onBack} type="button">{translateUi('กลับ')}</button><button disabled={!voidReason.trim() || busy || (target.transaction_kind === 'paid' && refundMethod === 'cash' && !validCashRefunder) || (target.transaction_kind === 'paid' && refundMethod !== 'cash' && !refundEvidence)} onClick={() => { void onSubmit({ voidReason, refundMethod, refundReference, refundEvidence, cashRefundedBy }); }} type="button">{translateUi('ยืนยันยกเลิก')}</button></div>
     </section>
   </div>;
 }
@@ -376,11 +385,15 @@ export function EmployeeCasualCustomerPage({
   };
 
   const submitVoid = async (form: VoidForm) => {
-    const { voidReason, refundMethod, refundReference, refundEvidence } = form;
+    const { voidReason, refundMethod, refundReference, refundEvidence, cashRefundedBy } = form;
     if (!voidTarget || !voidReason.trim() || busy) return;
     const isPaid = voidTarget.transaction_kind === 'paid';
     if (isPaid && refundMethod !== 'cash' && !refundEvidence) return;
+    if (context?.supports_cash_refunder && isPaid && refundMethod === 'cash' && !context.cash_receivers?.some((person) => person.id === cashRefundedBy)) return;
+    const refundOwner = context?.supports_cash_refunder
+      ? { cashRefundedBy: isPaid && refundMethod === 'cash' ? cashRefundedBy : null } : {};
     const signature = `casual-void:${JSON.stringify({
+      ...refundOwner,
       transactionId: voidTarget.id,
       reason: voidReason.trim(),
       refundMethod: isPaid ? refundMethod : null,
@@ -404,6 +417,7 @@ export function EmployeeCasualCustomerPage({
         pending.current = { ...retry, evidencePath };
       }
       await voidTransaction({
+        ...refundOwner,
         transactionId: voidTarget.id,
         reason: voidReason.trim(),
         refundMethod: isPaid ? refundMethod : null,
@@ -553,6 +567,8 @@ export function EmployeeCasualCustomerPage({
       </> : null}
 
       {voidTarget ? <CasualVoidDialog
+        cashReceivers={context?.supports_cash_refunder ? context.cash_receivers ?? [] : undefined}
+        defaultRefunderId={context?.default_receiver_id}
         key={voidTarget.id}
         busy={busy}
         initialForm={voidRequestsRef.current.get(voidTarget.id)?.form}

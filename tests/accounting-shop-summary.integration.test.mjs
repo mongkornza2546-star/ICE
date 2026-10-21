@@ -1274,3 +1274,58 @@ for (const withCasualWrapper of [false, true]) test(`accounting sales exclude st
   assert.equal(credit.total_amount, 64.20);
   assert.equal(credit.outstanding_amount, 32.10);
 });
+
+test('building shop totals use all pages and batches of the real daily reader', async (t) => {
+  const db = await createEventAccountingDatabase(t);
+  await db.exec(`
+    create role anon;
+    alter table public.shop_payment_profiles add column credit_due_rule text,
+      add column credit_collection_weekday integer, add column credit_days integer;
+    alter table public.ice_types add column is_active boolean default true;
+    alter table public.casual_transactions add column payment_method public.payment_method;
+    alter table public.casual_refund_confirmations add column refund_method public.payment_method;
+    create table public.shop_rented_tanks (shop_id uuid, rented_at date);
+    create table public.shop_tank_rentals (shop_id uuid, handed_out_on date, quantity numeric);
+    alter table public.event_participations add column id uuid;
+    create table public.event_tank_register (event_participation_id uuid, service_date date, quantity numeric, movement_kind text);
+    insert into public.ice_types values ('${ICE_ID}', 'ICE', 'Ice', 'bag', true);
+    -- 501 shops forces two server batches, independently of the UI's 100 rows.
+    insert into public.shops (id, code, name, building_id, zone_id)
+      select ('b0000000-0000-4000-8000-' || lpad(i::text, 12, '0'))::uuid, 'B' || i, 'Shop ' || i,
+        '${CURRENT_BUILDING_ID}', '${CURRENT_ZONE_ID}' from generate_series(1, 501) i;
+    insert into public.round_stops (id, shop_id, building_id_snapshot, building_name_snapshot, floor_or_zone_snapshot)
+      select id, id, building_id, 'Current Building', 'Current Zone' from public.shops where building_id = '${CURRENT_BUILDING_ID}';
+    insert into public.delivery_events (id, round_stop_id, recorded_by, status, recorded_at)
+      select id, id, '${USER_ID}', 'active', '2026-08-01T03:00:00Z' from public.shops where building_id = '${CURRENT_BUILDING_ID}';
+    insert into public.delivery_charges (id, delivery_event_id, shop_id, service_date, payment_term, original_amount, status)
+      select id, id, id, '2026-08-01', 'immediate', 10, 'active' from public.shops where building_id = '${CURRENT_BUILDING_ID}';
+    insert into public.delivery_items select id, '${ICE_ID}', 0.5, 20, 10 from public.shops where building_id = '${CURRENT_BUILDING_ID}';
+    insert into public.payments (id, shop_id, allocated_amount, status, recorded_at, payment_method)
+      select id, id, 10, 'active', '2026-08-01T04:00:00Z', case when code = 'B501' then 'qr'::public.payment_method else 'cash'::public.payment_method end
+      from public.shops where building_id = '${CURRENT_BUILDING_ID}';
+    insert into public.shop_tank_rentals values ('b0000000-0000-4000-8000-000000000501', '2026-08-01', 3);
+  `);
+  for (const file of ['0146_accounting_shop_daily_matrix.sql', '0201_accounting_daily_tanks_payment_split.sql']) {
+    await db.exec(readFileSync(new URL(`../supabase/migrations/${file}`, import.meta.url), 'utf8'));
+  }
+  await db.exec('alter function public.get_accounting_shop_daily_matrix(date,date,uuid[]) rename to get_accounting_shop_daily_matrix_without_building');
+  const fix = readFileSync(new URL('../supabase/migrations/0251_casual_building_review_fixes.sql', import.meta.url), 'utf8');
+  const start = fix.indexOf('create function public.accounting_building_shop_days(');
+  await db.exec(fix.slice(start, fix.indexOf('\n$$;', start) + 4));
+  const read = async () => (await db.query(`select public.accounting_building_shop_days('2026-08-01','2026-08-02','${CURRENT_BUILDING_ID}') as result`)).rows[0].result;
+  const totals = await read();
+  assert.equal(totals.days[0].sales_amount, 5010);
+  assert.equal(totals.days[0].cash_received, 5000);
+  assert.equal(totals.days[0].transfer_received, 10);
+  assert.equal(totals.days[0].tank_quantity, 3);
+  assert.equal(totals.days[0].items[0].quantity, 250.5);
+  assert.equal(totals.ice_types.length, 1);
+  assert.equal(totals.days[1].sales_amount, 0);
+  const page = (await db.query(`select public.get_accounting_shop_daily_matrix_without_building('2026-08-01','2026-08-01', array(select id from public.shops where building_id = '${CURRENT_BUILDING_ID}' order by id limit 100)) as result`)).rows[0].result;
+  assert.equal(page.rows.reduce((sum, row) => sum + row.days[0].sales_amount, 0), 1000);
+  assert.deepEqual(await read(), totals);
+  await db.exec(`update public.shops set status = 'inactive' where code = 'B501'`);
+  const activeOnly = await read();
+  assert.equal(activeOnly.days[0].sales_amount, 5000);
+  assert.equal(activeOnly.days[0].transfer_received, 0);
+});

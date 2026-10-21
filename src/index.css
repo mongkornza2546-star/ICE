@@ -1504,7 +1504,7 @@ input:disabled, select:disabled, textarea:disabled { background: #f2f5f8; color:
 .employee-casual-kind button { display: flex; align-items: center; justify-content: center; gap: 8px; }
 .employee-casual-payment { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; padding: 14px; border-radius: 12px; background: #f7faff; }
 .employee-casual-payment label, .employee-casual-note, .employee-casual-void label { display: grid; gap: 5px; color: #526981; font-size: .72rem; font-weight: 700; }
-.employee-casual-payment input, .employee-casual-note textarea, .employee-casual-void input, .employee-casual-void textarea { width: 100%; min-height: 48px; padding: 9px 11px; border: 1px solid #cfdce9; border-radius: 9px; color: #1f3857; background: #fff; font: inherit; }
+.employee-casual-payment input, .employee-casual-note textarea, .employee-casual-void input, .employee-casual-void textarea, .employee-casual-void select { width: 100%; min-height: 48px; padding: 9px 11px; border: 1px solid #cfdce9; border-radius: 9px; color: #1f3857; background: #fff; font: inherit; }
 .employee-casual-payment input[type="file"], .employee-casual-void input[type="file"] { height: auto; padding: 10px; }
 .employee-casual-methods { grid-column: 1 / -1; grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .employee-casual-note textarea { min-height: 76px; resize: vertical; }

@@ -52,11 +52,21 @@ and back navigation; due-today invoices belong to the not-due bucket.
 The Volume tab contains daily quantities and the monthly table, delivery count,
 per-product quantities/damage and area breakdowns. The table explicitly uses its
 own selected month, separate from the top period filter, and retains selection
-when switching tabs. Missing daily metadata remains unavailable, never zero.
+when switching tabs, changing the main range or refreshing across midnight.
+Until a month/day is explicitly selected, it follows the main range's end date.
+Daily exports using the main report are disabled during refresh or after a refresh
+error; independently loaded monthly snapshots retain their own error state.
+Missing daily metadata remains unavailable, never zero.
 All currency values retain up to two decimal places. Profit is deferred until
 cost and expense data exists.
 
 ## Deployment and validation
+
+Apply `0252_executive_volume_sale_building.sql` after 0249 to include measured
+paid casual sales in their explicitly recorded selling building's volume.
+Unassigned sales and loose-sale conversions stay in the casual group; overall
+product and daily totals are unchanged. This replaces only the volume read model
+and does not rewrite transactions or infer buildings from stock sources.
 
 Apply `0244_executive_sales_and_aging.sql` after the existing report migrations
 before releasing the UI. It patches the shared sales fact projection to the

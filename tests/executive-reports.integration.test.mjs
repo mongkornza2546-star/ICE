@@ -51,7 +51,7 @@ async function database(t, { salesAndAging = true } = {}) {
     create table public.casual_transactions (id uuid primary key, service_date date,
       ice_type_id uuid, transaction_kind text, status text, sale_amount numeric,
       quantity numeric, payment_method text, recorded_at timestamptz,
-      fulfillment_mode text default 'measured', source_stock_location_id uuid);
+      fulfillment_mode text default 'measured', source_stock_location_id uuid, sale_building_id uuid references public.buildings(id));
     create table public.casual_loose_stock_prices (service_date date,
       source_stock_location_id uuid, ice_type_id uuid, unit_price numeric);
     create table public.casual_refund_confirmations (transaction_id uuid,
@@ -81,6 +81,7 @@ async function database(t, { salesAndAging = true } = {}) {
   await db.exec(readFileSync(new URL('../supabase/migrations/0227_executive_sales_navigation.sql', import.meta.url), 'utf8'));
   await db.exec(readFileSync(new URL('../supabase/migrations/0228_executive_daily_comparison.sql', import.meta.url), 'utf8'));
   if (salesAndAging) await db.exec(salesAndAgingMigration);
+  await db.exec(readFileSync(new URL('../supabase/migrations/0252_executive_volume_sale_building.sql', import.meta.url), 'utf8'));
   await db.exec(`select set_config('test.app_role', 'admin', false)`);
   return db;
 }
@@ -989,4 +990,35 @@ test('rental-only inactive shops and closed event booths remain in accounting wi
       assert.equal(detail.invoices[0].outstanding_amount,shop.cumulative_outstanding_amount);
     }
   }
+});
+
+test('volume attributes measured casual sales to their selling building and preserves unassigned and loose totals', async (t) => {
+  const db = await database(t);
+  const id = (n) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
+  await db.exec(`
+    insert into buildings (id, name, code) values
+      ('${id(1)}', 'Building A', 'A'), ('${id(2)}', 'Building B', 'B');
+    insert into ice_types (id, name, unit) values ('${id(3)}', 'Ice', 'bag');
+    insert into casual_loose_stock_prices values ('2026-09-01', '${id(4)}', '${id(3)}', 20);
+    insert into casual_transactions (id, service_date, ice_type_id, transaction_kind, status,
+      sale_amount, quantity, payment_method, recorded_at, fulfillment_mode, source_stock_location_id, sale_building_id) values
+      ('${id(10)}', '2026-09-01', '${id(3)}', 'paid', 'active', 100, 5, 'cash', '2026-09-01T05:00:00Z', 'measured', '${id(4)}', '${id(1)}'),
+      ('${id(11)}', '2026-09-01', '${id(3)}', 'paid', 'active', 80, 4, 'cash', '2026-09-01T05:00:00Z', 'measured', '${id(4)}', '${id(2)}'),
+      ('${id(12)}', '2026-09-01', '${id(3)}', 'paid', 'active', 40, 2, 'cash', '2026-09-01T05:00:00Z', 'measured', '${id(4)}', null),
+      ('${id(13)}', '2026-09-01', '${id(3)}', 'paid', 'active', 60, null, 'cash', '2026-09-01T05:00:00Z', 'loose', '${id(4)}', '${id(1)}'),
+      ('${id(14)}', '2026-09-01', '${id(3)}', 'paid', 'active', 40, null, 'cash', '2026-09-01T05:00:00Z', 'loose', '${id(4)}', null),
+      ('${id(15)}', '2026-09-01', '${id(3)}', 'free', 'active', 0, 9, null, '2026-09-01T05:00:00Z', 'measured', '${id(4)}', '${id(1)}'),
+      ('${id(16)}', '2026-09-01', '${id(3)}', 'paid', 'voided', 140, 7, 'cash', '2026-09-01T05:00:00Z', 'measured', '${id(4)}', '${id(1)}'),
+      ('${id(17)}', '2026-09-02', '${id(3)}', 'paid', 'active', 200, 10, 'cash', '2026-09-02T05:00:00Z', 'measured', '${id(4)}', '${id(1)}');
+  `);
+  const getReport = async () => (await db.query("select get_executive_report('2026-09-01', '2026-09-01') as report")).rows[0].report;
+  const report = await getReport();
+  assert.equal(report.products[0].delivered, 16);
+  assert.equal(report.dailyTrend[0].products[0].delivered, 16);
+  assert.deepEqual(report.volumeAreas.map(area => [area.kind, area.id, area.name, area.products[0].delivered]), [
+    ['building', id(1), 'Building A', 5], ['building', id(2), 'Building B', 4], ['casual', null, 'ขายหน้ารถ', 7],
+  ]);
+  assertVolumeReconciles(report);
+  await db.exec(readFileSync(new URL('../supabase/migrations/0252_executive_volume_sale_building.sql', import.meta.url), 'utf8'));
+  assert.deepEqual((await getReport()).volumeAreas, report.volumeAreas, 'migration can be reapplied safely');
 });

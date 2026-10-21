@@ -252,6 +252,7 @@ test('closed days retain the unified outstanding queue without reopening or perm
   await assert.rejects(shopQueue(db), /stale or closed/);
 
   await db.exec(migration('0248_closed_day_collection_queue'));
+  await db.exec(migration('0250_collection_queue_shared_read_lock'));
   const readQueue = async (date = today) => (await db.query(
     'select public.get_daily_shop_collection_queue($1) as result', [date])).rows[0].result;
   const result = await readQueue();
@@ -299,6 +300,67 @@ test('closed days retain the unified outstanding queue without reopening or perm
   assert.equal(open.status, 'open');
   assert.ok(open.collection_run_id);
   assert.equal((await readQueue()).collection_run_id, open.collection_run_id);
+});
+
+test('collection queue refresh holds only a shared date lock for existing or closed days', async (t) => {
+  const db = await createDatabase(t);
+  await db.exec(`alter table public.collection_runs alter id set default gen_random_uuid(),
+    alter status set default 'open', add opened_by uuid;`);
+  const context = migration('0164_restore_courier_collection_default_access');
+  await db.exec(context.slice(context.indexOf('create or replace function public.ensure_daily_collection_context'),
+    context.indexOf('create or replace function public.is_collection_run_member')));
+  await db.exec(migration('0248_closed_day_collection_queue'));
+  const today = (await db.query("select (clock_timestamp() at time zone 'Asia/Bangkok')::date::text as date")).rows[0].date;
+  const expectedQueue = await shopQueue(db);
+  const readWithLocks = async () => {
+    await db.exec('begin');
+    try {
+      const result = (await db.query('select public.get_daily_shop_collection_queue($1) as result', [today])).rows[0].result;
+      const locks = (await db.query(`with target as (
+          select hashtextextended('collection-run:' || $1, 0) as key
+        ) select mode from pg_locks cross join target where locktype = 'advisory' and granted
+          and classid::bigint = ((target.key >> 32) & 4294967295)
+          and objid::bigint = (target.key & 4294967295) and objsubid = 1
+        order by mode`, [today])).rows.map(row => row.mode);
+      await db.exec('commit');
+      return { result, locks };
+    } catch (error) {
+      await db.exec('rollback');
+      throw error;
+    }
+  };
+  assert.deepEqual((await readWithLocks()).locks, ['ExclusiveLock'], 'reproduces deployed 0248');
+  await db.exec(migration('0250_collection_queue_shared_read_lock'));
+  await db.exec(migration('0250_collection_queue_shared_read_lock')); // SQL Editor rerun is safe.
+  const open = await readWithLocks();
+  assert.deepEqual(open.locks, ['ShareLock']);
+  assert.equal(open.result.collection_run_id, runId);
+  assert.deepEqual(open.result.queue, expectedQueue);
+
+  await db.exec("update collection_runs set status = 'closed'");
+  const closed = await readWithLocks();
+  assert.deepEqual(closed.locks, ['ShareLock']);
+  assert.equal(closed.result.status, 'closed');
+  assert.equal(closed.result.collection_run_id, null);
+  assert.deepEqual(closed.result.queue, expectedQueue);
+
+  await db.query('insert into daily_aggregate_stock_closures(service_date) values ($1)', [today]);
+  await db.exec('delete from collection_runs');
+  const noRunClosed = await readWithLocks();
+  assert.deepEqual(noRunClosed.locks, ['ShareLock']);
+  assert.equal(noRunClosed.result.status, 'closed');
+  assert.deepEqual(noRunClosed.result.queue, expectedQueue);
+  assert.equal((await db.query('select count(*)::int as count from collection_runs')).rows[0].count, 0);
+
+  await db.exec('delete from daily_aggregate_stock_closures');
+  const created = await readWithLocks();
+  assert.deepEqual(created.locks, ['ExclusiveLock']);
+  assert.equal(created.result.status, 'open');
+  assert.ok(created.result.collection_run_id);
+  const refreshed = await readWithLocks();
+  assert.deepEqual(refreshed.locks, ['ShareLock']);
+  assert.equal(refreshed.result.collection_run_id, created.result.collection_run_id);
+  assert.equal((await db.query("select count(*)::int as count from audit_logs where action='auto_opened'")).rows[0].count, 1);
 });
 
 test('shared employee history supports another collector receipts without granting void access', async (t) => {
