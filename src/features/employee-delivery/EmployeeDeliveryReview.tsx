@@ -753,13 +753,6 @@ export function EmployeeDeliveryReview({
                     type="button"
                   >
                     {translateUi('เพิ่มรายการ')}</button>
-                  {hasUncommittedQuantity ? (
-                    <button className="employee-text-button" disabled={!canEditQuantity} onClick={() => {
-                      setQuantityInput(String(selectedQuantity));
-                      setSelectedIceTypeId('');
-                    }} type="button">
-                      {translateUi('ยกเลิกการแก้จำนวน')}</button>
-                  ) : null}
                 </>
               ) : (
                 <div className="employee-pos-keypad-empty">
@@ -841,7 +834,7 @@ export function EmployeeDeliveryReview({
                     {translateUi('ตรวจผล / ลองคำขอเดิมอีกครั้ง')}</button>
                 </div>
               ) : null}
-              {hasUncommittedQuantity ? <small className="employee-delivery-action-note">{translateUi('กดเพิ่มรายการหรือยกเลิกการแก้จำนวนก่อนส่ง')}</small> : null}
+              {hasUncommittedQuantity ? <small className="employee-delivery-action-note">{translateUi('กดเพิ่มรายการก่อนส่ง')}</small> : null}
               {!canCollectImmediatePayment && !isCreditShop ? <small className="employee-delivery-action-note">{translateUi('บัญชีนี้ยังไม่ได้รับสิทธิ์รับชำระเงิน')}</small> : null}
             </section>
           </>

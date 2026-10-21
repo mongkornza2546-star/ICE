@@ -290,16 +290,6 @@ describe('employee delivery review navigation', () => {
     expect(screen.getByRole('button', { name: 'ส่งอย่างเดียว' }).hasAttribute('disabled')).toBe(true);
   });
 
-  it('cancels keypad edits without changing the existing cart', async () => {
-    const user = userEvent.setup();
-    renderReview();
-    await user.click(screen.getByRole('button', { name: /หลอดเล็ก.*คงเหลือ/ }));
-    await user.click(screen.getByRole('button', { name: 'เพิ่มครึ่งกระสอบ' }));
-    await user.click(screen.getByRole('button', { name: 'ยกเลิกการแก้จำนวน' }));
-    expect(screen.getByText('2 ถุง × ฿60.00')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'ส่งอย่างเดียว' }).hasAttribute('disabled')).toBe(false);
-  });
-
   it('commits zero after clearing the keypad instead of leaving the old cart quantity', async () => {
     const user = userEvent.setup();
     const onSetQuantity = vi.fn();
@@ -372,13 +362,15 @@ describe('employee delivery review navigation', () => {
     expect(screen.getByText('2 ถุง × ฿60.00')).toBeTruthy();
   });
 
-  it('allows delivery with the original cart after cancelling a quantity edit', async () => {
+  it('allows delivery after confirming a quantity edit', async () => {
     const user = userEvent.setup();
     const { onConfirmDelivery } = renderReview();
     await user.click(screen.getByRole('button', { name: /หลอดเล็ก.*คงเหลือ/ }));
-    await user.clear(screen.getByRole('spinbutton', { name: 'จำนวนหลอดเล็ก' }));
-    await user.click(screen.getByRole('button', { name: 'ยกเลิกการแก้จำนวน' }));
-    expect(screen.getByText('2 ถุง × ฿60.00')).toBeTruthy();
+    const input = screen.getByRole('spinbutton', { name: 'จำนวนหลอดเล็ก' });
+    await user.clear(input);
+    await user.type(input, '3');
+    await user.click(screen.getByRole('button', { name: 'เพิ่มรายการ' }));
+    expect(screen.getByText('3 ถุง × ฿60.00')).toBeTruthy();
     await user.click(screen.getByRole('button', { name: 'ส่งอย่างเดียว' }));
     expect(onConfirmDelivery).toHaveBeenCalledWith('end_of_day');
   });
