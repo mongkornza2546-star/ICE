@@ -84,6 +84,8 @@ export interface EmployeeImmediateSalePayload {
 }
 
 export interface EmployeeCasualTransactionPayload {
+  saleBuildingId?: string;
+  cashReceivedBy?: string | null;
   roundId: string;
   iceTypeId: string;
   quantity: number;
@@ -698,6 +700,7 @@ export function createSupabaseGateway(): EmployeeDeliveryGateway {
         : 'record_casual_transaction';
       const { data, error } = await supabase.rpc(rpcName, {
         p_round_id: payload.roundId,
+        ...(payload.saleBuildingId ? { p_sale_building_id: payload.saleBuildingId, p_cash_received_by: payload.cashReceivedBy ?? null } : {}),
         p_ice_type_id: payload.iceTypeId,
         ...(payload.quantity === 0 ? {} : { p_quantity: payload.quantity }),
         p_transaction_kind: payload.transactionKind,

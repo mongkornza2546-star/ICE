@@ -28,6 +28,7 @@ export function PaymentModal({
   serviceDate,
   busy,
   canRecordPayment = true,
+  collectionClosed = false,
   canBackdatePayment = false,
   receivedDate = toBangkokDateString(),
   today = toBangkokDateString(),
@@ -69,6 +70,7 @@ export function PaymentModal({
   serviceDate: string;
   busy: boolean;
   canRecordPayment?: boolean;
+  collectionClosed?: boolean;
   canBackdatePayment?: boolean;
   receivedDate?: string;
   today?: string;
@@ -213,7 +215,9 @@ export function PaymentModal({
             ) : null}
 
             {!canRecordPayment ? (
-              <p className="employee-error" role="status">{translateUi('ดูข้อมูลได้ แต่ยังไม่ได้รับสิทธิ์บันทึกรับเงิน')}</p>
+              <p className="employee-error" role="status">{translateUi(collectionClosed
+                ? 'ปิดรอบแล้ว ดูยอดค้างได้ แต่บันทึกรับเงินในวันนี้ไม่ได้'
+                : 'ดูข้อมูลได้ แต่ยังไม่ได้รับสิทธิ์บันทึกรับเงิน')}</p>
             ) : null}
 
             <section className="financial-ops__charge-list" aria-label={translateUi('รายละเอียดบิลและรายการที่สั่ง')}>

@@ -85,6 +85,32 @@ function renderFinancialOperations() {
   />);
 }
 
+it.each(['admin', 'courier'] as const)('shows closed-day debt and disables payment for %s', async (role) => {
+  // Load the manager's lazy bundle before starting Testing Library's DOM timeout.
+  if (role === 'admin') await import('../src/features/financial-operations/FinancialManagerWorkspace');
+  supabaseMock.loadQueue.mockResolvedValue({ runId: null, isClosed: true, queue: [shop] });
+  supabaseMock.rpc.mockResolvedValue({ data: [], error: null });
+  render(<FinancialOperations userRole={role} serviceDate={serviceDate} />);
+  const shopButton = await screen.findByRole('button', { name: /S001.*ร้านทดสอบ/ });
+  expect(screen.getByText('ปิดรอบแล้ว ยังดูร้านค้าและยอดค้างชำระได้ แต่บันทึกรับเงินในวันนี้ไม่ได้')).toBeTruthy();
+  fireEvent.click(shopButton);
+  const record = await screen.findByRole('button', { name: 'บันทึกรับเงินทันที' });
+  expect(record.hasAttribute('disabled')).toBe(true);
+  expect(screen.getByText('ปิดรอบแล้ว ดูยอดค้างได้ แต่บันทึกรับเงินในวันนี้ไม่ได้')).toBeTruthy();
+});
+
+it('keeps the selected shop visible when a refresh discovers that the day has closed', async () => {
+  supabaseMock.loadQueue.mockResolvedValue({ runId: 'run-1', isClosed: false, queue: [shop] });
+  supabaseMock.rpc.mockResolvedValue({ data: [], error: null });
+  render(<FinancialOperations userRole="courier" serviceDate={serviceDate} />);
+  fireEvent.click(await screen.findByRole('button', { name: /S001.*ร้านทดสอบ/ }));
+  expect((await screen.findByRole('button', { name: 'บันทึกรับเงินทันที' })).hasAttribute('disabled')).toBe(false);
+  supabaseMock.loadQueue.mockResolvedValue({ runId: null, isClosed: true, queue: [shop] });
+  await act(async () => { publishDataChange(['payment']); });
+  await waitFor(() => expect(screen.getByRole('button', { name: 'บันทึกรับเงินทันที' }).hasAttribute('disabled')).toBe(true));
+  expect(screen.getByRole('button', { name: /S001.*ร้านทดสอบ/ })).toBeTruthy();
+});
+
 it('records only today selected bill while keeping expected outstanding for the whole shop', async () => {
   renderFinancialOperations();
 

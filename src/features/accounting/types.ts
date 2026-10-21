@@ -178,7 +178,21 @@ export type AccountingShopDailyRow = {
   days: AccountingShopDailyCell[];
 };
 
+export type AccountingCasualBuilding = {
+  building_id: string;
+  building_name: string;
+  days: AccountingCasualDailyCell[];
+  transactions: Array<{
+    id: string; service_date: string; recorded_at: string; ice_type_name: string;
+    quantity: number | null; sale_amount: number; payment_method: string | null;
+    status: string; receiver_name: string | null; recorder_name: string;
+    refunded_at: string | null; refunded_amount: number | null; refund_method: string | null;
+  }>;
+};
+
 export type AccountingShopDailyResponse = {
+  casual_buildings?: AccountingCasualBuilding[];
+  casual_legacy_days?: AccountingCasualDailyCell[];
   casual_days?: AccountingCasualDailyCell[];
   ice_types: Array<{ ice_type_id: string; code: string; name: string; unit: string }>;
   rows: AccountingShopDailyRow[];

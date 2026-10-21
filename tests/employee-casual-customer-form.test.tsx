@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { EmployeeCasualCustomerPage } from '../src/features/employee-delivery/EmployeeCasualCustomerPage';
 
-function setup(available = 5) {
+function setup(available = 5, attribution = {}) {
   const record = vi.fn().mockRejectedValue(new Error('test request'));
   render(<EmployeeCasualCustomerPage
     round={{ id: 'round-1', name: 'งานประจำวัน', service_date: '2026-09-25', round_type: 'daily', status: 'open', opened_at: '2026-09-25T00:00:00Z' }}
@@ -11,6 +11,7 @@ function setup(available = 5) {
     loadContext={vi.fn().mockResolvedValue({
       round_id: 'round-1', service_date: '2026-09-25', round_status: 'open', stock_closed: false,
       stock_source: { id: 'holding', code: 'holding', name: 'จุดถือครอง' },
+      ...attribution,
       items: [{ ice_type_id: 'ice', code: 'ice', name: 'น้ำแข็ง', unit: 'ถุง', available_quantity: available }], history: [],
     })}
     recordTransaction={record} deleteEvidence={vi.fn()} loadReceipt={vi.fn()}
@@ -89,5 +90,43 @@ describe('casual customer form', () => {
     await user.type(screen.getByLabelText('ยอดขาย (บาท)'), '100');
     await user.click(screen.getByRole('button', { name: 'ยืนยันขายและรับเงิน' }));
     expect((await screen.findByRole('alert')).textContent).toBe('สต๊อกไม่พอสำหรับจำนวนถุงที่รวมจากยอดขายขาจร');
+  });
+});
+
+
+describe('casual building attribution', () => {
+  it('requires a building for multi-building work and includes the chosen receiver in a new retry request', async () => {
+    const { user, record } = setup(5, {
+      sale_buildings: [{ id: 'a', name: 'ตึก A' }, { id: 'b', name: 'ตึก B' }],
+      cash_receivers: [{ id: 'admin', name: 'แอดมิน' }, { id: 'courier', name: 'พนักงาน' }],
+      default_receiver_id: 'admin',
+    });
+    await selectIce(user);
+    await user.type(screen.getByLabelText('ยอดขาย (บาท)'), '50');
+    await user.click(screen.getByRole('button', { name: 'ยืนยันขายและรับเงิน' }));
+    expect(record).not.toHaveBeenCalled();
+    await user.selectOptions(screen.getByLabelText('ตึกที่ขาย'), 'a');
+    await user.selectOptions(screen.getByLabelText('ผู้รับเงินจริง'), 'courier');
+    await user.click(screen.getByRole('button', { name: 'ยืนยันขายและรับเงิน' }));
+    await waitFor(() => expect(record).toHaveBeenCalledWith(expect.objectContaining({ saleBuildingId: 'a', cashReceivedBy: 'courier' })));
+    const firstKey = record.mock.calls[0][0].idempotencyKey;
+    await user.selectOptions(screen.getByLabelText('ตึกที่ขาย'), 'b');
+    await user.click(screen.getByRole('button', { name: 'ยืนยันขายและรับเงิน' }));
+    await waitFor(() => expect(record).toHaveBeenCalledTimes(2));
+    expect(record.mock.calls[1][0]).toMatchObject({ saleBuildingId: 'b', cashReceivedBy: 'courier' });
+    expect(record.mock.calls[1][0].idempotencyKey).not.toBe(firstKey);
+  });
+
+  it('defaults the only building and removes the receiver for a free issue', async () => {
+    const { user, record } = setup(5, {
+      sale_buildings: [{ id: 'a', name: 'ตึก A' }],
+      cash_receivers: [{ id: 'courier', name: 'พนักงาน' }], default_receiver_id: 'courier',
+    });
+    await selectIce(user);
+    expect((screen.getByLabelText('ตึกที่ขาย') as HTMLSelectElement).value).toBe('a');
+    await user.click(screen.getByRole('button', { name: 'แจกฟรี', exact: true }));
+    expect(screen.queryByLabelText('ผู้รับเงินจริง')).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'ยืนยันแจกฟรี' }));
+    await waitFor(() => expect(record).toHaveBeenCalledWith(expect.objectContaining({ saleBuildingId: 'a', cashReceivedBy: null })));
   });
 });

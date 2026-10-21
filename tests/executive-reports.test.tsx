@@ -474,6 +474,9 @@ it('renders executive attention alerts, quiet shops, debt aging and payment mix'
   fireEvent.click(screen.getByRole('button', { name: 'ปริมาณ', exact: true }));
   const volumeTable = screen.getByRole('table', { name: 'ปริมาณงานและน้ำแข็ง' });
   expect(within(volumeTable).getByText('10%')).not.toBeNull();
+  expect(within(volumeTable).getByRole('columnheader', { name: 'จำนวนส่ง' }).classList.contains('executive-numeric')).toBe(true);
+  expect(within(volumeTable).getByRole('columnheader', { name: 'เสียหาย' }).classList.contains('executive-numeric')).toBe(true);
+  expect(within(volumeTable).getByRole('columnheader', { name: 'อัตราของเสีย' }).classList.contains('executive-numeric')).toBe(true);
 
   // A direct alert destination opens the sales detail even after comparing periods.
   fireEvent.click(screen.getByRole('button', { name: 'ยอดขาย' }));
@@ -499,6 +502,9 @@ it('renders executive attention alerts, quiet shops, debt aging and payment mix'
   // Finance tab: Debt aging and Payment methods
   fireEvent.click(screen.getByRole('button', { name: 'เงินรับและลูกหนี้' }));
   const agingTable = screen.getByRole('table', { name: 'ตารางวิเคราะห์อายุหนี้' });
+  expect(within(agingTable).getByRole('columnheader', { name: 'จำนวนเงิน' }).classList.contains('executive-numeric')).toBe(true);
+  expect(within(agingTable).getByRole('columnheader', { name: 'สัดส่วน' }).classList.contains('executive-numeric')).toBe(true);
+  expect(within(agingTable).getByRole('columnheader', { name: 'ลูกหนี้' }).classList.contains('executive-numeric')).toBe(true);
   expect(within(agingTable).getByText('เกิน 30 วัน')).not.toBeNull();
   expect(within(agingTable).getByText('เกิน 1–7 วัน')).not.toBeNull();
   expect(screen.getByText('สัดส่วนช่องทางรับเงิน')).not.toBeNull();

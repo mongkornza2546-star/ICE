@@ -653,3 +653,110 @@ test('stores the employee name in the immutable casual receipt snapshot', async 
   ) as result`);
   assert.equal(sale.rows[0].result.receipt.recorded_by_name, 'พนักงาน');
 });
+
+const BUILDING_A = 'a0000000-0000-4000-8000-000000000001';
+const BUILDING_B = 'a0000000-0000-4000-8000-000000000002';
+async function createBuildingDatabase(t) {
+  const db = await createConvertedDatabase(t);
+  // Existing writers, history protection, stock conversion and receipts are real.
+  // The shop-only reader is irrelevant to these no-shop casual scenarios.
+  await db.exec(`
+    create table public.buildings (id uuid primary key, code text, name text, is_active boolean default true);
+    insert into public.buildings values ('${BUILDING_A}', 'A', 'ตึก A', true), ('${BUILDING_B}', 'B', 'ตึก B', true);
+    alter table public.users add column is_active boolean default true, add column role public.app_role default 'courier';
+    insert into public.users (id, display_name) values ('${OTHER_USER_ID}', 'พนักงานคนอื่น');
+    create function public.get_accounting_shop_daily_matrix(date,date,uuid[]) returns jsonb language plpgsql as $$
+    begin
+      if public.current_app_role() not in ('admin','round_lead') then raise exception 'Only manager'; end if;
+      if $2 - $1 > 30 then raise exception '31 days'; end if;
+      return jsonb_build_object('rows', '[]'::jsonb, 'ice_types', '[]'::jsonb);
+    end $$;
+    create function public.daily_close_cash_sources(p_service_date date)
+    returns table(source_kind text, source_id uuid, employee_id uuid, cash_amount numeric, source_snapshot jsonb)
+    language sql as $$
+      select 'casual_receipt', sale.id, sale.recorded_by, sale.sale_amount, to_jsonb(sale)
+      from public.casual_transactions sale join public.users recorder on recorder.id = sale.recorded_by
+      where sale.service_date = p_service_date and sale.transaction_kind = 'paid' and sale.payment_method = 'cash'
+    $$;
+  `);
+  await db.exec(readFileSync(new URL('../supabase/migrations/0180_accounting_casual_daily_matrix.sql', import.meta.url), 'utf8'));
+  const legacy = await recordLoose(db, 10, 901);
+  await db.exec(readFileSync(new URL('../supabase/migrations/0249_casual_sales_by_building.sql', import.meta.url), 'utf8'));
+  return { db, legacy };
+}
+function recordAtBuilding(db, { building = BUILDING_A, receiver = USER_ID, index = 902, measured = false, amount = 60 } = {}) {
+  const name = measured ? 'record_casual_transaction' : 'record_casual_loose_transaction';
+  return db.query(`select public.${name}('${ROUND_ID}', '${ICE_ID}', ${measured ? '0.5,' : ''}
+    'paid', ${amount}, 'cash', ${amount}, null, null, null, now(),
+    '60000000-0000-4000-8000-${String(index).padStart(12, '0')}', '${building}', '${receiver}') as result`);
+}
+
+test('building sales preserve old rows, store receiver separately and keep stock source and retries', async (t) => {
+  const { db, legacy } = await createBuildingDatabase(t);
+  assert.equal((await db.query(`select sale_building_id from public.casual_transactions where id = '${legacy}'`)).rows[0].sale_building_id, null);
+  assert.equal(await recordLoose(db, 10, 901), legacy);
+  const result = await recordAtBuilding(db);
+  const id = result.rows[0].result.transaction.id;
+  assert.equal((await recordAtBuilding(db)).rows[0].result.transaction.id, id);
+  await assert.rejects(recordAtBuilding(db, { building: BUILDING_B }), /different casual transaction/);
+  await assert.rejects(recordAtBuilding(db, { receiver: OTHER_USER_ID, index: 903 }), /ไม่สามารถระบุผู้รับเงิน/);
+  assert.deepEqual((await db.query(`select sale_building_id, cash_received_by, recorded_by, source_stock_location_id from public.casual_transactions where id = '${id}'`)).rows[0], {
+    sale_building_id: BUILDING_A, cash_received_by: USER_ID, recorded_by: USER_ID, source_stock_location_id: HOLDING_ID,
+  });
+  await assert.rejects(db.query(`update public.casual_transactions set sale_building_id = '${BUILDING_B}' where id = '${id}'`), /immutable/);
+  await db.exec(`create or replace function public.current_app_role() returns public.app_role language sql stable as $$ select 'admin'::public.app_role $$;`);
+  await db.exec(`insert into public.stock_movements values ('50000000-0000-4000-8000-000000000909', '${SERVICE_DATE}', 'active', 'factory_order', null, '${TRUCK_ID}'); insert into public.stock_movement_items values ('50000000-0000-4000-8000-000000000909', '${ICE_ID}', 5);`);
+  const behalf = (await recordAtBuilding(db, { receiver: OTHER_USER_ID, index: 904, measured: true })).rows[0].result.transaction.id;
+  const cash = (await db.query(`select * from public.daily_close_cash_sources('${SERVICE_DATE}') where source_id = '${behalf}'`)).rows[0];
+  assert.equal(cash.employee_id, OTHER_USER_ID);
+  assert.equal(cash.source_snapshot.recorded_by, USER_ID);
+  const context = (await db.query(`select public.get_casual_transaction_context('${ROUND_ID}') as result`)).rows[0].result;
+  assert.equal(context.sale_buildings.length, 2);
+  assert.equal(context.history.find((item) => item.id === behalf).sale_building_name, 'ตึก A');
+  assert.equal(context.history.find((item) => item.id === behalf).cash_received_by, OTHER_USER_ID);
+  await db.exec(`update public.buildings set is_active = false where id = '${BUILDING_B}'`);
+  await assert.rejects(recordAtBuilding(db, { building: BUILDING_B, index: 905 }), /ตึกที่เปิดใช้งาน/);
+});
+
+test('building matrix isolates legacy and building totals including converted stock and refunds', async (t) => {
+  const { db } = await createBuildingDatabase(t);
+  await recordAtBuilding(db, { amount: 60 });
+  const second = (await recordAtBuilding(db, { building: BUILDING_B, amount: 50, index: 906 })).rows[0].result.transaction.id;
+  await db.exec(`create or replace function public.current_app_role() returns public.app_role language sql stable as $$ select 'admin'::public.app_role $$;`);
+  const read = async (date) => (await db.query(`select public.get_accounting_shop_daily_matrix('${date}', '${date}', '{}'::uuid[]) as result`)).rows[0].result;
+  const sales = await read(SERVICE_DATE);
+  assert.equal(sales.casual_legacy_days[0].sales_amount, 10);
+  assert.equal(sales.casual_buildings.find((b) => b.building_id === BUILDING_A).days[0].sales_amount, 60);
+  assert.equal(sales.casual_buildings.find((b) => b.building_id === BUILDING_B).days[0].sales_amount, 50);
+  const allDays = [...sales.casual_legacy_days, ...sales.casual_buildings.flatMap((b) => b.days)];
+  assert.equal(allDays.reduce((sum, day) => sum + day.items.reduce((q, item) => q + item.quantity, 0), 0), sales.casual_days[0].items[0].quantity);
+  const receiptDate = (await db.query(`select (recorded_at at time zone 'Asia/Bangkok')::date::text as value from public.casual_transactions where id = '${second}'`)).rows[0].value;
+  await db.query(`select public.void_casual_transaction('${second}', 'คืนแล้ว', 'cash', null, null, '70000000-0000-4000-8000-000000000906')`);
+  const receipts = await read(receiptDate);
+  const b = receipts.casual_buildings.find((b) => b.building_id === BUILDING_B);
+  assert.equal(b.days[0].cash_received, 50);
+  assert.equal(b.days[0].cash_refunded, 50);
+  assert.equal(b.transactions[0].status, 'voided');
+  assert.equal(receipts.casual_buildings.find((b) => b.building_id === BUILDING_A).days[0].cash_received, 60);
+  await db.exec(`create or replace function public.current_app_role() returns public.app_role language sql stable as $$ select 'courier'::public.app_role $$;`);
+  await assert.rejects(read(SERVICE_DATE), /Only manager/);
+});
+
+test('building attribution keeps transfers separate from cash and supports free issues', async (t) => {
+  const { db } = await createBuildingDatabase(t);
+  await db.exec(`insert into storage.objects values ('payment-evidence', '${USER_ID}/transfer.png')`);
+  const transfer = (await db.query(`select public.record_casual_transaction('${ROUND_ID}', '${ICE_ID}', 0.5,
+    'paid', 45, 'bank_transfer', 45, null, '${USER_ID}/transfer.png', null, now(),
+    '60000000-0000-4000-8000-000000000920', '${BUILDING_A}', '${USER_ID}') as result`)).rows[0].result.transaction.id;
+  await db.query(`select public.record_casual_loose_transaction('${ROUND_ID}', '${ICE_ID}', 'free', 0,
+    null, null, null, null, null, now(), '60000000-0000-4000-8000-000000000921', '${BUILDING_B}', null)`);
+  assert.equal((await db.query(`select count(*)::int as n from public.daily_close_cash_sources('${SERVICE_DATE}') where source_id = '${transfer}'`)).rows[0].n, 0);
+  const receiptDate = (await db.query(`select (recorded_at at time zone 'Asia/Bangkok')::date::text as value from public.casual_transactions where id = '${transfer}'`)).rows[0].value;
+  await db.exec(`create or replace function public.current_app_role() returns public.app_role language sql stable as $$ select 'admin'::public.app_role $$;`);
+  const result = (await db.query(`select public.get_accounting_shop_daily_matrix('${receiptDate}', '${receiptDate}', '{}'::uuid[]) as result`)).rows[0].result;
+  const a = result.casual_buildings.find((building) => building.building_id === BUILDING_A);
+  assert.equal(a.days[0].cash_received, 0);
+  assert.equal(a.days[0].transfer_received, 45);
+  const free = (await db.query(`select cash_received_by from public.casual_transactions where sale_building_id = '${BUILDING_B}'`)).rows[0];
+  assert.equal(free.cash_received_by, null);
+});

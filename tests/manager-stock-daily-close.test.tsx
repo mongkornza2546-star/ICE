@@ -93,9 +93,34 @@ it('uses the saved system quantity and close time from the initial stock respons
     items: [{ ...closedStock.items[0], system_quantity: 17, variance_quantity: null, note: 'ตรวจนับแล้ว' }],
   } });
   render(<ManagerStockControl operationRound={null} round={round} serviceDate={serviceDate} />);
-  await screen.findByRole('cell', { name: '17 ถุง' });
+  await screen.findByRole('rowheader', { name: /หลอดเล็ก ตรวจนับแล้ว/ });
   expect(screen.getByText(/23:48/)).toBeTruthy();
   expect(screen.getByText('ตรวจนับแล้ว')).toBeTruthy();
+  const total = screen.getByRole('row', { name: /รวม \(ถุง\)/ });
+  expect(within(total).getByRole('cell', { name: '—' })).toBeTruthy();
+  expect(within(total).queryByText('ตรงยอด')).toBeNull();
   expect(db.rpc).toHaveBeenCalledTimes(1);
   expect(db.rpc).toHaveBeenCalledWith('get_daily_aggregate_stock_summary', { p_service_date: serviceDate });
+});
+
+
+it('totals closing quantities by unit and shows the net shortage without mixing bags and rows', async () => {
+  db.rpc.mockResolvedValue({ error: null, data: {
+    ...closedStock,
+    items: [
+      { ...closedStock.items[0], system_quantity: 30, actual_quantity: 29, variance_quantity: -1 },
+      { ...closedStock.items[1], system_quantity: 10, actual_quantity: 17, variance_quantity: 7 },
+      { ...closedStock.items[2], system_quantity: 11.5, actual_quantity: 0, variance_quantity: -11.5 },
+      { ice_type_id: 'block', name: 'น้ำแข็งก้อน', unit: 'แถว', available_quantity: 0, system_quantity: 3, actual_quantity: 4, variance_quantity: 1 },
+    ],
+  } });
+  render(<ManagerStockControl operationRound={null} round={round} serviceDate={serviceDate} />);
+  const bags = await screen.findByRole('row', { name: /รวม \(ถุง\)/ });
+  expect(within(bags).getByRole('cell', { name: '51.5 ถุง' })).toBeTruthy();
+  expect(within(bags).getByRole('cell', { name: '46 ถุง' })).toBeTruthy();
+  expect(within(bags).getByRole('cell', { name: 'ขาดสุทธิ 5.5 ถุง' })).toBeTruthy();
+  const blocks = screen.getByRole('row', { name: /รวม \(แถว\)/ });
+  expect(within(blocks).getByRole('cell', { name: '3 แถว' })).toBeTruthy();
+  expect(within(blocks).getByRole('cell', { name: '4 แถว' })).toBeTruthy();
+  expect(within(blocks).getByRole('cell', { name: 'เกินสุทธิ 1 แถว' })).toBeTruthy();
 });

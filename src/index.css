@@ -4631,3 +4631,9 @@ fieldset.ref-section {
 .employee-billing > button { justify-self: start; }
 .employee-billing > label { display: grid; gap: 6px; font-weight: 700; }
 .employee-billing > label select { width: 100%; min-height: 44px; padding: 8px; border: 1px solid #d8e5ef; border-radius: 8px; background: #fff; color: inherit; font: inherit; }
+
+.employee-casual-attribution { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.employee-casual-attribution label { display: grid; gap: 6px; font-weight: 700; }
+.employee-casual-attribution select { width: 100%; min-height: 44px; padding: 8px; border: 1px solid #d2dfec; border-radius: 9px; background: #fff; color: #183655; font: inherit; }
+.employee-casual-attribution > small { grid-column: 1 / -1; color: #526476; }
+@media (max-width: 560px) { .employee-casual-attribution { grid-template-columns: 1fr; } }

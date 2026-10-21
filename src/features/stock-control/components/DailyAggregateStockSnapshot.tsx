@@ -32,6 +32,14 @@ export function DailyAggregateStockSnapshot({ summary, renderImage }: {
   useLanguage();
   const matched = summary.items.filter((item) => item.variance_quantity != null && Number(item.variance_quantity) === 0).length;
   const different = summary.items.filter((item) => item.variance_quantity != null && Number(item.variance_quantity) !== 0).length;
+  const totals = new Map<string, { system: number | null; actual: number | null; variance: number | null }>();
+  for (const item of summary.items) {
+    const total = totals.get(item.unit) ?? { system: 0, actual: 0, variance: 0 };
+    total.system = addQuantity(total.system, systemQuantity(item));
+    total.actual = addQuantity(total.actual, item.actual_quantity);
+    total.variance = addQuantity(total.variance, item.variance_quantity);
+    totals.set(item.unit, total);
+  }
   return (
     <div className="daily-stock-snapshot">
       <div className="daily-stock-snapshot__status" role="status">
@@ -62,11 +70,7 @@ export function DailyAggregateStockSnapshot({ summary, renderImage }: {
             {summary.items.map((item) => {
               const variance = item.variance_quantity == null ? null : Number(item.variance_quantity);
               const state = variance == null ? 'unknown' : variance < 0 ? 'short' : variance > 0 ? 'over' : 'matched';
-              const system = item.system_quantity ?? (
-                // Compatibility with servers before migration 0246. Never use the live balance.
-                item.actual_quantity != null && item.variance_quantity != null
-                  ? Number(item.actual_quantity) - Number(item.variance_quantity) : null
-              );
+              const system = systemQuantity(item);
               return (
                 <tr key={item.ice_type_id} className={`daily-stock-snapshot__row daily-stock-snapshot__row--${state}`}>
                   <th scope="row" className="daily-stock-snapshot__identity">
@@ -95,6 +99,25 @@ export function DailyAggregateStockSnapshot({ summary, renderImage }: {
               );
             })}
           </tbody>
+          <tfoot>
+            {[...totals].map(([unit, total]) => {
+              const state = total.variance == null ? 'unknown' : total.variance < 0 ? 'short' : total.variance > 0 ? 'over' : 'matched';
+              return (
+                <tr key={unit} className="daily-stock-snapshot__row daily-stock-snapshot__total">
+                  <th scope="row" className="daily-stock-snapshot__identity">{translateUi('รวม')} ({unit})</th>
+                  <td data-label={translateUi('ตามระบบ')}><span>{formatQuantity(total.system)} <small>{unit}</small></span></td>
+                  <td data-label={translateUi('นับจริง')} className="daily-stock-snapshot__actual"><span>{formatQuantity(total.actual)} <small>{unit}</small></span></td>
+                  <td data-label={translateUi('ส่วนต่างสุทธิ')}>
+                    <span className={`daily-stock-snapshot__variance daily-stock-snapshot__variance--${state}`}>
+                      {total.variance == null ? '—' : total.variance === 0 ? translateUi('ตรงยอด') : (
+                        <>{translateUi(total.variance < 0 ? 'ขาดสุทธิ' : 'เกินสุทธิ')} {formatQuantity(Math.abs(total.variance))} <small>{unit}</small></>
+                      )}
+                    </span>
+                  </td>
+                </tr>
+              );
+            })}
+          </tfoot>
         </table>
       )}
     </div>
@@ -103,4 +126,15 @@ export function DailyAggregateStockSnapshot({ summary, renderImage }: {
 
 function formatQuantity(value: number | null | undefined) {
   return value == null ? '—' : Number(value).toLocaleString('th-TH', { maximumFractionDigits: 3 });
+}
+
+function systemQuantity(item: AggregateItem) {
+  // Compatibility with servers before migration 0246. Never use the live balance.
+  return item.system_quantity ?? (item.actual_quantity != null && item.variance_quantity != null
+    ? Number(item.actual_quantity) - Number(item.variance_quantity) : null);
+}
+
+function addQuantity(total: number | null, value: number | null | undefined) {
+  // An incomplete snapshot must not appear as a complete total.
+  return total == null || value == null ? null : total + Number(value);
 }

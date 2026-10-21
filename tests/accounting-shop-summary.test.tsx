@@ -1194,3 +1194,45 @@ describe('accounting shop summary', () => {
     expect(screen.getByRole('option', { name: 'อาคาร A / ชั้น 9 ปัจจุบัน (1)' })).toBeTruthy();
   });
 });
+
+it('places new casual sales once after a building with multiple zones, keeps legacy separate and filters buildings', async () => {
+  const shops = [populatedSummary.rows[0], {
+    ...populatedSummary.rows[0], shop_id: 'shop-2', shop_code: 'S002', shop_name: 'ร้านสอง',
+    current_zone_id: 'zone-2', current_zone_name: 'ชั้น 2', sales_amount: 100,
+  }];
+  const summary = { ...populatedSummary, rows: shops, total_count: 2 };
+  rpcMock.mockImplementation(async (name: string, args: Record<string, unknown>) => {
+    if (name === 'get_accounting_shop_summary') return { data: summary, error: null };
+    if (name === 'get_accounting_review_queue') return { data: { rows: [], total_count: 0 }, error: null };
+    if (name === 'get_accounting_shop_daily_matrix') {
+      const day = { service_date: String(args.p_from_date), items: [], sales_amount: 48,
+        cash_received: 48, cash_refunded: 0, transfer_received: 0, transaction_count: 1 };
+      const group = { building_id: 'building-1', building_name: 'อาคาร A', days: [day], transactions: [{
+        id: 'casual-a', service_date: day.service_date, recorded_at: `${day.service_date}T12:00:00+07:00`,
+        ice_type_name: 'หลอดเล็ก', quantity: 0.5, sale_amount: 48, payment_method: 'cash', status: 'active',
+        receiver_name: 'คนรับเงิน A', recorder_name: 'แอดมินลงแทน', refunded_at: null, refunded_amount: null, refund_method: null,
+      }] };
+      return { data: { ...completeDailyMatrix(args, shops), casual_days: [{ ...day, sales_amount: 118 }],
+        casual_legacy_days: [{ ...day, sales_amount: 10, cash_received: 10 }],
+        casual_buildings: [group, { ...group, building_id: 'building-b', building_name: 'อาคาร B', days: [{ ...day, sales_amount: 60, cash_received: 60 }], transactions: [] }],
+      }, error: null };
+    }
+    throw new Error(`Unexpected RPC: ${name}`);
+  });
+  const user = userEvent.setup();
+  render(<AccountingPage />);
+  await user.click(await screen.findByRole('button', { name: 'ตารางรายวัน' }));
+  const casual = await screen.findByRole('button', { name: 'ขายสด/ขาจร — อาคาร A' });
+  expect(screen.getAllByRole('button', { name: 'ขายสด/ขาจร — อาคาร A' })).toHaveLength(1);
+  const rows = [...document.querySelectorAll('.accounting-daily-matrix__table > tbody > tr')];
+  expect(rows.indexOf(casual.closest('tr')!)).toBeGreaterThan(rows.findIndex((row) => row.textContent?.includes('S002')));
+  const total = screen.getByText('รวม อาคาร A รวมขาจรแล้ว').closest('tr')!;
+  expect(total.textContent).toContain('฿1,398.00');
+  expect(screen.getByRole('button', { name: 'ขายสด/ขาจร — อาคาร B' })).toBeTruthy();
+  await user.click(casual);
+  expect(screen.getByRole('table', { name: 'ขายสด/ขาจร — อาคาร A รายการ' }).textContent).toContain('คนรับเงิน A');
+  expect(screen.getByText('แอดมินลงแทน')).toBeTruthy();
+  await user.selectOptions(screen.getByRole('combobox', { name: 'อาคาร' }), 'building-1');
+  await waitFor(() => expect(screen.queryByRole('button', { name: 'ขายสด/ขาจร — อาคาร B' })).toBeNull());
+  expect(screen.getAllByRole('button', { name: 'ขายสด/ขาจร — อาคาร A' })).toHaveLength(1);
+});

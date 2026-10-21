@@ -198,3 +198,6 @@
 .accounting-page .accounting-shop-table thead tr:first-child th:first-child, .accounting-page .accounting-shop-table tbody tr:not(.accounting-shop-group) > th { min-width: 235px; }
 .accounting-source-context { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; background: #edf5ff; border: 1px solid #c9dcf2; border-radius: 9px; padding: 8px 12px; color: #335779; font-size: .82rem; }
 .accounting-source-context button { min-height: 44px; background: white; border: 1px solid #b5cbe5; border-radius: 7px; color: #155fa9; font: inherit; padding: 7px 12px; }
+
+.accounting-daily-matrix__building-total th small { display: block; font-weight: 400; color: #526476; }
+.accounting-casual-details > td { padding: 12px; background: #f0f6fd; }

@@ -47,7 +47,7 @@ function AreaTable({ report, openDetail }: { report: ExecutiveReport; openDetail
 
 function VolumeTable({ products, label }: { products: ExecutiveReport['products']; label: string }) {
   useLanguage();
-  return <DataTable headings={['ชนิดน้ำแข็ง', 'หน่วย', 'จำนวนส่ง', 'เสียหาย', 'อัตราของเสีย']} label={label}>
+  return <DataTable headings={['ชนิดน้ำแข็ง', 'หน่วย', 'จำนวนส่ง', 'เสียหาย', 'อัตราของเสีย']} numericColumns={[2, 3, 4]} label={label}>
     {products.map((product) => {
       const rate = damageRate(product.delivered, product.damaged);
       return <tr key={product.id}>
@@ -159,7 +159,7 @@ function DebtAgingPanel({ report, openDetail }: {
     title={translateUi('ตารางวิเคราะห์อายุหนี้')}
   >
     <StackBar label={translateUi('อายุหนี้ปัจจุบัน')} segments={segments} />
-    <DataTable headings={['อายุหนี้ปัจจุบัน', 'จำนวนเงิน', 'สัดส่วน', 'ลูกหนี้']} label={translateUi('ตารางวิเคราะห์อายุหนี้')}>
+    <DataTable headings={['อายุหนี้ปัจจุบัน', 'จำนวนเงิน', 'สัดส่วน', 'ลูกหนี้']} numericColumns={[1, 2, 3]} label={translateUi('ตารางวิเคราะห์อายุหนี้')}>
       {aging.map((row) => {
         return <tr key={row.bucket}>
           <td data-label={translateUi('อายุหนี้ปัจจุบัน')}>

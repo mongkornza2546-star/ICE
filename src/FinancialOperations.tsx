@@ -140,6 +140,7 @@ export function FinancialOperations({
     : null;
   const { getOrCreatePendingRequest, clearPendingRequest } = usePendingRequests();
   const [runId, setRunId] = useState<string | null>(initialDemoRunId);
+  const [collectionClosed, setCollectionClosed] = useState(false);
   const [queue, setQueue] = useState<QueueShop[]>(initialDemoRunId ? demoData?.queue ?? [] : []);
   const [receivables, setReceivables] = useState<Receivable[]>(demoData?.receivables ?? []);
   const [approvals, setApprovals] = useState<Approval[]>(demoData?.approvals ?? []);
@@ -269,7 +270,8 @@ export function FinancialOperations({
     if (focusLoadRequestId && focusLoadRequestId !== focusLoadRequestRef.current) return;
     const nextRunId = collectionQueue.runId;
     setRunId(nextRunId);
-    if (nextRunId) {
+    setCollectionClosed(collectionQueue.isClosed);
+    if (nextRunId || collectionQueue.isClosed) {
       const queueWithImages = await withPublicShopImages(collectionQueue.queue);
       const nextQueue = removeCancelledDeliveries(queueWithImages, cancelledEventIdsRef.current);
       if (focusLoadRequestId && focusLoadRequestId !== focusLoadRequestRef.current) return;
@@ -638,6 +640,7 @@ export function FinancialOperations({
     && paymentDate <= today;
   const paymentReady = Boolean(
     canCollectShopPayments
+    && !collectionClosed
     && paymentDateValid
     && selectedShop
     && selectedChargeIds.length > 0
@@ -1029,6 +1032,7 @@ export function FinancialOperations({
   return (
     <div className="financial-ops" ref={pageRef}>
       {error ? <p className="employee-error" role="alert"><WarningCircle />{translateUi(error)}</p> : null}
+      {collectionClosed ? <p role="status">{translateUi('ปิดรอบแล้ว ยังดูร้านค้าและยอดค้างชำระได้ แต่บันทึกรับเงินในวันนี้ไม่ได้')}</p> : null}
       {success ? <p className="employee-success"><CheckCircle weight="fill" />{translateUi(success)}</p> : null}
       {focusRequest && (focusLoading || focusLoadError) ? (
         <section className="financial-ops__focus-state" aria-live="polite" role={focusLoadError ? 'alert' : 'status'}>
@@ -1090,6 +1094,7 @@ export function FinancialOperations({
             onSelectShop={chooseShop}
             queue={queue}
             runId={runId}
+            isClosed={collectionClosed}
           /> : employeeView === 'history' ? <PaymentHistorySection
             key={historyDate}
             busy={busy}
@@ -1155,7 +1160,8 @@ export function FinancialOperations({
           allocatedAmount={allocatedAmount}
           amount={amount}
           busy={busy}
-          canRecordPayment={canCollectShopPayments}
+          canRecordPayment={canCollectShopPayments && !collectionClosed}
+          collectionClosed={collectionClosed}
           canBackdatePayment={userRole === 'admin'}
           receivedDate={paymentDate}
           today={today}

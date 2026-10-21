@@ -14,11 +14,13 @@ import { translateUi, useLanguage } from '../../../i18n';
 
 export function CollectionRunSection({
   runId,
+  isClosed = false,
   queue,
   showQueue = true,
   onSelectShop,
 }: {
   runId: string | null;
+  isClosed?: boolean;
   queue: QueueShop[];
   showQueue?: boolean;
   onSelectShop: (shop: QueueShop, trigger: HTMLButtonElement) => void;
@@ -58,8 +60,8 @@ export function CollectionRunSection({
       <div className="financial-ops__title">
         <div><Coins /><span><h2>{translateUi('คิวรับเงินร้านค้า')}</h2><p>{translateUi('รวมยอดที่ถึงกำหนดและยอดค้างโดยอัตโนมัติ')}</p></span></div>
       </div>
-      {showQueue && !runId ? <p className="financial-ops__empty">{translateUi('ไม่สามารถเปิดคิวรับเงินของวันนี้ได้')}</p> : null}
-      {showQueue && runId && queue.length > 0 ? <div className="financial-ops__queue-filters">
+      {showQueue && !runId && !isClosed ? <p className="financial-ops__empty">{translateUi('ไม่สามารถเปิดคิวรับเงินของวันนี้ได้')}</p> : null}
+      {showQueue && (runId || isClosed) && queue.length > 0 ? <div className="financial-ops__queue-filters">
         <label className="financial-ops__queue-search">
           <MagnifyingGlass aria-hidden="true" size={20} />
           <input
@@ -81,7 +83,7 @@ export function CollectionRunSection({
           </select>
         </label>
       </div> : null}
-      {showQueue && runId && (queue.length === 0 ? <p className="financial-ops__empty">{translateUi('ไม่มียอดค้างที่ต้องเก็บ')}</p> : visibleQueue.length === 0 ? <p className="financial-ops__empty">{normalizedQuery ? translateUi('ไม่พบร้านค้าที่ค้นหา') : translateUi('ไม่พบยอดค้างในตึกหรือโซนที่เลือก')}</p> : (
+      {showQueue && (runId || isClosed) && (queue.length === 0 ? <p className="financial-ops__empty">{translateUi('ไม่มียอดค้างที่ต้องเก็บ')}</p> : visibleQueue.length === 0 ? <p className="financial-ops__empty">{normalizedQuery ? translateUi('ไม่พบร้านค้าที่ค้นหา') : translateUi('ไม่พบยอดค้างในตึกหรือโซนที่เลือก')}</p> : (
         <div className="financial-ops__shop-grid">
           {visibleQueue.map((shop) => (
             <button

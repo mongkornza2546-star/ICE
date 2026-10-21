@@ -17,13 +17,23 @@ describe('automatic collection context', () => {
     supabaseMock.rpc.mockReset();
   });
 
-  it('loads the unified shop queue after obtaining the authorized daily context', async () => {
+  it('keeps outstanding shops visible on a closed date without opening a collection context', async () => {
+    const queue = [{ shop_id: 'shop-1', outstanding_amount: 120, charges: [] }];
+    supabaseMock.rpc.mockImplementation(async (name: string) => name === 'get_daily_shop_collection_queue'
+      ? { data: { collection_run_id: null, status: 'closed', queue }, error: null }
+      : { data: null, error: new Error('The selected business date is already closed') });
+
+    expect(await loadCurrentCollectionQueue('2026-10-21')).toEqual({ runId: null, isClosed: true, queue });
+    expect(supabaseMock.rpc).toHaveBeenCalledTimes(1);
+  });
+
+  it('loads the unified shop queue with its current payment context', async () => {
     const queue = [{ shop_id: 'shop-1', collection_scope: 'shop', outstanding_amount: 1920, charges: [] }];
     supabaseMock.rpc.mockResolvedValueOnce({
-      data: { collection_run_id: 'run-1', service_date: '2026-10-12', status: 'open' }, error: null,
-    }).mockResolvedValueOnce({ data: queue, error: null });
-    expect(await loadCurrentCollectionQueue('2026-10-12')).toEqual({ runId: 'run-1', queue });
-    expect(supabaseMock.rpc).toHaveBeenLastCalledWith('get_shop_collection_queue', { p_collection_run_id: 'run-1' });
+      data: { collection_run_id: 'run-1', status: 'open', queue }, error: null,
+    });
+    expect(await loadCurrentCollectionQueue('2026-10-12')).toEqual({ runId: 'run-1', isClosed: false, queue });
+    expect(supabaseMock.rpc).toHaveBeenLastCalledWith('get_daily_shop_collection_queue', { p_service_date: '2026-10-12' });
   });
 
   it('coalesces concurrent ensures and caches the current service date', async () => {

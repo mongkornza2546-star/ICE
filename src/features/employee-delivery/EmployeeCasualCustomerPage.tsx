@@ -47,6 +47,8 @@ const paymentLabels: Record<PaymentMethod, string> = {
 };
 
 type RecordPayload = {
+  saleBuildingId?: string;
+  cashReceivedBy?: string | null;
   roundId: string;
   iceTypeId: string;
   quantity: number;
@@ -173,6 +175,8 @@ export function EmployeeCasualCustomerPage({
   const [iceTypeId, setIceTypeId] = useState('');
   const [quantityInput, setQuantityInput] = useState('');
   const quantity = Number(quantityInput || 0);
+  const [saleBuildingId, setSaleBuildingId] = useState('');
+  const [cashReceivedBy, setCashReceivedBy] = useState('');
   const [kind, setKind] = useState<CasualTransactionKind>('paid');
   const [saleAmount, setSaleAmount] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
@@ -253,6 +257,8 @@ export function EmployeeCasualCustomerPage({
       .then((next) => {
         if (cancelled) return;
         setContext(next);
+        setSaleBuildingId(next.sale_buildings?.length === 1 ? next.sale_buildings[0].id : '');
+        setCashReceivedBy(next.default_receiver_id ?? '');
         setIceTypeId('');
       })
       .catch((cause: unknown) => {
@@ -281,6 +287,8 @@ export function EmployeeCasualCustomerPage({
     && (!needsEvidence || Boolean(evidence));
   const canSubmit = !busy && !loading && Boolean(selectedItem)
     && !quantityError
+    && (!context?.sale_buildings || context.sale_buildings.some((building) => building.id === saleBuildingId))
+    && (!context?.cash_receivers || kind === 'free' || context.cash_receivers.some((receiver) => receiver.id === cashReceivedBy))
     && (kind === 'free' || validPaid) && !context?.stock_closed;
 
   const resetForm = () => {
@@ -294,6 +302,7 @@ export function EmployeeCasualCustomerPage({
   const submit = async () => {
     if (!canSubmit) return;
     const signature = `casual-record:${JSON.stringify({
+      saleBuildingId, cashReceivedBy: kind === 'paid' ? cashReceivedBy : null,
       roundId: round.id, iceTypeId, quantity, kind, sale: kind === 'paid' ? sale : 0,
       paymentMethod: kind === 'paid' ? paymentMethod : null,
       received: kind === 'paid' ? sale : null,
@@ -314,6 +323,7 @@ export function EmployeeCasualCustomerPage({
         recordRetryRef.current = { ...retry, evidencePath };
       }
       const result = await recordTransaction({
+        ...(context?.sale_buildings ? { saleBuildingId, cashReceivedBy: kind === 'paid' ? cashReceivedBy : null } : {}),
         roundId: round.id,
         iceTypeId,
         quantity,
@@ -453,6 +463,17 @@ export function EmployeeCasualCustomerPage({
             return <p key={item.ice_type_id}>{ice?.name}{translateUi(' · สะสม ')}{money.format(item.sales_amount)}{translateUi(' · นับออก ')}{item.quantity} {ice?.unit}{translateUi(' · เศษ ')}{money.format(item.remainder_amount)} / {money.format(item.unit_price)}{translateUi(' ต่อ')}{ice?.unit}</p>;
           })}
         </section> : null}
+        {context.sale_buildings ? <section className="employee-entry-section employee-casual-attribution" aria-label={translateUi('พื้นที่ขายและผู้รับเงิน')}>
+          <label><span>{translateUi('ตึกที่ขาย')}</span><select aria-label={translateUi('ตึกที่ขาย')} disabled={busy || context.stock_closed} value={saleBuildingId} onChange={(event) => setSaleBuildingId(event.target.value)}>
+            <option value="">{translateUi('เลือกตึกที่ขาย')}</option>
+            {context.sale_buildings.map((building) => <option key={building.id} value={building.id}>{building.name}</option>)}
+          </select></label>
+          {kind === 'paid' && context.cash_receivers ? <label><span>{translateUi('ผู้รับเงินจริง')}</span><select aria-label={translateUi('ผู้รับเงินจริง')} disabled={busy || context.stock_closed || context.cash_receivers.length === 1} value={cashReceivedBy} onChange={(event) => setCashReceivedBy(event.target.value)}>
+            <option value="">{translateUi('เลือกผู้รับเงินจริง')}</option>
+            {context.cash_receivers.map((receiver) => <option key={receiver.id} value={receiver.id}>{receiver.name}</option>)}
+          </select></label> : null}
+          <small>{translateUi('เลือกตึกให้ตรงกับใบจด · สต๊อกตัดจาก ')}{context.stock_source.name}</small>
+        </section> : null}
         <div className="employee-pos-layout employee-pos-layout--casual">
           <section className="employee-pos-products" aria-labelledby="casual-sale-title">
             <div className="employee-pos-heading">
@@ -525,6 +546,7 @@ export function EmployeeCasualCustomerPage({
           {context.history.length === 0 ? <p className="employee-casual-history__empty">{translateUi('ยังไม่มีรายการขาจรวันนี้')}</p> : <div className="employee-casual-history__list">{context.history.map((item) => <article className={item.status === 'voided' ? 'is-voided' : ''} key={item.id}>
             <div><strong>{item.ice_type_name} · {item.fulfillment_mode === 'loose' ? item.transaction_kind === 'paid' ? translateUi('แบ่งขายสะสมตามยอดเงิน') : translateUi('แจกไม่ระบุจำนวน') : `${Number(item.quantity).toLocaleString('th-TH')} ${item.ice_type_unit}`}</strong><small>{dateTime.format(new Date(item.recorded_at))} · {item.transaction_kind === 'paid' ? translateUi(paymentLabels[item.payment_method!]) : translateUi('แจกฟรี')}{item.receipt_number ? ` · ${item.receipt_number}` : ''}</small>{item.status === 'voided' ? <em>{translateUi('ยกเลิกแล้ว · ')}{item.void_reason}</em> : null}</div>
             <b>{item.transaction_kind === 'paid' ? money.format(Number(item.sale_amount)) : translateUi('ฟรี')}</b>
+            {item.sale_building_name ? <p>{translateUi('ขายที่ ')}{item.sale_building_name}{item.receiver_name ? ` · ${translateUi('ผู้รับเงิน ')}${item.receiver_name}` : ''}</p> : null}
             <div className="employee-casual-history__actions">{item.receipt_number ? <button onClick={() => { void printReceipt(item.id); }} type="button"><Printer size={16} />{translateUi('พิมพ์')}</button> : null}{item.status === 'active' && !context.stock_closed ? <button onClick={() => setVoidTarget(item)} type="button">{translateUi('ยกเลิก')}</button> : null}</div>
           </article>)}</div>}
         </section>

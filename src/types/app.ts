@@ -153,6 +153,10 @@ export interface CasualTransactionItem {
 }
 
 export interface CasualTransactionHistoryItem {
+  sale_building_id?: string | null;
+  sale_building_name?: string | null;
+  cash_received_by?: string | null;
+  receiver_name?: string | null;
   id: string;
   ice_type_id: string;
   ice_type_name: string;
@@ -173,6 +177,9 @@ export interface CasualTransactionHistoryItem {
 }
 
 export interface CasualTransactionContext {
+  sale_buildings?: Array<{ id: string; name: string }>;
+  cash_receivers?: Array<{ id: string; name: string }>;
+  default_receiver_id?: string;
   loose_stock?: Array<{ ice_type_id: string; unit_price: number; sales_amount: number; quantity: number; remainder_amount: number }>;
   round_id: string;
   service_date: string;

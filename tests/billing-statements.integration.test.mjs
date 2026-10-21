@@ -234,6 +234,73 @@ async function shopPay(db, allocations, { expected = 125, received = allocations
   [shopId, JSON.stringify(allocations), received, runId, expected, requestKey(key)])).rows[0].result;
 }
 
+test('closed days retain the unified outstanding queue without reopening or permitting payment', async (t) => {
+  const db = await createDatabase(t);
+  await db.exec(`alter table public.collection_runs alter id set default gen_random_uuid(),
+    add opened_by uuid;`);
+  const context = migration('0164_restore_courier_collection_default_access');
+  await db.exec(context.slice(context.indexOf('create or replace function public.ensure_daily_collection_context'),
+    context.indexOf('create or replace function public.is_collection_run_member')));
+  await issue(db, [newBill]);
+  await shopPay(db, [{ charge_id: oldBill, amount: 20 }]);
+  const expectedQueue = await shopQueue(db);
+  assert.equal(expectedQueue[0].outstanding_amount, 105);
+  const today = (await db.query("select (clock_timestamp() at time zone 'Asia/Bangkok')::date::text as date")).rows[0].date;
+  await db.exec(`update public.collection_runs set status = 'closed';
+    insert into public.daily_aggregate_stock_closures(service_date) values ('${today}');`);
+  await assert.rejects(db.query('select public.ensure_daily_collection_context($1)', [today]), /already closed/);
+  await assert.rejects(shopQueue(db), /stale or closed/);
+
+  await db.exec(migration('0248_closed_day_collection_queue'));
+  const readQueue = async (date = today) => (await db.query(
+    'select public.get_daily_shop_collection_queue($1) as result', [date])).rows[0].result;
+  const result = await readQueue();
+  assert.equal(result.status, 'closed');
+  assert.equal(result.collection_run_id, null);
+  assert.deepEqual(result.queue, expectedQueue);
+  for (const role of ['courier', 'round_lead', 'admin']) {
+    await db.exec(`set test.role = '${role}'; set test.can_collect = 'false';`);
+    assert.deepEqual((await readQueue()).queue, expectedQueue);
+  }
+  await db.exec("set test.can_collect = 'true'");
+  await assert.rejects(shopPay(db, [{ charge_id: oldBill, amount: 10 }], { expected: 105, key: 91 }), /closed|outstanding changed/i);
+  assert.deepEqual((await db.query('select status from collection_runs')).rows, [{ status: 'closed' }]);
+
+  await db.exec('delete from daily_aggregate_stock_closures');
+  assert.equal((await readQueue()).status, 'closed', 'a closed collection run alone remains readable');
+  await db.exec(`insert into daily_aggregate_stock_closures(service_date) values ('${today}');
+    update collection_runs set status = 'open';`);
+  assert.equal((await readQueue()).status, 'closed', 'a daily closure wins over an open legacy run');
+
+  // No run on the date must still display debt and must not create a context.
+  await db.exec('delete from public.collection_runs');
+  const withoutRun = await readQueue();
+  assert.equal(withoutRun.queue[0].outstanding_amount, 105);
+  assert.equal(withoutRun.status, 'closed');
+  assert.equal((await db.query('select count(*)::int as count from collection_runs')).rows[0].count, 0);
+
+  // Credit not yet due stays hidden unless an active statement makes it due.
+  await db.exec("update delivery_charges set due_date = service_date + 10");
+  assert.deepEqual((await readQueue()).queue[0].charges.map(charge => charge.charge_id), [newBill]);
+  await assert.rejects(readQueue('2000-01-01'), /current Bangkok business date/);
+  await assert.rejects(readQueue('2999-01-01'), /current Bangkok business date/);
+  await db.exec('create or replace function public.is_active_user() returns boolean language sql as $$ select false $$');
+  await assert.rejects(readQueue(), /active user/);
+  assert.equal((await db.query(`select has_function_privilege('anon',
+    'public.get_daily_shop_collection_queue(date)', 'execute') as allowed`)).rows[0].allowed, false);
+  assert.equal((await db.query(`select has_function_privilege('authenticated',
+    'public.get_shop_collection_queue_for_date(date,uuid)', 'execute') as allowed`)).rows[0].allowed, false);
+
+  // Opening a new business day still obtains the regular authorized context.
+  await db.exec(`create or replace function public.is_active_user() returns boolean language sql as $$ select true $$;
+    alter table collection_runs alter status set default 'open';
+    delete from daily_aggregate_stock_closures;`);
+  const open = await readQueue();
+  assert.equal(open.status, 'open');
+  assert.ok(open.collection_run_id);
+  assert.equal((await readQueue()).collection_run_id, open.collection_run_id);
+});
+
 test('shared employee history supports another collector receipts without granting void access', async (t) => {
   const db = await createDatabase(t);
   const active = await shopPay(db, [{ charge_id: oldBill, amount: 50 }]);

@@ -87,7 +87,6 @@ export function CollectionDesk({
   serviceDate,
   selectedShop,
   busy,
-  runId,
   paymentPanel,
   onRefresh,
   onHistoryDateChange,
@@ -343,10 +342,8 @@ export function CollectionDesk({
             <span className="collection-desk__auto-refresh"><i aria-hidden="true" />{translateUi('อัปเดตอัตโนมัติ 30 วิ')}</span>
           </span>
         </div>
-        {runId ? (
-          <button disabled={busy} onClick={onRefresh} type="button">
-            {translateUi('รีเฟรชยอดล่าสุด')}</button>
-        ) : null}
+        <button disabled={busy} onClick={onRefresh} type="button">
+          {translateUi('รีเฟรชยอดล่าสุด')}</button>
       </header>
 
       <section className="collection-desk__stats" aria-label={translateUi('สรุปการเก็บเงิน')}>
