@@ -157,6 +157,13 @@ for (const daysAgo of [0, 1]) test(`admin appends after stock/cash close (${days
 
     const preview = await value(db, `select public.get_event_delivery_pos_context('${eventStop}') as value`);
     assert.equal(preview.stock_check_required,false);
+    const stockPart = await value(db, `select public.get_event_delivery_pos_context_part('${eventStop}','stock') as value`);
+    const salePart = await value(db, `select public.get_event_delivery_pos_context_part('${eventStop}','sale') as value`);
+    assert.deepEqual({ ...salePart, stock_source: stockPart.stock_source, stock_check_required: stockPart.stock_check_required,
+      items: salePart.items.map(item => ({ ...item,
+        stock_quantity: stockPart.items.find(stock => stock.ice_type_id === item.ice_type_id).stock_quantity,
+      })),
+    }, preview);
     const key=randomUUID();
     const recordEvent=()=>value(db, `select public.record_event_ice_delivery('${eventStop}',$1::jsonb,'delivered',null,now(),$2) as value`,
       [JSON.stringify([{ice_type_id:ice,quantity:1.5}]),key]);

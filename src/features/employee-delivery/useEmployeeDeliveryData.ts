@@ -941,6 +941,10 @@ export function useEmployeeDeliveryData({
       if (requestId !== posContextRequestId.current) return;
       const context = withKnownIceTypeImages(loaded, iceTypes);
       setPosContext(context);
+      if (!posContext) {
+        setPaymentTerm(context.payment_profile?.allowed_payment_terms.includes('credit') ? 'credit' : 'end_of_day');
+        setPaymentMethod(context.payment_profile?.default_payment_method ?? 'cash');
+      }
       setDeliveryQuantities((current) => Object.fromEntries(
         iceTypes.map((iceType) => {
           const available = context.items.find((item) => item.ice_type_id === iceType.id)?.stock_quantity ?? 0;
@@ -953,7 +957,7 @@ export function useEmployeeDeliveryData({
     } finally {
       if (requestId === posContextRequestId.current) setLoadingPosContext(false);
     }
-  }, [gateway, iceTypes, selectedCard, serviceDate]);
+  }, [gateway, iceTypes, posContext, selectedCard, serviceDate]);
 
   const refreshShopCatalog = useCallback(() => {
     setSuccess(null);
@@ -1172,6 +1176,10 @@ export function useEmployeeDeliveryData({
       return;
     }
     if (!retryPayload && isDelivery && gateway.loadDeliveryPosContext) {
+      if (loadingPosContext || posContextError || !posContext || posContext.client_cache?.stale) {
+        setEntryError('ต้องตรวจสอบสต๊อกล่าสุดก่อนส่ง กรุณาลองโหลดข้อมูลอีกครั้ง');
+        return;
+      }
       if (!posContext?.payment_profile) {
         setEntryError('ร้านนี้ยังไม่มีเงื่อนไขการชำระเงิน จึงยังบันทึกส่งไม่ได้');
         return;

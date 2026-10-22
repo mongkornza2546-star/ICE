@@ -9,8 +9,9 @@ import { useEmployeeDeliveryData } from '../src/features/employee-delivery/useEm
 import { publishDataChange } from '../src/lib/dataChange';
 
 const supabaseMock = vi.hoisted(() => {
-  const state: { postgresChangeListener: (() => void) | null } = {
+  const state: { postgresChangeListener: (() => void) | null; posSignals: AbortSignal[] } = {
     postgresChangeListener: null,
+    posSignals: [],
   };
   const channel = {} as {
     on: ReturnType<typeof vi.fn>;
@@ -28,6 +29,7 @@ const supabaseMock = vi.hoisted(() => {
 
   const client = {
     rpc: vi.fn(),
+    from: vi.fn(),
     storage: {
       from: vi.fn(() => ({ getPublicUrl })),
     },
@@ -38,7 +40,18 @@ const supabaseMock = vi.hoisted(() => {
   return { channel, client, getPublicUrl, state };
 });
 
-vi.mock('../src/lib/supabase', () => ({ supabase: supabaseMock.client }));
+vi.mock('../src/lib/supabase', () => ({ supabase: {
+  ...supabaseMock.client,
+  rpc: (...args: unknown[]) => {
+    const response = Promise.resolve(supabaseMock.client.rpc(...args));
+    return Object.assign(response, {
+      abortSignal(signal: AbortSignal) {
+        supabaseMock.state.posSignals.push(signal);
+        return response;
+      },
+    });
+  },
+} }));
 
 import {
   EmployeeDeliveryWorkspace,
@@ -47,7 +60,11 @@ import {
 
 beforeEach(() => {
   supabaseMock.state.postgresChangeListener = null;
+  supabaseMock.state.posSignals = [];
   supabaseMock.client.rpc.mockReset();
+  supabaseMock.client.from.mockReturnValue({ select: () => ({ eq: () => ({
+    order: async () => ({ data: [], error: null }),
+  }) }) });
   supabaseMock.client.storage.from.mockClear();
   supabaseMock.getPublicUrl.mockClear();
   supabaseMock.getPublicUrl.mockImplementation((path: string) => ({
@@ -130,6 +147,302 @@ const stockState: EmployeeStockState = {
 };
 
 describe('employee live shop loading', () => {
+  it.each([false, true])('invalidates pre-withdrawal POS reads without waiting for them (split: %s)', async split => {
+    const pending: Array<(value: unknown) => void> = [];
+    supabaseMock.client.rpc.mockImplementation((name: string) => {
+      if (name === 'get_employee_active_session') return Promise.resolve({ data: { sessions: [], pos_context_parts_version: split ? 1 : undefined }, error: null });
+      if (name === 'record_employee_stock_transfer') return Promise.resolve({ data: stockState, error: null });
+      return new Promise(resolve => { pending.push(resolve); });
+    });
+    const gateway = createSupabaseGateway();
+    await gateway.loadReferenceData('2026-08-11');
+    const options = { destinationKind: 'regular' as const, serviceDate: '2026-08-11', forceRefresh: false };
+    const oldRead = gateway.loadDeliveryPosContext!('stop-1', options).catch(error => error);
+    const parts = split ? 2 : 1;
+    await gateway.recordEmployeeStockTransfer({ roundId: 'round-1', items: [{ ice_type_id: 'ice-1', quantity: 5 }], idempotencyKey: 'withdrawal-1' });
+    expect(supabaseMock.state.posSignals.slice(0, parts).every(signal => signal.aborted)).toBe(true);
+    const reopened = gateway.loadDeliveryPosContext!('stop-1', options);
+    expect(pending).toHaveLength(parts * 2);
+    // A late old response must neither become usable nor remove the new flight.
+    pending.slice(0, parts).forEach(resolve => resolve({ data: posContext, error: null }));
+    expect(await oldRead).toBeInstanceOf(Error);
+    const concurrent = gateway.loadDeliveryPosContext!('stop-1', options);
+    expect(pending).toHaveLength(parts * 2);
+    pending.slice(parts).forEach(resolve => resolve({ data: { ...posContext,
+      items: [{ ...posContext.items[0], stock_quantity: 15 }],
+    }, error: null }));
+    expect((await reopened).items[0].stock_quantity).toBe(15);
+    expect((await concurrent).items[0].stock_quantity).toBe(15);
+    expect(supabaseMock.state.posSignals.slice(parts).every(signal => !signal.aborted)).toBe(true);
+  });
+
+  it('invalidates another shop read when a delivery reduces the shared holding', async () => {
+    let finishOld!: (value: unknown) => void;
+    let reads = 0;
+    const context = { ...posContext, round_stop_id: 'stop-2' };
+    supabaseMock.client.rpc.mockImplementation((name: string) => {
+      if (name === 'record_delivery_with_vat_check') return Promise.resolve({ data: {}, error: null });
+      reads += 1;
+      if (reads === 1) return new Promise(resolve => { finishOld = resolve; });
+      return Promise.resolve({ data: { ...context, items: [{ ...context.items[0], stock_quantity: 7 }] }, error: null });
+    });
+    const gateway = createSupabaseGateway();
+    const options = { destinationKind: 'regular' as const, serviceDate: '2026-08-11' };
+    const oldRead = gateway.loadDeliveryPosContext!('stop-2', options).catch(error => error);
+    await gateway.recordDelivery({ roundStopId: 'stop-1', status: 'delivered', items: [{ ice_type_id: 'ice-1', quantity: 3 }], note: null, clientRecordedAt: '2026-08-11T01:00:00Z', idempotencyKey: 'sale-1' });
+    expect((await gateway.loadDeliveryPosContext!('stop-2', options)).items[0].stock_quantity).toBe(7);
+    finishOld({ data: context, error: null });
+    expect(await oldRead).toBeInstanceOf(Error);
+  });
+
+  it('never reads an old stock snapshot from local storage when the server is unavailable', async () => {
+    window.localStorage.setItem('ice-employee-pos-context:v1:2026-08-11:stop-1', JSON.stringify({
+      cachedAt: Date.now(), context: posContext,
+    }));
+    supabaseMock.client.rpc.mockResolvedValue({ data: null, error: new Error('network unavailable') });
+    await expect(createSupabaseGateway().loadDeliveryPosContext!('stop-1', {
+      destinationKind: 'regular', serviceDate: '2026-08-11',
+    })).rejects.toThrow('network unavailable');
+    expect(supabaseMock.client.rpc).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not join an older holding-stock read when refreshing after a withdrawal', async () => {
+    let finishOld!: (value: unknown) => void;
+    supabaseMock.client.rpc
+      .mockReturnValueOnce(new Promise(resolve => { finishOld = resolve; }))
+      .mockResolvedValueOnce({ data: { ...stockState, holding_location: {
+        ...stockState.holding_location, balances: [{ ice_type_id: 'ice-1', ice_type_name: 'น้ำแข็ง', unit: 'ถุง', quantity: 5 }],
+      } }, error: null });
+    const gateway = createSupabaseGateway();
+    const oldRead = gateway.loadEmployeeStockState('round-1');
+    const current = await gateway.loadEmployeeStockState('round-1');
+    expect(current.holding_location.balances[0].quantity).toBe(5);
+    finishOld({ data: stockState, error: null });
+    await oldRead;
+    expect(supabaseMock.client.rpc).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([false, true])('accepts a successful eleven-second read (split: %s)', async (split) => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+    try {
+      supabaseMock.client.rpc.mockImplementation((name: string) => name === 'get_employee_active_session'
+        ? Promise.resolve({ data: { sessions: [], pos_context_parts_version: split ? 1 : undefined }, error: null })
+        : new Promise(resolve => setTimeout(() => resolve({ data: posContext, error: null }), 11_000)));
+      const gateway = createSupabaseGateway();
+      await gateway.loadReferenceData('2026-08-11');
+      const result = vi.fn();
+      const options = { destinationKind: 'regular' as const, serviceDate: '2026-08-11' };
+      const request = gateway.loadDeliveryPosContext!('stop-1', options).then(result, result);
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(result).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1_000);
+      await request;
+      expect(result).toHaveBeenCalledWith(expect.objectContaining({ round_stop_id: 'stop-1' }));
+      expect(supabaseMock.state.posSignals.every(signal => !signal.aborted)).toBe(true);
+      const nextRead = gateway.loadDeliveryPosContext!('stop-1', options);
+      await vi.advanceTimersByTimeAsync(11_000);
+      expect((await nextRead).items[0].stock_quantity).toBe(10);
+      expect(supabaseMock.client.rpc).toHaveBeenCalledTimes(split ? 5 : 3);
+    } finally { vi.useRealTimers(); }
+  });
+
+  it.each(['regular', 'event'] as const)('loads %s POS stock and sale data concurrently', async (destinationKind) => {
+    let finishStock!: (value: unknown) => void;
+    let finishSale!: (value: unknown) => void;
+    const stockRequest = new Promise((resolve) => { finishStock = resolve; });
+    const saleRequest = new Promise((resolve) => { finishSale = resolve; });
+    supabaseMock.client.rpc.mockImplementation((name: string, args?: { p_part?: string }) => {
+      if (name === 'get_employee_active_session') return Promise.resolve({ data: { sessions: [], pos_context_parts_version: 1 }, error: null });
+      return args?.p_part === 'stock' ? stockRequest : saleRequest;
+    });
+    const gateway = createSupabaseGateway();
+    await gateway.loadReferenceData('2026-08-11');
+    const resolved = vi.fn();
+    const request = gateway.loadDeliveryPosContext!('stop-1', { destinationKind, serviceDate: '2026-08-11' }).then(resolved);
+    const rpc = destinationKind === 'event' ? 'get_event_delivery_pos_context_part' : 'get_delivery_pos_context_part';
+    expect(supabaseMock.client.rpc).toHaveBeenCalledWith(rpc, { p_round_stop_id: 'stop-1', p_part: 'stock' });
+    expect(supabaseMock.client.rpc).toHaveBeenCalledWith(rpc, { p_round_stop_id: 'stop-1', p_part: 'sale' });
+    const { stock_source, items, ...sale } = posContext;
+    finishSale({ data: { ...sale, items: items.map(({ stock_quantity: _, ...item }) => item) }, error: null });
+    await Promise.resolve();
+    expect(resolved).not.toHaveBeenCalled();
+    finishStock({ data: { round_id: posContext.round_id, round_stop_id: posContext.round_stop_id,
+      service_date: posContext.service_date, stock_source,
+      items: items.map(({ ice_type_id, stock_quantity }) => ({ ice_type_id, stock_quantity })),
+    }, error: null });
+    await request;
+    expect(resolved).toHaveBeenCalledWith(expect.objectContaining(posContext));
+    await gateway.loadDeliveryPosContext!('stop-1', { destinationKind, serviceDate: '2026-08-11' });
+    expect(supabaseMock.client.rpc).toHaveBeenCalledTimes(5); // startup + fresh pair per visit
+  });
+
+  it('rejects mismatched POS parts without caching an incomplete context', async () => {
+    let mismatched = true;
+    supabaseMock.client.rpc.mockImplementation(async (name: string, args?: { p_part?: string }) => {
+      if (name === 'get_employee_active_session') return { data: { sessions: [], pos_context_parts_version: 1 }, error: null };
+      return { data: { ...posContext, items: args?.p_part === 'stock' && mismatched ? [] : posContext.items }, error: null };
+    });
+    const gateway = createSupabaseGateway();
+    await gateway.loadReferenceData('2026-08-11');
+    const options = { destinationKind: 'regular' as const, serviceDate: '2026-08-11' };
+    await expect(gateway.loadDeliveryPosContext!('stop-1', options)).rejects.toThrow('ข้อมูลร้านเปลี่ยนระหว่างโหลด');
+    mismatched = false;
+    await expect(gateway.loadDeliveryPosContext!('stop-1', options)).resolves.toMatchObject(posContext);
+    expect(supabaseMock.client.rpc).toHaveBeenCalledTimes(5);
+  });
+
+  it.each([false, true])('rejects the read instead of reusing saved stock if one POS part fails (other stalled: %s)', async (stallSale) => {
+    let failStock = false;
+    supabaseMock.client.rpc.mockImplementation(async (name: string, args?: { p_part?: string }) => {
+      if (name === 'get_employee_active_session') return { data: { sessions: [], pos_context_parts_version: 1 }, error: null };
+      if (failStock && args?.p_part === 'stock') return { data: null, error: new Error('network unavailable') };
+      if (failStock && stallSale) return new Promise(() => {});
+      return { data: { ...posContext, items: [{ ...posContext.items[0], unit_price: failStock ? 100 : 60 }] }, error: null };
+    });
+    const gateway = createSupabaseGateway();
+    await gateway.loadReferenceData('2026-08-11');
+    const options = { destinationKind: 'regular' as const, serviceDate: '2026-08-11' };
+    await gateway.loadDeliveryPosContext!('stop-1', options);
+    failStock = true;
+    await expect(gateway.loadDeliveryPosContext!('stop-1', { ...options, forceRefresh: true })).rejects.toThrow('network unavailable');
+    expect(supabaseMock.state.posSignals).toHaveLength(4);
+    expect(supabaseMock.state.posSignals.slice(2).every(signal => signal.aborted)).toBe(true);
+  });
+
+  it('times out an incomplete split pair and retries both parts without accepting a late response', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+    try {
+      let finishStock!: (value: unknown) => void;
+      const slowStock = new Promise((resolve) => { finishStock = resolve; });
+      let firstStock = true;
+      supabaseMock.client.rpc.mockImplementation(async (name: string, args?: { p_part?: string }) => {
+        if (name === 'get_employee_active_session') return { data: { sessions: [], pos_context_parts_version: 1 }, error: null };
+        if (args?.p_part === 'stock' && firstStock) { firstStock = false; return slowStock; }
+        return { data: { ...posContext, items: [{ ...posContext.items[0], stock_quantity: 79 }] }, error: null };
+      });
+      const gateway = createSupabaseGateway();
+      await gateway.loadReferenceData('2026-08-11');
+      const options = { destinationKind: 'regular' as const, serviceDate: '2026-08-11' };
+      const result = vi.fn();
+      void gateway.loadDeliveryPosContext!('stop-1', options).then(result, result);
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(result).toHaveBeenCalledWith(expect.any(Error));
+      expect(supabaseMock.state.posSignals).toHaveLength(2);
+      expect(supabaseMock.state.posSignals.every(signal => signal.aborted)).toBe(true);
+      expect((await gateway.loadDeliveryPosContext!('stop-1', options)).items[0].stock_quantity).toBe(79);
+      finishStock({ data: posContext, error: null });
+      await vi.advanceTimersByTimeAsync(0);
+      expect((await gateway.loadDeliveryPosContext!('stop-1', options)).items[0].stock_quantity).toBe(79);
+      expect(supabaseMock.client.rpc).toHaveBeenCalledTimes(7);
+    } finally { vi.useRealTimers(); }
+  });
+
+  it('retries a failed initial shop load in place and preserves the delivery draft', async () => {
+    let finishRetry!: (value: DeliveryPosContext) => void;
+    const profile = {
+      allowed_payment_terms: ['credit'] as const,
+      default_payment_term: 'credit' as const,
+      allowed_payment_methods: ['bank_transfer'] as const,
+      default_payment_method: 'bank_transfer' as const,
+      cash_reference_required: false, cash_evidence_required: false,
+      bank_transfer_reference_required: false, bank_transfer_evidence_required: false,
+      qr_reference_required: false, qr_evidence_required: false, allow_outstanding: true,
+      credit_due_rule: null, credit_days: null, credit_collection_weekday: null,
+      credit_limit: null, credit_exposure: 0, credit_remaining: null, credit_suspended: false,
+    };
+    const context: DeliveryPosContext = { ...posContext, payment_profile: {
+      ...profile, allowed_payment_terms: [...profile.allowed_payment_terms],
+      allowed_payment_methods: [...profile.allowed_payment_methods],
+    } };
+    const gateway: EmployeeDeliveryGateway = {
+      loadReferenceData: vi.fn().mockResolvedValue({
+        rounds: [{ id: 'round-1', service_date: '2026-08-11', name: 'งานประจำวัน', status: 'open', opened_at: '2026-08-11T01:00:00Z' }],
+        iceTypes: [{ id: 'ice-1', code: 'ICE', name: 'หลอดเล็ก', unit: 'ถุง' }],
+      }),
+      loadShopCards: vi.fn().mockResolvedValue([shopCard]),
+      loadDeliveryPosContext: vi.fn().mockRejectedValueOnce(new Error('network unavailable'))
+        .mockReturnValueOnce(new Promise<DeliveryPosContext>((resolve) => { finishRetry = resolve; })),
+      loadEmployeeStockState: vi.fn(), recordEmployeeStockTransfer: vi.fn(),
+      recordEmployeeStockReturn: vi.fn(), recordEmployeeStockDamage: vi.fn(), recordDelivery: vi.fn(),
+    };
+    const { result } = renderHook(() => useEmployeeDeliveryData({ gateway, requestScope: 'slow-pos', serviceDate: '2026-08-11' }));
+    await waitFor(() => expect(result.current.cards).toHaveLength(1));
+    act(() => result.current.openCard(shopCard));
+    await waitFor(() => expect(result.current.posContextError).toBeTruthy());
+    act(() => {
+      result.current.setDeliveryQuantity('ice-1', 2);
+      result.current.setNote('หน้าร้าน');
+      void result.current.refreshOpenPosContext();
+    });
+    expect(result.current.loadingPosContext).toBe(true);
+    await act(async () => { finishRetry(context); });
+    expect(result.current.posContextError).toBeNull();
+    expect(result.current.loadingPosContext).toBe(false);
+    expect(result.current.deliveryQuantities['ice-1']).toBe(2);
+    expect(result.current.note).toBe('หน้าร้าน');
+    expect(result.current.paymentTerm).toBe('credit');
+    expect(result.current.paymentMethod).toBe('bank_transfer');
+    expect(gateway.recordDelivery).not.toHaveBeenCalled();
+    let failRefresh!: (error: Error) => void;
+    vi.mocked(gateway.loadDeliveryPosContext!).mockReturnValueOnce(new Promise((_, reject) => { failRefresh = reject; }));
+    act(() => { void result.current.refreshOpenPosContext(); });
+    act(() => result.current.submitDeliveryChoice('credit'));
+    expect(gateway.recordDelivery).not.toHaveBeenCalled();
+    await act(async () => { failRefresh(new Error('network unavailable')); });
+    expect(result.current.posContextError).toBeTruthy();
+    act(() => result.current.submitDeliveryChoice('credit'));
+    expect(gateway.recordDelivery).not.toHaveBeenCalled();
+    expect(result.current.entryError).toBe('ต้องตรวจสอบสต๊อกล่าสุดก่อนส่ง กรุณาลองโหลดข้อมูลอีกครั้ง');
+  });
+
+  it('stops waiting for a stalled first POS read and allows a fresh retry', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+    try {
+      supabaseMock.client.rpc
+        .mockReturnValueOnce(new Promise(() => {}))
+        .mockResolvedValueOnce({ data: posContext, error: null });
+      const gateway = createSupabaseGateway();
+      const options = { destinationKind: 'regular' as const, serviceDate: '2026-08-11', forceRefresh: true };
+      const result = vi.fn();
+      void gateway.loadDeliveryPosContext!('stop-1', options).then(result, result);
+
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(result).toHaveBeenCalledWith(expect.objectContaining({
+        message: 'โหลดราคา สต๊อก และเงื่อนไขชำระนานเกินไป กรุณาลองใหม่',
+      }));
+      expect(supabaseMock.state.posSignals).toHaveLength(1);
+      expect(supabaseMock.state.posSignals[0].aborted).toBe(true);
+      await expect(gateway.loadDeliveryPosContext!('stop-1', options)).resolves.toMatchObject({ round_stop_id: 'stop-1' });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('rejects a stalled stock refresh despite an earlier successful read and ignores its late response', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+    try {
+      let finishSlowRead!: (value: { data: DeliveryPosContext; error: null }) => void;
+      supabaseMock.client.rpc
+        .mockResolvedValueOnce({ data: posContext, error: null })
+        .mockReturnValueOnce(new Promise((resolve) => { finishSlowRead = resolve; }))
+        .mockResolvedValue({ data: { ...posContext, items: [{ ...posContext.items[0], stock_quantity: 79 }] }, error: null });
+      const gateway = createSupabaseGateway();
+      const options = { destinationKind: 'regular' as const, serviceDate: '2026-08-11' };
+      await gateway.loadDeliveryPosContext!('stop-1', options);
+      const result = vi.fn();
+      void gateway.loadDeliveryPosContext!('stop-1', { ...options, forceRefresh: true }).then(result, result);
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(result).toHaveBeenCalledWith(expect.any(Error));
+
+      await gateway.loadDeliveryPosContext!('stop-1', { ...options, forceRefresh: true });
+      finishSlowRead({ data: posContext, error: null });
+      await vi.advanceTimersByTimeAsync(0);
+      expect((await gateway.loadDeliveryPosContext!('stop-1', options)).items[0].stock_quantity).toBe(79);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('refreshes the stock shown in an open admin shop after factory stock changes', async () => {
     let available = 5;
     const loadDeliveryPosContext = vi.fn(async () => ({
@@ -568,7 +881,7 @@ describe('employee live shop loading', () => {
     expect(supabaseMock.client.rpc).toHaveBeenCalledTimes(2);
   });
 
-  it('deduplicates POS requests and reuses the current-day cache', async () => {
+  it('deduplicates concurrent POS reads but fetches live stock again on the next visit', async () => {
     supabaseMock.client.rpc.mockResolvedValue({ data: posContext, error: null });
     const gateway = createSupabaseGateway();
 
@@ -576,19 +889,22 @@ describe('employee live shop loading', () => {
       gateway.loadDeliveryPosContext!('stop-1', { destinationKind: 'regular', serviceDate: '2026-08-11' }),
       gateway.loadDeliveryPosContext!('stop-1', { destinationKind: 'regular', serviceDate: '2026-08-11' }),
     ]);
-    const cached = await gateway.loadDeliveryPosContext!('stop-1', {
+    supabaseMock.client.rpc.mockResolvedValue({ data: {
+      ...posContext, items: [{ ...posContext.items[0], stock_quantity: 7 }],
+    }, error: null });
+    const refreshed = await gateway.loadDeliveryPosContext!('stop-1', {
       destinationKind: 'regular',
       serviceDate: '2026-08-11',
     });
 
     expect(first.round_stop_id).toBe('stop-1');
     expect(concurrent.round_stop_id).toBe('stop-1');
-    expect(cached.client_cache?.stale).toBe(false);
-    expect(supabaseMock.client.rpc).toHaveBeenCalledTimes(1);
+    expect(refreshed.items[0].stock_quantity).toBe(7);
+    expect(supabaseMock.client.rpc).toHaveBeenCalledTimes(2);
     expect(supabaseMock.client.storage.from).not.toHaveBeenCalled();
   });
 
-  it('falls back to the saved POS context when a refresh fails', async () => {
+  it('rejects a failed stock read even when the same shop was loaded successfully earlier', async () => {
     let now = new Date('2026-08-11T01:00:00Z').getTime();
     const nowSpy = vi.spyOn(Date, 'now').mockImplementation(() => now);
     supabaseMock.client.rpc
@@ -598,13 +914,10 @@ describe('employee live shop loading', () => {
 
     await gateway.loadDeliveryPosContext!('stop-1', { destinationKind: 'regular', serviceDate: '2026-08-11' });
     now += 6 * 60 * 1000;
-    const fallback = await gateway.loadDeliveryPosContext!('stop-1', {
+    await expect(gateway.loadDeliveryPosContext!('stop-1', {
       destinationKind: 'regular',
       serviceDate: '2026-08-11',
-    });
-
-    expect(fallback.client_cache?.stale).toBe(true);
-    expect(fallback.items[0].unit_price).toBe(60);
+    })).rejects.toThrow('network unavailable');
     expect(supabaseMock.client.rpc).toHaveBeenCalledTimes(2);
     nowSpy.mockRestore();
   });
@@ -950,10 +1263,14 @@ it('stock form rejects zero, undoes edits, retains failed input and updates stoc
   const user = userEvent.setup();
   const after = { ...stockState, truck_location: { ...stockState.truck_location, balances: [{ ...stockState.truck_location.balances[0], quantity: 5.5 }] } };
   const before = { ...stockState, truck_location: { ...stockState.truck_location, balances: [{ ...stockState.truck_location.balances[0], quantity: 20 }] } };
-  const save = vi.fn().mockRejectedValueOnce(new Error('offline')).mockResolvedValue(after);
+  let currentStock = before;
+  const save = vi.fn().mockRejectedValueOnce(new Error('offline')).mockImplementation(async () => {
+    currentStock = after;
+    return after;
+  });
   const gateway = {
     loadReferenceData: vi.fn().mockResolvedValue({ rounds: [{ id: 'round-1', service_date: '2026-08-11', name: 'งานประจำวัน', status: 'open' }], iceTypes: [{ id: 'ice-1', code: 'ICE', name: 'น้ำแข็ง', unit: 'ถุง' }] }),
-    loadShopCards: vi.fn().mockResolvedValue([]), loadEmployeeStockState: vi.fn().mockResolvedValue(before),
+    loadShopCards: vi.fn().mockResolvedValue([]), loadEmployeeStockState: vi.fn(async () => currentStock),
     recordEmployeeStockTransfer: save, recordEmployeeStockReturn: vi.fn(), recordEmployeeStockDamage: vi.fn(), recordDelivery: vi.fn(),
   } as unknown as EmployeeDeliveryGateway;
   render(<EmployeeDeliveryWorkspace enableAssignedStockFlow gateway={gateway} requestScope="bag-retry-test" serviceDate="2026-08-11" viewMode="withdrawal" />);

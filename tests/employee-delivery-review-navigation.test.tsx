@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react';
+import { act, render, screen, within } from '@testing-library/react';
 import { useState, type ComponentProps } from 'react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
@@ -143,6 +143,53 @@ function renderReview(canCollectImmediatePayment = true, card = shopCard, overri
 }
 
 describe('employee delivery review navigation', () => {
+  it('blocks saved stock and offers a live retry even when the saved payment profile is valid', async () => {
+    const onRetryPosContext = vi.fn();
+    renderReview(true, shopCard, {
+      onRetryPosContext, posContextError: null,
+      posContext: { ...posContext,
+        client_cache: { cached_at: '2026-08-18T01:00:00Z', stale: true, refresh_failed: true },
+      },
+    });
+    expect(screen.getByRole('button', { name: 'ส่งอย่างเดียว' }).hasAttribute('disabled')).toBe(true);
+    expect(screen.queryByText('คงเหลือ 167 ถุง')).toBeNull();
+    await userEvent.setup().click(screen.getByRole('button', { name: 'ลองโหลดข้อมูลอีกครั้ง' }));
+    expect(onRetryPosContext).toHaveBeenCalledOnce();
+  });
+
+  it('does not show retry when current stock loaded successfully', () => {
+    renderReview(true, shopCard, {
+      onRetryPosContext: vi.fn(),
+      posContext,
+    });
+    expect(screen.queryByRole('button', { name: 'ลองโหลดข้อมูลอีกครั้ง' })).toBeNull();
+  });
+
+  it('shows slow progress instead of a retry or a failure while the request is still running', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+    try {
+      renderReview(true, shopCard, {
+        loadingPosContext: true, onRetryPosContext: vi.fn(),
+        posContext: { ...posContext, client_cache: { cached_at: '2026-08-18T01:00:00Z', stale: true, refresh_failed: true } },
+      });
+      await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
+      expect(screen.getByText('เครือข่ายช้า กำลังโหลดข้อมูลต่อ กรุณารอสักครู่…')).toBeTruthy();
+      expect(screen.queryByRole('button', { name: 'ลองโหลดข้อมูลอีกครั้ง' })).toBeNull();
+      expect(screen.getByRole('button', { name: 'ส่งอย่างเดียว' }).hasAttribute('disabled')).toBe(true);
+    } finally { vi.useRealTimers(); }
+  });
+
+  it('offers a retry after a context read fails without claiming the shop has no payment terms', async () => {
+    const onRetryPosContext = vi.fn();
+    renderReview(true, shopCard, {
+      posContext: null, posContextError: 'โหลดข้อมูลไม่สำเร็จ', onRetryPosContext,
+    });
+    expect(screen.getByRole('button', { name: 'ส่งอย่างเดียว' }).hasAttribute('disabled')).toBe(true);
+    expect(screen.queryByText('ร้านนี้ยังไม่มีเงื่อนไขการชำระ')).toBeNull();
+    await userEvent.setup().click(screen.getByRole('button', { name: 'ลองโหลดข้อมูลอีกครั้ง' }));
+    expect(onRetryPosContext).toHaveBeenCalledOnce();
+  });
+
   it('does not open the keypad for an out-of-stock product with no cart quantity', async () => {
     const user = userEvent.setup();
     renderReview(true, shopCard, {

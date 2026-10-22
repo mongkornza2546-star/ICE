@@ -58,6 +58,7 @@ export function EmployeeDeliveryReview({
   posContext,
   posContextError,
   loadingPosContext,
+  onRetryPosContext,
   paymentResult,
   paymentOpen,
   paymentMethod,
@@ -109,6 +110,7 @@ export function EmployeeDeliveryReview({
   posContext: DeliveryPosContext | null;
   posContextError: string | null;
   loadingPosContext: boolean;
+  onRetryPosContext?: () => void;
   paymentResult: DeliveryFinancialResult | null;
   paymentOpen: boolean;
   paymentMethod: PaymentMethod;
@@ -160,6 +162,13 @@ export function EmployeeDeliveryReview({
   const [mobileStep, setMobileStep] = useState<'items' | 'review'>('items');
   const [paymentEvidenceError, setPaymentEvidenceError] = useState<string | null>(null);
   const [correctionEventId, setCorrectionEventId] = useState<string | null>(null);
+  const [slowPosContext, setSlowPosContext] = useState(false);
+  useEffect(() => {
+    setSlowPosContext(false);
+    if (!loadingPosContext) return;
+    const timer = setTimeout(() => setSlowPosContext(true), 10_000);
+    return () => clearTimeout(timer);
+  }, [loadingPosContext, shopCard.round_stop_id]);
   const isDelivery = status === 'delivered';
   const contextItems = posContext?.items.map((item) => ({ ...item,
     stock_quantity: posContext.stock_check_required === false ? Number.MAX_SAFE_INTEGER : item.stock_quantity,
@@ -176,7 +185,8 @@ export function EmployeeDeliveryReview({
   }));
   const selectedItem = contextItems.find((item) => item.ice_type_id === selectedIceTypeId);
   const selectedQuantity = selectedItem ? deliveryQuantities[selectedItem.ice_type_id] ?? 0 : 0;
-  const canEditQuantity = !submitting && (round.status !== 'closed' || round.can_record_delivery === true);
+  const stockUnavailable = loadingPosContext || Boolean(posContextError) || Boolean(posContext?.client_cache?.stale);
+  const canEditQuantity = !submitting && !stockUnavailable && (round.status !== 'closed' || round.can_record_delivery === true);
   const shopQuery = shopSearch.trim().toLocaleLowerCase('th-TH');
   const inputQuantity = Number(quantityInput);
   const isQuantityWithinStock = (quantity: number) => selectedItem != null
@@ -207,6 +217,7 @@ export function EmployeeDeliveryReview({
     && (round.status !== 'closed' || round.can_record_delivery === true)
     && !hasUncommittedQuantity
     && (!isDelivery || !cartExceedsStock)
+    && (!isDelivery || !stockUnavailable)
     && (!isDelivery || (
       !financialContextRequired
       || (
@@ -594,12 +605,20 @@ export function EmployeeDeliveryReview({
       {posContext?.stock_check_required === false ? <p className="employee-pos-notice" role="status">
         {translateUi('บันทึกส่งของหลังปิดยอด · เฉพาะแอดมิน ยอดปิดสต๊อกเดิมยังคงอยู่ และรายการเพิ่มจะถูกบันทึกในประวัติ')}
       </p> : null}
-      {loadingPosContext ? <p className="employee-pos-notice">{translateUi('กำลังโหลดราคา สต๊อก และเงื่อนไขชำระ…')}</p> : null}
+      {loadingPosContext ? <p className="employee-pos-notice" role="status">{translateUi(slowPosContext
+        ? 'เครือข่ายช้า กำลังโหลดข้อมูลต่อ กรุณารอสักครู่…'
+        : 'กำลังโหลดราคา สต๊อก และเงื่อนไขชำระ…')}</p> : null}
       {posContext?.client_cache?.stale ? (
         <p className="employee-pos-notice" role="status">
-          {translateUi('ใช้ราคา สต๊อก และเงื่อนไขที่บันทึกไว้ล่าสุด เนื่องจากเครือข่ายยังไม่พร้อม')}</p>
+          {translateUi('ต้องตรวจสอบสต๊อกล่าสุดก่อนส่ง กรุณาลองโหลดข้อมูลอีกครั้ง')}</p>
       ) : null}
       {posContextError ? <p className="employee-error" role="alert">{translateUi(posContextError)}</p> : null}
+      {(posContextError || posContext?.client_cache?.refresh_failed || posContext?.client_cache?.stale) && !loadingPosContext && onRetryPosContext ? (
+        <button className="employee-secondary-action" disabled={submitting}
+          onClick={onRetryPosContext} type="button">
+          {translateUi('ลองโหลดข้อมูลอีกครั้ง')}
+        </button>
+      ) : null}
 
       <form className="employee-pos-layout" onKeyDown={handleQuantityKeyDown} onSubmit={onSubmit} ref={layoutRef}>
         {!problemOpen ? (
@@ -666,7 +685,7 @@ export function EmployeeDeliveryReview({
                       <strong>{iceType.name}</strong>
                       <small>{iceType.unit_price == null ? translateUi('ยังไม่มีราคา') : `${money.format(iceType.unit_price)} / ${iceType.unit}`}</small>
                       <b>{quantity > 0 ? quantity : '—'}</b>
-                      <em>{translateUi('คงเหลือ ')}{iceType.stock_quantity === Number.MAX_SAFE_INTEGER ? '—' : iceType.stock_quantity} {iceType.unit}</em>
+                      <em>{translateUi('คงเหลือ ')}{stockUnavailable || iceType.stock_quantity === Number.MAX_SAFE_INTEGER ? '—' : iceType.stock_quantity} {iceType.unit}</em>
                     </button>
                   );
                 })}
@@ -799,7 +818,7 @@ export function EmployeeDeliveryReview({
                 <p className="employee-credit-note">{translateUi('ร้านเครดิต · วงเงินคงเหลือ ')}{posContext.payment_profile.credit_remaining == null
                   ? translateUi('ไม่จำกัด')
                   : money.format(posContext.payment_profile.credit_remaining)} · {formatCreditCollectionCycle(posContext.payment_profile)}</p>
-              ) : !posContext?.payment_profile && financialContextRequired && !loadingPosContext ? (
+              ) : posContext && !posContext.payment_profile && !loadingPosContext && !posContextError ? (
                 <p className="employee-error">{translateUi('ร้านนี้ยังไม่มีเงื่อนไขการชำระ')}</p>
               ) : null}
               {vatRate > 0 ? <VatBreakdown subtotal={tax.subtotal} vat={tax.vat} total={tax.total} rate={vatRate} /> : <div className="employee-cart-total">

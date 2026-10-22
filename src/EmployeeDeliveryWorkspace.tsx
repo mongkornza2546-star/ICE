@@ -205,52 +205,11 @@ interface EventDeliveryCardDto {
   today_totals: Array<{ ice_type_id: string; quantity: number }>;
 }
 
-const POS_CONTEXT_FRESH_MS = 5 * 60 * 1000;
+const POS_CONTEXT_TIMEOUT_MS = 60_000;
 const POS_CONTEXT_CACHE_PREFIX = 'ice-employee-pos-context:v1';
 const SHOP_CARDS_BURST_CACHE_MS = 5 * 1000;
 const FOREGROUND_REFRESH_MIN_MS = 5 * 60 * 1000;
 const EVENT_CAPABILITY_CACHE_MS = 60 * 1000;
-
-interface CachedPosContext {
-  cachedAt: number;
-  context: DeliveryPosContext;
-}
-
-function posContextCacheKey(serviceDate: string, roundStopId: string) {
-  return `${POS_CONTEXT_CACHE_PREFIX}:${serviceDate}:${roundStopId}`;
-}
-
-function readStoredPosContext(serviceDate: string, roundStopId: string): CachedPosContext | null {
-  try {
-    const raw = window.localStorage.getItem(posContextCacheKey(serviceDate, roundStopId));
-    if (!raw) return null;
-    const cached = JSON.parse(raw) as CachedPosContext;
-    if (cached.context?.round_stop_id !== roundStopId
-      || cached.context?.service_date !== serviceDate
-      || typeof cached.cachedAt !== 'number') {
-      return null;
-    }
-    return cached;
-  } catch {
-    return null;
-  }
-}
-
-function writeStoredPosContext(context: DeliveryPosContext, cachedAt: number) {
-  const cacheableContext: DeliveryPosContext = {
-    ...context,
-    client_cache: undefined,
-    items: context.items.map((item) => ({ ...item, image_url: null })),
-  };
-  try {
-    window.localStorage.setItem(
-      posContextCacheKey(context.service_date, context.round_stop_id),
-      JSON.stringify({ cachedAt, context: cacheableContext } satisfies CachedPosContext),
-    );
-  } catch {
-    // Network data remains usable even when browser storage is unavailable or full.
-  }
-}
 
 function clearStoredPosContexts(roundStopId?: string) {
   try {
@@ -262,16 +221,6 @@ function clearStoredPosContexts(roundStopId?: string) {
   } catch {
     // An unavailable cache must not block a server refresh.
   }
-}
-
-function markPosContextCache(context: DeliveryPosContext, cachedAt: number, stale: boolean) {
-  return {
-    ...context,
-    client_cache: {
-      cached_at: new Date(cachedAt).toISOString(),
-      stale,
-    },
-  };
 }
 
 function singleFlight<T>(requests: Map<string, Promise<T>>, key: string, load: () => Promise<T>) {
@@ -308,13 +257,13 @@ export function createSupabaseGateway(): EmployeeDeliveryGateway {
   const referenceRequests = new Map<string, Promise<{ rounds: DeliveryRound[]; iceTypes: IceTypeOption[] }>>();
   const shopCardRequests = new Map<string, Promise<ShopCard[]>>();
   const shopImageRequests = new Map<string, ReturnType<typeof getR2ObjectUrls>>();
-  const stockRequests = new Map<string, Promise<EmployeeStockState>>();
   const posContextRequests = new Map<string, Promise<DeliveryPosContext>>();
-  const posContextMemoryCache = new Map<string, CachedPosContext>();
+  const posContextControllers = new Map<string, AbortController>();
   const shopCardBurstCache = new Map<string, { cachedAt: number; cards: ShopCard[]; imagesResolved: boolean }>();
   const eventCardLoadErrors = new Map<string, string>();
   let destinationSyncCapabilityRequest: Promise<EventDeliveryCapability | null> | null = null;
   let eventCapabilityCachedAt: number | null = null;
+  let supportsPosContextParts = false;
 
   const loadEventCapability = async () => {
     if (destinationSyncCapabilityRequest
@@ -347,9 +296,12 @@ export function createSupabaseGateway(): EmployeeDeliveryGateway {
   };
 
   const invalidatePosContextCache = (roundStopId?: string) => {
-    for (const key of posContextMemoryCache.keys()) {
-      if (!roundStopId || key.endsWith(`:${roundStopId}`)) posContextMemoryCache.delete(key);
-    }
+    // All shops draw from the same holding. A stock change invalidates reads
+    // for every stop, including requests that have not returned yet.
+    posContextRequests.clear();
+    for (const controller of posContextControllers.values()) controller.abort();
+    posContextControllers.clear();
+    // Clean up snapshots written by older app versions. Live reads never use them.
     clearStoredPosContexts(roundStopId);
   };
 
@@ -369,6 +321,7 @@ export function createSupabaseGateway(): EmployeeDeliveryGateway {
 
         if (sessionResponse.error) throw sessionResponse.error;
         if (iceTypesResponse.error) throw iceTypesResponse.error;
+        supportsPosContextParts = sessionResponse.data?.pos_context_parts_version === 1;
         return {
           rounds: (sessionResponse.data?.sessions ?? []) as DeliveryRound[],
           iceTypes: await withPublicIceTypeOptions((iceTypesResponse.data ?? []) as IceTypeOption[]),
@@ -529,26 +482,19 @@ export function createSupabaseGateway(): EmployeeDeliveryGateway {
       return eventCardLoadErrors.get(roundId) ?? null;
     },
     async loadEmployeeStockState(roundId) {
-      return singleFlight(stockRequests, roundId, async () => {
-        if (!supabase) throw new Error('ยังไม่ได้ตั้งค่า Supabase');
-        const { data, error } = await supabase.rpc('get_employee_stock_state', {
-          p_round_id: roundId,
-        });
-        if (error) throw error;
-        return data as EmployeeStockState;
+      // A refresh after a write must not join a read started before that write.
+      if (!supabase) throw new Error('ยังไม่ได้ตั้งค่า Supabase');
+      const { data, error } = await supabase.rpc('get_employee_stock_state', {
+        p_round_id: roundId,
       });
+      if (error) throw error;
+      return data as EmployeeStockState;
     },
     async loadDeliveryPosContext(roundStopId, options) {
       const serviceDate = options?.serviceDate ?? '';
       const key = `${serviceDate}:${roundStopId}`;
-      const stored = serviceDate
-        ? posContextMemoryCache.get(key) ?? readStoredPosContext(serviceDate, roundStopId)
-        : null;
-      if (stored) posContextMemoryCache.set(key, stored);
-      if (!options?.forceRefresh && stored && Date.now() - stored.cachedAt < POS_CONTEXT_FRESH_MS) {
-        return markPosContextCache(stored.context, stored.cachedAt, false);
-      }
-
+      // Quantities change after every withdrawal and delivery. Never reuse a
+      // completed context or saved stock, even when revisiting the same shop.
       // A stock notification can arrive while an older read is still running.
       // Wait for that read, then start a new request against the updated ledger.
       if (options?.forceRefresh) {
@@ -556,25 +502,74 @@ export function createSupabaseGateway(): EmployeeDeliveryGateway {
       }
 
       return singleFlight(posContextRequests, key, async () => {
+        let timeout: ReturnType<typeof setTimeout> | undefined;
+        const controller = new AbortController();
+        posContextControllers.set(key, controller);
         try {
           if (!supabase) throw new Error('ยังไม่ได้ตั้งค่า Supabase');
-          const { data, error } = await supabase.rpc(
-            options.destinationKind === 'event'
-              ? 'get_event_delivery_pos_context'
-              : 'get_delivery_pos_context', {
-            p_round_stop_id: roundStopId,
-          });
+          const client = supabase;
+          const contextRpc = options.destinationKind === 'event'
+            ? 'get_event_delivery_pos_context'
+            : 'get_delivery_pos_context';
+          const request = (async () => {
+            if (!supportsPosContextParts) {
+              return client.rpc(contextRpc, { p_round_stop_id: roundStopId }).abortSignal(controller.signal);
+            }
+            // Start both reads before awaiting either. Only a complete matching
+            // pair may enable delivery confirmation.
+            const [stockData, saleData] = await Promise.all(['stock', 'sale'].map(async (part) => {
+              const { data, error } = await client.rpc(`${contextRpc}_part`, {
+                p_round_stop_id: roundStopId, p_part: part,
+              }).abortSignal(controller.signal);
+              if (error) throw error;
+              return data;
+            }));
+            const stock = stockData as Pick<DeliveryPosContext,
+              'round_id' | 'round_stop_id' | 'service_date' | 'stock_source' | 'stock_check_required'> & {
+              items: Array<Pick<DeliveryPosContext['items'][number], 'ice_type_id' | 'stock_quantity'>>;
+            };
+            const sale = saleData as Omit<DeliveryPosContext, 'items' | 'stock_source'> & {
+              items: Array<Omit<DeliveryPosContext['items'][number], 'stock_quantity'>>;
+            };
+            const quantities = new Map(stock.items.map((item) => [item.ice_type_id, item.stock_quantity]));
+            if (stock.round_stop_id !== roundStopId || sale.round_stop_id !== roundStopId
+              || stock.round_id !== sale.round_id || stock.service_date !== sale.service_date
+              || (serviceDate && sale.service_date !== serviceDate)
+              || stock.items.length !== sale.items.length || quantities.size !== stock.items.length
+              || new Set(sale.items.map((item) => item.ice_type_id)).size !== sale.items.length
+              || sale.items.some((item) => !Number.isFinite(quantities.get(item.ice_type_id)))) {
+              throw new Error('ข้อมูลร้านเปลี่ยนระหว่างโหลด กรุณาลองโหลดข้อมูลอีกครั้ง');
+            }
+            const context: DeliveryPosContext = {
+              ...sale,
+              stock_source: stock.stock_source,
+              stock_check_required: stock.stock_check_required,
+              items: sale.items.map((item) => ({ ...item, stock_quantity: quantities.get(item.ice_type_id)! })),
+            };
+            return { data: context, error: null };
+          })();
+          // Allow slow successful reads to finish, but cancel a truly stalled
+          // request before releasing single-flight for a retry.
+          const { data, error } = await Promise.race([
+            request,
+            new Promise<never>((_, reject) => {
+              timeout = setTimeout(() => {
+                reject(new Error('โหลดราคา สต๊อก และเงื่อนไขชำระนานเกินไป กรุณาลองใหม่'));
+                controller.abort();
+              }, POS_CONTEXT_TIMEOUT_MS);
+            }),
+          ]);
+          if (controller.signal.aborted) throw new Error('ข้อมูลร้านเปลี่ยนระหว่างโหลด กรุณาลองโหลดข้อมูลอีกครั้ง');
           if (error) throw error;
-          const context = data as DeliveryPosContext;
-          const cachedAt = Date.now();
-          const cached = { cachedAt, context };
-          const resolvedKey = `${context.service_date}:${roundStopId}`;
-          posContextMemoryCache.set(resolvedKey, cached);
-          writeStoredPosContext(context, cachedAt);
-          return markPosContextCache(context, cachedAt, false);
+          return data as DeliveryPosContext;
         } catch (loadError) {
-          if (stored) return markPosContextCache(stored.context, stored.cachedAt, true);
+          // A failed part also cancels its sibling instead of leaving an orphan
+          // request competing with the user's next attempt.
+          controller.abort();
           throw loadError;
+        } finally {
+          clearTimeout(timeout);
+          if (posContextControllers.get(key) === controller) posContextControllers.delete(key);
         }
       });
     },
@@ -906,8 +901,9 @@ export function EmployeeDeliveryWorkspace({
     catalogRefreshPending.current = false;
     gateway.invalidateDeliveryPosContextCache?.();
     data.refreshShopCatalog();
+    void data.loadStockState(data.selectedRoundId);
     void data.refreshOpenPosContext();
-  }, [data.anySubmitting, data.refreshOpenPosContext, data.refreshShopCatalog, gateway, isActive]);
+  }, [data.anySubmitting, data.loadStockState, data.selectedRoundId, data.refreshOpenPosContext, data.refreshShopCatalog, gateway, isActive]);
 
   useEffect(() => subscribeToDataChange(['stock', 'pos'], () => {
     if (!isActive || data.anySubmitting) {
@@ -1019,6 +1015,7 @@ export function EmployeeDeliveryWorkspace({
         posContext={data.posContext}
         posContextError={data.posContextError}
         loadingPosContext={data.loadingPosContext}
+        onRetryPosContext={() => void data.refreshOpenPosContext()}
         paymentResult={data.paymentResult}
         paymentOpen={data.paymentOpen}
         paymentMethod={data.paymentMethod}

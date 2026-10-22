@@ -96,6 +96,7 @@ export interface DeliveryPosContext {
   client_cache?: {
     cached_at: string;
     stale: boolean;
+    refresh_failed?: boolean;
   };
 }
 
