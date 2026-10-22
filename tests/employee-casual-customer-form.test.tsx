@@ -85,11 +85,11 @@ describe('casual customer form', () => {
 
   it('shows the actionable PostgREST error instead of a generic failure', async () => {
     const { user, record } = setup();
-    record.mockRejectedValue({ code: 'P0001', message: 'สต๊อกไม่พอสำหรับจำนวนถุงที่รวมจากยอดขายขาจร', details: null, hint: null });
+    record.mockRejectedValue({ code: 'P0001', message: 'สต๊อกไม่พอสำหรับจำนวนถุงที่รวมจากยอดขายขายสด', details: null, hint: null });
     await selectIce(user);
     await user.type(screen.getByLabelText('ยอดขาย (บาท)'), '100');
     await user.click(screen.getByRole('button', { name: 'ยืนยันขายและรับเงิน' }));
-    expect((await screen.findByRole('alert')).textContent).toBe('สต๊อกไม่พอสำหรับจำนวนถุงที่รวมจากยอดขายขาจร');
+    expect((await screen.findByRole('alert')).textContent).toBe('สต๊อกไม่พอสำหรับจำนวนถุงที่รวมจากยอดขายขายสด');
   });
 });
 

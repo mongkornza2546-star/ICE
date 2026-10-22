@@ -126,7 +126,7 @@ function CasualVoidDialog({
 
   return <div className="employee-casual-void" role="dialog" aria-modal="true" aria-labelledby="casual-void-title">
     <section>
-      <h2 id="casual-void-title">{translateUi('ยกเลิกรายการขาจร')}</h2>
+      <h2 id="casual-void-title">{translateUi('ยกเลิกรายการขายสด')}</h2>
       <p>{target.ice_type_name} {target.fulfillment_mode === 'loose' ? translateUi('ไม่ระบุจำนวน · คำนวณยอดสะสมใหม่หลังยกเลิก') : `${Number(target.quantity).toLocaleString('th-TH')} ${target.ice_type_unit}`}{target.transaction_kind === 'paid' ? translateUi(' · คืนเงินเต็มจำนวน {0}', { 0: money.format(Number(target.sale_amount)) }) : ''}</p>
       <label><span>{translateUi('เหตุผลการยกเลิก')}</span><textarea autoFocus onChange={(event) => setVoidReason(event.target.value)} value={voidReason} /></label>
       {target.transaction_kind === 'paid' ? <>
@@ -271,7 +271,7 @@ export function EmployeeCasualCustomerPage({
         setIceTypeId('');
       })
       .catch((cause: unknown) => {
-        if (!cancelled) setError(getErrorMessage(cause, 'โหลดข้อมูลลูกค้าขาจรไม่สำเร็จ'));
+        if (!cancelled) setError(getErrorMessage(cause, 'โหลดข้อมูลลูกค้าขายสดไม่สำเร็จ'));
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -458,7 +458,7 @@ export function EmployeeCasualCustomerPage({
         <span className="employee-casual-page__icon"><UserCircle aria-hidden="true" size={38} weight="duotone" /></span>
         <div>
           <p className="employee-eyebrow">{translateUi('บันทึกส่งน้ำแข็ง · POS')}</p>
-          <h1 ref={headingRef} tabIndex={-1}>{translateUi('ลูกค้าขาจร')}</h1>
+          <h1 ref={headingRef} tabIndex={-1}>{translateUi('ลูกค้าขายสด')}</h1>
           <p>{round.name} · {serviceDateLabel}{context ? ` · ${context.stock_source.name}` : ''}</p>
         </div>
       </section>
@@ -557,7 +557,7 @@ export function EmployeeCasualCustomerPage({
 
         <section className="employee-history employee-casual-history" aria-labelledby="casual-history-title">
           <div className="employee-casual-history__heading"><div><Receipt size={22} /><h2 id="casual-history-title">{translateUi('ประวัติวันนี้')}</h2></div><span>{context.history.length}{translateUi(' รายการ')}</span></div>
-          {context.history.length === 0 ? <p className="employee-casual-history__empty">{translateUi('ยังไม่มีรายการขาจรวันนี้')}</p> : <div className="employee-casual-history__list">{context.history.map((item) => <article className={item.status === 'voided' ? 'is-voided' : ''} key={item.id}>
+          {context.history.length === 0 ? <p className="employee-casual-history__empty">{translateUi('ยังไม่มีรายการขายสดวันนี้')}</p> : <div className="employee-casual-history__list">{context.history.map((item) => <article className={item.status === 'voided' ? 'is-voided' : ''} key={item.id}>
             <div><strong>{item.ice_type_name} · {item.fulfillment_mode === 'loose' ? item.transaction_kind === 'paid' ? translateUi('แบ่งขายสะสมตามยอดเงิน') : translateUi('แจกไม่ระบุจำนวน') : `${Number(item.quantity).toLocaleString('th-TH')} ${item.ice_type_unit}`}</strong><small>{dateTime.format(new Date(item.recorded_at))} · {item.transaction_kind === 'paid' ? translateUi(paymentLabels[item.payment_method!]) : translateUi('แจกฟรี')}{item.receipt_number ? ` · ${item.receipt_number}` : ''}</small>{item.status === 'voided' ? <em>{translateUi('ยกเลิกแล้ว · ')}{item.void_reason}</em> : null}</div>
             <b>{item.transaction_kind === 'paid' ? money.format(Number(item.sale_amount)) : translateUi('ฟรี')}</b>
             {item.sale_building_name ? <p>{translateUi('ขายที่ ')}{item.sale_building_name}{item.receiver_name ? ` · ${translateUi('ผู้รับเงิน ')}${item.receiver_name}` : ''}</p> : null}

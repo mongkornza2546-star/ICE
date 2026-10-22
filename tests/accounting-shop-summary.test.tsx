@@ -300,14 +300,14 @@ describe('accounting shop summary', () => {
     });
     render(<AccountingPage />);
     fireEvent.click(await screen.findByRole('button', { name: 'ตารางรายวัน' }));
-    await waitFor(() => expect(screen.getByLabelText(`ลูกค้าขาจร ${date} หลอดเล็ก`).textContent).toContain('รวมจากยอดเงิน 1 ถุง'));
-    expect(screen.getByLabelText(`ลูกค้าขาจร ${date} หลอดเล็ก`).textContent).toContain('รวมแจกฟรี 0.5 ถุง');
-    expect(screen.getByLabelText(`ลูกค้าขาจร ${date} เงินสด`).textContent).toContain('สุทธิ ฿100.00');
-    expect(screen.getByLabelText(`ลูกค้าขาจร ${date} โอน`).textContent).toContain('0.00');
+    await waitFor(() => expect(screen.getByLabelText(`ลูกค้าขายสด ${date} หลอดเล็ก`).textContent).toContain('รวมจากยอดเงิน 1 ถุง'));
+    expect(screen.getByLabelText(`ลูกค้าขายสด ${date} หลอดเล็ก`).textContent).toContain('รวมแจกฟรี 0.5 ถุง');
+    expect(screen.getByLabelText(`ลูกค้าขายสด ${date} เงินสด`).textContent).toContain('สุทธิ ฿100.00');
+    expect(screen.getByLabelText(`ลูกค้าขายสด ${date} โอน`).textContent).toContain('0.00');
     await user.click(screen.getByRole('button', { name: 'ส่งออก Excel' }));
     await waitFor(() => expect(writeXlsxFileMock).toHaveBeenCalledTimes(1));
     const [sheets, options] = writeXlsxFileMock.mock.calls[0];
-    expect(options.sheets).toEqual(['สรุปทุกพื้นที่', 'ลูกค้าขาจร']);
+    expect(options.sheets).toEqual(['สรุปทุกพื้นที่', 'ลูกค้าขายสด']);
     expect(sheets[1][2].map((cell: { value: unknown }) => cell.value).slice(8)).toEqual([110, 110, 10, 100, 0, 0, 0]);
     expect(sheets[1][3].map((cell: { value: unknown }) => cell.value).slice(2, 8)).toEqual([1.5, 1, 0.5, 2, 110, 10]);
   });
@@ -1222,19 +1222,19 @@ it('places new casual sales once after a building with multiple zones, keeps leg
   const user = userEvent.setup();
   render(<AccountingPage />);
   await user.click(await screen.findByRole('button', { name: 'ตารางรายวัน' }));
-  const casual = await screen.findByRole('button', { name: 'ขายสด/ขาจร — อาคาร A' });
-  expect(screen.getAllByRole('button', { name: 'ขายสด/ขาจร — อาคาร A' })).toHaveLength(1);
+  const casual = await screen.findByRole('button', { name: 'ขายสด — อาคาร A' });
+  expect(screen.getAllByRole('button', { name: 'ขายสด — อาคาร A' })).toHaveLength(1);
   const rows = [...document.querySelectorAll('.accounting-daily-matrix__table > tbody > tr')];
   expect(rows.indexOf(casual.closest('tr')!)).toBeGreaterThan(rows.findIndex((row) => row.textContent?.includes('S002')));
-  const total = screen.getByText('รวม อาคาร A รวมขาจรแล้ว').closest('tr')!;
+  const total = screen.getByText('รวม อาคาร A รวมขายสดแล้ว').closest('tr')!;
   expect(total.textContent).toContain('฿1,398.00');
-  expect(screen.getByRole('button', { name: 'ขายสด/ขาจร — อาคาร B' })).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'ขายสด — อาคาร B' })).toBeTruthy();
   await user.click(casual);
-  expect(screen.getByRole('table', { name: 'ขายสด/ขาจร — อาคาร A รายการ' }).textContent).toContain('คนรับเงิน A');
+  expect(screen.getByRole('table', { name: 'ขายสด — อาคาร A รายการ' }).textContent).toContain('คนรับเงิน A');
   expect(screen.getByText('แอดมินลงแทน')).toBeTruthy();
   await user.selectOptions(screen.getByRole('combobox', { name: 'อาคาร' }), 'building-1');
-  await waitFor(() => expect(screen.queryByRole('button', { name: 'ขายสด/ขาจร — อาคาร B' })).toBeNull());
-  expect(screen.getAllByRole('button', { name: 'ขายสด/ขาจร — อาคาร A' })).toHaveLength(1);
+  await waitFor(() => expect(screen.queryByRole('button', { name: 'ขายสด — อาคาร B' })).toBeNull());
+  expect(screen.getAllByRole('button', { name: 'ขายสด — อาคาร A' })).toHaveLength(1);
 });
 
 it('keeps full building totals constant across shop pages', async () => {
@@ -1254,7 +1254,7 @@ it('keeps full building totals constant across shop pages', async () => {
   const user = userEvent.setup(); render(<AccountingPage />);
   await user.click(await screen.findByRole('button', { name: 'วันนี้', exact: true }));
   await user.click(await screen.findByRole('button', { name: 'ตารางรายวัน' }));
-  const totalText = () => screen.getByText('รวม อาคาร A รวมขาจรแล้ว').closest('tr')!.textContent;
+  const totalText = () => screen.getByText('รวม อาคาร A รวมขายสดแล้ว').closest('tr')!.textContent;
   await waitFor(() => expect(totalText()).toContain('฿1,060.00'));
   const first = totalText();
   await user.click(screen.getByRole('button', { name: 'ถัดไป', exact: true }));
@@ -1279,7 +1279,7 @@ it('does not substitute visible-page amounts when full building totals are unava
   });
   const user = userEvent.setup(); render(<AccountingPage />);
   await user.click(await screen.findByRole('button', { name: 'ตารางรายวัน' }));
-  const total = (await screen.findByText('รวม อาคาร A รวมขาจรแล้ว')).closest('tr')!;
+  const total = (await screen.findByText('รวม อาคาร A รวมขายสดแล้ว')).closest('tr')!;
   expect(total.textContent).toContain('ยังไม่มียอดรวมทั้งตึก');
   expect(total.textContent).not.toContain('฿');
 });

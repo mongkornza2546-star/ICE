@@ -160,7 +160,9 @@ export function EmployeeDeliveryReview({
   const [paymentEvidenceError, setPaymentEvidenceError] = useState<string | null>(null);
   const [correctionEventId, setCorrectionEventId] = useState<string | null>(null);
   const isDelivery = status === 'delivered';
-  const contextItems = posContext?.items ?? iceTypes.map((iceType) => ({
+  const contextItems = posContext?.items.map((item) => ({ ...item,
+    stock_quantity: posContext.stock_check_required === false ? Number.MAX_SAFE_INTEGER : item.stock_quantity,
+  })) ?? iceTypes.map((iceType) => ({
     ...iceType,
     ice_type_id: iceType.id,
     image_path: null,
@@ -173,7 +175,7 @@ export function EmployeeDeliveryReview({
   }));
   const selectedItem = contextItems.find((item) => item.ice_type_id === selectedIceTypeId);
   const selectedQuantity = selectedItem ? deliveryQuantities[selectedItem.ice_type_id] ?? 0 : 0;
-  const canEditQuantity = !submitting && round.status !== 'closed';
+  const canEditQuantity = !submitting && (round.status !== 'closed' || round.can_record_delivery === true);
   const shopQuery = shopSearch.trim().toLocaleLowerCase('th-TH');
   const inputQuantity = Number(quantityInput);
   const isQuantityWithinStock = (quantity: number) => selectedItem != null
@@ -201,7 +203,7 @@ export function EmployeeDeliveryReview({
     && totalAmount > posContext.payment_profile.credit_remaining;
   const financialContextRequired = loadingPosContext || Boolean(posContextError) || Boolean(posContext);
   const canSubmit = !submitting
-    && round.status !== 'closed'
+    && (round.status !== 'closed' || round.can_record_delivery === true)
     && !hasUncommittedQuantity
     && (!isDelivery || !cartExceedsStock)
     && (!isDelivery || (
@@ -588,6 +590,9 @@ export function EmployeeDeliveryReview({
       </header>
       </div>
 
+      {posContext?.stock_check_required === false ? <p className="employee-pos-notice" role="status">
+        {translateUi('บันทึกส่งของหลังปิดยอด · เฉพาะแอดมิน ยอดปิดสต๊อกเดิมยังคงอยู่ และรายการเพิ่มจะถูกบันทึกในประวัติ')}
+      </p> : null}
       {loadingPosContext ? <p className="employee-pos-notice">{translateUi('กำลังโหลดราคา สต๊อก และเงื่อนไขชำระ…')}</p> : null}
       {posContext?.client_cache?.stale ? (
         <p className="employee-pos-notice" role="status">
@@ -644,7 +649,7 @@ export function EmployeeDeliveryReview({
                     <button
                       aria-pressed={selected}
                       className={selected ? 'employee-pos-product--selected' : ''}
-                      disabled={submitting || round.status === 'closed' || iceType.unit_price == null && Boolean(posContext)
+                      disabled={submitting || (round.status === 'closed' && !round.can_record_delivery) || iceType.unit_price == null && Boolean(posContext)
                         || (iceType.stock_quantity <= 0 && quantity <= 0)}
                       key={iceType.ice_type_id}
                       onClick={() => selectIceType(iceType.ice_type_id)}

@@ -73,6 +73,7 @@ export interface ShopPaymentProfile {
 }
 
 export interface DeliveryPosContext {
+  stock_check_required?: boolean;
   round_id: string;
   round_stop_id: string;
   service_date: string;
@@ -209,6 +210,7 @@ export interface UserProfile {
 }
 
 export interface DeliveryRound {
+  can_record_delivery?: boolean;
   id: string;
   service_date: string;
   name: string;

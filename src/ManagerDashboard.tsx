@@ -353,8 +353,8 @@ export function ManagerDashboard({
       </section>
 
       <section className="dashboard-payment-grid" aria-label={translateUi('สรุปการรับชำระและเครดิตวันนี้')}>
-        <OverviewCard icon={CurrencyDollar} label={translateUi('เงินสด')} value={formatCurrency(paymentSummary.cashReceivedValue)} detail={translateUi('รับชำระแล้ววันนี้ · รวมลูกค้าขาจร')} tone="green" />
-        <OverviewCard icon={CreditCard} label={translateUi('โอนเงิน')} value={formatCurrency(paymentSummary.transferReceivedValue)} detail={translateUi('รับชำระแล้ววันนี้ · รวมลูกค้าขาจร')} tone="sky" />
+        <OverviewCard icon={CurrencyDollar} label={translateUi('เงินสด')} value={formatCurrency(paymentSummary.cashReceivedValue)} detail={translateUi('รับชำระแล้ววันนี้ · รวมลูกค้าขายสด')} tone="green" />
+        <OverviewCard icon={CreditCard} label={translateUi('โอนเงิน')} value={formatCurrency(paymentSummary.transferReceivedValue)} detail={translateUi('รับชำระแล้ววันนี้ · รวมลูกค้าขายสด')} tone="sky" />
         <OverviewCard
           icon={CreditCard}
           label={translateUi('เครดิต')}
@@ -370,7 +370,7 @@ export function ManagerDashboard({
       </section>
 
       <section className="dashboard-panel dashboard-product-sales-panel" aria-label={translateUi('ยอดขายแยกตามประเภทน้ำแข็ง')}>
-        <PanelHeading title={translateUi('ยอดขายแยกตามประเภทน้ำแข็ง')} detail={translateUi('จำนวนที่ขายได้วันนี้ · รวมลูกค้าขาจร')} />
+        <PanelHeading title={translateUi('ยอดขายแยกตามประเภทน้ำแข็ง')} detail={translateUi('จำนวนที่ขายได้วันนี้ · รวมลูกค้าขายสด')} />
         <div className="dashboard-product-sales-grid">
           {(salesSummary.iceTypeSales ?? []).map((item) => (
             <article className="dashboard-product-sale" key={item.ice_type_id}>

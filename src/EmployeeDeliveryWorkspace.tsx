@@ -1067,7 +1067,7 @@ export function EmployeeDeliveryWorkspace({
     );
   }
 
-  const openRounds = data.rounds.filter((r) => r.status === 'open' && !r.cancelled_at);
+  const openRounds = data.rounds.filter((r) => (r.status === 'open' || r.can_record_delivery) && !r.cancelled_at);
   const casualCustomerAvailable = Boolean(
     casualCustomerEnabled
     && casualCapabilityAvailable
@@ -1169,10 +1169,10 @@ export function EmployeeDeliveryWorkspace({
         <section className="employee-state" aria-labelledby="employee-no-open-round">
           <WarningCircle aria-hidden="true" size={42} />
           <h2 id="employee-no-open-round">{isBackdatedBilling
-            ? translateUi('วันที่นี้ไม่มีงานประจำวันที่เปิดอยู่')
+            ? translateUi('วันที่นี้ไม่มีงานประจำวันที่บันทึกได้')
             : translateUi('ยังไม่มีงานประจำวันที่เปิดอยู่')}</h2>
           <p>{isBackdatedBilling
-            ? translateUi('ตรวจสอบว่าวันที่เลือกเริ่มงานแล้วและยังไม่ปิดงานหรือปิดสต๊อกสิ้นวัน จึงจะเพิ่มบิลได้')
+            ? translateUi('ตรวจสอบว่าวันที่เลือกมีงานประจำวันและไม่ได้ยกเลิก แล้วโหลดข้อมูลอีกครั้ง')
             : translateUi('ให้หัวหน้าตรวจสอบการเริ่มงานและสถานะงานประจำวันของวันที่เลือก แล้วโหลดข้อมูลอีกครั้ง')}</p>
           <button className="employee-text-button" disabled={data.loadingReference} onClick={data.retryLoad} type="button">{translateUi('โหลดงานประจำวันอีกครั้ง')}</button>
         </section>

@@ -141,6 +141,8 @@ export function FinancialOperations({
   const { getOrCreatePendingRequest, clearPendingRequest } = usePendingRequests();
   const [runId, setRunId] = useState<string | null>(initialDemoRunId);
   const [collectionClosed, setCollectionClosed] = useState(false);
+  const [adminPostCloseAllowed, setAdminPostCloseAllowed] = useState(false);
+  const collectionWriteBlocked = collectionClosed && !(userRole === 'admin' && adminPostCloseAllowed && runId);
   const [queue, setQueue] = useState<QueueShop[]>(initialDemoRunId ? demoData?.queue ?? [] : []);
   const [receivables, setReceivables] = useState<Receivable[]>(demoData?.receivables ?? []);
   const [approvals, setApprovals] = useState<Approval[]>(demoData?.approvals ?? []);
@@ -271,6 +273,7 @@ export function FinancialOperations({
     const nextRunId = collectionQueue.runId;
     setRunId(nextRunId);
     setCollectionClosed(collectionQueue.isClosed);
+    setAdminPostCloseAllowed(collectionQueue.canRecordPayment === true);
     if (nextRunId || collectionQueue.isClosed) {
       const queueWithImages = await withPublicShopImages(collectionQueue.queue);
       const nextQueue = removeCancelledDeliveries(queueWithImages, cancelledEventIdsRef.current);
@@ -634,13 +637,13 @@ export function FinancialOperations({
     ? methodRequires(selectedShop.payment_profile, method, 'evidence')
     : false;
   const today = toBangkokDateString();
-  const paymentDate = userRole === 'admin' ? receivedDate ?? today : today;
+  const paymentDate = userRole === 'admin' ? receivedDate ?? (adminPostCloseAllowed && serviceDate < today ? serviceDate : today) : today;
   const paymentDateValid = /^\d{4}-\d{2}-\d{2}$/.test(paymentDate)
     && Number.isFinite(Date.parse(`${paymentDate}T00:00:00+07:00`))
     && paymentDate <= today;
   const paymentReady = Boolean(
     canCollectShopPayments
-    && !collectionClosed
+    && !collectionWriteBlocked
     && paymentDateValid
     && selectedShop
     && selectedChargeIds.length > 0
@@ -1032,7 +1035,9 @@ export function FinancialOperations({
   return (
     <div className="financial-ops" ref={pageRef}>
       {error ? <p className="employee-error" role="alert"><WarningCircle />{translateUi(error)}</p> : null}
-      {collectionClosed ? <p role="status">{translateUi('ปิดรอบแล้ว ยังดูร้านค้าและยอดค้างชำระได้ แต่บันทึกรับเงินในวันนี้ไม่ได้')}</p> : null}
+      {collectionClosed ? <p role="status">{translateUi(collectionWriteBlocked
+        ? 'ปิดรอบแล้ว ยังดูร้านค้าและยอดค้างชำระได้ แต่บันทึกรับเงินในวันนี้ไม่ได้'
+        : 'ปิดยอดแล้ว แอดมินบันทึกรับเงินเพิ่มได้ รายการใหม่จะมีประวัติแยกจากยอดปิดเดิม')}</p> : null}
       {success ? <p className="employee-success"><CheckCircle weight="fill" />{translateUi(success)}</p> : null}
       {focusRequest && (focusLoading || focusLoadError) ? (
         <section className="financial-ops__focus-state" aria-live="polite" role={focusLoadError ? 'alert' : 'status'}>
@@ -1160,8 +1165,8 @@ export function FinancialOperations({
           allocatedAmount={allocatedAmount}
           amount={amount}
           busy={busy}
-          canRecordPayment={canCollectShopPayments && !collectionClosed}
-          collectionClosed={collectionClosed}
+          canRecordPayment={canCollectShopPayments && !collectionWriteBlocked}
+          collectionClosed={collectionWriteBlocked}
           canBackdatePayment={userRole === 'admin'}
           receivedDate={paymentDate}
           today={today}

@@ -201,7 +201,7 @@ describe('employee shop picker image preview', () => {
 
   it('hides casual customers until a round is selected', () => {
     renderPicker(vi.fn(), '');
-    expect(screen.queryByRole('button', { name: 'ลูกค้าขาจร' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'ลูกค้าขายสด' })).toBeNull();
   });
 
   it('shows an event booth number without exposing the unfinished POS path', async () => {

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowClockwise, CaretLeft, CaretRight, ChartBar, CreditCard, DownloadSimple, Receipt, Truck, Warning, X, type Icon } from '@phosphor-icons/react';
+import { ArrowClockwise, CaretLeft, CaretRight, ChartBar, CreditCard, DownloadSimple, Receipt, Warning, X, type Icon } from '@phosphor-icons/react';
 import { supabase } from '../../lib/supabase';
 import { subscribeToDataChange } from '../../lib/dataChange';
 import { toBangkokDateString } from '../../lib/serviceDate';
@@ -300,25 +300,27 @@ export function ExecutiveReportsPage({ isActive, demoReport, demoRows }: {
   const receiptPoint = detail?.bucket ? shownReport?.trend.find((row) => row.date === detail.bucket) : null;
   const receiptGross = detail?.bucket ? receiptPoint?.receipts ?? 0 : shownReport?.receipts ?? 0;
   const receiptRefunds = detail?.bucket ? receiptPoint?.refunds ?? 0 : shownReport?.refunds ?? 0;
-  return <div className="executive-report">
-    <header className="executive-report__heading">
-      <div><h1 ref={reportHeading} tabIndex={-1}>{translateUi('รายงานผู้บริหาร')}</h1><p>{translateUi('ยอดขาย เงินรับ ลูกหนี้ และปริมาณส่ง')}</p></div>
-      <div className="executive-report__actions">
-        <button aria-label={translateUi('รีเฟรชรายงาน')} disabled={loading || Boolean(rangeError)} onClick={refresh} type="button"><ArrowClockwise size={19} />{translateUi(' รีเฟรช')}</button>
-        {!(section === 'sales' && comparing) ? <button disabled={!shownReport || loading || exporting || Boolean(error)} onClick={() => void handleExport()} type="button"><DownloadSimple size={19} /> {exporting ? translateUi('กำลังสร้าง Excel…') : translateUi('ส่งออก Excel ตามช่วงวันที่หลัก')}</button> : null}
-      </div>
-    </header>
-
-    <section className="executive-filters" aria-label={translateUi('เลือกช่วงเวลารายงาน')}>
+  const rangeFilters = <section className="executive-filters" aria-label={translateUi('เลือกช่วงเวลารายงาน')}>
       <div className="executive-filter-controls"><div aria-label={translateUi('ช่วงวันที่ลัด')} className="executive-presets">{(Object.keys(presetNames) as Array<keyof typeof presetNames>).map((key) =>
         <button aria-pressed={preset === key} key={key} onClick={() => choosePreset(key)} type="button">{translateUi(presetNames[key])}</button>)}</div>
       <div className="executive-dates"><label>{translateUi('จาก')}<input max={toBangkokDateString()} onChange={(event) => { setPreset('custom'); setFrom(event.target.value); setDetail(null); }} type="date" value={from} /></label>
         <label>{translateUi('ถึง')}<input max={toBangkokDateString()} onChange={(event) => { setPreset('custom'); setTo(event.target.value); setDetail(null); }} type="date" value={to} /></label></div></div>
       {rangeError ? <p className="executive-error" role="alert">{translateUi(rangeError)}</p> : null}
       {shownReport ? <p className="executive-asof">{translateUi('ข้อมูล ณ ')}{uiDateTimeString(new Date(shownReport.asOf), { timeZone: 'Asia/Bangkok' })} · {formatReportDate(from)} – {formatReportDate(to)}</p> : null}
-    </section>
+    </section>;
 
-    {demoReport ? <p className="executive-panel-note" role="note">{translateUi('ข้อมูลจำลอง · ใช้ตรวจหน้าจอ ไม่ใช่ผลประกอบการจริง')}</p> : null}
+  return <div className={`executive-report${section === 'volume' ? ' executive-report--volume' : ''}`}>
+    <header className="executive-report__heading">
+      <div><h1 ref={reportHeading} tabIndex={-1}>{translateUi(section === 'volume' ? 'ปริมาณน้ำแข็ง' : 'รายงานผู้บริหาร')}</h1><p>{translateUi(section === 'volume' ? 'ติดตามยอดขายรายวัน แยกตามชนิดและหน่วย' : 'ยอดขาย เงินรับ ลูกหนี้ และปริมาณส่ง')}</p></div>
+      <div className="executive-report__actions">
+        <button aria-label={translateUi('รีเฟรชรายงาน')} disabled={loading || Boolean(rangeError)} onClick={refresh} type="button"><ArrowClockwise size={19} />{translateUi(' รีเฟรช')}</button>
+        {section !== 'volume' && !(section === 'sales' && comparing) ? <button disabled={!shownReport || loading || exporting || Boolean(error)} onClick={() => void handleExport()} type="button"><DownloadSimple size={19} /> {exporting ? translateUi('กำลังสร้าง Excel…') : translateUi('ส่งออก Excel ตามช่วงวันที่หลัก')}</button> : null}
+      </div>
+    </header>
+
+    {section !== 'volume' ? rangeFilters : null}
+
+    {demoReport && section !== 'volume' ? <p className="executive-panel-note" role="note">{translateUi('ข้อมูลจำลอง · ใช้ตรวจหน้าจอ ไม่ใช่ผลประกอบการจริง')}</p> : null}
     {shownReport && shownReport.salesBasis !== 'excluding_vat' ? <p className="executive-error" role="status">
       {translateUi('รายงานยังใช้ยอดขายรวม VAT จึงยังเทียบกับบัญชีไม่ได้ กรุณาอัปเดตระบบรายงานแล้วรีเฟรช')}
     </p> : null}
@@ -361,14 +363,17 @@ export function ExecutiveReportsPage({ isActive, demoReport, demoRows }: {
         </div>
       </section>
       </> : null}
-      {section === 'volume' ? <section className="executive-panel" aria-label={translateUi('จำนวนรายการส่ง')}>
-        <h2><Truck size={20} aria-hidden="true" /> {translateUi('รายการส่ง')} · {number(shownReport.deliveryCount)}</h2>
-        <p className="executive-panel-note">{formatReportDate(from)} – {formatReportDate(to)} · {translateUi('จำนวนครั้งที่บันทึกส่ง ไม่ใช่จำนวนถุง')}</p>
-      </section> : null}
       {section === 'volume' || hasViewedVolume ? <div className="executive-volume-daily" hidden={section !== 'volume'}><ReportDailyQuantities report={shownReport} demo={Boolean(demoReport)}
         reportLoading={loading} reportError={error}
         selectedDate={quantitySelection ?? to}
         onDateChange={setQuantitySelection} /></div> : null}
+    </> : null}
+    {section === 'volume' ? <section className="quantity-period" aria-label={translateUi('รายงานปริมาณตามช่วงวันที่หลัก')}>
+      <div className="quantity-period__heading"><div><h2>{translateUi('ปริมาณรวมและแยกตามตึก')}</h2><p>{translateUi('เลือกช่วงวันที่สำหรับรายการส่ง ปริมาณรวม และของเสีย')}</p></div>
+        <button disabled={!shownReport || loading || exporting || Boolean(error)} onClick={() => void handleExport()} type="button"><DownloadSimple size={18} aria-hidden="true" />{exporting ? translateUi('กำลังสร้าง Excel…') : translateUi('ส่งออก Excel ตามช่วงวันที่หลัก')}</button></div>
+      {rangeFilters}
+    </section> : null}
+    {shownReport && !(section === 'sales' && comparing) ? <>
       <ReportSections
         onNavigateSection={(nextSection, targetId) => {
           if (nextSection === 'sales') setComparing(false);

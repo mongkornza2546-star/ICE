@@ -51,7 +51,7 @@ const number = new Intl.NumberFormat('th-TH', { maximumFractionDigits: 1 });
 const accountingDate = uiDateTimeFormat({ timeZone: 'Asia/Bangkok' });
 const typeLabels: Record<string, string> = {
   FACTORY: 'รับจากโรงงาน', WITHDRAW: 'เบิกออก', TRANSFER: 'โอน', SALE: 'ขายสด', INV: 'ใบส่งของ',
-  REC: 'รับเงิน', FREE: 'แจกขาจร', ADJ: 'ปรับปรุง', REF: 'คืนเงิน', DAMAGE: 'เสียหาย', RETURN: 'คืนรถ/โรงงาน',
+  REC: 'รับเงิน', FREE: 'แจกฟรี (ขายสด)', ADJ: 'ปรับปรุง', REF: 'คืนเงิน', DAMAGE: 'เสียหาย', RETURN: 'คืนรถ/โรงงาน',
 };
 const financialTransactionTypes: AccountingTransactionType[] = ['SALE', 'INV', 'REC', 'FREE', 'REF', 'ADJ'];
 const paymentTermLabels = { immediate: 'จ่ายทันที', end_of_day: 'เก็บท้ายวัน', credit: 'เครดิต', mixed: 'หลายเงื่อนไข' } as const;
@@ -772,7 +772,7 @@ function ShopSummaryPanel({ daily, data, loading, unavailable, view, onViewChang
 
       <div className="accounting-shop-view-actions">
         <div className="accounting-shop-view-switch" role="group" aria-label={translateUi('มุมมองสรุปรายร้าน')}><button aria-pressed={view === 'totals'} onClick={() => onViewChange('totals')} type="button">{translateUi('ยอดรวมช่วงวันที่')}</button><button aria-pressed={view === 'daily'} onClick={() => onViewChange('daily')} type="button">{translateUi('ตารางรายวัน')}</button></div>
-      <details className="accounting-casual-summary"><summary><span>{translateUi('ลูกค้าขาจร ')}<small>{translateUi('ทั้งช่วงวันที่ ทุกพื้นที่ · ไม่ตามตัวกรองร้าน')}</small></span><strong>{translateUi('ยอดขาย ')}{totals.casual_sales_amount == null ? '—' : money.format(totals.casual_sales_amount)}</strong></summary><dl>{([
+      <details className="accounting-casual-summary"><summary><span>{translateUi('ลูกค้าขายสด ')}<small>{translateUi('ทั้งช่วงวันที่ ทุกพื้นที่ · ไม่ตามตัวกรองร้าน')}</small></span><strong>{translateUi('ยอดขาย ')}{totals.casual_sales_amount == null ? '—' : money.format(totals.casual_sales_amount)}</strong></summary><dl>{([
         ['รับเงิน', totals.casual_received_amount], ['คืนเงิน', totals.casual_refunded_amount], ['เงินสุทธิ', totals.casual_net_cash],
       ] as const).map(([label, value]) => <div key={label}><dt>{translateUi(String(label))}</dt><dd>{value == null ? '—' : money.format(value)}</dd></div>)}<div><dt>{translateUi('รายการแจก')}</dt><dd>{totals.casual_free_count?.toLocaleString('th-TH') ?? '—'}{translateUi(' ครั้ง')}</dd></div></dl></details>
         <label className="accounting-sort-label">{translateUi('เรียงตาม ')}<select aria-label={translateUi('เรียงลำดับ')} onChange={(event) => updateFilter({ shop_sort: event.target.value === 'area' ? undefined : event.target.value as AccountingFilters['shop_sort'] })} value={filters.shop_sort ?? 'area'}><option value="area">{translateUi('พื้นที่ / ลำดับส่ง')}</option><option value="outstanding">{translateUi('ค้างมากสุด')}</option><option value="overdue">{translateUi('เกินกำหนดมากสุด')}</option><option value="sales">{translateUi('ยอดขายมากสุด')}</option><option value="name">{translateUi('ชื่อร้าน')}</option><option value="code">{translateUi('รหัสร้าน')}</option></select></label>
@@ -980,8 +980,8 @@ function ShopDailyMatrix({ collapsedGroups, daily, data, filters, fromDate, grou
 
   const renderBuildingCasual = (building: AccountingCasualBuilding) => {
     return <Fragment key={`building:${building.building_id}`}>
-      {renderCasualRow(building.days, `${translateUi('ขายสด/ขาจร — ')}${building.building_name}`, building)}
-      <tr className="accounting-daily-matrix__totals accounting-daily-matrix__building-total"><th colSpan={2}>{translateUi('รวม ')}{building.building_name}{translateUi(' รวมขาจรแล้ว')}<small>{translateUi(building.shop_days ? 'ทุกร้านที่เปิดใช้งานในตึก + ขาจรทั้งตึก' : 'ยังไม่มียอดรวมทั้งตึก')}</small></th>
+      {renderCasualRow(building.days, `${translateUi('ขายสด — ')}${building.building_name}`, building)}
+      <tr className="accounting-daily-matrix__totals accounting-daily-matrix__building-total"><th colSpan={2}>{translateUi('รวม ')}{building.building_name}{translateUi(' รวมขายสดแล้ว')}<small>{translateUi(building.shop_days ? 'ทุกร้านที่เปิดใช้งานในตึก + ขายสดทั้งตึก' : 'ยังไม่มียอดรวมทั้งตึก')}</small></th>
         {dates.map((date) => {
           const shopDay = building.shop_days?.find((day) => day.service_date === date);
           const complete = Boolean(shopDay);
@@ -990,8 +990,8 @@ function ShopDailyMatrix({ collapsedGroups, daily, data, filters, fromDate, grou
             {daily.ice_types.map((ice) => <td key={ice.ice_type_id}>{complete ? number.format(Number(shopDay?.items.find((item) => item.ice_type_id === ice.ice_type_id)?.quantity ?? 0) + Number(casual?.items.find((item) => item.ice_type_id === ice.ice_type_id)?.quantity ?? 0)) : '—'}</td>)}
             <td>{complete ? number.format(Number(shopDay?.tank_quantity ?? 0)) : '—'}</td>
             <td>{complete ? money.format(Number(shopDay?.sales_amount ?? 0) + Number(casual?.sales_amount ?? 0)) : '—'}</td>
-            <td>{complete ? money.format(Number(shopDay?.cash_received ?? 0) + Number(casual?.cash_received ?? 0)) : '—'}{Number(casual?.cash_refunded) > 0 ? <small>{translateUi('คืนเงินขาจร ')}{money.format(casual!.cash_refunded)}</small> : null}</td>
-            <td>{complete ? money.format(Number(shopDay?.transfer_received ?? 0) + Number(casual?.transfer_received ?? 0)) : '—'}{Number(casual?.transfer_refunded) > 0 ? <small>{translateUi('คืนเงินขาจร ')}{money.format(casual!.transfer_refunded!)}</small> : null}</td>
+            <td>{complete ? money.format(Number(shopDay?.cash_received ?? 0) + Number(casual?.cash_received ?? 0)) : '—'}{Number(casual?.cash_refunded) > 0 ? <small>{translateUi('คืนเงินขายสด ')}{money.format(casual!.cash_refunded)}</small> : null}</td>
+            <td>{complete ? money.format(Number(shopDay?.transfer_received ?? 0) + Number(casual?.transfer_received ?? 0)) : '—'}{Number(casual?.transfer_refunded) > 0 ? <small>{translateUi('คืนเงินขายสด ')}{money.format(casual!.transfer_refunded!)}</small> : null}</td>
           </Fragment>;
         })}
       </tr>
@@ -1029,7 +1029,7 @@ function ShopDailyMatrix({ collapsedGroups, daily, data, filters, fromDate, grou
         ])}</tr>
       </thead>
       <tbody>
-        {daily.casual_legacy_days === undefined || legacyDays?.length ? renderCasualRow(legacyDays ?? [], translateUi('ลูกค้าขาจร')) : null}
+        {daily.casual_legacy_days === undefined || legacyDays?.length ? renderCasualRow(legacyDays ?? [], translateUi('ลูกค้าขายสด')) : null}
         {!data.rows.length ? <tr><td colSpan={totalColumnCount}>{translateUi('ไม่พบร้านที่ตรงกับตัวกรอง')}</td></tr> : !grouped ? data.rows.map(renderShopRow) : [...groups.entries()].map(([key, rows]) => {
           const group = derivedShopGroup(rows);
           const collapsed = collapsedGroups.has(key);
@@ -1069,7 +1069,7 @@ function ShopDailyMatrix({ collapsedGroups, daily, data, filters, fromDate, grou
       </tbody>
     </table></div>
     <div className="accounting-daily-matrix__legend" aria-label={translateUi('ความหมายสถานะ')}>
-      <span>{translateUi(daily.casual_buildings ? 'ขาจรใหม่แยกตามตึก · แถวลูกค้าขาจรเดิมคงไว้ตามข้อมูลเดิม · ยอดรวมตึกครบทุกร้านที่เปิดใช้งาน ไม่เปลี่ยนตามหน้า · จำนวนถุงรวมเฉพาะรายการที่ระบุจำนวน' : 'แถวลูกค้าขาจรรวมยอดทุกจุดถือครองในช่วงวันที่เลือก ไม่รวมซ้ำในยอดของกลุ่มร้าน')}</span>
+      <span>{translateUi(daily.casual_buildings ? 'ขายสดใหม่แยกตามตึก · แถวลูกค้าขายสดเดิมคงไว้ตามข้อมูลเดิม · ยอดรวมตึกครบทุกร้านที่เปิดใช้งาน ไม่เปลี่ยนตามหน้า · จำนวนถุงรวมเฉพาะรายการที่ระบุจำนวน' : 'แถวลูกค้าขายสดรวมยอดทุกจุดถือครองในช่วงวันที่เลือก ไม่รวมซ้ำในยอดของกลุ่มร้าน')}</span>
       {(Object.entries(dailyStatusLabels) as Array<[AccountingShopDailyStatus, string]>).filter(([status]) => status !== 'purchased').map(([status, label]) => <span key={status}><i className={`accounting-daily-status accounting-daily-status--${status}`} />{translateUi(label)}</span>)}
     </div>
   </div>;
@@ -1176,7 +1176,7 @@ function ReconciliationPanel({ data, loading, serviceDate, setServiceDate }: { d
   const sections = financial ? [
     { title: 'ยอดขายและการชำระบิล', rows: [['ยอดขายหลังปรับปรุง', financial.effective_sales], ['รับชำระบิลของวันนี้แล้ว', financial.allocated_to_sales], ['ค้างที่ต้องเก็บ', financial.outstanding_collectible], ['ลูกหนี้เครดิต', financial.outstanding_credit]], note: 'ตามวันที่ขาย · ยอดรับชำระเป็นยอดปัจจุบัน' },
     { title: 'ยอดรับชำระและคืนเงินตามระบบ', rows: [['ยอดรับชำระตามระบบ', financial.cash_received], ['ยอดคืนเงินตามระบบ', financial.cash_refunded], ['ยอดรับสุทธิตามระบบ', financial.net_cash], ['ยอดรอคืน', financial.pending_refunds]], note: 'ตามรายการรับชำระและคืนเงินที่บันทึก รวมเงินสดและโอน/QR · ยอดที่หัวหน้านับแสดงแยกด้านล่าง' },
-    { title: 'ลูกค้าขาจร', rows: [['ยอดขายขาจร', financial.casual_sales], ['ยอดรับชำระขาจรตามระบบ', financial.casual_received], ['ยอดคืนเงินขาจรตามระบบ', financial.casual_refunded]], note: 'รวมอยู่ในยอดขายและยอดรับชำระ–คืนเงินตามระบบแล้ว' },
+    { title: 'ลูกค้าขายสด', rows: [['ยอดขายขายสด', financial.casual_sales], ['ยอดรับชำระขายสดตามระบบ', financial.casual_received], ['ยอดคืนเงินขายสดตามระบบ', financial.casual_refunded]], note: 'รวมอยู่ในยอดขายและยอดรับชำระ–คืนเงินตามระบบแล้ว' },
   ] : [];
   return <div className="accounting-reconciliation">
     <label className="accounting-reconciliation__date">{translateUi('วันที่เทียบยอด ')}<input aria-label={translateUi('วันที่เทียบยอด')} max={toBangkokDateString()} onChange={(event) => { if (dateKeyTimestamp(event.target.value) != null && event.target.value <= toBangkokDateString()) setServiceDate(event.target.value); }} type="date" value={serviceDate} /></label>

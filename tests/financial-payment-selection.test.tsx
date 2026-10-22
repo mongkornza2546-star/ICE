@@ -544,3 +544,22 @@ it('requests a due-date extension for the chosen invoice inside a statement with
     prompt.mockRestore();
   }
 });
+
+
+it('allows admin backdated cash collection on a closed day only with the server capability', async () => {
+  await import('../src/features/financial-operations/FinancialManagerWorkspace');
+  supabaseMock.loadQueue.mockResolvedValue({ runId: 'closed-run', isClosed: true, canRecordPayment: true, queue: [shop] });
+  supabaseMock.rpc.mockResolvedValue({ data: [], error: null });
+  render(<FinancialOperations userRole="admin" serviceDate={serviceDate} />);
+  fireEvent.click(await screen.findByRole('button', { name: /S001.*ร้านทดสอบ/ }));
+  const record = await screen.findByRole('button', { name: 'บันทึกรับเงินทันที' });
+  expect(record.hasAttribute('disabled')).toBe(false);
+  expect(screen.getByText(/ปิดยอดแล้ว แอดมินบันทึกรับเงินเพิ่มได้/)).toBeTruthy();
+  const yesterday = shiftServiceDate(toBangkokDateString(), -1);
+  fireEvent.change(screen.getByLabelText('วันที่รับเงิน'), { target: { value: yesterday } });
+  fireEvent.click(record);
+  await waitFor(() => expect(supabaseMock.rpc).toHaveBeenCalledWith('record_backdated_collection_payment', {
+    p_payment_kind: 'record_regular_collection_payment', p_received_date: yesterday,
+    p_payment_args: expect.objectContaining({ p_payment_method: 'cash', p_collection_run_id: 'closed-run', p_received_amount: 125 }),
+  }));
+});

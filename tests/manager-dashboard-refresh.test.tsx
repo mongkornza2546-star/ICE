@@ -42,8 +42,8 @@ it('shows the aggregate closure instead of obsolete per-location count warnings'
   expect(screen.getByText('เงินสด')).not.toBeNull();
   expect(screen.getByText('โอนเงิน')).not.toBeNull();
   expect(screen.getByText('เครดิต')).not.toBeNull();
-  expect(screen.getAllByText('รับชำระแล้ววันนี้ · รวมลูกค้าขาจร')).toHaveLength(2);
-  expect(screen.getByText('จำนวนที่ขายได้วันนี้ · รวมลูกค้าขาจร')).not.toBeNull();
+  expect(screen.getAllByText('รับชำระแล้ววันนี้ · รวมลูกค้าขายสด')).toHaveLength(2);
+  expect(screen.getByText('จำนวนที่ขายได้วันนี้ · รวมลูกค้าขายสด')).not.toBeNull();
   expect(screen.getByText('ยอดขายแยกตามประเภทน้ำแข็ง')).not.toBeNull();
   expect(screen.getByText('หลอดเล็ก')).not.toBeNull();
   expect(screen.getByText('42')).not.toBeNull();

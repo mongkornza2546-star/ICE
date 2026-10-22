@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
+import { ArrowDown, ArrowRight, ArrowUp, Cube, DownloadSimple, Truck } from '@phosphor-icons/react';
 import { translateUi, useLanguage } from '../../i18n';
 import { shiftServiceDate, toBangkokDateString } from '../../lib/serviceDate';
 import { supabase } from '../../lib/supabase';
 import { demoComparisonReport } from './demoComparisonReport';
 import { formatReportDate } from './reportDates';
 import { Panel } from './ReportPrimitives';
+import { QuantityTrendChart } from './QuantityTrendChart';
 import { exportDailyQuantities } from './exportExecutiveReport';
 import type { ExecutiveReport } from './types';
 
@@ -19,6 +21,8 @@ export function ReportDailyQuantities({ report, demo = false, selectedDate, onDa
   const today = toBangkokDateString();
   const month = selectedDate.slice(0, 7);
   const [exporting, setExporting] = useState(false);
+  const [productId, setProductId] = useState('');
+  const [showAllDays, setShowAllDays] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
   const [loaded, setLoaded] = useState<ExecutiveReport | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -68,6 +72,8 @@ export function ReportDailyQuantities({ report, demo = false, selectedDate, onDa
     const values = days.filter((date) => date <= end).map((date) => quantity(date, id));
     return values.some((value) => value === null) ? null : values.reduce<number>((sum, value) => sum + (value ?? 0), 0);
   };
+  const selectedProduct = columns.find((product) => product.id === productId) ?? columns.find((product) => product.unit === 'ถุง') ?? columns[0];
+  const visibleDays = showAllDays ? days : days.filter((date) => date <= selectedDate).slice(-5).reverse();
   const display = (value: number | null) => value === null ? '—' : number(value);
   const canExport = Boolean(source?.dailyTrend && columns.length && !error
     && !(reuseReport && (reportLoading || reportError)));
@@ -92,8 +98,14 @@ export function ReportDailyQuantities({ report, demo = false, selectedDate, onDa
     }
   };
 
+  // The delivery count belongs to the main range, independent of monthly data availability.
+  const deliverySummary = <div className="quantity-deliveries" role="region" aria-label={translateUi('จำนวนรายการส่ง')}>
+    <Truck size={25} aria-hidden="true" /><div><span>{translateUi('รายการส่งช่วงวันที่หลัก')}</span><strong>{number(report.deliveryCount)} <small>{translateUi('ครั้ง')}</small></strong>
+      <small>{formatReportDate(report.from)} – {formatReportDate(report.to)}</small>
+      <small>{translateUi('จำนวนครั้งที่บันทึกส่ง ไม่ใช่จำนวนถุง')}</small></div>
+  </div>;
+
   return <Panel title={translateUi('จำนวนขายน้ำแข็งรายวัน')}
-    description={translateUi('แยกชนิดและหน่วย · ตารางนี้ใช้เดือนที่เลือกในกล่อง แยกจากช่วงวันที่หลัก')}
     className="executive-daily-quantities"
     action={<div className="executive-quantity-actions"><label className="executive-quantity-month">{translateUi('เดือนที่ต้องการดู')}
       <input type="month" value={month} max={today.slice(0, 7)} onChange={(event) => {
@@ -102,57 +114,76 @@ export function ReportDailyQuantities({ report, demo = false, selectedDate, onDa
         const [y, m] = value.split('-').map(Number);
         onDateChange(value === today.slice(0, 7) ? today : new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10));
       }} />
-    </label><button type="button" disabled={!canExport || exporting} onClick={() => void handleExport()}>
-      {translateUi(exporting ? 'กำลังสร้างไฟล์จำนวนขาย…' : 'ส่งออกจำนวนขายรายวัน (Excel)')}
+    </label><button aria-label={translateUi(exporting ? 'กำลังสร้างไฟล์จำนวนขาย…' : 'ส่งออกจำนวนขายรายวัน (Excel)')} type="button" disabled={!canExport || exporting} onClick={() => void handleExport()}>
+      <DownloadSimple size={18} aria-hidden="true" /> {translateUi(exporting ? 'กำลังสร้างไฟล์จำนวนขาย…' : 'ส่งออก Excel')}
     </button></div>}>
-    {demo ? <p className="executive-panel-note">{translateUi('ข้อมูลจำลอง · ไม่ใช่ข้อมูลจริงตามวันที่')}</p> : null}
+    {demo ? <p className="executive-panel-note quantity-demo-note">{translateUi('ข้อมูลจำลอง · ไม่ใช่ข้อมูลจริงตามวันที่')}</p> : null}
     {exportError ? <p className="executive-error" role="alert">{translateUi(exportError)}</p> : null}
     {error ? <p className="executive-error" role="alert">{translateUi(error)} <button type="button" onClick={() => setRetry((value) => value + 1)}>{translateUi('ลองใหม่')}</button></p>
       : !source ? <p role="status">{translateUi('กำลังโหลดจำนวนขายรายวัน…')}</p>
       : !source.dailyTrend ? <p role="status">{translateUi('ข้อมูลจำนวนขายรายวันยังไม่พร้อมใช้งาน กรุณาอัปเดตระบบรายงาน')}</p>
       : !columns.length ? <p className="executive-empty">{translateUi('ยังไม่มีรายการขายน้ำแข็งในเดือนนี้')}</p>
       : <>
-        <div className="executive-quantity-controls">
-          <h3>{translateUi(selectedDate === today ? 'วันนี้เทียบกับเมื่อวาน' : 'วันที่เลือกเทียบกับวันก่อนหน้า')}</h3>
-          <label>{translateUi('วันที่เปรียบเทียบ')}<input type="date" min={first} max={end} value={selectedDate}
-            onChange={(event) => {
-              const value = event.target.value;
-              if (value >= first && value <= end) onDateChange(value);
-            }} /></label>
+        <div className="quantity-analysis">
+          <section className="quantity-analysis__chart" aria-label={translateUi('แนวโน้มจำนวนขาย')}>
+            <div className="quantity-analysis__heading"><h3>{translateUi('แนวโน้มจำนวนขาย')}</h3>
+              <select aria-label={translateUi('ชนิดน้ำแข็งในกราฟ')} value={selectedProduct.id} onChange={(event) => setProductId(event.target.value)}>
+                {columns.map((product) => <option key={product.id} value={product.id}>{product.name} · {product.unit}</option>)}
+              </select>
+            </div>
+            <QuantityTrendChart name={selectedProduct.name} unit={selectedProduct.unit} selectedDate={selectedDate} onDateChange={onDateChange}
+              points={days.filter((date) => date <= end).map((date) => ({ date, value: quantity(date, selectedProduct.id) }))} />
+          </section>
+          <aside className="quantity-comparison" aria-label={translateUi('เปรียบเทียบจำนวนขาย')}>
+            <div className="executive-quantity-controls">
+              <h3>{translateUi(selectedDate === today ? 'วันนี้เทียบกับเมื่อวาน' : 'วันที่เลือกเทียบกับวันก่อนหน้า')}</h3>
+              <label>{translateUi('วันที่เปรียบเทียบ')}<input type="date" min={first} max={end} value={selectedDate}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  if (value >= first && value <= end) onDateChange(value);
+                }} /></label>
+            </div>
+            <ul className="quantity-comparison__list" tabIndex={0} aria-label={translateUi('ยอดเปรียบเทียบแยกชนิดน้ำแข็ง')}>
+              {columns.map((product) => {
+                const current = quantity(selectedDate, product.id);
+                const previous = quantity(previousDate, product.id);
+                const difference = current === null || previous === null ? null : current - previous;
+                return <li key={product.id} aria-label={product.name}>
+                  <span className="quantity-comparison__icon"><Cube size={25} aria-hidden="true" /></span>
+                  <div className="quantity-comparison__product"><span>{product.name}</span><strong>{display(current)} <small>{product.unit}</small></strong>
+                    <small>{translateUi('วันก่อน')} {display(previous)} {product.unit}</small></div>
+                  <div className={`quantity-comparison__delta ${difference === null || difference === 0 ? '' : difference > 0 ? 'executive-quantity-up' : 'executive-quantity-down'}`}>
+                    <strong>{difference !== null && difference !== 0 ? difference > 0 ? <ArrowUp size={14} aria-hidden="true" /> : <ArrowDown size={14} aria-hidden="true" /> : null}
+                      {difference === null ? '—' : difference === 0 ? translateUi('เท่าเดิม') : `${difference > 0 ? '+' : ''}${number(difference)} ${product.unit}`}</strong>
+                    <small>{translateUi('เทียบ')} {formatReportDate(previousDate)}</small>
+                  </div>
+                </li>;
+              })}
+            </ul>
+            {deliverySummary}
+          </aside>
         </div>
-        <div className="executive-quantity-scroll" role="region" aria-label={translateUi('ตารางเปรียบเทียบจำนวนขาย')} tabIndex={0}>
-          <table className="executive-quantity-table">
-            <thead><tr><th scope="col">{translateUi('ชนิดน้ำแข็ง')}</th><th scope="col">{formatReportDate(selectedDate)}</th>
-              <th scope="col">{formatReportDate(previousDate)}</th><th scope="col">{translateUi('เพิ่ม / ลด')}</th></tr></thead>
-            <tbody>{columns.map((product) => {
-              const current = quantity(selectedDate, product.id);
-              const previous = quantity(previousDate, product.id);
-              const difference = current === null || previous === null ? null : current - previous;
-              return <tr key={product.id}><th scope="row">{product.name}<small>{product.unit}</small></th>
-                <td>{display(current)}</td><td>{display(previous)}</td>
-                <td className={difference === null || difference === 0 ? '' : difference > 0 ? 'executive-quantity-up' : 'executive-quantity-down'}>
-                  {difference === null ? '—' : difference === 0 ? translateUi('เท่าเดิม') : `${difference > 0 ? '+' : ''}${number(difference)} ${product.unit}`}
-                </td></tr>;
-            })}</tbody>
-          </table>
-        </div>
-        <h3 className="executive-quantity-month-heading">{translateUi('จำนวนขายแต่ละวันทั้งเดือน')}</h3>
-        <p className="executive-panel-note">{translateUi('0 = ไม่มีจำนวนขาย · — = ยังไม่มีข้อมูลหรือยังไม่ถึงวันนั้น · วันนี้เป็นยอดที่บันทึกแล้ว ยังไม่ครบวัน')}</p>
-        <div className="executive-quantity-scroll executive-quantity-scroll--month" role="region" aria-label={translateUi('ตารางจำนวนขายรายวันทั้งเดือน')} tabIndex={0}>
+        <div className="quantity-table-heading"><h3>{translateUi(showAllDays ? 'จำนวนขายแต่ละวันทั้งเดือน' : 'รายละเอียดรายวัน')}</h3>
+          <span>{formatReportDate(first)} – {formatReportDate(end)}</span></div>
+        <div className={`executive-quantity-scroll executive-quantity-scroll--month${showAllDays ? ' is-expanded' : ''}`} role="region" aria-label={translateUi('ตารางจำนวนขายรายวันทั้งเดือน')} tabIndex={0}>
           <table className="executive-quantity-table">
             <thead><tr><th scope="col">{translateUi('วันที่')}</th>{columns.map((product) =>
               <th scope="col" key={product.id}>{product.name}<small>{product.unit}</small></th>)}</tr></thead>
-            <tbody>{days.map((date) => <tr key={date} className={date === selectedDate ? 'executive-quantity-selected' : undefined}>
+            <tbody>{visibleDays.map((date) => <tr key={date} className={date === selectedDate ? 'executive-quantity-selected' : undefined}>
               <th scope="row">{date <= end ? <button type="button" aria-pressed={date === selectedDate}
                 onClick={() => onDateChange(date)}>{formatReportDate(date)}{date === today ? ` · ${translateUi('วันนี้')}` : ''}</button>
                 : formatReportDate(date)}</th>
               {columns.map((product) => <td key={product.id}>{date > end ? '—' : display(quantity(date, product.id))}</td>)}
             </tr>)}</tbody>
-            <tfoot><tr><th scope="row">{translateUi('รวมเดือนถึงวันที่')} {formatReportDate(end)}</th>
-              {columns.map((product) => <td key={product.id}>{display(total(product.id))}</td>)}</tr></tfoot>
+            {showAllDays ? <tfoot><tr><th scope="row">{translateUi('รวมเดือนถึงวันที่')} {formatReportDate(end)}</th>
+              {columns.map((product) => <td key={product.id}>{display(total(product.id))}</td>)}</tr></tfoot> : null}
           </table>
         </div>
-        <p className="executive-panel-note">{translateUi('รวมจำนวนส่งร้านและขายหน้ารถตามวันที่ขาย หลังปรับแก้รายการ ไม่รวมของเสีย')}</p>
+        <div className="quantity-table-footer"><p className="executive-panel-note">{translateUi('0 = ไม่มีจำนวนขาย · — = ยังไม่มีข้อมูลหรือยังไม่ถึงวันนั้น · วันนี้เป็นยอดที่บันทึกแล้ว ยังไม่ครบวัน')}</p>
+          <button type="button" aria-expanded={showAllDays} onClick={() => setShowAllDays((value) => !value)}>{translateUi(showAllDays ? 'แสดง 5 วัน' : 'ดูทั้งเดือน')}<ArrowRight size={17} aria-hidden="true" /></button></div>
+        <p className="executive-panel-note quantity-source-note">{translateUi('รวมจำนวนส่งร้านและขายหน้ารถตามวันที่ขาย หลังปรับแก้รายการ ไม่รวมของเสีย')}</p>
+        <a className="quantity-building-link" href="#executive-volume-areas">{translateUi('ดูปริมาณแยกตามตึก')}<ArrowRight size={19} aria-hidden="true" /></a>
       </>}
+    {error || !source?.dailyTrend || !columns.length ? deliverySummary : null}
   </Panel>;
 }

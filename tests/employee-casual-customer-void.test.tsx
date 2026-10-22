@@ -37,7 +37,7 @@ function setup(historyCount = 1, extra: Partial<CasualTransactionContext> = {}) 
 async function openDialog(user: ReturnType<typeof userEvent.setup>) {
   await screen.findByRole('heading', { name: 'ประวัติวันนี้' });
   await user.click(screen.getAllByRole('button', { name: 'ยกเลิก', exact: true })[0]);
-  return within(screen.getByRole('dialog', { name: 'ยกเลิกรายการขาจร' }));
+  return within(screen.getByRole('dialog', { name: 'ยกเลิกรายการขายสด' }));
 }
 
 describe('casual cancellation input', () => {

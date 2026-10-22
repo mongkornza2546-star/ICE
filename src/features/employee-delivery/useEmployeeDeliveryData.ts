@@ -40,7 +40,7 @@ export type StockTransferMode = 'receive' | 'return' | 'damage';
 export interface StockTransferSuccess { mode: StockTransferMode; quantity: number }
 
 function automaticRoundId(rounds: DeliveryRound[]) {
-  const openRounds = rounds.filter((round) => round.status === 'open');
+  const openRounds = rounds.filter((round) => !round.cancelled_at && (round.status === 'open' || round.can_record_delivery));
   return openRounds.length === 1
     ? openRounds[0].id
     : rounds.length === 1
@@ -60,6 +60,7 @@ function withKnownIceTypeImages(context: DeliveryPosContext, iceTypes: IceTypeOp
     ...context,
     items: context.items.map((item) => ({
       ...item,
+      stock_quantity: context.stock_check_required === false ? Number.MAX_SAFE_INTEGER : item.stock_quantity,
       image_url: imageUrls.get(item.ice_type_id) ?? item.image_url ?? null,
     })),
   };
@@ -970,7 +971,7 @@ export function useEmployeeDeliveryData({
   };
 
   const setPadValue = (value: typeof PAD_VALUES[number]) => {
-    if (!selectedIceTypeId || submitting || selectedRound?.status === 'closed') return;
+    if (!selectedIceTypeId || submitting || (selectedRound?.status === 'closed' && !selectedRound.can_record_delivery)) return;
     setDeliveryQuantities((current) => ({
       ...current,
       [selectedIceTypeId]: value === '+' ? (current[selectedIceTypeId] ?? 0) + 1 : Number(value),
@@ -982,7 +983,7 @@ export function useEmployeeDeliveryData({
   };
 
   const setDeliveryQuantity = (iceTypeId: string, quantity: number) => {
-    if (submitting || selectedRound?.status === 'closed') return;
+    if (submitting || (selectedRound?.status === 'closed' && !selectedRound.can_record_delivery)) return;
     const contextItem = posContext?.items.find((item) => item.ice_type_id === iceTypeId);
     const assignedAvailable = stockQuantity(stockState?.holding_location.balances, iceTypeId);
     const available = contextItem?.stock_quantity
@@ -1580,7 +1581,7 @@ export function useEmployeeDeliveryData({
   };
 
   const clearDeliveryQuantities = () => {
-    if (submitting || selectedRound?.status === 'closed') return;
+    if (submitting || (selectedRound?.status === 'closed' && !selectedRound.can_record_delivery)) return;
     setDeliveryQuantities(Object.fromEntries(iceTypes.map((iceType) => [iceType.id, 0])));
     setApprovalId(null);
     setApprovalReason('');

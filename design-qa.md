@@ -1065,3 +1065,58 @@ final result: passed
 - Final pass re-captured the cash state at the normalized viewport, compared it with the supplied target, and found no actionable P0/P1/P2 mismatch.
 
 final result: passed
+
+---
+
+## 2026-10-21 — Quantity report, selected design 2
+
+**Scope and visual truth**
+
+- User selected the second displayed concept and requested applying it to the existing quantity page.
+- Source: `/Users/bhusitt./.codex/generated_images/01a15e9f-0fc3-7e81-91ec-011ffa89c9ea/exec-bd359795-b3fb-4de0-b1d7-9161ab6f22ee.png` (1487 × 1058 pixels).
+- Local implementation: `http://127.0.0.1:5178/?screen=executive-report`, quantity tab selected. Browser: Codex in-app browser.
+- Desktop evidence: `audit/volume-redesign/desktop.png`, 1440 × 1024 pixels / CSS viewport. Browser screenshot output is 1 image pixel per CSS pixel; source normalized to 1440 × 1024 (under 0.2% aspect difference).
+- Full comparison: `audit/volume-redesign/comparison.png` (source left, implementation right). Focused comparison: `audit/volume-redesign/comparison-detail.png`, chart, comparison rail and ledger at a common crop/scale.
+- Mobile evidence: `audit/volume-redesign/mobile-top.png` and `audit/volume-redesign/mobile-details.png`, 390 × 844 viewport.
+- State: October 2026, October 21 selected, small tube ice in bags. Existing demo data is explicitly labeled and intentionally differs from generated sample amounts. Existing demo shell exposes only two authorized navigation entries and has six products, rather than the concept's three.
+
+**Findings and comparison history**
+
+1. Initial comparison (`desktop-before.png`, `comparison-before.png`) found P2 density drift: extra toolbar space and the full six-product comparison list pushed the daily table below the viewport. The date label also inherited a column direction from shared form styling.
+2. Moved the month/export toolbar into the desktop header, retained a flowing toolbar on smaller screens, bounded the comparison list, and explicitly set the date control's grid and row direction. Consolidated the demo notice with the desktop title.
+3. Re-captured and opened both final full-view and focused comparisons together. The line chart and comparison rail now lead the page; five daily rows fit within the 1440 × 1024 viewport. No remaining actionable P0/P1/P2 findings.
+
+**Required fidelity surfaces**
+
+- Fonts: retained bundled Noto Sans Thai; 32px desktop title, 17px section headings, 24px comparison amounts, 13px ledger. Thai labels, decimals and units remain readable and wrap within their container.
+- Spacing/layout: approximately two-thirds chart / one-third comparison; light vertical separator; ledger below. At narrow widths sections stack, and the ledger scrolls within its own region. Browser measured viewport/document width as 390/390, with no page-wide horizontal overflow.
+- Colors/tokens: existing navy text, blue actions/series, pale blue selection, green positive and red negative deltas retained. Arrows and signed numbers preserve meaning without color alone.
+- Assets: reused the existing ice logo, sidebar artwork and Phosphor icons. The live data chart uses canvas, with a matching unit-labeled numerical table and keyboard date navigation. No new decorative raster assets were required.
+- Copy/content: keeps quantity units separate, explicitly distinguishes delivery count from bag quantities, retains unknown-data dashes and current-day caveat. Monthly totals appear in expanded view and Excel.
+
+**Intentional product adaptations**
+
+- Real product list and fractional amounts are retained; the scrollable comparison rail supports more than three products.
+- Selected date/value is shown in a stable readout above the chart rather than a floating tooltip; click and arrow keys select the date. Missing days break the plotted line instead of becoming zero.
+- Main-range filters and their existing export are retained below daily analytics, alongside overall/building/damage reports. The independent month filter does not silently change those report ranges.
+- Existing refresh control and app shell remain. Further font/icon micro-adjustments are P3 polish only.
+
+**Validation**
+
+- 77 tests passed across `report-daily-quantities`, `executive-reports` and `report-comparison`.
+- Coverage includes fractional quantities, independent product units, month boundaries, leap months, unknown versus zero, delayed responses, export failures, tab persistence, refresh/recovery, keyboard date selection and recovery from an invalid main date range.
+- Browser verified product switch bags → rows, keyboard date change, expand/collapse monthly table (33 rows including header/footer), building jump link and actual Excel download: `demo-ice-daily-quantities-2026-10-compare-2026-10-21.xlsx`.
+- Browser error log: empty during checks. Desktop and mobile rendering inspected. Temporary viewport override reset; local preview tab kept open.
+- Production build passed; existing large-chunk advisory remains. `git diff --check` passed.
+- Local code and demo verified. No production deployment or database changes were made.
+
+final result: passed
+
+### 2026-10-21 — Quantity redesign review fixes
+
+- Main-range date controls now stay mounted outside the report-data gate. Changing either date keeps focus during loading and after recovery; invalid ranges remain editable. The export remains disabled until the selected range has usable data.
+- The delivery summary reads the main report independently of monthly quantities. Its count and date range remain visible during monthly loading, request failure/retry, unavailable daily data, and an empty month. The successful chart/comparison layout is preserved.
+- Regression ledger: five new cases failed before the fix (`tmp/quantity-fix-red.log`); all 22 quantity cases pass after the fix. The original two review repros also pass (`tmp/quantity-fix-original-repro.log`).
+- Final validation: 82 tests passed across quantity, executive-report, and comparison suites (`tmp/quantity-fix-tests.log`); production build passed (`tmp/quantity-fix-build.log`, existing large-chunk advisory); scoped `git diff --check` passed.
+- Root causes were conditional unmounting of editable controls and gating independent main-range data on monthly availability. Regression coverage now checks DOM focus/identity and actual nonzero counts across those boundaries.
+- No production deployment or database changes.

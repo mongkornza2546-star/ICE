@@ -44,9 +44,10 @@ afterEach(() => vi.useRealTimers());
 it('shows daily product quantities, differences, month totals, zero days and unknown future days separately', () => {
   render(<ReportDailyQuantities report={report()} />);
   expect(rpc).not.toHaveBeenCalled();
-  const comparison = screen.getByRole('region', { name: 'ตารางเปรียบเทียบจำนวนขาย' });
-  expect(within(comparison).getByRole('row', { name: /หลอดเล็ก/ }).textContent).toBe('หลอดเล็กถุง7.7510-2.25 ถุง');
-  expect(within(comparison).getByRole('row', { name: /น้ำแข็งก้อน/ }).textContent).toBe('น้ำแข็งก้อนแถว03-3 แถว');
+  const comparison = screen.getByRole('complementary', { name: 'เปรียบเทียบจำนวนขาย' });
+  expect(within(comparison).getByRole('listitem', { name: 'หลอดเล็ก' }).textContent).toContain('7.75 ถุงวันก่อน 10 ถุง-2.25 ถุง');
+  expect(within(comparison).getByRole('listitem', { name: 'น้ำแข็งก้อน' }).textContent).toContain('0 แถววันก่อน 3 แถว-3 แถว');
+  fireEvent.click(screen.getByRole('button', { name: 'ดูทั้งเดือน' }));
   const month = screen.getByRole('region', { name: 'ตารางจำนวนขายรายวันทั้งเดือน' });
   expect(within(month).getAllByRole('row')).toHaveLength(33);
   expect(within(month).getByRole('row', { name: /รวมเดือน/ }).textContent).toContain('17.753');
@@ -60,8 +61,9 @@ it('loads the prior month boundary when comparing the first day without adding i
   render(<ReportDailyQuantities report={report()} />);
   fireEvent.change(screen.getByLabelText('วันที่เปรียบเทียบ'), { target: { value: '2026-10-01' } });
   await waitFor(() => expect(rpc).toHaveBeenCalledWith('get_executive_report', { p_from: '2026-09-30', p_to: '2026-10-20' }));
-  const comparison = await screen.findByRole('region', { name: 'ตารางเปรียบเทียบจำนวนขาย' });
-  expect(within(comparison).getByText(formatReportDate('2026-09-30'))).not.toBeNull();
+  const comparison = await screen.findByRole('complementary', { name: 'เปรียบเทียบจำนวนขาย' });
+  expect(within(comparison).getAllByText(`เทียบ ${formatReportDate('2026-09-30')}`)).toHaveLength(2);
+  fireEvent.click(screen.getByRole('button', { name: 'ดูทั้งเดือน' }));
   expect(within(screen.getByRole('region', { name: 'ตารางจำนวนขายรายวันทั้งเดือน' }))
     .getByRole('row', { name: /รวมเดือน/ }).textContent).toContain('17.753');
 });
@@ -70,8 +72,9 @@ it('keeps a missing day unknown rather than reporting zero or a complete monthly
   const data = report();
   data.dailyTrend = data.dailyTrend?.filter((day) => day.date !== '2026-10-19');
   render(<ReportDailyQuantities report={data} />);
-  expect(within(screen.getByRole('region', { name: 'ตารางเปรียบเทียบจำนวนขาย' }))
-    .getByRole('row', { name: /หลอดเล็ก/ }).textContent).toBe('หลอดเล็กถุง7.75——');
+  expect(within(screen.getByRole('complementary', { name: 'เปรียบเทียบจำนวนขาย' }))
+    .getByRole('listitem', { name: 'หลอดเล็ก' }).textContent).toContain('7.75 ถุงวันก่อน — ถุง—');
+  fireEvent.click(screen.getByRole('button', { name: 'ดูทั้งเดือน' }));
   expect(within(screen.getByRole('region', { name: 'ตารางจำนวนขายรายวันทั้งเดือน' }))
     .getByRole('row', { name: /รวมเดือน/ }).textContent).toContain('——');
 });
@@ -83,6 +86,7 @@ it('supports historical leap months and fetches the full month for a single-day 
   fireEvent.change(screen.getByLabelText('เดือนที่ต้องการดู'), { target: { value: '2024-02' } });
   const month = await screen.findByRole('region', { name: 'ตารางจำนวนขายรายวันทั้งเดือน' });
   expect(rpc).toHaveBeenCalledWith('get_executive_report', { p_from: '2024-02-01', p_to: '2024-02-29' });
+  fireEvent.click(screen.getByRole('button', { name: 'ดูทั้งเดือน' }));
   expect(within(month).getAllByRole('row')).toHaveLength(31);
   expect((screen.getByLabelText('วันที่เปรียบเทียบ') as HTMLInputElement).value).toBe('2024-02-29');
 });
@@ -108,7 +112,8 @@ it('discards a late month response after switching months', async () => {
   await screen.findByRole('region', { name: 'ตารางจำนวนขายรายวันทั้งเดือน' });
   resolveOld({ data: report(), error: null });
   await waitFor(() => expect((screen.getByLabelText('เดือนที่ต้องการดู') as HTMLInputElement).value).toBe('2026-09'));
-  expect(screen.getByRole('columnheader', { name: formatReportDate('2026-09-30') })).not.toBeNull();
+  expect((screen.getByLabelText('วันที่เปรียบเทียบ') as HTMLInputElement).value).toBe('2026-09-30');
+  expect(screen.getByRole('button', { name: formatReportDate('2026-09-30') })).not.toBeNull();
 });
 
 const exportedRows = (sheetIndex: number) => writeXlsxFile.mock.calls[0][0][sheetIndex]
@@ -257,4 +262,95 @@ it('preserves an explicitly selected historical month when the main preset rolls
   expect((screen.getByLabelText('ถึง') as HTMLInputElement).value).toBe('2026-10-21');
   expect((screen.getByLabelText('เดือนที่ต้องการดู') as HTMLInputElement).value).toBe('2026-09');
   expect((screen.getByLabelText('วันที่เปรียบเทียบ') as HTMLInputElement).value).toBe('2026-09-15');
+});
+
+
+it('switches the chart unit independently and selects comparison dates with keyboard controls', () => {
+  render(<ReportDailyQuantities report={report()} />);
+  const chart = screen.getByRole('img', { name: /แนวโน้มจำนวนขาย.*หลอดเล็ก/ });
+  expect(within(screen.getByRole('region', { name: 'ตารางจำนวนขายรายวันทั้งเดือน' })).getAllByRole('row')).toHaveLength(6);
+  fireEvent.change(screen.getByLabelText('ชนิดน้ำแข็งในกราฟ'), { target: { value: 'block' } });
+  expect(screen.getByRole('img', { name: /น้ำแข็งก้อน \(แถว\)/ })).not.toBeNull();
+  fireEvent.keyDown(chart, { key: 'ArrowLeft' });
+  expect((screen.getByLabelText('วันที่เปรียบเทียบ') as HTMLInputElement).value).toBe('2026-10-19');
+  const comparison = screen.getByRole('complementary', { name: 'เปรียบเทียบจำนวนขาย' });
+  expect(within(comparison).getByRole('listitem', { name: 'น้ำแข็งก้อน' }).textContent).toContain('3 แถววันก่อน 0 แถว+3 แถว');
+  fireEvent.keyDown(chart, { key: 'End' });
+  expect((screen.getByLabelText('วันที่เปรียบเทียบ') as HTMLInputElement).value).toBe('2026-10-20');
+  fireEvent.keyDown(chart, { key: 'ArrowRight' });
+  expect((screen.getByLabelText('วันที่เปรียบเทียบ') as HTMLInputElement).value).toBe('2026-10-20');
+});
+
+
+it('keeps the main range editable on the quantity tab after invalid dates and recovers', async () => {
+  render(<ExecutiveReportsPage isActive />);
+  await screen.findByRole('region', { name: 'ผลประกอบการตามช่วงวันที่' });
+  fireEvent.click(screen.getByRole('button', { name: 'ปริมาณ', exact: true }));
+  const input = screen.getByLabelText('ถึง');
+  input.focus();
+  fireEvent.change(input, { target: { value: '2026-09-30' } });
+  expect(screen.getByRole('alert')).not.toBeNull();
+  expect(document.activeElement).toBe(input);
+  expect(screen.getByLabelText('ถึง')).toBe(input);
+  fireEvent.change(input, { target: { value: '2026-10-20' } });
+  await screen.findByRole('region', { name: 'ตารางจำนวนขายรายวันทั้งเดือน' });
+  expect(screen.queryByRole('alert')).toBeNull();
+  expect(document.activeElement).toBe(input);
+});
+
+
+it.each([['จาก', '2026-10-02'], ['ถึง', '2026-10-19']])('keeps %s mounted and focused through a main-range request', async (label, value) => {
+  render(<ExecutiveReportsPage isActive />);
+  await screen.findByRole('region', { name: 'ผลประกอบการตามช่วงวันที่' });
+  fireEvent.click(screen.getByRole('button', { name: 'ปริมาณ', exact: true }));
+  let finish!: (result: { data: ExecutiveReport; error: null }) => void;
+  rpc.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
+  const input = screen.getByLabelText(label);
+  const period = screen.getByRole('region', { name: 'รายงานปริมาณตามช่วงวันที่หลัก' });
+  input.focus();
+  fireEvent.change(input, { target: { value } });
+  expect(document.activeElement).toBe(input);
+  expect(within(period).getByLabelText(label)).toBe(input);
+  expect((within(period).getByRole('button', { name: 'ส่งออก Excel ตามช่วงวันที่หลัก' }) as HTMLButtonElement).disabled).toBe(true);
+  finish({ data: report(label === 'จาก' ? value : '2026-10-01', label === 'ถึง' ? value : '2026-10-20'), error: null });
+  await screen.findByRole('table', { name: 'ปริมาณงานและน้ำแข็ง' });
+  expect(document.activeElement).toBe(input);
+  expect(within(period).getByLabelText(label)).toBe(input);
+});
+
+it('keeps the main delivery count through independent monthly loading, failure and retry', async () => {
+  rpc.mockResolvedValueOnce({ data: { ...report(), deliveryCount: 1726 }, error: null });
+  render(<ExecutiveReportsPage isActive />);
+  await screen.findByRole('region', { name: 'ผลประกอบการตามช่วงวันที่' });
+  fireEvent.click(screen.getByRole('button', { name: 'ปริมาณ', exact: true }));
+  const expectMainCount = () => {
+    const summaries = screen.getAllByRole('region', { name: 'จำนวนรายการส่ง' });
+    expect(summaries).toHaveLength(1);
+    expect(summaries[0].textContent).toContain('1,726 ครั้ง');
+    expect(summaries[0].textContent).toContain(`${formatReportDate('2026-10-01')} – ${formatReportDate('2026-10-20')}`);
+  };
+  expectMainCount();
+  let fail!: (result: { data: null; error: { message: string } }) => void;
+  rpc.mockImplementationOnce(() => new Promise((resolve) => { fail = resolve; }));
+  fireEvent.change(screen.getByLabelText('เดือนที่ต้องการดู'), { target: { value: '2026-09' } });
+  expect(screen.getByRole('status').textContent).toContain('กำลังโหลดจำนวนขายรายวัน');
+  expectMainCount();
+  fail({ data: null, error: { message: 'monthly quantity unavailable' } });
+  await screen.findByRole('alert');
+  expect(screen.getByRole('table', { name: 'ปริมาณงานและน้ำแข็ง' })).not.toBeNull();
+  expectMainCount();
+  fireEvent.click(screen.getByRole('button', { name: 'ลองใหม่' }));
+  await screen.findByRole('region', { name: 'ตารางจำนวนขายรายวันทั้งเดือน' });
+  expectMainCount();
+});
+
+it.each(['unavailable', 'empty'])('keeps the main delivery count when monthly quantities are %s', (state) => {
+  const data = { ...report(), deliveryCount: 1726 };
+  if (state === 'unavailable') delete data.dailyTrend;
+  else { data.products = []; data.dailyTrend = []; }
+  render(<ReportDailyQuantities report={data} />);
+  const summary = screen.getByRole('region', { name: 'จำนวนรายการส่ง' });
+  expect(summary.textContent).toContain('1,726 ครั้ง');
+  expect(summary.textContent).toContain(`${formatReportDate(data.from)} – ${formatReportDate(data.to)}`);
+  expect(screen.queryByRole('region', { name: 'ตารางจำนวนขายรายวันทั้งเดือน' })).toBeNull();
 });

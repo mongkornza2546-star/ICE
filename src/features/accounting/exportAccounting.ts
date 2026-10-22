@@ -241,9 +241,9 @@ export async function exportAccountingShopDaily(
     ...orderedGroups.map((group) => buildSheet(group.rows, group.title)),
   ];
   if (daily.casual_days) {
-    sheets.push(safeSheetName('ลูกค้าขาจร', usedNames));
+    sheets.push(safeSheetName('ลูกค้าขายสด', usedNames));
     data.push([
-      [textCell('ลูกค้าขาจร · รวมทุกจุดถือครอง ไม่ขึ้นกับตัวกรองร้านหรือโซน')],
+      [textCell('ลูกค้าขายสด · รวมทุกจุดถือครอง ไม่ขึ้นกับตัวกรองร้านหรือโซน')],
       ['วันที่', 'ชนิดน้ำแข็ง', 'จำนวนออกทั้งหมด', 'รวมจากยอดเงิน', 'จำนวนแจกฟรี', 'แบ่งขาย/แจก (ครั้ง)', 'ยอดแบ่งขาย', 'เศษยังไม่ครบถุง', 'ยอดขายรวม', 'เงินสด', 'คืนเงินสด', 'เงินสดสุทธิ', 'โอน', 'คืนเงินโอน', 'โอนสุทธิ', 'ยอดเดิมยังไม่แปลงเป็นถุง'].map((value) => ({ ...textCell(value), ...headerStyle })),
       ...daily.casual_days.flatMap((day) => [
         [textCell(day.service_date), textCell('รวมเงินประจำวัน'), ...Array.from({ length: 6 }, () => textCell('')),

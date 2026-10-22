@@ -5,6 +5,7 @@ import { supabase } from './supabase';
 export interface CurrentCollectionQueue {
   runId: string | null;
   isClosed: boolean;
+  canRecordPayment?: boolean;
   queue: QueueShop[];
 }
 
@@ -20,6 +21,7 @@ export async function loadCurrentCollectionQueue(serviceDate: string): Promise<C
   return {
     runId: response.data.collection_run_id,
     isClosed: response.data.status === 'closed',
+    canRecordPayment: response.data.can_record_payment === true,
     queue: (response.data.queue ?? []) as QueueShop[],
   };
 }

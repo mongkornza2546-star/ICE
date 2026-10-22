@@ -3,7 +3,8 @@ import { supabase } from './supabase';
 type CollectionContext = {
   collection_run_id: string;
   service_date: string;
-  status: 'open';
+  status: 'open' | 'closed';
+  can_record_payment?: boolean;
 };
 
 let cachedContext: CollectionContext | null = null;
@@ -31,7 +32,7 @@ export async function ensureCurrentCollectionContext(serviceDate: string): Promi
     });
     if (error) throw error;
     const context = data as Partial<CollectionContext> | null;
-    if (!context?.collection_run_id || context.service_date !== serviceDate || context.status !== 'open') {
+    if (!context?.collection_run_id || context.service_date !== serviceDate || (context.status !== 'open' && !(context.status === 'closed' && context.can_record_payment))) {
       throw new Error('ระบบไม่ได้ส่งบริบทรับเงินของวันปัจจุบันกลับมา');
     }
     cachedContext = context as CollectionContext;

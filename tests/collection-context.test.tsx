@@ -23,7 +23,7 @@ describe('automatic collection context', () => {
       ? { data: { collection_run_id: null, status: 'closed', queue }, error: null }
       : { data: null, error: new Error('The selected business date is already closed') });
 
-    expect(await loadCurrentCollectionQueue('2026-10-21')).toEqual({ runId: null, isClosed: true, queue });
+    expect(await loadCurrentCollectionQueue('2026-10-21')).toEqual({ runId: null, isClosed: true, canRecordPayment: false, queue });
     expect(supabaseMock.rpc).toHaveBeenCalledTimes(1);
   });
 
@@ -32,7 +32,7 @@ describe('automatic collection context', () => {
     supabaseMock.rpc.mockResolvedValueOnce({
       data: { collection_run_id: 'run-1', status: 'open', queue }, error: null,
     });
-    expect(await loadCurrentCollectionQueue('2026-10-12')).toEqual({ runId: 'run-1', isClosed: false, queue });
+    expect(await loadCurrentCollectionQueue('2026-10-12')).toEqual({ runId: 'run-1', isClosed: false, canRecordPayment: false, queue });
     expect(supabaseMock.rpc).toHaveBeenLastCalledWith('get_daily_shop_collection_queue', { p_service_date: '2026-10-12' });
   });
 
@@ -81,4 +81,14 @@ describe('automatic collection context', () => {
     expect(onRefresh).toHaveBeenCalledTimes(1);
     window.removeEventListener(COLLECTION_PROFILE_REFRESH_EVENT, onRefresh);
   });
+  it('retains a closed admin context only with the explicit write capability', async () => {
+    supabaseMock.rpc.mockResolvedValue({ data: { collection_run_id: 'closed-run',
+      service_date: '2026-10-21', status: 'closed', can_record_payment: true }, error: null });
+    expect((await ensureCurrentCollectionContext('2026-10-21')).status).toBe('closed');
+    invalidateCurrentCollectionContext();
+    supabaseMock.rpc.mockResolvedValue({ data: { collection_run_id: 'closed-run',
+      service_date: '2026-10-21', status: 'closed' }, error: null });
+    await expect(ensureCurrentCollectionContext('2026-10-21')).rejects.toThrow();
+  });
+
 });

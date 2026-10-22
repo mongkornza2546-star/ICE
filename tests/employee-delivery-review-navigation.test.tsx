@@ -599,3 +599,22 @@ it('shows exclusive VAT and blocks a credit sale when VAT takes it over the avai
   expect(screen.getByText('ยอดเกินวงเงินเครดิต')).toBeTruthy();
   expect((screen.getByRole('button', { name: 'ส่งอย่างเดียว' }) as HTMLButtonElement).disabled).toBe(true);
 });
+
+
+it.each([false, true])('closed-day delivery edit capability: %s', async (allowed) => {
+  const user = userEvent.setup();
+  renderReview(true, shopCard, {
+    round: { ...round, status: 'closed', can_record_delivery: allowed },
+    posContext: { ...posContext, stock_check_required: !allowed,
+      items: posContext.items.map(item => ({ ...item, stock_quantity: 0 })) },
+  });
+  const product = screen.getByRole('button', { name: /หลอดเล็ก.*คงเหลือ/ });
+  expect(product.hasAttribute('disabled')).toBe(!allowed);
+  if (allowed) {
+    expect(screen.getByText(/บันทึกส่งของหลังปิดยอด/)).toBeTruthy();
+    await user.click(product);
+    const quantity = screen.getByRole('spinbutton', { name: 'จำนวนหลอดเล็ก' });
+    expect(quantity.hasAttribute('disabled')).toBe(false);
+    expect(quantity.hasAttribute('max')).toBe(false);
+  }
+});

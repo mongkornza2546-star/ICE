@@ -23,7 +23,7 @@ export function CashReconciliationPanel({ data, error }: { data: CashCloseReconc
       <h3 id="accounting-cash-close-title">{translateUi('ตรวจนับเงินสดรายบุคคล')}</h3>
       {data && !error ? <span>{translateUi(complete ? 'บันทึกยอดนับเงินแล้ว' : 'ยังไม่บันทึกยอดนับเงิน')}</span> : null}
     </div>
-    <p className="accounting-context-note">{translateUi('เทียบเงินสดตามระบบกับยอดนับจริงแยกตามผู้บันทึกรับเงิน รวมพนักงานส่งของ แอดมิน และหัวหน้า สำหรับยอดปิดใหม่ ส่วนวันที่ปิดแล้วแสดงตามรายชื่อและยอดที่บันทึกไว้ในวันนั้น รวมร้านประจำและลูกค้าขาจร หลังหักเงินทอนและเงินสดที่แต่ละคนคืน ไม่รวมโอน/QR')}</p>
+    <p className="accounting-context-note">{translateUi('เทียบเงินสดตามระบบกับยอดนับจริงแยกตามผู้บันทึกรับเงิน รวมพนักงานส่งของ แอดมิน และหัวหน้า สำหรับยอดปิดใหม่ ส่วนวันที่ปิดแล้วแสดงตามรายชื่อและยอดที่บันทึกไว้ในวันนั้น รวมร้านประจำและลูกค้าขายสด หลังหักเงินทอนและเงินสดที่แต่ละคนคืน ไม่รวมโอน/QR')}</p>
     {error || !data ? <p className="accounting-error" role="alert">{translateUi('โหลดข้อมูลยอดนับเงินไม่สำเร็จ กรุณากดรีเฟรช')}{error ? ` · ${error}` : ''}</p> : <>
       {!data.feature_enabled ? <p className="accounting-context-note">{translateUi('วันที่นี้ยังไม่เปิดใช้การบันทึกยอดนับเงิน')}</p> : null}
       {!complete && data.feature_enabled ? <p className="accounting-context-note">{translateUi('ยอดนับจริงจะแสดงเมื่อหัวหน้ากดยืนยันปิดยอดสต๊อกและเงินสดแล้ว ช่องว่างหมายถึงยังไม่มีการบันทึก')}</p> : null}

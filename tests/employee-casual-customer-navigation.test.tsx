@@ -63,7 +63,7 @@ describe('casual-customer POS navigation', () => {
     />);
 
     await screen.findByRole('searchbox', { name: 'ค้นหาร้าน' });
-    expect(screen.queryByRole('button', { name: 'บันทึกลูกค้าขาจร' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'บันทึกลูกค้าขายสด' })).toBeNull();
   });
 
   it('keeps the entry hidden when the server does not advertise the measured RPC capability', async () => {
@@ -77,7 +77,7 @@ describe('casual-customer POS navigation', () => {
 
     await screen.findByRole('searchbox', { name: 'ค้นหาร้าน' });
     await waitFor(() => expect(gateway.loadCasualTransactionCapability).toHaveBeenCalled());
-    expect(screen.queryByRole('button', { name: 'บันทึกลูกค้าขาจร' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'บันทึกลูกค้าขายสด' })).toBeNull();
   });
 
   it('opens casual customers above shop search and returns to the shop picker', async () => {
@@ -93,12 +93,12 @@ describe('casual-customer POS navigation', () => {
       serviceDate="2026-08-20"
     />);
 
-    const casualButton = await screen.findByRole('button', { name: 'บันทึกลูกค้าขาจร' });
+    const casualButton = await screen.findByRole('button', { name: 'บันทึกลูกค้าขายสด' });
     const search = screen.getByRole('searchbox', { name: 'ค้นหาร้าน' });
     expect(casualButton.compareDocumentPosition(search) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 
     await user.click(casualButton);
-    const heading = screen.getByRole('heading', { level: 1, name: 'ลูกค้าขาจร' });
+    const heading = screen.getByRole('heading', { level: 1, name: 'ลูกค้าขายสด' });
     expect(document.activeElement).toBe(heading);
     expect(scrollY).toBe(0);
     expect(await screen.findByRole('heading', { level: 2, name: 'เลือกน้ำแข็ง' })).toBeTruthy();
@@ -106,7 +106,7 @@ describe('casual-customer POS navigation', () => {
     expect(document.querySelector('.employee-pos-product-grid button small')?.textContent).toBe('ไม่ระบุจำนวน');
 
     await user.click(screen.getByRole('button', { name: 'กลับไปเลือกร้าน' }));
-    const restoredButton = await screen.findByRole('button', { name: 'บันทึกลูกค้าขาจร' });
+    const restoredButton = await screen.findByRole('button', { name: 'บันทึกลูกค้าขายสด' });
     await waitFor(() => expect(document.activeElement).toBe(restoredButton));
     expect(scrollY).toBe(640);
   });
@@ -125,7 +125,7 @@ describe('casual-customer POS navigation', () => {
     });
     render(<EmployeeDeliveryWorkspace casualCustomerEnabled gateway={gateway} serviceDate="2026-08-20" />);
 
-    await user.click(await screen.findByRole('button', { name: 'บันทึกลูกค้าขาจร' }));
+    await user.click(await screen.findByRole('button', { name: 'บันทึกลูกค้าขายสด' }));
     await user.click(document.querySelector('.employee-pos-product-grid button') as HTMLButtonElement);
     expect(document.querySelector('.employee-pos-product-grid button small')?.textContent).toBe('ไม่ระบุจำนวน');
     expect(screen.getByRole('region', { name: 'แป้นใส่จำนวน' })).toBeTruthy();
@@ -153,8 +153,8 @@ describe('casual-customer POS navigation', () => {
       serviceDate="2026-08-20"
     />);
 
-    await user.click(await screen.findByRole('button', { name: 'บันทึกลูกค้าขาจร' }));
-    expect(screen.getByRole('heading', { level: 1, name: 'ลูกค้าขาจร' })).toBeTruthy();
+    await user.click(await screen.findByRole('button', { name: 'บันทึกลูกค้าขายสด' }));
+    expect(screen.getByRole('heading', { level: 1, name: 'ลูกค้าขายสด' })).toBeTruthy();
 
     view.rerender(<EmployeeDeliveryWorkspace
       casualCustomerEnabled
@@ -162,8 +162,8 @@ describe('casual-customer POS navigation', () => {
       serviceDate="2026-08-19"
     />);
 
-    expect(await screen.findByRole('button', { name: 'บันทึกลูกค้าขาจร' })).toBeTruthy();
-    expect(screen.queryByRole('heading', { level: 1, name: 'ลูกค้าขาจร' })).toBeNull();
+    expect(await screen.findByRole('button', { name: 'บันทึกลูกค้าขายสด' })).toBeTruthy();
+    expect(screen.queryByRole('heading', { level: 1, name: 'ลูกค้าขายสด' })).toBeNull();
   });
 
   it('does not reopen the subpage after leaving and returning to POS', async () => {
@@ -176,8 +176,8 @@ describe('casual-customer POS navigation', () => {
       viewMode="pos"
     />);
 
-    await user.click(await screen.findByRole('button', { name: 'บันทึกลูกค้าขาจร' }));
-    expect(screen.getByRole('heading', { level: 1, name: 'ลูกค้าขาจร' })).toBeTruthy();
+    await user.click(await screen.findByRole('button', { name: 'บันทึกลูกค้าขายสด' }));
+    expect(screen.getByRole('heading', { level: 1, name: 'ลูกค้าขายสด' })).toBeTruthy();
 
     view.rerender(<EmployeeDeliveryWorkspace
       casualCustomerEnabled
@@ -186,7 +186,7 @@ describe('casual-customer POS navigation', () => {
       serviceDate="2026-08-20"
       viewMode="withdrawal"
     />);
-    expect(screen.queryByRole('heading', { level: 1, name: 'ลูกค้าขาจร' })).toBeNull();
+    expect(screen.queryByRole('heading', { level: 1, name: 'ลูกค้าขายสด' })).toBeNull();
 
     view.rerender(<EmployeeDeliveryWorkspace
       casualCustomerEnabled
@@ -194,8 +194,8 @@ describe('casual-customer POS navigation', () => {
       serviceDate="2026-08-20"
       viewMode="pos"
     />);
-    expect(await screen.findByRole('button', { name: 'บันทึกลูกค้าขาจร' })).toBeTruthy();
-    expect(screen.queryByRole('heading', { level: 1, name: 'ลูกค้าขาจร' })).toBeNull();
+    expect(await screen.findByRole('button', { name: 'บันทึกลูกค้าขายสด' })).toBeTruthy();
+    expect(screen.queryByRole('heading', { level: 1, name: 'ลูกค้าขายสด' })).toBeNull();
   });
 
   it('records a five-baht zero-quantity casual sale from the employee form', async () => {
@@ -225,7 +225,7 @@ describe('casual-customer POS navigation', () => {
     });
     render(<EmployeeDeliveryWorkspace casualCustomerEnabled gateway={gateway} serviceDate="2026-08-20" />);
 
-    await user.click(await screen.findByRole('button', { name: 'บันทึกลูกค้าขาจร' }));
+    await user.click(await screen.findByRole('button', { name: 'บันทึกลูกค้าขายสด' }));
     await user.click(document.querySelector('.employee-pos-product-grid button') as HTMLButtonElement);
     await user.type(await screen.findByLabelText('ยอดขาย (บาท)'), '5');
     expect(screen.queryByLabelText('รับเงิน (บาท)')).toBeNull();
@@ -262,7 +262,7 @@ describe('casual-customer POS navigation', () => {
       });
     render(<EmployeeDeliveryWorkspace casualCustomerEnabled gateway={gateway} serviceDate="2026-08-20" />);
 
-    await user.click(await screen.findByRole('button', { name: 'บันทึกลูกค้าขาจร' }));
+    await user.click(await screen.findByRole('button', { name: 'บันทึกลูกค้าขายสด' }));
     await user.click(document.querySelector('.employee-pos-product-grid button') as HTMLButtonElement);
     await user.type(await screen.findByLabelText('ยอดขาย (บาท)'), '75');
     await user.click(screen.getByRole('button', { name: 'ยืนยันขายและรับเงิน' }));
@@ -297,7 +297,7 @@ describe('casual-customer POS navigation', () => {
       .mockResolvedValueOnce({ transaction: { ...transaction, status: 'voided', voided_at: '2026-08-20T03:00:00Z', void_reason: 'คืนสินค้า' }, receipt: null });
     render(<EmployeeDeliveryWorkspace casualCustomerEnabled gateway={gateway} serviceDate="2026-08-20" />);
 
-    await user.click(await screen.findByRole('button', { name: 'บันทึกลูกค้าขาจร' }));
+    await user.click(await screen.findByRole('button', { name: 'บันทึกลูกค้าขายสด' }));
     await user.click(await screen.findByRole('button', { name: 'ยกเลิก' }));
     await user.type(screen.getByLabelText('เหตุผลการยกเลิก'), 'คืนสินค้า');
     await user.click(screen.getByRole('button', { name: 'ยืนยันยกเลิก' }));
@@ -332,7 +332,7 @@ describe('casual-customer POS navigation', () => {
     });
     render(<EmployeeDeliveryWorkspace casualCustomerEnabled gateway={gateway} serviceDate="2026-08-20" />);
 
-    await user.click(await screen.findByRole('button', { name: 'บันทึกลูกค้าขาจร' }));
+    await user.click(await screen.findByRole('button', { name: 'บันทึกลูกค้าขายสด' }));
     await user.click(await screen.findByRole('button', { name: 'ยกเลิก' }));
     await user.type(screen.getByLabelText('เหตุผลการยกเลิก'), 'บันทึกผิด');
     await user.click(screen.getByRole('button', { name: 'ยืนยันยกเลิก' }));
@@ -372,7 +372,7 @@ describe('casual-customer POS navigation', () => {
       document_title: 'ใบรับเงิน',
       status: 'voided',
       shop_code: 'WALK-IN',
-      shop_name: 'ลูกค้าขาจร',
+      shop_name: 'ลูกค้าขายสด',
       void_info: {
         voided_at: '2026-08-20T03:00:00Z',
         reason: 'คืนสินค้า',
@@ -380,7 +380,7 @@ describe('casual-customer POS navigation', () => {
     });
     render(<EmployeeDeliveryWorkspace casualCustomerEnabled gateway={gateway} serviceDate="2026-08-20" />);
 
-    await user.click(await screen.findByRole('button', { name: 'บันทึกลูกค้าขาจร' }));
+    await user.click(await screen.findByRole('button', { name: 'บันทึกลูกค้าขายสด' }));
     await user.click(await screen.findByRole('button', { name: 'ยกเลิก' }));
     await user.type(screen.getByLabelText('เหตุผลการยกเลิก'), 'คืนสินค้า');
     await user.click(screen.getByRole('button', { name: 'ยืนยันยกเลิก' }));
@@ -420,7 +420,7 @@ describe('casual-customer POS navigation', () => {
     const open = vi.spyOn(window, 'open').mockReturnValue(printWindow);
     render(<EmployeeDeliveryWorkspace casualCustomerEnabled gateway={gateway} serviceDate="2026-08-20" />);
 
-    await user.click(await screen.findByRole('button', { name: 'บันทึกลูกค้าขาจร' }));
+    await user.click(await screen.findByRole('button', { name: 'บันทึกลูกค้าขายสด' }));
     await user.click(await screen.findByRole('button', { name: 'พิมพ์' }));
 
     expect(open).toHaveBeenCalledOnce();
@@ -433,7 +433,7 @@ describe('casual-customer POS navigation', () => {
       document_title: 'ใบรับเงิน',
       status: 'active',
       shop_code: 'WALK-IN',
-      shop_name: 'ลูกค้าขาจร',
+      shop_name: 'ลูกค้าขายสด',
       payment_method: 'cash',
       received_amount: 75,
       allocated_amount: 75,
@@ -469,7 +469,7 @@ describe('casual-customer POS navigation', () => {
       <EmployeeDeliveryWorkspace casualCustomerEnabled gateway={gateway} serviceDate="2026-08-20" />,
     );
 
-    await user.click(await screen.findByRole('button', { name: 'บันทึกลูกค้าขาจร' }));
+    await user.click(await screen.findByRole('button', { name: 'บันทึกลูกค้าขายสด' }));
     await user.click(document.querySelector('.employee-pos-product-grid button') as HTMLButtonElement);
     await user.type(await screen.findByLabelText('ยอดขาย (บาท)'), '75');
     await user.click(screen.getByRole('button', { name: 'โอนเงิน' }));
@@ -480,7 +480,7 @@ describe('casual-customer POS navigation', () => {
     firstView.unmount();
 
     render(<EmployeeDeliveryWorkspace casualCustomerEnabled gateway={gateway} serviceDate="2026-08-20" />);
-    await user.click(await screen.findByRole('button', { name: 'บันทึกลูกค้าขาจร' }));
+    await user.click(await screen.findByRole('button', { name: 'บันทึกลูกค้าขายสด' }));
     await user.click(document.querySelector('.employee-pos-product-grid button') as HTMLButtonElement);
     await user.type(await screen.findByLabelText('ยอดขาย (บาท)'), '75');
     await user.click(screen.getByRole('button', { name: 'โอนเงิน' }));
@@ -499,7 +499,7 @@ describe('casual-customer POS navigation', () => {
     const gateway = createGateway();
     render(<EmployeeDeliveryWorkspace casualCustomerEnabled gateway={gateway} serviceDate="2026-08-20" />);
 
-    await user.click(await screen.findByRole('button', { name: 'บันทึกลูกค้าขาจร' }));
+    await user.click(await screen.findByRole('button', { name: 'บันทึกลูกค้าขายสด' }));
     await user.click(document.querySelector('.employee-pos-product-grid button') as HTMLButtonElement);
     await user.type(await screen.findByLabelText('ยอดขาย (บาท)'), '75');
     await user.click(screen.getByRole('button', { name: 'โอนเงิน' }));

@@ -267,7 +267,7 @@ export function EmployeeShopPicker({
       {selectedRoundId ? <nav aria-label={translateUi('ประเภทจุดส่ง')} className={`employee-destination-tabs${casualCustomerEntryVisible ? '' : ' employee-destination-tabs--two'}`}>
         <button aria-pressed={destinationKind === 'regular'} onClick={() => setDestinationKind('regular')} type="button">{translateUi('ร้านประจำ')}</button>
         <button aria-pressed={destinationKind === 'event'} onClick={() => setDestinationKind('event')} type="button">{translateUi('อีเว้น')}</button>
-        {casualCustomerEntryVisible ? <button aria-label={translateUi('บันทึกลูกค้าขาจร')} onClick={openCasualCustomer} ref={casualCustomerButtonRef} type="button">{translateUi('ลูกค้าขาจร')}</button> : null}
+        {casualCustomerEntryVisible ? <button aria-label={translateUi('บันทึกลูกค้าขายสด')} onClick={openCasualCustomer} ref={casualCustomerButtonRef} type="button">{translateUi('ลูกค้าขายสด')}</button> : null}
       </nav> : null}
 
       <label className="employee-search employee-search--standalone">

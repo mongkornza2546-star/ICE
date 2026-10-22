@@ -29,7 +29,7 @@ const TRUCK_ID = '40000000-0000-4000-8000-000000000002';
 const MOVEMENT_ID = '50000000-0000-4000-8000-000000000001';
 const SERVICE_DATE = '2026-08-20';
 
-async function createDatabase(t, role = 'courier') {
+async function createDatabase(t, role = 'courier', applyDisplayLabels = true) {
   const db = new PGlite();
   t.after(() => db.close());
   await db.exec(`
@@ -214,6 +214,7 @@ async function createDatabase(t, role = 'courier') {
   await db.exec(foundation);
   await db.exec(production);
   await db.exec(looseTransactions);
+  if (applyDisplayLabels) await db.exec(readFileSync(new URL('../supabase/migrations/0253_cash_sale_display_labels.sql', import.meta.url), 'utf8'));
   return db;
 }
 
@@ -233,6 +234,7 @@ async function createConvertedDatabase(t, beforeConversion) {
   ));
   if (beforeConversion) await beforeConversion(db);
   await db.exec(readFileSync(new URL('../supabase/migrations/0179_casual_loose_stock_conversion.sql', import.meta.url), 'utf8'));
+  await db.exec(readFileSync(new URL('../supabase/migrations/0253_cash_sale_display_labels.sql', import.meta.url), 'utf8'));
   return db;
 }
 
@@ -466,7 +468,7 @@ test('records an atomic paid casual sale, deducts stock, and replays idempotentl
   const first = await db.query(call);
   const replay = await db.query(call);
   assert.equal(first.rows[0].result.transaction.receipt_number, 'REC2608-00001');
-  assert.equal(first.rows[0].result.receipt.shop_name, 'ลูกค้าขาจร');
+  assert.equal(first.rows[0].result.receipt.shop_name, 'ลูกค้าขายสด');
   assert.equal(replay.rows[0].result.transaction.id, first.rows[0].result.transaction.id);
 
   const balance = await db.query(`select public.stock_balance_at('${SERVICE_DATE}', '${HOLDING_ID}', '${ICE_ID}') as quantity`);
@@ -623,8 +625,8 @@ test('advertises measured and loose capabilities and includes casual sales in ac
     order by type
   `);
   assert.deepEqual(rows.rows, [
-    ...(receivedOnServiceDate ? [{ type: 'REC', shop_name: 'ลูกค้าขาจร', employee_name: 'พนักงาน', quantity_out: '0', sales_amount: '0', cash_in: '75' }] : []),
-    { type: 'SALE', shop_name: 'ลูกค้าขาจร', employee_name: 'พนักงาน', quantity_out: '0.5', sales_amount: '75', cash_in: '0' },
+    ...(receivedOnServiceDate ? [{ type: 'REC', shop_name: 'ลูกค้าขายสด', employee_name: 'พนักงาน', quantity_out: '0', sales_amount: '0', cash_in: '75' }] : []),
+    { type: 'SALE', shop_name: 'ลูกค้าขายสด', employee_name: 'พนักงาน', quantity_out: '0.5', sales_amount: '75', cash_in: '0' },
   ]);
   const reconciliation = await db.query(`select public.get_accounting_reconciliation('${SERVICE_DATE}') as result`);
   assert.equal(reconciliation.rows[0].result.financial.effective_sales, 75);
@@ -643,6 +645,29 @@ test('advertises measured and loose capabilities and includes casual sales in ac
   assert.equal(summary.rows[0].result.totals.casual_received_amount, receivedOnServiceDate ? 75 : 0);
   assert.equal(summary.rows[0].result.totals.casual_refunded_amount, 0);
   assert.equal(summary.rows[0].result.totals.casual_net_cash, receivedOnServiceDate ? 75 : 0);
+});
+
+test('renames historical receipt displays without rewriting snapshots and can run twice', async (t) => {
+  const db = await createDatabase(t, 'courier', false);
+  const call = `select public.record_casual_transaction(
+    '${ROUND_ID}', '${ICE_ID}', 0.5, 'paid', 75, 'cash', 75,
+    null, null, null, now(), '60000000-0000-4000-8000-000000000006'
+  ) as result`;
+  const sale = (await db.query(call)).rows[0].result;
+  const before = await db.query('select receipt_data from public.casual_receipt_snapshots');
+  const migration = readFileSync(new URL('../supabase/migrations/0253_cash_sale_display_labels.sql', import.meta.url), 'utf8');
+  await db.exec(migration);
+  await db.exec(migration);
+  const receipt = await db.query('select public.get_casual_receipt_snapshot($1) as result', [sale.transaction.id]);
+  assert.equal(receipt.rows[0].result.shop_name, 'ลูกค้าขายสด');
+  assert.equal((await db.query(call)).rows[0].result.receipt.shop_name, 'ลูกค้าขายสด');
+  const accounting = await db.query(`select shop_name, details from public.accounting_casual_transaction_rows('${SERVICE_DATE}', '${SERVICE_DATE}')`);
+  assert.ok(accounting.rows.length > 0);
+  for (const row of accounting.rows) {
+    assert.equal(row.shop_name, 'ลูกค้าขายสด');
+    assert.equal(row.details.receipt_snapshot.shop_name, 'ลูกค้าขายสด');
+  }
+  assert.deepEqual((await db.query('select receipt_data from public.casual_receipt_snapshots')).rows, before.rows);
 });
 
 test('stores the employee name in the immutable casual receipt snapshot', async (t) => {

@@ -1274,3 +1274,29 @@ it.each([
   expect(Object.values(JSON.parse(window.localStorage.getItem('ice-delivery.pending-requests.v1')!)))
     .toContainEqual(expect.objectContaining({ key: save.mock.calls[0][0].idempotencyKey }));
 });
+
+
+it('opens the closed admin round and accepts delivery quantities after stock close', async () => {
+  const gateway: EmployeeDeliveryGateway = {
+    loadReferenceData: vi.fn().mockResolvedValue({
+      rounds: [{ id: 'round-1', service_date: '2026-08-11', name: 'งานประจำวัน',
+        status: 'closed', can_record_delivery: true, opened_at: '2026-08-11T01:00:00Z' }],
+      iceTypes: [{ id: 'ice-1', code: 'ICE', name: 'หลอดเล็ก', unit: 'ถุง' }],
+    }),
+    loadShopCards: vi.fn().mockResolvedValue([shopCard]),
+    loadDeliveryPosContext: vi.fn().mockResolvedValue({ ...posContext, stock_check_required: false,
+      items: [{ ...posContext.items[0], stock_quantity: 0 }] }),
+    loadEmployeeStockState: vi.fn(), recordEmployeeStockTransfer: vi.fn(),
+    recordEmployeeStockReturn: vi.fn(), recordEmployeeStockDamage: vi.fn(), recordDelivery: vi.fn(),
+  };
+  const user = userEvent.setup();
+  render(<EmployeeDeliveryWorkspace gateway={gateway} requestScope="admin-closed-day" serviceDate="2026-08-11" />);
+  await user.click(await screen.findByRole('button', { name: /^เลือกร้าน / }));
+  await screen.findByText(/บันทึกส่งของหลังปิดยอด/);
+  await user.click(screen.getByRole('button', { name: /หลอดเล็ก.*คงเหลือ/ }));
+  const quantity = screen.getByRole('spinbutton', { name: 'จำนวนหลอดเล็ก' });
+  await user.clear(quantity);
+  await user.type(quantity, '3');
+  expect((quantity as HTMLInputElement).value).toBe('3');
+  expect(quantity.hasAttribute('max')).toBe(false);
+});
