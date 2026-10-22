@@ -33,7 +33,6 @@ import { EmployeeStockProductImage } from './features/employee-delivery/Employee
 import { bagTotal, emptyBags, normalizeBags, restoreBags, formatBags, type BagQuantity } from './features/employee-delivery/bagQuantity';
 import './features/employee-delivery/employee-stock-product-image.css';
 
-const USER_AVATAR_BUCKET = 'user-avatars';
 const ICE_TYPE_IMAGE_BUCKET = 'ice-type-images';
 type StockOperationKind = 'transfer' | 'damage';
 type TabKind = StockOperationKind | 'count';
@@ -97,27 +96,12 @@ export function ManagerStockControl({
     }
 
     let cancelled = false;
-    const avatarPaths = summary.locations
-      .map((location) => location.assigned_employee?.avatar_path)
-      .filter((path): path is string => Boolean(path));
     const iceImagePaths = summary.locations
       .flatMap((location) => location.balances.map((balance) => balance.image_path))
       .filter((path): path is string => Boolean(path));
 
     async function loadImageUrls() {
-      const avatarEntries = avatarPaths.length > 0
-        ? await getHybridObjectUrls(USER_AVATAR_BUCKET, avatarPaths, async (paths) => {
-          if (paths.length === 0) return [];
-          const response = await supabase!.storage.from(USER_AVATAR_BUCKET).createSignedUrls(paths, 3600);
-          return response.error ? [] : response.data ?? [];
-        })
-        : [];
-      if (cancelled) return;
-
       const nextUrls: Record<string, string> = {};
-      for (const image of avatarEntries) {
-        if (image.path && image.signedUrl) nextUrls[image.path] = image.signedUrl;
-      }
       const iceTypeBucket = supabase!.storage.from(ICE_TYPE_IMAGE_BUCKET);
       const iceTypeEntries = await getHybridObjectUrls(ICE_TYPE_IMAGE_BUCKET, iceImagePaths, async (paths) => (
         paths.map((path) => ({ path, signedUrl: iceTypeBucket.getPublicUrl(path).data.publicUrl }))
@@ -125,7 +109,8 @@ export function ManagerStockControl({
       for (const image of iceTypeEntries) {
         if (image.path && image.signedUrl) nextUrls[image.path] = image.signedUrl;
       }
-      const requestedPaths = [...avatarPaths, ...iceImagePaths];
+      if (cancelled) return;
+      const requestedPaths = iceImagePaths;
       setFailedImagePaths(new Set(requestedPaths.filter((path) => !nextUrls[path])));
       setImageUrls(nextUrls);
     }
@@ -592,15 +577,7 @@ export function ManagerStockControl({
                           >
                             {isSelected ? <CheckCircle className="holder-card__check" size={21} weight="fill" /> : null}
                             <span className="holder-card__avatar" aria-hidden="true">
-                              {location.assigned_employee?.avatar_path
-                                && imageUrls[location.assigned_employee.avatar_path]
-                                && !failedImagePaths.has(location.assigned_employee.avatar_path) ? (
-                                  <img
-                                    alt=""
-                                    onError={() => setFailedImagePaths((current) => new Set(current).add(location.assigned_employee!.avatar_path!))}
-                                    src={imageUrls[location.assigned_employee.avatar_path]}
-                                  />
-                                ) : <UserCircle size={48} weight="duotone" />}
+                              <UserCircle size={48} weight="duotone" />
                             </span>
                             <span className="holder-card__identity">
                               <strong>{formatHolderName(location)}</strong>
@@ -648,11 +625,7 @@ export function ManagerStockControl({
                           >
                             {isSelected ? <CheckCircle className="holder-card__check" size={21} weight="fill" /> : null}
                             <span className="holder-card__avatar" aria-hidden="true">
-                              {location.assigned_employee?.avatar_path
-                                && imageUrls[location.assigned_employee.avatar_path]
-                                && !failedImagePaths.has(location.assigned_employee.avatar_path) ? (
-                                  <img alt="" onError={() => setFailedImagePaths((current) => new Set(current).add(location.assigned_employee!.avatar_path!))} src={imageUrls[location.assigned_employee.avatar_path]} />
-                                ) : location.kind === 'truck' ? <Truck size={35} weight="duotone" /> : <UserCircle size={48} weight="duotone" />}
+                              {location.kind === 'truck' ? <Truck size={35} weight="duotone" /> : <UserCircle size={48} weight="duotone" />}
                             </span>
                             <span className="holder-card__identity">
                               <strong>{formatHolderName(location)}</strong>
@@ -805,15 +778,7 @@ export function ManagerStockControl({
                 ) : selectedRecipient ? (
                   <div className="holder-cart__recipient">
                     <span className="holder-cart__recipient-avatar" aria-hidden="true">
-                      {selectedRecipient.assigned_employee?.avatar_path
-                        && imageUrls[selectedRecipient.assigned_employee.avatar_path]
-                        && !failedImagePaths.has(selectedRecipient.assigned_employee.avatar_path) ? (
-                          <img
-                            alt=""
-                            onError={() => setFailedImagePaths((current) => new Set(current).add(selectedRecipient.assigned_employee!.avatar_path!))}
-                            src={imageUrls[selectedRecipient.assigned_employee.avatar_path]}
-                          />
-                        ) : <UserCircle size={50} weight="duotone" />}
+                      <UserCircle size={50} weight="duotone" />
                     </span>
                     <span>
                       <small>{isReturningToTruck ? translateUi('กำลังคืนเข้ารถ:') : translateUi('กำลังโอนไปยัง:')}</small>

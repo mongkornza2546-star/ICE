@@ -3344,11 +3344,6 @@ input:disabled, select:disabled, textarea:disabled { background: #f2f5f8; color:
   font-weight: 700;
   font-size: 1rem;
 }
-.ref-avatar-img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
 .ref-user-card__body,
 .ref-ice-card__body {
   flex: 1;
@@ -3521,49 +3516,6 @@ input:disabled, select:disabled, textarea:disabled { background: #f2f5f8; color:
 .ref-delete-btn:disabled {
   opacity: 0.4;
   cursor: not-allowed;
-}
-
-/* Avatar Upload Row */
-.ref-avatar-upload-row {
-  display: flex;
-  justify-content: center;
-  margin-bottom: 10px;
-}
-.ref-large-avatar-wrap {
-  position: relative;
-  width: 84px;
-  height: 84px;
-  border-radius: 50%;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.1);
-}
-.ref-large-avatar-wrap .ref-avatar-initial,
-.ref-large-avatar-wrap .ref-avatar-img {
-  width: 100%;
-  height: 100%;
-  border-radius: 50%;
-}
-.ref-avatar-img--preview {
-  position: absolute;
-  top: 0;
-  left: 0;
-}
-.ref-avatar-camera-btn {
-  position: absolute;
-  bottom: 0;
-  right: 0;
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  background: #2563eb;
-  color: #fff;
-  display: grid;
-  place-items: center;
-  cursor: pointer;
-  border: 2px solid #fff;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
-}
-.ref-avatar-camera-btn input {
-  display: none;
 }
 
 /* Form Controls */
@@ -3778,10 +3730,6 @@ fieldset.ref-section {
 }
 .ref-dropzone input {
   display: none;
-}
-.ref-avatar-delete-row {
-  display: flex;
-  justify-content: flex-end;
 }
 
 /* Image Editor Layout */

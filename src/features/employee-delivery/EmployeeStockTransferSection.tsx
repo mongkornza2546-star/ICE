@@ -1,3 +1,4 @@
+import { CachedCatalogImage } from '../../CachedCatalogImage';
 import { localizeErrorMessage, translateUi, useLanguage } from '../../i18n';
 import { useEffect, useState } from 'react';
 import { ArrowClockwise, Check, Truck, WarningCircle, CaretRight, X } from '@phosphor-icons/react';
@@ -67,7 +68,7 @@ export function EmployeeStockTransferSection({
     ? 'บันทึกแล้ว คืนไป {0} ถุง'
     : success.mode === 'damage' ? 'บันทึกแล้ว ละลายไป {0} ถุง' : 'บันทึกแล้ว เติมไป {0} ถุง',
   { 0: formatBags(success.quantity) }) : null;
-  const [previewImage, setPreviewImage] = useState<{ name: string; url: string } | null>(null);
+  const [previewImage, setPreviewImage] = useState<{ name: string; url: string; imagePath?: string | null } | null>(null);
 
   useEffect(() => {
     if (!previewImage) return;
@@ -187,7 +188,7 @@ export function EmployeeStockTransferSection({
                   <X size={22} weight="bold" />
                 </button>
               </div>
-              <img alt={previewImage.name} className="image-preview-dialog__image" src={previewImage.url} />
+              <CachedCatalogImage loading="eager" namespace="ice-type-images" imagePath={previewImage.imagePath} alt={previewImage.name} className="image-preview-dialog__image" src={previewImage.url} />
             </section>
           </div>
         ) : null}

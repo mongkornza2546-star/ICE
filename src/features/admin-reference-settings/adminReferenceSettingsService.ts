@@ -13,7 +13,6 @@ import {
   SHOP_FIELDS,
   MAX_SHOP_IMAGE_SIZE,
   SHOP_IMAGE_BUCKET,
-  USER_AVATAR_BUCKET,
   ICE_TYPE_IMAGE_BUCKET,
   type IceTypeSetting,
   type DeliveryRoundNameSetting,
@@ -129,6 +128,7 @@ export async function saveUserWithWorkSiteAssignments(
     p_user_id: userId,
     p_display_name: updates.display_name,
     p_nickname: updates.nickname,
+    // Keep the stored reference until old photo files are explicitly retired.
     p_avatar_path: updates.avatar_path,
     p_phone: updates.phone,
     p_role: updates.role,
@@ -161,51 +161,6 @@ export async function resetUserPassword(userId: string, password: string): Promi
     throw new Error(body.error);
   }
   throw new Error(error.message);
-}
-
-export async function updateUserAvatarPath(userId: string, avatarPath: string | null): Promise<UserProfile> {
-  const client = supabase;
-  if (!client) throw new Error('Supabase client not initialized');
-
-  const { data, error } = await client
-    .from('users')
-    .update({ avatar_path: avatarPath })
-    .eq('id', userId)
-    .select(USER_FIELDS)
-    .single();
-
-  if (error) throw new Error(error.message);
-  return data as UserProfile;
-}
-
-export async function getUserAvatarSignedUrl(imagePath: string): Promise<string> {
-  const client = supabase;
-  if (!client) throw new Error('Supabase client not initialized');
-  return getHybridObjectUrl(USER_AVATAR_BUCKET, imagePath, async () => {
-    const { data, error } = await client.storage.from(USER_AVATAR_BUCKET).createSignedUrl(imagePath, 3600);
-    if (error) throw new Error(error.message);
-    return data.signedUrl;
-  });
-}
-
-export async function uploadUserAvatar(userId: string, file: File): Promise<string> {
-  const client = supabase;
-  if (!client) throw new Error('Supabase client not initialized');
-  const extension = file.name.includes('.') ? file.name.split('.').pop()?.toLowerCase() ?? 'jpg' : 'jpg';
-  const path = `users/${userId}/r2/${Date.now()}-${crypto.randomUUID()}.${extension}`;
-  return uploadR2Object(USER_AVATAR_BUCKET, path, file);
-}
-
-export async function removeUserAvatarFiles(paths: string[]): Promise<void> {
-  const client = supabase;
-  if (!client) throw new Error('Supabase client not initialized');
-  if (paths.length === 0) return;
-  const r2Paths = paths.filter(isR2Path);
-  const supabasePaths = paths.filter((path) => !isR2Path(path));
-  await removeR2Objects(USER_AVATAR_BUCKET, r2Paths);
-  if (supabasePaths.length === 0) return;
-  const { error } = await client.storage.from(USER_AVATAR_BUCKET).remove(supabasePaths);
-  if (error) throw new Error(error.message);
 }
 
 export async function saveIceType(

@@ -195,7 +195,14 @@ it('closes the detail history entry when the service date changes', async () => 
 });
 
 it('opens the requested POS shop directly with its date and returns to POS', async () => {
-  const document = { id: 'credit-document-1', shop_id: 'shop-1', service_date: '2026-08-21' };
+  const document = {
+    document_id: 'credit-document-1', version: 1, service_date: '2026-08-21',
+    document_title: 'ใบส่งของ', generated_at: '2026-08-21T06:32:00+07:00',
+    shop_code: 'BB27', shop_name: 'ร้านทดสอบ', total_amount: 60,
+    invoices: [{ document_number: 'INV-001', recorded_at: '2026-08-21T06:32:00+07:00',
+      recorded_by: 'พนักงานทดสอบ', total_amount: 60, items: [] }],
+    item_totals: [],
+  };
   supabaseMock.client.rpc.mockImplementation(async (name: string) => ({
     data: name === 'list_daily_credit_acknowledgements' ? navigationShops
       : name === 'prepare_daily_credit_acknowledgement' ? document : [], error: null,

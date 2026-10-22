@@ -1,3 +1,4 @@
+import { CachedCatalogImage } from '../../CachedCatalogImage';
 import { translateUi, useLanguage } from '../../i18n';
 import { useEffect, useRef, useState } from 'react';
 import { ArrowClockwise } from '@phosphor-icons/react';
@@ -6,12 +7,13 @@ import type { IceTypeOption } from '../../types/app';
 
 export function EmployeeStockProductImage({ iceType, onPreview }: {
   iceType: IceTypeOption;
-  onPreview: (image: { name: string; url: string }) => void;
+  onPreview: (image: { name: string; url: string; imagePath?: string | null }) => void;
 }) {
   useLanguage();
   const [url, setUrl] = useState(iceType.image_url ?? null);
   const [status, setStatus] = useState<'ready' | 'refreshing' | 'failed'>('ready');
   const [attempt, setAttempt] = useState(0);
+  const displayedUrl = useRef<string | null>(null);
   const retried = useRef(false);
   const pending = useRef(false);
   const mounted = useRef(true);
@@ -40,7 +42,7 @@ export function EmployeeStockProductImage({ iceType, onPreview }: {
     }
   };
 
-  if (status !== 'ready' || !url) {
+  if (status !== 'ready' || (!url && !iceType.image_path)) {
     return <button
       aria-label={translateUi('โหลดรูป {0} ใหม่', { 0: iceType.name })}
       className="employee-stock-product-image-button"
@@ -58,10 +60,18 @@ export function EmployeeStockProductImage({ iceType, onPreview }: {
   return <button
     aria-label={translateUi('ดูรูป {0} ขนาดใหญ่', { 0: iceType.name })}
     className="employee-stock-product-image-button"
-    onClick={() => onPreview({ name: iceType.name, url })}
+    onClick={() => {
+      const previewUrl = url ?? displayedUrl.current;
+      if (previewUrl) onPreview({ name: iceType.name, url: previewUrl, imagePath: iceType.image_path });
+      else void retry();
+    }}
     type="button"
   >
-    <img
+    <CachedCatalogImage
+      namespace="ice-type-images"
+      imagePath={iceType.image_path}
+      fallback={<span className="employee-stock-product-image-retry"><ArrowClockwise aria-hidden="true" size={22} /><small>{translateUi('โหลดรูปใหม่')}</small></span>}
+      onLoad={(event) => { displayedUrl.current = event.currentTarget.src; }}
       alt={iceType.name}
       className="employee-stock-product-image"
       decoding="async"
@@ -71,7 +81,7 @@ export function EmployeeStockProductImage({ iceType, onPreview }: {
         if (retried.current) setStatus('failed');
         else void retry();
       }}
-      src={url}
+      src={url ?? undefined}
     />
   </button>;
 }

@@ -1,6 +1,6 @@
-import type { SupabaseClient } from '@supabase/supabase-js';
+import type { RealtimePostgresChangesPayload, SupabaseClient } from '@supabase/supabase-js';
 import { supabase } from './supabase';
-import { publishDataChange, type DataChangeScope } from './dataChange';
+import { publishDataChange, type DataChangeRecord, type DataChangeScope } from './dataChange';
 
 export const ALL_DATA_CHANGE_SCOPES: DataChangeScope[] = [
   'accounting',
@@ -40,7 +40,7 @@ export interface RealtimeSyncOptions {
  */
 export function createRealtimeSync(
   client: SupabaseClient | null | undefined,
-  onPublish: (scopes: DataChangeScope[]) => void = publishDataChange,
+  onPublish: (scopes: DataChangeScope[], changes?: DataChangeRecord[]) => void = publishDataChange,
   options: RealtimeSyncOptions = {},
 ) {
   if (!client || typeof client.channel !== 'function') {
@@ -54,6 +54,8 @@ export function createRealtimeSync(
   const focusCatchupCooldownMs = options.focusCatchupCooldownMs ?? 15_000;
 
   const pendingScopes = new Set<DataChangeScope>();
+  let pendingChanges: DataChangeRecord[] = [];
+  let needsFullRefresh = false;
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
   let lastFocusCatchupAt = 0;
 
@@ -64,14 +66,19 @@ export function createRealtimeSync(
     }
     if (pendingScopes.size === 0) return;
     const scopesToPublish = Array.from(pendingScopes);
+    const changes = needsFullRefresh ? undefined : pendingChanges;
     pendingScopes.clear();
-    onPublish(scopesToPublish);
+    pendingChanges = [];
+    needsFullRefresh = false;
+    onPublish(scopesToPublish, changes);
   };
 
-  const schedulePublish = (scopes: DataChangeScope[]) => {
+  const schedulePublish = (scopes: DataChangeScope[], change?: DataChangeRecord) => {
     for (const scope of scopes) {
       pendingScopes.add(scope);
     }
+    if (change) pendingChanges.push(change);
+    else needsFullRefresh = true;
     if (debounceTimer) {
       clearTimeout(debounceTimer);
     }
@@ -90,8 +97,15 @@ export function createRealtimeSync(
             schema: 'public',
             table,
           },
-          () => {
-            schedulePublish(scopes);
+          (payload?: RealtimePostgresChangesPayload<Record<string, unknown>>) => {
+            const record = payload?.eventType === 'DELETE' ? payload.old : payload?.new;
+            schedulePublish(scopes, {
+              table,
+              eventType: payload?.eventType ?? 'UNKNOWN',
+              id: typeof record?.id === 'string' ? record.id : undefined,
+              shopId: typeof record?.shop_id === 'string' ? record.shop_id : undefined,
+              serviceDate: typeof record?.service_date === 'string' ? record.service_date : undefined,
+            });
           },
         );
       }
@@ -126,6 +140,7 @@ export function createRealtimeSync(
       debounceTimer = null;
     }
     pendingScopes.clear();
+    pendingChanges = [];
 
     if (enableFocusCatchup && typeof window !== 'undefined') {
       window.removeEventListener('focus', handleFocusOrVisible);

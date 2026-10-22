@@ -1329,3 +1329,46 @@ test('building shop totals use all pages and batches of the real daily reader', 
   assert.equal(activeOnly.days[0].sales_amount, 5000);
   assert.equal(activeOnly.days[0].transfer_received, 0);
 });
+
+test('casual summary scopes sales, receipts, refunds and free counts to the selected building', async (t) => {
+  const db = await createEventAccountingDatabase(t);
+  await db.exec(`
+    create role anon;
+    alter table public.casual_transactions add column id integer, add column sale_building_id uuid;
+    alter table public.casual_refund_confirmations add column transaction_id integer;
+    insert into public.casual_transactions values
+      (60, 'active', 'paid', '2026-08-01', '2026-07-31T17:00:00Z', 1, '${OLD_BUILDING_ID}'),
+      (90, 'active', 'paid', '2026-08-01', '2026-08-01T03:00:00Z', 2, '${CURRENT_BUILDING_ID}'),
+      (25, 'active', 'paid', '2026-08-01', '2026-08-01T03:00:00Z', 3, null),
+      (40, 'voided', 'paid', '2026-08-01', '2026-08-01T03:00:00Z', 4, '${OLD_BUILDING_ID}'),
+      (10, 'voided', 'paid', '2026-07-30', '2026-07-30T03:00:00Z', 5, '${CURRENT_BUILDING_ID}'),
+      (0, 'active', 'free', '2026-08-01', '2026-08-01T03:00:00Z', 6, '${OLD_BUILDING_ID}'),
+      (0, 'active', 'free', '2026-08-01', '2026-08-01T03:00:00Z', 7, '${CURRENT_BUILDING_ID}'),
+      (0, 'active', 'free', '2026-08-01', '2026-08-01T03:00:00Z', 8, null),
+      (0, 'voided', 'free', '2026-08-01', '2026-08-01T03:00:00Z', 9, '${OLD_BUILDING_ID}'),
+      (70, 'active', 'paid', '2026-08-02', '2026-08-01T17:00:00Z', 10, '${OLD_BUILDING_ID}');
+    insert into public.casual_refund_confirmations values
+      (40, '2026-08-01T03:00:00Z', 4), (10, '2026-08-01T03:00:00Z', 5),
+      (5, '2026-07-31T17:00:00Z', 3), (9, '2026-08-01T17:00:00Z', 1);
+  `);
+  await db.exec(readFileSync(new URL('../supabase/migrations/0256_accounting_casual_summary_building.sql', import.meta.url), 'utf8'));
+  const casual = (result) => Object.fromEntries(Object.entries(result.totals).filter(([key]) => key.startsWith('casual_')));
+  const expected = (sales, received, refunded, free) => ({
+    casual_sales_amount: sales, casual_received_amount: received,
+    casual_refunded_amount: refunded, casual_net_cash: received - refunded, casual_free_count: free,
+  });
+  const all = await getSummary(db);
+  assert.deepEqual(casual(all), expected(175, 215, 55, 3));
+  const a = await getSummary(db, JSON.stringify({ building_id: OLD_BUILDING_ID }));
+  assert.deepEqual(casual(a), expected(60, 100, 40, 1));
+  const b = await getSummary(db, JSON.stringify({ building_id: CURRENT_BUILDING_ID }));
+  assert.deepEqual(casual(b), expected(90, 90, 10, 1));
+  assert.deepEqual(casual(await getSummary(db, JSON.stringify({ building_id: OLD_BUILDING_ID, shop_search: 'no matching shops' }))), casual(a));
+  assert.deepEqual(casual(await getSummary(db, JSON.stringify({ building_id: '30000000-0000-4000-8000-000000000099' }))), expected(0, 0, 0, 0));
+  assert.deepEqual(casual(await getSummary(db, '{"building_id":""}')), casual(all));
+  await db.exec(readFileSync(new URL('../supabase/migrations/0256_accounting_casual_summary_building.sql', import.meta.url), 'utf8'));
+  assert.deepEqual(casual(await getSummary(db)), casual(all), 'migration can be reapplied');
+  await db.exec("create or replace function public.current_app_role() returns text language sql stable as $$ select 'courier'::text $$");
+  await assert.rejects(() => getSummary(db), /Only a round lead or admin/);
+
+});

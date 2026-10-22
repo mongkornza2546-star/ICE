@@ -1,12 +1,9 @@
 import { translateUi, useLanguage } from '../../../i18n';
-import { type ChangeEvent, type FormEvent, useEffect, useMemo, useState } from 'react';
+import { type FormEvent, useMemo, useState } from 'react';
 import {
-  Camera,
   Check,
   FunnelSimple,
   MagnifyingGlass,
-  Trash,
-  UploadSimple,
 } from '@phosphor-icons/react';
 import type { UserProfile, AppRole } from '../../../types/app';
 import {
@@ -15,17 +12,11 @@ import {
   type UserDraft,
   type WorkSiteOption,
   formatWorkSiteLabel,
-  ALLOWED_USER_AVATAR_TYPES,
-  MAX_USER_AVATAR_SIZE,
 } from '../types';
 import {
   getErrorMessage,
-  getUserAvatarSignedUrl,
-  removeUserAvatarFiles,
   resetUserPassword,
   saveUserWithWorkSiteAssignments,
-  updateUserAvatarPath,
-  uploadUserAvatar,
 } from '../adminReferenceSettingsService';
 import {
   filterLabel,
@@ -54,7 +45,6 @@ function toUserDraft(
     code: user.code,
     displayName: user.display_name,
     nickname: user.nickname ?? '',
-    avatarPath: user.avatar_path ?? null,
     phone: user.phone ?? '',
     role: user.role,
     isActive: user.is_active,
@@ -82,35 +72,6 @@ function getAvatarBgColor(user: UserProfile) {
   return colors[charCode % colors.length];
 }
 
-function UserAvatar({ path, fallbackInitial, bgColor }: { path?: string | null; fallbackInitial: string; bgColor: string }) {
-  useLanguage();
-  const [url, setUrl] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!path) {
-      setUrl(null);
-      return undefined;
-    }
-    let cancelled = false;
-    getUserAvatarSignedUrl(path).then((nextUrl) => {
-      if (!cancelled) setUrl(nextUrl);
-    }).catch(() => {
-      if (!cancelled) setUrl(null);
-    });
-    return () => { cancelled = true; };
-  }, [path]);
-
-  if (url) {
-    return <img alt="" src={url} className="ref-avatar-img" />;
-  }
-
-  return (
-    <div className="ref-avatar-initial" style={{ backgroundColor: bgColor }}>
-      {fallbackInitial}
-    </div>
-  );
-}
-
 export function UserEditor({
   users,
   workSites,
@@ -126,14 +87,11 @@ export function UserEditor({
   const [userFilter, setUserFilter] = useState<ActiveFilter>('all');
   
   const [savingUser, setSavingUser] = useState(false);
-  const [deletingAvatar, setDeletingAvatar] = useState(false);
   const [resettingPassword, setResettingPassword] = useState(false);
   const [userError, setUserError] = useState<string | null>(null);
   const [userSuccess, setUserSuccess] = useState<string | null>(null);
   const [newPassword, setNewPassword] = useState('');
   const [confirmedPassword, setConfirmedPassword] = useState('');
-  const [avatarFile, setAvatarFile] = useState<File | null>(null);
-  const [avatarPreviewUrl, setAvatarPreviewUrl] = useState<string | null>(null);
 
   const assignedWorkSitesByUser = useMemo(() => {
     const workSiteById = new Map(workSites.map((workSite) => [workSite.id, workSite]));
@@ -160,71 +118,12 @@ export function UserEditor({
     [assignedWorkSitesByUser, userFilter, userQuery, users],
   );
 
-  useEffect(() => {
-    if (!avatarFile) {
-      setAvatarPreviewUrl(null);
-      return undefined;
-    }
-    const objectUrl = URL.createObjectURL(avatarFile);
-    setAvatarPreviewUrl(objectUrl);
-    return () => URL.revokeObjectURL(objectUrl);
-  }, [avatarFile]);
-
   function chooseUser(user: UserProfile) {
     setUserDraft(toUserDraft(user, workSiteAssignments, workSites));
-    setAvatarFile(null);
     setUserError(null);
     setUserSuccess(null);
     setNewPassword('');
     setConfirmedPassword('');
-  }
-
-  function chooseAvatarFile(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    event.target.value = '';
-    if (!file) return;
-    if (file.size > MAX_USER_AVATAR_SIZE) {
-      setUserError('รูปต้องมีขนาดไม่เกิน 5 MB');
-      return;
-    }
-    if (file.type && !ALLOWED_USER_AVATAR_TYPES.has(file.type)) {
-      setUserError('รองรับเฉพาะไฟล์ JPG, PNG หรือ WEBP');
-      return;
-    }
-    setAvatarFile(file);
-    setUserError(null);
-  }
-
-  async function removeAvatar() {
-    if (!userDraft) return;
-
-    setUserError(null);
-    setUserSuccess(null);
-    if (!userDraft.avatarPath) {
-      setAvatarFile(null);
-      return;
-    }
-
-    const previousPath = userDraft.avatarPath;
-    setDeletingAvatar(true);
-    try {
-      const savedUser = await updateUserAvatarPath(userDraft.id, null);
-      let removeError = false;
-      try {
-        await removeUserAvatarFiles([previousPath]);
-      } catch {
-        removeError = true;
-      }
-      const savedWorkSiteIds = toUserDraft(savedUser, workSiteAssignments, workSites).workSiteIds;
-      onUserSaved(savedUser, savedWorkSiteIds);
-      setUserDraft((current) => current ? { ...current, avatarPath: null } : current);
-      setAvatarFile(null);
-      setUserSuccess(removeError ? 'ลบรูปพนักงานแล้ว แต่ลบไฟล์เก่าไม่สำเร็จ' : 'ลบรูปพนักงานแล้ว');
-    } catch (error) {
-      setUserError(getErrorMessage(error));
-    } finally {
-      setDeletingAvatar(false);
-    }
   }
 
   async function saveUser(event: FormEvent<HTMLFormElement>) {
@@ -251,37 +150,25 @@ export function UserEditor({
     setSavingUser(true);
     setUserError(null);
     setUserSuccess(null);
-    let uploadedAvatarPath: string | null = null;
 
     try {
-      let avatarPath = userDraft.avatarPath;
-      if (avatarFile) {
-        avatarPath = await uploadUserAvatar(original.id, avatarFile);
-        uploadedAvatarPath = avatarPath;
-      }
-
       const saved = await saveUserWithWorkSiteAssignments(original.id, {
         display_name: displayName,
         nickname: userDraft.nickname.trim() || null,
-        avatar_path: avatarPath,
+        avatar_path: original.avatar_path ?? null,
         phone: userDraft.phone.trim() || null,
         role: isCurrentUser ? original.role : userDraft.role,
         is_active: isCurrentUser ? original.is_active : userDraft.isActive,
         can_collect_shop_payments: userDraft.role === 'courier' && userDraft.canCollectShopPayments,
       }, userDraft.role === 'courier' && userDraft.isActive ? userDraft.workSiteIds : []);
 
-      if (original.avatar_path && original.avatar_path !== avatarPath) {
-        await removeUserAvatarFiles([original.avatar_path]).catch(() => {});
-      }
       onUserSaved(saved.user, saved.work_site_ids);
       setUserDraft({
         ...toUserDraft(saved.user, [], workSites),
         workSiteIds: saved.work_site_ids,
       });
-      setAvatarFile(null);
       setUserSuccess('บันทึกข้อมูลผู้ใช้และจุดประจำแล้ว');
     } catch (error) {
-      if (uploadedAvatarPath) await removeUserAvatarFiles([uploadedAvatarPath]).catch(() => {});
       setUserError(getErrorMessage(error));
     } finally {
       setSavingUser(false);
@@ -317,7 +204,6 @@ export function UserEditor({
 
   const editingCurrentUser = userDraft?.id === currentUserId;
   const userFilterLabel = filterLabel(userFilter);
-  const selectedUserObj = users.find((u) => u.id === userDraft?.id);
 
   return (
     <div className="ref-split-layout">
@@ -376,7 +262,7 @@ export function UserEditor({
                 </div>
 
                 <div className="ref-user-card__avatar">
-                  <UserAvatar path={user.avatar_path} fallbackInitial={initial} bgColor={bgColor} />
+                  <div className="ref-avatar-initial" style={{ backgroundColor: bgColor }}>{initial}</div>
                 </div>
 
                 <div className="ref-user-card__body">
@@ -414,30 +300,6 @@ export function UserEditor({
         {userDraft ? (
           <div className="ref-form">
             <form className="ref-profile-form" id="user-profile-form" onSubmit={saveUser}>
-            {/* Avatar Section */}
-            <div className="ref-avatar-upload-row">
-              <div className="ref-large-avatar-wrap">
-                {selectedUserObj ? (
-                  <UserAvatar
-                    path={avatarPreviewUrl ? null : userDraft.avatarPath}
-                    fallbackInitial={getAvatarInitial(selectedUserObj)}
-                    bgColor={getAvatarBgColor(selectedUserObj)}
-                  />
-                ) : (
-                  <div className="ref-avatar-initial" style={{ backgroundColor: '#3B82F6' }}>
-                    {userDraft.displayName.charAt(0).toUpperCase() || 'U'}
-                  </div>
-                )}
-                {avatarPreviewUrl ? (
-                  <img alt="preview" src={avatarPreviewUrl} className="ref-avatar-img ref-avatar-img--preview" />
-                ) : null}
-                <label className="ref-avatar-camera-btn" title={translateUi('เปลี่ยนรูปโปรไฟล์')}>
-                  <Camera size={14} weight="bold" />
-                  <input accept="image/jpeg,image/png,image/webp" onChange={chooseAvatarFile} type="file" />
-                </label>
-              </div>
-            </div>
-
             {/* Inputs Grid */}
             <div className="ref-form-grid">
               <div className="ref-form-group">
@@ -562,34 +424,6 @@ export function UserEditor({
               ) : null}
             </div>
 
-            {/* Employee Image Section (Optional) */}
-            <div className="ref-section">
-              <div className="ref-section-title">
-                <h3>{translateUi('รูปพนักงาน (ไม่บังคับ)')}</h3>
-              </div>
-
-              <label className="ref-dropzone">
-                <UploadSimple size={26} className="ref-dropzone__icon" />
-                <p>{translateUi('คลิกหรือลากไฟล์เพื่ออัปโหลด')}</p>
-                <small>{translateUi('รองรับ JPG, PNG, WEBP ขนาดไม่เกิน 5 MB')}</small>
-                <input aria-label={translateUi('รูปพนักงาน')} accept="image/jpeg,image/png,image/webp" onChange={chooseAvatarFile} type="file" />
-              </label>
-              {avatarFile || userDraft.avatarPath ? (
-                <div className="ref-avatar-delete-row">
-                  <button
-                    aria-label={translateUi('ลบรูปพนักงาน')}
-                    className="ref-delete-btn"
-                    disabled={deletingAvatar}
-                    onClick={() => void removeAvatar()}
-                    type="button"
-                  >
-                    <Trash size={18} />
-                    <span>{deletingAvatar ? translateUi('กำลังลบ...') : translateUi('ลบรูป')}</span>
-                  </button>
-                </div>
-              ) : null}
-            </div>
-
             {/* Status Toggle & Warnings */}
             <div className="ref-form-status-row">
               <label className="ref-toggle-label">
@@ -655,14 +489,7 @@ export function UserEditor({
                 className="secondary-button"
                 onClick={() => {
                   const original = users.find((user) => user.id === userDraft.id);
-                  if (original) {
-                    const currentAvatarPath = userDraft.avatarPath;
-                    chooseUser(original);
-                    setUserDraft({
-                      ...toUserDraft(original, workSiteAssignments, workSites),
-                      avatarPath: currentAvatarPath,
-                    });
-                  }
+                  if (original) chooseUser(original);
                 }}
                 type="button"
               >
@@ -670,7 +497,7 @@ export function UserEditor({
               <button
                 aria-label={translateUi('บันทึกผู้ใช้')}
                 className="primary-button"
-                disabled={savingUser || deletingAvatar}
+                disabled={savingUser}
                 form="user-profile-form"
                 type="submit"
               >

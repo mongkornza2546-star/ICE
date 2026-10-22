@@ -1,3 +1,4 @@
+import { CachedCatalogImage } from '../../CachedCatalogImage';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { MagnifyingGlass, Buildings, MapPin, Storefront, CaretRight, WarningCircle, X } from '@phosphor-icons/react';
 import type { ShopCard, EmployeeStockState } from '../../types/app';
@@ -20,7 +21,7 @@ function RegularShopVisual({
   refreshImageUrl,
 }: {
   card: ShopCard;
-  onPreview: (event: React.MouseEvent<HTMLButtonElement>, imageUrl: string) => void;
+  onPreview: (event: React.MouseEvent<HTMLButtonElement>, imageUrl: string | null | undefined) => void;
   refreshImageUrl: (card: ShopCard) => Promise<string | null>;
 }) {
   useLanguage();
@@ -34,7 +35,7 @@ function RegularShopVisual({
     setImageUrl(card.image_url);
     setLoadAttempt(0);
     setImageFailed(false);
-  }, [card.image_url]);
+  }, [card.image_url, card.image_path]);
 
   const retryImage = async () => {
     if (loadAttempt > 0) {
@@ -57,7 +58,7 @@ function RegularShopVisual({
     }
   };
 
-  if (!imageUrl || imageFailed) {
+  if ((!imageUrl && !card.image_path) || imageFailed) {
     return (
       <span className="employee-shop-tile__visual">
         <span className="employee-shop-tile__placeholder"><Storefront aria-hidden="true" size={34} /></span>
@@ -76,14 +77,17 @@ function RegularShopVisual({
       type="button"
     >
       <span className="employee-shop-tile__visual">
-        <img
+        <CachedCatalogImage
+          namespace="shop-images"
+          imagePath={card.image_path}
+          fallback={<span className="employee-shop-tile__placeholder"><Storefront aria-hidden="true" size={34} /></span>}
           alt=""
           aria-hidden="true"
           decoding="async"
           key={`${imageUrl}:${loadAttempt}`}
           loading="lazy"
           onError={() => void retryImage()}
-          src={imageUrl}
+          src={imageUrl ?? undefined}
         />
         <span className={`employee-status employee-status--${statusTone(card.stop_status)}`}>
           {translateUi(STATUS_LABELS[card.stop_status])}
@@ -153,7 +157,7 @@ export function EmployeeShopPicker({
   shopButtonRefs: React.MutableRefObject<Map<string, HTMLButtonElement>>;
 }) {
   const { language } = useLanguage();
-  const [previewImage, setPreviewImage] = useState<{ name: string; url: string; trigger: HTMLButtonElement } | null>(null);
+  const [previewImage, setPreviewImage] = useState<{ name: string; url: string | null | undefined; imagePath?: string | null; trigger: HTMLButtonElement } | null>(null);
 
   useEffect(() => {
     if (!previewImage) return;
@@ -210,6 +214,7 @@ export function EmployeeShopPicker({
             onPreview={(event, imageUrl) => setPreviewImage({
               name: `${card.shop_code} · ${card.shop_name}`,
               url: imageUrl,
+              imagePath: card.image_path,
               trigger: event.currentTarget,
             })}
             refreshImageUrl={refreshShopImageUrl}
@@ -366,7 +371,7 @@ export function EmployeeShopPicker({
             <h2 id="employee-shop-image-preview-title">{translateUi('รูปร้าน')} {previewImage.name}</h2>
             <button aria-label={translateUi('ปิดรูปภาพ')} autoFocus className="image-preview-dialog__close" onClick={closePreview} type="button"><X size={22} weight="bold" /></button>
           </div>
-          <img alt={`${translateUi('รูปร้าน')} ${previewImage.name}`} className="image-preview-dialog__image" src={previewImage.url} />
+          <CachedCatalogImage loading="eager" namespace="shop-images" imagePath={previewImage.imagePath} alt={`${translateUi('รูปร้าน')} ${previewImage.name}`} className="image-preview-dialog__image" src={previewImage.url ?? undefined} />
         </section>
       </div> : null}
     </section>

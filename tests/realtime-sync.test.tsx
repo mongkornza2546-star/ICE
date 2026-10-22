@@ -19,9 +19,9 @@ describe('realtimeSync', () => {
   });
 
   function createMockSupabase() {
-    const handlers = new Map<string, () => void>();
+    const handlers = new Map<string, (payload?: unknown) => void>();
     const mockChannel = {
-      on: vi.fn((_type: string, filter: { table: string }, callback: () => void) => {
+      on: vi.fn((_type: string, filter: { table: string }, callback: (payload?: unknown) => void) => {
         handlers.set(filter.table, callback);
         return mockChannel;
       }),
@@ -146,5 +146,32 @@ describe('realtimeSync', () => {
     window.dispatchEvent(new Event('focus'));
     vi.advanceTimersByTime(100);
     expect(onPublish).not.toHaveBeenCalled();
+  });
+
+  it('preserves every row identity when batching own documents with delivery changes', () => {
+    const { mockClient, handlers } = createMockSupabase();
+    const onPublish = vi.fn();
+    const stop = createRealtimeSync(mockClient, onPublish, { debounceMs: 50, enableFocusCatchup: false });
+    handlers.get('daily_credit_acknowledgements')!({ eventType: 'INSERT', new: {
+      id: 'doc-2', shop_id: 'shop-1', service_date: '2026-10-22',
+    } });
+    handlers.get('delivery_charges')!({ eventType: 'UPDATE', new: { id: 'charge-1' } });
+    vi.advanceTimersByTime(50);
+    expect(onPublish).toHaveBeenCalledWith(expect.arrayContaining(['receivable', 'accounting', 'pos']), [
+      { table: 'daily_credit_acknowledgements', eventType: 'INSERT', id: 'doc-2', shopId: 'shop-1', serviceDate: '2026-10-22' },
+      { table: 'delivery_charges', eventType: 'UPDATE', id: 'charge-1' },
+    ]);
+    stop();
+  });
+
+  it('keeps focus catch-up as a full refresh even when batched with a known document', () => {
+    const { mockClient, handlers } = createMockSupabase();
+    const onPublish = vi.fn();
+    const stop = createRealtimeSync(mockClient, onPublish, { debounceMs: 50 });
+    handlers.get('daily_credit_acknowledgements')!({ eventType: 'INSERT', new: { id: 'doc-2' } });
+    window.dispatchEvent(new Event('focus'));
+    vi.advanceTimersByTime(50);
+    expect(onPublish).toHaveBeenCalledWith(expect.arrayContaining(ALL_DATA_CHANGE_SCOPES), undefined);
+    stop();
   });
 });

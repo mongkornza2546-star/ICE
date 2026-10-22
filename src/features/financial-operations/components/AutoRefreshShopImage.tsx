@@ -1,3 +1,4 @@
+import { CachedCatalogImage } from '../../../CachedCatalogImage';
 import React, { useEffect, useRef, useState } from 'react';
 import { isR2Path, refreshR2CatalogObjectUrl } from '../../../lib/r2Storage';
 
@@ -75,16 +76,19 @@ export function AutoRefreshShopImage({
     setFailed(true);
   };
 
-  if (!currentUrl || failed) {
+  if ((!currentUrl && !imagePath) || failed) {
     return <>{fallback}</>;
   }
 
   if (renderImage) {
-    return <>{renderImage(currentUrl, () => void handleImageError())}</>;
+    return <>{currentUrl ? renderImage(currentUrl, () => void handleImageError()) : fallback}</>;
   }
 
   return (
-    <img
+    <CachedCatalogImage
+      namespace="shop-images"
+      imagePath={imagePath}
+      fallback={fallback}
       alt={alt}
       aria-hidden={alt ? undefined : 'true'}
       className={className}
@@ -93,7 +97,7 @@ export function AutoRefreshShopImage({
       loading={loading}
       onError={() => void handleImageError()}
       onLoad={onImageLoaded}
-      src={currentUrl}
+      src={currentUrl ?? undefined}
     />
   );
 }
