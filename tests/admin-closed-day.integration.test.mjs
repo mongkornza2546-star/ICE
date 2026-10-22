@@ -122,7 +122,9 @@ for (const daysAgo of [0, 1]) test(`admin appends after stock/cash close (${days
     assert.deepEqual(await value(db, `select to_jsonb(s) as value from public.daily_close_employee_snapshots s`),snapshot);
     assert.equal(await value(db, `select status::text as value from public.collection_runs where id=$1`,[run.collection_run_id]),'closed');
     assert.equal(await value(db, `select count(*)::int as value from public.audit_logs where action='admin_post_close_entry' and entity_type='payments'`),1);
+    await db.exec(`update public.users set role='round_lead' where id='${admin}'`);
     await assert.rejects(value(db, `select public.void_payment($1,'closed receipt') as value`,[result.payment_id]),/ปิดตรวจนับเงินสดแล้ว|closed/);
+    await db.exec(`update public.users set role='admin' where id='${admin}'`);
   });
   await t.test('event deliveries and collections also append after closure', async () => {
     const event = id(20), config = id(21), participation = id(22), eventStop = id(23);

@@ -89,3 +89,16 @@ it.each(['courier', 'round_lead', 'admin'] as const)('blocks paid slips for %s e
   expect(rpc).toHaveBeenCalledTimes(2);
   expect(publish).not.toHaveBeenCalled();
 });
+
+
+it.each(['regular', 'event'])('lets an admin cancel a closed %s slip with server approval', async (destination) => {
+  const user = userEvent.setup();
+  const { onSuccess } = setup({ round_status: 'closed', day_closed: true,
+    can_cancel_closed_period: true }, destination, 'admin');
+  await screen.findByText('หลอดเล็ก 1 ถุง');
+  await user.type(screen.getByLabelText('เหตุผล'), 'ลงย้อนหลังผิด');
+  await user.click(screen.getByRole('button', { name: 'ยืนยันยกเลิกใบส่งน้ำแข็ง' }));
+  expect(rpc).toHaveBeenCalledWith(destination === 'event' ? 'apply_open_event_delivery_correction' : 'apply_open_delivery_correction',
+    expect.objectContaining({ p_action: 'cancel', p_reason: 'ลงย้อนหลังผิด' }));
+  expect(onSuccess).toHaveBeenCalled();
+});

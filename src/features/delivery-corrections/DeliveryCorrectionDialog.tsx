@@ -36,6 +36,7 @@ type CorrectionContext = {
   note: string | null;
   can_correct: boolean;
   can_cancel: boolean;
+  can_cancel_closed_period?: boolean;
   blocker_reason: string | null;
   ice_types: CorrectionItem[];
   items: CorrectionItem[];
@@ -128,7 +129,9 @@ export function DeliveryCorrectionDialog({
 
   const cancelBill = async () => {
     if (!context || !canCancel || submitting || !reason.trim()) return setError('กรุณาระบุเหตุผลก่อนยกเลิกบิล');
-    const cancellationEffect = 'หลังยืนยันใบส่งจะถูกยกเลิกและคืนสต๊อก จากนั้นสามารถบันทึกส่งใหม่ได้';
+    const cancellationEffect = isClosed
+      ? 'ใบส่งจะถูกยกเลิก โดยคงยอดปิดเดิมไว้และบันทึกเหตุผลในประวัติ จากนั้นสามารถบันทึกส่งใหม่ได้'
+      : 'หลังยืนยันใบส่งจะถูกยกเลิกและคืนสต๊อก จากนั้นสามารถบันทึกส่งใหม่ได้';
     if (!window.confirm(`ยืนยันยกเลิกบิล ${context.charge_number ?? ''} หรือไม่\n${cancellationEffect}`)) return;
     setSubmitting(true);
     setError(null);
@@ -160,7 +163,7 @@ export function DeliveryCorrectionDialog({
 
   const immediateSale = context?.payment_term === 'immediate';
   const hasPayment = Number(context?.allocated_amount) > 0;
-  const canCancel = Boolean(context?.can_cancel && (!isClosed || immediateSale)
+  const canCancel = Boolean(context?.can_cancel && (!isClosed || immediateSale || context.can_cancel_closed_period)
     && Number(context?.allocated_amount) === 0);
 
   return <div className="modal-backdrop delivery-correction-layer">
@@ -176,6 +179,7 @@ export function DeliveryCorrectionDialog({
           <span><small>{translateUi('รับชำระแล้ว')}</small><strong>{money.format(Number(context.allocated_amount))}</strong></span>
         </div>
         {Number(context.vat_rate) > 0 ? <VatBreakdown subtotal={Number(context.subtotal_amount)} vat={Number(context.vat_amount)} total={context.effective_amount} rate={context.vat_rate} paid={context.allocated_amount} /> : null}
+        {isClosed && canCancel && context.can_cancel_closed_period ? <p className="delivery-correction-dialog__notice"><WarningCircle size={18} />{translateUi('แอดมินยกเลิกหลังปิดยอดได้ โดยคงยอดปิดเดิมและเก็บเหตุผลการยกเลิกไว้ในประวัติ')}</p> : null}
         {isClosed && !canCancel ? <p className="delivery-correction-dialog__notice"><WarningCircle size={18} />{translateUi('งานประจำวันหรือสต๊อกของวันที่ทำรายการปิดแล้ว ไม่สามารถยกเลิกใบส่งนี้ได้')}</p> : null}
         {hasPayment ? <p className="delivery-correction-dialog__notice"><WarningCircle size={18} />{translateUi('บิลนี้รับชำระแล้วทั้งหมดหรือบางส่วน จึงยกเลิกใบส่งไม่ได้ ให้หัวหน้าหรือแอดมินตรวจสอบรายการรับเงินก่อน หากบันทึกรับเงินผิด ให้ยกเลิกใบเสร็จที่ผิดก่อนดำเนินการต่อ')}</p>
           : immediateSale ? <p className="delivery-correction-dialog__notice"><WarningCircle size={18} />{translateUi('รายการนี้ไม่มียอดรับชำระที่ยังใช้งานอยู่ ให้ยกเลิกรายการส่งก่อนบันทึกขายใหม่')}</p> : null}
