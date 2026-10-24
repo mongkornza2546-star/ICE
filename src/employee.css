@@ -1,0 +1,3 @@
+/* Employee entry: the employeeStyles build plugin removes management-only
+   selectors from the shared source while preserving its cascade order. */
+@import './index.css';

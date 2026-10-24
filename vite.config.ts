@@ -3,6 +3,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 import type { RuntimeCaching } from 'workbox-build';
+import { employeeStyles } from './scripts/employee-styles.mjs';
 
 export const r2CatalogImagePattern = /^https:\/\/[^/]+\.r2\.cloudflarestorage\.com\/(?:[^/]+\/)?(?:shop-images|ice-type-images)\//;
 export const supabaseCatalogImagePattern = /^https:\/\/[^/]+\/storage\/v1\/object\/public\/(?:shop-images|ice-type-images)\//;
@@ -82,6 +83,7 @@ export default defineConfig(({ mode }) => {
       ...(employeeOnly ? { 'import.meta.env.VITE_APP_MODE': JSON.stringify('live') } : {}),
     },
     build: { outDir: employeeOnly ? 'dist-employee' : 'dist', copyPublicDir: !employeeOnly },
+    css: employeeOnly ? { postcss: { plugins: [employeeStyles()] } } : undefined,
     plugins: [
       react(),
       employeeOnly ? employeeBuild() : VitePWA({
