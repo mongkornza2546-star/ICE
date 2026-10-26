@@ -41,6 +41,41 @@ beforeEach(() => {
 });
 afterEach(() => vi.useRealTimers());
 
+it('uses one unrestricted date picker and keeps it focused while loading another month', async () => {
+  const view = render(<ReportDailyQuantities report={report()} />);
+  const input = screen.getByLabelText('วันที่ต้องการดู') as HTMLInputElement;
+  expect(view.container.querySelectorAll('input[type="date"]')).toHaveLength(1);
+  expect(view.container.querySelector('input[type="month"]')).toBeNull();
+  expect(input.min).toBe('');
+  expect(input.max).toBe('2026-10-20');
+  expect(screen.queryByLabelText('วันที่เปรียบเทียบ')).toBeNull();
+  let finish!: (result: { data: ExecutiveReport; error: null }) => void;
+  rpc.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
+  input.focus();
+  fireEvent.change(input, { target: { value: '2025-01-01' } });
+  expect(input.value).toBe('2025-01-01');
+  expect(document.activeElement).toBe(input);
+  expect(rpc).toHaveBeenCalledWith('get_executive_report', { p_from: '2024-12-31', p_to: '2025-01-31' });
+  expect(screen.getByRole('status').textContent).toContain('กำลังโหลดจำนวนขายรายวัน');
+  finish({ data: report('2024-12-31', '2025-01-31'), error: null });
+  const comparison = await screen.findByRole('complementary', { name: 'เปรียบเทียบจำนวนขาย' });
+  expect(within(comparison).getAllByText(`เทียบ ${formatReportDate('2024-12-31')}`)).toHaveLength(2);
+  expect(screen.getByLabelText('วันที่ต้องการดู')).toBe(input);
+  expect(document.activeElement).toBe(input);
+  fireEvent.change(input, { target: { value: '2026-10-19' } });
+  expect(input.value).toBe('2026-10-19');
+  expect(within(screen.getByRole('complementary', { name: 'เปรียบเทียบจำนวนขาย' }))
+    .getByRole('listitem', { name: 'หลอดเล็ก' }).textContent).toContain('10 ถุงวันก่อน 0 ถุง+10 ถุง');
+});
+
+it.each(['', '2026-10-21'])('keeps the selected date when the input is empty or in the future (%s)', (value) => {
+  render(<ReportDailyQuantities report={report()} />);
+  const input = screen.getByLabelText('วันที่ต้องการดู') as HTMLInputElement;
+  fireEvent.change(input, { target: { value } });
+  expect(input.value).toBe('2026-10-20');
+  expect(rpc).not.toHaveBeenCalled();
+});
+
 it('shows daily product quantities, differences, month totals, zero days and unknown future days separately', () => {
   render(<ReportDailyQuantities report={report()} />);
   expect(rpc).not.toHaveBeenCalled();
@@ -59,7 +94,7 @@ it('shows daily product quantities, differences, month totals, zero days and unk
 
 it('loads the prior month boundary when comparing the first day without adding it to month totals', async () => {
   render(<ReportDailyQuantities report={report()} />);
-  fireEvent.change(screen.getByLabelText('วันที่เปรียบเทียบ'), { target: { value: '2026-10-01' } });
+  fireEvent.change(screen.getByLabelText('วันที่ต้องการดู'), { target: { value: '2026-10-01' } });
   await waitFor(() => expect(rpc).toHaveBeenCalledWith('get_executive_report', { p_from: '2026-09-30', p_to: '2026-10-20' }));
   const comparison = await screen.findByRole('complementary', { name: 'เปรียบเทียบจำนวนขาย' });
   expect(within(comparison).getAllByText(`เทียบ ${formatReportDate('2026-09-30')}`)).toHaveLength(2);
@@ -83,12 +118,12 @@ it('supports historical leap months and fetches the full month for a single-day 
   render(<ReportDailyQuantities report={report('2026-10-20', '2026-10-20')} />);
   await screen.findByRole('region', { name: 'ตารางจำนวนขายรายวันทั้งเดือน' });
   expect(rpc).toHaveBeenCalledWith('get_executive_report', { p_from: '2026-10-01', p_to: '2026-10-20' });
-  fireEvent.change(screen.getByLabelText('เดือนที่ต้องการดู'), { target: { value: '2024-02' } });
+  fireEvent.change(screen.getByLabelText('วันที่ต้องการดู'), { target: { value: '2024-02-29' } });
   const month = await screen.findByRole('region', { name: 'ตารางจำนวนขายรายวันทั้งเดือน' });
   expect(rpc).toHaveBeenCalledWith('get_executive_report', { p_from: '2024-02-01', p_to: '2024-02-29' });
   fireEvent.click(screen.getByRole('button', { name: 'ดูทั้งเดือน' }));
   expect(within(month).getAllByRole('row')).toHaveLength(31);
-  expect((screen.getByLabelText('วันที่เปรียบเทียบ') as HTMLInputElement).value).toBe('2024-02-29');
+  expect((screen.getByLabelText('วันที่ต้องการดู') as HTMLInputElement).value).toBe('2024-02-29');
 });
 
 it('reports unavailable daily data and request failures explicitly, and retries', async () => {
@@ -108,11 +143,11 @@ it('discards a late month response after switching months', async () => {
   let resolveOld!: (value: { data: ExecutiveReport; error: null }) => void;
   rpc.mockImplementationOnce(() => new Promise((resolve) => { resolveOld = resolve; }));
   render(<ReportDailyQuantities report={report('2026-10-20', '2026-10-20')} />);
-  fireEvent.change(screen.getByLabelText('เดือนที่ต้องการดู'), { target: { value: '2026-09' } });
+  fireEvent.change(screen.getByLabelText('วันที่ต้องการดู'), { target: { value: '2026-09-30' } });
   await screen.findByRole('region', { name: 'ตารางจำนวนขายรายวันทั้งเดือน' });
   resolveOld({ data: report(), error: null });
-  await waitFor(() => expect((screen.getByLabelText('เดือนที่ต้องการดู') as HTMLInputElement).value).toBe('2026-09'));
-  expect((screen.getByLabelText('วันที่เปรียบเทียบ') as HTMLInputElement).value).toBe('2026-09-30');
+  await waitFor(() => expect((screen.getByLabelText('วันที่ต้องการดู') as HTMLInputElement).value).toBe('2026-09-30'));
+  expect((screen.getByLabelText('วันที่ต้องการดู') as HTMLInputElement).value).toBe('2026-09-30');
   expect(screen.getByRole('button', { name: formatReportDate('2026-09-30') })).not.toBeNull();
 });
 
@@ -163,23 +198,22 @@ it('retains the selected month/day across tabs and exports that month rather tha
   render(<ExecutiveReportsPage isActive />);
   await screen.findByRole('region', { name: 'ผลประกอบการตามช่วงวันที่' });
   expect(screen.queryByRole('region', { name: 'ตารางจำนวนขายรายวันทั้งเดือน' })).toBeNull();
-  expect(screen.queryByLabelText('เดือนที่ต้องการดู')).toBeNull();
+  expect(screen.queryByLabelText('วันที่ต้องการดู')).toBeNull();
   expect(rpc).toHaveBeenCalledTimes(1);
   fireEvent.click(screen.getByRole('button', { name: 'ปริมาณ', exact: true }));
   await screen.findByRole('region', { name: 'ตารางจำนวนขายรายวันทั้งเดือน' });
   expect(screen.queryByRole('region', { name: 'ผลประกอบการตามช่วงวันที่' })).toBeNull();
-  fireEvent.change(screen.getByLabelText('เดือนที่ต้องการดู'), { target: { value: '2026-09' } });
+  fireEvent.change(screen.getByLabelText('วันที่ต้องการดู'), { target: { value: '2026-09-30' } });
   await screen.findByRole('region', { name: 'ตารางจำนวนขายรายวันทั้งเดือน' });
-  fireEvent.change(screen.getByLabelText('วันที่เปรียบเทียบ'), { target: { value: '2026-09-15' } });
+  fireEvent.change(screen.getByLabelText('วันที่ต้องการดู'), { target: { value: '2026-09-15' } });
   fireEvent.click(screen.getByRole('button', { name: 'ยอดขาย', exact: true }));
   fireEvent.click(screen.getByRole('button', { name: 'ภาพรวม', exact: true }));
   expect(screen.queryByRole('region', { name: 'ตารางจำนวนขายรายวันทั้งเดือน' })).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'ปริมาณ', exact: true }));
   await screen.findByRole('region', { name: 'ตารางจำนวนขายรายวันทั้งเดือน' });
-  expect((screen.getByLabelText('เดือนที่ต้องการดู') as HTMLInputElement).value).toBe('2026-09');
-  expect((screen.getByLabelText('วันที่เปรียบเทียบ') as HTMLInputElement).value).toBe('2026-09-15');
-  expect((screen.getByLabelText('ถึง') as HTMLInputElement).value).toBe('2026-10-20');
-  expect(screen.getByRole('button', { name: 'ส่งออก Excel ตามช่วงวันที่หลัก' })).not.toBeNull();
+  expect((screen.getByLabelText('วันที่ต้องการดู') as HTMLInputElement).value).toBe('2026-09-15');
+  expect(screen.queryByLabelText('ถึง')).toBeNull();
+  expect(screen.getByRole('button', { name: 'ส่งออก Excel ปริมาณเดือนที่เลือก' })).not.toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'ส่งออกจำนวนขายรายวัน (Excel)' }));
   await waitFor(() => expect(writeXlsxFile).toHaveBeenCalledTimes(1));
   expect(writeXlsxFile.mock.calls[0][1].fileName).toBe('ice-daily-quantities-2026-09-compare-2026-09-15.xlsx');
@@ -193,13 +227,16 @@ it('the independent month survives a main-range change', async () => {
   render(<ExecutiveReportsPage isActive />);
   await screen.findByRole('region', { name: 'ผลประกอบการตามช่วงวันที่' });
   fireEvent.click(screen.getByRole('button', { name: 'ปริมาณ', exact: true }));
-  fireEvent.change(screen.getByLabelText('เดือนที่ต้องการดู'), { target: { value: '2026-09' } });
+  fireEvent.change(screen.getByLabelText('วันที่ต้องการดู'), { target: { value: '2026-09-30' } });
   await screen.findByRole('region', { name: 'ตารางจำนวนขายรายวันทั้งเดือน' });
-  fireEvent.change(screen.getByLabelText('วันที่เปรียบเทียบ'), { target: { value: '2026-09-15' } });
+  fireEvent.change(screen.getByLabelText('วันที่ต้องการดู'), { target: { value: '2026-09-15' } });
+  fireEvent.click(screen.getByRole('button', { name: 'ภาพรวม', exact: true }));
+  await screen.findByRole('region', { name: 'ผลประกอบการตามช่วงวันที่' });
   fireEvent.change(screen.getByLabelText('ถึง'), { target: { value: '2026-10-19' } });
+  await screen.findByRole('region', { name: 'ผลประกอบการตามช่วงวันที่' });
+  fireEvent.click(screen.getByRole('button', { name: 'ปริมาณ', exact: true }));
   await screen.findByRole('region', { name: 'ตารางจำนวนขายรายวันทั้งเดือน' });
-  expect((screen.getByLabelText('เดือนที่ต้องการดู') as HTMLInputElement).value).toBe('2026-09');
-  expect((screen.getByLabelText('วันที่เปรียบเทียบ') as HTMLInputElement).value).toBe('2026-09-15');
+  expect((screen.getByLabelText('วันที่ต้องการดู') as HTMLInputElement).value).toBe('2026-09-15');
 });
 
 it('daily export is blocked when the parent refresh fails', async () => {
@@ -209,7 +246,7 @@ it('daily export is blocked when the parent refresh fails', async () => {
   rpc.mockResolvedValueOnce({ data: null, error: { message: 'network unavailable' } });
   fireEvent.click(screen.getByRole('button', { name: 'รีเฟรชรายงาน' }));
   await screen.findByRole('alert');
-  expect((screen.getByRole('button', { name: 'ส่งออก Excel ตามช่วงวันที่หลัก' }) as HTMLButtonElement).disabled).toBe(true);
+  expect((screen.getByRole('button', { name: 'ส่งออก Excel ปริมาณเดือนที่เลือก' }) as HTMLButtonElement).disabled).toBe(true);
   expect((screen.getByRole('button', { name: 'ส่งออกจำนวนขายรายวัน (Excel)' }) as HTMLButtonElement).disabled).toBe(true);
 });
 
@@ -233,17 +270,21 @@ it('blocks reused daily export during refresh and re-enables it after recovery w
   expect(exportedRows(0)).toContainEqual(['2026-10-20', 12, 0]);
 });
 
-it('keeps independently loaded monthly data exportable after a main-range refresh error', async () => {
+it('blocks monthly export after a refresh error and recovers on retry', async () => {
   render(<ExecutiveReportsPage isActive />);
   await screen.findByRole('region', { name: 'ผลประกอบการตามช่วงวันที่' });
   fireEvent.click(screen.getByRole('button', { name: 'ปริมาณ', exact: true }));
-  fireEvent.change(screen.getByLabelText('เดือนที่ต้องการดู'), { target: { value: '2026-09' } });
+  fireEvent.change(screen.getByLabelText('วันที่ต้องการดู'), { target: { value: '2026-09-30' } });
   await screen.findByRole('region', { name: 'ตารางจำนวนขายรายวันทั้งเดือน' });
   rpc.mockResolvedValueOnce({ data: null, error: { message: 'network unavailable' } });
   fireEvent.click(screen.getByRole('button', { name: 'รีเฟรชรายงาน' }));
   await screen.findByRole('alert');
   const exportButton = screen.getByRole('button', { name: 'ส่งออกจำนวนขายรายวัน (Excel)' }) as HTMLButtonElement;
-  expect(exportButton.disabled).toBe(false);
+  expect(exportButton.disabled).toBe(true);
+  fireEvent.click(exportButton);
+  expect(writeXlsxFile).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'ลองใหม่' }));
+  await waitFor(() => expect(exportButton.disabled).toBe(false));
   fireEvent.click(exportButton);
   await waitFor(() => expect(writeXlsxFile).toHaveBeenCalledTimes(1));
   expect(writeXlsxFile.mock.calls[0][1].fileName).toBe('ice-daily-quantities-2026-09-compare-2026-09-30.xlsx');
@@ -253,15 +294,15 @@ it('preserves an explicitly selected historical month when the main preset rolls
   render(<ExecutiveReportsPage isActive />);
   await screen.findByRole('region', { name: 'ผลประกอบการตามช่วงวันที่' });
   fireEvent.click(screen.getByRole('button', { name: 'ปริมาณ', exact: true }));
-  fireEvent.change(screen.getByLabelText('เดือนที่ต้องการดู'), { target: { value: '2026-09' } });
+  fireEvent.change(screen.getByLabelText('วันที่ต้องการดู'), { target: { value: '2026-09-30' } });
   await screen.findByRole('region', { name: 'ตารางจำนวนขายรายวันทั้งเดือน' });
-  fireEvent.change(screen.getByLabelText('วันที่เปรียบเทียบ'), { target: { value: '2026-09-15' } });
+  fireEvent.change(screen.getByLabelText('วันที่ต้องการดู'), { target: { value: '2026-09-15' } });
   vi.setSystemTime(new Date('2026-10-21T00:01:00+07:00'));
   fireEvent.click(screen.getByRole('button', { name: 'รีเฟรชรายงาน' }));
   await screen.findByRole('region', { name: 'ตารางจำนวนขายรายวันทั้งเดือน' });
-  expect((screen.getByLabelText('ถึง') as HTMLInputElement).value).toBe('2026-10-21');
-  expect((screen.getByLabelText('เดือนที่ต้องการดู') as HTMLInputElement).value).toBe('2026-09');
-  expect((screen.getByLabelText('วันที่เปรียบเทียบ') as HTMLInputElement).value).toBe('2026-09-15');
+  expect(screen.queryByLabelText('ถึง')).toBeNull();
+  expect(rpc).toHaveBeenLastCalledWith('get_executive_report', { p_from: '2026-09-01', p_to: '2026-09-30' });
+  expect((screen.getByLabelText('วันที่ต้องการดู') as HTMLInputElement).value).toBe('2026-09-15');
 });
 
 
@@ -272,76 +313,76 @@ it('switches the chart unit independently and selects comparison dates with keyb
   fireEvent.change(screen.getByLabelText('ชนิดน้ำแข็งในกราฟ'), { target: { value: 'block' } });
   expect(screen.getByRole('img', { name: /น้ำแข็งก้อน \(แถว\)/ })).not.toBeNull();
   fireEvent.keyDown(chart, { key: 'ArrowLeft' });
-  expect((screen.getByLabelText('วันที่เปรียบเทียบ') as HTMLInputElement).value).toBe('2026-10-19');
+  expect((screen.getByLabelText('วันที่ต้องการดู') as HTMLInputElement).value).toBe('2026-10-19');
   const comparison = screen.getByRole('complementary', { name: 'เปรียบเทียบจำนวนขาย' });
   expect(within(comparison).getByRole('listitem', { name: 'น้ำแข็งก้อน' }).textContent).toContain('3 แถววันก่อน 0 แถว+3 แถว');
   fireEvent.keyDown(chart, { key: 'End' });
-  expect((screen.getByLabelText('วันที่เปรียบเทียบ') as HTMLInputElement).value).toBe('2026-10-20');
+  expect((screen.getByLabelText('วันที่ต้องการดู') as HTMLInputElement).value).toBe('2026-10-20');
   fireEvent.keyDown(chart, { key: 'ArrowRight' });
-  expect((screen.getByLabelText('วันที่เปรียบเทียบ') as HTMLInputElement).value).toBe('2026-10-20');
+  expect((screen.getByLabelText('วันที่ต้องการดู') as HTMLInputElement).value).toBe('2026-10-20');
 });
 
 
-it('keeps the main range editable on the quantity tab after invalid dates and recovers', async () => {
+it('can open volume and choose a date even when the other report range is invalid', async () => {
   render(<ExecutiveReportsPage isActive />);
   await screen.findByRole('region', { name: 'ผลประกอบการตามช่วงวันที่' });
-  fireEvent.click(screen.getByRole('button', { name: 'ปริมาณ', exact: true }));
-  const input = screen.getByLabelText('ถึง');
-  input.focus();
-  fireEvent.change(input, { target: { value: '2026-09-30' } });
+  fireEvent.change(screen.getByLabelText('ถึง'), { target: { value: '2026-09-30' } });
   expect(screen.getByRole('alert')).not.toBeNull();
-  expect(document.activeElement).toBe(input);
-  expect(screen.getByLabelText('ถึง')).toBe(input);
-  fireEvent.change(input, { target: { value: '2026-10-20' } });
+  fireEvent.click(screen.getByRole('button', { name: 'ปริมาณ', exact: true }));
+  const input = screen.getByLabelText('วันที่ต้องการดู');
+  input.focus();
+  fireEvent.change(input, { target: { value: '2026-09-15' } });
   await screen.findByRole('region', { name: 'ตารางจำนวนขายรายวันทั้งเดือน' });
   expect(screen.queryByRole('alert')).toBeNull();
   expect(document.activeElement).toBe(input);
+  fireEvent.click(screen.getByRole('button', { name: 'ภาพรวม', exact: true }));
+  expect(screen.getByRole('alert')).not.toBeNull();
+  fireEvent.change(screen.getByLabelText('ถึง'), { target: { value: '2026-10-20' } });
+  await screen.findByRole('region', { name: 'ผลประกอบการตามช่วงวันที่' });
 });
 
-
-it.each([['จาก', '2026-10-02'], ['ถึง', '2026-10-19']])('keeps %s mounted and focused through a main-range request', async (label, value) => {
+it.each([
+  ['2026-09-15', '2026-09-01', '2026-09-30'],
+  ['2024-02-29', '2024-02-01', '2024-02-29'],
+])('keeps the date focused while loading totals for %s', async (value, from, to) => {
   render(<ExecutiveReportsPage isActive />);
   await screen.findByRole('region', { name: 'ผลประกอบการตามช่วงวันที่' });
   fireEvent.click(screen.getByRole('button', { name: 'ปริมาณ', exact: true }));
   let finish!: (result: { data: ExecutiveReport; error: null }) => void;
   rpc.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
-  const input = screen.getByLabelText(label);
-  const period = screen.getByRole('region', { name: 'รายงานปริมาณตามช่วงวันที่หลัก' });
+  const input = screen.getByLabelText('วันที่ต้องการดู');
   input.focus();
   fireEvent.change(input, { target: { value } });
   expect(document.activeElement).toBe(input);
-  expect(within(period).getByLabelText(label)).toBe(input);
-  expect((within(period).getByRole('button', { name: 'ส่งออก Excel ตามช่วงวันที่หลัก' }) as HTMLButtonElement).disabled).toBe(true);
-  finish({ data: report(label === 'จาก' ? value : '2026-10-01', label === 'ถึง' ? value : '2026-10-20'), error: null });
+  expect(screen.getByLabelText('วันที่ต้องการดู')).toBe(input);
+  expect((screen.getByRole('button', { name: 'ส่งออก Excel ปริมาณเดือนที่เลือก' }) as HTMLButtonElement).disabled).toBe(true);
+  finish({ data: report(from, to), error: null });
   await screen.findByRole('table', { name: 'ปริมาณงานและน้ำแข็ง' });
   expect(document.activeElement).toBe(input);
-  expect(within(period).getByLabelText(label)).toBe(input);
+  expect(screen.getByLabelText('วันที่ต้องการดู')).toBe(input);
 });
 
-it('keeps the main delivery count through independent monthly loading, failure and retry', async () => {
+it('hides stale delivery counts and building totals through month loading and failure, then retries the selected month', async () => {
   rpc.mockResolvedValueOnce({ data: { ...report(), deliveryCount: 1726 }, error: null });
   render(<ExecutiveReportsPage isActive />);
   await screen.findByRole('region', { name: 'ผลประกอบการตามช่วงวันที่' });
   fireEvent.click(screen.getByRole('button', { name: 'ปริมาณ', exact: true }));
-  const expectMainCount = () => {
-    const summaries = screen.getAllByRole('region', { name: 'จำนวนรายการส่ง' });
-    expect(summaries).toHaveLength(1);
-    expect(summaries[0].textContent).toContain('1,726 ครั้ง');
-    expect(summaries[0].textContent).toContain(`${formatReportDate('2026-10-01')} – ${formatReportDate('2026-10-20')}`);
-  };
-  expectMainCount();
+  expect(screen.getByRole('region', { name: 'จำนวนรายการส่ง' }).textContent).toContain('1,726 ครั้ง');
   let fail!: (result: { data: null; error: { message: string } }) => void;
   rpc.mockImplementationOnce(() => new Promise((resolve) => { fail = resolve; }));
-  fireEvent.change(screen.getByLabelText('เดือนที่ต้องการดู'), { target: { value: '2026-09' } });
+  fireEvent.change(screen.getByLabelText('วันที่ต้องการดู'), { target: { value: '2026-09-30' } });
   expect(screen.getByRole('status').textContent).toContain('กำลังโหลดจำนวนขายรายวัน');
-  expectMainCount();
+  expect(screen.queryByRole('region', { name: 'จำนวนรายการส่ง' })).toBeNull();
   fail({ data: null, error: { message: 'monthly quantity unavailable' } });
   await screen.findByRole('alert');
-  expect(screen.getByRole('table', { name: 'ปริมาณงานและน้ำแข็ง' })).not.toBeNull();
-  expectMainCount();
+  expect(screen.queryByRole('table', { name: 'ปริมาณงานและน้ำแข็ง' })).toBeNull();
+  expect(screen.queryByRole('region', { name: 'จำนวนรายการส่ง' })).toBeNull();
+  rpc.mockResolvedValueOnce({ data: { ...report('2026-09-01', '2026-09-30'), deliveryCount: 921 }, error: null });
   fireEvent.click(screen.getByRole('button', { name: 'ลองใหม่' }));
   await screen.findByRole('region', { name: 'ตารางจำนวนขายรายวันทั้งเดือน' });
-  expectMainCount();
+  const summary = screen.getByRole('region', { name: 'จำนวนรายการส่ง' });
+  expect(summary.textContent).toContain('921 ครั้ง');
+  expect(summary.textContent).toContain(`${formatReportDate('2026-09-01')} – ${formatReportDate('2026-09-30')}`);
 });
 
 it.each(['unavailable', 'empty'])('keeps the main delivery count when monthly quantities are %s', (state) => {

@@ -26,3 +26,25 @@ of 175 instead of 60. It now covers two buildings, unattributed history, empty
 buildings, voids, old-sale refunds, Bangkok day boundaries, reapplication and
 courier denial. The UI regression switches A → B → empty C → all buildings and
 checks displayed totals and scope text.
+
+## Combined receipt card
+
+Apply `supabase/migrations/20261026102717_accounting_combined_receipts.sql`
+before deploying the updated frontend. The card is now “ยอดรับชำระรวมในช่วง”:
+shop receipts plus casual receipts for the selected building, grouped into cash
+and transfer/QR. Its expandable details retain the separate shop/casual amounts.
+It uses receipt dates, not casual sales totals or the paginated daily matrix.
+
+Actual shop refund settlements and casual refund confirmations in the date range
+are displayed separately, with net receipts equal to gross receipts minus both.
+Pending refunds do not reduce net receipts. Shop refunds follow the same current
+shop/search/building/zone scope as shop receipts, including inactive shops; casual
+receipts/refunds follow the selling building only. Billing-status and payment-term
+filters do not constrain these cashflow totals. All date boundaries use Bangkok.
+Historical casual sales without a building appear only when all buildings are selected.
+
+Existing RPC fields remain shop-only or casual-only, so other consumers cannot
+accidentally count the casual receipts twice. New fields are
+`casual_cash_received_amount`, `casual_transfer_received_amount`, and
+`shop_refunded_in_period`. Missing fields display “—” rather than inventing zero
+amounts during deployment. No transaction or closed-day snapshot is changed.

@@ -74,6 +74,8 @@ const populatedSummary = {
     cash_received_in_period: 1_100,
     cash_in_period: 800,
     transfer_in_period: 300,
+    casual_received_amount: 0, casual_cash_received_amount: 0, casual_transfer_received_amount: 0,
+    casual_refunded_amount: 0, shop_refunded_in_period: 0,
   },
   facets: {
     shops: [{ value: 'shop-1', label: 'S001 · ร้านสมใจ', count: 1 }],
@@ -151,6 +153,42 @@ beforeEach(() => {
 
 describe('accounting shop summary', () => {
 
+  it('highlights period debt and overdue old debt with separate period and cumulative labels', async () => {
+    const rows = [
+      { ...populatedSummary.rows[0], outstanding_amount: 60, cumulative_outstanding_amount: 60,
+        cumulative_overdue_amount: 0, payment_status: 'outstanding' },
+      { ...populatedSummary.rows[0], shop_id: 'partial', shop_code: 'S002', outstanding_amount: 20 },
+      { ...populatedSummary.rows[0], shop_id: 'paid', shop_code: 'S003', outstanding_amount: 0,
+        cumulative_outstanding_amount: 0, cumulative_overdue_amount: 0, payment_status: 'paid' },
+      { ...populatedSummary.rows[0], shop_id: 'old-debt', shop_code: 'S004', outstanding_amount: 0 },
+      { ...populatedSummary.rows[0], shop_id: 'old-not-due', shop_code: 'S005', outstanding_amount: 0,
+        cumulative_overdue_amount: 0, payment_status: 'outstanding' },
+    ];
+    rpcMock.mockImplementation(async (name: string, args: Record<string, unknown>) => {
+      if (name === 'get_accounting_shop_summary') return { data: { ...populatedSummary, rows, total_count: rows.length }, error: null };
+      // No same-day cash receipts, even for the invoice already paid on another day.
+      if (name === 'get_accounting_shop_daily_matrix') return { data: completeDailyMatrix(args, rows), error: null };
+      if (name === 'get_accounting_review_queue') return { data: { rows: [], total_count: 0 }, error: null };
+      throw new Error(`Unexpected RPC: ${name}`);
+    });
+    render(<AccountingPage />);
+    fireEvent.click(await screen.findByRole('button', { name: 'ตารางรายวัน' }));
+    await screen.findByText('ค้างบิลช่วงนี้ ฿60.00');
+    for (const [index, shop] of rows.entries()) {
+      const row = screen.getByRole('button', { name: `${shop.shop_code} · ${shop.shop_name}` }).closest('tr')!;
+      expect(row.classList.contains('accounting-daily-matrix__outstanding')).toBe([0, 1, 3].includes(index));
+      const labels = [...row.querySelectorAll('.accounting-daily-matrix__debt')].map((node) => node.textContent);
+      expect(labels).toEqual([
+        ['ค้างบิลช่วงนี้ ฿60.00'],
+        ['ค้างบิลช่วงนี้ ฿20.00', 'ค้างสะสม ฿750.00'],
+        [],
+        ['ค้างสะสม ฿750.00'],
+        [],
+      ][index]);
+    }
+    expect(screen.getByText('สีส้ม: ค้างบิลในช่วงที่เลือก หรือมีหนี้สะสมเกินกำหนด')).toBeTruthy();
+  });
+
   it('updates casual totals and scope text when switching buildings and clearing the filter', async () => {
     const user = userEvent.setup();
     rpcMock.mockImplementation(async (name: string, args: { p_filters: { building_id?: string } }) => {
@@ -164,7 +202,9 @@ describe('accounting shop summary', () => {
             { value: 'building-3', label: 'อาคาร C', count: 0 },
           ] },
           totals: { ...populatedSummary.totals, casual_sales_amount: sales, casual_received_amount: received,
-            casual_refunded_amount: refunded, casual_net_cash: received - refunded, casual_free_count: free },
+            casual_refunded_amount: refunded, casual_net_cash: received - refunded, casual_free_count: free,
+            casual_cash_received_amount: received * 0.6, casual_transfer_received_amount: received * 0.4,
+            shop_refunded_in_period: 20 },
         }, error: null };
       }
       if (name === 'get_accounting_shop_daily_matrix') return { data: emptyDailyMatrix, error: null };
@@ -172,21 +212,46 @@ describe('accounting shop summary', () => {
       throw new Error(`Unexpected RPC: ${name}`);
     });
     const { container } = render(<AccountingPage />);
-    const expectCard = async (scope: string, amounts: string[], free: string) => {
+    const expectCard = async (scope: string, amounts: string[], free: string, received: number, refunded: number) => {
       await screen.findByText(scope);
       const card = container.querySelector('.accounting-casual-summary')!;
       for (const amount of amounts) expect(card.textContent).toContain(amount);
       expect(card.querySelector('dl > div:last-child')?.textContent).toContain(`รายการแจก${free} ครั้ง`);
+      const receipt = container.querySelector('.accounting-metric--received')!;
+      const currency = (amount: number) => new Intl.NumberFormat('th-TH', { style: 'currency', currency: 'THB' }).format(amount);
+      expect(receipt.querySelector(':scope > strong')?.textContent).toBe(currency(1100 + received));
+      for (const [label, amount] of [
+        ['เงินสด', 800 + received * 0.6], ['โอน / QR', 300 + received * 0.4],
+        ['คืนเงินในช่วง', 20 + refunded], ['รับสุทธิหลังคืนเงิน', 1100 + received - 20 - refunded],
+        ['รับจากร้าน', 1100], ['รับจากขายสด', received],
+      ] as const) {
+        expect(within(receipt as HTMLElement).getByText(label, { exact: false, selector: '.accounting-metric__breakdown > span' }).querySelector('b')?.textContent).toBe(currency(amount));
+      }
     };
-    await expectCard('ทั้งช่วงวันที่ ทุกตึก · รวมรายการไม่ระบุตึก · ไม่ตามตัวกรองร้าน/โซน', ['฿175.00', '฿215.00', '฿55.00', '฿160.00'], '4');
+    await expectCard('ทั้งช่วงวันที่ ทุกตึก · รวมรายการไม่ระบุตึก · ไม่ตามตัวกรองร้าน/โซน', ['฿175.00', '฿215.00', '฿55.00', '฿160.00'], '4', 215, 55);
     await user.selectOptions(screen.getByRole('combobox', { name: 'อาคาร' }), 'building-1');
-    await expectCard('ทั้งช่วงวันที่ · อาคาร A · เฉพาะรายการที่ระบุตึกนี้ · ไม่ตามตัวกรองร้าน/โซน', ['฿60.00', '฿100.00', '฿40.00'], '1');
+    await expectCard('ทั้งช่วงวันที่ · อาคาร A · เฉพาะรายการที่ระบุตึกนี้ · ไม่ตามตัวกรองร้าน/โซน', ['฿60.00', '฿100.00', '฿40.00'], '1', 100, 40);
     await user.selectOptions(screen.getByRole('combobox', { name: 'อาคาร' }), 'building-2');
-    await expectCard('ทั้งช่วงวันที่ · อาคาร B · เฉพาะรายการที่ระบุตึกนี้ · ไม่ตามตัวกรองร้าน/โซน', ['฿90.00', '฿10.00', '฿80.00'], '2');
+    await expectCard('ทั้งช่วงวันที่ · อาคาร B · เฉพาะรายการที่ระบุตึกนี้ · ไม่ตามตัวกรองร้าน/โซน', ['฿90.00', '฿10.00', '฿80.00'], '2', 90, 10);
     await user.selectOptions(screen.getByRole('combobox', { name: 'อาคาร' }), 'building-3');
-    await expectCard('ทั้งช่วงวันที่ · อาคาร C · เฉพาะรายการที่ระบุตึกนี้ · ไม่ตามตัวกรองร้าน/โซน', ['฿0.00'], '0');
+    await expectCard('ทั้งช่วงวันที่ · อาคาร C · เฉพาะรายการที่ระบุตึกนี้ · ไม่ตามตัวกรองร้าน/โซน', ['฿0.00'], '0', 0, 0);
     await user.click(screen.getByRole('button', { name: 'ล้างตัวกรองทั้งหมด' }));
-    await expectCard('ทั้งช่วงวันที่ ทุกตึก · รวมรายการไม่ระบุตึก · ไม่ตามตัวกรองร้าน/โซน', ['฿175.00', '฿215.00', '฿55.00', '฿160.00'], '4');
+    await expectCard('ทั้งช่วงวันที่ ทุกตึก · รวมรายการไม่ระบุตึก · ไม่ตามตัวกรองร้าน/โซน', ['฿175.00', '฿215.00', '฿55.00', '฿160.00'], '4', 215, 55);
+  });
+
+  it('does not present missing method/refund data as zero while the server is being upgraded', async () => {
+    mockSuccessfulShopSummary();
+    const original = rpcMock.getMockImplementation()!;
+    rpcMock.mockImplementation(async (name: string, ...args: unknown[]) => name === 'get_accounting_shop_summary'
+      ? { data: { ...populatedSummary, totals: { ...populatedSummary.totals,
+        casual_received_amount: 10, casual_cash_received_amount: undefined,
+        casual_transfer_received_amount: undefined, shop_refunded_in_period: undefined,
+      } }, error: null } : original(name, ...args));
+    const { container } = render(<AccountingPage />);
+    await screen.findByRole('button', { name: 'S001 · ร้านสมใจ' });
+    const receipt = container.querySelector('.accounting-metric--received')!;
+    expect(receipt.querySelector(':scope > strong')?.textContent).toBe('฿1,110.00');
+    expect([...receipt.querySelectorAll(':scope > .accounting-metric__breakdown b')].map((node) => node.textContent)).toEqual(['—', '—', '—', '—']);
   });
 
   it('shows separate rental invoices without delivery events, including their items and payments', async () => {
@@ -453,7 +518,7 @@ describe('accounting shop summary', () => {
     expect(screen.getByRole('button', { name: 'ยอดรวมช่วงวันที่' }).getAttribute('aria-pressed')).toBe('true');
     expect(screen.getByText(/รับชำระแล้ว/, { selector: '.accounting-metric__breakdown span' })).toBeTruthy();
     expect(screen.getByText('ยอดค้างสะสมของร้าน', { selector: 'article span' })).toBeTruthy();
-    const broadReceipts = screen.getByText('ยอดรับชำระจากร้านตามระบบในช่วง', { selector: 'article span' }).closest('article');
+    const broadReceipts = screen.getByText('ยอดรับชำระรวมในช่วง', { selector: 'article span' }).closest('article');
     expect(broadReceipts?.textContent).toMatch(/ร้านปิดใช้งาน.*ไม่ตามสถานะหรือเงื่อนไขชำระ/);
     expect(screen.getByText(/เงินสด/, { selector: '.accounting-metric--received .accounting-metric__breakdown span' })).toBeTruthy();
     expect(screen.getByText(/โอน/, { selector: '.accounting-metric--received .accounting-metric__breakdown span' })).toBeTruthy();

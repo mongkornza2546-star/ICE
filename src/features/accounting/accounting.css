@@ -34,6 +34,8 @@
 .accounting-metric__breakdown b { font-variant-numeric: tabular-nums; }
 .accounting-metric--received { border-top-color: #2674c9; }
 .accounting-metric--received > strong { color: #185da5; }
+.accounting-receipt-sources { font-size: .73rem; }
+.accounting-receipt-sources > summary { cursor: pointer; padding: 5px 0; color: #185da5; }
 .accounting-metric--debt { border-top-color: #bf802c; }
 .accounting-metric--debt > strong { color: #8f5214; }
 .accounting-metric--review { border-top-color: #c38c41; background: #fffaf3; }
@@ -200,4 +202,10 @@
 .accounting-source-context button { min-height: 44px; background: white; border: 1px solid #b5cbe5; border-radius: 7px; color: #155fa9; font: inherit; padding: 7px 12px; }
 
 .accounting-daily-matrix__building-total th small { display: block; font-weight: 400; color: #526476; }
+.accounting-page .accounting-daily-matrix__table tbody tr.accounting-daily-matrix__outstanding > th,
+.accounting-page .accounting-daily-matrix__table tbody tr.accounting-daily-matrix__outstanding > td { background: #fff4e6; }
+.accounting-page .accounting-daily-matrix__table tbody tr.accounting-daily-matrix__outstanding:hover > th,
+.accounting-page .accounting-daily-matrix__table tbody tr.accounting-daily-matrix__outstanding:hover > td { background: #ffead0; }
+.accounting-daily-matrix__debt { display: block; margin-top: 4px; color: #8a460c; font-size: .72rem; font-weight: 700; white-space: normal; }
+.accounting-daily-matrix__debt-key { width: 11px; height: 11px; border: 1px solid #bf802c; border-radius: 50%; background: #fff4e6; }
 .accounting-casual-details > td { padding: 12px; background: #f0f6fd; }

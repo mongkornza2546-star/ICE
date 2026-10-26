@@ -221,6 +221,17 @@ export function useEmployeeDeliveryData({
   const loadedCardsRoundId = useRef(initialCards.length > 0 ? initialRoundId : '');
   const stockRequestId = useRef(0);
   const posContextRequestId = useRef(0);
+  // Presentation only: scoped to this workspace/user/date/round, never persisted
+  // or used as proof of stock availability. Every visit still reads live data.
+  const posPreviews = useMemo(() => new Map<string, DeliveryPosContext>(),
+    [gateway, requestScope, serviceDate, selectedRoundId]);
+  useEffect(() => {
+    posContextRequestId.current += 1;
+    setSelectedCardId(null);
+    setPosContext(null);
+    setPosContextError(null);
+    setLoadingPosContext(false);
+  }, [posPreviews, recoveryMode]);
   const collectionOutstandingRequestId = useRef(0);
   const handledCollectionCloseRequestId = useRef<string | null>(null);
   const activeRoundId = useRef(initialRoundId);
@@ -534,6 +545,18 @@ export function useEmployeeDeliveryData({
 
   const selectedRound = rounds.find((round) => round.id === selectedRoundId) ?? null;
   const selectedCard = cards.find((card) => card.round_stop_id === selectedCardId) ?? null;
+  const rememberPosPreview = useCallback((context: DeliveryPosContext, card: ShopCard) => {
+    if (context.client_cache?.stale || context.round_id !== selectedRoundId
+      || context.round_stop_id !== card.round_stop_id || context.service_date !== serviceDate) return;
+    const key = `${recoveryMode}:${card.destination_kind ?? 'regular'}:${card.round_stop_id}`;
+    posPreviews.delete(key);
+    posPreviews.set(key, {
+      ...context,
+      items: context.items.map((item) => ({ ...item, stock_quantity: 0 })),
+      client_cache: { cached_at: new Date().toISOString(), stale: true },
+    });
+    if (posPreviews.size > 50) posPreviews.delete(posPreviews.keys().next().value!);
+  }, [posPreviews, recoveryMode, selectedRoundId, serviceDate]);
   const pendingDeliveryRequest = selectedCard && selectedRound
     ? getPendingRequest(`${requestScope}:delivery:${selectedRound.service_date}:${selectedCard.round_stop_id}`)
     : undefined;
@@ -728,7 +751,8 @@ export function useEmployeeDeliveryData({
     setEntryError(null);
     setDeliveryQuantities(Object.fromEntries(iceTypes.map((iceType) => [iceType.id, 0])));
     setSelectedCardId(card.round_stop_id);
-    setPosContext(null);
+    const preview = posPreviews.get(`${recoveryMode}:${card.destination_kind ?? 'regular'}:${card.round_stop_id}`);
+    setPosContext(gateway.loadDeliveryPosContext && preview ? preview : null);
     setPosContextError(null);
     setLoadingPosContext(false);
     setPaymentResult(null);
@@ -760,12 +784,13 @@ export function useEmployeeDeliveryData({
       }).then((loadedContext) => {
         if (requestId !== posContextRequestId.current) return;
         const context = withKnownIceTypeImages(loadedContext, iceTypes);
+        rememberPosPreview(context, card);
         setPosContext(context);
         setDeliveryQuantities((current) => Object.fromEntries(
           iceTypes.map((iceType) => {
             const available = context.items.find((item) => item.ice_type_id === iceType.id)?.stock_quantity ?? 0;
             const intended = recovery?.deliveryQuantities[iceType.id] ?? current[iceType.id] ?? 0;
-            return [iceType.id, Math.min(intended, available)];
+            return [iceType.id, recovery ? Math.min(intended, available) : intended];
           }),
         ));
         setPaymentTerm(recovery?.paymentTerm
@@ -940,24 +965,21 @@ export function useEmployeeDeliveryData({
       });
       if (requestId !== posContextRequestId.current) return;
       const context = withKnownIceTypeImages(loaded, iceTypes);
+      rememberPosPreview(context, selectedCard);
       setPosContext(context);
-      if (!posContext) {
+      if (!posContext || posContext.client_cache?.stale) {
         setPaymentTerm(context.payment_profile?.allowed_payment_terms.includes('credit') ? 'credit' : 'end_of_day');
         setPaymentMethod(context.payment_profile?.default_payment_method ?? 'cash');
       }
-      setDeliveryQuantities((current) => Object.fromEntries(
-        iceTypes.map((iceType) => {
-          const available = context.items.find((item) => item.ice_type_id === iceType.id)?.stock_quantity ?? 0;
-          return [iceType.id, Math.min(current[iceType.id] ?? 0, available)];
-        }),
-      ));
+      // Preserve the draft; the review flags quantities above the refreshed
+      // stock so a background read never silently changes the intended order.
     } catch (loadError) {
       if (requestId !== posContextRequestId.current) return;
       setPosContextError(employeeErrorMessage(loadError));
     } finally {
       if (requestId === posContextRequestId.current) setLoadingPosContext(false);
     }
-  }, [gateway, iceTypes, posContext, selectedCard, serviceDate]);
+  }, [gateway, iceTypes, posContext, rememberPosPreview, selectedCard, serviceDate]);
 
   const refreshShopCatalog = useCallback(() => {
     setSuccess(null);
@@ -990,8 +1012,8 @@ export function useEmployeeDeliveryData({
     if (submitting || (selectedRound?.status === 'closed' && !selectedRound.can_record_delivery)) return;
     const contextItem = posContext?.items.find((item) => item.ice_type_id === iceTypeId);
     const assignedAvailable = stockQuantity(stockState?.holding_location.balances, iceTypeId);
-    const available = contextItem?.stock_quantity
-      ?? (enableAssignedStockFlow ? assignedAvailable : Number.MAX_SAFE_INTEGER);
+    const available = loadingPosContext && posContext ? Number.MAX_SAFE_INTEGER
+      : contextItem?.stock_quantity ?? (enableAssignedStockFlow ? assignedAvailable : Number.MAX_SAFE_INTEGER);
     setDeliveryQuantities((current) => ({
       ...current,
       [iceTypeId]: Math.max(0, Math.min(available, Math.round(quantity * 2) / 2)),
@@ -1182,6 +1204,11 @@ export function useEmployeeDeliveryData({
       }
       if (!posContext?.payment_profile) {
         setEntryError('ร้านนี้ยังไม่มีเงื่อนไขการชำระเงิน จึงยังบันทึกส่งไม่ได้');
+        return;
+      }
+      if (items.some((item) => item.quantity > Math.max(0,
+        posContext.items.find((candidate) => candidate.ice_type_id === item.ice_type_id)?.stock_quantity ?? 0))) {
+        setEntryError('จำนวนในรายการเกินสต๊อกคงเหลือ กรุณาแก้จำนวนก่อนส่ง');
         return;
       }
       const missingPrice = items.find((item) => (

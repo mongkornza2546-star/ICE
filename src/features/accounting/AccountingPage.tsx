@@ -153,6 +153,8 @@ function emptyShopSummary(): AccountingShopSummaryResponse {
       outstanding_shop_count: 0, cumulative_outstanding_amount: 0,
       cumulative_overdue_amount: 0, cumulative_outstanding_shop_count: 0,
       cash_received_in_period: 0, cash_in_period: 0, transfer_in_period: 0,
+      casual_received_amount: 0, casual_cash_received_amount: 0, casual_transfer_received_amount: 0,
+      casual_refunded_amount: 0, shop_refunded_in_period: 0,
     },
     facets: { shops: [], buildings: [], zones: [] },
   };
@@ -728,6 +730,16 @@ function ShopSummaryPanel({ daily, data, loading, unavailable, view, onViewChang
     setFromDate(next.fromDate); setToDate(next.toDate);
   };
   const totals = data.totals;
+  const receivedTotal = totals.casual_received_amount == null ? null
+    : totals.cash_received_in_period + totals.casual_received_amount;
+  const receivedCash = totals.cash_in_period == null || totals.casual_cash_received_amount == null ? null
+    : totals.cash_in_period + totals.casual_cash_received_amount;
+  const receivedTransfer = totals.transfer_in_period == null || totals.casual_transfer_received_amount == null ? null
+    : totals.transfer_in_period + totals.casual_transfer_received_amount;
+  const refundedTotal = totals.shop_refunded_in_period == null || totals.casual_refunded_amount == null ? null
+    : totals.shop_refunded_in_period + totals.casual_refunded_amount;
+  const receivedNet = receivedTotal == null || refundedTotal == null ? null : receivedTotal - refundedTotal;
+  const receiptMoney = (value: number | null | undefined) => value == null ? '—' : money.format(value);
   const buildingOptions = [...data.facets.buildings,
     ...(daily.casual_buildings ?? []).filter((building) => !data.facets.buildings.some((item) => item.value === building.building_id))
       .map((building) => ({ value: building.building_id, label: building.building_name, count: 0 }))];
@@ -765,7 +777,26 @@ function ShopSummaryPanel({ daily, data, loading, unavailable, view, onViewChang
     {loading ? <AccountingLoading /> : unavailable || rangeError ? null : <>
       <div className="accounting-overview" aria-label={translateUi('สรุปยอดการเงิน')}>
         <article className="accounting-metric accounting-metric--sales"><span>{translateUi('ยอดขายรายร้านในช่วง')}</span><strong>{money.format(totals.sales_amount)}</strong><div className="accounting-metric__breakdown"><span>{translateUi('รับชำระแล้ว ')}<b>{money.format(totals.paid_amount)}</b></span><span>{translateUi('ค้างของบิลช่วงนี้ ')}<b>{money.format(totals.outstanding_amount)}</b></span></div><small>{translateUi('รับชำระและค้างเป็นยอดปัจจุบัน รวมการชำระหลังช่วงรายงาน')}</small></article>
-        <article className="accounting-metric accounting-metric--received"><span>{translateUi('ยอดรับชำระจากร้านตามระบบในช่วง')}</span><strong>{money.format(totals.cash_received_in_period)}</strong><div className="accounting-metric__breakdown"><span>{translateUi('เงินสด ')}<b>{money.format(totals.cash_in_period ?? 0)}</b></span><span>{translateUi('โอน ')}<b>{money.format(totals.transfer_in_period ?? 0)}</b></span></div><small>{translateUi('ตามวันที่รับเงิน รวมรับหนี้เก่าและร้านปิดใช้งาน')}</small><small>{translateUi('ตามร้าน/พื้นที่ · ไม่ตามสถานะหรือเงื่อนไขชำระ')}</small></article>
+        <article className="accounting-metric accounting-metric--received">
+          <span>{translateUi('ยอดรับชำระรวมในช่วง')}</span><strong>{receiptMoney(receivedTotal)}</strong>
+          <div className="accounting-metric__breakdown">
+            <span>{translateUi('เงินสด ')}<b>{receiptMoney(receivedCash)}</b></span>
+            <span>{translateUi('โอน / QR ')}<b>{receiptMoney(receivedTransfer)}</b></span>
+            <span>{translateUi('คืนเงินในช่วง ')}<b>{receiptMoney(refundedTotal)}</b></span>
+            <span>{translateUi('รับสุทธิหลังคืนเงิน ')}<b>{receiptMoney(receivedNet)}</b></span>
+          </div>
+          <details className="accounting-receipt-sources"><summary>{translateUi('แยกยอดร้าน / ขายสด')}</summary>
+            <div className="accounting-metric__breakdown">
+              <span>{translateUi('รับจากร้าน ')}<b>{receiptMoney(totals.cash_received_in_period)}</b></span>
+              <span>{translateUi('รับจากขายสด ')}<b>{receiptMoney(totals.casual_received_amount)}</b></span>
+              <span>{translateUi('คืนเงินร้าน ')}<b>{receiptMoney(totals.shop_refunded_in_period)}</b></span>
+              <span>{translateUi('คืนเงินขายสด ')}<b>{receiptMoney(totals.casual_refunded_amount)}</b></span>
+            </div>
+          </details>
+          <small>{translateUi('ตามวันที่รับ/คืนเงินจริง รวมรับหนี้เก่าและร้านปิดใช้งาน')}</small>
+          <small>{translateUi('ร้านตามตัวกรองร้าน/พื้นที่ · ไม่ตามสถานะหรือเงื่อนไขชำระ')}</small>
+          <small>{translateUi('ขายสดตามตึก · ไม่ตามตัวกรองร้าน/โซน')}</small>
+        </article>
         <article className="accounting-metric accounting-metric--debt"><span>{translateUi('ยอดค้างสะสมของร้าน')}</span><strong>{money.format(totals.cumulative_outstanding_amount)}</strong><div className="accounting-metric__breakdown"><span>{totals.cumulative_outstanding_shop_count.toLocaleString('th-TH')}{translateUi(' ร้าน ')}<b>{translateUi('เกินกำหนด ')}{money.format(totals.cumulative_overdue_amount)}</b></span></div><small>{translateUi('หนี้ปัจจุบันทุกวันที่ขาย · เกินกำหนดรวมอยู่ในยอดค้าง')}</small></article>
         <button className="accounting-metric accounting-metric--review" aria-label={translateUi('เปิดหน้ารายการตรวจสอบ')} onClick={onOpenReview} type="button"><span>{translateUi('รายการต้องตรวจสอบ')}</span><strong>{reviewCount == null ? '—' : reviewCount.toLocaleString('th-TH')}<small>{translateUi(' รายการ')}</small></strong><small>{translateUi('ทั้งช่วงวันที่ · ไม่ตามตัวกรองร้าน')}</small><b>{translateUi('เปิดรายการตรวจสอบ →')}</b></button>
       </div>
@@ -934,9 +965,14 @@ function ShopDailyMatrix({ collapsedGroups, daily, data, filters, fromDate, grou
   const renderShopRow = (shop: AccountingShopSummaryRow) => {
     const row = dailyRows.get(shop.shop_id);
     const days = new Map((row?.days ?? []).map((day) => [day.service_date, day]));
-    return <tr className={shop.payment_status === 'overdue' ? 'accounting-row--issue' : ''} key={shop.shop_id}>
+    const outstanding = Number(shop.outstanding_amount);
+    const overdue = shop.payment_status === 'overdue';
+    return <tr className={outstanding > 0 || overdue ? 'accounting-daily-matrix__outstanding' : ''} key={shop.shop_id}>
       <td className="accounting-daily-matrix__sequence">{shop.delivery_sequence?.toLocaleString('th-TH') ?? '—'}</td>
-      <th className="accounting-daily-matrix__shop"><button className="accounting-link" onClick={() => onOpenShop(shop)} type="button">{formatAccountingShopTitle(shop)}</button></th>
+      <th className="accounting-daily-matrix__shop"><button className="accounting-link" onClick={() => onOpenShop(shop)} type="button">{formatAccountingShopTitle(shop)}</button>
+        {outstanding > 0 ? <small className="accounting-daily-matrix__debt">{translateUi('ค้างบิลช่วงนี้ ')}{money.format(outstanding)}</small> : null}
+        {overdue ? <small className="accounting-daily-matrix__debt">{translateUi('ค้างสะสม ')}{money.format(Number(shop.cumulative_outstanding_amount))}</small> : null}
+      </th>
       {dates.map((date) => renderDayCells(shop, days.get(date), date))}
     </tr>;
   };
@@ -1071,6 +1107,7 @@ function ShopDailyMatrix({ collapsedGroups, daily, data, filters, fromDate, grou
       </tbody>
     </table></div>
     <div className="accounting-daily-matrix__legend" aria-label={translateUi('ความหมายสถานะ')}>
+      <span><i className="accounting-daily-matrix__debt-key" />{translateUi('สีส้ม: ค้างบิลในช่วงที่เลือก หรือมีหนี้สะสมเกินกำหนด')}</span>
       <span>{translateUi(daily.casual_buildings ? 'ขายสดใหม่แยกตามตึก · แถวลูกค้าขายสดเดิมคงไว้ตามข้อมูลเดิม · ยอดรวมตึกครบทุกร้านที่เปิดใช้งาน ไม่เปลี่ยนตามหน้า · จำนวนถุงรวมเฉพาะรายการที่ระบุจำนวน' : 'แถวลูกค้าขายสดรวมยอดทุกจุดถือครองในช่วงวันที่เลือก ไม่รวมซ้ำในยอดของกลุ่มร้าน')}</span>
       {(Object.entries(dailyStatusLabels) as Array<[AccountingShopDailyStatus, string]>).filter(([status]) => status !== 'purchased').map(([status, label]) => <span key={status}><i className={`accounting-daily-status accounting-daily-status--${status}`} />{translateUi(label)}</span>)}
     </div>

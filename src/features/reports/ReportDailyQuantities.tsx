@@ -4,7 +4,7 @@ import { translateUi, useLanguage } from '../../i18n';
 import { shiftServiceDate, toBangkokDateString } from '../../lib/serviceDate';
 import { supabase } from '../../lib/supabase';
 import { demoComparisonReport } from './demoComparisonReport';
-import { formatReportDate } from './reportDates';
+import { formatReportDate, quantityMonthDates, reportRangeError } from './reportDates';
 import { Panel } from './ReportPrimitives';
 import { QuantityTrendChart } from './QuantityTrendChart';
 import { exportDailyQuantities } from './exportExecutiveReport';
@@ -14,7 +14,7 @@ const number = (value: number) => new Intl.NumberFormat('th-TH', { maximumFracti
 
 /** One column per product: bags and rows must never be added together. */
 export function ReportDailyQuantities({ report, demo = false, selectedDate, onDateChange, reportLoading = false, reportError }: {
-  report: ExecutiveReport; demo?: boolean; selectedDate: string; onDateChange: (date: string) => void;
+  report: ExecutiveReport | null; demo?: boolean; selectedDate: string; onDateChange: (date: string) => void;
   reportLoading?: boolean; reportError?: string | null;
 }) {
   useLanguage();
@@ -27,20 +27,17 @@ export function ReportDailyQuantities({ report, demo = false, selectedDate, onDa
   const [loaded, setLoaded] = useState<ExecutiveReport | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [retry, setRetry] = useState(0);
-  const first = `${month}-01`;
-  const [year, monthNumber] = month.split('-').map(Number);
-  const last = new Date(Date.UTC(year, monthNumber, 0)).toISOString().slice(0, 10);
-  const end = last < today ? last : today;
+  const { first, last, end } = quantityMonthDates(selectedDate, today);
   const previousDate = shiftServiceDate(selectedDate, -1);
   const start = previousDate < first ? previousDate : first;
   const covers = (value: ExecutiveReport | null) => value && value.from <= start && value.to >= end;
   const reuseReport = covers(report);
-  const source = reuseReport ? report : covers(loaded) ? loaded : null;
+  const source = !report ? null : reuseReport ? report : covers(loaded) ? loaded : null;
 
   useEffect(() => {
     setLoaded(null);
     setError(null);
-    if (reuseReport) return;
+    if (!report || reuseReport) return;
     if (demo) {
       setLoaded(demoComparisonReport(report, { from: start, to: end }));
       return;
@@ -76,7 +73,7 @@ export function ReportDailyQuantities({ report, demo = false, selectedDate, onDa
   const visibleDays = showAllDays ? days : days.filter((date) => date <= selectedDate).slice(-5).reverse();
   const display = (value: number | null) => value === null ? '—' : number(value);
   const canExport = Boolean(source?.dailyTrend && columns.length && !error
-    && !(reuseReport && (reportLoading || reportError)));
+    && !reportLoading && !reportError);
   const handleExport = async () => {
     if (!source || !canExport || exporting) return;
     setExporting(true);
@@ -98,28 +95,26 @@ export function ReportDailyQuantities({ report, demo = false, selectedDate, onDa
     }
   };
 
-  // The delivery count belongs to the main range, independent of monthly data availability.
-  const deliverySummary = <div className="quantity-deliveries" role="region" aria-label={translateUi('จำนวนรายการส่ง')}>
-    <Truck size={25} aria-hidden="true" /><div><span>{translateUi('รายการส่งช่วงวันที่หลัก')}</span><strong>{number(report.deliveryCount)} <small>{translateUi('ครั้ง')}</small></strong>
+  // The parent supplies totals for the selected month, excluding the prior comparison day.
+  const deliverySummary = report ? <div className="quantity-deliveries" role="region" aria-label={translateUi('จำนวนรายการส่ง')}>
+    <Truck size={25} aria-hidden="true" /><div><span>{translateUi('รายการส่งเดือนที่เลือก')}</span><strong>{number(report.deliveryCount)} <small>{translateUi('ครั้ง')}</small></strong>
       <small>{formatReportDate(report.from)} – {formatReportDate(report.to)}</small>
       <small>{translateUi('จำนวนครั้งที่บันทึกส่ง ไม่ใช่จำนวนถุง')}</small></div>
-  </div>;
+  </div> : null;
 
   return <Panel title={translateUi('จำนวนขายน้ำแข็งรายวัน')}
     className="executive-daily-quantities"
-    action={<div className="executive-quantity-actions"><label className="executive-quantity-month">{translateUi('เดือนที่ต้องการดู')}
-      <input type="month" value={month} max={today.slice(0, 7)} onChange={(event) => {
+    action={<div className="executive-quantity-actions"><label className="executive-quantity-date">{translateUi('วันที่ต้องการดู')}
+      <input type="date" value={selectedDate} max={today} onChange={(event) => {
         const value = event.target.value;
-        if (!/^\d{4}-\d{2}$/.test(value) || value > today.slice(0, 7)) return;
-        const [y, m] = value.split('-').map(Number);
-        onDateChange(value === today.slice(0, 7) ? today : new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10));
+        if (!reportRangeError(value, value, today)) onDateChange(value);
       }} />
     </label><button aria-label={translateUi(exporting ? 'กำลังสร้างไฟล์จำนวนขาย…' : 'ส่งออกจำนวนขายรายวัน (Excel)')} type="button" disabled={!canExport || exporting} onClick={() => void handleExport()}>
       <DownloadSimple size={18} aria-hidden="true" /> {translateUi(exporting ? 'กำลังสร้างไฟล์จำนวนขาย…' : 'ส่งออก Excel')}
     </button></div>}>
     {demo ? <p className="executive-panel-note quantity-demo-note">{translateUi('ข้อมูลจำลอง · ไม่ใช่ข้อมูลจริงตามวันที่')}</p> : null}
     {exportError ? <p className="executive-error" role="alert">{translateUi(exportError)}</p> : null}
-    {error ? <p className="executive-error" role="alert">{translateUi(error)} <button type="button" onClick={() => setRetry((value) => value + 1)}>{translateUi('ลองใหม่')}</button></p>
+    {reportError && !report ? null : error ? <p className="executive-error" role="alert">{translateUi(error)} <button type="button" onClick={() => setRetry((value) => value + 1)}>{translateUi('ลองใหม่')}</button></p>
       : !source ? <p role="status">{translateUi('กำลังโหลดจำนวนขายรายวัน…')}</p>
       : !source.dailyTrend ? <p role="status">{translateUi('ข้อมูลจำนวนขายรายวันยังไม่พร้อมใช้งาน กรุณาอัปเดตระบบรายงาน')}</p>
       : !columns.length ? <p className="executive-empty">{translateUi('ยังไม่มีรายการขายน้ำแข็งในเดือนนี้')}</p>
@@ -137,11 +132,6 @@ export function ReportDailyQuantities({ report, demo = false, selectedDate, onDa
           <aside className="quantity-comparison" aria-label={translateUi('เปรียบเทียบจำนวนขาย')}>
             <div className="executive-quantity-controls">
               <h3>{translateUi(selectedDate === today ? 'วันนี้เทียบกับเมื่อวาน' : 'วันที่เลือกเทียบกับวันก่อนหน้า')}</h3>
-              <label>{translateUi('วันที่เปรียบเทียบ')}<input type="date" min={first} max={end} value={selectedDate}
-                onChange={(event) => {
-                  const value = event.target.value;
-                  if (value >= first && value <= end) onDateChange(value);
-                }} /></label>
             </div>
             <ul className="quantity-comparison__list" tabIndex={0} aria-label={translateUi('ยอดเปรียบเทียบแยกชนิดน้ำแข็ง')}>
               {columns.map((product) => {

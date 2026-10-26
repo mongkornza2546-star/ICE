@@ -277,13 +277,13 @@ it('opens the report from the local demo entry point without a backend request',
   }
 });
 
-it('keeps the selected section when the date preset changes', async () => {
+it('keeps the selected section when the volume date changes', async () => {
   window.history.replaceState(null, '', '/?screen=executive-report');
   try {
     render(<LocalDemoApp />);
     const tabs = await screen.findByRole('navigation', { name: 'หมวดรายงาน' });
     fireEvent.click(screen.getByRole('button', { name: 'ปริมาณ', exact: true }));
-    fireEvent.click(screen.getByRole('button', { name: 'วันนี้' }));
+    fireEvent.change(screen.getByLabelText('วันที่ต้องการดู'), { target: { value: '2026-09-15' } });
     expect(within(tabs).getByRole('button', { name: 'ปริมาณ' }).getAttribute('aria-current')).toBe('page');
     expect(within(tabs).getByRole('button', { name: 'ภาพรวม' }).getAttribute('aria-current')).toBeNull();
     expect(screen.getByRole('table', { name: 'ปริมาณงานและน้ำแข็ง' })).not.toBeNull();

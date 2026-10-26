@@ -15,6 +15,14 @@ export function presetDates(preset: Exclude<Preset, 'custom'>, today = toBangkok
   return { from: `${year}-01-01`, to: today };
 }
 
+export function quantityMonthDates(date: string, today = toBangkokDateString()) {
+  const first = `${date.slice(0, 7)}-01`;
+  const monthEnd = new Date(`${first}T12:00:00Z`);
+  monthEnd.setUTCMonth(monthEnd.getUTCMonth() + 1, 0);
+  const last = monthEnd.toISOString().slice(0, 10);
+  return { first, last, end: last < today ? last : today };
+}
+
 export function reportRangeError(from: string, to: string, today = toBangkokDateString()) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)
     || Number.isNaN(Date.parse(`${from}T12:00:00Z`))

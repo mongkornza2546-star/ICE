@@ -141,6 +141,9 @@ export type AccountingShopSummaryResponse = {
     transfer_in_period?: number;
     casual_sales_amount?: number;
     casual_received_amount?: number;
+    casual_cash_received_amount?: number;
+    casual_transfer_received_amount?: number;
+    shop_refunded_in_period?: number;
     casual_refunded_amount?: number;
     casual_net_cash?: number;
     casual_free_count?: number;

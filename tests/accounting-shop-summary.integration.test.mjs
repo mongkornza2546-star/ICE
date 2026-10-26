@@ -1372,3 +1372,88 @@ test('casual summary scopes sales, receipts, refunds and free counts to the sele
   await assert.rejects(() => getSummary(db), /Only a round lead or admin/);
 
 });
+
+test('combined receipt inputs split casual cash/transfer and scope actual shop refunds without changing shop totals', async (t) => {
+  const db = await createEventAccountingDatabase(t);
+  await db.exec(`
+    create role anon;
+    alter table public.casual_transactions add column id integer, add column sale_building_id uuid,
+      add column payment_method public.payment_method;
+    alter table public.casual_refund_confirmations add column transaction_id integer;
+    create table public.refund_settlements (obligation_id uuid, amount numeric, settled_at timestamptz);
+    insert into public.casual_transactions values
+      (60, 'active', 'paid', '2026-08-01', '2026-07-31T17:00:00Z', 1, '${OLD_BUILDING_ID}', 'cash'),
+      (90, 'active', 'paid', '2026-08-01', '2026-08-01T03:00:00Z', 2, '${CURRENT_BUILDING_ID}', 'bank_transfer'),
+      (25, 'active', 'paid', '2026-08-01', '2026-08-01T03:00:00Z', 3, null, 'cash'),
+      (40, 'voided', 'paid', '2026-07-30', '2026-08-01T03:00:00Z', 4, '${OLD_BUILDING_ID}', 'qr'),
+      (0, 'active', 'free', '2026-08-01', '2026-08-01T03:00:00Z', 5, '${OLD_BUILDING_ID}', null),
+      (70, 'active', 'paid', '2026-08-02', '2026-08-01T17:00:00Z', 6, '${OLD_BUILDING_ID}', 'cash');
+    insert into public.casual_refund_confirmations values
+      (40, '2026-08-01T03:00:00Z', 4), (5, '2026-07-31T17:00:00Z', 3),
+      (9, '2026-08-01T17:00:00Z', 1);
+    insert into public.payments (id, shop_id, allocated_amount, status, recorded_at, payment_method) values
+      ('${PAYMENT_ID}', '${SHOP_ID}', 2575, 'active', '2026-08-01T03:00:00Z', 'cash');
+    insert into public.delivery_events values
+      ('${IMMEDIATE_EVENT_ID}', '${STOP_ID}', '${USER_ID}', 'active', '2026-07-30T03:00:00Z');
+    insert into public.delivery_charges
+      (id, delivery_event_id, shop_id, service_date, payment_term, original_amount, status) values
+      ('${IMMEDIATE_CHARGE_ID}', '${IMMEDIATE_EVENT_ID}', '${SHOP_ID}', '2026-07-30', 'immediate', 2575, 'active');
+    insert into public.refund_obligations values
+      ('90000000-0000-4000-8000-000000000001', '${PAYMENT_ID}', '${IMMEDIATE_CHARGE_ID}', 20, 'settled'),
+      ('90000000-0000-4000-8000-000000000002', '${PAYMENT_ID}', '${IMMEDIATE_CHARGE_ID}', 50, 'pending'),
+      ('90000000-0000-4000-8000-000000000003', '${PAYMENT_ID}', '${IMMEDIATE_CHARGE_ID}', 30, 'settled');
+    insert into public.refund_settlements values
+      ('90000000-0000-4000-8000-000000000001', 20, '2026-07-31T17:00:00Z'),
+      ('90000000-0000-4000-8000-000000000003', 30, '2026-08-01T17:00:00Z');
+  `);
+  await db.exec(readFileSync(new URL('../supabase/migrations/0256_accounting_casual_summary_building.sql', import.meta.url), 'utf8'));
+  const before = await getSummary(db);
+  const migration = readFileSync(new URL('../supabase/migrations/20261026102717_accounting_combined_receipts.sql', import.meta.url), 'utf8');
+  await db.exec(migration);
+  const all = await getSummary(db);
+  // Existing consumers still receive shop-only amounts and all earlier fields unchanged.
+  for (const [key, value] of Object.entries(before.totals)) assert.deepEqual(all.totals[key], value, key);
+  assert.equal(all.totals.casual_cash_received_amount, 85);
+  assert.equal(all.totals.casual_transfer_received_amount, 130);
+  assert.equal(all.totals.shop_refunded_in_period, 20);
+  const a = await getSummary(db, JSON.stringify({ building_id: OLD_BUILDING_ID }));
+  assert.equal(a.totals.cash_received_in_period + a.totals.casual_received_amount, 2675);
+  assert.equal(a.totals.casual_cash_received_amount, 60);
+  assert.equal(a.totals.casual_transfer_received_amount, 40);
+  assert.equal(a.totals.casual_refunded_amount, 40);
+  assert.equal(a.totals.shop_refunded_in_period, 20);
+  assert.equal(a.totals.cash_received_in_period + a.totals.casual_received_amount
+    - a.totals.shop_refunded_in_period - a.totals.casual_refunded_amount, 2615);
+  const b = await getSummary(db, JSON.stringify({ building_id: CURRENT_BUILDING_ID }));
+  assert.equal(b.totals.cash_received_in_period, 0);
+  assert.equal(b.totals.casual_cash_received_amount, 0);
+  assert.equal(b.totals.casual_transfer_received_amount, 90);
+  assert.equal(b.totals.shop_refunded_in_period, 0);
+  for (const filter of [
+    { shop_search: 'no matching shop' }, { zone_id: CURRENT_ZONE_ID },
+    { shop_id: '20000000-0000-4000-8000-000000000099' },
+  ]) {
+    const filtered = await getSummary(db, JSON.stringify({ building_id: OLD_BUILDING_ID, ...filter }));
+    assert.equal(filtered.totals.cash_received_in_period, 0);
+    assert.equal(filtered.totals.shop_refunded_in_period, 0);
+    assert.equal(filtered.totals.casual_received_amount, 100);
+    assert.equal(filtered.totals.casual_cash_received_amount, 60);
+    assert.equal(filtered.totals.casual_transfer_received_amount, 40);
+  }
+  const empty = await getSummary(db, JSON.stringify({ building_id: '30000000-0000-4000-8000-000000000099' }));
+  for (const key of ['cash_received_in_period', 'casual_received_amount', 'casual_cash_received_amount', 'casual_transfer_received_amount', 'shop_refunded_in_period']) assert.equal(empty.totals[key], 0);
+  // Inactive shops, old debt and ignored billing-status filters retain actual cashflow.
+  await db.exec(`update public.shops set status = 'inactive' where id = '${SHOP_ID}'`);
+  const inactive = await getSummary(db, JSON.stringify({ payment_status: 'outstanding', payment_term: 'credit' }));
+  assert.equal(inactive.totals.cash_received_in_period, 2575);
+  assert.equal(inactive.totals.shop_refunded_in_period, 20);
+  const beforeReapply = await getSummary(db);
+  await db.exec(migration);
+  assert.deepEqual((await getSummary(db)).totals, beforeReapply.totals, 'reapplying cannot double receipts');
+  const grants = await db.query(`select
+    has_function_privilege('anon', 'public.get_accounting_shop_summary(date,date,jsonb,integer,integer)', 'execute') as anon,
+    has_function_privilege('authenticated', 'public.get_accounting_shop_summary(date,date,jsonb,integer,integer)', 'execute') as authenticated`);
+  assert.deepEqual(grants.rows[0], { anon: false, authenticated: true });
+  await db.exec("create or replace function public.current_app_role() returns text language sql stable as $$ select 'courier'::text $$");
+  await assert.rejects(() => getSummary(db), /Only a round lead or admin/);
+});

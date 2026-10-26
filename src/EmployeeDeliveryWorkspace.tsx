@@ -820,6 +820,7 @@ export function EmployeeDeliveryWorkspace({
   const casualCustomerBrowseScrollY = useRef(0);
   const casualCustomerReturnFocusPending = useRef(false);
   const lastForegroundRefreshAt = useRef(Date.now());
+  const outstandingResumeInFlight = useRef(false);
   const catalogRefreshPending = useRef(false);
   const data = useEmployeeDeliveryData({
     canCollectShopPayments,
@@ -923,10 +924,16 @@ export function EmployeeDeliveryWorkspace({
   useEffect(() => {
     if (!isActive) return undefined;
     const refreshOnFocus = () => {
+      if (document.visibilityState === 'hidden' || data.anySubmitting) return;
       const now = Date.now();
-      if (now - lastForegroundRefreshAt.current < FOREGROUND_REFRESH_MIN_MS) return;
+      const refreshAll = now - lastForegroundRefreshAt.current >= FOREGROUND_REFRESH_MIN_MS;
+      if (!refreshAll && !data.collectionOutstandingError) return;
       lastForegroundRefreshAt.current = now;
-      if (!data.anySubmitting) {
+      if (!data.collectionOutstandingLoading && !outstandingResumeInFlight.current) {
+        outstandingResumeInFlight.current = true;
+        void data.refreshCollectionOutstanding().finally(() => { outstandingResumeInFlight.current = false; });
+      }
+      if (refreshAll) {
         gateway.invalidateDeliveryPosContextCache?.();
         data.retryLoad();
         void data.refreshOpenPosContext();
@@ -940,10 +947,17 @@ export function EmployeeDeliveryWorkspace({
       data.refreshShopCatalog();
     };
     window.addEventListener('focus', refreshOnFocus);
+    window.addEventListener('online', refreshOnFocus);
+    document.addEventListener('visibilitychange', refreshOnFocus);
+    const removeResumeListeners = () => {
+      window.removeEventListener('focus', refreshOnFocus);
+      window.removeEventListener('online', refreshOnFocus);
+      document.removeEventListener('visibilitychange', refreshOnFocus);
+    };
 
     const client = supabase;
     if (!client) {
-      return () => window.removeEventListener('focus', refreshOnFocus);
+      return removeResumeListeners;
     }
 
     const channel = client
@@ -956,10 +970,12 @@ export function EmployeeDeliveryWorkspace({
       .subscribe();
 
     return () => {
-      window.removeEventListener('focus', refreshOnFocus);
+      removeResumeListeners();
       void client.removeChannel(channel);
     };
-  }, [data.refreshOpenPosContext, data.refreshShopCatalog, data.retryLoad, gateway, isActive, requestScope, serviceDate]);
+  }, [data.anySubmitting, data.collectionOutstandingError, data.collectionOutstandingLoading,
+    data.refreshCollectionOutstanding, data.refreshOpenPosContext, data.refreshShopCatalog, data.retryLoad,
+    gateway, isActive, requestScope, serviceDate]);
 
   if (data.loadingReference) {
     return <EmployeeState
@@ -1218,6 +1234,7 @@ export function EmployeeDeliveryWorkspace({
             collectionOutstanding={data.collectionOutstanding}
             collectionOutstandingError={data.collectionOutstandingError}
             collectionOutstandingLoading={data.collectionOutstandingLoading}
+            onRetryCollectionOutstanding={() => void data.refreshCollectionOutstanding()}
             eventCardsError={data.eventCardsError}
             filteredCards={data.filteredCards}
             refreshShopImageUrl={(card) => {

@@ -416,11 +416,11 @@
 .executive-chart--grouped .executive-chart__item--sales i { background: #0d6efd; }
 .executive-chart--grouped .executive-chart__item:focus-visible { outline: 2px solid #073869; outline-offset: 2px; }
 
-.executive-quantity-month, .executive-quantity-controls label { display: grid; gap: 6px; color: #526783; font-size: 13px; }
+.executive-quantity-date { display: grid; gap: 6px; color: #526783; font-size: 13px; }
 .executive-quantity-actions { display: flex; align-items: end; flex-wrap: wrap; gap: 12px; }
 .executive-quantity-actions button { min-height: 44px; padding: 8px 12px; border: 1px solid #dce6f3; border-radius: 8px; background: #fff; color: #075ed8; font: inherit; font-size: 13px; }
 .executive-quantity-actions button:disabled { opacity: .55; cursor: default; }
-.executive-quantity-month input, .executive-quantity-controls input { min-height: 44px; padding: 8px 12px; border: 1px solid #dce6f3; border-radius: 8px; background: #fff; color: #234568; font: inherit; }
+.executive-quantity-date input { min-height: 44px; padding: 8px 12px; border: 1px solid #dce6f3; border-radius: 8px; background: #fff; color: #234568; font: inherit; }
 .executive-quantity-controls { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 14px; margin-bottom: 16px; }
 .executive-daily-quantities h3 { color: #234568; font-size: 16px; margin: 0; }
 .executive-daily-quantities .executive-quantity-month-heading { margin: 26px 0 8px; }
@@ -503,8 +503,6 @@
 .quantity-trend__caption { color: #61758e; text-align: center; font-size: 12px; }
 .quantity-comparison { min-width: 0; padding-left: 26px; border-left: 1px solid #e5edf7; }
 .quantity-comparison .executive-quantity-controls { display: grid; grid-template-columns: minmax(0, 1fr); justify-content: stretch; gap: 10px; margin-bottom: 8px; }
-.quantity-comparison .executive-quantity-controls label { display: flex; flex-direction: row; width: 100%; white-space: nowrap; justify-content: space-between; align-items: center; gap: 8px; font-size: 12px; }
-.quantity-comparison .executive-quantity-controls input { min-height: 36px; max-width: 160px; padding: 4px 8px; font-size: 13px; }
 .quantity-comparison__list { list-style: none; padding: 0 6px 0 0; margin: 0; max-height: 240px; overflow-y: auto; scrollbar-width: thin; }
 .quantity-comparison__list:focus-visible { outline: 2px solid #075ed8; outline-offset: 2px; }
 .quantity-comparison__list li { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid #e8eef6; font-variant-numeric: tabular-nums; }
@@ -557,11 +555,10 @@
   .quantity-comparison { border-left: 0; border-top: 1px solid #e5edf7; padding: 20px 0 0; }
   .quantity-comparison__icon { display: grid; }
   .quantity-comparison .executive-quantity-controls { display: flex; align-items: center; flex-wrap: wrap; }
-  .quantity-comparison .executive-quantity-controls label { flex-wrap: wrap; }
   .executive-daily-quantities > .executive-panel__head { align-items: stretch; }
   .executive-quantity-actions { width: 100%; }
-  .executive-quantity-month { flex: 1; min-width: 150px; }
-  .executive-quantity-month input { width: 100%; min-width: 0; }
+  .executive-quantity-date { flex: 1; min-width: 150px; }
+  .executive-quantity-date input { width: 100%; min-width: 0; }
   .quantity-table-footer { align-items: flex-start; }
   .quantity-table-footer .executive-panel-note { max-width: 70%; }
   .quantity-analysis__heading select { flex: 1; min-width: 150px; }

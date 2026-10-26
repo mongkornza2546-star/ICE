@@ -170,8 +170,10 @@ export function EmployeeDeliveryReview({
     return () => clearTimeout(timer);
   }, [loadingPosContext, shopCard.round_stop_id]);
   const isDelivery = status === 'delivered';
+  const stockUnavailable = loadingPosContext || Boolean(posContextError) || Boolean(posContext?.client_cache?.stale);
+  const canDraftDuringRefresh = loadingPosContext && Boolean(posContext) && !posContextError;
   const contextItems = posContext?.items.map((item) => ({ ...item,
-    stock_quantity: posContext.stock_check_required === false ? Number.MAX_SAFE_INTEGER : item.stock_quantity,
+    stock_quantity: canDraftDuringRefresh || posContext.stock_check_required === false ? Number.MAX_SAFE_INTEGER : item.stock_quantity,
   })) ?? iceTypes.map((iceType) => ({
     ...iceType,
     ice_type_id: iceType.id,
@@ -185,15 +187,15 @@ export function EmployeeDeliveryReview({
   }));
   const selectedItem = contextItems.find((item) => item.ice_type_id === selectedIceTypeId);
   const selectedQuantity = selectedItem ? deliveryQuantities[selectedItem.ice_type_id] ?? 0 : 0;
-  const stockUnavailable = loadingPosContext || Boolean(posContextError) || Boolean(posContext?.client_cache?.stale);
-  const canEditQuantity = !submitting && !stockUnavailable && (round.status !== 'closed' || round.can_record_delivery === true);
+  const canEditQuantity = !submitting && (!stockUnavailable || canDraftDuringRefresh)
+    && (round.status !== 'closed' || round.can_record_delivery === true);
   const shopQuery = shopSearch.trim().toLocaleLowerCase('th-TH');
   const inputQuantity = Number(quantityInput);
   const isQuantityWithinStock = (quantity: number) => selectedItem != null
     && Number.isFinite(quantity) && quantity >= 0
     && quantity <= Math.max(0, selectedItem.stock_quantity);
   const isValidQuantity = isQuantityWithinStock(inputQuantity) && Number.isInteger(inputQuantity * 2);
-  const exceedsStock = selectedItem && inputQuantity > Math.max(0, selectedItem.stock_quantity);
+  const exceedsStock = !stockUnavailable && selectedItem && inputQuantity > Math.max(0, selectedItem.stock_quantity);
   const hasUncommittedQuantity = Boolean(selectedItem)
     && (quantityInput.trim() === '' || !Number.isFinite(inputQuantity) || inputQuantity !== selectedQuantity);
   const visibleShopCards = shopCards.filter((card) => [
@@ -203,13 +205,13 @@ export function EmployeeDeliveryReview({
   const missingPrice = items.some((item) => (
     contextItems.find((candidate) => candidate.ice_type_id === item.ice_type_id)?.unit_price == null
   ));
-  const cartExceedsStock = items.some((item) => item.quantity > Math.max(0,
+  const cartExceedsStock = !stockUnavailable && items.some((item) => item.quantity > Math.max(0,
     contextItems.find((candidate) => candidate.ice_type_id === item.ice_type_id)?.stock_quantity ?? 0));
   const isCreditShop = Boolean(posContext?.payment_profile?.allowed_payment_terms.includes('credit'));
   const vatRate = isCreditShop && posContext?.payment_profile?.vat_enabled ? 7 : 0;
   const tax = exclusiveVat(subtotalAmount, vatRate);
   const totalAmount = tax.total;
-  const exceedsCredit = isCreditShop
+  const exceedsCredit = !stockUnavailable && isCreditShop
     && posContext?.payment_profile?.credit_remaining != null
     && totalAmount > posContext.payment_profile.credit_remaining;
   const financialContextRequired = loadingPosContext || Boolean(posContextError) || Boolean(posContext);
@@ -607,8 +609,9 @@ export function EmployeeDeliveryReview({
       </p> : null}
       {loadingPosContext ? <p className="employee-pos-notice" role="status">{translateUi(slowPosContext
         ? 'เครือข่ายช้า กำลังโหลดข้อมูลต่อ กรุณารอสักครู่…'
-        : 'กำลังโหลดราคา สต๊อก และเงื่อนไขชำระ…')}</p> : null}
-      {posContext?.client_cache?.stale ? (
+        : posContext ? 'กำลังตรวจสอบข้อมูลล่าสุด กรอกจำนวนรอได้…'
+          : 'กำลังโหลดราคา สต๊อก และเงื่อนไขชำระ…')}</p> : null}
+      {posContext?.client_cache?.stale && !loadingPosContext ? (
         <p className="employee-pos-notice" role="status">
           {translateUi('ต้องตรวจสอบสต๊อกล่าสุดก่อนส่ง กรุณาลองโหลดข้อมูลอีกครั้ง')}</p>
       ) : null}
@@ -701,7 +704,12 @@ export function EmployeeDeliveryReview({
                   <button
                     aria-label={translateUi('ปิดแป้นใส่จำนวน')}
                     className="employee-pos-keypad-backdrop"
-                    onClick={() => { if (!hasUncommittedQuantity || commitQuantity()) setSelectedIceTypeId(''); }}
+                    disabled={submitting}
+                    onClick={() => {
+                      // A failed refresh must not trap an uncommitted draft in
+                      // the disabled editor. Dismiss it without changing the cart.
+                      if (!canEditQuantity || !hasUncommittedQuantity || commitQuantity()) setSelectedIceTypeId('');
+                    }}
                     type="button"
                   />
                   <div className="employee-pos-quantity">
@@ -710,7 +718,7 @@ export function EmployeeDeliveryReview({
                       {quantityInput || '0'}
                     </strong>
                     <small>
-                      {translateUi('คงเหลือ ')}{selectedItem.stock_quantity === Number.MAX_SAFE_INTEGER ? '—' : selectedItem.stock_quantity} {selectedItem.unit}
+                      {translateUi('คงเหลือ ')}{stockUnavailable || selectedItem.stock_quantity === Number.MAX_SAFE_INTEGER ? '—' : selectedItem.stock_quantity} {selectedItem.unit}
                     </small>
                   </div>
                   {exceedsStock ? (

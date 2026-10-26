@@ -181,7 +181,7 @@ describe('persistent catalog image cache (without a service worker)', () => {
       'x-ice-byte-size': '3', 'content-type': 'image/webp',
     } }));
     await api.loadCatalogImage(source);
-    expect(await entries.get(key)!.clone().text()).toBe('pixels');
+    await vi.waitFor(async () => expect(await entries.get(key)!.clone().text()).toBe('pixels'));
     await api.discardCatalogImage(source);
     fetchImage.mockResolvedValueOnce(new Response('denied', { status: 403 }));
     await expect(api.loadCatalogImage(source)).rejects.toThrow();
@@ -189,7 +189,7 @@ describe('persistent catalog image cache (without a service worker)', () => {
     await expect(api.loadCatalogImage(source)).rejects.toThrow();
     expect(entries.size).toBe(0);
     await api.loadCatalogImage(source);
-    expect(entries.size).toBe(1);
+    await vi.waitFor(() => expect(entries.size).toBe(1));
   });
 
   it('keeps successful downloads usable when disk writes fail', async () => {
@@ -215,6 +215,7 @@ describe('persistent catalog image cache (without a service worker)', () => {
       } }));
     }
     await api.loadCatalogImage(source);
+    await vi.waitFor(() => expect(entries.has(api.catalogImageCacheKey(source)!)).toBe(true));
     expect(entries.has(`${base}0.webp`)).toBe(false);
     expect(entries.size).toBeLessThanOrEqual(api.CATALOG_IMAGE_MAX_ENTRIES);
     const total = [...entries.values()].reduce((sum, response) => sum + Number(response.headers.get('x-ice-byte-size')), 0);

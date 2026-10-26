@@ -8,6 +8,36 @@ export const CATALOG_IMAGE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 const STORED_AT = 'x-ice-stored-at';
 const BYTE_SIZE = 'x-ice-byte-size';
+const stalledStorage = { read: new Set<symbol>(), write: new Set<symbol>() };
+
+// A stalled WebView cache must not hold image data or queued writes forever.
+async function cacheOperation<T>(operation: () => Promise<T>, kind: 'read' | 'write' = 'read'): Promise<T> {
+  // A stalled write does not make existing disk images unreadable. Pause only
+  // the affected lane, and recover when the actual platform operation settles.
+  const stalled = stalledStorage[kind];
+  if (stalled.size) throw new Error('Catalog cache unavailable');
+  const token = Symbol();
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      operation().finally(() => {
+        if (stalled.delete(token) && kind === 'write') {
+          // A late put/delete may have changed disk after its caller timed out.
+          index = undefined;
+          pathIndex = undefined;
+        }
+      }),
+      new Promise<never>((_, reject) => {
+        timeout = setTimeout(() => {
+          stalled.add(token);
+          reject(new Error('Catalog cache timed out'));
+        }, 1500);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timeout);
+  }
+}
 
 // Only catalog images qualify. Preserve version/transform parameters and the
 // origin; remove temporary credentials only for known R2 object URLs.
@@ -61,7 +91,7 @@ function fresh(storedAt: number) {
 
 async function openCache() {
   try {
-    return await globalThis.caches.open(CATALOG_IMAGE_CACHE);
+    return await cacheOperation(() => globalThis.caches.open(CATALOG_IMAGE_CACHE));
   } catch {
     return null;
   }
@@ -75,16 +105,17 @@ function mutateCache(task: () => Promise<void>) {
 
 async function storeImage(cache: Cache, key: string, blob: Blob) {
   if (blob.size > MAX_IMAGE_BYTES) return;
+  let platformWrite: Promise<void> | undefined;
   await mutateCache(async () => {
     if (!index) {
       index = new Map();
       // Read only headers, once per session; never load the entire catalog into RAM.
-      for (const request of await cache.keys()) {
-        const response = await cache.match(request);
+      for (const request of await cacheOperation(() => cache.keys())) {
+        const response = await cacheOperation(() => cache.match(request));
         const storedAt = Number(response?.headers.get(STORED_AT));
         const bytes = Number(response?.headers.get(BYTE_SIZE));
         if (!fresh(storedAt) || !Number.isFinite(bytes) || bytes <= 0) {
-          await cache.delete(request);
+          await cacheOperation(() => cache.delete(request), 'write');
         } else {
           index.set(request.url, { bytes, storedAt });
         }
@@ -92,7 +123,7 @@ async function storeImage(cache: Cache, key: string, blob: Blob) {
     }
     for (const [oldKey, entry] of index) {
       if (!fresh(entry.storedAt) || oldKey === key) {
-        await cache.delete(oldKey);
+        await cacheOperation(() => cache.delete(oldKey), 'write');
         index.delete(oldKey);
       }
     }
@@ -100,17 +131,24 @@ async function storeImage(cache: Cache, key: string, blob: Blob) {
     const oldest = [...index].sort((a, b) => a[1].storedAt - b[1].storedAt);
     for (const [oldKey, entry] of oldest) {
       if (index.size < CATALOG_IMAGE_MAX_ENTRIES && totalBytes + blob.size <= CATALOG_IMAGE_MAX_BYTES) break;
-      await cache.delete(oldKey);
+      await cacheOperation(() => cache.delete(oldKey), 'write');
       index.delete(oldKey);
       totalBytes -= entry.bytes;
     }
     const storedAt = Date.now();
-    await cache.put(key, new Response(blob, {
-      headers: { 'Content-Type': blob.type, [STORED_AT]: String(storedAt), [BYTE_SIZE]: String(blob.size) },
-    }));
+    await cacheOperation(() => {
+      platformWrite = cache.put(key, new Response(blob, {
+        headers: { 'Content-Type': blob.type, [STORED_AT]: String(storedAt), [BYTE_SIZE]: String(blob.size) },
+      }));
+      return platformWrite;
+    }, 'write');
     index.set(key, { bytes: blob.size, storedAt });
     pathIndex = undefined;
   });
+  // The mutation queue is already released on timeout, but this one image
+  // remains shared until its actual put settles. The stalled write lane keeps
+  // later puts from accumulating, and each retained image is at most 5 MiB.
+  await platformWrite?.catch(() => {});
 }
 
 export async function discardCatalogImage(source: string, identity?: { namespace: CatalogImageNamespace; path: string }) {
@@ -121,7 +159,7 @@ export async function discardCatalogImage(source: string, identity?: { namespace
     if (!cache) return;
     const key = sourceKey ?? (identity ? await imagePathKey(cache, identity.namespace, identity.path) : null);
     if (!key) return;
-    await cache.delete(key);
+    await cacheOperation(() => cache.delete(key), 'write');
     index?.delete(key);
     pathIndex = undefined;
   });
@@ -164,8 +202,8 @@ async function downloadImage(source: string, signal: AbortSignal): Promise<Blob>
 
 async function readImage(cache: Cache | null, key: string): Promise<Blob | null> {
   try {
-    const cached = await cache?.match(key);
-    if (cached && fresh(Number(cached.headers.get(STORED_AT)))) return await cached.blob();
+    const cached = cache ? await cacheOperation(() => cache.match(key)) : undefined;
+    if (cached && fresh(Number(cached.headers.get(STORED_AT)))) return await cacheOperation(() => cached.blob());
   } catch {
     // Storage denial/eviction must not prevent the image from loading.
   }
@@ -174,36 +212,57 @@ async function readImage(cache: Cache | null, key: string): Promise<Blob | null>
 
 // Build a small key-only index once, rather than parsing every stored URL for
 // each restored tile. Never keep image blobs in this index.
+function imagePathIdentity(source: string) {
+  if (!catalogImageCacheKey(source)) return null;
+  try {
+    const pathname = decodeURIComponent(new URL(source).pathname);
+    const match = pathname.match(/^\/(?:storage\/v1\/object\/public\/|[^/]+\/)?(shop-images|ice-type-images)\/(.+)$/);
+    return match ? JSON.stringify([match[1], match[2]]) : null;
+  } catch {
+    return null;
+  }
+}
+
 async function imagePathKey(cache: Cache, namespace: CatalogImageNamespace, path: string) {
-  pathIndex ??= cache.keys().then((requests) => {
+  pathIndex ??= cacheOperation(() => cache.keys()).then((requests) => {
     const paths = new Map<string, string | null>();
     for (const request of requests) {
-      if (!catalogImageCacheKey(request.url)) continue;
-      try {
-        const pathname = decodeURIComponent(new URL(request.url).pathname);
-        const match = pathname.match(/^\/(?:storage\/v1\/object\/public\/|[^/]+\/)?(shop-images|ice-type-images)\/(.+)$/);
-        if (!match) continue;
-        const identity = JSON.stringify([match[1], match[2]]);
-        // A path without an origin must not select an ambiguous object.
-        paths.set(identity, paths.has(identity) ? null : request.url);
-      } catch { /* Ignore malformed keys from old caches. */ }
+      const identity = imagePathIdentity(request.url);
+      if (!identity) continue;
+      // A path without an origin must not select an ambiguous object.
+      paths.set(identity, paths.has(identity) ? null : request.url);
     }
     return paths;
   }).catch((error) => { pathIndex = undefined; throw error; });
-  return (await pathIndex).get(JSON.stringify([namespace, path])) ?? null;
+  return (await pathIndex).get(JSON.stringify([namespace, path]));
 }
 
 // Existing URL-keyed entries remain readable after an app restart, even when
 // workspace data deliberately omits expired signed URLs.
-export async function readCatalogImageByPath(namespace: CatalogImageNamespace, path: string): Promise<Blob | null> {
+export async function readCatalogImageByPath(namespace: CatalogImageNamespace, path: string, options: { signal?: AbortSignal } = {}): Promise<Blob | null> {
+  checkAborted(options.signal);
+  const identity = JSON.stringify([namespace, path]);
+  const candidates = new Map<string, Download | undefined>();
+  const includePending = () => {
+    for (const [key, download] of pending) {
+      if (imagePathIdentity(key) === identity) candidates.set(key, download);
+    }
+  };
+  // Keep a reference even if persistence finishes during the disk lookup.
+  includePending();
   const cache = await openCache();
-  if (!cache) return null;
   try {
-    const key = await imagePathKey(cache, namespace, path);
-    return key ? readImage(cache, key) : null;
+    const key = cache ? await imagePathKey(cache, namespace, path) : undefined;
+    if (key === null) return null; // Ambiguous disk identity.
+    if (key && !candidates.has(key)) candidates.set(key, undefined);
   } catch {
-    return null;
+    // Pending bytes remain usable while disk access is unavailable.
   }
+  includePending();
+  checkAborted(options.signal);
+  if (candidates.size !== 1) return null;
+  const [key, download] = [...candidates][0];
+  return download ? consumeDownload(key, download, options.signal) : readImage(cache, key);
 }
 
 async function acquireDownloadSlot(signal: AbortSignal) {
@@ -221,7 +280,7 @@ async function acquireDownloadSlot(signal: AbortSignal) {
   });
 }
 
-async function loadImage(source: string, key: string, cache: Cache | null, signal: AbortSignal, onStart: () => void): Promise<Blob> {
+async function loadImage(source: string, signal: AbortSignal, onStart: () => void): Promise<Blob> {
   await acquireDownloadSlot(signal);
   try {
     checkAborted(signal);
@@ -229,7 +288,6 @@ async function loadImage(source: string, key: string, cache: Cache | null, signa
     const blob = await downloadImage(source, signal);
     checkAborted(signal);
     if (!blob.size) throw new Error('Empty catalog image');
-    if (cache) await storeImage(cache, key, blob);
     return blob;
   } finally {
     const next = waiting.shift();
@@ -252,21 +310,32 @@ export async function loadCatalogImage(source: string, options: { signal?: Abort
     const controller = new AbortController();
     const download: Download = {
       controller, consumers: 0, started: false,
-      promise: loadImage(source, key, cache, controller.signal, () => { download.started = true; }).finally(() => {
+      promise: loadImage(source, controller.signal, () => { download.started = true; }).then((blob) => {
+        // Display now, persist separately. Retain the shared result until the
+        // bounded write finishes so returning tiles do not redownload it.
+        const forget = () => { if (pending.get(key) === download) pending.delete(key); };
+        void (cache ? storeImage(cache, key, blob) : Promise.resolve()).then(forget, forget);
+        return blob;
+      }, (error) => {
         if (pending.get(key) === download) pending.delete(key);
+        throw error;
       }),
     };
     entry = download;
     pending.set(key, download);
   }
-  const download = entry;
+  return consumeDownload(key, entry, options.signal);
+}
+
+function consumeDownload(key: string, download: Download, signal?: AbortSignal): Promise<Blob> {
+  checkAborted(signal);
   download.consumers += 1;
   return new Promise<Blob>((resolve, reject) => {
     let finished = false;
     const finish = () => {
       if (finished) return false;
       finished = true;
-      options.signal?.removeEventListener('abort', cancel);
+      signal?.removeEventListener('abort', cancel);
       download.consumers -= 1;
       return true;
     };
@@ -280,7 +349,7 @@ export async function loadCatalogImage(source: string, options: { signal?: Abort
       }
       reject(abortError());
     };
-    options.signal?.addEventListener('abort', cancel, { once: true });
+    signal?.addEventListener('abort', cancel, { once: true });
     download.promise.then(
       (blob) => { if (finish()) resolve(blob); },
       (error) => { if (finish()) reject(error); },

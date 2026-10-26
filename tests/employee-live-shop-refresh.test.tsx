@@ -146,6 +146,135 @@ const stockState: EmployeeStockState = {
   },
 };
 
+const previewContext: DeliveryPosContext = {
+  ...posContext,
+  payment_profile: {
+    allowed_payment_terms: ['end_of_day'], default_payment_term: 'end_of_day',
+    allowed_payment_methods: ['cash'], default_payment_method: 'cash',
+    cash_reference_required: false, cash_evidence_required: false,
+    bank_transfer_reference_required: false, bank_transfer_evidence_required: false,
+    qr_reference_required: false, qr_evidence_required: false, allow_outstanding: true,
+    credit_due_rule: null, credit_days: null, credit_collection_weekday: null,
+    credit_limit: null, credit_exposure: 0, credit_remaining: null, credit_suspended: false,
+  },
+};
+
+function previewGateway(): EmployeeDeliveryGateway {
+  return {
+    loadReferenceData: vi.fn().mockResolvedValue({
+      rounds: [{ id: 'round-1', service_date: '2026-08-11', name: 'งานประจำวัน', status: 'open', opened_at: '2026-08-11T01:00:00Z' }],
+      iceTypes: [{ id: 'ice-1', code: 'ICE', name: 'หลอดเล็ก', unit: 'ถุง' }],
+    }),
+    loadShopCards: vi.fn().mockResolvedValue([shopCard, newShopCard]),
+    loadDeliveryPosContext: vi.fn().mockResolvedValue(previewContext),
+    loadEmployeeStockState: vi.fn(), recordEmployeeStockTransfer: vi.fn(),
+    recordEmployeeStockReturn: vi.fn(), recordEmployeeStockDamage: vi.fn(), recordDelivery: vi.fn(),
+  };
+}
+
+it('reopens a shop with its price preview and allows drafting while fresh stock is pending', async () => {
+  const gateway = previewGateway();
+  const user = userEvent.setup();
+  render(<EmployeeDeliveryWorkspace gateway={gateway} requestScope="preview" serviceDate="2026-08-11" />);
+  await user.click(await screen.findByRole('button', { name: 'เลือกร้าน BB01 ร้านทดสอบ' }));
+  await screen.findByText('คงเหลือ 10 ถุง');
+  await user.click(screen.getByRole('button', { name: 'กลับไปเลือกร้าน' }));
+  let finish!: (context: DeliveryPosContext) => void;
+  vi.mocked(gateway.loadDeliveryPosContext!).mockReturnValueOnce(new Promise(resolve => { finish = resolve; }));
+  await user.click(await screen.findByRole('button', { name: 'เลือกร้าน BB01 ร้านทดสอบ' }));
+  expect(screen.queryByText('กำลังโหลดราคา สต๊อก และเงื่อนไขชำระ…')).toBeNull();
+  expect(screen.getByText('กำลังตรวจสอบข้อมูลล่าสุด กรอกจำนวนรอได้…')).toBeTruthy();
+  expect(screen.queryByText('คงเหลือ 10 ถุง')).toBeNull();
+  await user.click(screen.getByRole('button', { name: /หลอดเล็ก.*60.*คงเหลือ/ }));
+  const quantity = screen.getByRole('spinbutton', { name: 'จำนวนหลอดเล็ก' });
+  expect(quantity.hasAttribute('disabled')).toBe(false);
+  expect(quantity.hasAttribute('max')).toBe(false);
+  await user.clear(quantity);
+  await user.type(quantity, '12');
+  await user.click(screen.getByRole('button', { name: 'เพิ่มรายการ' }));
+  expect(screen.getByRole('button', { name: 'ส่งอย่างเดียว' }).hasAttribute('disabled')).toBe(true);
+  await act(async () => finish({ ...previewContext, items: [{ ...posContext.items[0], stock_quantity: 7, unit_price: 65 }] }));
+  expect(screen.getByRole('button', { name: /หลอดเล็ก.*65.*12.*คงเหลือ 7/ })).toBeTruthy();
+  expect(screen.getByText('จำนวนในรายการเกินสต๊อกคงเหลือ กรุณาแก้จำนวนก่อนส่ง')).toBeTruthy();
+  expect(gateway.recordDelivery).not.toHaveBeenCalled();
+  await user.click(screen.getByRole('button', { name: /หลอดเล็ก.*65.*คงเหลือ 7/ }));
+  await user.clear(screen.getByRole('spinbutton', { name: 'จำนวนหลอดเล็ก' }));
+  await user.type(screen.getByRole('spinbutton', { name: 'จำนวนหลอดเล็ก' }), '6');
+  await user.click(screen.getByRole('button', { name: 'เพิ่มรายการ' }));
+  await user.click(screen.getByRole('button', { name: 'ส่งอย่างเดียว' }));
+  await waitFor(() => expect(gateway.recordDelivery).toHaveBeenCalledWith(expect.objectContaining({
+    expectedTotal: 390, items: [{ ice_type_id: 'ice-1', quantity: 6 }],
+  })));
+});
+
+it('keeps a failed preview refresh blocked, then retries with current terms and preserves the draft', async () => {
+  const gateway = previewGateway();
+  const { result } = renderHook(() => useEmployeeDeliveryData({ gateway, requestScope: 'preview-retry', serviceDate: '2026-08-11' }));
+  await waitFor(() => expect(result.current.cards).toHaveLength(2));
+  act(() => result.current.openCard(shopCard));
+  await waitFor(() => expect(result.current.posContext).not.toBeNull());
+  act(() => result.current.attemptBack());
+  let fail!: (error: Error) => void;
+  vi.mocked(gateway.loadDeliveryPosContext!).mockReturnValueOnce(new Promise((_, reject) => { fail = reject; }));
+  act(() => result.current.openCard(shopCard));
+  expect(result.current.posContext?.items[0].unit_price).toBe(60);
+  expect(result.current.posContext?.client_cache?.stale).toBe(true);
+  act(() => result.current.setDeliveryQuantity('ice-1', 12));
+  act(() => result.current.submitDeliveryChoice('end_of_day'));
+  expect(gateway.recordDelivery).not.toHaveBeenCalled();
+  await act(async () => fail(new Error('offline')));
+  expect(result.current.posContext?.items[0].unit_price).toBe(60);
+  act(() => result.current.submitDeliveryChoice('end_of_day'));
+  expect(gateway.recordDelivery).not.toHaveBeenCalled();
+  await act(async () => { await result.current.refreshOpenPosContext(); });
+  expect(result.current.posContext?.client_cache?.stale).not.toBe(true);
+  expect(result.current.deliveryQuantities['ice-1']).toBe(12);
+  act(() => result.current.submitDeliveryChoice('end_of_day'));
+  expect(gateway.recordDelivery).not.toHaveBeenCalled();
+  expect(result.current.entryError).toBe('จำนวนในรายการเกินสต๊อกคงเหลือ กรุณาแก้จำนวนก่อนส่ง');
+});
+
+it('clears an open preview and ignores pending results when the user scope changes', async () => {
+  const gateway = previewGateway();
+  const { result, rerender } = renderHook(({ scope }) => useEmployeeDeliveryData({ gateway, requestScope: scope, serviceDate: '2026-08-11' }), {
+    initialProps: { scope: 'preview-owner' },
+  });
+  await waitFor(() => expect(result.current.cards).toHaveLength(2));
+  act(() => result.current.openCard(shopCard));
+  await waitFor(() => expect(result.current.posContext).not.toBeNull());
+  rerender({ scope: 'next-user' });
+  await waitFor(() => expect(result.current.cards).toHaveLength(2));
+  let finish!: (context: DeliveryPosContext) => void;
+  vi.mocked(gateway.loadDeliveryPosContext!).mockReturnValueOnce(new Promise(resolve => { finish = resolve; }));
+  act(() => result.current.openCard(shopCard));
+  expect(result.current.posContext).toBeNull();
+  rerender({ scope: 'third-user' });
+  await act(async () => finish(previewContext));
+  expect(result.current.posContext).toBeNull();
+});
+
+it('does not use another shop or user preview or a late response after leaving a shop', async () => {
+  const gateway = previewGateway();
+  const { result, rerender } = renderHook(({ scope }) => useEmployeeDeliveryData({ gateway, requestScope: scope, serviceDate: '2026-08-11' }), {
+    initialProps: { scope: 'preview-owner' },
+  });
+  await waitFor(() => expect(result.current.cards).toHaveLength(2));
+  act(() => result.current.openCard(shopCard));
+  await waitFor(() => expect(result.current.posContext).not.toBeNull());
+  let finish!: (context: DeliveryPosContext) => void;
+  vi.mocked(gateway.loadDeliveryPosContext!).mockReturnValueOnce(new Promise(resolve => { finish = resolve; }));
+  act(() => result.current.openCard(shopCard));
+  vi.mocked(gateway.loadDeliveryPosContext!).mockReturnValue(new Promise(() => {}));
+  act(() => result.current.openCard(newShopCard));
+  expect(result.current.posContext).toBeNull();
+  await act(async () => finish(posContext));
+  expect(result.current.posContext).toBeNull();
+  rerender({ scope: 'different-user' });
+  await waitFor(() => expect(result.current.cards).toHaveLength(2));
+  act(() => result.current.openCard(shopCard));
+  expect(result.current.posContext).toBeNull();
+});
+
 describe('employee live shop loading', () => {
   it.each([false, true])('invalidates pre-withdrawal POS reads without waiting for them (split: %s)', async split => {
     const pending: Array<(value: unknown) => void> = [];
@@ -1616,4 +1745,103 @@ it('opens the closed admin round and accepts delivery quantities after stock clo
   await user.type(quantity, '3');
   expect((quantity as HTMLInputElement).value).toBe('3');
   expect(quantity.hasAttribute('max')).toBe(false);
+});
+
+it('retains the POS preview across the actual withdrawal-tab round trip', async () => {
+  const gateway = previewGateway();
+  gateway.loadEmployeeStockState = vi.fn().mockResolvedValue(stockState);
+  const { result, rerender } = renderHook(({ withdrawal }) => useEmployeeDeliveryData({
+    gateway, requestScope: 'review-mode-cache', serviceDate: '2026-08-11', enableAssignedStockFlow: withdrawal,
+  }), { initialProps: { withdrawal: false } });
+  await waitFor(() => expect(result.current.cards).toHaveLength(2));
+  act(() => result.current.openCard(shopCard));
+  await waitFor(() => expect(result.current.loadingPosContext).toBe(false));
+  expect(result.current.posContext?.items[0].unit_price).toBe(60);
+  act(() => result.current.attemptBack());
+  rerender({ withdrawal: true });
+  await waitFor(() => expect(result.current.stockState).toEqual(stockState));
+  let finishWithdrawal!: (context: DeliveryPosContext) => void;
+  vi.mocked(gateway.loadDeliveryPosContext!).mockReturnValueOnce(new Promise(resolve => { finishWithdrawal = resolve; }));
+  act(() => result.current.openCard(shopCard));
+  expect(result.current.posContext).toBeNull();
+  await act(async () => finishWithdrawal({ ...previewContext,
+    items: [{ ...previewContext.items[0], unit_price: 80 }],
+  }));
+  expect(result.current.posContext?.items[0].unit_price).toBe(80);
+  act(() => result.current.attemptBack());
+  rerender({ withdrawal: false });
+  vi.mocked(gateway.loadDeliveryPosContext!).mockReturnValue(new Promise(() => {}));
+  act(() => result.current.openCard(shopCard));
+  expect(result.current.loadingPosContext).toBe(true);
+  expect(result.current.posContext?.items[0].unit_price).toBe(60);
+});
+
+it('recovers outstanding balances on focus after a transient queue failure', async () => {
+  const gateway = previewGateway();
+  gateway.loadCollectionOutstanding = vi.fn().mockRejectedValueOnce(new Error('temporary network failure'))
+    .mockResolvedValue([{ queueKey: 'regular:shop-1', shopId: 'shop-1', outstandingAmount: 120 }]);
+  render(<EmployeeDeliveryWorkspace gateway={gateway} requestScope="review-outstanding" serviceDate="2026-08-11" />);
+  expect(await screen.findAllByText('โหลดยอดรอรับชำระไม่สำเร็จ')).toHaveLength(2);
+  const now = Date.now();
+  const dateSpy = vi.spyOn(Date, 'now').mockReturnValue(now + 600_000);
+  try {
+    fireEvent.focus(window);
+    await waitFor(() => expect(gateway.loadShopCards).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(gateway.loadCollectionOutstanding).toHaveBeenCalledTimes(2));
+    expect(screen.queryByText('โหลดยอดรอรับชำระไม่สำเร็จ')).toBeNull();
+  } finally { dateSpy.mockRestore(); }
+});
+
+it('lets the user dismiss an unfinished quantity after the background read fails', async () => {
+  const gateway = previewGateway();
+  const user = userEvent.setup();
+  render(<EmployeeDeliveryWorkspace gateway={gateway} requestScope="review-keypad" serviceDate="2026-08-11" />);
+  await user.click(await screen.findByRole('button', { name: 'เลือกร้าน BB01 ร้านทดสอบ' }));
+  await screen.findByText('คงเหลือ 10 ถุง');
+  await user.click(screen.getByRole('button', { name: 'กลับไปเลือกร้าน' }));
+  let fail!: (reason: Error) => void;
+  vi.mocked(gateway.loadDeliveryPosContext!).mockReturnValueOnce(new Promise((_, reject) => { fail = reject; }));
+  await user.click(await screen.findByRole('button', { name: 'เลือกร้าน BB01 ร้านทดสอบ' }));
+  await user.click(screen.getByRole('button', { name: /หลอดเล็ก.*60.*คงเหลือ/ }));
+  const quantity = screen.getByRole('spinbutton', { name: 'จำนวนหลอดเล็ก' });
+  await user.clear(quantity);
+  await user.type(quantity, '2');
+  await act(async () => fail(new Error('offline')));
+  expect(quantity.hasAttribute('disabled')).toBe(true);
+  await user.click(screen.getByRole('button', { name: 'ปิดแป้นใส่จำนวน' }));
+  expect(screen.queryByRole('spinbutton', { name: 'จำนวนหลอดเล็ก' })).toBeNull();
+  expect(gateway.recordDelivery).not.toHaveBeenCalled();
+  await user.click(screen.getByRole('button', { name: 'ลองโหลดข้อมูลอีกครั้ง' }));
+  await screen.findByText('คงเหลือ 10 ถุง');
+  await user.click(screen.getByRole('button', { name: /หลอดเล็ก.*60.*คงเหลือ/ }));
+  expect((screen.getByRole('spinbutton', { name: 'จำนวนหลอดเล็ก' }) as HTMLInputElement).value).toBe('0');
+});
+
+it('retries outstanding balances from the shop list without entering a shop', async () => {
+  const gateway = previewGateway();
+  gateway.loadCollectionOutstanding = vi.fn().mockRejectedValueOnce(new Error('temporary network failure'))
+    .mockResolvedValue([{ queueKey: 'regular:shop-1', shopId: 'shop-1', outstandingAmount: 120 }]);
+  render(<EmployeeDeliveryWorkspace gateway={gateway} requestScope="retry-balances" serviceDate="2026-08-11" />);
+  await userEvent.setup().click(await screen.findByRole('button', { name: 'ลองใหม่' }));
+  await screen.findByText(/ยอดรอรับชำระ.*120/);
+  expect(screen.queryByText('โหลดยอดรอรับชำระไม่สำเร็จ')).toBeNull();
+  expect(screen.getByRole('button', { name: 'เลือกร้าน BB01 ร้านทดสอบ' })).toBeTruthy();
+  expect(gateway.loadDeliveryPosContext).not.toHaveBeenCalled();
+});
+
+it.each(['online', 'visibilitychange'])('retries a failed balance read on %s without waiting five minutes or duplicating a resume burst', async eventType => {
+  const gateway = previewGateway();
+  let finish!: (balances: Array<{ queueKey: string; shopId: string; outstandingAmount: number }>) => void;
+  gateway.loadCollectionOutstanding = vi.fn().mockRejectedValueOnce(new Error('temporary network failure'))
+    .mockReturnValueOnce(new Promise(resolve => { finish = resolve; }));
+  render(<EmployeeDeliveryWorkspace gateway={gateway} requestScope={`resume-${eventType}`} serviceDate="2026-08-11" />);
+  await screen.findByRole('button', { name: 'ลองใหม่' });
+  act(() => {
+    (eventType === 'online' ? window : document).dispatchEvent(new Event(eventType));
+    window.dispatchEvent(new Event('focus'));
+  });
+  expect(gateway.loadCollectionOutstanding).toHaveBeenCalledTimes(2);
+  await act(async () => finish([{ queueKey: 'regular:shop-1', shopId: 'shop-1', outstandingAmount: 120 }]));
+  expect(screen.getByText(/ยอดรอรับชำระ.*120/)).toBeTruthy();
+  expect(screen.queryByText('โหลดยอดรอรับชำระไม่สำเร็จ')).toBeNull();
 });

@@ -29,21 +29,24 @@ function RegularShopVisual({
   const [loadAttempt, setLoadAttempt] = useState(0);
   const [imageFailed, setImageFailed] = useState(false);
   const retryRequestId = useRef(0);
+  const retrying = useRef(false);
 
   useEffect(() => {
     retryRequestId.current += 1;
+    retrying.current = false;
     setImageUrl(card.image_url);
     setLoadAttempt(0);
     setImageFailed(false);
   }, [card.image_url, card.image_path]);
 
   const retryImage = async () => {
+    if (retrying.current) return;
     if (loadAttempt > 0) {
       setImageFailed(true);
       return;
     }
     const requestId = ++retryRequestId.current;
-    setImageUrl(null);
+    retrying.current = true;
     try {
       const refreshedUrl = await refreshImageUrl(card);
       if (retryRequestId.current !== requestId) return;
@@ -55,6 +58,8 @@ function RegularShopVisual({
       setImageUrl(refreshedUrl);
     } catch {
       if (retryRequestId.current === requestId) setImageFailed(true);
+    } finally {
+      if (retryRequestId.current === requestId) retrying.current = false;
     }
   };
 
@@ -87,6 +92,7 @@ function RegularShopVisual({
           key={`${imageUrl}:${loadAttempt}`}
           loading="lazy"
           onError={() => void retryImage()}
+          onCacheMiss={() => void retryImage()}
           src={imageUrl ?? undefined}
         />
         <span className={`employee-status employee-status--${statusTone(card.stop_status)}`}>
@@ -119,6 +125,7 @@ export function EmployeeShopPicker({
   collectionOutstanding = null,
   collectionOutstandingError = null,
   collectionOutstandingLoading = false,
+  onRetryCollectionOutstanding,
   eventCardsError,
   filteredCards,
   refreshShopImageUrl,
@@ -148,6 +155,7 @@ export function EmployeeShopPicker({
   collectionOutstanding?: Record<string, number> | null;
   collectionOutstandingError?: string | null;
   collectionOutstandingLoading?: boolean;
+  onRetryCollectionOutstanding?: () => void;
   eventCardsError: string | null;
   filteredCards: ShopCard[];
   refreshShopImageUrl: (card: ShopCard) => Promise<string | null>;
@@ -268,6 +276,15 @@ export function EmployeeShopPicker({
           {enableAssignedStockFlow ? <p>{translateUi('แตะร้าน แล้วใส่จำนวนที่ส่งแต่ละชนิด')}</p> : null}
         </div>
       </div>
+
+      {!enableAssignedStockFlow && destinationKind === 'regular' && collectionOutstandingError ? (
+        <div className="employee-error employee-error--retry" role="alert">
+          <span><WarningCircle aria-hidden="true" size={22} />
+            {translateUi('ยอดรอรับชำระ')}: {translateUi(collectionOutstandingError)}</span>
+          {onRetryCollectionOutstanding ? <button disabled={collectionOutstandingLoading}
+            onClick={onRetryCollectionOutstanding} type="button">{translateUi('ลองใหม่')}</button> : null}
+        </div>
+      ) : null}
 
       {selectedRoundId ? <nav aria-label={translateUi('ประเภทจุดส่ง')} className={`employee-destination-tabs${casualCustomerEntryVisible ? '' : ' employee-destination-tabs--two'}`}>
         <button aria-pressed={destinationKind === 'regular'} onClick={() => setDestinationKind('regular')} type="button">{translateUi('ร้านประจำ')}</button>
