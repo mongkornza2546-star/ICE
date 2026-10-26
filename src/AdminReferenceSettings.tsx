@@ -99,7 +99,9 @@ function AdminReferenceSettingsContent({
   }, [previewData]);
 
   function handleUserSaved(savedUser: UserProfile, workSiteIds: string[]) {
-    setUsers((current) => current.map((user) => user.id === savedUser.id ? savedUser : user));
+    setUsers((current) => current.some((user) => user.id === savedUser.id)
+      ? current.map((user) => user.id === savedUser.id ? savedUser : user)
+      : [...current, savedUser]);
     setWorkSiteAssignments((current) => [
       ...current.filter((assignment) => assignment.user_id !== savedUser.id),
       ...workSiteIds.map((stockLocationId) => ({

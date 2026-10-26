@@ -59,7 +59,7 @@ npm run preview
 
 ## การ deploy Supabase Edge Functions
 
-ฟังก์ชันรีเซ็ตรหัสผ่านของแอดมินและการเข้าสู่ระบบด้วยชื่อเล่นอยู่ที่
+ฟังก์ชันเพิ่มพนักงาน รีเซ็ตรหัสผ่านของแอดมิน และการเข้าสู่ระบบด้วยชื่อเล่นอยู่ที่
 `supabase/functions/` และต้อง deploy แยกจากหน้าเว็บ
 workflow `.github/workflows/deploy-supabase-functions.yml` จะตรวจ type ของฟังก์ชัน
 ใน pull request และ deploy เมื่อ merge เข้า `main`
@@ -73,8 +73,20 @@ workflow `.github/workflows/deploy-supabase-functions.yml` จะตรวจ ty
 
 ```bash
 supabase functions deploy admin-reset-user-password --project-ref <project-id>
+supabase functions deploy admin-create-user --project-ref <project-id>
 supabase functions deploy nickname-password-sign-in --project-ref <project-id>
 ```
+
+แอดมินเพิ่มพนักงานได้ที่ **ผู้ใช้และชนิดน้ำแข็ง → เพิ่มพนักงาน** โดยระบุชื่อ ชื่อเล่น
+รหัสผ่านอย่างน้อย 8 ตัวอักษร บทบาท และจุดประจำ พนักงานเข้าสู่ระบบด้วยชื่อเล่นได้เลย
+ไม่ต้องมีอีเมลส่วนตัว ระบบสร้างอีเมลภายในให้สำหรับ Supabase Auth และสร้างรหัสผู้ใช้อัตโนมัติ
+ต้องลง migration `0261_admin_created_user_recovery.sql` แล้ว deploy `admin-create-user`
+ก่อนใช้งานหน้าเว็บรุ่นนี้ ชื่อเล่นต้องไม่มี `@` เพราะหน้าเข้าสู่ระบบใช้แยกอีเมลออกจากชื่อเล่น
+แต่ละฟอร์มสร้างบัญชีมี request ID เดิมตลอดการลองใหม่ อีเมลภายในผูกกับแอดมินและ request ID
+เพื่อป้องกันบัญชีซ้ำแม้คำตอบจาก Auth หายหรือส่งคำขอพร้อมกัน การกู้บัญชีจะอ่านสถานะปัจจุบัน
+โดยไม่เขียนทับข้อมูลหรือรหัสผ่านที่บันทึกไว้แล้ว และแสดงคำเตือนให้ตรวจสอบบัญชีเดิม
+หากสร้างบัญชีแล้วแต่บันทึกโปรไฟล์ไม่สำเร็จ ฟอร์มจะแจ้งเตือนและให้แก้ไขบัญชีเดิมต่อได้
+บัญชีใหม่จะยังไม่เปิดใช้งานจนกว่าการบันทึกโปรไฟล์และจุดประจำจะสำเร็จ
 
 ### เชื่อม Cloudflare R2 สำหรับรูปใหม่
 

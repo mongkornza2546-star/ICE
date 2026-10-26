@@ -264,8 +264,8 @@ export function EmployeeShopPicker({
       <div className="employee-entry-section__heading">
         <span>{enableAssignedStockFlow ? '2' : '1'}</span>
         <div>
-          <h2 id="employee-shop-step">{translateUi('เลือกร้านที่จะไปส่ง')}</h2>
-          <p>{enableAssignedStockFlow ? translateUi('แตะร้าน แล้วใส่จำนวนที่ส่งแต่ละชนิด') : translateUi('แตะร้านก่อน ระบบจะโหลดสต๊อก ราคา และเงื่อนไขชำระของร้านนั้น')}</p>
+          <h2 id="employee-shop-step">{translateUi('เลือกร้าน')}</h2>
+          {enableAssignedStockFlow ? <p>{translateUi('แตะร้าน แล้วใส่จำนวนที่ส่งแต่ละชนิด')}</p> : null}
         </div>
       </div>
 

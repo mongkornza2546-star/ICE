@@ -3529,6 +3529,22 @@ input:disabled, select:disabled, textarea:disabled { background: #f2f5f8; color:
   flex-direction: column;
   gap: 20px;
 }
+.ref-user-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+.ref-user-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
 .ref-form-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

@@ -145,6 +145,30 @@ export async function saveUserWithWorkSiteAssignments(
   return { user: result.user, work_site_ids: result.work_site_ids };
 }
 
+export async function createUserAccount(payload: {
+  requestId: string;
+  displayName: string;
+  nickname: string;
+  phone: string;
+  role: AppRole;
+  isActive: boolean;
+  canCollectShopPayments: boolean;
+  workSiteIds: string[];
+  password: string;
+}): Promise<{ user: UserProfile; work_site_ids: string[]; warning?: string }> {
+  if (!supabase) throw new Error('Supabase client not initialized');
+  const { data, error } = await supabase.functions.invoke('admin-create-user', { body: payload });
+  if (error) {
+    const response = 'context' in error ? error.context : null;
+    const body = response instanceof Response ? await response.json().catch(() => null) : null;
+    throw new Error(body?.error || error.message);
+  }
+  if (!data?.user || !Array.isArray(data.work_site_ids)) {
+    throw new Error('ไม่ได้รับข้อมูลบัญชีที่สร้าง กรุณาโหลดรายชื่อใหม่ก่อนดำเนินการต่อ');
+  }
+  return data;
+}
+
 export async function resetUserPassword(userId: string, password: string): Promise<void> {
   const client = supabase;
   if (!client) throw new Error('Supabase client not initialized');

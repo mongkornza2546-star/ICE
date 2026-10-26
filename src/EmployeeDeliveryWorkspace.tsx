@@ -1110,10 +1110,10 @@ export function EmployeeDeliveryWorkspace({
             ? translateUi('เติม คืน และบันทึกน้ำแข็งละลาย')
             : isBackdatedBilling
               ? translateUi('เลือกร้านเพื่อออกบิลวันที่ {0}', { 0: serviceDate })
-              : translateUi('เลือกร้าน แล้วบันทึกส่ง')}</h1>
-          <p>{resolvedViewMode === 'withdrawal'
-            ? translateUi('เติมจากรถเข้าจุดถือครอง คืนของที่เหลือกลับขึ้นรถ หรือบันทึกน้ำแข็งละลายจากสต๊อกของคุณ')
-            : translateUi('เลือกร้านก่อน ระบบจะตรวจสต๊อกต้นทาง ราคา และเงื่อนไขชำระของร้านนั้น')}</p>
+              : translateUi('บันทึกส่ง')}</h1>
+          {resolvedViewMode === 'withdrawal' ? (
+            <p>{translateUi('เติมจากรถเข้าจุดถือครอง คืนของที่เหลือกลับขึ้นรถ หรือบันทึกน้ำแข็งละลายจากสต๊อกของคุณ')}</p>
+          ) : null}
         </div>
         <div className="employee-intro__actions">
         {resolvedViewMode === 'pos' && onOpenEvents ? <button className="secondary-button" disabled={data.anySubmitting} onClick={onOpenEvents} type="button">

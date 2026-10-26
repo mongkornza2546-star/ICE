@@ -4,6 +4,7 @@ import {
   Check,
   FunnelSimple,
   MagnifyingGlass,
+  Plus,
 } from '@phosphor-icons/react';
 import type { UserProfile, AppRole } from '../../../types/app';
 import {
@@ -15,6 +16,7 @@ import {
 } from '../types';
 import {
   getErrorMessage,
+  createUserAccount,
   resetUserPassword,
   saveUserWithWorkSiteAssignments,
 } from '../adminReferenceSettingsService';
@@ -92,6 +94,7 @@ export function UserEditor({
   const [userSuccess, setUserSuccess] = useState<string | null>(null);
   const [newPassword, setNewPassword] = useState('');
   const [confirmedPassword, setConfirmedPassword] = useState('');
+  const [creationRequestId, setCreationRequestId] = useState('');
 
   const assignedWorkSitesByUser = useMemo(() => {
     const workSiteById = new Map(workSites.map((workSite) => [workSite.id, workSite]));
@@ -126,9 +129,21 @@ export function UserEditor({
     setConfirmedPassword('');
   }
 
+  function startCreateUser() {
+    setCreationRequestId(crypto.randomUUID());
+    setUserDraft({
+      id: '', code: '', displayName: '', nickname: '', phone: '', role: 'courier',
+      isActive: true, canCollectShopPayments: false, workSiteIds: [],
+    });
+    setUserError(null);
+    setUserSuccess(null);
+    setNewPassword('');
+    setConfirmedPassword('');
+  }
+
   async function saveUser(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!userDraft) return;
+    if (!userDraft || savingUser || resettingPassword) return;
 
     const displayName = userDraft.displayName.trim();
     if (!displayName) {
@@ -137,6 +152,51 @@ export function UserEditor({
     }
     if (!userDraft.nickname.trim()) {
       setUserError('กรุณาระบุชื่อเล่นสำหรับเข้าสู่ระบบ');
+      return;
+    }
+    if (userDraft.nickname.includes('@')) {
+      setUserError('ชื่อเล่นต้องไม่มีเครื่องหมาย @');
+      return;
+    }
+
+    if (!userDraft.id) {
+      if (newPassword.length < 8) {
+        setUserError('รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร');
+        return;
+      }
+      if (newPassword !== confirmedPassword) {
+        setUserError('ยืนยันรหัสผ่านไม่ตรงกัน');
+        return;
+      }
+      setSavingUser(true);
+      setUserError(null);
+      setUserSuccess(null);
+      try {
+        const saved = await createUserAccount({
+          requestId: creationRequestId,
+          displayName, nickname: userDraft.nickname.trim(), phone: userDraft.phone.trim(),
+          role: userDraft.role, isActive: userDraft.isActive,
+          canCollectShopPayments: userDraft.role === 'courier' && userDraft.canCollectShopPayments,
+          workSiteIds: userDraft.role === 'courier' && userDraft.isActive ? userDraft.workSiteIds : [],
+          password: newPassword,
+        });
+        onUserSaved(saved.user, saved.work_site_ids);
+        setUserDraft(saved.warning && !saved.user.nickname
+          ? { ...userDraft, id: saved.user.id, code: saved.user.code }
+          : { ...toUserDraft(saved.user, [], workSites), workSiteIds: saved.work_site_ids });
+        setNewPassword('');
+        setConfirmedPassword('');
+        setUserQuery('');
+        setUserFilter('all');
+        if (saved.warning) setUserError(saved.warning);
+        else setUserSuccess(saved.user.is_active
+          ? 'เพิ่มพนักงานแล้ว เข้าสู่ระบบด้วยชื่อเล่นและรหัสผ่านที่กำหนดได้ทันที'
+          : 'เพิ่มพนักงานแล้ว บัญชีนี้ยังพักใช้งานอยู่');
+      } catch (error) {
+        setUserError(getErrorMessage(error));
+      } finally {
+        setSavingUser(false);
+      }
       return;
     }
 
@@ -177,7 +237,7 @@ export function UserEditor({
 
   async function resetPassword(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!userDraft || userDraft.id === currentUserId) return;
+    if (!userDraft?.id || userDraft.id === currentUserId || savingUser || resettingPassword) return;
     if (newPassword.length < 8) {
       setUserError('รหัสผ่านใหม่ต้องมีอย่างน้อย 8 ตัวอักษร');
       return;
@@ -202,7 +262,9 @@ export function UserEditor({
     }
   }
 
-  const editingCurrentUser = userDraft?.id === currentUserId;
+  const creatingUser = userDraft?.id === '';
+  const editingCurrentUser = Boolean(userDraft?.id) && userDraft?.id === currentUserId;
+  const busy = savingUser || resettingPassword;
   const userFilterLabel = filterLabel(userFilter);
 
   return (
@@ -229,8 +291,11 @@ export function UserEditor({
           </button>
         </div>
 
-        <div className="ref-list-subhead">
+        <div className="ref-list-subhead ref-user-actions">
           <span>{translateUi('ทั้งหมด ')}{filteredUsers.length}{translateUi(' รายการ')}</span>
+          <button className="primary-button" disabled={busy} onClick={startCreateUser} type="button">
+            <Plus size={18} aria-hidden="true" /> {translateUi('เพิ่มพนักงาน')}
+          </button>
         </div>
 
         <div className="ref-item-list">
@@ -252,6 +317,7 @@ export function UserEditor({
                 aria-current={selected ? 'true' : undefined}
                 className={`ref-user-card ${selected ? 'ref-user-card--selected' : ''}`}
                 key={user.id}
+                disabled={busy}
                 onClick={() => chooseUser(user)}
                 type="button"
               >
@@ -294,12 +360,13 @@ export function UserEditor({
       {/* Right Column: User Detail Form */}
       <div className="ref-right-panel">
         <div className="ref-panel-header">
-          <h2>{translateUi('ข้อมูลผู้ใช้')}</h2>
+          <h2>{translateUi(creatingUser ? 'เพิ่มพนักงานใหม่' : 'ข้อมูลผู้ใช้')}</h2>
         </div>
 
         {userDraft ? (
           <div className="ref-form">
             <form className="ref-profile-form" id="user-profile-form" onSubmit={saveUser}>
+            <fieldset className="ref-user-fields" disabled={busy}>
             {/* Inputs Grid */}
             <div className="ref-form-grid">
               <div className="ref-form-group">
@@ -440,9 +507,29 @@ export function UserEditor({
               ) : null}
             </div>
 
+            {creatingUser ? (
+              <div className="ref-section">
+                <p className="ref-muted-note">{translateUi('พนักงานเข้าสู่ระบบด้วยชื่อเล่นและรหัสผ่านนี้ ไม่ต้องใช้อีเมล')}</p>
+                <div className="ref-password-reset-grid">
+                  <label>
+                    {translateUi('รหัสผ่านเริ่มต้น')}<input
+                      autoComplete="new-password" minLength={8} required type="password"
+                      value={newPassword} onChange={(event) => setNewPassword(event.target.value)}
+                    />
+                  </label>
+                  <label>
+                    {translateUi('ยืนยันรหัสผ่าน')}<input
+                      autoComplete="new-password" minLength={8} required type="password"
+                      value={confirmedPassword} onChange={(event) => setConfirmedPassword(event.target.value)}
+                    />
+                  </label>
+                </div>
+              </div>
+            ) : null}
+            </fieldset>
             </form>
 
-            <form className="ref-section" onSubmit={resetPassword} aria-labelledby="reset-password-title">
+            {!creatingUser ? <form className="ref-section" onSubmit={resetPassword} aria-labelledby="reset-password-title">
               <div className="ref-section-title">
                 <h3 id="reset-password-title">{translateUi('รีเซ็ตรหัสผ่าน')}</h3>
                 <p>{translateUi('กำหนดรหัสผ่านใหม่ให้ผู้ใช้นี้โดยตรง ผู้ใช้ควรเปลี่ยนรหัสผ่านอีกครั้งหลังเข้าสู่ระบบ')}</p>
@@ -471,14 +558,14 @@ export function UserEditor({
                   </label>
                   <button
                     className="secondary-button"
-                    disabled={resettingPassword || !newPassword || !confirmedPassword}
+                    disabled={busy || !newPassword || !confirmedPassword}
                     type="submit"
                   >
                     {resettingPassword ? translateUi('กำลังรีเซ็ต...') : translateUi('รีเซ็ตรหัสผ่าน')}
                   </button>
                 </div>
               )}
-            </form>
+            </form> : null}
 
             {userError ? <p className="error-text" role="alert">{translateUi(userError)}</p> : null}
             {userSuccess ? <p aria-live="polite" className="success-text">{translateUi(userSuccess)}</p> : null}
@@ -487,7 +574,13 @@ export function UserEditor({
             <div className="ref-actions-bar">
               <button
                 className="secondary-button"
+                disabled={busy}
                 onClick={() => {
+                  if (creatingUser) {
+                    if (users[0]) chooseUser(users[0]);
+                    else setUserDraft(null);
+                    return;
+                  }
                   const original = users.find((user) => user.id === userDraft.id);
                   if (original) chooseUser(original);
                 }}
@@ -495,13 +588,13 @@ export function UserEditor({
               >
                 {translateUi('ยกเลิก')}</button>
               <button
-                aria-label={translateUi('บันทึกผู้ใช้')}
+                aria-label={translateUi(creatingUser ? 'สร้างบัญชีพนักงาน' : 'บันทึกผู้ใช้')}
                 className="primary-button"
-                disabled={savingUser}
+                disabled={busy}
                 form="user-profile-form"
                 type="submit"
               >
-                {savingUser ? translateUi('กำลังบันทึก...') : translateUi('บันทึกผู้ใช้')}
+                {savingUser ? translateUi('กำลังบันทึก...') : translateUi(creatingUser ? 'สร้างบัญชีพนักงาน' : 'บันทึกผู้ใช้')}
               </button>
             </div>
           </div>

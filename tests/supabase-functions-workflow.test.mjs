@@ -8,7 +8,8 @@ test('Edge Function type checks resolve npm dependencies before deploy', async (
   const workflow = await readFile(workflowUrl, 'utf8');
   const checkCommands = workflow.match(/deno check[^\n]+/g) ?? [];
 
-  assert.equal(checkCommands.length, 3);
+  assert.equal(checkCommands.length, 4);
+  assert.match(workflow, /supabase functions deploy admin-create-user/);
   for (const command of checkCommands) {
     assert.match(command, /--node-modules-dir=auto/);
   }

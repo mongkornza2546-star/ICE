@@ -25,6 +25,7 @@ jobs:
         with:
           deno-version: v2.x
       - run: deno check --node-modules-dir=auto supabase/functions/admin-reset-user-password/index.ts
+      - run: deno check --node-modules-dir=auto supabase/functions/admin-create-user/index.ts
       - run: deno check --node-modules-dir=auto supabase/functions/nickname-password-sign-in/index.ts
       - run: deno check --node-modules-dir=auto supabase/functions/r2-storage/index.ts
 
@@ -41,5 +42,6 @@ jobs:
         with:
           version: latest
       - run: supabase functions deploy admin-reset-user-password --project-ref "$SUPABASE_PROJECT_ID"
+      - run: supabase functions deploy admin-create-user --project-ref "$SUPABASE_PROJECT_ID"
       - run: supabase functions deploy nickname-password-sign-in --project-ref "$SUPABASE_PROJECT_ID"
       - run: supabase functions deploy r2-storage --project-ref "$SUPABASE_PROJECT_ID"

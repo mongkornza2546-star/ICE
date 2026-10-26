@@ -6,10 +6,10 @@
 npm run android:apk:employee
 ```
 
-ไฟล์ติดตั้งปัจจุบัน: `outputs/android/ice-delivery-employee-1.0.7.apk`
+ไฟล์ติดตั้งปัจจุบัน: `outputs/android/ice-delivery-employee-1.0.8.apk`
 
 - Android 7.0 ขึ้นไป (`minSdkVersion 24`)
-- เวอร์ชัน 1.0.7 (`versionCode 8`), package `com.superice.delivery`
+- เวอร์ชัน 1.0.8 (`versionCode 9`), package `com.superice.delivery`
 - ใช้ debug signing เดิมของโปรเจกต์สำหรับแจกติดตั้งภายใน สามารถอัปเดตทับ APK เดิมที่ใช้ package และใบรับรองเดียวกัน โดยไม่ถอนการติดตั้ง/ล้างข้อมูล
 - บัญชีที่เปิดงานได้คือพนักงาน (`courier`) ที่ยังใช้งานอยู่; แอดมินและหัวหน้าใช้งานผ่านเว็บ
 - เก็บงาน POS, ลูกค้าจร, เติม/คืน/ละลายน้ำแข็ง, อีเวนต์, รับชำระตามสิทธิ์, ประวัติรับเงิน, ใบเซ็นเครดิต และเครื่องพิมพ์ Bluetooth เดิม
@@ -24,6 +24,16 @@ npm run android:apk:employee
 ขั้นตอน build ตรวจรายชื่อโมดูลที่ถูกบรรจุจริงและหยุดหากพบหน้าจัดการที่ห้ามรวม บันทึกรายชื่อไว้ใน `dist-employee/employee-build.json` ซึ่งถูกบรรจุใน APK ด้วย ไฟล์รูปพื้นหลังแอดมินและเทมเพลตนำเข้าร้านค้าไม่ถูกบรรจุในรุ่นพนักงาน
 
 คำสั่ง `npm run build` และ `npm run android:apk` ยังคงสร้างระบบเต็มตามเดิม อย่าใช้คำสั่งหลังเพื่อแจก APK เฉพาะพนักงาน
+
+## ตรวจสอบรุ่น 1.0.8 (26 ตุลาคม 2026)
+
+- สร้างจากโค้ดปัจจุบัน รวมการแสดงและพิมพ์ปริมาณน้ำแข็งในใบวางบิลพนักงาน; TypeScript และ production build สำหรับ employee ผ่าน
+- ทดสอบ employee router, ใบวางบิลพนักงาน และพิมพ์ใบวางบิลผ่าน 14 เคส; การบรรจุฟอนต์ไทยและการกรอง CSS พนักงานผ่านอีก 3 เคส
+- Gradle build และ Android unit test task ผ่าน; สร้าง instrumentation test APK ได้ แต่ยังไม่ได้รันบนอุปกรณ์
+- ตรวจไฟล์เว็บใน APK ตรงกับ `dist-employee` ทั้ง 12 ไฟล์ และตรวจ employee target กับ Capacitor config ผ่าน
+- ตรวจ APK signature ผ่าน และ certificate SHA-256 ตรงกับรุ่น 1.0.7; package เดิมและ versionCode เพิ่มจาก 8 เป็น 9
+- SHA-256 ของ APK: `1c4e7dd034d20b8af58b21a4c43d81074706535fb803c61e276fb71647f44ae8`
+- ขั้นตอนนี้ไม่ได้ deploy migration และยังไม่ได้ทดสอบติดตั้งทับหรือพิมพ์ Bluetooth บนมือถือจริง
 
 ## ตรวจสอบรุ่น 1.0.7 (24 ตุลาคม 2026)
 
