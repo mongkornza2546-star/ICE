@@ -1,5 +1,5 @@
-import type { BillingStatement } from '../features/financial-operations/types';
-import { billingStatementDailyTotals } from './billingStatementSummary';
+import type { BillingStatement, ReceivableCharge } from '../features/financial-operations/types';
+import { billingStatementDailyTotals, billingStatementIceSummary } from './billingStatementSummary';
 import type { DailyCreditAcknowledgementDocument, DailyCreditPrintOptions } from './dailyCreditAcknowledgementPrint';
 import type { SalesDocumentPayload } from './salesDocumentPrint';
 import {
@@ -99,8 +99,9 @@ class ReceiptRaster {
   private readonly canvas = document.createElement('canvas');
   private readonly context: CanvasRenderingContext2D;
   private y = PADDING;
+  private readonly pages: string[] = [];
 
-  constructor() {
+  constructor(private readonly paginate = false) {
     this.canvas.width = PRINT_WIDTH;
     this.canvas.height = MAX_HEIGHT;
     const context = this.canvas.getContext('2d');
@@ -165,6 +166,15 @@ class ReceiptRaster {
 
   finish() {
     this.assertSpace(24);
+    return this.snapshot();
+  }
+
+  finishPages() {
+    const last = this.snapshot();
+    return [...this.pages, last];
+  }
+
+  private snapshot() {
     const height = Math.max(80, this.y + 24);
     const result = document.createElement('canvas');
     result.width = PRINT_WIDTH;
@@ -186,7 +196,15 @@ class ReceiptRaster {
   }
 
   private assertSpace(height: number) {
-    if (this.y + height > MAX_HEIGHT) {
+    // Reserve the bottom margin before adding a complete text block or row.
+    if (this.paginate && this.y + height + 24 > MAX_HEIGHT && height <= MAX_HEIGHT - PADDING - 24) {
+      this.pages.push(this.snapshot());
+      this.context.fillStyle = '#fff';
+      this.context.fillRect(0, 0, PRINT_WIDTH, MAX_HEIGHT);
+      this.context.fillStyle = '#000';
+      this.y = PADDING;
+    }
+    if (this.y + height + (this.paginate ? 24 : 0) > MAX_HEIGHT) {
       throw new Error('ใบเสร็จยาวเกินขนาด กรุณาลดจำนวนรายการหรือแบ่งพิมพ์');
     }
   }
@@ -348,24 +366,27 @@ export async function renderPrinterTestRaster(printerName: string) {
   return receipt.finish();
 }
 
-export async function renderBillingStatementSummaryRaster(statement: BillingStatement) {
+export async function renderBillingStatementSummaryRasters(statement: BillingStatement, charges: ReceivableCharge[] = []) {
   await loadReceiptFonts();
-  const receipt = new ReceiptRaster();
+  const receipt = new ReceiptRaster(true);
   receipt.text('Super Ice', { align: 'center', bold: true, size: 31 });
-  receipt.text('ใบวางบิล', { align: 'center', bold: true, size: 26 });
+  receipt.text('ใบวางบิลแบบย่อ', { align: 'center', bold: true, size: 26 });
   receipt.text(`เลขที่ ${statement.statement_number}`);
   receipt.text(`วันที่ออก ${formatReceiptDate(statement.issued_service_date)}`);
   if (statement.status === 'voided') receipt.text(`ยกเลิกแล้ว · ${statement.void_reason ?? ''}`, { bold: true });
   receipt.text(`${statement.shop_code} · ${statement.shop_name}`, { bold: true });
   if (statement.shop_location) receipt.text(statement.shop_location);
   receipt.rule();
+  const ice = billingStatementIceSummary(statement, charges);
   for (const day of billingStatementDailyTotals(statement)) {
     receipt.row(formatReceiptDate(day.serviceDate), money.format(day.amount));
+    for (const text of ice.dayLines(day.serviceDate)) receipt.text(text, { size: 19 });
   }
   receipt.rule();
   receipt.row('ยอดวางบิลทั้งสิ้น', money.format(Number(statement.total_amount)), { bold: true, size: 24 });
+  for (const text of ice.totalLines) receipt.text(text, { bold: true, size: 20 });
   receipt.text('เอกสารนี้เป็นใบวางบิล ไม่ใช่ใบเสร็จรับเงิน', { size: 20 });
   receipt.gap(26);
   receipt.text('ผู้รับวางบิล ____________________', { align: 'center', size: 21 });
-  return receipt.finish();
+  return receipt.finishPages();
 }

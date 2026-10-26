@@ -65,7 +65,7 @@ export function BillingStatementsSection({
     setError(null);
     try {
       const printed = dailySummary
-        ? await printEmployeeBillingStatement(statement, printWindow)
+        ? await printEmployeeBillingStatement(statement, printWindow, charges)
         : printBillingStatement(statement, printWindow, charges);
       if (!printed) setError('เปิดหน้าพิมพ์ไม่สำเร็จ กรุณาอนุญาตป๊อปอัปแล้วกดพิมพ์อีกครั้ง');
     } catch (printError) {

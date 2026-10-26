@@ -681,6 +681,32 @@ test('stores the employee name in the immutable casual receipt snapshot', async 
 
 const BUILDING_A = 'a0000000-0000-4000-8000-000000000001';
 const BUILDING_B = 'a0000000-0000-4000-8000-000000000002';
+test('casual POS excludes event compatibility buildings even when they remain active', async (t) => {
+  const { db } = await createBuildingDatabase(t);
+  await db.exec(`insert into public.buildings (id, code, name) values
+    ('a0000000-0000-4000-8000-000000000003', 'EVENT-MONTHLY', 'Event ประจำเดือน'),
+    ('a0000000-0000-4000-8000-000000000004', ' event-expired ', 'งานเก่า'),
+    ('a0000000-0000-4000-8000-000000000005', ' site-event-legacy ', 'พื้นที่งานเก่า');`);
+  const eventBuilding = 'a0000000-0000-4000-8000-000000000003';
+  const historicalSale = (await recordAtBuilding(db, { building: eventBuilding })).rows[0].result.transaction.id;
+  const before = (await db.query(`select public.get_casual_transaction_context('${ROUND_ID}') as result`)).rows[0].result;
+  assert.equal(before.sale_buildings.some((building) => building.id === eventBuilding), true);
+  const migration = readFileSync(new URL('../supabase/migrations/0259_casual_pos_exclude_event_buildings.sql', import.meta.url), 'utf8');
+  await db.exec(migration);
+  await db.exec(migration); // Safe to rerun without changing the RPC contract.
+  const context = (await db.query(`select public.get_casual_transaction_context('${ROUND_ID}') as result`)).rows[0].result;
+  assert.deepEqual(context.sale_buildings, [
+    { id: BUILDING_A, name: 'ตึก A' },
+    { id: BUILDING_B, name: 'ตึก B' },
+  ]);
+  assert.deepEqual({ ...context, sale_buildings: [] }, { ...before, sale_buildings: [] });
+  assert.equal(context.history.find((sale) => sale.id === historicalSale).sale_building_name, 'Event ประจำเดือน');
+  await db.exec(`update public.buildings set is_active = false where id = '${BUILDING_B}';
+    update public.buildings set name = 'Event showroom' where id = '${BUILDING_A}';`);
+  const updated = (await db.query(`select public.get_casual_transaction_context('${ROUND_ID}') as result`)).rows[0].result;
+  assert.deepEqual(updated.sale_buildings, [{ id: BUILDING_A, name: 'Event showroom' }]);
+});
+
 async function createBuildingDatabase(t, applyFix = true) {
   const db = await createConvertedDatabase(t);
   // Existing writers, history protection, stock conversion and receipts are real.

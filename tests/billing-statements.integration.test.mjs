@@ -195,6 +195,7 @@ async function createDatabase(t, { applyDateFix = true, applyCreditHistoryFix = 
   if (applyUnifiedCollections) await db.exec(migration('0220_unified_shop_collections'));
   await db.exec(migration('0237_employee_billing_statements'));
   await db.exec(migration('0240_employee_billing_account_eligibility'));
+  await db.exec(migration('0260_employee_billing_ice_quantities'));
   return db;
 }
 
@@ -1119,4 +1120,18 @@ test('server dates new statements today when the client omits its stale business
   assert.equal(statement.items.length, 2);
   const stored = (await db.query('select issued_service_date::text as date from billing_statements where id=$1', [statement.id])).rows[0];
   assert.equal(stored.date, today);
+});
+
+test('employee billing includes delivered ice quantities for printing', async (t) => {
+  const db = await createDatabase(t);
+  const iceId = '60000000-0000-4000-8000-000000000001';
+  await db.exec(`
+    insert into ice_types values ('${iceId}', 'ICE', 'หลอดเล็ก', 'ถุง');
+    update delivery_charges set delivery_event_id = '${oldBill}' where id = '${oldBill}';
+    insert into delivery_items values ('${oldBill}', '${iceId}', 6.5, 50);
+    set test.role = 'courier'; set role authenticated;
+  `);
+  const accounts = (await db.query('select get_employee_billing_accounts() as result')).rows[0].result;
+  assert.deepEqual(accounts[0].charges.find((charge) => charge.charge_id === oldBill).items,
+    [{ ice_type_id: iceId, name: 'หลอดเล็ก', unit: 'ถุง', quantity: 6.5 }]);
 });

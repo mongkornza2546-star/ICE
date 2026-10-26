@@ -22,8 +22,10 @@ a photo selects new bytes immediately after the catalog data refreshes.
 - Concurrent requests for the same key share one load. Blob URLs are released
   when the image unmounts or changes; no permanent in-memory image collection.
 - Unmounting releases that consumer. The last consumer leaving removes queued
-  work and aborts browser HTTP. A running CapacitorHttp call cannot be cancelled;
-  it keeps its concurrency slot until completion, then skips decoding/storage.
+  work only. Started browser/native downloads finish and store their bytes, keeping
+  their concurrency slot until completion. Returning consumers share the ongoing
+  download, or read its completed cache entry. Closing the app/browser entirely
+  can still interrupt work; this does not provide OS background downloads.
 - Android uses Capacitor's existing native HTTP API to download bytes without
   depending on R2 CORS configuration. Web uses CORS fetch. Unsupported storage,
   CORS failure and corrupt images retain the ordinary image/re-signing fallback.
@@ -58,3 +60,14 @@ and passed after it (`tmp/catalog-image-fix-review.log`). Permanent coverage is 
 Final validation logs: `tmp/catalog-image-fix-tests.log`, `tmp/catalog-image-fix-build.log`.
 Earlier tests checked URL-keyed reads and ignored late UI responses, but did not
 exercise restored path-only callers or whether abandoned network work still started.
+
+
+Update 2026-10-26: preserve started downloads after navigation
+-----------------------------------------------------------
+The previous cancellation policy above was changed after reproducing three failures:
+browser HTTP was aborted on navigation, completed native bytes were discarded,
+and returning to an unmounted tile required another download. Started downloads
+now remain shared and populate the cache even with no mounted consumers; queued
+work still cancels when its last consumer leaves. The browser return, native
+storage/concurrency, and component unmount/reopen regressions failed before this
+change. The historical 2026-10-22 cancellation expectations are superseded.

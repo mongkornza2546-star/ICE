@@ -31,6 +31,7 @@ it('lets employees issue and reprint the saved statement after a printer failure
   expect(screen.queryByRole('button', { name: 'ยกเลิก BIL-1' })).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'พิมพ์ BIL-1' }));
   await waitFor(() => expect(mocks.print).toHaveBeenCalledTimes(2));
+  expect(mocks.print).toHaveBeenLastCalledWith(statement, undefined, [charge]);
   expect(mocks.rpc.mock.calls.filter(([name]) => name === 'create_billing_statement')).toHaveLength(1);
 });
 

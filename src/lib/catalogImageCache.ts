@@ -38,6 +38,7 @@ interface Download {
   promise: Promise<Blob>;
   controller: AbortController;
   consumers: number;
+  started: boolean;
 }
 const pending = new Map<string, Download>();
 let activeLoads = 0;
@@ -134,8 +135,8 @@ async function downloadImage(source: string, signal: AbortSignal): Promise<Blob>
     const response = await CapacitorHttp.get({
       url: source, responseType: 'arraybuffer', connectTimeout: 20_000, readTimeout: 20_000,
     });
-    // CapacitorHttp cannot cancel an in-flight native call. Keep its slot until
-    // completion, but do not decode/store bytes after the last consumer leaves.
+    // Started downloads keep their slot and populate the cache even after
+    // the last consumer leaves, including native calls that cannot be cancelled.
     checkAborted(signal);
     const type = new Headers(response.headers).get('content-type') ?? '';
     if (response.status !== 200 || !type.startsWith('image/') || typeof response.data !== 'string'
@@ -220,10 +221,11 @@ async function acquireDownloadSlot(signal: AbortSignal) {
   });
 }
 
-async function loadImage(source: string, key: string, cache: Cache | null, signal: AbortSignal): Promise<Blob> {
+async function loadImage(source: string, key: string, cache: Cache | null, signal: AbortSignal, onStart: () => void): Promise<Blob> {
   await acquireDownloadSlot(signal);
   try {
     checkAborted(signal);
+    onStart();
     const blob = await downloadImage(source, signal);
     checkAborted(signal);
     if (!blob.size) throw new Error('Empty catalog image');
@@ -249,8 +251,8 @@ export async function loadCatalogImage(source: string, options: { signal?: Abort
   if (!entry) {
     const controller = new AbortController();
     const download: Download = {
-      controller, consumers: 0,
-      promise: loadImage(source, key, cache, controller.signal).finally(() => {
+      controller, consumers: 0, started: false,
+      promise: loadImage(source, key, cache, controller.signal, () => { download.started = true; }).finally(() => {
         if (pending.get(key) === download) pending.delete(key);
       }),
     };
@@ -270,7 +272,9 @@ export async function loadCatalogImage(source: string, options: { signal?: Abort
     };
     const cancel = () => {
       if (!finish()) return;
-      if (download.consumers === 0) {
+      // Cancel only work that has not started. Keep in-flight bytes and the
+      // shared pending entry so returning consumers reuse the same download.
+      if (download.consumers === 0 && !download.started) {
         download.controller.abort();
         if (pending.get(key) === download) pending.delete(key);
       }

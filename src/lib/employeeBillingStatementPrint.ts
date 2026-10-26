@@ -1,19 +1,22 @@
-import type { BillingStatement } from '../features/financial-operations/types';
-import { billingStatementDailyTotals } from './billingStatementSummary';
+import type { BillingStatement, ReceivableCharge } from '../features/financial-operations/types';
+import { billingStatementDailyTotals, billingStatementIceSummary } from './billingStatementSummary';
 import { formatReceiptDate } from './salesDocumentPresentation';
 import { isAndroidApp, printThermalImage } from './thermalPrinter';
-import { renderBillingStatementSummaryRaster } from './thermalReceiptRaster';
+import { renderBillingStatementSummaryRasters } from './thermalReceiptRaster';
 
 const money = new Intl.NumberFormat('th-TH', { style: 'currency', currency: 'THB', minimumFractionDigits: 2 });
 
-export async function printEmployeeBillingStatement(statement: BillingStatement, existingPrintWindow?: Window | null) {
+export async function printEmployeeBillingStatement(statement: BillingStatement, existingPrintWindow?: Window | null, charges: ReceivableCharge[] = []) {
   if (isAndroidApp()) {
     existingPrintWindow?.close();
-    await printThermalImage(await renderBillingStatementSummaryRaster(statement));
+    const images = await renderBillingStatementSummaryRasters(statement, charges);
+    for (const image of images) await printThermalImage(image);
     return true;
   }
   const days = billingStatementDailyTotals(statement);
-  const heightMm = Math.max(100, 85 + days.length * 8);
+  const ice = billingStatementIceSummary(statement, charges);
+  const detailLines = days.flatMap((day) => ice.dayLines(day.serviceDate));
+  const heightMm = Math.max(100, 85 + days.length * 8 + [...detailLines, ...ice.totalLines].reduce((height, line) => height + Math.ceil(line.length / 24) * 6, 0));
   const printWindow = existingPrintWindow ?? window.open('', '_blank', 'popup,width=360,height=720');
   if (!printWindow) return false;
   const doc = printWindow.document;
@@ -35,7 +38,7 @@ export async function printEmployeeBillingStatement(statement: BillingStatement,
   `;
   doc.head.replaceChildren(style);
   doc.documentElement.lang = 'th';
-  doc.title = `ใบวางบิล ${statement.statement_number}`;
+  doc.title = `ใบวางบิลแบบย่อ ${statement.statement_number}`;
   const root = doc.createElement('main');
   const line = (text: string, tag = 'p', className = '') => {
     const node = doc.createElement(tag);
@@ -54,7 +57,7 @@ export async function printEmployeeBillingStatement(statement: BillingStatement,
     parent.append(node);
   };
   line('Super Ice', 'h1');
-  line('ใบวางบิล', 'h2');
+  line('ใบวางบิลแบบย่อ', 'h2');
   line(`เลขที่ ${statement.statement_number}`);
   line(`วันที่ออก ${formatReceiptDate(statement.issued_service_date)}`);
   if (statement.status === 'voided') line(`ยกเลิกแล้ว · ${statement.void_reason ?? ''}`);
@@ -62,9 +65,18 @@ export async function printEmployeeBillingStatement(statement: BillingStatement,
   if (statement.shop_location) line(statement.shop_location);
   const daily = doc.createElement('section');
   daily.className = 'days';
-  for (const day of days) row(daily, formatReceiptDate(day.serviceDate), day.amount);
+  for (const day of days) {
+    row(daily, formatReceiptDate(day.serviceDate), day.amount);
+    for (const text of ice.dayLines(day.serviceDate)) {
+      const detail = doc.createElement('p');
+      detail.className = 'ice-detail';
+      detail.textContent = text;
+      daily.append(detail);
+    }
+  }
   root.append(daily);
   row(root, 'ยอดวางบิลทั้งสิ้น', Number(statement.total_amount), 'total');
+  for (const text of ice.totalLines) line(text);
   line('เอกสารนี้เป็นใบวางบิล ไม่ใช่ใบเสร็จรับเงิน');
   line('ผู้รับวางบิล ____________________', 'p', 'signature');
   doc.body.replaceChildren(root);

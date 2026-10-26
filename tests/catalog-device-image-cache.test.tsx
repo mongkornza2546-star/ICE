@@ -94,23 +94,26 @@ describe('persistent catalog image cache (without a service worker)', () => {
     expect(fetchImage).toHaveBeenCalledTimes(1);
   });
 
-  it('aborts browser HTTP when the final consumer leaves and permits a later retry', async () => {
+  it('finishes browser HTTP after the final consumer leaves and reuses it on return', async () => {
     const { loadCatalogImage } = await import('../src/lib/catalogImageCache');
-    fetchImage.mockImplementationOnce((_url, options) => new Promise<Response>((_resolve, reject) => {
-      options.signal.addEventListener('abort', () => reject(new DOMException('cancelled', 'AbortError')));
-    }));
+    let finish!: () => void;
+    fetchImage.mockImplementationOnce(() => new Promise<Response>((resolve) => { finish = () => resolve(image()); }));
     const controller = new AbortController();
     const request = loadCatalogImage(source, { signal: controller.signal });
     const cancelled = expect(request).rejects.toMatchObject({ name: 'AbortError' });
     await vi.waitFor(() => expect(fetchImage).toHaveBeenCalledTimes(1));
     controller.abort();
     await cancelled;
-    expect(fetchImage.mock.calls[0][1].signal.aborted).toBe(true);
+    const wasAborted = fetchImage.mock.calls[0][1].signal.aborted;
+    const returning = loadCatalogImage(source.replace('Signature=old', 'Signature=new'));
+    finish();
+    expect(await (await returning).text()).toBe('pixels');
     expect(await (await loadCatalogImage(source)).text()).toBe('pixels');
-    expect(fetchImage).toHaveBeenCalledTimes(2);
+    expect(wasAborted).toBe(false);
+    expect(fetchImage).toHaveBeenCalledTimes(1);
   });
 
-  it('keeps a cancelled native call in its slot until HTTP completes, without storing its bytes', async () => {
+  it('finishes and caches a native download after its consumer leaves while preserving the slot limit', async () => {
     native.isNativePlatform.mockReturnValue(true);
     vi.stubGlobal('Blob', NodeBlob);
     const { loadCatalogImage, catalogImageCacheKey } = await import('../src/lib/catalogImageCache');
@@ -131,7 +134,9 @@ describe('persistent catalog image cache (without a service worker)', () => {
     await vi.waitFor(() => expect(finish).toHaveLength(3));
     finish[1](); finish[2]();
     await Promise.all([second, third]);
-    expect(entries.has(catalogImageCacheKey(source)!)).toBe(false);
+    expect(entries.has(catalogImageCacheKey(source)!)).toBe(true);
+    expect(await (await loadCatalogImage(source)).text()).toBe('pixels');
+    expect(finish).toHaveLength(3);
   });
 
   it('looks up restored paths without signing and keeps namespaces and replacement paths separate', async () => {

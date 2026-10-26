@@ -54,6 +54,10 @@ it('does not start queued image downloads after their components unmount', async
   const downloaded = network.mock.calls.map(([url]) => url);
   if (release[2]) { await act(async () => { release[2](); }); }
   expect(downloaded).not.toContain(`${base}abandoned-3.webp`);
+  const reopened = render(<CachedCatalogImage loading="eager" src={`${base}abandoned-1.webp`} alt="returned image" />);
+  await waitFor(() => expect(screen.getByAltText('returned image').getAttribute('src')).toBe('blob:loaded'));
+  expect(network).toHaveBeenCalledTimes(2);
+  reopened.unmount();
 });
 
 it('shows persisted shop image bytes immediately when reopening cached workspace data', async () => {
