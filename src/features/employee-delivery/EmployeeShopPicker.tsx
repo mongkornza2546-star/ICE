@@ -4,6 +4,7 @@ import { MagnifyingGlass, Buildings, MapPin, Storefront, CaretRight, WarningCirc
 import type { ShopCard, EmployeeStockState } from '../../types/app';
 import { FilterChips } from './FilterChips';
 import { EmployeeState } from './EmployeeState';
+import { EmployeeDestinationTabs } from './EmployeeDestinationTabs';
 import { isBoothSameAsName, statusTone } from './utils';
 import { STATUS_LABELS } from './constants';
 import { translateUi, useLanguage } from '../../i18n';
@@ -286,11 +287,12 @@ export function EmployeeShopPicker({
         </div>
       ) : null}
 
-      {selectedRoundId ? <nav aria-label={translateUi('ประเภทจุดส่ง')} className={`employee-destination-tabs${casualCustomerEntryVisible ? '' : ' employee-destination-tabs--two'}`}>
-        <button aria-pressed={destinationKind === 'regular'} onClick={() => setDestinationKind('regular')} type="button">{translateUi('ร้านประจำ')}</button>
-        <button aria-pressed={destinationKind === 'event'} onClick={() => setDestinationKind('event')} type="button">{translateUi('อีเว้น')}</button>
-        {casualCustomerEntryVisible ? <button aria-label={translateUi('บันทึกลูกค้าขายสด')} onClick={openCasualCustomer} ref={casualCustomerButtonRef} type="button">{translateUi('ลูกค้าขายสด')}</button> : null}
-      </nav> : null}
+      {selectedRoundId ? <EmployeeDestinationTabs
+        value={destinationKind}
+        onChange={(kind) => kind === 'casual' ? openCasualCustomer() : setDestinationKind(kind)}
+        casualVisible={casualCustomerEntryVisible}
+        casualButtonRef={casualCustomerButtonRef}
+      /> : null}
 
       <label className="employee-search employee-search--standalone">
         <MagnifyingGlass aria-hidden="true" size={22} />

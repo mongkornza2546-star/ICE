@@ -47,7 +47,7 @@ if (result.status !== 0) process.exit(result.status ?? 1);
 
 const source = join(androidDir, 'app', 'build', 'outputs', 'apk', 'debug', 'app-debug.apk');
 const outputDir = join(projectRoot, 'outputs', 'android');
-const destination = join(outputDir, employeeOnly ? 'ice-delivery-employee-1.0.11.apk' : 'ice-delivery-debug.apk');
+const destination = join(outputDir, employeeOnly ? 'ice-delivery-employee-1.0.12.apk' : 'ice-delivery-debug.apk');
 mkdirSync(outputDir, { recursive: true });
 copyFileSync(source, destination);
 console.log(`APK: ${destination}`);

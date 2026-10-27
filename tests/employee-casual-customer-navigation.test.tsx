@@ -80,8 +80,9 @@ describe('casual-customer POS navigation', () => {
     expect(screen.queryByRole('button', { name: 'บันทึกลูกค้าขายสด' })).toBeNull();
   });
 
-  it('opens casual customers above shop search and returns to the shop picker', async () => {
+  it.each(['ร้านประจำ', 'อีเว้น'])('opens casual customers and switches directly to %s', async (destination) => {
     const user = userEvent.setup();
+    const confirm = vi.spyOn(window, 'confirm');
     let scrollY = 640;
     vi.spyOn(window, 'scrollY', 'get').mockImplementation(() => scrollY);
     vi.spyOn(window, 'scrollTo').mockImplementation((options) => {
@@ -99,16 +100,73 @@ describe('casual-customer POS navigation', () => {
 
     await user.click(casualButton);
     const heading = screen.getByRole('heading', { level: 1, name: 'ลูกค้าขายสด' });
+    const tabs = screen.getByRole('navigation', { name: 'ประเภทจุดส่ง' });
+    expect(tabs.querySelectorAll('button')).toHaveLength(3);
+    expect(tabs.compareDocumentPosition(heading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'บันทึกลูกค้าขายสด' }).getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByRole('button', { name: 'บันทึกลูกค้าขายสด' }).textContent).toBe('ขายสด');
     expect(document.activeElement).toBe(heading);
     expect(scrollY).toBe(0);
     expect(await screen.findByRole('heading', { level: 2, name: 'เลือกน้ำแข็ง' })).toBeTruthy();
-    await user.click(document.querySelector('.employee-pos-product-grid button') as HTMLButtonElement);
-    expect(document.querySelector('.employee-pos-product-grid button small')?.textContent).toBe('ไม่ระบุจำนวน');
-
-    await user.click(screen.getByRole('button', { name: 'กลับไปเลือกร้าน' }));
-    const restoredButton = await screen.findByRole('button', { name: 'บันทึกลูกค้าขายสด' });
+    await user.click(screen.getByRole('button', { name: destination, exact: true }));
+    expect(confirm).not.toHaveBeenCalled();
+    const restoredButton = await screen.findByRole('button', { name: destination, exact: true });
+    expect(restoredButton.getAttribute('aria-pressed')).toBe('true');
+    expect(screen.queryByRole('heading', { level: 1, name: 'ลูกค้าขายสด' })).toBeNull();
+    expect(screen.getByRole('searchbox', { name: 'ค้นหาร้าน' }).getAttribute('placeholder'))
+      .toBe(destination === 'อีเว้น' ? 'ค้นชื่อร้าน เลขบูธ โซน หรือเบอร์โทร' : 'ค้นรหัสหรือชื่อร้าน');
     await waitFor(() => expect(document.activeElement).toBe(restoredButton));
     expect(scrollY).toBe(640);
+  });
+
+  it.each(['ร้านประจำ', 'อีเว้น'])('keeps the cash-sale draft until leaving for %s is confirmed', async (destination) => {
+    const user = userEvent.setup();
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    const gateway = createGateway();
+    render(<EmployeeDeliveryWorkspace casualCustomerEnabled gateway={gateway} serviceDate="2026-08-20" />);
+    await user.click(await screen.findByRole('button', { name: 'บันทึกลูกค้าขายสด' }));
+    await screen.findByRole('heading', { name: 'เลือกน้ำแข็ง' });
+    await user.click(document.querySelector('.employee-pos-product-grid button') as HTMLButtonElement);
+    await user.type(screen.getByLabelText('ยอดขาย (บาท)'), '25');
+
+    await user.click(screen.getByRole('button', { name: 'บันทึกลูกค้าขายสด' }));
+    expect(confirm).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: destination, exact: true }));
+    expect(confirm).toHaveBeenCalledWith('ยังไม่ได้บันทึกรายการนี้ ต้องการออกจากหน้านี้หรือไม่?');
+    expect(screen.getByRole('heading', { name: 'ลูกค้าขายสด' })).toBeTruthy();
+    expect((screen.getByLabelText('ยอดขาย (บาท)') as HTMLInputElement).value).toBe('25');
+    expect(screen.getByRole('button', { name: 'บันทึกลูกค้าขายสด' }).getAttribute('aria-pressed')).toBe('true');
+    expect(gateway.recordCasualTransaction).not.toHaveBeenCalled();
+
+    confirm.mockReturnValue(true);
+    await user.click(screen.getByRole('button', { name: destination, exact: true }));
+    expect(screen.queryByRole('heading', { name: 'ลูกค้าขายสด' })).toBeNull();
+    expect(screen.getByRole('button', { name: destination, exact: true }).getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it('blocks destination changes until a pending cash sale finishes', async () => {
+    const user = userEvent.setup();
+    const confirm = vi.spyOn(window, 'confirm');
+    const gateway = createGateway();
+    let rejectRequest!: (reason: Error) => void;
+    vi.mocked(gateway.recordCasualTransaction!).mockImplementation(() => new Promise((_, reject) => { rejectRequest = reject; }));
+    render(<EmployeeDeliveryWorkspace casualCustomerEnabled gateway={gateway} serviceDate="2026-08-20" />);
+    await user.click(await screen.findByRole('button', { name: 'บันทึกลูกค้าขายสด' }));
+    await screen.findByRole('heading', { name: 'เลือกน้ำแข็ง' });
+    await user.click(document.querySelector('.employee-pos-product-grid button') as HTMLButtonElement);
+    await user.type(screen.getByLabelText('ยอดขาย (บาท)'), '25');
+    await user.click(screen.getByRole('button', { name: 'ยืนยันขายและรับเงิน' }));
+    await waitFor(() => expect(gateway.recordCasualTransaction).toHaveBeenCalledTimes(1));
+    for (const button of screen.getByRole('navigation', { name: 'ประเภทจุดส่ง' }).querySelectorAll('button')) {
+      expect(button.disabled).toBe(true);
+      await user.click(button);
+    }
+    expect(confirm).not.toHaveBeenCalled();
+    expect(screen.getByRole('heading', { name: 'ลูกค้าขายสด' })).toBeTruthy();
+    rejectRequest(new Error('record failed'));
+    await screen.findByRole('alert');
+    expect((screen.getByRole('button', { name: 'อีเว้น', exact: true }) as HTMLButtonElement).disabled).toBe(false);
+    expect((screen.getByLabelText('ยอดขาย (บาท)') as HTMLInputElement).value).toBe('25');
   });
 
   it('defaults casual items to zero but allows half-unit quantities', async () => {

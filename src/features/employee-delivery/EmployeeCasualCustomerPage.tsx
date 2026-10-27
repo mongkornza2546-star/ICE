@@ -1,7 +1,6 @@
 import { uiDateTimeFormat, translateUi, useLanguage } from '../../i18n';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
-  ArrowLeft,
   Backspace,
   CheckCircle,
   Gift,
@@ -27,6 +26,7 @@ import { publishDataChange } from '../../lib/dataChange';
 import { MAX_PAYMENT_EVIDENCE_SIZE } from '../../lib/paymentEvidence';
 import { getErrorMessage } from '../../lib/errorMessage';
 import { usePendingRequests } from './usePendingRequests';
+import { EmployeeDestinationTabs } from './EmployeeDestinationTabs';
 
 const money = new Intl.NumberFormat('th-TH', {
   style: 'currency',
@@ -158,7 +158,7 @@ export function EmployeeCasualCustomerPage({
   deleteEvidence: (path: string, idempotencyKey: string) => Promise<void>;
   loadContext: (roundId: string) => Promise<CasualTransactionContext>;
   loadReceipt: (transactionId: string) => Promise<StoredSalesDocument>;
-  onBack: () => void;
+  onBack: (kind: 'regular' | 'event') => void;
   onDraftStateChange?: (state: { dirty: boolean; submitting: boolean }) => void;
   recordTransaction: (payload: RecordPayload) => Promise<CasualTransactionResult>;
   round: DeliveryRound;
@@ -449,10 +449,11 @@ export function EmployeeCasualCustomerPage({
 
   return (
     <div className="employee-entry employee-casual-page">
-      <button aria-label={translateUi('กลับไปเลือกร้าน')} className="employee-back" disabled={busy} onClick={onBack} type="button">
-        <ArrowLeft aria-hidden="true" size={20} weight="bold" />
-        <span>{translateUi('กลับไปเลือกร้าน')}</span>
-      </button>
+      <EmployeeDestinationTabs
+        value="casual"
+        disabled={busy}
+        onChange={(kind) => { if (kind !== 'casual') onBack(kind); }}
+      />
 
       <section className="employee-entry-card employee-casual-page__header">
         <span className="employee-casual-page__icon"><UserCircle aria-hidden="true" size={38} weight="duotone" /></span>

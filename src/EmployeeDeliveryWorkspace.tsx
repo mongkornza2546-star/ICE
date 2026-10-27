@@ -798,7 +798,7 @@ export function EmployeeDeliveryWorkspace({
   stockSourceLabel?: string;
   viewMode?: 'pos' | 'withdrawal';
 }) {
-  useLanguage();
+  const { t } = useLanguage();
   const resolvedViewMode = viewMode ?? (enableAssignedStockFlow ? 'combined' : 'pos');
   const isBackdatedBilling = !enableAssignedStockFlow && serviceDate < toBangkokDateString();
   const [deliveryDraftState, setDeliveryDraftState] = useState<EmployeeDeliveryDraftState>({
@@ -882,7 +882,8 @@ export function EmployeeDeliveryWorkspace({
   useLayoutEffect(() => {
     if (casualCustomerOpen || !casualCustomerReturnFocusPending.current) return;
     casualCustomerReturnFocusPending.current = false;
-    casualCustomerButtonRef.current?.focus({ preventScroll: true });
+    casualCustomerButtonRef.current?.closest('nav')
+      ?.querySelector<HTMLButtonElement>('button[aria-pressed="true"]')?.focus({ preventScroll: true });
     window.scrollTo({ top: casualCustomerBrowseScrollY.current, behavior: 'auto' });
   }, [casualCustomerOpen]);
 
@@ -1102,7 +1103,10 @@ export function EmployeeDeliveryWorkspace({
           deleteEvidence={gateway.deletePaymentEvidence!}
           loadContext={gateway.loadCasualTransactionContext!}
           loadReceipt={gateway.loadCasualReceiptSnapshot!}
-          onBack={() => {
+          onBack={(kind) => {
+            if (casualDraftState.submitting) return;
+            if (casualDraftState.dirty && !window.confirm(t('unsavedConfirm'))) return;
+            if (kind !== data.destinationKind) data.setDestinationKind(kind);
             casualCustomerReturnFocusPending.current = true;
             setCasualCustomerOpen(false);
           }}
