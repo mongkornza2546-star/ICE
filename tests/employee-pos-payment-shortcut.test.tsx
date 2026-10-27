@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import { useState } from 'react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -227,4 +227,193 @@ describe('POS payment shortcut', () => {
       storage?.mockRestore();
     }
   });
+});
+
+
+describe('event POS outstanding balances', () => {
+  beforeEach(() => { window.sessionStorage.clear(); window.localStorage.clear(); });
+  const eventShop: ShopCard = {
+    ...deliveredShop,
+    round_stop_id: 'event-stop-1',
+    destination_kind: 'event',
+    event_job_id: 'event-1',
+    event_participation_id: 'participation-1',
+    event_name: 'เกษตร',
+    event_location: 'ลานกิจกรรม',
+    booth_number: 'B1',
+    event_delivery_enabled: true,
+    is_operational: true,
+  };
+  const summaries = [
+    { queueKey: 'regular:shop-bb44', shopId: 'shop-bb44', outstandingAmount: 240 },
+    { queueKey: 'event:day-1', shopId: 'shop-bb44', eventParticipationId: 'participation-1', outstandingAmount: 100.25 },
+    { queueKey: 'event:day-2', shopId: 'shop-bb44', eventParticipationId: 'participation-1', outstandingAmount: 60.5 },
+    { queueKey: 'event:other-booth', shopId: 'shop-bb44', eventParticipationId: 'participation-2', outstandingAmount: 90 },
+  ];
+
+  function eventGateway() {
+    const gateway = createGateway(0);
+    vi.mocked(gateway.loadShopCards).mockResolvedValue([
+      deliveredShop, eventShop,
+      { ...eventShop, round_stop_id: 'event-stop-2', event_participation_id: 'participation-2', booth_number: 'B2' },
+      { ...eventShop, round_stop_id: 'event-stop-3', event_participation_id: 'participation-3', booth_number: 'B3' },
+    ]);
+    vi.mocked(gateway.loadCollectionOutstanding!).mockResolvedValue(summaries);
+    return gateway;
+  }
+
+  function booth(number: string) {
+    return screen.getByRole('button', { name: `เลือกร้าน บูธ ${number} ${eventShop.shop_name}` });
+  }
+
+  it('totals all settlement days for each booth without mixing other booths or regular balances', async () => {
+    const user = userEvent.setup();
+    const gateway = eventGateway();
+    const { rerender } = render(<EmployeeDeliveryWorkspace gateway={gateway} serviceDate="2026-09-25" viewMode="pos" />);
+    expect(await screen.findByText(/ยอดรอรับชำระ.*240/)).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: 'อีเว้น', exact: true }));
+    expect(within(booth('B1')).getByText('ยอดรอรับชำระ ฿160.75')).toBeTruthy();
+    expect(within(booth('B2')).getByText('ยอดรอรับชำระ ฿90')).toBeTruthy();
+    expect(within(booth('B3')).getByText('ยอดรอรับชำระ ฿0')).toBeTruthy();
+
+    // Returning to POS after a payment must replace the old totals.
+    rerender(<EmployeeDeliveryWorkspace gateway={gateway} serviceDate="2026-09-25" viewMode="pos" isActive={false} />);
+    vi.mocked(gateway.loadCollectionOutstanding!).mockResolvedValue(summaries.filter(row => row.queueKey !== 'event:day-1'));
+    rerender(<EmployeeDeliveryWorkspace gateway={gateway} serviceDate="2026-09-25" viewMode="pos" />);
+    expect(await within(booth('B1')).findByText('ยอดรอรับชำระ ฿60.5')).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: 'ร้านประจำ', exact: true }));
+    expect(screen.getByText('ยอดรอรับชำระ ฿240')).toBeTruthy();
+  });
+
+  it('shows loading and errors instead of zero and supports retry from the event tab', async () => {
+    const user = userEvent.setup();
+    const gateway = eventGateway();
+    let rejectLoad!: (error: Error) => void;
+    vi.mocked(gateway.loadCollectionOutstanding!).mockReturnValueOnce(new Promise((_, reject) => { rejectLoad = reject; }));
+    render(<EmployeeDeliveryWorkspace gateway={gateway} serviceDate="2026-09-25" viewMode="pos" />);
+    await user.click(await screen.findByRole('button', { name: 'อีเว้น', exact: true }));
+    expect(within(booth('B1')).getByText('กำลังโหลดยอดรอรับชำระ…')).toBeTruthy();
+    rejectLoad(new Error('Network unavailable'));
+    expect(await within(booth('B1')).findByText('โหลดยอดรอรับชำระไม่สำเร็จ')).toBeTruthy();
+    expect(within(booth('B1')).queryByText('ยอดรอรับชำระ ฿0')).toBeNull();
+    await user.click(within(screen.getByRole('alert')).getByRole('button', { name: 'ลองใหม่' }));
+    expect(await within(booth('B1')).findByText('ยอดรอรับชำระ ฿160.75')).toBeTruthy();
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it.each([['B1', '160.75', 'event-participation:participation-1'], ['B2', '90', 'event-participation:participation-2']])(
+    'offers send or collect for %s and opens its actual settlement queue', async (number, amount, queueKey) => {
+      const user = userEvent.setup();
+      const gateway = eventGateway();
+      let storedAtHandoff: ReturnType<typeof readPosCollectionReturn> = null;
+      const onOpenCollection = vi.fn(() => { storedAtHandoff = readPosCollectionReturn('event-worker'); });
+      render(<EmployeeDeliveryWorkspace gateway={gateway} canCollectShopPayments onOpenCollection={onOpenCollection}
+        serviceDate="2026-09-25" viewMode="pos" requestScope="event-worker" />);
+      await user.click(await screen.findByRole('button', { name: 'อีเว้น', exact: true }));
+      await user.click(booth(number));
+      expect(screen.getByText('ยอดรอรับชำระ').parentElement?.textContent).toContain(amount);
+      expect(screen.getByText(`บูธ ${number}`)).toBeTruthy();
+      expect(screen.getByText('เกษตร · ลานกิจกรรม')).toBeTruthy();
+      expect(screen.getByRole('button', { name: 'ส่งเพิ่ม' }).hasAttribute('disabled')).toBe(false);
+      await user.click(screen.getByRole('button', { name: 'รับชำระ' }));
+      expect(onOpenCollection).toHaveBeenCalledWith(expect.objectContaining({ source: 'pos-shortcut', shopId: eventShop.shop_id, queueKey }));
+      expect(storedAtHandoff).toEqual(expect.objectContaining({
+        destinationKind: 'event', request: expect.objectContaining({ queueKey }),
+      }));
+      expect(gateway.recordDelivery).not.toHaveBeenCalled();
+      expect(gateway.recordImmediateSale).not.toHaveBeenCalled();
+    },
+  );
+
+  it('opens event delivery from send and keeps collection disabled without balance or permission', async () => {
+    const user = userEvent.setup();
+    const gateway = eventGateway();
+    gateway.loadDeliveryPosContext = vi.fn(() => new Promise(() => {}));
+    const { rerender } = render(<EmployeeDeliveryWorkspace gateway={gateway} canCollectShopPayments
+      serviceDate="2026-09-25" viewMode="pos" />);
+    await user.click(await screen.findByRole('button', { name: 'อีเว้น', exact: true }));
+    await user.click(booth('B3'));
+    expect(screen.getByText('ไม่มียอดถึงกำหนด')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'รับชำระ' }).hasAttribute('disabled')).toBe(true);
+    await user.click(screen.getByRole('button', { name: 'กลับรายชื่อร้าน' }));
+    rerender(<EmployeeDeliveryWorkspace gateway={gateway} canCollectShopPayments={false}
+      serviceDate="2026-09-25" viewMode="pos" />);
+    await user.click(booth('B1'));
+    expect(screen.getByRole('button', { name: 'รับชำระ' }).hasAttribute('disabled')).toBe(true);
+    expect(screen.getByText('บัญชีนี้ไม่มีสิทธิ์รับชำระเงิน')).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: 'ส่งเพิ่ม' }));
+    await waitFor(() => expect(gateway.loadDeliveryPosContext).toHaveBeenCalledWith('event-stop-1', expect.objectContaining({ destinationKind: 'event' })));
+    expect(gateway.recordDelivery).not.toHaveBeenCalled();
+  });
+
+  it.each(['completed', 'cancelled'] as const)('returns to the event booth after %s collection with fresh balances', async status => {
+    const user = userEvent.setup();
+    const gateway = eventGateway();
+    function Harness() {
+      const [request, setRequest] = useState<CollectionFocusRequest | null>(null);
+      const [result, setResult] = useState<CollectionCloseResult | null>(null);
+      return <>
+        <div style={{ display: request ? 'none' : undefined }}>
+          <EmployeeDeliveryWorkspace gateway={gateway} canCollectShopPayments
+            isActive={!request} onOpenCollection={setRequest} collectionCloseResult={result}
+            requestScope="event-return" serviceDate="2026-09-25" viewMode="pos" />
+        </div>
+        {request ? <button onClick={() => {
+          if (status === 'completed') vi.mocked(gateway.loadCollectionOutstanding!).mockResolvedValue(summaries.filter(row => row.queueKey !== 'event:day-1'));
+          setResult({ status, requestId: request.requestId, shopId: request.shopId });
+          setRequest(null);
+        }}>Return from event payment</button> : null}
+      </>;
+    }
+    render(<Harness />);
+    await user.click(await screen.findByRole('button', { name: 'อีเว้น', exact: true }));
+    await user.click(screen.getByRole('button', { name: 'เกษตร', exact: true }));
+    await user.type(screen.getByRole('searchbox'), 'B1');
+    await user.click(booth('B1'));
+    await user.click(screen.getByRole('button', { name: 'รับชำระ' }));
+    expect(readPosCollectionReturn('event-return')?.request.queueKey).toBe('event-participation:participation-1');
+    await user.click(screen.getByRole('button', { name: 'Return from event payment' }));
+    await waitFor(() => expect(document.activeElement).toBe(booth('B1')));
+    expect(screen.getByRole('button', { name: 'อีเว้น', exact: true }).getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByRole('button', { name: 'เกษตร', exact: true }).getAttribute('aria-pressed')).toBe('true');
+    expect((screen.getByRole('searchbox') as HTMLInputElement).value).toBe('B1');
+    expect(await within(booth('B1')).findByText(status === 'completed' ? 'ยอดรอรับชำระ ฿60.5' : 'ยอดรอรับชำระ ฿160.75')).toBeTruthy();
+    await user.click(booth('B1'));
+    await user.click(screen.getByRole('button', { name: 'รับชำระ' }));
+    expect(readPosCollectionReturn('event-return')?.request.queueKey).toBe('event-participation:participation-1');
+    expect(gateway.recordDelivery).not.toHaveBeenCalled();
+  });
+
+
+  it('starts a pending event delivery directly when no balance is due', async () => {
+    const user = userEvent.setup();
+    const gateway = eventGateway();
+    vi.mocked(gateway.loadShopCards).mockResolvedValue([{ ...eventShop, stop_status: 'pending' }]);
+    vi.mocked(gateway.loadCollectionOutstanding!).mockResolvedValue([]);
+    gateway.loadDeliveryPosContext = vi.fn(() => new Promise(() => {}));
+    render(<EmployeeDeliveryWorkspace gateway={gateway} serviceDate="2026-09-25" viewMode="pos" />);
+    await user.click(await screen.findByRole('button', { name: 'อีเว้น', exact: true }));
+    await user.click(booth('B1'));
+    await waitFor(() => expect(gateway.loadDeliveryPosContext).toHaveBeenCalledWith('event-stop-1', expect.objectContaining({ destinationKind: 'event' })));
+    expect(screen.queryByRole('button', { name: 'รับชำระ', exact: true })).toBeNull();
+  });
+
+  it('retries a failed balance on the event task choice before permitting collection', async () => {
+    const user = userEvent.setup();
+    const gateway = eventGateway();
+    const onOpenCollection = vi.fn();
+    vi.mocked(gateway.loadCollectionOutstanding!).mockRejectedValueOnce(new Error('Network unavailable'));
+    render(<EmployeeDeliveryWorkspace gateway={gateway} canCollectShopPayments onOpenCollection={onOpenCollection}
+      serviceDate="2026-09-25" viewMode="pos" />);
+    await user.click(await screen.findByRole('button', { name: 'อีเว้น', exact: true }));
+    await user.click(booth('B1'));
+    expect(screen.getByRole('button', { name: 'รับชำระ' }).hasAttribute('disabled')).toBe(true);
+    expect(screen.getByRole('button', { name: 'ส่งเพิ่ม' }).hasAttribute('disabled')).toBe(false);
+    await user.click(screen.getByRole('button', { name: 'ลองใหม่' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'รับชำระ' }).hasAttribute('disabled')).toBe(false));
+    expect(screen.getByText('ยอดรอรับชำระ').parentElement?.textContent).toContain('160.75');
+    await user.click(screen.getByRole('button', { name: 'รับชำระ' }));
+    expect(onOpenCollection).toHaveBeenCalledWith(expect.objectContaining({ queueKey: 'event-participation:participation-1', eventParticipationId: 'participation-1' }));
+  });
+
 });

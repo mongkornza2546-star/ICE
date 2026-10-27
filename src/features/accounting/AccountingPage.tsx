@@ -785,17 +785,19 @@ function ShopSummaryPanel({ daily, data, loading, unavailable, view, onViewChang
             <span>{translateUi('คืนเงินในช่วง ')}<b>{receiptMoney(refundedTotal)}</b></span>
             <span>{translateUi('รับสุทธิหลังคืนเงิน ')}<b>{receiptMoney(receivedNet)}</b></span>
           </div>
-          <details className="accounting-receipt-sources"><summary>{translateUi('แยกยอดร้าน / ขายสด')}</summary>
+          <details className="accounting-receipt-sources"><summary>{translateUi('รายละเอียดการรับชำระ')}</summary>
             <div className="accounting-metric__breakdown">
               <span>{translateUi('รับจากร้าน ')}<b>{receiptMoney(totals.cash_received_in_period)}</b></span>
               <span>{translateUi('รับจากขายสด ')}<b>{receiptMoney(totals.casual_received_amount)}</b></span>
               <span>{translateUi('คืนเงินร้าน ')}<b>{receiptMoney(totals.shop_refunded_in_period)}</b></span>
               <span>{translateUi('คืนเงินขายสด ')}<b>{receiptMoney(totals.casual_refunded_amount)}</b></span>
             </div>
+            <div className="accounting-receipt-sources__notes">
+              <small>{translateUi('ตามวันที่รับ/คืนเงินจริง รวมรับหนี้เก่าและร้านปิดใช้งาน')}</small>
+              <small>{translateUi('ร้านตามตัวกรองร้าน/พื้นที่ · ไม่ตามสถานะหรือเงื่อนไขชำระ')}</small>
+              <small>{translateUi('ขายสดตามตึก · ไม่ตามตัวกรองร้าน/โซน')}</small>
+            </div>
           </details>
-          <small>{translateUi('ตามวันที่รับ/คืนเงินจริง รวมรับหนี้เก่าและร้านปิดใช้งาน')}</small>
-          <small>{translateUi('ร้านตามตัวกรองร้าน/พื้นที่ · ไม่ตามสถานะหรือเงื่อนไขชำระ')}</small>
-          <small>{translateUi('ขายสดตามตึก · ไม่ตามตัวกรองร้าน/โซน')}</small>
         </article>
         <article className="accounting-metric accounting-metric--debt"><span>{translateUi('ยอดค้างสะสมของร้าน')}</span><strong>{money.format(totals.cumulative_outstanding_amount)}</strong><div className="accounting-metric__breakdown"><span>{totals.cumulative_outstanding_shop_count.toLocaleString('th-TH')}{translateUi(' ร้าน ')}<b>{translateUi('เกินกำหนด ')}{money.format(totals.cumulative_overdue_amount)}</b></span></div><small>{translateUi('หนี้ปัจจุบันทุกวันที่ขาย · เกินกำหนดรวมอยู่ในยอดค้าง')}</small></article>
         <button className="accounting-metric accounting-metric--review" aria-label={translateUi('เปิดหน้ารายการตรวจสอบ')} onClick={onOpenReview} type="button"><span>{translateUi('รายการต้องตรวจสอบ')}</span><strong>{reviewCount == null ? '—' : reviewCount.toLocaleString('th-TH')}<small>{translateUi(' รายการ')}</small></strong><small>{translateUi('ทั้งช่วงวันที่ · ไม่ตามตัวกรองร้าน')}</small><b>{translateUi('เปิดรายการตรวจสอบ →')}</b></button>

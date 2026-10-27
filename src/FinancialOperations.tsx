@@ -54,6 +54,29 @@ function queueIdentity(shop: QueueShop) {
   return shop.queue_key ?? `regular:${shop.shop_id}`;
 }
 
+function matchesEventFocus(shop: QueueShop, request: CollectionFocusRequest) {
+  return Boolean(request.eventParticipationId
+    && shop.destination_kind === 'event'
+    && shop.shop_id === request.shopId
+    && shop.event_participation_id === request.eventParticipationId);
+}
+
+function preferredCollection(queue: QueueShop[], queueKey?: string, chargeId?: string, eventFocus?: CollectionFocusRequest) {
+  if (eventFocus?.eventParticipationId) {
+    const matches = queue.filter((shop) => matchesEventFocus(shop, eventFocus));
+    if (matches.length === 0) throw new Error('ไม่พบร้านนี้ในคิวรับเงินล่าสุด');
+    // Multiple days must be chosen explicitly, never silently reduced to the first row.
+    return matches.length === 1 ? matches[0] : null;
+  }
+  const shop = queue.find((candidate) => (chargeId && candidate.charges.some((charge) => charge.charge_id === chargeId))
+    || (queueKey && queueIdentity(candidate) === queueKey)) ?? null;
+  if (queueKey && !shop) throw new Error('ไม่พบร้านนี้ในคิวรับเงินล่าสุด');
+  if (chargeId && shop && !shop.charges.some((charge) => charge.charge_id === chargeId)) {
+    throw new Error('ไม่พบยอดรายการส่งล่าสุดในคิวรับเงิน');
+  }
+  return shop;
+}
+
 function removeCancelledDeliveries(queue: QueueShop[], cancelledEventIds: Set<string>): QueueShop[] {
   return queue.flatMap((shop) => {
     const charges = shop.charges.filter((charge) => !charge.delivery_event_id || !cancelledEventIds.has(charge.delivery_event_id));
@@ -144,6 +167,11 @@ export function FinancialOperations({
   const [adminPostCloseAllowed, setAdminPostCloseAllowed] = useState(false);
   const collectionWriteBlocked = collectionClosed && !(userRole === 'admin' && adminPostCloseAllowed && runId);
   const [queue, setQueue] = useState<QueueShop[]>(initialDemoRunId ? demoData?.queue ?? [] : []);
+  const eventFocus = focusRequest?.eventParticipationId ? focusRequest : null;
+  const eventFocusQueue = useMemo(() => eventFocus ? queue
+    .filter((shop) => matchesEventFocus(shop, eventFocus))
+    .sort((left, right) => (left.settlement_service_date ?? '').localeCompare(right.settlement_service_date ?? '')
+      || queueIdentity(left).localeCompare(queueIdentity(right))) : [], [eventFocus, queue]);
   const [receivables, setReceivables] = useState<Receivable[]>(demoData?.receivables ?? []);
   const [approvals, setApprovals] = useState<Approval[]>(demoData?.approvals ?? []);
   const [dueDateRequests, setDueDateRequests] = useState<DueDateRequest[]>(demoData?.dueDateRequests ?? []);
@@ -230,18 +258,15 @@ export function FinancialOperations({
     preferredQueueKey?: string,
     preferredChargeId?: string,
     focusLoadRequestId?: number,
+    preferredEvent?: CollectionFocusRequest,
   ) => {
     if (demoData) {
       if (preferredQueueKey) {
-        const preferredShop = demoData.queue.find((shop) => queueIdentity(shop) === preferredQueueKey);
-        if (!preferredShop) throw new Error('ไม่พบร้านนี้ในคิวรับเงินล่าสุด');
-        if (preferredChargeId && !preferredShop.charges.some((charge) => charge.charge_id === preferredChargeId)) {
-          throw new Error('ไม่พบยอดรายการส่งล่าสุดในคิวรับเงิน');
-        }
+        const preferredShop = preferredCollection(demoData.queue, preferredQueueKey, preferredChargeId, preferredEvent);
         if (focusLoadRequestId && focusLoadRequestId !== focusLoadRequestRef.current) return;
         setQueue(demoData.queue);
         setSelectedShop(preferredShop);
-        resetPaymentForm(preferredShop);
+        if (preferredShop) resetPaymentForm(preferredShop);
       }
       return;
     }
@@ -280,15 +305,9 @@ export function FinancialOperations({
       if (focusLoadRequestId && focusLoadRequestId !== focusLoadRequestRef.current) return;
       const currentShop = selectedShopRef.current;
       const preferredShop = preferredQueueKey || preferredChargeId
-        ? nextQueue.find((shop) => (preferredChargeId && shop.charges.some((charge) => charge.charge_id === preferredChargeId))
-            || (preferredQueueKey && queueIdentity(shop) === preferredQueueKey)) ?? null
+        ? preferredCollection(nextQueue, preferredQueueKey, preferredChargeId, preferredEvent)
         : null;
-      if (preferredQueueKey && !preferredShop) throw new Error('ไม่พบร้านนี้ในคิวรับเงินล่าสุด');
-      if (preferredChargeId && preferredShop
-        && !preferredShop.charges.some((charge) => charge.charge_id === preferredChargeId)) {
-        throw new Error('ไม่พบยอดรายการส่งล่าสุดในคิวรับเงิน');
-      }
-      const nextSelectedShop = preferredShop ?? (currentShop
+      const nextSelectedShop = preferredShop ?? (!preferredEvent?.eventParticipationId && currentShop
         ? nextQueue.find((shop) => queueIdentity(shop) === queueIdentity(currentShop)) ?? null
         : null);
       setQueue(nextQueue);
@@ -353,7 +372,7 @@ export function FinancialOperations({
     setFocusLoading(true);
     const requestId = ++focusLoadRequestRef.current;
     try {
-      await load(pendingFocus.queueKey, pendingFocus.chargeId, requestId);
+      await load(pendingFocus.queueKey, pendingFocus.chargeId, requestId, pendingFocus);
       if (requestId !== focusLoadRequestRef.current) return;
       handledFocusRequestIdRef.current = pendingFocus.requestId;
     } catch (loadError) {
@@ -389,6 +408,7 @@ export function FinancialOperations({
     const closingFocusedCollection = Boolean(
       focusRequest && currentShop && (
         focusRequest.queueKey === queueIdentity(currentShop)
+        || matchesEventFocus(currentShop, focusRequest)
         || Boolean(focusRequest.chargeId && currentShop.charges.some((charge) => charge.charge_id === focusRequest.chargeId))
       ),
     );
@@ -1052,7 +1072,17 @@ export function FinancialOperations({
         </section>
       ) : null}
 
-      {!isManager ? <div className="financial-ops__employee-workspace">
+      {eventFocus && !focusLoading && !focusLoadError
+        && handledFocusRequestIdRef.current === eventFocus.requestId ? <>
+        <button className="financial-ops__focus-back" onClick={closeFocusedLoadError} type="button">
+          <ArrowLeft aria-hidden="true" size={18} />{translateUi(' กลับ POS')}</button>
+        <button disabled={busy} onClick={() => void refreshFinancialData().catch((loadError: unknown) => setError(getErrorMessage(loadError)))} type="button">
+          {translateUi('รีเฟรชยอดล่าสุด')}</button>
+        <CollectionRunSection eventScope onSelectShop={chooseShop} queue={eventFocusQueue}
+          runId={runId} isClosed={collectionClosed} />
+      </> : null}
+
+      {!isManager && !eventFocus ? <div className="financial-ops__employee-workspace">
         <nav aria-label={translateUi('เมนูเก็บเงิน')} className="financial-ops__employee-nav">
           <button
             aria-current={employeeView === 'queue' ? 'page' : undefined}
@@ -1116,7 +1146,7 @@ export function FinancialOperations({
         </div>
       </div> : null}
 
-      {isManager && FinancialManagerWorkspace ? (
+      {isManager && !eventFocus && FinancialManagerWorkspace ? (
         <Suspense fallback={<p role="status">{translateUi('กำลังโหลด')}</p>}>
           <FinancialManagerWorkspace
             page={managerPage}
@@ -1160,7 +1190,9 @@ export function FinancialOperations({
         </Suspense>
       ) : null}
 
-      {isActive && selectedShop && (!isManager || managerPage === 'collection') ? createPortal(
+      {isActive && selectedShop && (!isManager || managerPage === 'collection')
+        && (!eventFocus || (!focusLoading && !focusLoadError
+          && handledFocusRequestIdRef.current === eventFocus.requestId && matchesEventFocus(selectedShop, eventFocus))) ? createPortal(
         <PaymentModal
           allocatedAmount={allocatedAmount}
           amount={amount}

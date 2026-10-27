@@ -40,6 +40,8 @@ export function EmployeeShopTaskChoice({
   onRetryCreditEligibility?: () => void;
 }) {
   useLanguage();
+  const isEvent = card.destination_kind === 'event';
+  const sendDisabled = isEvent && (!card.event_delivery_enabled || !card.is_operational);
   const balanceReady = outstandingAmount !== undefined && !outstandingError;
   const collectDisabled = !canCollect || !balanceReady || outstandingAmount <= 0;
   const balanceText = outstandingError
@@ -64,9 +66,13 @@ export function EmployeeShopTaskChoice({
       <button className="employee-task-choice__back" onClick={onBack} type="button">
         <ArrowLeft aria-hidden="true" size={19} />{translateUi(' กลับรายชื่อร้าน')}</button>
       <header>
-        <span className="employee-task-choice__code">{card.shop_code}</span>
+        <span className="employee-task-choice__code">{isEvent
+          ? `${translateUi('บูธ')} ${card.booth_number || translateUi('ไม่ระบุ')}`
+          : card.shop_code}</span>
         <h1 id="employee-task-choice-title">{card.shop_name}</h1>
-        <p>{card.building_name} · {card.floor_or_zone}</p>
+        <p>{isEvent
+          ? [card.event_name, card.event_location, card.event_zone].filter(Boolean).join(' · ')
+          : `${card.building_name} · ${card.floor_or_zone}`}</p>
       </header>
       <dl>
         <div><dt>{translateUi('สถานะวันนี้')}</dt><dd>{translateUi(STATUS_LABELS[card.stop_status])}</dd></div>
@@ -80,11 +86,12 @@ export function EmployeeShopTaskChoice({
         </div>
       ) : null}
       <div className="employee-task-choice__actions">
-        <button className="employee-primary-action" onClick={onSend} type="button">
+        <button className="employee-primary-action" disabled={sendDisabled} onClick={onSend} type="button">
           <Package aria-hidden="true" size={21} weight="duotone" />{translateUi(' ส่งเพิ่ม')}</button>
         <button className="employee-secondary-action" disabled={collectDisabled} onClick={onCollect} type="button">
           <Coins aria-hidden="true" size={21} weight="duotone" />{translateUi(' รับชำระ')}</button>
       </div>
+      {sendDisabled ? <p className="employee-task-choice__hint">{translateUi('ยังไม่เปิดบันทึกส่งน้ำแข็ง')}</p> : null}
       {disabledReason ? <p className="employee-task-choice__hint">{disabledReason}</p> : null}
       {creditEligibilityLoading ? <p role="status">{translateUi('กำลังโหลดโปรไฟล์การชำระเงิน...')}</p> : null}
       {creditEligibilityError ? <div className="employee-task-choice__load-error" role="alert">

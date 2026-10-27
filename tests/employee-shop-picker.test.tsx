@@ -91,14 +91,14 @@ describe('employee shop picker keyboard navigation', () => {
     expect(document.activeElement).toBe(buttons[2]);
   });
 
-  it('uses the displayed order and skips shops that cannot be opened', () => {
+  it('keeps delivery-disabled event booths reachable for collection', () => {
     const { buttons } = setup([thirdShop, {
       ...secondShop, destination_kind: 'event', event_delivery_enabled: false,
     }, shop]);
     buttons[0].focus();
     fireEvent.keyDown(buttons[0], { key: 'ArrowDown' });
-    expect(document.activeElement).toBe(buttons[2]);
-    fireEvent.keyDown(buttons[2], { key: 'ArrowUp' });
+    expect(document.activeElement).toBe(buttons[1]);
+    fireEvent.keyDown(buttons[1], { key: 'ArrowUp' });
     expect(document.activeElement).toBe(buttons[0]);
   });
 
@@ -204,7 +204,7 @@ describe('employee shop picker image preview', () => {
     expect(screen.queryByRole('button', { name: 'ลูกค้าขายสด' })).toBeNull();
   });
 
-  it('shows an event booth number without exposing the unfinished POS path', async () => {
+  it('opens the task choice for an event booth even when delivery is disabled', async () => {
     const user = userEvent.setup();
     const openCard = vi.fn();
     render(<EmployeeShopPicker
@@ -253,8 +253,8 @@ describe('employee shop picker image preview', () => {
     expect(screen.getByText('บูธ B-17')).toBeTruthy();
     expect(screen.getByText('ร้านเล่าซา')).toBeTruthy();
     const eventCardButton = screen.getByRole('button', { name: 'เลือกร้าน บูธ B-17 ร้านเล่าซา' });
-    expect(eventCardButton.hasAttribute('disabled')).toBe(true);
+    expect(eventCardButton.hasAttribute('disabled')).toBe(false);
     await user.click(eventCardButton);
-    expect(openCard).not.toHaveBeenCalled();
+    expect(openCard).toHaveBeenCalledWith(expect.objectContaining({ destination_kind: 'event', event_delivery_enabled: false }));
   });
 });

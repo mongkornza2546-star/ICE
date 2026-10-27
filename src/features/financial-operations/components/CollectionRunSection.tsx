@@ -7,7 +7,7 @@ import {
 } from '@phosphor-icons/react';
 import { useMemo, useState } from 'react';
 import type { QueueShop } from '../types';
-import { money } from '../utils';
+import { formatServiceDate, money } from '../utils';
 import { isBoothSameAsName } from '../../employee-delivery/utils';
 import { AutoRefreshShopImage } from './AutoRefreshShopImage';
 import { translateUi, useLanguage } from '../../../i18n';
@@ -17,12 +17,14 @@ export function CollectionRunSection({
   isClosed = false,
   queue,
   showQueue = true,
+  eventScope = false,
   onSelectShop,
 }: {
   runId: string | null;
   isClosed?: boolean;
   queue: QueueShop[];
   showQueue?: boolean;
+  eventScope?: boolean;
   onSelectShop: (shop: QueueShop, trigger: HTMLButtonElement) => void;
 }) {
   useLanguage();
@@ -56,12 +58,17 @@ export function CollectionRunSection({
   });
 
   return (
-    <section className="financial-ops__section">
+    <section aria-label={eventScope ? translateUi('บิลค้างของบูธ') : undefined} className="financial-ops__section">
       <div className="financial-ops__title">
-        <div><Coins /><span><h2>{translateUi('คิวรับเงินร้านค้า')}</h2><p>{translateUi('รวมยอดที่ถึงกำหนดและยอดค้างโดยอัตโนมัติ')}</p></span></div>
+        <div><Coins /><span><h2>{translateUi(eventScope ? 'เลือกบิลที่ต้องการรับชำระ' : 'คิวรับเงินร้านค้า')}</h2>
+          <p>{eventScope
+            ? `${translateUi('ยอดรอรับชำระทั้งหมด')} ${money.format(queue.reduce((total, shop) => total + Number(shop.outstanding_amount), 0))}`
+            : translateUi('รวมยอดที่ถึงกำหนดและยอดค้างโดยอัตโนมัติ')}</p>
+          {eventScope ? <p>{translateUi('เลือกรับชำระทีละวัน ยอดวันอื่นยังคงค้างอยู่')}</p> : null}
+        </span></div>
       </div>
       {showQueue && !runId && !isClosed ? <p className="financial-ops__empty">{translateUi('ไม่สามารถเปิดคิวรับเงินของวันนี้ได้')}</p> : null}
-      {showQueue && (runId || isClosed) && queue.length > 0 ? <div className="financial-ops__queue-filters">
+      {!eventScope && showQueue && (runId || isClosed) && queue.length > 0 ? <div className="financial-ops__queue-filters">
         <label className="financial-ops__queue-search">
           <MagnifyingGlass aria-hidden="true" size={20} />
           <input
@@ -87,7 +94,7 @@ export function CollectionRunSection({
         <div className="financial-ops__shop-grid">
           {visibleQueue.map((shop) => (
             <button
-              aria-label={`${shop.shop_code} · ${shop.shop_name} ${translateUi('ค้าง')} ${money.format(shop.outstanding_amount)}`}
+              aria-label={`${shop.shop_code} · ${shop.shop_name} ${translateUi('ค้าง')} ${money.format(shop.outstanding_amount)}${eventScope ? ` · ${shop.settlement_service_date ? formatServiceDate(shop.settlement_service_date) : ''} · ${shop.charges.map((charge) => charge.charge_number).filter(Boolean).join(', ')}` : ''}`}
               className="financial-ops__shop-card"
               key={shop.queue_key ?? `regular:${shop.shop_id}`}
               onClick={(event) => onSelectShop(shop, event.currentTarget)}
@@ -111,6 +118,10 @@ export function CollectionRunSection({
                   ? ''
                   : shop.shop_name}</b>
                 {shop.destination_kind === 'event' ? <small>{[shop.event_name, shop.event_zone && translateUi('โซน {0}', { 0: shop.event_zone })].filter(Boolean).join(' · ')}</small> : null}
+                {eventScope ? <>
+                  <b>{shop.settlement_service_date ? formatServiceDate(shop.settlement_service_date) : ''}</b>
+                  <small>{shop.charges.map((charge) => charge.charge_number).filter(Boolean).join(', ')}</small>
+                </> : null}
                 <small><ListNumbers aria-hidden="true" size={15} /> {shop.charge_count}{translateUi(' รายการค้าง')}</small>
                 <em>{money.format(shop.outstanding_amount)}</em>
               </span>

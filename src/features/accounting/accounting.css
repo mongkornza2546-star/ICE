@@ -36,6 +36,7 @@
 .accounting-metric--received > strong { color: #185da5; }
 .accounting-receipt-sources { font-size: .73rem; }
 .accounting-receipt-sources > summary { cursor: pointer; padding: 5px 0; color: #185da5; }
+.accounting-receipt-sources__notes { display: grid; gap: 7px; margin-top: 7px; }
 .accounting-metric--debt { border-top-color: #bf802c; }
 .accounting-metric--debt > strong { color: #8f5214; }
 .accounting-metric--review { border-top-color: #c38c41; background: #fffaf3; }

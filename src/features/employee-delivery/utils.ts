@@ -1,5 +1,9 @@
 import { uiDateTimeFormat } from '../../i18n';
-import type { EmployeeStockState, IceTypeOption, PaymentTerm, ShopRoundStatus } from '../../types/app';
+import type { EmployeeStockState, IceTypeOption, PaymentTerm, ShopCard, ShopRoundStatus } from '../../types/app';
+
+export function shopOutstandingKey(card: ShopCard) {
+  return card.destination_kind === 'event' ? `event:${card.event_participation_id}` : card.shop_id;
+}
 
 export const PAYMENT_TERM_ORDER: Record<PaymentTerm, number> = {
   end_of_day: 0,

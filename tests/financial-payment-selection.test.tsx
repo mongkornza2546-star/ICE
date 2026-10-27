@@ -563,3 +563,39 @@ it('allows admin backdated cash collection on a closed day only with the server 
     p_payment_args: expect.objectContaining({ p_payment_method: 'cash', p_collection_run_id: 'closed-run', p_received_amount: 125 }),
   }));
 });
+
+it.each(['completed', 'cancelled'] as const)('opens the exact event settlement from POS and returns after %s', async status => {
+  const eventShop: QueueShop = {
+    ...shop,
+    queue_key: 'event:context-b1', destination_kind: 'event',
+    event_settlement_context_id: 'context-b1', event_participation_id: 'participation-b1',
+    event_name: 'เกษตร', event_booth: 'B1', settlement_service_date: serviceDate,
+    settlement_policy_fingerprint: 'policy-b1',
+  };
+  supabaseMock.loadQueue.mockResolvedValue({ runId: 'run-1', queue: [
+    shop,
+    { ...eventShop, queue_key: 'event:context-b2', event_settlement_context_id: 'context-b2', event_participation_id: 'participation-b2', event_booth: 'B2' },
+    eventShop,
+  ] });
+  const onFocusedCollectionClose = vi.fn();
+  render(<FinancialOperations userRole="courier" serviceDate={serviceDate}
+    focusRequest={{ requestId: 'event-shortcut', source: 'pos-shortcut', shopId: shop.shop_id,
+      queueKey: 'event:context-b1', returnContextId: 'event-shortcut' }}
+    onFocusedCollectionClose={onFocusedCollectionClose} />);
+  await screen.findByRole('button', { name: 'บันทึกรับเงินทันที' });
+  if (status === 'completed') {
+    fireEvent.click(screen.getByRole('button', { name: 'บันทึกรับเงินทันที' }));
+    await screen.findByText('บันทึกรับเงินเรียบร้อย');
+    expect(supabaseMock.rpc).toHaveBeenCalledWith('record_event_payment', expect.objectContaining({
+      p_expected_settlement_context_id: 'context-b1', p_expected_participation_id: 'participation-b1',
+      p_expected_service_date: serviceDate, p_expected_policy_fingerprint: 'policy-b1',
+      p_expected_outstanding_amount: 125,
+    }));
+    fireEvent.click(screen.getByRole('button', { name: 'เสร็จสิ้น' }));
+  } else {
+    fireEvent.click(screen.getByRole('button', { name: 'ปิดหน้ารับเงิน' }));
+  }
+  expect(onFocusedCollectionClose).toHaveBeenCalledWith(expect.objectContaining({ status,
+    requestId: 'event-shortcut', shopId: shop.shop_id,
+  }));
+});

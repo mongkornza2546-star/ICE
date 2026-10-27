@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { EventManagementPage } from '../src/EventManagementPage';
@@ -451,6 +451,41 @@ it('keeps regular-shop names read-only in the event editor', async () => {
   await user.click(screen.getByRole('button', { name: 'บันทึกร้าน' }));
   await waitFor(() => expect(api.saveParticipation).toHaveBeenCalled());
   expect(vi.mocked(api.saveParticipation).mock.calls[0][0]).not.toHaveProperty('shop_name');
+});
+
+it('reloads the edited shop name and booth into the tank selector after saving', async () => {
+  const value = detail();
+  value.event = { ...value.event, status: 'published' };
+  value.participations[0] = {
+    ...value.participations[0], shop_code: 'EV-placeholder',
+    shop_name: 'บูธ B5', booth_number: 'B5', shop_event_job_id: event.id,
+  };
+  const api = gateway(value);
+  vi.mocked(api.saveParticipation).mockImplementation(async (input) => {
+    expect(input).toMatchObject({
+      participation_id: 'participation-1', shop_id: 'shop-1',
+      shop_name: 'ร้านอาหารจากเชียงใหม่', booth_number: 'B20',
+    });
+    const updated = {
+      ...value.participations[0], shop_name: input.shop_name!, booth_number: input.booth_number,
+    };
+    vi.mocked(api.loadDetail).mockResolvedValue({ ...value, participations: [updated] });
+    return updated;
+  });
+  const user = userEvent.setup();
+  render(<EventManagementPage initialSelectedId={event.id} gateway={api} profileRole="admin" />);
+  await user.click(await screen.findByRole('button', { name: 'แก้ไข EV-placeholder บูธ B5' }));
+  await user.clear(screen.getByRole('textbox', { name: 'ชื่อร้าน' }));
+  await user.type(screen.getByRole('textbox', { name: 'ชื่อร้าน' }), 'ร้านอาหารจากเชียงใหม่');
+  await user.clear(screen.getByLabelText('เลขบูธ'));
+  await user.type(screen.getByLabelText('เลขบูธ'), 'B20');
+  await user.click(screen.getByRole('button', { name: 'บันทึกร้าน' }));
+  await screen.findByRole('button', { name: 'แก้ไข EV-placeholder ร้านอาหารจากเชียงใหม่' });
+  await user.click(screen.getByText('บันทึกตั้งถัง / รับคืนถัง · ค้างทั้งหมด 0 ถัง'));
+  fireEvent.change(screen.getByLabelText('วันที่ส่งหรือรับคืนจริง'), { target: { value: event.start_date } });
+  expect(screen.getByRole('option', { name: 'บูธ B20 · ร้านอาหารจากเชียงใหม่ · ค้าง 0 ถัง' })).toBeTruthy();
+  expect(screen.queryByRole('option', { name: /บูธ B5/ })).toBeNull();
+  expect(api.loadDetail).toHaveBeenCalledTimes(2);
 });
 
 

@@ -1,9 +1,9 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
 import { CollectionDesk } from '../src/features/financial-operations/components/CollectionDesk';
-import type { PaymentProfile, QueueShop } from '../src/features/financial-operations/types';
+import type { PaymentHistoryItem, PaymentProfile, QueueShop } from '../src/features/financial-operations/types';
 
 const paymentProfile: PaymentProfile = {
   allowed_payment_methods: ['cash'],
@@ -41,6 +41,44 @@ function queueEntry(overrides: Partial<QueueShop>): QueueShop {
 }
 
 describe('CollectionDesk event queue identity', () => {
+  it.each(['outstanding', 'collected', 'all'] as const)('filters event locations and zones in %s without mixing regular shops or other events', async (tab) => {
+    const user = userEvent.setup();
+    const regular = queueEntry({ building_id: 'building-c', building_name: 'ตึก C', zone_id: 'zone-food', zone_name: 'อาหาร' });
+    const event = queueEntry({
+      queue_key: 'event:context-1', destination_kind: 'event', shop_code: 'EV-booth-1', shop_name: 'บูธ A1',
+      event_name: 'งานกาชาด', event_location: 'ตึก C', event_zone: 'อาหาร', event_booth: 'A1',
+    });
+    const secondZone = { ...event, queue_key: 'event:context-2', shop_code: 'EV-booth-2', shop_name: 'บูธ A2', event_booth: 'A2', event_zone: 'เครื่องดื่ม' };
+    const otherEvent = { ...event, queue_key: 'event:context-3', shop_code: 'EV-booth-3', shop_name: 'บูธ B1', event_booth: 'B1', event_name: 'งานแฟร์' };
+    const queue = [regular, event, secondZone, otherEvent];
+    const paymentHistory: PaymentHistoryItem[] = queue.map((shop, index) => ({
+      ...shop, id: `payment-${index}`, receipt_number: `REC-${index}`, received_amount: 100, allocated_amount: 100,
+      change_amount: 0, payment_method: 'cash', status: 'active', recorded_at: '2026-09-03T08:00:00.000Z',
+      void_reason: null, shops: { code: shop.shop_code, name: shop.shop_name },
+    }));
+    render(<CollectionDesk busy={false} historyDate="2026-09-03" serviceDate="2026-09-03"
+      onClearShop={vi.fn()} onHistoryDateChange={vi.fn()} onOpenReceipt={vi.fn()} onPrintReceipt={vi.fn()}
+      onRefresh={vi.fn()} onSelectShop={vi.fn()} onVoidPayment={vi.fn()} paymentHistory={paymentHistory}
+      paymentPanel={null} queue={tab === 'collected' ? [] : queue} runId="run-1" selectedShop={null} todayPayments={[]} />);
+    if (tab !== 'outstanding') await user.click(screen.getByRole('tab', { name: tab === 'collected' ? /ประวัติรับเงิน/ : 'ทั้งหมด' }));
+
+    const location = screen.getByLabelText('เลือกตึกหรืออีเวนต์');
+    const zone = screen.getByLabelText('เลือกโซน');
+    expect(within(location).getAllByRole('option')).toHaveLength(4);
+    await user.selectOptions(location, within(location).getByRole('option', { name: 'งานกาชาด' }));
+    expect(screen.getAllByRole('button', { name: /^เลือกรายการ/ })).toHaveLength(tab === 'all' ? 4 : 2);
+    expect(within(zone).queryByRole('option', { name: /งานแฟร์/ })).toBeNull();
+    await user.selectOptions(zone, within(zone).getByRole('option', { name: 'อาหาร', exact: true }));
+    expect(screen.getAllByRole('button', { name: /^เลือกรายการ/ })).toHaveLength(tab === 'all' ? 2 : 1);
+    expect(screen.queryByRole('button', { name: 'เลือกรายการ บูธ A2' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'เลือกรายการ บูธ B1' })).toBeNull();
+
+    await user.selectOptions(location, 'building-c');
+    expect((zone as HTMLSelectElement).value).toBe('');
+    expect(screen.getAllByRole('button', { name: /^เลือกรายการ/ })).toHaveLength(tab === 'all' ? 2 : 1);
+    expect(screen.queryByRole('button', { name: 'เลือกรายการ บูธ A1' })).toBeNull();
+  });
+
   it('shows and searches event context when one shop has regular and event debt', async () => {
     const onSelectShop = vi.fn();
     const regular = queueEntry({});

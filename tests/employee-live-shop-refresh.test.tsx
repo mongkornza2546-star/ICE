@@ -1845,3 +1845,21 @@ it.each(['online', 'visibilitychange'])('retries a failed balance read on %s wit
   expect(screen.getByText(/ยอดรอรับชำระ.*120/)).toBeTruthy();
   expect(screen.queryByText('โหลดยอดรอรับชำระไม่สำเร็จ')).toBeNull();
 });
+
+
+it('loads event settlement balances as well as regular shop balances for POS', async () => {
+  supabaseMock.client.rpc.mockResolvedValue({ data: { status: 'open', collection_run_id: 'run-1', queue: [
+    { queue_key: 'regular:shop-1', shop_id: 'shop-1', destination_kind: 'regular', outstanding_amount: 240 },
+    { queue_key: 'event:context-1', shop_id: 'shop-1', destination_kind: 'event',
+      event_participation_id: 'participation-1', outstanding_amount: '160.75' },
+    { queue_key: 'event:context-2', shop_id: 'shop-1', destination_kind: 'event',
+      event_participation_id: 'participation-1', outstanding_amount: 90 },
+  ] }, error: null });
+  const result = await createSupabaseGateway().loadCollectionOutstanding!('2026-09-25');
+  expect(supabaseMock.client.rpc).toHaveBeenCalledWith('get_daily_shop_collection_queue', { p_service_date: '2026-09-25' });
+  expect(result).toEqual([
+    { queueKey: 'regular:shop-1', shopId: 'shop-1', outstandingAmount: 240 },
+    { queueKey: 'event:context-1', shopId: 'shop-1', eventParticipationId: 'participation-1', outstandingAmount: 160.75 },
+    { queueKey: 'event:context-2', shopId: 'shop-1', eventParticipationId: 'participation-1', outstandingAmount: 90 },
+  ]);
+});

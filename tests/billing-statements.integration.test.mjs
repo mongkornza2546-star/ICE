@@ -1135,3 +1135,94 @@ test('employee billing includes delivered ice quantities for printing', async (t
   assert.deepEqual(accounts[0].charges.find((charge) => charge.charge_id === oldBill).items,
     [{ ice_type_id: iceId, name: 'หลอดเล็ก', unit: 'ถุง', quantity: 6.5 }]);
 });
+
+// Exercise the production queue/history read models, including receipts without
+// a delivery event (event tank rental) and snapshots on delivered ice.
+test('collection event identity survives recurring jobs, rental-only payments, and closed days', async (t) => {
+  const db = await createDatabase(t);
+  await db.exec(`alter table event_jobs add start_date date, add end_date date;`);
+  await db.exec(migration('0248_closed_day_collection_queue'));
+  const today = (await db.query("select (clock_timestamp() at time zone 'Asia/Bangkok')::date::text as date")).rows[0].date;
+  const jobIds = [requestKey(701), requestKey(702)];
+  const participationIds = [requestKey(711), requestKey(712)];
+  const contextIds = [requestKey(721), requestKey(722)];
+  const chargeIds = [oldBill, newBill];
+  for (let index = 0; index < 2; index++) {
+    await db.query(`insert into event_jobs values ($1, 'งานแฟร์', 'ตึก C', $2::date - $3::int, $2::date - $3::int)`,
+      [jobIds[index], today, index === 0 ? 30 : 0]);
+    await db.query(`insert into event_participations(id, event_job_id, event_zone, booth_number, allowed_payment_methods_snapshot)
+      values ($1, $2, 'อาหาร', $3, '{cash}')`, [participationIds[index], jobIds[index], `A${index + 1}`]);
+    await db.query(`insert into event_settlement_contexts(id, event_participation_id, service_date, settlement_policy_fingerprint, shop_id)
+      values ($1, $2, $3::date - $4::int, 'policy-1', $5)`,
+    [contextIds[index], participationIds[index], today, index === 0 ? 30 : 0, shopId]);
+    await db.query(`update delivery_charges set event_settlement_context_id=$1, payment_term='end_of_day',
+      service_date=$2::date - $3::int where id=$4`, [contextIds[index], today, index === 0 ? 30 : 0, chargeIds[index]]);
+  }
+  assert.ok((await shopQueue(db)).every(row => row.event_job_id === undefined));
+
+  // Rental-only: the charge deliberately has no delivery_event_id/round_stop.
+  const payment = (await db.query(`select public.record_event_payment($1, $2, $3::date, 'policy-1', $4::jsonb,
+    'cash', 25, null, null, $5, 75, $6) as result`, [contextIds[1], participationIds[1], today,
+    JSON.stringify([{ charge_id: newBill, amount: 25 }]), runId, requestKey(730)])).rows[0].result;
+  const history = async () => (await db.query('select public.get_payment_history($1::date,$1::date,100,null,null) as result', [today])).rows[0].result;
+  assert.equal((await history()).items[0].event_name, null, 'reproduces missing rental event metadata before migration');
+  await db.exec(migration('20261027134141_collection_event_identity'));
+  const enrichedQueue = await shopQueue(db);
+  assert.deepEqual(new Set(enrichedQueue.map(row => row.event_job_id)), new Set(jobIds));
+  assert.equal(enrichedQueue.find(row => row.event_job_id === jobIds[1]).event_start_date, today);
+  assert.equal(enrichedQueue.find(row => row.event_job_id === jobIds[1]).event_end_date, today);
+  const receipt = (await history()).items.find(row => row.id === payment.payment_id);
+  assert.equal(receipt.event_job_id, jobIds[1]);
+  assert.equal(receipt.event_start_date, today);
+  assert.equal(receipt.event_end_date, today);
+  assert.equal(receipt.event_name, 'งานแฟร์');
+  assert.equal(receipt.event_location, 'ตึก C');
+  assert.equal(receipt.event_zone, 'อาหาร');
+  assert.equal(receipt.event_booth, 'A2');
+  assert.equal(Number(receipt.allocated_amount), 25);
+  assert.ok(Object.hasOwn(receipt, 'received_date_override'), 'existing received-date metadata survives');
+  assert.ok(Object.hasOwn(receipt, 'entered_at'));
+
+  // A real delivery keeps its original display snapshots, while identity stays
+  // tied to the job rather than a name/venue snapshot.
+  await db.query(`insert into round_stops(id, event_job_name_snapshot, event_location_snapshot, event_zone_snapshot, event_booth_snapshot)
+    values ($1, 'ชื่อในใบส่ง', 'สถานที่ในใบส่ง', 'โซนในใบส่ง', 'บูธในใบส่ง')`, [requestKey(740)]);
+  await db.query('insert into delivery_events values ($1,$2)', [requestKey(741), requestKey(740)]);
+  await db.query('update delivery_charges set delivery_event_id=$1 where id=$2', [requestKey(741), newBill]);
+  const snapshotReceipt = (await history()).items[0];
+  assert.equal(snapshotReceipt.event_job_id, jobIds[1]);
+  assert.equal(snapshotReceipt.event_name, 'ชื่อในใบส่ง');
+  assert.equal(snapshotReceipt.event_location, 'สถานที่ในใบส่ง');
+  assert.equal(snapshotReceipt.event_zone, 'โซนในใบส่ง');
+  assert.equal(snapshotReceipt.event_booth, 'บูธในใบส่ง');
+
+  await db.query(`insert into delivery_charges(id, shop_id, payment_term, due_date, created_at, service_date,
+    outstanding_amount, original_amount, collection_run_id)
+    values ($1, $2, 'end_of_day', $3, now(), $3, 20, 20, $4)`, [otherShopBill, shopId, today, runId]);
+  await shopPay(db, [{ charge_id: otherShopBill, amount: 10 }], { expected: 20, key: 750 });
+  const regular = (await history()).items.find(row => row.destination_kind === 'regular');
+  assert.equal(regular.event_job_id, null);
+  assert.equal(regular.event_name, null);
+  assert.equal(Number(regular.allocated_amount), 10);
+  const firstPage = (await db.query('select public.get_payment_history($1::date,$1::date,1,null,null) as result', [today])).rows[0].result;
+  const secondPage = (await db.query('select public.get_payment_history($1::date,$1::date,1,$2,$3) as result',
+    [today, firstPage.next_cursor.recorded_at, firstPage.next_cursor.id])).rows[0].result;
+  assert.equal(firstPage.items.length, 1);
+  assert.equal(secondPage.items.length, 1);
+  assert.notEqual(firstPage.items[0].id, secondPage.items[0].id);
+  assert.equal(Number(firstPage.range_summary.active_allocated_amount), 35);
+
+  const open = await shopQueue(db);
+  await db.exec("update collection_runs set status='closed'");
+  const closed = (await db.query('select public.get_daily_shop_collection_queue($1) as result', [today])).rows[0].result;
+  assert.deepEqual(closed.queue, open);
+  assert.equal(closed.status, 'closed');
+  await db.exec("set test.visible='false'");
+  assert.deepEqual((await history()).items, []);
+  assert.equal((await history()).range_summary.visible_payment_count, 0);
+  await db.exec('create or replace function public.is_active_user() returns boolean language sql as $$ select false $$');
+  await assert.rejects(history(), /active user/);
+  await assert.rejects(shopQueue(db), /active user/);
+  assert.equal((await db.query(`select has_function_privilege('authenticated',
+    'public.get_shop_collection_queue_for_date(date,uuid)', 'execute') as allowed`)).rows[0].allowed, false);
+});

@@ -5,7 +5,7 @@ import type { ShopCard, EmployeeStockState } from '../../types/app';
 import { FilterChips } from './FilterChips';
 import { EmployeeState } from './EmployeeState';
 import { EmployeeDestinationTabs } from './EmployeeDestinationTabs';
-import { isBoothSameAsName, statusTone } from './utils';
+import { isBoothSameAsName, shopOutstandingKey, statusTone } from './utils';
 import { STATUS_LABELS } from './constants';
 import { translateUi, useLanguage } from '../../i18n';
 
@@ -196,9 +196,10 @@ export function EmployeeShopPicker({
     const buttonAriaLabel = isEvent
       ? `${language === 'my' ? 'ဆိုင်ရွေးရန်' : 'เลือกร้าน'} ${[boothText, card.shop_name].filter(Boolean).join(' ')}`
       : `${language === 'my' ? 'ဆိုင်ရွေးရန်' : 'เลือกร้าน'} ${card.shop_code} ${card.shop_name}`;
+    const outstandingKey = shopOutstandingKey(card);
     const outstandingAmount = collectionOutstanding === null
       ? undefined
-      : collectionOutstanding[card.shop_id] ?? 0;
+      : collectionOutstanding[outstandingKey] ?? 0;
     const outstandingLabel = collectionOutstandingError
       ? translateUi('โหลดยอดรอรับชำระไม่สำเร็จ')
       : outstandingAmount === undefined
@@ -232,8 +233,7 @@ export function EmployeeShopPicker({
         <button
           aria-label={buttonAriaLabel}
           className="employee-shop-tile__select"
-          disabled={(enableAssignedStockFlow && !stockState)
-            || (isEvent && (!card.event_delivery_enabled || !card.is_operational))}
+          disabled={enableAssignedStockFlow && !stockState}
           onClick={() => openCard(card)}
           ref={(node) => {
             if (node) shopButtonRefs.current.set(card.round_stop_id, node);
@@ -256,7 +256,7 @@ export function EmployeeShopPicker({
             <small>{isEvent
               ? `${card.event_name} · ${card.event_location}${card.event_zone ? translateUi(' · โซน {0}', { 0: card.event_zone }) : ''}`
               : `${card.building_name} · ${card.floor_or_zone}`}</small>
-            {!isEvent ? <span className="employee-shop-tile__outstanding">{outstandingLabel}</span> : null}
+            <span className="employee-shop-tile__outstanding">{outstandingLabel}</span>
             {isEvent && !card.event_delivery_enabled
               ? <span>{translateUi('ยังไม่เปิดบันทึกส่งน้ำแข็ง')}</span>
               : null}
@@ -278,7 +278,7 @@ export function EmployeeShopPicker({
         </div>
       </div>
 
-      {!enableAssignedStockFlow && destinationKind === 'regular' && collectionOutstandingError ? (
+      {!enableAssignedStockFlow && collectionOutstandingError ? (
         <div className="employee-error employee-error--retry" role="alert">
           <span><WarningCircle aria-hidden="true" size={22} />
             {translateUi('ยอดรอรับชำระ')}: {translateUi(collectionOutstandingError)}</span>

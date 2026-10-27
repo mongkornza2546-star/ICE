@@ -17,7 +17,7 @@ import type {
 } from '../../types/app';
 import type { EmployeeDeliveryGateway, EmployeeDeliveryDraftState, EmployeeDeliveryPayload } from '../../EmployeeDeliveryWorkspace';
 import { usePendingRequests, type PendingRequestIdentity } from './usePendingRequests';
-import { compareShopCodes, normalizeSearch, stockQuantity, employeeErrorMessage } from './utils';
+import { compareShopCodes, normalizeSearch, stockQuantity, employeeErrorMessage, shopOutstandingKey } from './utils';
 import { clearRecovery, readRecovery, writeRecovery } from '../../lib/recoveryStorage';
 import { printSalesDocumentForCurrentPlatform, salesDocumentFromStored, type StoredSalesDocument } from '../../lib/salesDocumentPrint';
 import { publishDataChange } from '../../lib/dataChange';
@@ -668,9 +668,13 @@ export function useEmployeeDeliveryData({
     try {
       const summaries = await gateway.loadCollectionOutstanding(toBangkokDateString());
       if (requestId !== collectionOutstandingRequestId.current) return;
-      setCollectionOutstanding(Object.fromEntries(
-        summaries.map((summary) => [summary.shopId, summary.outstandingAmount]),
-      ));
+      const outstanding: Record<string, number> = {};
+      for (const summary of summaries) {
+        // A booth can have separate settlement queues across multiple days.
+        const key = summary.eventParticipationId ? `event:${summary.eventParticipationId}` : summary.shopId;
+        outstanding[key] = (outstanding[key] ?? 0) + summary.outstandingAmount;
+      }
+      setCollectionOutstanding(outstanding);
       if (collectionCloseResult?.status === 'completed') {
         handledCollectionCloseRequestId.current = collectionCloseResult.requestId;
       }
@@ -810,13 +814,10 @@ export function useEmployeeDeliveryData({
   };
 
   const openCardFromPicker = (card: ShopCard) => {
-    if ((card.destination_kind ?? 'regular') === 'event') {
-      openCard(card);
-      return;
-    }
     const outstandingKnown = collectionOutstanding !== null;
-    const outstandingAmount = collectionOutstanding?.[card.shop_id] ?? 0;
+    const outstandingAmount = collectionOutstanding?.[shopOutstandingKey(card)] ?? 0;
     const needsTaskChoice = card.stop_status !== 'pending'
+      || (card.destination_kind === 'event' && (!card.event_delivery_enabled || !card.is_operational))
       || !outstandingKnown
       || Boolean(collectionOutstandingError)
       || outstandingAmount > 0;
@@ -868,14 +869,18 @@ export function useEmployeeDeliveryData({
   const openCollectionFromTaskChoice = () => {
     const card = cards.find((candidate) => candidate.round_stop_id === taskChoiceCardId);
     if (!card || !onOpenCollection || !canCollectShopPayments) return;
-    const outstandingAmount = collectionOutstanding?.[card.shop_id];
+    const outstandingKey = shopOutstandingKey(card);
+    const outstandingAmount = collectionOutstanding?.[outstandingKey];
     if (outstandingAmount === undefined || outstandingAmount <= 0 || collectionOutstandingError) return;
+    const eventParticipationId = card.destination_kind === 'event' ? card.event_participation_id : undefined;
+    if (card.destination_kind === 'event' && !eventParticipationId) return;
     const requestId = newCollectionRequestId();
     const request: CollectionFocusRequest = {
       requestId,
       source: 'pos-shortcut',
       shopId: card.shop_id,
-      queueKey: `regular:${card.shop_id}`,
+      queueKey: eventParticipationId ? `event-participation:${eventParticipationId}` : `regular:${card.shop_id}`,
+      ...(eventParticipationId ? { eventParticipationId } : {}),
       returnContextId: requestId,
     };
     persistCollectionReturn(request, card);

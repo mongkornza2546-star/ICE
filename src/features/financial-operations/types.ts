@@ -42,6 +42,9 @@ export type QueueShop = {
   billing_statement_number?: string | null;
   event_settlement_context_id?: string | null;
   event_participation_id?: string | null;
+  event_job_id?: string | null;
+  event_start_date?: string | null;
+  event_end_date?: string | null;
   settlement_service_date?: string | null;
   settlement_policy_fingerprint?: string | null;
   event_name?: string | null;
@@ -242,6 +245,9 @@ export type PaymentHistoryItem = {
   destination_kind?: 'regular' | 'event';
   event_settlement_context_id?: string | null;
   event_participation_id?: string | null;
+  event_job_id?: string | null;
+  event_start_date?: string | null;
+  event_end_date?: string | null;
   settlement_service_date?: string | null;
   event_name?: string | null;
   event_location?: string | null;

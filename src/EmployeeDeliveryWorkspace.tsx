@@ -25,6 +25,7 @@ import { EmployeeState } from './features/employee-delivery/EmployeeState';
 import { EmployeeStockTransferSection } from './features/employee-delivery/EmployeeStockTransferSection';
 import { EmployeeShopPicker } from './features/employee-delivery/EmployeeShopPicker';
 import { EmployeeShopTaskChoice } from './features/employee-delivery/EmployeeShopTaskChoice';
+import { shopOutstandingKey } from './features/employee-delivery/utils';
 import { DailyCreditAcknowledgementPanel } from './features/financial-operations/components/DailyCreditAcknowledgementPanel';
 import { EmployeeCasualCustomerPage } from './features/employee-delivery/EmployeeCasualCustomerPage';
 import { EmployeeDeliveryReview } from './features/employee-delivery/EmployeeDeliveryReview';
@@ -461,10 +462,10 @@ export function createSupabaseGateway(): EmployeeDeliveryGateway {
     async loadCollectionOutstanding(collectionServiceDate) {
       const { queue } = await loadCurrentCollectionQueue(collectionServiceDate);
       return queue
-        .filter((shop) => (shop.destination_kind ?? 'regular') === 'regular')
         .map((shop) => ({
           queueKey: shop.queue_key ?? `regular:${shop.shop_id}`,
           shopId: shop.shop_id,
+          eventParticipationId: shop.event_participation_id,
           outstandingAmount: Number(shop.outstanding_amount),
         }));
     },
@@ -1011,7 +1012,7 @@ export function EmployeeDeliveryWorkspace({
           onSend={data.sendFromTaskChoice}
           outstandingAmount={data.collectionOutstanding === null
             ? undefined
-            : data.collectionOutstanding[data.taskChoiceCard.shop_id] ?? 0}
+            : data.collectionOutstanding[shopOutstandingKey(data.taskChoiceCard)] ?? 0}
           outstandingError={data.collectionOutstandingError}
           outstandingLoading={data.collectionOutstandingLoading}
         />}

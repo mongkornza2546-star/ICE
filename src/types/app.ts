@@ -20,6 +20,7 @@ export interface CollectionFocusRequest {
   source: 'delivery' | 'pos-shortcut';
   shopId: string;
   queueKey: string;
+  eventParticipationId?: string;
   chargeId?: string;
   returnContextId: string;
 }
@@ -34,6 +35,7 @@ export interface CollectionCloseResult {
 export interface CollectionOutstandingSummary {
   queueKey: string;
   shopId: string;
+  eventParticipationId?: string | null;
   outstandingAmount: number;
 }
 

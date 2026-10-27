@@ -70,13 +70,30 @@ function outstandingType(shop: QueueShop) {
 
 const serviceDateTime = uiDateTimeFormat({ day: 'numeric', month: 'numeric', year: '2-digit' });
 
+function collectionLocation(item: QueueShop | PaymentHistoryItem) {
+  if (item.destination_kind === 'event') {
+    // Keep older API responses usable while the event identity migration rolls out.
+    const id = item.event_job_id ? `event:${item.event_job_id}`
+      : `event:legacy:${JSON.stringify([item.event_name ?? '', item.event_location ?? ''])}`;
+    const dates = [...new Set([item.event_start_date, item.event_end_date].filter((date): date is string => Boolean(date)))];
+    const dateLabel = dates.map((date) => serviceDateTime.format(new Date(`${date}T12:00:00+07:00`))).join(' – ');
+    return {
+      id,
+      name: [item.event_name || item.event_location || translateUi('อีเวนต์'), dateLabel].filter(Boolean).join(' · '),
+      zoneId: item.event_zone ? `${id}:${JSON.stringify(item.event_zone)}` : null,
+      zoneName: item.event_zone,
+    };
+  }
+  return { id: item.building_id, name: item.building_name, zoneId: item.zone_id, zoneName: item.zone_name };
+}
+
 function eventContextLabel(
   item: Pick<QueueShop, 'destination_kind' | 'event_name' | 'event_location' | 'event_zone' | 'event_booth'>,
   isEventOnly = false,
 ) {
-  if (item.destination_kind !== 'event' || isEventOnly) return null;
+  if (item.destination_kind !== 'event') return null;
   return [item.event_name, item.event_location, item.event_zone,
-    item.event_booth && `บูธ ${item.event_booth}`].filter(Boolean).join(' · ');
+    !isEventOnly && item.event_booth && `บูธ ${item.event_booth}`].filter(Boolean).join(' · ');
 }
 
 export function CollectionDesk({
@@ -139,7 +156,8 @@ export function CollectionDesk({
     const found = new Map<string, string>();
     const items = filter === 'outstanding' ? queue : filter === 'collected' ? paymentHistory : [...queue, ...paymentHistory];
     items.forEach((item) => {
-      if (item.building_id && item.building_name) found.set(item.building_id, item.building_name);
+      const location = collectionLocation(item);
+      if (location.id && location.name) found.set(location.id, location.name);
     });
     return [...found].map(([id, name]) => ({ id, name })).sort((left, right) => left.name.localeCompare(right.name, 'th'));
   }, [filter, paymentHistory, queue]);
@@ -148,8 +166,9 @@ export function CollectionDesk({
     const found = new Map<string, { name: string; buildingName: string | null }>();
     const items = filter === 'outstanding' ? queue : filter === 'collected' ? paymentHistory : [...queue, ...paymentHistory];
     items.forEach((item) => {
-      if ((!buildingId || item.building_id === buildingId) && item.zone_id && item.zone_name) {
-        found.set(item.zone_id, { name: item.zone_name, buildingName: item.building_name ?? null });
+      const location = collectionLocation(item);
+      if ((!buildingId || location.id === buildingId) && location.zoneId && location.zoneName) {
+        found.set(location.zoneId, { name: location.zoneName, buildingName: location.name ?? null });
       }
     });
     return [...found].map(([id, zone]) => ({ id, ...zone }))
@@ -189,8 +208,9 @@ export function CollectionDesk({
       .filter((shop) => {
         const matchesQuery = !normalizedQuery || `${shop.shop_code} ${shop.shop_name} ${shop.billing_statement_number ?? ''} ${shop.event_name ?? ''} ${shop.event_location ?? ''} ${shop.event_zone ?? ''} ${shop.event_booth ?? ''} ${shop.charges.map((charge) => `${charge.charge_number ?? ''} ${charge.billing_statement_number ?? ''}`).join(' ')}`
           .toLocaleLowerCase().includes(normalizedQuery);
-        const matchesBuilding = !buildingId || shop.building_id === buildingId;
-        const matchesZone = !zoneId || shop.zone_id === zoneId;
+        const location = collectionLocation(shop);
+        const matchesBuilding = !buildingId || location.id === buildingId;
+        const matchesZone = !zoneId || location.zoneId === zoneId;
         return matchesQuery && matchesBuilding && matchesZone;
       })
       .map((shop) => {
@@ -223,8 +243,9 @@ export function CollectionDesk({
       .filter((payment) => {
         const matchesQuery = `${payment.shops?.code ?? ''} ${payment.shops?.name ?? ''} ${payment.event_name ?? ''} ${payment.event_location ?? ''} ${payment.event_zone ?? ''} ${payment.event_booth ?? ''} ${payment.receipt_number}`
           .toLocaleLowerCase().includes(normalizedQuery);
-        const matchesBuilding = !buildingId || payment.building_id === buildingId;
-        const matchesZone = !zoneId || payment.zone_id === zoneId;
+        const location = collectionLocation(payment);
+        const matchesBuilding = !buildingId || location.id === buildingId;
+        const matchesZone = !zoneId || location.zoneId === zoneId;
         const matchesMethod = filter !== 'collected' || paymentMethod === 'all' || (paymentMethod === 'cash' ? payment.payment_method === 'cash' : payment.payment_method !== 'cash');
         const matchesStatus = filter !== 'collected' || paymentStatus === 'all' || payment.status === paymentStatus;
         return matchesQuery && matchesBuilding && matchesZone && matchesMethod && matchesStatus;
@@ -383,12 +404,12 @@ export function CollectionDesk({
                 value={query}
               />
             </label>
-            <label>{translateUi('ตึก')}<select
-                aria-label={translateUi('เลือกตึก')}
+            <label>{translateUi('ตึก / อีเวนต์')}<select
+                aria-label={translateUi('เลือกตึกหรืออีเวนต์')}
                 onChange={(event) => { setBuildingId(event.target.value); setZoneId(''); setPage(0); }}
                 value={buildingId}
               >
-                <option value="">{translateUi('ทุกตึก ')}{buildings.length > 0 ? `(${buildings.length})` : ''}</option>
+                <option value="">{translateUi('ทุกตึก / อีเวนต์ ')}{buildings.length > 0 ? `(${buildings.length})` : ''}</option>
                 {buildings.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
               </select>
             </label>

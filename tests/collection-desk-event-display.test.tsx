@@ -114,6 +114,7 @@ describe('CollectionDesk event booth display', () => {
 
     // Should display clean title "บูธ ศาลปกครองพิเศษ"
     expect(screen.getByText('บูธ ศาลปกครองพิเศษ')).toBeTruthy();
+    expect(screen.getByText('งานกาชาด · ตึก C · โซนอาหาร')).toBeTruthy();
     // Avatar text should be "ศา"
     expect(screen.getByText('ศา')).toBeTruthy();
     // Internal UUID EV-6f49... should NOT be visible anywhere

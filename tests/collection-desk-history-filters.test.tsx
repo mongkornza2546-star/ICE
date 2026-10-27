@@ -52,7 +52,7 @@ describe('CollectionDesk history filters', () => {
     />);
 
     await user.click(screen.getByRole('tab', { name: /ประวัติรับเงิน/ }));
-    const building = screen.getByLabelText('เลือกตึก') as HTMLSelectElement;
+    const building = screen.getByLabelText('เลือกตึกหรืออีเวนต์') as HTMLSelectElement;
     const zone = screen.getByLabelText('เลือกโซน') as HTMLSelectElement;
     expect(screen.getByRole('option', { name: 'ตึก B' })).toBeTruthy();
     expect(zone.disabled).toBe(false);
