@@ -307,17 +307,25 @@ export function EmployeeShopPicker({
       </label>
 
       {selectedRoundId ? (
-        <>
-          {destinationKind === 'regular' ? <FilterChips
-            icon={<Buildings aria-hidden="true" size={19} />}
-            label={translateUi('ตึก')}
-            onChange={(value) => {
-              setSelectedBuildingId(value);
-              setSelectedZone('');
-            }}
-            options={[{ value: '', label: translateUi('ทุกตึก') }, ...buildingOptions.map((item) => ({ value: item.id, label: item.name }))]}
-            value={selectedBuildingId}
-          /> : <FilterChips
+        <div className="employee-shop-location-filters">
+          {destinationKind === 'regular' ? (
+            <label className="employee-shop-location-filter">
+              <span><Buildings aria-hidden="true" size={19} />{translateUi('ตึก')}</span>
+              <select
+                onChange={(event) => {
+                  setSelectedBuildingId(event.target.value);
+                  setSelectedZone('');
+                }}
+                value={selectedBuildingId}
+              >
+                <option value="">{translateUi('ทุกตึก')}</option>
+                {selectedBuildingId && !buildingOptions.some((item) => item.id === selectedBuildingId) ? (
+                  <option value={selectedBuildingId}>{translateUi('ตึกที่เลือกไม่อยู่ในรายการ')}</option>
+                ) : null}
+                {buildingOptions.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+              </select>
+            </label>
+          ) : <FilterChips
             icon={<Storefront aria-hidden="true" size={19} />}
             label={translateUi('งาน')}
             onChange={(value) => {
@@ -327,14 +335,17 @@ export function EmployeeShopPicker({
             options={[{ value: '', label: translateUi('ทุกงาน') }, ...eventOptions.map((item) => ({ value: item.id, label: item.name }))]}
             value={selectedEventJobId}
           />}
-          <FilterChips
-            icon={<MapPin aria-hidden="true" size={19} />}
-            label={translateUi('โซน')}
-            onChange={setSelectedZone}
-            options={[{ value: '', label: translateUi('ทุกโซน') }, ...zoneOptions.map((zone) => ({ value: zone, label: zone }))]}
-            value={selectedZone}
-          />
-        </>
+          <label className="employee-shop-location-filter">
+            <span><MapPin aria-hidden="true" size={19} />{translateUi('โซน')}</span>
+            <select onChange={(event) => setSelectedZone(event.target.value)} value={selectedZone}>
+              <option value="">{translateUi('ทุกโซน')}</option>
+              {selectedZone && !zoneOptions.includes(selectedZone) ? (
+                <option value={selectedZone}>{translateUi('{0} (ไม่อยู่ในรายการ)', { 0: selectedZone })}</option>
+              ) : null}
+              {zoneOptions.map((zone) => <option key={zone} value={zone}>{zone}</option>)}
+            </select>
+          </label>
+        </div>
       ) : null}
 
       {destinationKind === 'event' && eventCardsError ? (

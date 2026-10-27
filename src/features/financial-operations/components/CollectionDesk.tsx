@@ -17,7 +17,7 @@ import {
 } from '@phosphor-icons/react';
 import { shiftServiceDate } from '../../../lib/serviceDate';
 import type { PaymentHistoryItem, QueueShop } from '../types';
-import { formatCollectionShopIdentity, money, paymentMethodLabel, formatPaymentReceivedAt, receiptDateTime } from '../utils';
+import { formatCollectionShopIdentity, formatServiceDate, money, paymentMethodLabel, formatPaymentReceivedAt, receiptDateTime } from '../utils';
 import { isBoothSameAsName } from '../../employee-delivery/utils';
 import { AutoRefreshShopImage } from './AutoRefreshShopImage';
 import './CollectionDesk.css';
@@ -577,6 +577,10 @@ export function CollectionDesk({
                           ? ''
                           : shop.shop_name}</b>
                         {row.contextLabel ? <small>{row.contextLabel}</small> : null}
+                        {shop.destination_kind === 'event' ? <>
+                          <b>{shop.settlement_service_date ? formatServiceDate(shop.settlement_service_date) : row.latestDate}</b>
+                          <small>{shop.charges.map((charge) => charge.charge_number).filter(Boolean).join(', ')}</small>
+                        </> : null}
                         <small><ListNumbers aria-hidden="true" size={15} /> {shop.charge_count}{translateUi(' รายการค้าง')}</small>
                         <em>{money.format(row.amount)}</em>
                       </span>

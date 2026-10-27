@@ -60,7 +60,7 @@ export function CollectionRunSection({
   return (
     <section aria-label={eventScope ? translateUi('บิลค้างของบูธ') : undefined} className="financial-ops__section">
       <div className="financial-ops__title">
-        <div><Coins /><span><h2>{translateUi(eventScope ? 'เลือกบิลที่ต้องการรับชำระ' : 'คิวรับเงินร้านค้า')}</h2>
+        <div><Coins /><span><h2>{translateUi('คิวรับเงินร้านค้า')}</h2>
           <p>{eventScope
             ? `${translateUi('ยอดรอรับชำระทั้งหมด')} ${money.format(queue.reduce((total, shop) => total + Number(shop.outstanding_amount), 0))}`
             : translateUi('รวมยอดที่ถึงกำหนดและยอดค้างโดยอัตโนมัติ')}</p>

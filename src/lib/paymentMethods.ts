@@ -9,5 +9,6 @@ export function normalizePaymentMethods(methods: PaymentMethod[]): PaymentMethod
 }
 
 export function visiblePaymentMethods(methods: PaymentMethod[]): PaymentMethod[] {
-  return methods.includes('bank_transfer') ? methods.filter((method) => method !== 'qr') : methods;
+  const visibleMethods = methods.includes('bank_transfer') ? methods.filter((method) => method !== 'qr') : [...methods];
+  return visibleMethods.sort((a, b) => Number(b === 'cash') - Number(a === 'cash'));
 }

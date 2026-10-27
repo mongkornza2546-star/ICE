@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { EmployeeDeliveryWorkspace, type EmployeeDeliveryGateway } from '../src/EmployeeDeliveryWorkspace';
 import { FinancialOperations } from '../src/FinancialOperations';
-import type { QueueShop } from '../src/features/financial-operations/types';
+import type { PaymentHistoryItem, QueueShop } from '../src/features/financial-operations/types';
 import type { ShopCard, CollectionCloseResult, CollectionFocusRequest } from '../src/types/app';
 const api = vi.hoisted(() => {
   const channel = { on: vi.fn().mockReturnThis(), subscribe: vi.fn().mockReturnThis() };
@@ -46,13 +46,13 @@ function gateway(queue: QueueShop[], override: Partial<ShopCard> = {}): Employee
     recordEmployeeStockDamage: vi.fn(), recordDelivery: vi.fn(), recordImmediateSale: vi.fn(),
   };
 }
-it.each([false, true])('shows every event settlement before choosing a payment date (reversed: %s)', async reversed => {
+it.each(['courier', 'admin', 'round_lead'] as const)('opens the standard collection queue with every event settlement (%s)', async userRole => {
   const queue = [row('old', 100.25, '2026-10-26'), row('new', 60.5, date)];
-  if (reversed) queue.reverse();
+  if (userRole === 'admin') queue.reverse();
   const gw = gateway(queue);
   function Harness() {
     const [request, setRequest] = useState<CollectionFocusRequest | null>(null);
-    return request ? <FinancialOperations userRole="courier" canCollectShopPayments focusRequest={request}
+    return request ? <FinancialOperations userRole={userRole} canCollectShopPayments focusRequest={request}
       demoData={{ serviceDate: date, runId: 'run', queue, paymentHistory: [] }} />
       : <EmployeeDeliveryWorkspace gateway={gw} serviceDate={date} canCollectShopPayments onOpenCollection={setRequest} />;
   }
@@ -63,12 +63,12 @@ it.each([false, true])('shows every event settlement before choosing a payment d
   await user.click(screen.getByRole('button', { name: /^เลือกร้าน บูธ B1/ }));
   expect(screen.getByText('ยอดรอรับชำระ').parentElement?.textContent).toContain('160.75');
   await user.click(screen.getByRole('button', { name: 'รับชำระ', exact: true }));
-  const scope = await screen.findByRole('region', { name: 'บิลค้างของบูธ' });
-  expect(within(scope).getByText(/ยอดรอรับชำระทั้งหมด/).textContent).toContain('160.75');
+  await screen.findByRole('heading', { name: 'คิวเก็บเงินของฉัน' });
+  expect(screen.getByRole('heading', { name: 'คิวรับเงินร้านค้า' })).toBeTruthy();
+  expect(screen.queryByRole('heading', { name: 'เลือกบิลที่ต้องการรับชำระ' })).toBeNull();
   expect(screen.queryByRole('dialog')).toBeNull();
-  expect(within(scope).getByRole('button', { name: /INV-old/ })).toBeTruthy();
-  expect(within(scope).getByRole('button', { name: /INV-new/ })).toBeTruthy();
-  await user.click(within(scope).getByRole('button', { name: /INV-new/ }));
+  expect(screen.getByText('INV-old')).toBeTruthy();
+  await user.click(screen.getByText('INV-new').closest('button')!);
   const payment = await screen.findByRole('dialog');
   const received = within(payment).getByLabelText('ยอดรับเงินจริง') as HTMLInputElement;
   expect(received.value).toBe('60.50');
@@ -105,15 +105,22 @@ it.each(['courier', 'admin'] as const)('refreshes all contexts for the requested
     focusRequest={{ requestId: 'scope-1', source: 'pos-shortcut', shopId: 'shop',
       queueKey: 'event-participation:participation', eventParticipationId: 'participation', returnContextId: 'scope-1' }}
     onFocusedCollectionClose={onClose} />);
-  const scope = await screen.findByRole('region', { name: 'บิลค้างของบูธ' });
-  expect(within(scope).getAllByRole('button')).toHaveLength(2);
-  expect(within(scope).getByText(/ยอดรอรับชำระทั้งหมด/).textContent).toContain('160.75');
-  expect(within(scope).queryByRole('button', { name: /INV-other|INV-regular/ })).toBeNull();
+  await screen.findByRole('heading', { name: 'คิวเก็บเงินของฉัน' });
+  expect(screen.getByText('INV-old')).toBeTruthy();
+  expect(screen.getByText('INV-new')).toBeTruthy();
+  expect(screen.queryByText(/INV-other|INV-regular/)).toBeNull();
+  await userEvent.setup().click(screen.getByRole('button', { name: 'รีเฟรชยอดล่าสุด' }));
+  await waitFor(() => expect(api.loadQueue).toHaveBeenCalledTimes(2));
+  expect(screen.getByText('INV-old')).toBeTruthy();
+  expect(screen.queryByText(/INV-other|INV-regular/)).toBeNull();
   await userEvent.setup().click(screen.getByRole('button', { name: 'กลับ POS' }));
   expect(onClose).toHaveBeenCalledWith(expect.objectContaining({ requestId: 'scope-1', status: 'cancelled' }));
 });
 
-it.each(['completed', 'cancelled'] as const)('preserves the scope through actual payment and POS return (%s)', async status => {
+it.each([
+  { userRole: 'courier', status: 'completed' }, { userRole: 'courier', status: 'cancelled' },
+  { userRole: 'admin', status: 'completed' }, { userRole: 'admin', status: 'cancelled' },
+] as const)('preserves the scope through payment and POS return ($userRole, $status)', async ({ userRole, status }) => {
   let liveQueue = [row('old', 100.25, '2026-10-26'), row('new', 60.5, date)];
   const gw = gateway(liveQueue);
   vi.mocked(gw.loadCollectionOutstanding!).mockImplementation(async () => liveQueue.map(q => ({
@@ -137,7 +144,7 @@ it.each(['completed', 'cancelled'] as const)('preserves the scope through actual
         <EmployeeDeliveryWorkspace gateway={gw} serviceDate={date} canCollectShopPayments
           isActive={!request} onOpenCollection={setRequest} collectionCloseResult={result} requestScope="scoped-return" />
       </div>
-      {request ? <FinancialOperations userRole="courier" serviceDate={date} focusRequest={request}
+      {request ? <FinancialOperations userRole={userRole} serviceDate={date} focusRequest={request}
         onFocusedCollectionClose={result => { closed(result); setResult(result); setRequest(null); }} /> : null}
     </>;
   }
@@ -146,8 +153,8 @@ it.each(['completed', 'cancelled'] as const)('preserves the scope through actual
   await user.click(await screen.findByRole('button', { name: 'อีเว้น', exact: true }));
   await user.click(screen.getByRole('button', { name: /^เลือกร้าน บูธ B1/ }));
   await user.click(screen.getByRole('button', { name: 'รับชำระ', exact: true }));
-  const scope = await screen.findByRole('region', { name: 'บิลค้างของบูธ' });
-  await user.click(within(scope).getByRole('button', { name: /INV-old/ }));
+  await screen.findByRole('heading', { name: 'คิวเก็บเงินของฉัน' });
+  await user.click(screen.getByText('INV-old').closest('button')!);
   const payment = await screen.findByRole('dialog');
   expect((within(payment).getByLabelText('ยอดรับเงินจริง') as HTMLInputElement).value).toBe('100.25');
   if (status === 'completed') {
@@ -195,4 +202,54 @@ it('shows the task choice with both actions disabled for an unsendable booth wit
   expect(screen.getByRole('button', { name: 'ส่งเพิ่ม' }).hasAttribute('disabled')).toBe(true);
   expect(screen.getByRole('button', { name: 'รับชำระ' }).hasAttribute('disabled')).toBe(true);
   expect(screen.getByText('ไม่มียอดถึงกำหนด')).toBeTruthy();
+});
+
+
+it.each(['courier', 'admin'] as const)('keeps event payment history and totals scoped to the selected booth (%s)', async userRole => {
+  const queue = [row('old', 100.25, '2026-10-26'), row('new', 60.5, date)];
+  const payment = (id: string, overrides: Partial<PaymentHistoryItem> = {}): PaymentHistoryItem => ({
+    id, receipt_number: `REC-${id}`, received_amount: 20, allocated_amount: 20, change_amount: 0,
+    payment_method: 'cash', status: 'active', recorded_at: `${date}T06:00:00Z`, void_reason: null,
+    destination_kind: 'event', shop_id: 'shop', event_participation_id: 'participation',
+    shops: { code: 'EV-1', name: 'บูธ B1' }, ...overrides,
+  });
+  const history = [payment('target'), payment('other-booth', { event_participation_id: 'other' }),
+    payment('other-shop', { shop_id: 'other' }), payment('regular', { destination_kind: 'regular' })];
+  api.loadQueue.mockResolvedValue({ runId: 'run', queue, isClosed: false });
+  api.rpc.mockResolvedValue({ data: { items: history }, error: null });
+  render(<FinancialOperations userRole={userRole} serviceDate={date} focusRequest={{
+    requestId: 'history-scope', source: 'pos-shortcut', shopId: 'shop', queueKey: 'event-participation:participation',
+    eventParticipationId: 'participation', returnContextId: 'history-scope',
+  }} />);
+  await screen.findByRole('heading', { name: 'คิวเก็บเงินของฉัน' });
+  const historyTab = screen.queryByRole('tab', { name: /ประวัติรับเงิน/ });
+  if (historyTab) {
+    expect(screen.getByText('เก็บเงินวันนี้').parentElement?.textContent).toContain('฿20.00');
+  }
+  await userEvent.setup().click(historyTab ?? screen.getByRole('button', { name: 'ประวัติรับเงิน' }));
+  expect(await screen.findByText(/REC-target/)).toBeTruthy();
+  expect(screen.queryByText(/REC-other|REC-regular/)).toBeNull();
+});
+
+it('clears the previous payment success message when opening a new POS collection request', async () => {
+  let queue = [row('old', 100.25, '2026-10-26')];
+  api.loadQueue.mockImplementation(async () => ({ runId: 'run', queue, isClosed: false }));
+  api.rpc.mockImplementation(async name => name === 'record_event_payment'
+    ? { data: { payment_id: 'payment-old', receipt_number: 'REC-old', recorded_at: `${date}T06:00:00Z`,
+      allocated_amount: 100.25, change_amount: 0 }, error: null }
+    : { data: { items: [] }, error: null });
+  const request: CollectionFocusRequest = { requestId: 'first', source: 'pos-shortcut', shopId: 'shop',
+    queueKey: 'event-participation:participation', eventParticipationId: 'participation', returnContextId: 'first' };
+  const { rerender } = render(<FinancialOperations userRole="courier" serviceDate={date} focusRequest={request} />);
+  const user = userEvent.setup();
+  const modal = await screen.findByRole('dialog');
+  await user.click(within(modal).getByRole('button', { name: 'บันทึกรับเงินทันที' }));
+  await user.click(await within(modal).findByRole('button', { name: 'เสร็จสิ้น' }));
+  expect(screen.getByText('บันทึกรับเงินแล้ว')).toBeTruthy();
+  queue = [row('new', 60.5, date), row('next', 40, date)];
+  rerender(<FinancialOperations userRole="courier" serviceDate={date}
+    focusRequest={{ ...request, requestId: 'second', returnContextId: 'second' }} />);
+  await screen.findByRole('heading', { name: 'คิวเก็บเงินของฉัน' });
+  expect(screen.queryByText('บันทึกรับเงินแล้ว')).toBeNull();
+  expect(screen.queryByRole('dialog')).toBeNull();
 });

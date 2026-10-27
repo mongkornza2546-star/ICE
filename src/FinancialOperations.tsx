@@ -54,7 +54,7 @@ function queueIdentity(shop: QueueShop) {
   return shop.queue_key ?? `regular:${shop.shop_id}`;
 }
 
-function matchesEventFocus(shop: QueueShop, request: CollectionFocusRequest) {
+function matchesEventFocus(shop: QueueShop | PaymentHistoryItem, request: CollectionFocusRequest) {
   return Boolean(request.eventParticipationId
     && shop.destination_kind === 'event'
     && shop.shop_id === request.shopId
@@ -367,6 +367,7 @@ export function FinancialOperations({
       return;
     }
     setEmployeeView('queue');
+    setSuccess(null);
     setFocusLoadError(null);
     setSelectedShop(null);
     setFocusLoading(true);
@@ -1052,6 +1053,14 @@ export function FinancialOperations({
     setHistoryDate(nextHistoryDate);
   };
 
+  const eventFocusReady = !eventFocus || (!focusLoading && !focusLoadError
+    && handledFocusRequestIdRef.current === eventFocus.requestId);
+  const visibleQueue = eventFocus ? eventFocusQueue : queue;
+  const visiblePaymentHistory = eventFocus
+    ? paymentHistory.filter((payment) => matchesEventFocus(payment, eventFocus)) : paymentHistory;
+  const visibleTodayPayments = eventFocus
+    ? todayPayments.filter((payment) => matchesEventFocus(payment, eventFocus)) : todayPayments;
+
   return (
     <div className="financial-ops" ref={pageRef}>
       {error ? <p className="employee-error" role="alert"><WarningCircle />{translateUi(error)}</p> : null}
@@ -1072,17 +1081,12 @@ export function FinancialOperations({
         </section>
       ) : null}
 
-      {eventFocus && !focusLoading && !focusLoadError
-        && handledFocusRequestIdRef.current === eventFocus.requestId ? <>
+      {eventFocus && eventFocusReady ? <div className="financial-ops__header">
         <button className="financial-ops__focus-back" onClick={closeFocusedLoadError} type="button">
           <ArrowLeft aria-hidden="true" size={18} />{translateUi(' กลับ POS')}</button>
-        <button disabled={busy} onClick={() => void refreshFinancialData().catch((loadError: unknown) => setError(getErrorMessage(loadError)))} type="button">
-          {translateUi('รีเฟรชยอดล่าสุด')}</button>
-        <CollectionRunSection eventScope onSelectShop={chooseShop} queue={eventFocusQueue}
-          runId={runId} isClosed={collectionClosed} />
-      </> : null}
+      </div> : null}
 
-      {!isManager && !eventFocus ? <div className="financial-ops__employee-workspace">
+      {!isManager && eventFocusReady ? <div className="financial-ops__employee-workspace">
         <nav aria-label={translateUi('เมนูเก็บเงิน')} className="financial-ops__employee-nav">
           <button
             aria-current={employeeView === 'queue' ? 'page' : undefined}
@@ -1126,8 +1130,9 @@ export function FinancialOperations({
           </header>
 
           {employeeView === 'queue' ? <CollectionRunSection
+            eventScope={Boolean(eventFocus)}
             onSelectShop={chooseShop}
-            queue={queue}
+            queue={visibleQueue}
             runId={runId}
             isClosed={collectionClosed}
           /> : employeeView === 'history' ? <PaymentHistorySection
@@ -1140,13 +1145,13 @@ export function FinancialOperations({
             onOpenReceipt={openHistoryReceipt}
             onPrintReceipt={printHistoryReceipt}
             onVoidPayment={voidPayment}
-            paymentHistory={paymentHistory}
+            paymentHistory={visiblePaymentHistory}
             serviceDate={serviceDate}
           /> : employeeView === 'billing' ? <EmployeeBillingStatementsPanel isActive={isActive} /> : <DailyCreditAcknowledgementPanel canPrintWithVat={false} printerName={printerName} serviceDate={serviceDate} />}
         </div>
       </div> : null}
 
-      {isManager && !eventFocus && FinancialManagerWorkspace ? (
+      {isManager && eventFocusReady && FinancialManagerWorkspace ? (
         <Suspense fallback={<p role="status">{translateUi('กำลังโหลด')}</p>}>
           <FinancialManagerWorkspace
             page={managerPage}
@@ -1161,12 +1166,12 @@ export function FinancialOperations({
               onSelectShop: chooseShop,
               onVoidPayment: voidPayment,
               paymentPanel: null,
-              paymentHistory,
-              queue,
+              paymentHistory: visiblePaymentHistory,
+              queue: visibleQueue,
               runId,
               selectedShop,
               serviceDate,
-              todayPayments,
+              todayPayments: visibleTodayPayments,
             }}
             accounting={{ userRole, demoMode: Boolean(demoData) }}
             signoff={{ printerName, serviceDate }}

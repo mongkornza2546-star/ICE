@@ -1384,6 +1384,15 @@ input:disabled, select:disabled, textarea:disabled { background: #f2f5f8; color:
 .employee-destination-tabs button { min-height: 42px; padding: 0 10px; border: 0; border-radius: 9px; color: #49647f; background: transparent; font: inherit; font-size: .76rem; font-weight: 800; }
 .employee-destination-tabs button:hover, .employee-destination-tabs button[aria-pressed="true"] { color: #fff; background: #176de0; box-shadow: 0 5px 12px rgba(23,109,224,.2); }
 
+.employee-shop-location-filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 12px; }
+.employee-shop-location-filters > .employee-chip-filter { grid-column: 1 / -1; }
+.employee-shop-location-filter { min-width: 0; display: grid; gap: 7px; }
+.employee-shop-location-filter > span { display: flex; align-items: center; gap: 6px; color: #4b627c; font-size: .78rem; font-weight: 700; }
+.employee-shop-location-filter > span svg { color: #0c68d6; }
+.employee-shop-location-filter select { width: 100%; min-width: 0; min-height: 50px; padding: 10px 12px; border: 1px solid #cfdce9; border-radius: 11px; color: #1f3857; background: #fff; font: inherit; font-size: 1rem; cursor: pointer; }
+.employee-shop-location-filter select:hover { border-color: #8eb9ee; }
+.employee-shop-location-filter select:focus-visible { outline: 3px solid #1474ec; outline-offset: 2px; }
+
 .employee-chip-filter { display: grid; grid-template-columns: 75px minmax(0, 1fr); align-items: start; gap: 10px; }
 .employee-chip-filter > span { min-height: 46px; display: flex; align-items: center; gap: 6px; color: #4b627c; font-size: .78rem; font-weight: 700; }
 .employee-chip-filter > span svg { color: #0c68d6; }

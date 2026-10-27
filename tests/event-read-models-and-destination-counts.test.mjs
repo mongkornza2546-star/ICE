@@ -332,6 +332,47 @@ test('destination counts and event cards preserve regular/event separation', asy
   assert.equal(problemCards.rows[0].value.cards[0].stop_status, 'issue');
   assert.equal(problemCards.rows[0].value.cards[0].stop_note, 'Cannot access booth');
 
+  // Editing a participation must update the delivery picker even when the
+  // daily round already has a stop with a frozen customer snapshot.
+  const identityMigration = readFileSync(new URL(
+    '../supabase/migrations/20261027140216_event_delivery_card_current_identity.sql', import.meta.url,
+  ), 'utf8');
+  await db.exec(identityMigration);
+  await db.exec(identityMigration); // Safe to apply after a verified manual rollout.
+  await db.exec(`
+    update public.shops set name = 'ร้านใหม่' where id = '${ids.eventShop}';
+    update public.event_participations set booth_number = 'B21'
+    where id = '${ids.participation}';
+  `);
+  const renamedCards = (await db.query(`
+    select public.get_event_delivery_cards('${ids.round}', '${ids.eventJob}', 'B21') as value
+  `)).rows[0].value.cards;
+  assert.equal(renamedCards.length, 1);
+  assert.equal(renamedCards[0].shop_name, 'ร้านใหม่');
+  assert.equal(renamedCards[0].booth_number, 'B21');
+  assert.equal(renamedCards[0].round_stop_id, ids.eventStop);
+  assert.deepEqual(renamedCards[0].today_history, cards.rows[0].value.cards[0].today_history);
+  assert.deepEqual(renamedCards[0].today_totals, cards.rows[0].value.cards[0].today_totals);
+  const snapshot = (await db.query(`
+    select shop_name_snapshot, event_booth_snapshot from public.round_stops
+    where id = '${ids.eventStop}'
+  `)).rows[0];
+  assert.deepEqual(snapshot, { shop_name_snapshot: 'Event snapshot', event_booth_snapshot: 'Frozen booth' });
+
+  // Delivered stops still show current identity; clearing a booth must not
+  // resurrect its old snapshot through a COALESCE fallback.
+  await db.exec(`
+    update public.round_stops set status = 'delivered' where id = '${ids.eventStop}';
+    update public.event_participations set booth_number = null where id = '${ids.participation}';
+  `);
+  const clearedCard = (await db.query(`
+    select public.get_event_delivery_cards('${ids.round}', '${ids.eventJob}', 'ร้านใหม่') as value
+  `)).rows[0].value.cards[0];
+  assert.equal(clearedCard.shop_name, 'ร้านใหม่');
+  assert.equal(clearedCard.booth_number, null);
+  assert.equal(clearedCard.stop_status, 'delivered');
+  assert.deepEqual(clearedCard.today_totals, renamedCards[0].today_totals);
+
   await db.exec(`create or replace function public.is_round_member(uuid) returns boolean language sql stable as $$ select false $$`);
   await assert.rejects(
     db.query(`select public.get_event_delivery_cards('${ids.round}', null, null)`),

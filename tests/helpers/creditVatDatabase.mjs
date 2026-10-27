@@ -17,7 +17,8 @@ export async function createVatDatabase(beforeVat, beforeUncheckedWriterRevoked)
     create table auth.users (
       id uuid primary key,
       email text,
-      raw_user_meta_data jsonb not null default '{}'::jsonb
+      raw_user_meta_data jsonb not null default '{}'::jsonb,
+      raw_app_meta_data jsonb not null default '{}'::jsonb
     );
     create function auth.uid() returns uuid language sql stable as $$
       select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid
@@ -43,7 +44,7 @@ export async function createVatDatabase(beforeVat, beforeUncheckedWriterRevoked)
     create publication supabase_realtime;
 `);
  const directory = new URL('../../supabase/migrations/', import.meta.url);
- for (const name of readdirSync(directory).filter(name => /^\d{4}_.+\.sql$/.test(name)).sort()) {
+ for (const name of readdirSync(directory).filter(name => /^(?:\d{4}|\d{14})_.+\.sql$/.test(name)).sort()) {
    if (name.startsWith('0216_')) await beforeVat?.(db);
    if (name.startsWith('0217_')) await beforeUncheckedWriterRevoked?.(db);
    const sql = readFileSync(new URL(name, directory), 'utf8');
