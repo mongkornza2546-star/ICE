@@ -19,6 +19,7 @@ import type {
   CollectionOutstandingSummary,
   ShopCard,
   ShopCardHistoryEntry,
+  ShopCardTankRental,
   ShopRoundStatus,
 } from './types/app';
 import { EmployeeState } from './features/employee-delivery/EmployeeState';
@@ -178,6 +179,7 @@ interface EventDeliveryCapability {
 }
 
 interface EventDeliveryCardDto {
+  today_tank_rentals?: ShopCardTankRental[];
   event_participation_id: string;
   event_job_id: string;
   round_stop_id: string | null;
@@ -363,12 +365,12 @@ export function createSupabaseGateway(): EmployeeDeliveryGateway {
         );
         if (!shouldLoadEventCards) eventCardLoadErrors.delete(roundId);
         const [regularResponse, eventResponse] = await Promise.all([
-          client.rpc('get_round_shop_cards', {
+          client.rpc('get_round_shop_cards_with_tank_history', {
             p_round_id: roundId,
             p_building_id: null,
           }),
           shouldLoadEventCards
-            ? Promise.resolve(client.rpc('get_event_delivery_cards', {
+            ? Promise.resolve(client.rpc('get_event_delivery_cards_with_tank_history', {
               p_round_id: roundId,
               p_event_job_id: null,
               p_search: null,
@@ -414,6 +416,7 @@ export function createSupabaseGateway(): EmployeeDeliveryGateway {
             payment_status: 'unknown',
             stop_status: card.stop_status,
             stop_note: card.stop_note,
+            today_tank_rentals: card.today_tank_rentals ?? [],
             today_history: card.today_history.map((entry) => ({
               event_id: entry.delivery_event_id,
               can_cancel: entry.can_cancel ?? false,

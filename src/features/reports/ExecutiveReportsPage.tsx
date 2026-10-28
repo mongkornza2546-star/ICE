@@ -10,10 +10,11 @@ import { ExecutiveFollowUps } from './ExecutiveFollowUps';
 import { ReportShopProfile } from './ReportShopProfile';
 import { ReportComparison } from './ReportComparison';
 import { ReportDailyQuantities } from './ReportDailyQuantities';
+import { ReportQuantityForecast } from './ReportQuantityForecast';
 import { changePercent, comparisonRange, type ComparisonSelection } from './comparisonData';
 import { demoComparisonReport } from './demoComparisonReport';
 import { agingLabels } from './reportInsights';
-import { formatReportDate, presetDates, quantityMonthDates, reportRangeError, type Preset } from './reportDates';
+import { formatReportDate, presetDates, reportRangeError, type Preset } from './reportDates';
 import type { DetailQuery, ExecutiveReport, ReportInvoice, ReportMetric, ReportRow } from './types';
 import './executiveReports.css';
 
@@ -84,10 +85,9 @@ export function ExecutiveReportsPage({ isActive, demoReport, demoRows }: {
   const [section, setSection] = useState<ReportSection>('overview');
   const [hasViewedVolume, setHasViewedVolume] = useState(false);
   const [quantitySelection, setQuantitySelection] = useState<string | null>(null);
-  const quantityDate = quantitySelection ?? toBangkokDateString();
-  const quantityRange = quantityMonthDates(quantityDate);
-  const from = section === 'volume' ? quantityRange.first : rangeFrom;
-  const to = section === 'volume' ? quantityRange.end : rangeTo;
+  const from = rangeFrom;
+  const to = rangeTo;
+  const quantityDate = quantitySelection && quantitySelection >= from && quantitySelection <= to ? quantitySelection : to;
   const [comparing, setComparing] = useState(false);
   const [comparisonSelection, setComparisonSelection] = useState<ComparisonSelection>(() => ({
     preset: 'previous', custom: comparisonRange(initial, 'previous'),
@@ -120,14 +120,14 @@ export function ExecutiveReportsPage({ isActive, demoReport, demoRows }: {
   }, [section]);
 
   const refresh = useCallback(() => {
-    if (section !== 'volume' && preset !== 'custom') {
+    if (preset !== 'custom') {
       const dates = presetDates(preset);
       if (dates.from !== from || dates.to !== to) {
         setFrom(dates.from); setTo(dates.to); setDetail(null);
       }
     }
     setRefreshKey((value) => value + 1);
-  }, [section, preset, from, to]);
+  }, [preset, from, to]);
 
   useEffect(() => {
     if (!isActive || rangeError) return;
@@ -236,7 +236,7 @@ export function ExecutiveReportsPage({ isActive, demoReport, demoRows }: {
 
   const choosePreset = (next: Exclude<Preset, 'custom'>) => {
     const dates = presetDates(next);
-    setPreset(next); setFrom(dates.from); setTo(dates.to); setDetail(null);
+    setPreset(next); setFrom(dates.from); setTo(dates.to); setQuantitySelection(null); setDetail(null);
   };
   const openDetail = (query: DetailQuery, label?: string, trigger?: HTMLElement) => {
     if (!detail) {
@@ -307,8 +307,8 @@ export function ExecutiveReportsPage({ isActive, demoReport, demoRows }: {
   const rangeFilters = <section className="executive-filters" aria-label={translateUi('เลือกช่วงเวลารายงาน')}>
       <div className="executive-filter-controls"><div aria-label={translateUi('ช่วงวันที่ลัด')} className="executive-presets">{(Object.keys(presetNames) as Array<keyof typeof presetNames>).map((key) =>
         <button aria-pressed={preset === key} key={key} onClick={() => choosePreset(key)} type="button">{translateUi(presetNames[key])}</button>)}</div>
-      <div className="executive-dates"><label>{translateUi('จาก')}<input max={toBangkokDateString()} onChange={(event) => { setPreset('custom'); setFrom(event.target.value); setDetail(null); }} type="date" value={from} /></label>
-        <label>{translateUi('ถึง')}<input max={toBangkokDateString()} onChange={(event) => { setPreset('custom'); setTo(event.target.value); setDetail(null); }} type="date" value={to} /></label></div></div>
+      <div className="executive-dates"><label>{translateUi('จาก')}<input max={toBangkokDateString()} onChange={(event) => { setPreset('custom'); setQuantitySelection(null); setFrom(event.target.value); setDetail(null); }} type="date" value={from} /></label>
+        <label>{translateUi('ถึง')}<input max={toBangkokDateString()} onChange={(event) => { setPreset('custom'); setQuantitySelection(null); setTo(event.target.value); setDetail(null); }} type="date" value={to} /></label></div></div>
       {rangeError ? <p className="executive-error" role="alert">{translateUi(rangeError)}</p> : null}
       {shownReport ? <p className="executive-asof">{translateUi('ข้อมูล ณ ')}{uiDateTimeString(new Date(shownReport.asOf), { timeZone: 'Asia/Bangkok' })} · {formatReportDate(from)} – {formatReportDate(to)}</p> : null}
     </section>;
@@ -322,7 +322,7 @@ export function ExecutiveReportsPage({ isActive, demoReport, demoRows }: {
       </div>
     </header>
 
-    {section !== 'volume' ? rangeFilters : null}
+    {rangeFilters}
 
     {demoReport && section !== 'volume' ? <p className="executive-panel-note" role="note">{translateUi('ข้อมูลจำลอง · ใช้ตรวจหน้าจอ ไม่ใช่ผลประกอบการจริง')}</p> : null}
     {shownReport && shownReport.salesBasis !== 'excluding_vat' ? <p className="executive-error" role="status">
@@ -368,14 +368,16 @@ export function ExecutiveReportsPage({ isActive, demoReport, demoRows }: {
       </section>
       </> : null}
     </> : null}
-    {section === 'volume' || hasViewedVolume ? <div className="executive-volume-daily" hidden={section !== 'volume'}><ReportDailyQuantities
+    {!rangeError && (section === 'volume' || hasViewedVolume) ? <div className="executive-volume-daily" hidden={section !== 'volume'}><ReportDailyQuantities
       report={section === 'volume' ? shownReport : null} demo={Boolean(demoReport)}
       reportLoading={loading} reportError={error}
-      selectedDate={quantityDate}
+      from={from} to={to} selectedDate={quantityDate}
       onDateChange={setQuantitySelection} /></div> : null}
-    {section === 'volume' ? <section className="quantity-period" aria-label={translateUi('รายงานปริมาณเดือนที่เลือก')}>
-      <div className="quantity-period__heading"><div><h2>{translateUi('ปริมาณรวมและแยกตามตึก')}</h2><p>{translateUi('รวมเดือนของวันที่เลือก')} · {formatReportDate(from)} – {formatReportDate(to)}</p></div>
-        <button disabled={!shownReport || loading || exporting || Boolean(error)} onClick={() => void handleExport()} type="button"><DownloadSimple size={18} aria-hidden="true" />{exporting ? translateUi('กำลังสร้าง Excel…') : translateUi('ส่งออก Excel ปริมาณเดือนที่เลือก')}</button></div>
+    {section === 'volume' && !rangeError ? <ReportQuantityForecast report={shownReport} to={to}
+      loading={loading} error={error} demo={Boolean(demoReport)} /> : null}
+    {section === 'volume' && !rangeError ? <section className="quantity-period" aria-label={translateUi('รายงานปริมาณช่วงที่เลือก')}>
+      <div className="quantity-period__heading"><div><h2>{translateUi('ปริมาณรวมและแยกตามตึก')}</h2><p>{translateUi('รวมตามช่วงวันที่เลือก')} · {formatReportDate(from)} – {formatReportDate(to)}</p></div>
+        <button disabled={!shownReport || loading || exporting || Boolean(error)} onClick={() => void handleExport()} type="button"><DownloadSimple size={18} aria-hidden="true" />{exporting ? translateUi('กำลังสร้าง Excel…') : translateUi('ส่งออก Excel ปริมาณช่วงที่เลือก')}</button></div>
     </section> : null}
     {shownReport && !(section === 'sales' && comparing) ? <>
       <ReportSections

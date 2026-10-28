@@ -12,24 +12,24 @@ const sheet = (rows: Array<Array<string | number>>) => rows.map((row, index) => 
 
 /** The caller supplies the exact snapshot and quantities currently rendered. */
 export async function exportDailyQuantities(data: {
-  month: string; selectedDate: string; previousDate: string; end: string; asOf: string;
+  from: string; to: string; selectedDate: string; previousDate: string; asOf: string;
   days: string[]; demo: boolean;
   products: Array<{ name: string; unit: string; current: number | null; previous: number | null;
     total: number | null; daily: Array<number | null> }>;
 }) {
   const { default: writeXlsxFile } = await import('write-excel-file');
   const metadata: Array<Array<string | number>> = [
-    ['จำนวนขายน้ำแข็งรายวัน', data.month],
+    ['จำนวนขายน้ำแข็งรายวัน', `${data.from} ถึง ${data.to}`],
     ...(data.demo ? [['ข้อมูลจำลอง · ไม่ใช่ข้อมูลจริงตามวันที่']] : []),
     ['ข้อมูล ณ', data.asOf],
-    ['รวมเดือนถึงวันที่', data.end],
+    ['ช่วงวันที่', data.from, data.to],
     ['หมายเหตุ', '0 = ไม่มีจำนวนขาย · — = ยังไม่มีข้อมูลหรือยังไม่ถึงวันนั้น · วันนี้ยังไม่ครบวัน'],
   ];
   const daily = sheet([
     ...metadata,
     ['วันที่', ...data.products.map((product) => `${product.name} (${product.unit})`)],
     ...data.days.map((date, index) => [date, ...data.products.map((product) => product.daily[index] ?? '—')]),
-    ['รวมเดือน', ...data.products.map((product) => product.total ?? '—')],
+    ['รวมช่วง', ...data.products.map((product) => product.total ?? '—')],
   ]);
   const comparison = sheet([
     ...metadata,
@@ -43,7 +43,7 @@ export async function exportDailyQuantities(data: {
       Array.from({ length: data.products.length + 1 }, () => ({ width: 25 })),
       Array.from({ length: 5 }, () => ({ width: 25 })),
     ],
-    fileName: `${data.demo ? 'demo-' : ''}ice-daily-quantities-${data.month}-compare-${data.selectedDate}.xlsx`,
+    fileName: `${data.demo ? 'demo-' : ''}ice-daily-quantities-${data.from}-${data.to}-compare-${data.selectedDate}.xlsx`,
   });
 }
 

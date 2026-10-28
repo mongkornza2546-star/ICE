@@ -319,3 +319,114 @@ test('dashboard includes paid casual quantities and receipts without double coun
   await assert.rejects(read('get_daily_payment_method_summary'), /Only a round lead or admin/);
   await assert.rejects(read('get_daily_work_dashboard'), /Only a round lead or admin/);
 });
+
+test('dashboard location receipts count actual payments and casual sales on their Bangkok receipt day', async (t) => {
+  const db = await database(t);
+  const buildingA = '40000000-0000-4000-8000-000000000001';
+  const buildingB = '40000000-0000-4000-8000-000000000002';
+  const emptyBuilding = '40000000-0000-4000-8000-000000000003';
+  const inactiveBuilding = '40000000-0000-4000-8000-000000000004';
+  const eventBuilding = '40000000-0000-4000-8000-000000000005';
+  const event = '50000000-0000-4000-8000-000000000001';
+  const eventCharge = '30000000-0000-4000-8000-000000000002';
+  const migration = readMigration('20261028132030_dashboard_location_receipts.sql');
+  await db.exec(`
+    create role anon;
+    create or replace function public.is_active_user() returns boolean language sql stable
+      as $$ select coalesce(current_setting('test.active', true), 'true') = 'true' $$;
+    create table public.buildings(id uuid primary key, name text, is_active boolean, sort_order integer, code text);
+    create table public.event_jobs(id uuid primary key, name text, status text, start_date date, end_date date, preparation_start_date date);
+    create table public.event_participations(id uuid primary key, event_job_id uuid);
+    create table public.event_settlement_contexts(id uuid primary key, event_participation_id uuid);
+    alter table public.shops add column building_id uuid;
+    alter table public.round_stops add column building_id_snapshot uuid, add column event_participation_id uuid;
+    alter table public.delivery_charges add column event_settlement_context_id uuid, add column vat_amount numeric default 0;
+    create function public.charge_vat_totals(uuid) returns jsonb language sql as $$select '{"subtotal_amount":800}'::jsonb$$;
+    create table public.payments(id uuid primary key, status text, payment_method text, allocated_amount numeric, received_amount numeric, recorded_at timestamptz);
+    create table public.payment_allocations(payment_id uuid, charge_id uuid, amount numeric, primary key(payment_id, charge_id));
+    create table public.casual_transactions(sale_building_id uuid, service_date date, status text, transaction_kind text,
+      fulfillment_mode text, sale_amount numeric, received_amount numeric, payment_method text, recorded_at timestamptz);
+    insert into public.buildings values
+      ('${buildingA}', 'A', true, 1, 'A'), ('${buildingB}', 'B', true, 2, 'B'),
+      ('${emptyBuilding}', 'C', true, 3, 'C'), ('${inactiveBuilding}', 'Closed', false, 4, 'D'),
+      ('${eventBuilding}', 'Event compatibility', true, 5, ' EVENT-${event} ');
+    insert into public.event_jobs values ('${event}', 'Past event', 'completed', '2026-09-04', '2026-09-05', null);
+    insert into public.event_participations values ('${event}', '${event}');
+    insert into public.event_settlement_contexts values ('${event}', '${event}');
+    -- The shop moved to B, but the paid delivery took place in A.
+    update public.shops set building_id = '${buildingB}';
+    insert into public.round_stops(id, building_id_snapshot) values ('${charge}', '${buildingA}');
+    update public.delivery_events set round_stop_id = '${charge}';
+    update public.delivery_charges set payment_term = 'credit', service_date = '2026-09-04';
+    insert into public.delivery_charges(id, shop_id, service_date, status, original_amount, event_settlement_context_id)
+      values ('${eventCharge}', '${shop}', '2026-09-04', 'active', 300, '${event}');
+  `);
+  await db.exec(readMigration('0195_dashboard_location_sales.sql'));
+  await db.exec(migration);
+  // Reapplying must not append duplicate receipt fields or break existing fields.
+  await db.exec(migration);
+  const paymentMigration = readMigration('0247_dashboard_include_casual_sales.sql');
+  await db.exec(paymentMigration.slice(paymentMigration.indexOf('create or replace function public.get_daily_payment_method_summary(')));
+  const read = async () => (await db.query(`select public.get_daily_work_dashboard('2026-09-06') as dashboard`)).rows[0].dashboard.salesSummary;
+  const unpaid = await read();
+  assert.deepEqual(unpaid.locationReceipts.map(row => row.receivedValue), [0, 0, 0]);
+  assert.equal(unpaid.locationReceipts.some(row => row.id === event), false);
+  assert.ok(Array.isArray(unpaid.locationSales));
+
+  await db.exec(`
+    insert into public.payments values
+      ('90000000-0000-4000-8000-000000000001', 'active', 'cash', 250, 300, '2026-09-06T00:00:00+07'),
+      ('90000000-0000-4000-8000-000000000002', 'active', 'bank_transfer', 50.5, 50.5, '2026-09-06T23:59:59.999+07'),
+      ('90000000-0000-4000-8000-000000000003', 'active', 'qr', 25, 25, '2026-09-06T12:00:00+07'),
+      ('90000000-0000-4000-8000-000000000004', 'voided', 'cash', 999, 999, '2026-09-06T12:00:00+07'),
+      ('90000000-0000-4000-8000-000000000005', 'active', 'cash', 999, 999, '2026-09-05T23:59:59.999+07'),
+      ('90000000-0000-4000-8000-000000000006', 'active', 'cash', 999, 999, '2026-09-07T00:00:00+07');
+    insert into public.payment_allocations values
+      ('90000000-0000-4000-8000-000000000001', '${charge}', 150),
+      ('90000000-0000-4000-8000-000000000001', '${eventCharge}', 100),
+      ('90000000-0000-4000-8000-000000000002', '${charge}', 50.5),
+      ('90000000-0000-4000-8000-000000000003', '${charge}', 25),
+      ('90000000-0000-4000-8000-000000000004', '${charge}', 999),
+      ('90000000-0000-4000-8000-000000000005', '${charge}', 999),
+      ('90000000-0000-4000-8000-000000000006', '${charge}', 999);
+  `);
+  const partial = await read();
+  assert.equal(partial.locationReceipts.find(row => row.id === buildingA).receivedValue, 225.5);
+  assert.equal(partial.locationReceipts.find(row => row.id === buildingB).receivedValue, 0);
+  assert.equal(partial.locationReceipts.find(row => row.id === event).receivedValue, 100);
+  assert.equal(partial.locationReceipts.find(row => row.id === event).kind, 'event');
+
+  await db.exec(`
+    insert into public.casual_transactions values
+      ('${buildingB}', '2026-09-04', 'active', 'paid', 'measured', 100, 200, 'cash', '2026-09-06T00:00:00+07'),
+      ('${buildingB}', '2026-09-06', 'active', 'paid', 'loose', 30, 30, 'bank_transfer', '2026-09-06T23:59:59.999+07'),
+      ('${buildingB}', '2026-09-06', 'active', 'paid', 'measured', 20, 20, 'qr', '2026-09-06T12:00:00+07'),
+      ('${eventBuilding}', '2026-09-06', 'active', 'paid', 'measured', 10, 10, 'cash', '2026-09-06T12:00:00+07'),
+      ('${inactiveBuilding}', '2026-09-06', 'active', 'paid', 'measured', 15, 15, 'cash', '2026-09-06T12:00:00+07'),
+      (null, '2026-09-06', 'active', 'paid', 'loose', 5, 5, 'cash', '2026-09-06T12:00:00+07'),
+      ('${buildingB}', '2026-09-06', 'voided', 'paid', 'measured', 999, 999, 'cash', '2026-09-06T12:00:00+07'),
+      ('${buildingB}', '2026-09-06', 'active', 'free', 'measured', 0, 0, null, '2026-09-06T12:00:00+07'),
+      ('${buildingB}', '2026-09-06', 'active', 'paid', 'loose', 999, 999, 'cash', '2026-09-05T23:59:59.999+07'),
+      ('${buildingB}', '2026-09-06', 'active', 'paid', 'loose', 999, 999, 'cash', '2026-09-07T00:00:00+07');
+  `);
+  const paid = await read();
+  assert.deepEqual(paid.locationReceipts, [
+    { id: buildingA, kind: 'building', name: 'A', receivedValue: 225.5 },
+    { id: buildingB, kind: 'building', name: 'B', receivedValue: 150 },
+    { id: emptyBuilding, kind: 'building', name: 'C', receivedValue: 0 },
+    { id: inactiveBuilding, kind: 'building', name: 'Closed', receivedValue: 15 },
+    { id: event, kind: 'event', name: 'Past event', receivedValue: 110 },
+    { id: 'unassigned', kind: 'unassigned', name: 'ไม่ระบุตึก', receivedValue: 5 },
+  ]);
+  const summary = (await db.query(`select public.get_daily_payment_method_summary('2026-09-06') as result`)).rows[0].result;
+  assert.equal(paid.locationReceipts.reduce((sum, row) => sum + row.receivedValue, 0), summary.cashReceivedValue + summary.transferReceivedValue);
+  assert.deepEqual(paid.locationSales, unpaid.locationSales);
+
+  await db.exec(`set test.role = 'round_lead'`);
+  assert.deepEqual((await read()).locationReceipts, paid.locationReceipts);
+  await db.exec(`set test.role = 'courier'`);
+  await assert.rejects(db.query(`select public.daily_work_location_receipts('2026-09-06')`), /Only a round lead or admin/);
+  await db.exec(`set test.role = 'admin'; set test.active = 'false'`);
+  await assert.rejects(db.query(`select public.daily_work_location_receipts('2026-09-06')`), /Only a round lead or admin/);
+  assert.equal((await db.query(`select has_function_privilege('anon', 'public.daily_work_location_receipts(date)', 'execute') as allowed`)).rows[0].allowed, false);
+});

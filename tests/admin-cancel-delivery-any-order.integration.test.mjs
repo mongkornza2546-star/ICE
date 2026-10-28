@@ -14,7 +14,7 @@ const value = async (db, sql, args = []) => (await db.query(sql, args)).rows[0].
 for (const destination of ['regular', 'event']) test(`admin cancels ${destination} deliveries in any order`, async t => {
   const db = await createVatDatabase();
   t.after(() => db.close());
-  const migration = readFileSync(new URL('../supabase/migrations/20261027142543_admin_cancel_delivery_any_order.sql', import.meta.url), 'utf8');
+  const migration = readFileSync(new URL('../supabase/migrations/20261027162143_delivery_history_cancellation_policy.sql', import.meta.url), 'utf8');
   await db.exec(migration);
   await db.exec(migration); // Safe deployment retry.
   await db.exec('grant usage on schema public to authenticated');
@@ -121,6 +121,7 @@ for (const destination of ['regular', 'event']) test(`admin cancels ${destinatio
   assert.equal(await aggregate(), 4);
   assert.equal((await context(oldest)).is_latest, false);
   assert.equal((await context(oldest)).can_cancel, true);
+  assert.equal((await history()).length, 3);
   for (const row of await history()) {
     assert.equal(row.can_cancel, true, 'every active unpaid row offers cancellation');
     if (destination === 'regular') assert.equal(row.correction_blocker, null);
@@ -128,17 +129,46 @@ for (const destination of ['regular', 'event']) test(`admin cancels ${destinatio
   for (const role of ['courier', 'round_lead']) {
     await db.query(`update public.users set role=$1 where id='${admin}'`, [role]);
     assert.equal((await context(oldest)).can_cancel, false);
+    assert.equal((await context(latest)).can_cancel, true);
+    for (const row of await history()) {
+      const policy = await context(row.event_id ?? row.delivery_event_id);
+      assert.equal(row.can_cancel, policy.can_cancel, `${role} history must match cancellation eligibility`);
+      if (destination === 'regular') {
+        assert.equal(row.can_correct, false);
+        assert.equal(row.correction_blocker, policy.blocker_reason);
+      }
+    }
     await assert.rejects(cancel(oldest), /ล่าสุด/);
   }
   await db.exec(`update public.users set role='admin',is_active=false where id='${admin}'`);
   await assert.rejects(cancel(oldest), /active|viewed/);
   await db.exec(`update public.users set is_active=true where id='${admin}'`);
 
+  if (destination === 'regular') {
+    assert.equal(await value(db, `select has_function_privilege('anon',
+      'public.get_delivery_cancellation_policy(uuid)', 'execute') as value`), false);
+    assert.equal(await value(db, `select has_function_privilege('authenticated',
+      'public.get_delivery_cancellation_policy(uuid)', 'execute') as value`), false);
+    await db.exec('begin');
+    try {
+      await db.exec(`create or replace function public.get_delivery_correction_context(p_event_id uuid)
+        returns jsonb language plpgsql stable security definer set search_path=public as $$
+        begin raise exception 'History must not load dialog details'; end; $$`);
+      assert.equal((await history()).length, 3, 'history only needs the lightweight eligibility policy');
+    } finally { await db.exec('rollback'); }
+  }
+
   // A closed round still allows the admin to cancel an older unpaid delivery.
   await db.exec('begin');
   try {
     await db.exec(`update public.delivery_rounds set status='closed',closed_at=now(),closed_by='${admin}' where id='${round}'`);
     assert.equal((await context(oldest)).can_cancel, true);
+    const olderHistory = (await history()).find(row => (row.event_id ?? row.delivery_event_id) === oldest);
+    assert.equal(olderHistory.can_cancel, true, 'closed unpaid delivery must remain reachable from history');
+    if (destination === 'regular') {
+      assert.equal(olderHistory.can_correct, false);
+      assert.equal(olderHistory.correction_blocker, null);
+    }
     await cancel(oldest);
     assert.equal(await state(oldest), 'cancelled');
   } finally { await db.exec('rollback'); }
@@ -158,6 +188,12 @@ for (const destination of ['regular', 'event']) test(`admin cancels ${destinatio
         'cash',25,null,null,$2,150,null,$3)`, [allocations, run.collection_run_id, randomUUID()]);
     }
     assert.equal((await context(oldest)).can_cancel, false);
+    const olderHistory = (await history()).find(row => (row.event_id ?? row.delivery_event_id) === oldest);
+    assert.equal(olderHistory.can_cancel, false, 'paid delivery must not offer cancellation in history');
+    if (destination === 'regular') {
+      assert.equal(olderHistory.can_correct, false, 'legacy edit flag must not expose a cancellation button');
+      assert.equal(olderHistory.correction_blocker, (await context(oldest)).blocker_reason);
+    }
     await db.exec('savepoint paid_cancel');
     await assert.rejects(cancel(oldest), /รับชำระแล้ว/);
     await db.exec('rollback to savepoint paid_cancel');
@@ -178,6 +214,12 @@ for (const destination of ['regular', 'event']) test(`admin cancels ${destinatio
     assert.equal(await aggregate(), expectedStock);
     assert.equal(await state(event), 'cancelled');
     assert.equal((await context(event)).can_cancel, false);
+    if (destination === 'regular') {
+      const cancelledHistory = (await history()).find(row => row.event_id === event);
+      assert.equal(cancelledHistory.can_cancel, false);
+      assert.equal(cancelledHistory.can_correct, false);
+      assert.equal(cancelledHistory.correction_blocker, (await context(event)).blocker_reason);
+    }
     await assert.rejects(cancel(event), /ยกเลิกหรือแทนที่/);
     assert.equal(await value(db, `select count(*)::int as value from public.delivery_event_revisions where original_event_id=$1`, [event]), 1);
     if (event !== latest) {

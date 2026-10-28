@@ -3,7 +3,6 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { Icon } from '@phosphor-icons/react';
 import {
   ArrowClockwise,
-  CaretRight,
   CheckCircle,
   ClipboardText,
   CreditCard,
@@ -15,7 +14,6 @@ import {
   Package,
   Storefront,
   Truck,
-  User,
   UsersThree,
   WarningCircle,
   XCircle,
@@ -203,7 +201,7 @@ export function ManagerDashboard({
     };
   }, [isActive, reloadKey, currentServiceDate, demoAggregateStockSummary, demoDashboard]);
 
-  useEffect(() => subscribeToDataChange(['stock', 'pos'], () => {
+  useEffect(() => subscribeToDataChange(['stock', 'pos', 'payment'], () => {
     if (isActive) setReloadKey((key) => key + 1);
   }), [isActive]);
 
@@ -273,13 +271,14 @@ export function ManagerDashboard({
     );
   }
 
-  const { session, deliverySummary, salesSummary, cancellationState, problems } = dashboard;
+  const { session, deliverySummary, salesSummary, cancellationState } = dashboard;
   const paymentSummary = paymentMethodSummary ?? {
     cashReceivedValue: 0,
     transferReceivedValue: 0,
     creditSalesValue: 0,
   };
   const locationIceTotals = salesSummary.locationIceTotals ?? [];
+  const locationReceipts = salesSummary.locationReceipts;
   const stockTotals = aggregateStockSummary.items.map((item) => ({
     unit: item.unit,
     quantity: Number(item.available_quantity),
@@ -287,24 +286,17 @@ export function ManagerDashboard({
   const totalStock = summarizeQuantity(stockTotals);
   const hasStartedWork = session.status !== 'not_started' && session.status !== 'cancelled';
   const aggregateClosed = aggregateStockSummary.status === 'closed';
-  const stockClosePending = hasStartedWork && !aggregateClosed;
   const statusLabel: Record<string, string> = {
     not_started: 'ยังไม่เริ่มงาน',
     in_progress: 'กำลังทำงาน',
     completed: 'ปิดงานแล้ว',
     cancelled: 'ยกเลิกแล้ว',
   };
-  const lowStockTotals = stockClosePending ? stockTotals.filter((stock) => stock.quantity <= 0).length : 0;
   const deliveredDestinationCount = deliverySummary.regularShopCount
     + deliverySummary.eventParticipationCount;
   const deliveryBreakdown = deliverySummary.eventParticipationCount > 0
     ? `${formatQuantity(deliverySummary.regularShopCount)} ${translateUi('ร้านประจำ')} · ${formatQuantity(deliverySummary.eventParticipationCount)} ${translateUi('จุดอีเวนต์')} · ${formatQuantity(deliverySummary.activeDeliveryCount)} ${translateUi('รายการส่ง')}`
     : `${formatQuantity(deliverySummary.activeDeliveryCount)} ${translateUi('รายการส่ง')}`;
-  const alertItems = [
-    ...(lowStockTotals > 0 ? [{ tone: 'danger' as const, title: 'สต๊อกไม่เพียงพอ', detail: `${translateUi('พบสินค้า')} ${lowStockTotals} ${translateUi('ชนิดที่สต๊อกหมด')}`, count: `${lowStockTotals} ${translateUi('รายการ')}`, icon: WarningCircle, view: 'stock_operations' as const }] : []),
-    ...(problems.length > 0 ? [{ tone: 'warning' as const, title: 'มีปัญหาหน้างานที่ต้องติดตาม', detail: problems[0].shop_name, count: `${problems.length} ${translateUi('รายการ')}`, icon: User, view: 'delivery' as const }] : []),
-    ...(stockClosePending ? [{ tone: 'amber' as const, title: 'รอตรวจนับและปิดยอดรวมสิ้นวัน', detail: translateUi('นับน้ำแข็งรวมจากรถและทุกจุดก่อนปิดยอด'), count: translateUi('รอปิดยอด'), icon: ClipboardText, view: 'stock_operations' as const }] : []),
-  ];
 
   return (
     <div className="manager-dashboard manager-dashboard--reference">
@@ -411,14 +403,27 @@ export function ManagerDashboard({
           </div>
         </section>
 
-        <section className="dashboard-panel dashboard-alert-panel">
-          <PanelHeading title={translateUi('การแจ้งเตือนที่ต้องดำเนินการ')} />
-          <div className="dashboard-alert-list">
-            {alertItems.map((alert) => {
-              const AlertIcon = alert.icon;
-              return <button className={`dashboard-alert dashboard-alert--${alert.tone}`} key={alert.title} onClick={() => onNavigate(alert.view)} type="button"><AlertIcon size={24} weight="fill" /><span><strong>{translateUi(alert.title)}</strong><small>{alert.detail}</small></span><b>{alert.count}</b><CaretRight size={18} /></button>;
+        <section className="dashboard-panel">
+          <PanelHeading title={translateUi('สรุปเงินที่ได้รายตึก')} detail={translateUi('เงินรับชำระวันนี้ · รวมลูกค้าขายสดและหนี้เดิมที่ชำระวันนี้')} />
+          <div className="dashboard-location-sales" aria-label={translateUi('เงินรับชำระแยกตามตึกและอีเว้น')}>
+            {(locationReceipts ?? []).map((location) => {
+              const LocationIcon = location.kind === 'event' ? CalendarBlank : location.kind === 'unassigned' ? CurrencyDollar : Buildings;
+              return (
+                <article className="dashboard-location-sale" key={`${location.kind}-${location.id}`}>
+                  <span className={`dashboard-location-sale__icon dashboard-location-sale__icon--${location.kind}`}><LocationIcon size={24} weight="duotone" /></span>
+                  <div className="dashboard-location-sale__name">
+                    <strong>{location.kind === 'unassigned' ? translateUi('ไม่ระบุตึก') : location.name}</strong>
+                    <small>{translateUi(location.kind === 'event' ? 'อีเว้น' : location.kind === 'unassigned' ? 'รายการไม่ระบุสถานที่' : 'ตึก')}</small>
+                  </div>
+                  <b>{formatCurrency(location.receivedValue)}</b>
+                </article>
+              );
             })}
-            {alertItems.length === 0 ? <div className="dashboard-alert dashboard-alert--success"><CheckCircle size={24} weight="fill" /><span><strong>{translateUi('ไม่มีรายการที่ต้องดำเนินการ')}</strong><small>{translateUi('งานวันนี้พร้อมดำเนินการต่อ')}</small></span></div> : null}
+            {locationReceipts == null ? (
+              <p className="dashboard-product-sales-empty">{translateUi('ยังไม่สามารถโหลดข้อมูลเงินรับชำระรายตึกได้')}</p>
+            ) : locationReceipts.length === 0 ? (
+              <p className="dashboard-product-sales-empty">{translateUi('ยังไม่มีข้อมูลเงินรับชำระรายตึกสำหรับวันนี้')}</p>
+            ) : null}
           </div>
         </section>
       </div>

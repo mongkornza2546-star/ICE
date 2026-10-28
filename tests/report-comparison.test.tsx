@@ -7,7 +7,7 @@ import { reportRangeError } from '../src/features/reports/reportDates';
 import { demoComparisonReport } from '../src/features/reports/demoComparisonReport';
 
 const { rpc, writeXlsxFile } = vi.hoisted(() => ({ rpc: vi.fn(), writeXlsxFile: vi.fn() }));
-vi.mock('../src/lib/supabase', () => ({ supabase: { rpc } }));
+vi.mock('../src/lib/supabase', () => ({ supabase: { rpc, from: () => ({ select: () => ({ eq: () => ({ order: () => ({ order: async () => ({ data: [], error: null }) }) }) }) }) } }));
 vi.mock('write-excel-file', () => ({ default: writeXlsxFile }));
 function report(from = '2026-10-01', to = '2026-10-14', old = false): ExecutiveReport {
   return {

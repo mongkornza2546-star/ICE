@@ -19,7 +19,7 @@ describe('automatic collection context', () => {
 
   it('keeps outstanding shops visible on a closed date without opening a collection context', async () => {
     const queue = [{ shop_id: 'shop-1', outstanding_amount: 120, charges: [] }];
-    supabaseMock.rpc.mockImplementation(async (name: string) => name === 'get_daily_shop_collection_queue'
+    supabaseMock.rpc.mockImplementation(async (name: string) => name === 'get_daily_shop_collection_queue_v2'
       ? { data: { collection_run_id: null, status: 'closed', queue }, error: null }
       : { data: null, error: new Error('The selected business date is already closed') });
 
@@ -33,7 +33,24 @@ describe('automatic collection context', () => {
       data: { collection_run_id: 'run-1', status: 'open', queue }, error: null,
     });
     expect(await loadCurrentCollectionQueue('2026-10-12')).toEqual({ runId: 'run-1', isClosed: false, canRecordPayment: false, queue });
-    expect(supabaseMock.rpc).toHaveBeenLastCalledWith('get_daily_shop_collection_queue', { p_service_date: '2026-10-12' });
+    expect(supabaseMock.rpc).toHaveBeenLastCalledWith('get_daily_shop_collection_queue_v2', { p_service_date: '2026-10-12' });
+  });
+
+  it('falls back to the legacy queue only when the new RPC is not deployed', async () => {
+    const queue = [{ queue_key: 'event:context-1', shop_id: 'shop-1', outstanding_amount: 120 }];
+    supabaseMock.rpc.mockResolvedValueOnce({ data: null, error: { code: 'PGRST202', message: 'RPC missing' } })
+      .mockResolvedValueOnce({ data: { collection_run_id: 'run-1', status: 'open', queue }, error: null });
+    expect((await loadCurrentCollectionQueue('2026-10-27')).queue).toEqual(queue);
+    expect(supabaseMock.rpc.mock.calls.map(([name]) => name)).toEqual([
+      'get_daily_shop_collection_queue_v2', 'get_daily_shop_collection_queue',
+    ]);
+  });
+
+  it.each(['42501', 'P0001', '08006'])('does not mask a queue error (%s) with a legacy fallback', async code => {
+    const error = { code, message: 'Cannot load queue' };
+    supabaseMock.rpc.mockResolvedValue({ data: null, error });
+    await expect(loadCurrentCollectionQueue('2026-10-27')).rejects.toEqual(error);
+    expect(supabaseMock.rpc).toHaveBeenCalledTimes(1);
   });
 
   it('coalesces concurrent ensures and caches the current service date', async () => {

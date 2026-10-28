@@ -23,7 +23,7 @@ it('does not query Supabase while the keep-alive financial page is inactive', as
   query.eq.mockReturnValue(query);
   supabaseMock.from.mockReturnValue(query);
   supabaseMock.rpc.mockImplementation((name: string) => {
-    if (name === 'get_daily_shop_collection_queue') return Promise.resolve({
+    if (name === 'get_daily_shop_collection_queue_v2') return Promise.resolve({
       data: { collection_run_id: 'run-1', status: 'open', queue: [] },
       error: null,
     });
@@ -38,7 +38,7 @@ it('does not query Supabase while the keep-alive financial page is inactive', as
   expect(supabaseMock.storage.from).not.toHaveBeenCalled();
 
   view.rerender(<FinancialOperations isActive userRole="courier" />);
-  await waitFor(() => expect(supabaseMock.rpc).toHaveBeenCalledWith('get_daily_shop_collection_queue', {
+  await waitFor(() => expect(supabaseMock.rpc).toHaveBeenCalledWith('get_daily_shop_collection_queue_v2', {
     p_service_date: serviceDate,
   }));
   expect(supabaseMock.from).not.toHaveBeenCalledWith('collection_runs');

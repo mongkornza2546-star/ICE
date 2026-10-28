@@ -4,7 +4,7 @@ import { translateUi, useLanguage } from '../../i18n';
 import { shiftServiceDate, toBangkokDateString } from '../../lib/serviceDate';
 import { supabase } from '../../lib/supabase';
 import { demoComparisonReport } from './demoComparisonReport';
-import { formatReportDate, quantityMonthDates, reportRangeError } from './reportDates';
+import { formatReportDate } from './reportDates';
 import { Panel } from './ReportPrimitives';
 import { QuantityTrendChart } from './QuantityTrendChart';
 import { exportDailyQuantities } from './exportExecutiveReport';
@@ -13,13 +13,12 @@ import type { ExecutiveReport } from './types';
 const number = (value: number) => new Intl.NumberFormat('th-TH', { maximumFractionDigits: 2 }).format(value);
 
 /** One column per product: bags and rows must never be added together. */
-export function ReportDailyQuantities({ report, demo = false, selectedDate, onDateChange, reportLoading = false, reportError }: {
-  report: ExecutiveReport | null; demo?: boolean; selectedDate: string; onDateChange: (date: string) => void;
+export function ReportDailyQuantities({ report, from, to, demo = false, selectedDate, onDateChange, reportLoading = false, reportError }: {
+  report: ExecutiveReport | null; from: string; to: string; demo?: boolean; selectedDate: string; onDateChange: (date: string) => void;
   reportLoading?: boolean; reportError?: string | null;
 }) {
   useLanguage();
   const today = toBangkokDateString();
-  const month = selectedDate.slice(0, 7);
   const [exporting, setExporting] = useState(false);
   const [productId, setProductId] = useState('');
   const [showAllDays, setShowAllDays] = useState(false);
@@ -27,24 +26,24 @@ export function ReportDailyQuantities({ report, demo = false, selectedDate, onDa
   const [loaded, setLoaded] = useState<ExecutiveReport | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [retry, setRetry] = useState(0);
-  const { first, last, end } = quantityMonthDates(selectedDate, today);
+  const first = from;
+  const end = to;
   const previousDate = shiftServiceDate(selectedDate, -1);
-  const start = previousDate < first ? previousDate : first;
-  const covers = (value: ExecutiveReport | null) => value && value.from <= start && value.to >= end;
-  const reuseReport = covers(report);
-  const source = !report ? null : reuseReport ? report : covers(loaded) ? loaded : null;
+  const coversPrevious = (value: ExecutiveReport | null) => value && value.from <= previousDate && value.to >= previousDate;
+  const reuseReport = coversPrevious(report);
+  const source = report && (reuseReport || coversPrevious(loaded)) ? report : null;
 
   useEffect(() => {
     setLoaded(null);
     setError(null);
     if (!report || reuseReport) return;
     if (demo) {
-      setLoaded(demoComparisonReport(report, { from: start, to: end }));
+      setLoaded(demoComparisonReport(report, { from: previousDate, to: previousDate }));
       return;
     }
     let cancelled = false;
     if (!supabase) { setError('ยังไม่ได้ตั้งค่าการเชื่อมต่อ Supabase'); return; }
-    void supabase.rpc('get_executive_report', { p_from: start, p_to: end }).then(({ data, error: rpcError }) => {
+    void supabase.rpc('get_executive_report', { p_from: previousDate, p_to: previousDate }).then(({ data, error: rpcError }) => {
       if (cancelled) return;
       if (rpcError) setError(rpcError.message);
       else setLoaded(data as ExecutiveReport);
@@ -52,13 +51,15 @@ export function ReportDailyQuantities({ report, demo = false, selectedDate, onDa
       if (!cancelled) setError(cause instanceof Error ? cause.message : 'โหลดจำนวนขายรายวันไม่สำเร็จ');
     });
     return () => { cancelled = true; };
-  }, [report, reuseReport, start, end, demo, retry]);
+  }, [report, reuseReport, previousDate, demo, retry]);
 
-  const days = Array.from({ length: Number(last.slice(-2)) }, (_, index) => shiftServiceDate(first, index));
-  const daily = new Map(source?.dailyTrend?.map((day) => [day.date, day]));
+  const days = Array.from({ length: (Date.parse(end) - Date.parse(first)) / 86400000 + 1 }, (_, index) => shiftServiceDate(first, index));
+  const daily = new Map([...(source && !reuseReport ? loaded?.dailyTrend ?? [] : []), ...(source?.dailyTrend ?? [])]
+    .map((day) => [day.date, day]));
   const products = new Map<string, { id: string; name: string; unit: string }>();
   source?.products.forEach((product) => products.set(product.id, product));
-  source?.dailyTrend?.filter((day) => day.date >= start && day.date <= end)
+  if (source && !reuseReport) loaded?.dailyTrend?.forEach((day) => day.products.forEach((product) => products.set(product.id, product)));
+  source?.dailyTrend?.filter((day) => day.date >= first && day.date <= end)
     .forEach((day) => day.products.forEach((product) => products.set(product.id, product)));
   const columns = [...products.values()];
   const quantity = (date: string, id: string) => {
@@ -80,7 +81,7 @@ export function ReportDailyQuantities({ report, demo = false, selectedDate, onDa
     setExportError(null);
     try {
       await exportDailyQuantities({
-        month, selectedDate, previousDate, end, asOf: source.asOf, days, demo,
+        from, to, selectedDate, previousDate, asOf: source.asOf, days, demo,
         products: columns.map((product) => ({
           name: product.name, unit: product.unit,
           current: quantity(selectedDate, product.id), previous: quantity(previousDate, product.id),
@@ -95,21 +96,16 @@ export function ReportDailyQuantities({ report, demo = false, selectedDate, onDa
     }
   };
 
-  // The parent supplies totals for the selected month, excluding the prior comparison day.
+  // The parent supplies totals for the selected range, excluding the prior comparison day.
   const deliverySummary = report ? <div className="quantity-deliveries" role="region" aria-label={translateUi('จำนวนรายการส่ง')}>
-    <Truck size={25} aria-hidden="true" /><div><span>{translateUi('รายการส่งเดือนที่เลือก')}</span><strong>{number(report.deliveryCount)} <small>{translateUi('ครั้ง')}</small></strong>
+    <Truck size={25} aria-hidden="true" /><div><span>{translateUi('รายการส่งช่วงที่เลือก')}</span><strong>{number(report.deliveryCount)} <small>{translateUi('ครั้ง')}</small></strong>
       <small>{formatReportDate(report.from)} – {formatReportDate(report.to)}</small>
       <small>{translateUi('จำนวนครั้งที่บันทึกส่ง ไม่ใช่จำนวนถุง')}</small></div>
   </div> : null;
 
   return <Panel title={translateUi('จำนวนขายน้ำแข็งรายวัน')}
     className="executive-daily-quantities"
-    action={<div className="executive-quantity-actions"><label className="executive-quantity-date">{translateUi('วันที่ต้องการดู')}
-      <input type="date" value={selectedDate} max={today} onChange={(event) => {
-        const value = event.target.value;
-        if (!reportRangeError(value, value, today)) onDateChange(value);
-      }} />
-    </label><button aria-label={translateUi(exporting ? 'กำลังสร้างไฟล์จำนวนขาย…' : 'ส่งออกจำนวนขายรายวัน (Excel)')} type="button" disabled={!canExport || exporting} onClick={() => void handleExport()}>
+    action={<div className="executive-quantity-actions"><button aria-label={translateUi(exporting ? 'กำลังสร้างไฟล์จำนวนขาย…' : 'ส่งออกจำนวนขายรายวัน (Excel)')} type="button" disabled={!canExport || exporting} onClick={() => void handleExport()}>
       <DownloadSimple size={18} aria-hidden="true" /> {translateUi(exporting ? 'กำลังสร้างไฟล์จำนวนขาย…' : 'ส่งออก Excel')}
     </button></div>}>
     {demo ? <p className="executive-panel-note quantity-demo-note">{translateUi('ข้อมูลจำลอง · ไม่ใช่ข้อมูลจริงตามวันที่')}</p> : null}
@@ -117,7 +113,7 @@ export function ReportDailyQuantities({ report, demo = false, selectedDate, onDa
     {reportError && !report ? null : error ? <p className="executive-error" role="alert">{translateUi(error)} <button type="button" onClick={() => setRetry((value) => value + 1)}>{translateUi('ลองใหม่')}</button></p>
       : !source ? <p role="status">{translateUi('กำลังโหลดจำนวนขายรายวัน…')}</p>
       : !source.dailyTrend ? <p role="status">{translateUi('ข้อมูลจำนวนขายรายวันยังไม่พร้อมใช้งาน กรุณาอัปเดตระบบรายงาน')}</p>
-      : !columns.length ? <p className="executive-empty">{translateUi('ยังไม่มีรายการขายน้ำแข็งในเดือนนี้')}</p>
+      : !columns.length ? <p className="executive-empty">{translateUi('ยังไม่มีรายการขายน้ำแข็งในช่วงนี้')}</p>
       : <>
         <div className="quantity-analysis">
           <section className="quantity-analysis__chart" aria-label={translateUi('แนวโน้มจำนวนขาย')}>
@@ -153,9 +149,9 @@ export function ReportDailyQuantities({ report, demo = false, selectedDate, onDa
             {deliverySummary}
           </aside>
         </div>
-        <div className="quantity-table-heading"><h3>{translateUi(showAllDays ? 'จำนวนขายแต่ละวันทั้งเดือน' : 'รายละเอียดรายวัน')}</h3>
+        <div className="quantity-table-heading"><h3>{translateUi(showAllDays ? 'จำนวนขายแต่ละวันในช่วงที่เลือก' : 'รายละเอียดรายวัน')}</h3>
           <span>{formatReportDate(first)} – {formatReportDate(end)}</span></div>
-        <div className={`executive-quantity-scroll executive-quantity-scroll--month${showAllDays ? ' is-expanded' : ''}`} role="region" aria-label={translateUi('ตารางจำนวนขายรายวันทั้งเดือน')} tabIndex={0}>
+        <div className={`executive-quantity-scroll executive-quantity-scroll--month${showAllDays ? ' is-expanded' : ''}`} role="region" aria-label={translateUi('ตารางจำนวนขายรายวันตามช่วงวันที่')} tabIndex={0}>
           <table className="executive-quantity-table">
             <thead><tr><th scope="col">{translateUi('วันที่')}</th>{columns.map((product) =>
               <th scope="col" key={product.id}>{product.name}<small>{product.unit}</small></th>)}</tr></thead>
@@ -165,12 +161,12 @@ export function ReportDailyQuantities({ report, demo = false, selectedDate, onDa
                 : formatReportDate(date)}</th>
               {columns.map((product) => <td key={product.id}>{date > end ? '—' : display(quantity(date, product.id))}</td>)}
             </tr>)}</tbody>
-            {showAllDays ? <tfoot><tr><th scope="row">{translateUi('รวมเดือนถึงวันที่')} {formatReportDate(end)}</th>
+            {showAllDays ? <tfoot><tr><th scope="row">{translateUi('รวมช่วงถึงวันที่')} {formatReportDate(end)}</th>
               {columns.map((product) => <td key={product.id}>{display(total(product.id))}</td>)}</tr></tfoot> : null}
           </table>
         </div>
         <div className="quantity-table-footer"><p className="executive-panel-note">{translateUi('0 = ไม่มีจำนวนขาย · — = ยังไม่มีข้อมูลหรือยังไม่ถึงวันนั้น · วันนี้เป็นยอดที่บันทึกแล้ว ยังไม่ครบวัน')}</p>
-          <button type="button" aria-expanded={showAllDays} onClick={() => setShowAllDays((value) => !value)}>{translateUi(showAllDays ? 'แสดง 5 วัน' : 'ดูทั้งเดือน')}<ArrowRight size={17} aria-hidden="true" /></button></div>
+          <button type="button" aria-expanded={showAllDays} onClick={() => setShowAllDays((value) => !value)}>{translateUi(showAllDays ? 'แสดง 5 วัน' : 'ดูทุกวันในช่วง')}<ArrowRight size={17} aria-hidden="true" /></button></div>
         <p className="executive-panel-note quantity-source-note">{translateUi('รวมจำนวนส่งร้านและขายหน้ารถตามวันที่ขาย หลังปรับแก้รายการ ไม่รวมของเสีย')}</p>
         <a className="quantity-building-link" href="#executive-volume-areas">{translateUi('ดูปริมาณแยกตามตึก')}<ArrowRight size={19} aria-hidden="true" /></a>
       </>}

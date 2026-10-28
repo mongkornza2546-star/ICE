@@ -163,6 +163,8 @@ export function EmployeeDeliveryReview({
   const [paymentEvidenceError, setPaymentEvidenceError] = useState<string | null>(null);
   const [correctionEventId, setCorrectionEventId] = useState<string | null>(null);
   const [slowPosContext, setSlowPosContext] = useState(false);
+  const todayTankRentals = shopCard.today_tank_rentals ?? [];
+  const todayHistoryCount = shopCard.today_history.length + todayTankRentals.length;
   useEffect(() => {
     setSlowPosContext(false);
     if (!loadingPosContext) return;
@@ -914,10 +916,17 @@ export function EmployeeDeliveryReview({
 
       <section className="employee-history">
         <div className="employee-shop-section__heading">
-          <h2>{translateUi('ประวัติวันนี้')}</h2><span>{shopCard.today_history.length}{translateUi(' รายการ')}</span>
+          <h2>{translateUi('ประวัติวันนี้')}</h2><span>{todayHistoryCount}{translateUi(' รายการ')}</span>
         </div>
-        {shopCard.today_history.length === 0 ? <p className="employee-empty-history">{translateUi('วันนี้ยังไม่มีรายการของร้านนี้')}</p> : (
+        {todayHistoryCount === 0 ? <p className="employee-empty-history">{translateUi('วันนี้ยังไม่มีรายการของร้านนี้')}</p> : (
           <div className="employee-history-list">
+            {todayTankRentals.map((rental) => (
+              <article key={`tank-${rental.id}`}>
+                <div><strong>{translateUi('ถังเช่า')} {rental.quantity}{translateUi(' ใบ')}</strong></div>
+                <span>{rental.tank_code ? `${translateUi('รหัสถัง')}: ${rental.tank_code}` : null}{rental.tank_code && rental.note ? ' · ' : ''}{rental.note}</span>
+                <small>{rental.recorded_by}</small>
+              </article>
+            ))}
             {shopCard.today_history.map((entry) => (
               <article key={entry.event_id}>
                 <div><strong>{formatShortTime(entry.recorded_at)} · {entry.round_name}</strong>

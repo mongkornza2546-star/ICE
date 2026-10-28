@@ -673,12 +673,13 @@ describe('employee live shop loading', () => {
     );
     expect(supabaseMock.client.rpc).toHaveBeenNthCalledWith(
       3,
-      'get_round_shop_cards',
+      'get_round_shop_cards_with_tank_history',
       { p_round_id: 'round-1', p_building_id: null },
     );
   });
 
   it('loads event destinations and maps the booth without a shop image', async () => {
+    const tankRentals = [{ id: 'tank-1', quantity: 2, tank_code: null, recorded_by: 'Courier', note: '' }];
     supabaseMock.client.rpc
       .mockResolvedValueOnce({
         data: {
@@ -710,6 +711,7 @@ describe('employee live shop loading', () => {
             is_operational: true,
             stop_status: 'issue',
             stop_note: 'เข้าถึงบูธไม่ได้',
+            today_tank_rentals: tankRentals,
             today_history: [{
               delivery_event_id: 'delivery-issue-1',
               can_cancel: true,
@@ -736,6 +738,7 @@ describe('employee live shop loading', () => {
       stop_status: 'issue',
       stop_note: 'เข้าถึงบูธไม่ได้',
       event_delivery_enabled: false,
+      today_tank_rentals: tankRentals,
       today_history: [{
         event_id: 'delivery-issue-1',
         can_cancel: true,
@@ -746,7 +749,7 @@ describe('employee live shop loading', () => {
     }]);
     expect(supabaseMock.client.rpc).toHaveBeenNthCalledWith(
       4,
-      'get_event_delivery_cards',
+      'get_event_delivery_cards_with_tank_history',
       { p_round_id: 'round-1', p_event_job_id: null, p_search: null },
     );
     expect(supabaseMock.getPublicUrl).not.toHaveBeenCalled();
@@ -925,7 +928,7 @@ describe('employee live shop loading', () => {
 
     expect(supabaseMock.client.rpc.mock.calls.filter(([name]) => name === 'get_event_delivery_capability')).toHaveLength(2);
     expect(supabaseMock.client.rpc).toHaveBeenLastCalledWith(
-      'get_event_delivery_cards',
+      'get_event_delivery_cards_with_tank_history',
       { p_round_id: 'round-1', p_event_job_id: null, p_search: null },
     );
   });
@@ -965,7 +968,7 @@ describe('employee live shop loading', () => {
     );
     expect(supabaseMock.client.rpc).toHaveBeenNthCalledWith(
       3,
-      'get_round_shop_cards',
+      'get_round_shop_cards_with_tank_history',
       { p_round_id: 'round-1', p_building_id: null },
     );
   });
@@ -1054,7 +1057,7 @@ describe('employee live shop loading', () => {
   it('keeps public shop image URLs stable across card refreshes', async () => {
     let now = new Date('2026-08-11T01:00:00Z').getTime();
     const nowSpy = vi.spyOn(Date, 'now').mockImplementation(() => now);
-    supabaseMock.client.rpc.mockImplementation(async (name: string) => name === 'get_round_shop_cards'
+    supabaseMock.client.rpc.mockImplementation(async (name: string) => name === 'get_round_shop_cards_with_tank_history'
       ? { data: [shopCard], error: null }
       : { data: 1, error: null });
     const gateway = createSupabaseGateway();
@@ -1069,9 +1072,19 @@ describe('employee live shop loading', () => {
     nowSpy.mockRestore();
   });
 
+  it('passes regular tank history through the shop-card gateway without loading POS', async () => {
+    const tankRentals = [{ id: 'tank-1', quantity: 3, tank_code: 'T-1', recorded_by: 'Courier', note: '' }];
+    supabaseMock.client.rpc.mockImplementation(async (name: string) => name === 'get_round_shop_cards_with_tank_history'
+      ? { data: [{ ...shopCard, today_tank_rentals: tankRentals }], error: null }
+      : { data: 1, error: null });
+    const cards = await createSupabaseGateway().loadShopCards('round-tank-history');
+    expect(cards[0].today_tank_rentals).toEqual(tankRentals);
+    expect(supabaseMock.client.rpc.mock.calls.some(([name]) => String(name).includes('pos_context'))).toBe(false);
+  });
+
   it('bypasses the shop-card burst cache for a catalog change refresh', async () => {
     let catalogChanged = false;
-    supabaseMock.client.rpc.mockImplementation(async (name: string) => name === 'get_round_shop_cards'
+    supabaseMock.client.rpc.mockImplementation(async (name: string) => name === 'get_round_shop_cards_with_tank_history'
       ? { data: catalogChanged ? [shopCard, newShopCard] : [shopCard], error: null }
       : { data: 1, error: null });
     const gateway = createSupabaseGateway();
@@ -1085,7 +1098,7 @@ describe('employee live shop loading', () => {
   });
 
   it('keeps shop business data usable when public image URL resolution fails', async () => {
-    supabaseMock.client.rpc.mockImplementation(async (name: string) => name === 'get_round_shop_cards'
+    supabaseMock.client.rpc.mockImplementation(async (name: string) => name === 'get_round_shop_cards_with_tank_history'
       ? { data: [{ ...shopCard, image_path: 'shops/signing-failure.jpg' }], error: null }
       : { data: 1, error: null });
     supabaseMock.getPublicUrl.mockImplementationOnce(() => {
@@ -1856,7 +1869,7 @@ it('loads event settlement balances as well as regular shop balances for POS', a
       event_participation_id: 'participation-1', outstanding_amount: 90 },
   ] }, error: null });
   const result = await createSupabaseGateway().loadCollectionOutstanding!('2026-09-25');
-  expect(supabaseMock.client.rpc).toHaveBeenCalledWith('get_daily_shop_collection_queue', { p_service_date: '2026-09-25' });
+  expect(supabaseMock.client.rpc).toHaveBeenCalledWith('get_daily_shop_collection_queue_v2', { p_service_date: '2026-09-25' });
   expect(result).toEqual([
     { queueKey: 'regular:shop-1', shopId: 'shop-1', outstandingAmount: 240 },
     { queueKey: 'event:context-1', shopId: 'shop-1', eventParticipationId: 'participation-1', outstandingAmount: 160.75 },

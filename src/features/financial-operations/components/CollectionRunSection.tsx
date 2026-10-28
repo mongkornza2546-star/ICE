@@ -7,7 +7,7 @@ import {
 } from '@phosphor-icons/react';
 import { useMemo, useState } from 'react';
 import type { QueueShop } from '../types';
-import { formatServiceDate, money } from '../utils';
+import { formatCollectionServiceDates, money } from '../utils';
 import { isBoothSameAsName } from '../../employee-delivery/utils';
 import { AutoRefreshShopImage } from './AutoRefreshShopImage';
 import { translateUi, useLanguage } from '../../../i18n';
@@ -94,7 +94,7 @@ export function CollectionRunSection({
         <div className="financial-ops__shop-grid">
           {visibleQueue.map((shop) => (
             <button
-              aria-label={`${shop.shop_code} · ${shop.shop_name} ${translateUi('ค้าง')} ${money.format(shop.outstanding_amount)}${eventScope ? ` · ${shop.settlement_service_date ? formatServiceDate(shop.settlement_service_date) : ''} · ${shop.charges.map((charge) => charge.charge_number).filter(Boolean).join(', ')}` : ''}`}
+              aria-label={`${shop.shop_code} · ${shop.shop_name} ${translateUi('ค้าง')} ${money.format(shop.outstanding_amount)}${eventScope ? ` · ${formatCollectionServiceDates(shop)} · ${shop.charges.map((charge) => charge.charge_number).filter(Boolean).join(', ')}` : ''}`}
               className="financial-ops__shop-card"
               key={shop.queue_key ?? `regular:${shop.shop_id}`}
               onClick={(event) => onSelectShop(shop, event.currentTarget)}
@@ -119,7 +119,7 @@ export function CollectionRunSection({
                   : shop.shop_name}</b>
                 {shop.destination_kind === 'event' ? <small>{[shop.event_name, shop.event_zone && translateUi('โซน {0}', { 0: shop.event_zone })].filter(Boolean).join(' · ')}</small> : null}
                 {eventScope ? <>
-                  <b>{shop.settlement_service_date ? formatServiceDate(shop.settlement_service_date) : ''}</b>
+                  <b>{formatCollectionServiceDates(shop)}</b>
                   <small>{shop.charges.map((charge) => charge.charge_number).filter(Boolean).join(', ')}</small>
                 </> : null}
                 <small><ListNumbers aria-hidden="true" size={15} /> {shop.charge_count}{translateUi(' รายการค้าง')}</small>

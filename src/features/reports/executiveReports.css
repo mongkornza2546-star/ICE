@@ -563,3 +563,19 @@
   .quantity-table-footer .executive-panel-note { max-width: 70%; }
   .quantity-analysis__heading select { flex: 1; min-width: 150px; }
 }
+.quantity-forecast { border-color: #c8dcfa; background: #f8fbff; }
+.quantity-forecast__horizon { display: flex; align-items: center; gap: 8px; color: #536984; font-size: 13px; }
+.quantity-forecast__horizon select { min-height: 40px; padding: 6px 12px; border: 1px solid #c8d8ec; border-radius: 8px; background: #fff; color: #163b6b; font: inherit; }
+.quantity-forecast__period { margin: 16px 0 12px; color: #365577; font-size: 14px; }
+.quantity-forecast__details { margin-top: 16px; }
+.quantity-forecast__details summary { cursor: pointer; color: #075ed8; padding: 10px 0; font-weight: 600; }
+.quantity-forecast__method { margin-top: 14px; line-height: 1.7; }
+.quantity-forecast .executive-data-table th { white-space: nowrap; }
+/* Keep forecast column labels and units visible when other report tables become cards. */
+.quantity-forecast .executive-data-table { display: table; min-width: 720px; }
+.quantity-forecast .executive-data-table thead { display: table-header-group; }
+.quantity-forecast .executive-data-table tbody { display: table-row-group; }
+.quantity-forecast .executive-data-table tr { display: table-row; width: auto; padding: 0; }
+.quantity-forecast .executive-data-table td { display: table-cell; width: auto; padding: 12px 10px; border-bottom: 1px solid #e5ebf2; text-align: left; }
+.quantity-forecast .executive-data-table td::before { display: none; }
+.quantity-forecast .executive-data-table .executive-numeric { text-align: right; white-space: nowrap; }

@@ -35,7 +35,7 @@ export type QueueCharge = {
 };
 
 export type QueueShop = {
-  collection_scope?: 'shop';
+  collection_scope?: 'shop' | 'event_participation';
   queue_key?: string;
   destination_kind?: 'regular' | 'event';
   billing_statement_id?: string | null;

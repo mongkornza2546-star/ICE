@@ -543,7 +543,16 @@ export interface ShopCardHistoryEntry {
   correction_blocker?: string | null;
 }
 
+export interface ShopCardTankRental {
+  id: string;
+  quantity: number;
+  tank_code: string | null;
+  recorded_by: string;
+  note: string | null;
+}
+
 export interface ShopCard {
+  today_tank_rentals?: ShopCardTankRental[];
   destination_kind?: 'regular' | 'event';
   round_stop_id: string;
   shop_id: string;
@@ -693,6 +702,12 @@ export interface DailyWorkIceTypeSale {
 
 export interface DailyWorkSalesSummary {
   netSalesValue: number;
+  locationReceipts?: Array<{
+    id: string;
+    kind: 'building' | 'event' | 'unassigned';
+    name: string;
+    receivedValue: number;
+  }>;
   locationSales?: Array<{
     id: string;
     kind: 'building' | 'event';

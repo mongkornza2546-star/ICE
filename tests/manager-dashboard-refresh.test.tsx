@@ -4,6 +4,7 @@ const client = vi.hoisted(() => ({ rpc: vi.fn() }));
 vi.mock('../src/lib/supabase', () => ({ supabase: client }));
 import { ManagerDashboard } from '../src/ManagerDashboard';
 import { LocalDemoApp } from '../src/LocalDemoApp';
+import { publishDataChange } from '../src/lib/dataChange';
 
 afterEach(() => vi.useRealTimers());
 
@@ -14,6 +15,16 @@ function setup(status = 'open', creditBreakdown: { creditSalesSubtotalValue?: nu
       deliverySummary: { regularShopCount: 0, eventParticipationCount: 0, activeDeliveryCount: 0 },
       salesSummary: {
         netSalesValue: 800,
+        locationSales: [
+          { id: 'building-a', kind: 'building', name: 'ตึก A', netSalesValue: 620.50, saleCount: 2 },
+          { id: 'building-b', kind: 'building', name: 'ตึก B', netSalesValue: 0, saleCount: 0 },
+          { id: 'event-today', kind: 'event', name: 'ตลาดวันนี้', netSalesValue: 179.50, saleCount: 1 },
+        ],
+        locationReceipts: [
+          { id: 'building-a', kind: 'building', name: 'ตึก A', receivedValue: 120.50 },
+          { id: 'building-b', kind: 'building', name: 'ตึก B', receivedValue: 100 },
+          { id: 'event-today', kind: 'event', name: 'ตลาดวันนี้', receivedValue: 0 },
+        ],
         locationIceTotals: [
           { id: 'building-a', kind: 'building', name: 'ตึก A', iceTotals: [{ ice_type_id: 'small-tube', ice_type_name: 'หลอดเล็ก', unit: 'ถุง', quantity: 42 }] },
           { id: 'building-b', kind: 'building', name: 'ตึก B', iceTotals: [] },
@@ -56,7 +67,12 @@ it('shows the aggregate closure instead of obsolete per-location count warnings'
   expect(pointIceTotals.getByText('หลอดเล็ก 42 ถุง')).not.toBeNull();
   expect(pointIceTotals.getByText('หลอดใหญ่ 18 ถุง')).not.toBeNull();
   expect(pointIceTotals.getByText('ยังไม่มีรายการส่งน้ำแข็ง')).not.toBeNull();
-  expect(screen.queryByLabelText('ยอดขายแยกตามตึกและอีเว้น')).toBeNull();
+  expect(screen.getByText('สรุปเงินที่ได้รายตึก')).not.toBeNull();
+  expect(screen.queryByText('การแจ้งเตือนที่ต้องดำเนินการ')).toBeNull();
+  const pointSales = within(screen.getByLabelText('เงินรับชำระแยกตามตึกและอีเว้น'));
+  expect(within(pointSales.getByText('ตึก A').closest('article')!).getByText('฿120.50')).not.toBeNull();
+  expect(within(pointSales.getByText('ตึก B').closest('article')!).getByText('฿100.00')).not.toBeNull();
+  expect(within(pointSales.getByText('ตลาดวันนี้').closest('article')!).getByText('฿0.00')).not.toBeNull();
   expect(screen.queryByLabelText('เส้นทางกระจายสต๊อก')).toBeNull();
 });
 
@@ -75,6 +91,9 @@ it('refreshes visible dashboards from the server and pauses while inactive', asy
   fireEvent.click(screen.getByRole('button', { name: /รีเฟรช/ }));
   await act(async () => {});
   expect(client.rpc).toHaveBeenCalled();
+  client.rpc.mockClear();
+  await act(async () => { publishDataChange(['payment']); });
+  expect(client.rpc).toHaveBeenCalledWith('get_daily_work_dashboard', { p_service_date: '2026-09-07' });
   rerender(<ManagerDashboard {...props} isActive={false} />);
   client.rpc.mockClear();
   await act(async () => { vi.advanceTimersByTime(60_000); });
@@ -92,9 +111,30 @@ it('shows per-building ice quantities through the actual demo entry point', asyn
     expect(pointIceTotals.getByText('หลอดเล็ก 32 ถุง · หลอดเล็กโม่ 12 ถุง')).not.toBeNull();
     expect(pointIceTotals.getByText('หลอดเล็ก 40 ถุง · หลอดเล็กโม่ 16 ถุง · เปลือย (หลอดใหญ่) 18 ถุง')).not.toBeNull();
     expect(pointIceTotals.getByText('ยังไม่มีรายการส่งน้ำแข็ง')).not.toBeNull();
+    const pointSales = within(screen.getByLabelText('เงินรับชำระแยกตามตึกและอีเว้น'));
+    expect(within(pointSales.getByText('ตึก A').closest('article')!).getByText('฿1,400.00')).not.toBeNull();
+    expect(within(pointSales.getByText('ตึก B').closest('article')!).getByText('฿1,600.00')).not.toBeNull();
+    expect(within(pointSales.getByText('ตึก C').closest('article')!).getByText('฿0.00')).not.toBeNull();
   } finally {
     window.history.replaceState(null, '', '/');
   }
+});
+
+it.each([undefined, []])('does not substitute sales when location receipts are unavailable (%j)', async (locationReceipts) => {
+  setup();
+  const base = client.rpc.getMockImplementation()!;
+  client.rpc.mockImplementation(async (name: string, args: { p_service_date: string }) => {
+    const result = await base(name, args);
+    if (name === 'get_daily_work_dashboard') result.data.salesSummary.locationReceipts = locationReceipts;
+    return result;
+  });
+  render(<ManagerDashboard isActive profileRole="admin" onNavigate={vi.fn()} />);
+  const panel = within(await screen.findByLabelText('เงินรับชำระแยกตามตึกและอีเว้น'));
+  expect(panel.getByText(locationReceipts == null
+    ? 'ยังไม่สามารถโหลดข้อมูลเงินรับชำระรายตึกได้'
+    : 'ยังไม่มีข้อมูลเงินรับชำระรายตึกสำหรับวันนี้')).toBeTruthy();
+  expect(panel.queryByText('฿620.50')).toBeNull();
+  expect(panel.queryByText('฿0.00')).toBeNull();
 });
 
 it('shows the credit goods price prominently with the actual VAT and gross total', async () => {

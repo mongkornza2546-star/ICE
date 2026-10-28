@@ -173,6 +173,6 @@ for (const daysAgo of [0, 1]) test(`admin cancels after stock/cash close (${days
     assert.equal(await value(db,`select count(*)::int as value from public.audit_logs where action='admin_post_close_cancelled' and entity_id=$1`,[eventSale.delivery_event_id]),1);
     assert.equal(await aggregate(),0);
   });
-  await db.exec(readFileSync(new URL('../supabase/migrations/0255_admin_post_close_cancellations.sql',import.meta.url),'utf8'));
+  await db.exec(readFileSync(new URL('../supabase/migrations/20261027162143_delivery_history_cancellation_policy.sql',import.meta.url),'utf8'));
 
 });

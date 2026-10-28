@@ -33,6 +33,13 @@ export function formatServiceDate(value: string) {
   return serviceDateFormat.format(new Date(`${value}T12:00:00+07:00`));
 }
 
+export function formatCollectionServiceDates(shop: QueueShop) {
+  const dates = [...new Set(shop.charges.map(charge => charge.service_date))].sort();
+  if (dates.length === 0) return shop.settlement_service_date ? formatServiceDate(shop.settlement_service_date) : '';
+  return dates.length === 1 ? formatServiceDate(dates[0])
+    : `${formatServiceDate(dates[0])} – ${formatServiceDate(dates[dates.length - 1])}`;
+}
+
 export function formatPaymentReceivedAt(payment: { recorded_at: string; received_date_override?: string | null }) {
   return payment.received_date_override
     ? formatServiceDate(payment.received_date_override)

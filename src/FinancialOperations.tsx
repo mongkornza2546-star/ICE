@@ -720,10 +720,14 @@ export function FinancialOperations({
       })}`;
       const request = getOrCreatePendingRequest(signature);
       const evidencePath = evidence ? await uploadPaymentEvidence(evidence, request.key) : null;
+      const unifiedEvent = selectedShop.destination_kind === 'event'
+        && selectedShop.collection_scope === 'event_participation';
       const paymentArgs = selectedShop.destination_kind === 'event' ? {
-        p_expected_settlement_context_id: selectedShop.event_settlement_context_id,
+        ...(!unifiedEvent ? {
+          p_expected_settlement_context_id: selectedShop.event_settlement_context_id,
+          p_expected_service_date: selectedShop.settlement_service_date,
+        } : {}),
         p_expected_participation_id: selectedShop.event_participation_id,
-        p_expected_service_date: selectedShop.settlement_service_date,
         p_expected_policy_fingerprint: selectedShop.settlement_policy_fingerprint,
         p_allocations: allocations,
         p_payment_method: method,
@@ -756,7 +760,7 @@ export function FinancialOperations({
         p_idempotency_key: request.key,
       };
       const paymentRpc = selectedShop.destination_kind === 'event'
-        ? 'record_event_payment'
+        ? unifiedEvent ? 'record_event_collection_payment' : 'record_event_payment'
         : selectedShop.billing_statement_id
           ? 'record_billing_statement_payment'
           : selectedShop.collection_scope === 'shop'

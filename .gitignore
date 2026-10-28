@@ -5,3 +5,6 @@ dist-employee
 .env.local
 .DS_Store
 .toolchains/
+tmp/
+*.tsbuildinfo
+supabase/.temp/

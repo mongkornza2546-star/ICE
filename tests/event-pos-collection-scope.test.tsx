@@ -46,6 +46,62 @@ function gateway(queue: QueueShop[], override: Partial<ShopCard> = {}): Employee
     recordEmployeeStockDamage: vi.fn(), recordDelivery: vi.fn(), recordImmediateSale: vi.fn(),
   };
 }
+// The database now returns one row per participation, containing all eligible
+// service days. Keep the legacy multi-row tests below for older API responses.
+function unifiedRow(): QueueShop {
+  const old = row('old', 120, '2026-10-26');
+  const current = row('new', 100, date);
+  return { ...current, queue_key: 'event-participation:participation',
+    collection_scope: 'event_participation', settlement_service_date: null,
+    settlement_policy_fingerprint: 'policy', outstanding_amount: 220, charge_count: 2,
+    charges: [...old.charges, ...current.charges] };
+}
+it.each(['courier', 'admin', 'round_lead'] as const)('opens all event days in one payment dialog directly from POS (%s)', async userRole => {
+  const queue = [unifiedRow()];
+  function Harness() {
+    const [request, setRequest] = useState<CollectionFocusRequest | null>(null);
+    return request ? <FinancialOperations userRole={userRole} canCollectShopPayments focusRequest={request}
+      demoData={{ serviceDate: date, runId: 'run', queue, paymentHistory: [] }} />
+      : <EmployeeDeliveryWorkspace gateway={gateway(queue)} serviceDate={date}
+          canCollectShopPayments onOpenCollection={setRequest} />;
+  }
+  const user = userEvent.setup();
+  render(<Harness />);
+  await user.click(await screen.findByRole('button', { name: 'อีเว้น', exact: true }));
+  await user.click(screen.getByRole('button', { name: /^เลือกร้าน บูธ B1/ }));
+  await user.click(screen.getByRole('button', { name: 'รับชำระ', exact: true }));
+  const payment = await screen.findByRole('dialog');
+  expect((within(payment).getByLabelText('ยอดรับเงินจริง') as HTMLInputElement).value).toBe('220.00');
+  expect(within(payment).getByText('เลขที่บิล INV-old')).toBeTruthy();
+  expect(within(payment).getByText('เลขที่บิล INV-new')).toBeTruthy();
+});
+
+it.each(['all', 'selected', 'partial'] as const)('submits one event collection for %s bills with the combined balance', async mode => {
+  const queue = [unifiedRow()];
+  api.rpc.mockImplementation(async name => ({ data: name === 'record_event_collection_payment'
+    ? { payment_id: 'payment', receipt_number: 'REC-1', recorded_at: `${date}T06:00:00Z`,
+        allocated_amount: mode === 'all' ? 220 : mode === 'partial' ? 150 : 100, change_amount: 0 }
+    : { items: [] }, error: null }));
+  render(<FinancialOperations userRole="courier" canCollectShopPayments
+    focusRequest={{ requestId: 'unified', source: 'pos-shortcut', shopId: 'shop',
+      queueKey: 'event-participation:participation', eventParticipationId: 'participation' }}
+    demoData={{ serviceDate: date, runId: 'run', queue, paymentHistory: [] }} />);
+  const payment = await screen.findByRole('dialog');
+  if (mode === 'selected') await userEvent.click(within(payment).getByRole('checkbox', { name: /INV-old/ }));
+  if (mode === 'partial') fireEvent.change(within(payment).getByLabelText('ยอดรับเงินจริง'), { target: { value: '150' } });
+  await userEvent.click(within(payment).getByRole('button', { name: 'บันทึกรับเงินทันที' }));
+  await waitFor(() => expect(api.rpc).toHaveBeenCalledWith('record_event_collection_payment', expect.objectContaining({
+    p_expected_participation_id: 'participation', p_expected_policy_fingerprint: 'policy',
+    p_expected_outstanding_amount: 220,
+    p_allocations: mode === 'selected' ? [{ charge_id: 'charge-new', amount: 100 }]
+      : [{ charge_id: 'charge-old', amount: 120 }, { charge_id: 'charge-new', amount: mode === 'partial' ? 30 : 100 }],
+  })));
+  const calls = api.rpc.mock.calls.filter(([name]) => name === 'record_event_collection_payment');
+  expect(calls).toHaveLength(1);
+  expect(calls[0][1]).not.toHaveProperty('p_expected_settlement_context_id');
+  expect(api.rpc.mock.calls.some(([name]) => name === 'record_event_payment')).toBe(false);
+});
+
 it.each(['courier', 'admin', 'round_lead'] as const)('opens the standard collection queue with every event settlement (%s)', async userRole => {
   const queue = [row('old', 100.25, '2026-10-26'), row('new', 60.5, date)];
   if (userRole === 'admin') queue.reverse();

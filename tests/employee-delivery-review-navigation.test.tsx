@@ -143,6 +143,42 @@ function renderReview(canCollectImmediatePayment = true, card = shopCard, overri
 }
 
 describe('employee delivery review navigation', () => {
+  it.each(['regular', 'event'] as const)('shows today tank rentals without an ice delivery for %s shops', (destination_kind) => {
+    renderReview(true, { ...shopCard, destination_kind,
+      today_tank_rentals: [{
+        id: 'rental-1', quantity: 2, tank_code: 'T-01', recorded_by: 'ผู้ส่งถัง', note: 'ถังใหญ่',
+      }],
+    }, {
+      round: { ...round, status: 'closed' },
+      posContext: null,
+      posContextError: 'This delivery round is already closed',
+    });
+    const history = within(screen.getByRole('heading', { name: 'ประวัติวันนี้' }).closest('section')!);
+    expect(history.getByText('ถังเช่า 2 ใบ')).toBeTruthy();
+    expect(history.getByText('รหัสถัง: T-01 · ถังใหญ่')).toBeTruthy();
+    expect(history.getByText('ผู้ส่งถัง')).toBeTruthy();
+    expect(history.getByText('1 รายการ')).toBeTruthy();
+    expect(history.queryByText('วันนี้ยังไม่มีรายการของร้านนี้')).toBeNull();
+    expect(history.queryByRole('button', { name: 'ยกเลิกใบส่งน้ำแข็ง' })).toBeNull();
+  });
+
+  it.each([undefined, []])('keeps the empty history when no rentals started today (%s)', (today_tank_rentals) => {
+    renderReview(true, { ...shopCard, today_tank_rentals });
+    const history = within(screen.getByRole('heading', { name: 'ประวัติวันนี้' }).closest('section')!);
+    expect(history.getByText('0 รายการ')).toBeTruthy();
+    expect(history.getByText('วันนี้ยังไม่มีรายการของร้านนี้')).toBeTruthy();
+    expect(history.queryByText(/ถังเช่า/)).toBeNull();
+  });
+
+  it.each(['regular', 'event'] as const)('keeps %s rental history visible while POS stock and prices are loading', (destination_kind) => {
+    renderReview(true, { ...shopCard, destination_kind,
+      today_tank_rentals: [{ id: 'rental-1', quantity: 2, tank_code: null, recorded_by: 'ผู้ส่งถัง', note: null }],
+    }, { posContext: null, loadingPosContext: true });
+    const history = within(screen.getByRole('heading', { name: 'ประวัติวันนี้' }).closest('section')!);
+    expect(history.getByText('ถังเช่า 2 ใบ')).toBeTruthy();
+    expect(history.queryByText('วันนี้ยังไม่มีรายการของร้านนี้')).toBeNull();
+  });
+
   it('blocks saved stock and offers a live retry even when the saved payment profile is valid', async () => {
     const onRetryPosContext = vi.fn();
     renderReview(true, shopCard, {
@@ -663,5 +699,29 @@ it.each([false, true])('closed-day delivery edit capability: %s', async (allowed
     const quantity = screen.getByRole('spinbutton', { name: 'จำนวนหลอดเล็ก' });
     expect(quantity.hasAttribute('disabled')).toBe(false);
     expect(quantity.hasAttribute('max')).toBe(false);
+  }
+});
+
+it.each([
+  { status: 'closed' as const, canCancel: true, allocated: 0, blocker: null },
+  { status: 'open' as const, canCancel: false, allocated: 25,
+    blocker: 'บิลรับชำระแล้ว ไม่สามารถยกเลิกใบส่งได้ กรุณาตรวจสอบรายการรับเงินก่อน' },
+])('uses server cancellation eligibility for an older $status delivery', async ({ status, canCancel, allocated, blocker }) => {
+  const user = userEvent.setup();
+  renderReview(true, { ...shopCard, today_history: [{
+    event_id: 'older-delivery', recorded_at: '2026-08-18T01:00:00Z',
+    round_name: 'งานประจำวัน', recorded_by: 'แอดมิน', stop_status: 'delivered',
+    note: null, items: { 'ice-1': 2 }, can_cancel: canCancel, can_correct: false,
+    allocated_amount: allocated, correction_blocker: blocker,
+  }] }, { round: { ...round, status } });
+  const history = within(screen.getByRole('heading', { name: 'ประวัติวันนี้' }).closest('section')!);
+  const button = history.queryByRole('button', { name: 'ยกเลิกใบส่งน้ำแข็ง' });
+  if (canCancel) {
+    expect(button).toBeTruthy();
+    await user.click(button!);
+    expect(screen.getByRole('dialog', { name: /ยกเลิกใบส่งน้ำแข็ง/ })).toBeTruthy();
+  } else {
+    expect(button).toBeNull();
+    expect(history.getByText(blocker!)).toBeTruthy();
   }
 });

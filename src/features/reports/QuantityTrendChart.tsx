@@ -73,7 +73,7 @@ export function QuantityTrendChart({ points, name, unit, selectedDate, onDateCha
       points.forEach((point, index) => {
         if (index !== 0 && index !== points.length - 1 && (index % tickEvery !== 0 || points.length - 1 - index < tickEvery / 2)) return;
         context.textAlign = index === 0 ? 'left' : index === points.length - 1 ? 'right' : 'center';
-        context.fillText(String(Number(point.date.slice(-2))), x(index), bottom + 14);
+        context.fillText(points[0].date.slice(0, 7) === points[points.length - 1].date.slice(0, 7) ? String(Number(point.date.slice(-2))) : `${Number(point.date.slice(-2))}/${Number(point.date.slice(5, 7))}`, x(index), bottom + 14);
       });
     };
     draw();
@@ -100,7 +100,7 @@ export function QuantityTrendChart({ points, name, unit, selectedDate, onDateCha
         const index = event.key === 'Home' ? 0 : event.key === 'End' ? points.length - 1
           : Math.max(0, Math.min(points.length - 1, current + (event.key === 'ArrowRight' ? 1 : -1)));
         if (points[index]) onDateChange(points[index].date);
-      }} /> : <p className="executive-empty">{translateUi('ยังไม่มีข้อมูลสำหรับกราฟในเดือนนี้')}</p>}
-    <p className="quantity-trend__caption">{translateUi('วันที่ในเดือน')} · {translateUi('เลือกวันบนกราฟเพื่อเปรียบเทียบ')}</p>
+      }} /> : <p className="executive-empty">{translateUi('ยังไม่มีข้อมูลสำหรับกราฟในช่วงนี้')}</p>}
+    <p className="quantity-trend__caption">{translateUi('วันที่')} · {translateUi('เลือกวันบนกราฟเพื่อเปรียบเทียบ')}</p>
   </div>;
 }

@@ -42,7 +42,7 @@ it('returns base shop cards before catalog URL signing finishes', async () => {
     if (name === 'get_event_delivery_capability') {
       return { data: { schema_version: 3 }, error: null };
     }
-    if (name === 'get_round_shop_cards') return { data: [shopCard], error: null };
+    if (name === 'get_round_shop_cards_with_tank_history') return { data: [shopCard], error: null };
     return { data: 1, error: null };
   });
 
@@ -76,7 +76,7 @@ it('refreshes data while older photo signing is pending and does not let old pho
   let liveCard = firstCard;
   mocks.rpc.mockImplementation(async (name: string) => {
     if (name === 'get_event_delivery_capability') return { data: { schema_version: 3 }, error: null };
-    if (name === 'get_round_shop_cards') return { data: [liveCard], error: null };
+    if (name === 'get_round_shop_cards_with_tank_history') return { data: [liveCard], error: null };
     return { data: 1, error: null };
   });
   const gateway = createSupabaseGateway();
@@ -107,7 +107,7 @@ it('shares pending photo signing across concurrent readers and a fresh data snap
   let liveCard: ShopCard = { ...shopCard, image_path: imagePath };
   mocks.rpc.mockImplementation(async (name: string) => {
     if (name === 'get_event_delivery_capability') return { data: { schema_version: 3 }, error: null };
-    if (name === 'get_round_shop_cards') return { data: [liveCard], error: null };
+    if (name === 'get_round_shop_cards_with_tank_history') return { data: [liveCard], error: null };
     return { data: 1, error: null };
   });
   const gateway = createSupabaseGateway();
@@ -142,7 +142,7 @@ it('preserves fresh capability after a sale but revalidates it at its normal exp
   let stopStatus = 'pending';
   mocks.rpc.mockImplementation(async (name: string) => {
     if (name === 'get_event_delivery_capability') return { data: { schema_version: 3 }, error: null };
-    if (name === 'get_round_shop_cards') return { data: [{ ...shopCard, image_path: null, stop_status: stopStatus }], error: null };
+    if (name === 'get_round_shop_cards_with_tank_history') return { data: [{ ...shopCard, image_path: null, stop_status: stopStatus }], error: null };
     return { data: 1, error: null };
   });
   try {
@@ -151,7 +151,7 @@ it('preserves fresh capability after a sale but revalidates it at its normal exp
     stopStatus = 'delivered';
     const refreshed = await gateway.loadShopCards('after-sale', { forceRefresh: true, refreshCapability: false });
     expect(refreshed[0].stop_status).toBe('delivered');
-    expect(mocks.rpc.mock.calls.filter(([name]) => name === 'get_round_shop_cards')).toHaveLength(2);
+    expect(mocks.rpc.mock.calls.filter(([name]) => name === 'get_round_shop_cards_with_tank_history')).toHaveLength(2);
     expect(mocks.rpc.mock.calls.filter(([name]) => name === 'get_event_delivery_capability')).toHaveLength(1);
     now.mockReturnValue(startedAt + 60_001);
     await gateway.loadShopCards('after-sale', { forceRefresh: true, refreshCapability: false });

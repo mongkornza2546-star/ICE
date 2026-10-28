@@ -17,7 +17,9 @@ beforeEach(() => {
   rpc.mockReset();
   shopQuery.mockReset();
   shopResult.mockReset();
-  shopQuery.mockReturnValue({ select: () => ({ eq: (_field: string, id: string) => ({ maybeSingle: () => shopResult(id) }) }) });
+  shopQuery.mockImplementation((table: string) => table === 'ice_types'
+    ? { select: () => ({ eq: () => ({ order: () => ({ order: async () => ({ data: [], error: null }) }) }) }) }
+    : { select: () => ({ eq: (_field: string, id: string) => ({ maybeSingle: () => shopResult(id) }) }) });
   shopResult.mockResolvedValue({ data: {
     code: 'A-001', buildings: { name: 'อาคาร A' }, building_zones: { name: 'โซนอาหาร' },
     floor_or_zone: 'ชั้น 2', contact_name: 'คุณสมใจ', contact_phone: '081-234-5678',
@@ -283,7 +285,7 @@ it('keeps the selected section when the volume date changes', async () => {
     render(<LocalDemoApp />);
     const tabs = await screen.findByRole('navigation', { name: 'หมวดรายงาน' });
     fireEvent.click(screen.getByRole('button', { name: 'ปริมาณ', exact: true }));
-    fireEvent.change(screen.getByLabelText('วันที่ต้องการดู'), { target: { value: '2026-09-15' } });
+    fireEvent.change(screen.getByLabelText('จาก'), { target: { value: '2026-09-15' } });
     expect(within(tabs).getByRole('button', { name: 'ปริมาณ' }).getAttribute('aria-current')).toBe('page');
     expect(within(tabs).getByRole('button', { name: 'ภาพรวม' }).getAttribute('aria-current')).toBeNull();
     expect(screen.getByRole('table', { name: 'ปริมาณงานและน้ำแข็ง' })).not.toBeNull();
@@ -409,7 +411,7 @@ it('shows the overall volume followed by each building and separate other activi
   expect(within(buildings).queryByText('ขายหน้ารถ')).toBeNull();
   expect(within(screen.getByRole('region', { name: 'รายการอื่นในยอดรวม' })).getByRole('table', { name: 'ปริมาณน้ำแข็ง · ขายหน้ารถ' })).not.toBeNull();
   expect(screen.queryByRole('checkbox')).toBeNull();
-  expect(rpc).not.toHaveBeenCalled();
+  expect(rpc).toHaveBeenCalledExactlyOnceWith('get_executive_report', { p_from: '2026-09-15', p_to: '2026-10-12' });
 });
 
 it('distinguishes missing building data from an empty period', async () => {
