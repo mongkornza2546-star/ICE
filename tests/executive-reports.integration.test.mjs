@@ -1022,3 +1022,72 @@ test('volume attributes measured casual sales to their selling building and pres
   await db.exec(readFileSync(new URL('../supabase/migrations/0252_executive_volume_sale_building.sql', import.meta.url), 'utf8'));
   assert.deepEqual((await getReport()).volumeAreas, report.volumeAreas, 'migration can be reapplied safely');
 });
+
+test('quantity forecast excludes event deliveries, retains ordinary corrections and lists upcoming published jobs', async t => {
+  const db = await database(t);
+  await db.exec(`
+    alter table public.ice_types add column created_at timestamptz default '2026-01-01', add column is_active boolean default true;
+    alter table public.event_jobs add column start_date date, add column end_date date,
+      add column preparation_start_date date, add column status text default 'published';
+    insert into public.event_jobs (id, name, start_date, end_date) values
+      ('11000000-0000-4000-8000-000000000001', 'Future fair', '2026-10-21', '2026-10-23'),
+      ('11000000-0000-4000-8000-000000000002', 'Past fair', '2026-10-01', '2026-10-10');
+    insert into public.event_jobs (id, name, start_date, end_date, status) values
+      ('11000000-0000-4000-8000-000000000003', 'Cancelled', '2026-10-21', '2026-10-23', 'cancelled'),
+      ('11000000-0000-4000-8000-000000000004', 'Draft', '2026-10-21', '2026-10-23', 'draft');
+    insert into public.event_jobs (id, name, start_date, end_date, preparation_start_date) values
+      ('11000000-0000-4000-8000-000000000005', 'Preparation', '2026-11-21', '2026-11-22', '2026-11-18');
+    insert into public.buildings (id, name, code) values
+      ('12000000-0000-4000-8000-000000000001', 'Regular', 'A'),
+      ('12000000-0000-4000-8000-000000000002', 'Legacy event', 'EVENT-11000000-0000-4000-8000-000000000002');
+    insert into public.shops (id, name, building_id) values
+      ('13000000-0000-4000-8000-000000000001', 'Regular', '12000000-0000-4000-8000-000000000001'),
+      ('13000000-0000-4000-8000-000000000002', 'Legacy event', '12000000-0000-4000-8000-000000000002');
+    insert into public.event_participations values
+      ('14000000-0000-4000-8000-000000000001', '11000000-0000-4000-8000-000000000002');
+    insert into public.round_stops (id, event_participation_id) values
+      ('15000000-0000-4000-8000-000000000001', null),
+      ('15000000-0000-4000-8000-000000000002', '14000000-0000-4000-8000-000000000001');
+    insert into public.delivery_events (id, round_stop_id, status) values
+      ('16000000-0000-4000-8000-000000000001', '15000000-0000-4000-8000-000000000001', 'active'),
+      ('16000000-0000-4000-8000-000000000002', '15000000-0000-4000-8000-000000000002', 'active'),
+      ('16000000-0000-4000-8000-000000000003', null, 'active');
+    insert into public.delivery_charges (id, delivery_event_id, shop_id, service_date, status, original_amount) values
+      ('17000000-0000-4000-8000-000000000001', '16000000-0000-4000-8000-000000000001', '13000000-0000-4000-8000-000000000001', '2026-10-10', 'active', 100),
+      ('17000000-0000-4000-8000-000000000002', '16000000-0000-4000-8000-000000000002', '13000000-0000-4000-8000-000000000001', '2026-10-10', 'active', 100),
+      ('17000000-0000-4000-8000-000000000003', '16000000-0000-4000-8000-000000000003', '13000000-0000-4000-8000-000000000002', '2026-10-10', 'active', 100);
+    insert into public.ice_types (id, name, unit) values
+      ('18000000-0000-4000-8000-000000000001', 'Bag', 'ถุง'),
+      ('18000000-0000-4000-8000-000000000002', 'Zero', 'แถว');
+    insert into public.delivery_items (delivery_event_id, ice_type_id, quantity) values
+      ('16000000-0000-4000-8000-000000000001', '18000000-0000-4000-8000-000000000001', 10),
+      ('16000000-0000-4000-8000-000000000002', '18000000-0000-4000-8000-000000000001', 1000),
+      ('16000000-0000-4000-8000-000000000003', '18000000-0000-4000-8000-000000000001', 500);
+    insert into public.delivery_charge_adjustments (idempotency_key, charge_id, status, amount_delta) values
+      ('19000000-0000-4000-8000-000000000001', '17000000-0000-4000-8000-000000000001', 'active', 1),
+      ('19000000-0000-4000-8000-000000000002', '17000000-0000-4000-8000-000000000002', 'active', 1);
+    insert into public.delivery_adjustment_items values
+      ('19000000-0000-4000-8000-000000000001', '18000000-0000-4000-8000-000000000001', 2),
+      ('19000000-0000-4000-8000-000000000002', '18000000-0000-4000-8000-000000000001', 100);
+  `);
+  const forecastMigration = readFileSync(new URL('../supabase/migrations/20261028140523_quantity_forecast_event_context.sql', import.meta.url), 'utf8');
+  await db.exec(forecastMigration);
+  await db.exec(forecastMigration); // Safe to reapply.
+  const context = (await db.query(`select public.get_quantity_forecast_context('2026-10-20') as data`)).rows[0].data;
+  assert.equal(context.basis, 'regular_only');
+  assert.equal(context.dailyTrend.length, 28);
+  assert.equal(context.dailyTrend.find(d => d.date === '2026-10-10').products[0].delivered, 12);
+  assert.equal(context.products.length, 2); // Catalog retains the zero-sale type.
+  assert.deepEqual(context.events.map(e => e.name), ['Future fair', 'Preparation']);
+  assert.equal(context.events[1].start, '2026-11-18');
+  await db.exec('set role authenticated');
+  for (const [role, active] of [['courier', 'true'], ['admin', 'false'], ['', 'true']]) {
+    await db.query(`select set_config('test.app_role', $1, false), set_config('test.active', $2, false)`, [role, active]);
+    await assert.rejects(db.query(`select public.get_quantity_forecast_context('2026-10-20')`), /Only an active admin/);
+  }
+  await db.exec(`select set_config('test.app_role', 'admin', false), set_config('test.active', 'true', false)`);
+  await assert.rejects(db.query(`select public.get_quantity_forecast_context(null)`), /valid forecast anchor/);
+  await assert.rejects(db.query(`select public.get_quantity_forecast_context(current_date + 2)`), /valid forecast anchor/);
+  await db.exec('reset role; set role anon');
+  await assert.rejects(db.query(`select public.get_quantity_forecast_context('2026-10-20')`), /permission denied/);
+});

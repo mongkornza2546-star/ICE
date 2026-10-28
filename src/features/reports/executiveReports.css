@@ -563,7 +563,7 @@
   .quantity-table-footer .executive-panel-note { max-width: 70%; }
   .quantity-analysis__heading select { flex: 1; min-width: 150px; }
 }
-.quantity-forecast { border-color: #c8dcfa; background: #f8fbff; }
+.quantity-forecast { border-color: #dbe5f1; background: #fff; }
 .quantity-forecast__horizon { display: flex; align-items: center; gap: 8px; color: #536984; font-size: 13px; }
 .quantity-forecast__horizon select { min-height: 40px; padding: 6px 12px; border: 1px solid #c8d8ec; border-radius: 8px; background: #fff; color: #163b6b; font: inherit; }
 .quantity-forecast__period { margin: 16px 0 12px; color: #365577; font-size: 14px; }
@@ -579,3 +579,52 @@
 .quantity-forecast .executive-data-table td { display: table-cell; width: auto; padding: 12px 10px; border-bottom: 1px solid #e5ebf2; text-align: left; }
 .quantity-forecast .executive-data-table td::before { display: none; }
 .quantity-forecast .executive-data-table .executive-numeric { text-align: right; white-space: nowrap; }
+
+/* Forecast: one quantity per product, with day selection and separate event context. */
+.quantity-forecast__period { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin: 20px 0 16px; }
+.quantity-forecast__basis { margin-left: auto; border-radius: 6px; padding: 5px 9px; background: #eaf6f1; color: #246c53; font-size: 12px; }
+.quantity-forecast__days { display: flex; gap: 8px; overflow-x: auto; padding: 2px 2px 10px; }
+.quantity-forecast__days button { flex: 1 0 88px; display: grid; gap: 4px; min-height: 68px; padding: 10px 14px; border: 1px solid #e0e8f2; border-radius: 10px; background: #f8fafc; color: #51647e; font: inherit; cursor: pointer; white-space: nowrap; }
+.quantity-forecast__days button span { font-size: 12px; }
+.quantity-forecast__days button strong { font-size: 14px; }
+.quantity-forecast__days button:hover { border-color: #8cb5ed; background: #eff6ff; }
+.quantity-forecast__days button[aria-pressed="true"] { background: #125ed7; border-color: #125ed7; color: white; }
+.quantity-forecast__days button:focus-visible, .quantity-forecast__details summary:focus-visible { outline: 3px solid #7ba7e8; outline-offset: 2px; }
+.quantity-forecast__card-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 18px 0 12px; }
+.quantity-forecast__card-heading h3 { margin: 0; font-size: 16px; color: #193554; }
+.quantity-forecast__card-heading > span { color: #657994; font-size: 13px; }
+.quantity-forecast__cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.quantity-forecast__card { min-width: 0; padding: 18px; border: 1px solid #e0e8f2; border-radius: 12px; background: #fff; }
+.quantity-forecast__product { display: flex; align-items: center; gap: 10px; }
+.quantity-forecast__product h4 { margin: 0; font-size: 15px; line-height: 1.5; color: #2b4360; overflow-wrap: anywhere; }
+.quantity-forecast__icon { display: grid; place-items: center; flex-shrink: 0; width: 36px; height: 36px; border-radius: 9px; color: #2768d2; background: #edf4ff; }
+.quantity-forecast__amount { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px; margin: 14px 0 2px; color: #163d75; }
+.quantity-forecast__amount strong { font-size: clamp(26px, 2.5vw, 36px); line-height: 1.25; font-weight: 700; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.quantity-forecast__amount span { font-size: 14px; color: #60738a; }
+.quantity-forecast__card > p { font-size: 12px; color: #6a7d94; margin: 6px 0 0; }
+.quantity-forecast__events { display: flex; gap: 12px; margin: 20px 0 8px; padding: 16px 18px; border: 1px solid #e0e8f2; border-radius: 10px; background: #f8fafc; color: #536984; }
+.quantity-forecast__events > svg { flex-shrink: 0; margin-top: 2px; }
+.quantity-forecast__events > div { flex: 1; min-width: 0; }
+.quantity-forecast__events h3 { margin: 0; font-size: 15px; color: inherit; }
+.quantity-forecast__events p { margin: 4px 0 0; font-size: 13px; line-height: 1.65; }
+.quantity-forecast__events--pending { background: #fffaf0; border-color: #f2dfb9; color: #825b19; }
+.quantity-forecast__events ul { list-style: none; padding: 0; margin: 12px 0 0; }
+.quantity-forecast__events li { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; font-size: 13px; padding: 9px 0; border-top: 1px solid #eddfc5; }
+.quantity-forecast__events li strong { margin-right: auto; }
+.quantity-forecast__pending { font-size: 12px; background: #f7eacb; color: #765216; padding: 3px 8px; border-radius: 5px; }
+.quantity-forecast__details { border-top: 1px solid #e8edf4; margin-top: 12px; }
+.quantity-forecast__details summary { font-size: 13px; color: #496684; }
+.quantity-forecast__method summary svg { vertical-align: -3px; margin-right: 6px; }
+.quantity-forecast__method p { font-size: 13px; color: #63758d; line-height: 1.7; }
+@media (max-width: 1100px) { .quantity-forecast__cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 560px) {
+  .quantity-forecast .executive-panel__head { align-items: stretch; }
+  .quantity-forecast__basis { margin-left: 0; }
+  .quantity-forecast__horizon { justify-content: space-between; }
+  .quantity-forecast__card { padding: 12px; }
+  .quantity-forecast__product { gap: 6px; align-items: flex-start; }
+  .quantity-forecast__product h4 { font-size: 13px; }
+  .quantity-forecast__icon { width: 28px; height: 28px; }
+  .quantity-forecast__amount strong { font-size: 26px; }
+  .quantity-forecast__events { padding: 12px; }
+}

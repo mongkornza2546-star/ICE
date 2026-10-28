@@ -3,6 +3,13 @@ import type { ExecutiveReport } from './types';
 
 export type ForecastHorizon = 1 | 7 | 30;
 export type ForecastProduct = { id: string; name: string; unit: string; created_at: string };
+export type ForecastEvent = { id: string; name: string; start: string; end: string };
+export type ForecastContext = {
+  basis: 'regular_only';
+  dailyTrend: NonNullable<ExecutiveReport['dailyTrend']>;
+  products: ForecastProduct[];
+  events: ForecastEvent[];
+};
 const weekday = (date: string) => new Date(`${date}T12:00:00Z`).getUTCDay();
 const round = (value: number) => Math.round(value * 100) / 100;
 const productKey = (product: { id: string; unit: string }) => `${product.id}:${product.unit}`;
@@ -16,7 +23,7 @@ export function forecastWindow(anchor: string, today = toBangkokDateString()) {
  * Missing dates stay unknown; zero-sale days count only after product availability.
  * Never train on the unfinished current day or dates after the forecast anchor.
  */
-export function forecastQuantities(report: ExecutiveReport, products: ForecastProduct[], anchor: string, horizon: ForecastHorizon, today = toBangkokDateString()) {
+export function forecastQuantities(report: Pick<ExecutiveReport, 'dailyTrend'>, products: ForecastProduct[], anchor: string, horizon: ForecastHorizon, today = toBangkokDateString()) {
   const window = forecastWindow(anchor, today);
   const days = Array.from({ length: horizon }, (_, index) => shiftServiceDate(window.first, index));
   const history = new Map(report.dailyTrend?.filter(day => day.date >= window.historyFrom && day.date <= window.historyTo)

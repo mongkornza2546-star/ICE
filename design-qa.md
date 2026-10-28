@@ -1120,3 +1120,18 @@ final result: passed
 - Final validation: 82 tests passed across quantity, executive-report, and comparison suites (`tmp/quantity-fix-tests.log`); production build passed (`tmp/quantity-fix-build.log`, existing large-chunk advisory); scoped `git diff --check` passed.
 - Root causes were conditional unmounting of editable controls and gating independent main-range data on monthly availability. Regression coverage now checks DOM focus/identity and actual nonzero counts across those boundaries.
 - No production deployment or database changes.
+
+## 2026-10-28 — Quantity forecast redesign
+
+- Source visual truth: `/Users/bhusitt./Desktop/ภาพถ่ายหน้าจอ2569-10-28เวลา 21.01.39.png` (2880 × 1800 pixels, Retina capture approximately 1440 × 900 CSS including Safari/macOS chrome).
+- Implementation: `http://127.0.0.1:5178/?screen=executive-report`, Quantity tab, seven-day total, current October 28 anchor. Data is explicitly simulated and differs from production screenshot values.
+- Desktop evidence: `outputs/forecast-redesign-desktop.png`, 1125 × 930 panel capture from a 1440 × 900 CSS viewport, 1:1 screenshot pixels. Mobile evidence: `outputs/forecast-redesign-mobile.png`, 338 × 1160 panel capture from a 390 × 844 CSS viewport. Source and desktop images were opened together in one comparison tool call; browser screenshots also checked the surrounding app layout.
+- Scope is an intentional redesign, not a pixel clone: table columns become three-column product cards on desktop and two-column cards on mobile; the repeating method text moves into a disclosure; a date strip and separate event notice replace the need to read two tables together. Header, brand palette, Thai typeface and existing report shell are retained.
+- Typography: existing Thai font preserved; product labels wrap without clipping, units stay attached to quantities, primary numbers use larger tabular figures. No raster assets were added; Phosphor icons match the existing app library.
+- Layout/spacing: cards align in equal grid columns with consistent padding; at 390 px the page scroll width equals viewport width (390 px). Day buttons scroll horizontally within their own strip. Long product names wrap within cards.
+- Color/state: blue indicates selected day and forecast quantities; amber distinguishes unquantified event demand; sufficient history is not presented as a confidence score. Empty and insufficient values remain distinct from zero.
+- Content: ordinary demand is labeled; upcoming events explicitly lack order quantities and are not silently added as zero. Demo banner remains visible. Formula and daily tables are available through disclosures.
+- Interactions verified: switching from seven-day total to Oct 29 updates product quantities and event visibility; switching back restores the total. Automated tests also cover horizon reset, daily disclosure, retry, stale response cancellation and legacy mixed-history rejection. Browser console reported no errors.
+- Comparison history: initial screenshot capture contained the sticky app header across a full-page crop. Recaptured with page scrolled above the forecast; the saved desktop image shows the whole panel unobscured. No P0/P1/P2 visual issues remain in the inspected states.
+- Remaining limitations: live backend/deployment not exercised; the SQL contract and access controls are verified in PGlite. Forecast error/backtesting is not implemented and the UI says so.
+- final result: passed

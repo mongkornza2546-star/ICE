@@ -3,10 +3,11 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { forecastQuantities, forecastWindow } from '../src/features/reports/quantityForecast';
 import { ReportQuantityForecast } from '../src/features/reports/ReportQuantityForecast';
 import { shiftServiceDate } from '../src/lib/serviceDate';
+import type { ForecastContext } from '../src/features/reports/quantityForecast';
 import type { ExecutiveReport } from '../src/features/reports/types';
 
-const { rpc, catalogQuery, catalogResult, catalogSelect, catalogFilter, catalogOrder } = vi.hoisted(() => ({ rpc: vi.fn(), catalogQuery: vi.fn(), catalogResult: vi.fn(), catalogSelect: vi.fn(), catalogFilter: vi.fn(), catalogOrder: vi.fn() }));
-vi.mock('../src/lib/supabase', () => ({ supabase: { rpc, from: catalogQuery } }));
+const { rpc } = vi.hoisted(() => ({ rpc: vi.fn() }));
+vi.mock('../src/lib/supabase', () => ({ supabase: { rpc } }));
 const bag = { id: 'bag', name: 'หลอดเล็ก', unit: 'ถุง', delivered: 0, damaged: 0 };
 const block = { id: 'block', name: 'น้ำแข็งก้อน', unit: 'แถว', delivered: 0, damaged: 0 };
 const catalog = [bag, block].map(product => ({ ...product, created_at: '2024-01-01T00:00:00+07:00' }));
@@ -23,17 +24,16 @@ function report(from = '2026-09-22', to = '2026-10-20'): ExecutiveReport {
     }),
   };
 }
+function context(anchor = '2026-10-20'): ForecastContext {
+  const window = forecastWindow(anchor);
+  return { basis: 'regular_only', dailyTrend: report(window.historyFrom, window.historyTo).dailyTrend!, products: catalog,
+    events: [{ id: 'event', name: 'งานทดสอบ', start: shiftServiceDate(anchor, 2), end: shiftServiceDate(anchor, 3) }] };
+}
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ['Date'] });
   vi.setSystemTime(new Date('2026-10-20T11:00:00Z'));
   rpc.mockReset();
-  catalogResult.mockReset();
-  catalogResult.mockResolvedValue({ data: catalog, error: null });
-  catalogOrder.mockImplementation(() => ({ order: catalogResult }));
-  catalogFilter.mockImplementation(() => ({ order: catalogOrder }));
-  catalogSelect.mockImplementation(() => ({ eq: catalogFilter }));
-  catalogQuery.mockImplementation(() => ({ select: catalogSelect }));
-  rpc.mockImplementation(async (_name, args) => ({ data: report(args.p_from, args.p_to), error: null }));
+  rpc.mockImplementation(async (_name, args) => ({ data: context(args.p_anchor), error: null }));
 });
 afterEach(() => vi.useRealTimers());
 
@@ -78,58 +78,64 @@ it('uses actual zero-sale days and preserves fractional units and leap-day bound
   expect(forecastWindow('2026-10-20').historyFrom).toBe('2026-09-22');
 });
 
-it('shows the forecast, changes horizon without fetching again and exposes daily quantities', async () => {
+it('shows product cards, switches to a day and resets to total when the horizon changes', async () => {
   render(<ReportQuantityForecast report={report()} to="2026-10-20" loading={false} error={null} />);
-  const summary = await screen.findByRole('table', { name: 'สรุปคาดการณ์แยกชนิดน้ำแข็ง' });
-  expect(within(summary).getByRole('row', { name: /หลอดเล็ก/ }).textContent).toContain('160');
-  expect(rpc).not.toHaveBeenCalled();
+  const summary = await screen.findByRole('list', { name: 'สรุปคาดการณ์แยกชนิดน้ำแข็ง' });
+  const bagCard = within(summary).getByRole('listitem', { name: 'หลอดเล็ก' });
+  expect(bagCard.textContent).toContain('160');
+  expect(screen.getByText('มีอีเวนต์ในช่วงที่เลือก 1 งาน')).not.toBeNull();
+  expect(screen.getByText('ยังไม่มีจำนวนสั่ง')).not.toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: /21 ต.ค./ }));
+  expect(bagCard.textContent).toContain('100');
+  expect(screen.getByText('ไม่พบอีเวนต์ที่ประกาศในช่วงที่เลือก')).not.toBeNull();
   fireEvent.change(screen.getByLabelText('คาดการณ์ล่วงหน้า'), { target: { value: '30' } });
-  expect(within(summary).getByRole('columnheader', { name: 'รวม 30 วัน' })).not.toBeNull();
-  fireEvent.click(screen.getByText('ดูคาดการณ์รายวัน'));
+  expect(screen.getByRole('button', { name: 'ภาพรวม รวม 30 วัน' }).getAttribute('aria-pressed')).toBe('true');
+  expect(rpc).toHaveBeenCalledTimes(1);
+  fireEvent.click(screen.getByText('ดูคาดการณ์รายวันแบบตาราง'));
   expect(within(screen.getByRole('table', { name: 'คาดการณ์น้ำแข็งรายวัน' })).getAllByRole('row')).toHaveLength(31);
 });
 
-it('loads the fixed historical window even for a one-day report and retries failures', async () => {
+it('loads event-separated context even for a one-day report and retries failures', async () => {
   rpc.mockRejectedValueOnce(new Error('forecast unavailable'));
   render(<ReportQuantityForecast report={report('2026-10-20', '2026-10-20')} to="2026-10-20" loading={false} error={null} />);
   expect((await screen.findByRole('alert')).textContent).toContain('forecast unavailable');
-  expect(rpc).toHaveBeenCalledWith('get_executive_report', { p_from: '2026-09-22', p_to: '2026-10-19' });
-  expect(screen.queryByRole('table', { name: 'สรุปคาดการณ์แยกชนิดน้ำแข็ง' })).toBeNull();
+  expect(rpc).toHaveBeenCalledWith('get_quantity_forecast_context', { p_anchor: '2026-10-20' });
+  expect(screen.queryByRole('list', { name: 'สรุปคาดการณ์แยกชนิดน้ำแข็ง' })).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'ลองโหลดคาดการณ์ใหม่' }));
-  await screen.findByRole('table', { name: 'สรุปคาดการณ์แยกชนิดน้ำแข็ง' });
+  await screen.findByRole('list', { name: 'สรุปคาดการณ์แยกชนิดน้ำแข็ง' });
 });
 
 it('hides stale forecasts during parent refresh and after a parent error', async () => {
   const data = report();
   const view = render(<ReportQuantityForecast report={data} to="2026-10-20" loading={false} error={null} />);
-  expect(await screen.findByRole('table', { name: 'สรุปคาดการณ์แยกชนิดน้ำแข็ง' })).not.toBeNull();
+  await screen.findByRole('list', { name: 'สรุปคาดการณ์แยกชนิดน้ำแข็ง' });
   view.rerender(<ReportQuantityForecast report={data} to="2026-10-20" loading error={null} />);
-  expect(screen.queryByRole('table', { name: 'สรุปคาดการณ์แยกชนิดน้ำแข็ง' })).toBeNull();
+  expect(screen.queryByRole('list', { name: 'สรุปคาดการณ์แยกชนิดน้ำแข็ง' })).toBeNull();
   view.rerender(<ReportQuantityForecast report={data} to="2026-10-20" loading={false} error="failed" />);
-  expect(screen.queryByRole('table', { name: 'สรุปคาดการณ์แยกชนิดน้ำแข็ง' })).toBeNull();
+  expect(screen.queryByRole('list', { name: 'สรุปคาดการณ์แยกชนิดน้ำแข็ง' })).toBeNull();
 });
 
-it('ignores an old history response after the selected end date changes', async () => {
-  let finish!: (value: { data: ExecutiveReport; error: null }) => void;
+it('ignores an old response after the selected end date changes', async () => {
+  let finish!: (value: { data: ForecastContext; error: null }) => void;
   rpc.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
-  const view = render(<ReportQuantityForecast report={report('2026-10-20', '2026-10-20')} to="2026-10-20" loading={false} error={null} />);
-  view.rerender(<ReportQuantityForecast report={report('2026-09-15', '2026-09-15')} to="2026-09-15" loading={false} error={null} />);
-  const table = await screen.findByRole('table', { name: 'สรุปคาดการณ์แยกชนิดน้ำแข็ง' });
-  finish({ data: report(), error: null });
-  await waitFor(() => expect(within(table).getByRole('row', { name: /หลอดเล็ก/ }).textContent).toContain('28 / 28'));
-  expect(screen.getByText(/ช่วงคาดการณ์/).textContent).toContain('16 ก.ย. 2569');
+  const data = report();
+  const view = render(<ReportQuantityForecast report={data} to="2026-10-20" loading={false} error={null} />);
+  view.rerender(<ReportQuantityForecast report={data} to="2026-09-15" loading={false} error={null} />);
+  await screen.findByRole('list', { name: 'สรุปคาดการณ์แยกชนิดน้ำแข็ง' });
+  finish({ data: context(), error: null });
+  await waitFor(() => expect(screen.getByText(/ช่วงคาดการณ์/).textContent).toContain('16 ก.ย. 2569'));
 });
 
-it('shows unavailable history and insufficient data instead of fabricated forecasts', async () => {
-  const data = report();
-  delete data.dailyTrend;
-  const view = render(<ReportQuantityForecast report={data} to="2026-10-20" loading={false} error={null} />);
-  expect((await screen.findByText('ยังไม่มีข้อมูลรายวันสำหรับคาดการณ์')).textContent).toContain('ยังไม่มีข้อมูลรายวัน');
-  const sparse = report();
-  sparse.dailyTrend = sparse.dailyTrend!.slice(0, 2);
-  view.rerender(<ReportQuantityForecast report={sparse} to="2026-10-20" loading={false} error={null} />);
-  const table = await screen.findByRole('table', { name: 'สรุปคาดการณ์แยกชนิดน้ำแข็ง' });
-  expect(within(table).getByRole('row', { name: /หลอดเล็ก/ }).textContent).toContain('ข้อมูลไม่พอ');
+it('rejects mixed history from an older server and shows insufficient data without fabricated quantities', async () => {
+  rpc.mockResolvedValueOnce({ data: report(), error: null });
+  render(<ReportQuantityForecast report={report()} to="2026-10-20" loading={false} error={null} />);
+  expect((await screen.findByRole('alert')).textContent).toContain('ยังไม่มีข้อมูลแยกยอดปกติออกจากอีเวนต์');
+  const sparse = context();
+  sparse.dailyTrend = sparse.dailyTrend.slice(0, 2);
+  rpc.mockResolvedValueOnce({ data: sparse, error: null });
+  fireEvent.click(screen.getByRole('button', { name: 'ลองโหลดคาดการณ์ใหม่' }));
+  const cards = await screen.findByRole('list', { name: 'สรุปคาดการณ์แยกชนิดน้ำแข็ง' });
+  expect(within(cards).getByRole('listitem', { name: 'หลอดเล็ก' }).textContent).toContain('ข้อมูลไม่พอ');
 });
 
 it('counts only six days for a new product despite SQL filling 28 calendar rows', () => {
@@ -157,24 +163,16 @@ it('recognizes imported sales before catalog creation without counting earlier u
 });
 
 it('keeps catalog products and predictions identical for month and year report ranges', async () => {
-  const history = report('2026-09-22', '2026-10-19');
-  history.products = [bag];
-  history.dailyTrend!.forEach(day => { day.products = [{ ...bag, delivered: 100 }]; });
-  const month = { ...history, from: '2026-10-01', to: '2026-10-20' };
-  const year = { ...history, from: '2026-01-01', to: '2026-10-20', products: [bag, block] };
+  const history = context();
+  history.dailyTrend.forEach(day => { day.products = [{ ...bag, delivered: 100 }]; });
   rpc.mockResolvedValue({ data: history, error: null });
-  const view = render(<ReportQuantityForecast report={month} to="2026-10-20" loading={false} error={null} />);
-  const before = (await screen.findByRole('table', { name: 'สรุปคาดการณ์แยกชนิดน้ำแข็ง' })).textContent;
+  const view = render(<ReportQuantityForecast report={report('2026-10-01')} to="2026-10-20" loading={false} error={null} />);
+  const before = (await screen.findByRole('list', { name: 'สรุปคาดการณ์แยกชนิดน้ำแข็ง' })).textContent;
   expect(before).toContain('น้ำแข็งก้อน');
-  view.rerender(<ReportQuantityForecast report={year} to="2026-10-20" loading={false} error={null} />);
-  const after = await screen.findByRole('table', { name: 'สรุปคาดการณ์แยกชนิดน้ำแข็ง' });
+  view.rerender(<ReportQuantityForecast report={report('2026-01-01')} to="2026-10-20" loading={false} error={null} />);
+  const after = await screen.findByRole('list', { name: 'สรุปคาดการณ์แยกชนิดน้ำแข็ง' });
   expect(after.textContent).toBe(before);
-  expect(within(after).getByRole('row', { name: /น้ำแข็งก้อน/ }).textContent).toContain('แถว00');
-  expect(catalogQuery).toHaveBeenCalledWith('ice_types');
-  expect(catalogSelect).toHaveBeenCalledWith('id, name, unit, created_at');
-  expect(catalogFilter).toHaveBeenCalledWith('is_active', true);
-  expect(catalogOrder).toHaveBeenCalledWith('name');
-  expect(catalogResult).toHaveBeenCalledWith('id');
+  expect(within(after).getByRole('listitem', { name: 'น้ำแข็งก้อน' }).textContent).toContain('0แถว');
 });
 
 it('does not resurrect inactive products from historical report totals', () => {
@@ -182,11 +180,13 @@ it('does not resurrect inactive products from historical report totals', () => {
   expect(result.rows.map(row => row.id)).toEqual(['bag']);
 });
 
-it('blocks forecasts on catalog failure and retries both data sources', async () => {
-  catalogResult.mockResolvedValueOnce({ data: null, error: { message: 'catalog unavailable' } });
+it('distinguishes zero ordinary demand from unknown event demand', async () => {
+  const data = context();
+  data.dailyTrend.forEach(day => { day.products = []; });
+  rpc.mockResolvedValue({ data, error: null });
   render(<ReportQuantityForecast report={report()} to="2026-10-20" loading={false} error={null} />);
-  expect((await screen.findByRole('alert')).textContent).toContain('catalog unavailable');
-  expect(screen.queryByRole('table', { name: 'สรุปคาดการณ์แยกชนิดน้ำแข็ง' })).toBeNull();
-  fireEvent.click(screen.getByRole('button', { name: 'ลองโหลดคาดการณ์ใหม่' }));
-  await screen.findByRole('table', { name: 'สรุปคาดการณ์แยกชนิดน้ำแข็ง' });
+  const cards = await screen.findByRole('list', { name: 'สรุปคาดการณ์แยกชนิดน้ำแข็ง' });
+  expect(within(cards).getByRole('listitem', { name: 'หลอดเล็ก' }).textContent).toContain('0ถุง');
+  expect(screen.getByText(/ยอดด้านบนยังไม่รวมอีเวนต์/)).not.toBeNull();
+  expect(screen.getByText('ยังไม่มีจำนวนสั่ง')).not.toBeNull();
 });

@@ -185,3 +185,31 @@ reproductions also passed using output from the production SQL in local PGlite.
 No database migration is required for this correction.
 
 Validation: `npx vitest run tests/quantity-forecast.test.tsx tests/report-volume-date.test.tsx tests/report-daily-quantities.test.tsx tests/executive-reports.test.tsx tests/report-comparison.test.tsx --maxWorkers=1 --no-file-parallelism`.
+
+### Event-aware forecast and simpler presentation (2026-10-28)
+
+Apply `20261028140523_quantity_forecast_event_context.sql` before deploying the
+new forecast UI. The read-only, active-admin RPC `get_quantity_forecast_context`
+returns the active catalog, 28 complete ordinary-demand days and published jobs
+intersecting the next 30 days (including preparation dates). It reuses the
+existing private volume-area projection once per training day and excludes
+`kind = event`; corrections, legacy event-building attribution and loose-stock
+rounding retain the report's rules. Ordinary sales on event days remain included.
+The client does not fall back to mixed history when this RPC is unavailable.
+
+The default view shows one quantity card per type/unit for seven days. A date
+strip switches the cards to a single day; changing horizon resets to the period
+total. Scheduled events for the selected period appear separately. There is no
+ice pre-order quantity field in this context, so event quantities are explicitly
+unavailable and are never added as zero or presented as a combined preparation
+total. No-event messaging refers to published jobs in the current schedule;
+it is not a guarantee that no future demand exists. Historical anchors use the
+current event schedule, not a point-in-time schedule snapshot, and must not be
+used as a backtest. Forecast accuracy has not yet been measured.
+
+Daily tables and method details are collapsed by default. Demo figures and jobs
+are labeled as simulated. Validation covers card/day/horizon interactions,
+insufficient history, failure/retry, stale responses, event exclusion (including
+legacy destinations and adjustments), upcoming-job filtering and RPC permissions.
+The SQL integration suite uses actual production helpers in local PGlite; no
+production database or deployment was changed during this work.

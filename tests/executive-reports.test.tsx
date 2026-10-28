@@ -27,7 +27,7 @@ beforeEach(() => {
   writeXlsxFile.mockReset();
   rpc.mockImplementation((name: string, args: { p_metric?: string; p_bucket?: string; p_from?: string; p_to?: string }) => Promise.resolve({
     error: null,
-    data: name === 'get_executive_report_invoice' ? {
+    data: name === 'get_quantity_forecast_context' ? { basis: 'regular_only', dailyTrend: [], products: [], events: [] } : name === 'get_executive_report_invoice' ? {
       number: 'C-001', shop: 'ร้านหนึ่ง', serviceDate: from, area: 'อาคาร A',
       dueDate: from, salesAmount: 467.29, vatAmount: 32.71, total: 500, paid: 200,
       items: [{ name: 'น้ำแข็งหลอด', unit: 'ถุง', quantity: 10 }],
@@ -411,7 +411,7 @@ it('shows the overall volume followed by each building and separate other activi
   expect(within(buildings).queryByText('ขายหน้ารถ')).toBeNull();
   expect(within(screen.getByRole('region', { name: 'รายการอื่นในยอดรวม' })).getByRole('table', { name: 'ปริมาณน้ำแข็ง · ขายหน้ารถ' })).not.toBeNull();
   expect(screen.queryByRole('checkbox')).toBeNull();
-  expect(rpc).toHaveBeenCalledExactlyOnceWith('get_executive_report', { p_from: '2026-09-15', p_to: '2026-10-12' });
+  expect(rpc).toHaveBeenCalledExactlyOnceWith('get_quantity_forecast_context', { p_anchor: '2026-10-13' });
 });
 
 it('distinguishes missing building data from an empty period', async () => {

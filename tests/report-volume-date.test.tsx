@@ -30,12 +30,14 @@ beforeEach(() => {
   vi.setSystemTime(new Date('2026-10-20T11:00:00Z'));
   rpc.mockReset();
   writeXlsxFile.mockReset();
-  rpc.mockImplementation(async (_name, args) => ({ data: report(args.p_from, args.p_to), error: null }));
+  rpc.mockImplementation(async (name, args) => ({ data: name === 'get_quantity_forecast_context'
+    ? { basis: 'regular_only', dailyTrend: [], products: [], events: [] } : report(args.p_from, args.p_to), error: null }));
 });
 afterEach(() => vi.useRealTimers());
 
 it('uses the overview range controls for totals, buildings and both exports', async () => {
   rpc.mockImplementation(async (name, args) => {
+    if (name === 'get_quantity_forecast_context') return { data: { basis: 'regular_only', dailyTrend: [], products: [], events: [] }, error: null };
     if (name === 'get_executive_report_details') return { data: { total: 0, rows: [] }, error: null };
     const data = report(args.p_from, args.p_to);
     const quantity = args.p_from.startsWith('2026-09') ? 91 : 42;
