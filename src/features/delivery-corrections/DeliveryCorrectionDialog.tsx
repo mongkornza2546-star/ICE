@@ -1,3 +1,4 @@
+import { runOnlineOnlyEmployeeWrite } from '../../offline/runtime/client';
 import { VatBreakdown } from '../financial-operations/components/VatBreakdown';
 import { translateUi, useLanguage } from '../../i18n';
 import { useEffect, useRef, useState } from 'react';
@@ -140,7 +141,7 @@ export function DeliveryCorrectionDialog({
       const correctionRpc = context.destination_kind === 'event'
         ? 'apply_open_event_delivery_correction'
         : 'apply_open_delivery_correction';
-      const { error: saveError } = await supabase.rpc(correctionRpc, {
+      const args = {
         p_event_id: eventId,
         p_action: 'cancel',
         p_items: [],
@@ -149,7 +150,9 @@ export function DeliveryCorrectionDialog({
         p_reason: reason.trim(),
         p_idempotency_key: cancellationKey.current,
         p_approval_id: null,
-      });
+      };
+      const { error: saveError } = await runOnlineOnlyEmployeeWrite(() => supabase!.rpc(correctionRpc, args),
+        JSON.stringify({ kind: 'rpc', rpc: correctionRpc, args }));
       if (saveError) throw saveError;
       publishDataChange(['accounting', 'payment', 'receivable', 'refund', 'stock', 'pos']);
       await Promise.allSettled([Promise.resolve(onSuccess('ยกเลิกใบส่งน้ำแข็งแล้ว สามารถบันทึกส่งใหม่ได้'))]);

@@ -154,8 +154,8 @@ export function PwaUpdatePrompt() {
   if (!offlineReady) return null;
   return (
     <aside className="pwa-update-prompt pwa-update-prompt--ready" role="status" aria-live="polite">
-      <strong>{translateUi('แอปพร้อมใช้งานออฟไลน์แล้ว')}</strong>
-      <span>{translateUi('ครั้งถัดไปสามารถเปิดหน้าที่โหลดไว้ได้แม้สัญญาณขาด')}</span>
+      <strong>{translateUi('เก็บไฟล์แอปไว้ในเครื่องแล้ว')}</strong>
+      <span>{translateUi('ตรวจสถานะข้อมูลออฟไลน์ในหน้าพนักงานก่อนทำรายการเมื่อสัญญาณขาด')}</span>
       <div className="pwa-update-prompt__actions">
         <button onClick={() => setOfflineReady(false)} type="button">{translateUi('รับทราบ')}</button>
       </div>

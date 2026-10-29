@@ -1,0 +1,198 @@
+
+ RUN  v3.2.7 /Users/bhusitt./Downloads/ส่งน้ำแข็ง
+
+ × tests/offline-scrutinize-repro.test.tsx > rejects preparation fetched before a completed guarded online write 180ms
+   → expected 1793293200000 to be +0 // Object.is equality
+ × tests/offline-scrutinize-repro.test.tsx > does not install a prepared projection while a cold online delivery is unresolved 69ms
+   → expected { version: 1, …(12) } to be undefined
+ × tests/offline-scrutinize-repro.test.tsx > allows an approved online credit delivery to reach server validation 15ms
+   → วงเงินเครดิตไม่พอหรือถูกระงับ กรุณาเชื่อมต่อเพื่อขออนุมัติ
+ × tests/offline-scrutinize-repro.test.tsx > keeps unresolved online writes fenced after the UI deadline expires 32ms
+   → expected true to be false // Object.is equality
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 4 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/offline-scrutinize-repro.test.tsx > rejects preparation fetched before a completed guarded online write
+AssertionError: expected 1793293200000 to be +0 // Object.is equality
+
+- Expected
++ Received
+
+- 0
++ 1793293200000
+
+ ❯ tests/offline-scrutinize-repro.test.tsx:36:67
+     34|   await client.runOnlineOnlyEmployeeWrite(async () => { s.stocks.round…
+     35|   release(); await preparing;
+     36|   expect(Date.parse(r.engine.getSnapshot().snapshot!.validUntil)).toBe…
+       |                                                                   ^
+     37| });
+     38| it('does not install a prepared projection while a cold online deliver…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/4]⎯
+
+ FAIL  tests/offline-scrutinize-repro.test.tsx > does not install a prepared projection while a cold online delivery is unresolved
+AssertionError: expected { version: 1, …(12) } to be undefined
+
+- Expected: 
+undefined
+
++ Received: 
+{
+  "aggregate": {
+    "ice": 30,
+  },
+  "cards": {
+    "round": [],
+  },
+  "collection": {
+    "isClosed": false,
+    "queue": [],
+    "runId": "run",
+  },
+  "contexts": {
+    "stop": {
+      "items": [
+        {
+          "code": "I",
+          "ice_type_id": "ice",
+          "image_path": null,
+          "name": "ice",
+          "price_source": "standard",
+          "price_source_id": "price",
+          "stock_quantity": 10,
+          "unit": "bag",
+          "unit_price": 25,
+        },
+      ],
+      "payment_profile": null,
+      "round_id": "round",
+      "round_stop_id": "stop",
+      "service_date": "2026-10-29",
+      "shop": {
+        "building_name": "B",
+        "code": "S",
+        "floor_or_zone": "1",
+        "id": "shop",
+        "image_path": null,
+        "name": "shop",
+      },
+      "stock_source": {
+        "code": "H",
+        "id": "holding",
+        "kind": "team",
+        "name": "holding",
+      },
+    },
+  },
+  "iceTypes": [],
+  "ownerId": "10000000-0000-4000-8000-000000000001",
+  "preparedAt": "2026-10-29T02:00:00.050Z",
+  "profile": {
+    "can_collect_shop_payments": true,
+    "code": "EMP",
+    "display_name": "Employee",
+    "id": "10000000-0000-4000-8000-000000000001",
+    "is_active": true,
+    "phone": null,
+    "role": "courier",
+  },
+  "rounds": [
+    {
+      "id": "round",
+      "name": "round",
+      "opened_at": "",
+      "service_date": "2026-10-29",
+      "status": "open",
+    },
+  ],
+  "serviceDate": "2026-10-29",
+  "stocks": {
+    "round": {
+      "holding_location": {
+        "balances": [
+          {
+            "ice_type_id": "ice",
+            "ice_type_name": "ice",
+            "quantity": 10,
+            "unit": "bag",
+          },
+        ],
+        "code": "H",
+        "id": "holding",
+        "name": "holding",
+      },
+      "round_id": "round",
+      "service_date": "2026-10-29",
+      "truck_location": {
+        "balances": [
+          {
+            "ice_type_id": "ice",
+            "ice_type_name": "ice",
+            "quantity": 20,
+            "unit": "bag",
+          },
+        ],
+        "code": "T",
+        "id": "truck",
+        "name": "truck",
+      },
+      "withdrawn_balances": [],
+    },
+  },
+  "validUntil": "2026-10-29T17:00:00Z",
+  "version": 1,
+}
+
+ ❯ tests/offline-scrutinize-repro.test.tsx:50:31
+     48|   const preparedDuringWrite = r.engine.getSnapshot().snapshot;
+     49|   release(); await saving;
+     50|   expect(preparedDuringWrite).toBeUndefined();
+       |                               ^
+     51| });
+     52| it('allows an approved online credit delivery to reach server validati…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/4]⎯
+
+ FAIL  tests/offline-scrutinize-repro.test.tsx > allows an approved online credit delivery to reach server validation
+Error: วงเงินเครดิตไม่พอหรือถูกระงับ กรุณาเชื่อมต่อเพื่อขออนุมัติ
+ ❯ projectCommand src/offline/runtime/project.ts:105:123
+    103|       const total = money(subtotal + money(subtotal * vatRate / 100));
+    104|       if (term === 'credit' && context.payment_profile && (context.pay…
+    105|         || (context.payment_profile.credit_remaining != null && contex…
+       |                                                                                                                           ^
+    106|       if (total !== (args.p_expected_total ?? command.expected.expecte…
+    107|       if (command.type === 'immediate_sale') {
+ ❯ FDBRequest.pending.onsuccess src/offline/runtime/store.ts:109:32
+ ❯ invoke ../%E0%B8%AA%E0%B9%88%E0%B8%87%E0%B8%99%E0%B9%89%E0%B8%B3%E0%B9%81%E0%B8%82%E0%B9%87%E0%B8%87/node_modules/fake-indexeddb/build/esm/lib/FakeEventTarget.js:13:16
+ ❯ invokeEventListeners ../%E0%B8%AA%E0%B9%88%E0%B8%87%E0%B8%99%E0%B9%89%E0%B8%B3%E0%B9%81%E0%B8%82%E0%B9%87%E0%B8%87/node_modules/fake-indexeddb/build/esm/lib/FakeEventTarget.js:50:7
+ ❯ FDBRequest.dispatchEvent ../%E0%B8%AA%E0%B9%88%E0%B8%87%E0%B8%99%E0%B9%89%E0%B8%B3%E0%B9%81%E0%B8%82%E0%B9%87%E0%B8%87/node_modules/fake-indexeddb/build/esm/lib/FakeEventTarget.js:97:7
+ ❯ FDBTransaction._start ../%E0%B8%AA%E0%B9%88%E0%B8%87%E0%B8%99%E0%B9%89%E0%B8%B3%E0%B9%81%E0%B8%82%E0%B9%87%E0%B8%87/node_modules/fake-indexeddb/build/esm/FDBTransaction.js:213:19
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/4]⎯
+
+ FAIL  tests/offline-scrutinize-repro.test.tsx > keeps unresolved online writes fenced after the UI deadline expires
+AssertionError: expected true to be false // Object.is equality
+
+- Expected
++ Received
+
+- false
++ true
+
+ ❯ tests/offline-scrutinize-repro.test.tsx:79:36
+     77|   const installedWhileUnresolved = await r.engine.install(s);
+     78|   expect(actionFinished).toBe(false); release();
+     79|   expect(installedWhileUnresolved).toBe(false);
+       |                                    ^
+     80| });
+     81| 
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/4]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  4 failed (4)
+   Start at  16:09:23
+   Duration  1.18s (transform 144ms, setup 131ms, collect 62ms, tests 296ms, environment 488ms, prepare 59ms)
+

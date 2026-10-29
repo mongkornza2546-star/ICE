@@ -1,3 +1,4 @@
+import { runOnlineOnlyEmployeeWrite, type EmployeeRuntime } from './offline/runtime/client';
 import { EmployeeBillingStatementsPanel } from './features/financial-operations/components/EmployeeBillingStatementsPanel';
 import { translateUi, useLanguage } from './i18n';
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -128,6 +129,7 @@ type FinancialOperationsDemoData = {
 };
 
 export function FinancialOperations({
+  offlineRuntime,
   userRole = 'round_lead',
   canCollectShopPayments = true,
   currentUserId,
@@ -140,6 +142,7 @@ export function FinancialOperations({
   onFocusedCollectionClose,
   serviceDate: propServiceDate,
 }: {
+  offlineRuntime?: EmployeeRuntime;
   userRole?: AppRole;
   canCollectShopPayments?: boolean;
   currentUserId?: string;
@@ -293,14 +296,15 @@ export function FinancialOperations({
       return;
     }
 
-    const collectionQueue = await loadCurrentCollectionQueue(serviceDate);
+    const localSnapshot = !isManager && offlineRuntime?.engine.day === serviceDate ? await offlineRuntime.snapshot() : undefined;
+    const collectionQueue = localSnapshot?.collection ?? await loadCurrentCollectionQueue(serviceDate);
     if (focusLoadRequestId && focusLoadRequestId !== focusLoadRequestRef.current) return;
     const nextRunId = collectionQueue.runId;
     setRunId(nextRunId);
     setCollectionClosed(collectionQueue.isClosed);
     setAdminPostCloseAllowed(collectionQueue.canRecordPayment === true);
     if (nextRunId || collectionQueue.isClosed) {
-      const queueWithImages = await withPublicShopImages(collectionQueue.queue);
+      const queueWithImages = localSnapshot ? collectionQueue.queue : await withPublicShopImages(collectionQueue.queue);
       const nextQueue = removeCancelledDeliveries(queueWithImages, cancelledEventIdsRef.current);
       if (focusLoadRequestId && focusLoadRequestId !== focusLoadRequestRef.current) return;
       const currentShop = selectedShopRef.current;
@@ -356,7 +360,7 @@ export function FinancialOperations({
 
     const todayHistory = await fetchAllPaymentHistory(serviceDate);
     setTodayPayments(todayHistory.filter((payment) => payment.status === 'active'));
-  }, [demoData, isManager, managerPage, resetPaymentForm, serviceDate]);
+  }, [demoData, isManager, managerPage, resetPaymentForm, serviceDate, offlineRuntime]);
 
   const loadPendingFocus = useCallback(async () => {
     const pendingFocus = focusRequest?.requestId !== handledFocusRequestIdRef.current
@@ -719,7 +723,9 @@ export function FinancialOperations({
         } : null,
       })}`;
       const request = getOrCreatePendingRequest(signature);
-      const evidencePath = evidence ? await uploadPaymentEvidence(evidence, request.key) : null;
+      const localSnapshot = !isManager && offlineRuntime?.engine.day === serviceDate ? await offlineRuntime.snapshot() : undefined;
+      if (!localSnapshot && offlineRuntime?.engine.getSnapshot().commands.some(c => !['applied', 'discard_approved'].includes(c.status))) throw new Error('มีรายการค้างซิงก์ กรุณาตรวจสอบก่อนรับเงินเพิ่ม');
+      const evidencePath = evidence && !localSnapshot ? await uploadPaymentEvidence(evidence, request.key) : null;
       const unifiedEvent = selectedShop.destination_kind === 'event'
         && selectedShop.collection_scope === 'event_participation';
       const paymentArgs = selectedShop.destination_kind === 'event' ? {
@@ -766,13 +772,29 @@ export function FinancialOperations({
           : selectedShop.collection_scope === 'shop'
             ? 'record_shop_collection_payment'
             : 'record_regular_collection_payment';
-      const { data, error: rpcError } = paymentDate < today
-        ? await supabase.rpc('record_backdated_collection_payment', {
+      if (localSnapshot && offlineRuntime) {
+        if (paymentDate !== today) throw new Error('รายการออฟไลน์ต้องเป็นวันปัจจุบัน');
+        await offlineRuntime.engine.enqueue({ id: request.key, type: 'collection_payment', rpc: paymentRpc,
+          args: paymentArgs, expected: { queueKey: queueIdentity(selectedShop), payment_profile: selectedShop.payment_profile,
+            charges: selectedShop.charges.map(c => ({ charge_id: c.charge_id, outstanding_amount: c.outstanding_amount })) },
+          label: `รับเงิน ${selectedShop.shop_code} ${receivedAmount} บาท`, recordedAt: request.clientRecordedAt, evidence: evidence ?? undefined });
+        clearPendingRequest(signature, request.key);
+        setReceipt({ pending: true, paymentId: `local:${request.key}`, receiptNumber: `TMP-${request.key}`,
+          shopCode: selectedShop.shop_code, shopName: selectedShop.shop_name, method, receivedAmount,
+          allocatedAmount, changeAmount, recordedAt: request.clientRecordedAt, charges: [] });
+        setSuccess('บันทึกรับเงินลงเครื่องแล้ว · รอเซิร์ฟเวอร์ตรวจสอบและออกใบเสร็จ');
+        void offlineRuntime.tick();
+        publishDataChange(['payment', 'receivable']);
+        return;
+      }
+      const onlineRpc = paymentDate < today ? 'record_backdated_collection_payment' : paymentRpc;
+      const onlineArgs = paymentDate < today ? {
           p_payment_kind: paymentRpc,
           p_received_date: paymentDate,
           p_payment_args: paymentArgs,
-        })
-        : await supabase.rpc(paymentRpc, paymentArgs);
+        } : paymentArgs;
+      const { data, error: rpcError } = await runOnlineOnlyEmployeeWrite(() => supabase!.rpc(onlineRpc, onlineArgs),
+        JSON.stringify({ kind: 'rpc', rpc: onlineRpc, args: onlineArgs }));
       if (rpcError) {
         invalidateCurrentCollectionContext(true);
         throw rpcError;
@@ -914,10 +936,12 @@ export function FinancialOperations({
     if (!reason) return Promise.resolve(false);
     return runAction(async () => {
       if (!supabase) return;
-      const { error: rpcError } = await supabase.rpc('void_payment', {
+      const args = {
         p_payment_id: payment.id,
         p_reason: reason,
-      });
+      };
+      const { error: rpcError } = await runOnlineOnlyEmployeeWrite(() => supabase!.rpc('void_payment', args),
+        JSON.stringify({ kind: 'rpc', rpc: 'void_payment', args }));
       if (rpcError) throw rpcError;
       publishDataChange(['accounting', 'payment', 'receivable']);
       await Promise.allSettled([refreshFinancialData()]);

@@ -5,6 +5,11 @@ import { btree_gist } from '@electric-sql/pglite/contrib/btree_gist';
 export async function createVatDatabase(beforeVat, beforeUncheckedWriterRevoked) {
  const db = new PGlite({ extensions: { pgcrypto, btree_gist } });
  try {
+ await initializeVatDatabase(db, beforeVat, beforeUncheckedWriterRevoked);
+ return db;
+ } catch (error) { await db.close(); throw error; }
+}
+export async function initializeVatDatabase(db, beforeVat, beforeUncheckedWriterRevoked) {
  await db.exec(`    drop schema public cascade;
     drop schema if exists auth cascade;
     drop schema if exists storage cascade;
@@ -51,6 +56,4 @@ export async function createVatDatabase(beforeVat, beforeUncheckedWriterRevoked)
    try { await db.exec(sql); }
    catch (error) { throw new Error(`${name}: ${error.message}`, { cause: error }); }
  }
- return db;
- } catch (error) { await db.close(); throw error; }
 }

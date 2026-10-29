@@ -1,3 +1,4 @@
+import { readPreparedOfflineSession } from './offline/runtime/session';
 import { FormEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { Session } from '@supabase/supabase-js';
 import { env } from './lib/env';
@@ -35,30 +36,47 @@ export function AuthGate() {
       };
     }
 
-    void supabase.auth.getSession().then(async ({ data, error }) => {
+    // An authoritative sign-in/sign-out always wins over a delayed disk read
+    // or an older getSession result. INITIAL_SESSION null is not a sign-out.
+    let revision = 0;
+    const savedSession = readPreparedOfflineSession();
+    const apply = (next: Session | null) => {
       if (cancelled) return;
-      if (await recoverSession(error?.message)) {
-        if (!cancelled) setBootLoading(false);
+      if (next) setAuthNotice(null);
+      else if (lastSessionUserId.current) clearCachedUserProfile(lastSessionUserId.current);
+      lastSessionUserId.current = next?.user.id ?? null;
+      setSession(next);
+      setBootLoading(false);
+    };
+    void savedSession.then(saved => {
+      if (!cancelled && revision === 0 && saved) apply(saved);
+    });
+    void supabase.auth.getSession().then(async ({ data, error }) => {
+      if (cancelled || revision !== 0) return;
+      if (getRecoverableSessionNotice(error?.message)) {
+        revision++;
+        await recoverSession(error?.message);
+        apply(null);
         return;
       }
-
-      lastSessionUserId.current = data.session?.user.id ?? null;
-      setSession(data.session ?? null);
-      setBootLoading(false);
+      const next = data.session ?? await savedSession;
+      if (!cancelled && revision === 0) apply(next);
+    }).catch(async () => {
+      const saved = await savedSession;
+      if (!cancelled && revision === 0) apply(saved);
     });
 
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, nextSession) => {
-      if (nextSession) {
-        setAuthNotice(null);
-        lastSessionUserId.current = nextSession.user.id;
-      } else if (lastSessionUserId.current) {
-        clearCachedUserProfile(lastSessionUserId.current);
-        lastSessionUserId.current = null;
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, nextSession) => {
+      if (cancelled) return;
+      if (event === 'INITIAL_SESSION' && !nextSession) {
+        const initialRevision = revision;
+        void savedSession.then(saved => {
+          if (!cancelled && revision === initialRevision) apply(saved);
+        });
+        return;
       }
-      setSession(nextSession);
-      setBootLoading(false);
+      revision++;
+      apply(nextSession);
     });
 
     return () => {

@@ -1,10 +1,15 @@
-import { lazy, Suspense, useEffect, useRef, useState } from 'react';
+import { OfflineConflictReview } from './offline/runtime/OfflineConflictReview';
+import { createEmployeeRuntime, preparedProfile, hasUnsentWork } from './offline/runtime/client';
+import { createOfflineGateway } from './offline/runtime/gateway';
+import { OfflineStatus } from './offline/runtime/OfflineStatus';
+import { OnlineWriteRecovery } from './offline/runtime/OnlineWriteRecovery';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { KeepAlive } from './KeepAlive';
 import { Session } from '@supabase/supabase-js';
 import { supabase } from './lib/supabase';
 import type { AdminView, FinancialPage } from './AdminLayout';
 import { EmployeeLayout } from './EmployeeLayout';
-import { EmployeeDeliveryWorkspace } from './EmployeeDeliveryWorkspace';
+import { EmployeeDeliveryWorkspace, createSupabaseGateway } from './EmployeeDeliveryWorkspace';
 import { FinancialOperations } from './FinancialOperations';
 import { EmployeeEventPage } from './EmployeeEventPage';
 import { CalendarBlank, Coins, Package, Storefront } from '@phosphor-icons/react';
@@ -64,6 +69,12 @@ export function RoleRouter({
   const navigationOwner = useRef<string | null>(null);
   const [navigationReadyOwner, setNavigationReadyOwner] = useState<string | null>(null);
   const previousBangkokDate = useRef(currentBangkokDate);
+  const liveEmployeeGateway = useMemo(() => typeof indexedDB !== 'undefined' ? createSupabaseGateway() : undefined, [session.user.id]);
+  const offlineRuntime = useMemo(() => profile?.role === 'courier' && profile.is_active && liveEmployeeGateway
+    ? createEmployeeRuntime(session.user.id, currentBangkokDate, liveEmployeeGateway) : null,
+  [profile?.role, profile?.is_active, session.user.id, currentBangkokDate, liveEmployeeGateway]);
+  const employeeGateway = useMemo(() => offlineRuntime && liveEmployeeGateway ? createOfflineGateway(liveEmployeeGateway, offlineRuntime) : liveEmployeeGateway, [liveEmployeeGateway, offlineRuntime]);
+  useEffect(() => offlineRuntime?.start(), [offlineRuntime]);
   // Track which views have been visited so we only mount them on first visit
   // (lazy mount) but keep them alive afterwards (no unmount on tab switch).
   const [visitedViews, setVisitedViews] = useState<Set<AdminView>>(() => new Set(['manager_overview']));
@@ -121,7 +132,15 @@ export function RoleRouter({
       return request;
     };
 
-    void loadProfile(true);
+    if (navigator.onLine) void loadProfile(true);
+    void (async () => {
+      const offlineProfile = await preparedProfile(session.user.id);
+      if (!cancelled && !hasValidatedProfile && offlineProfile) {
+        setProfile(offlineProfile); setProfilePreview(offlineProfile); setProfileLoading(false);
+        hasValidatedProfile = true;
+      }
+      if (!navigator.onLine && !offlineProfile && !cancelled) { setProfileError('ยังไม่ได้เตรียมข้อมูลออฟไลน์ กรุณาเชื่อมต่ออินเทอร์เน็ต'); setProfileLoading(false); }
+    })();
     const refreshOnFocus = () => { void loadProfile(); };
     const refreshAfterAuthorizationFailure = () => { void loadProfile(true); };
     const refreshInterval = window.setInterval(() => { void loadProfile(); }, USER_PROFILE_REVALIDATE_MS);
@@ -190,8 +209,10 @@ export function RoleRouter({
   }, []);
 
   useEffect(() => {
-    return initGlobalRealtimeSync();
-  }, []);
+    // Courier workspaces own foreground refresh and its cooldown. Global resume
+    // broadcasts bypassed that cooldown and cancelled fresh POS reads.
+    return initGlobalRealtimeSync({ enableFocusCatchup: profile?.role !== 'courier' && Boolean(profile) });
+  }, [profile?.role]);
 
   useEffect(() => {
     if (previousBangkokDate.current === currentBangkokDate) return;
@@ -221,6 +242,10 @@ export function RoleRouter({
   };
 
   const signOut = async () => {
+    if (typeof indexedDB !== 'undefined' && await hasUnsentWork(session.user.id)) {
+      window.alert('มีรายการที่ยังไม่ได้ซิงก์ กรุณาซิงก์หรือให้แอดมินตรวจสอบก่อนออกจากระบบ');
+      return;
+    }
     if (!confirmLeavingDelivery()) return;
     if (profile) {
       clearPosCollectionReturn(profile.id);
@@ -338,8 +363,11 @@ export function RoleRouter({
             <span>{t('eventShort')}</span>
           </button>
         </nav>
+        {liveEmployeeGateway ? <OnlineWriteRecovery owner={session.user.id} live={liveEmployeeGateway} /> : null}
+        {offlineRuntime ? <OfflineStatus runtime={offlineRuntime} /> : null}
         <KeepAlive active={courierView === 'withdrawal' || courierView === 'pos'}>
           <EmployeeDeliveryWorkspace
+            gateway={employeeGateway}
             casualCustomerEnabled
             canCollectShopPayments={canCollectPayments}
             enableAssignedStockFlow={courierView === 'withdrawal'}
@@ -366,6 +394,7 @@ export function RoleRouter({
         {courierCollectionVisited || courierView === 'collection' ? (
           <KeepAlive active={courierView === 'collection'}>
             <FinancialOperations
+              offlineRuntime={offlineRuntime ?? undefined}
               canCollectShopPayments={canCollectPayments}
               currentUserId={profile.id}
               printerName={profile.nickname?.trim() || profile.display_name}
@@ -400,6 +429,8 @@ export function RoleRouter({
 
   return (
     <Suspense fallback={<div className="app-shell" role="status">{t('loadingPermissions')}</div>}>
+      {liveEmployeeGateway ? <OnlineWriteRecovery owner={session.user.id} live={liveEmployeeGateway} /> : null}
+      {profile.role === 'admin' ? <OfflineConflictReview /> : null}
       <AdminRoleWorkspace
         profile={profile}
         activeView={activeView}

@@ -1,0 +1,35 @@
+
+> ice-delivery-cards@0.1.0 build
+> tsc -b && vite build
+
+vite v5.4.21 building for production...
+transforming...
+✓ 4857 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/manifest.webmanifest                               1.03 kB
+dist/index.html                                         1.06 kB │ gzip:   0.51 kB
+dist/assets/ice-cube-cluster-logo-Cbf1b9vx.png         47.10 kB
+dist/assets/ice-sidebar-water-DCWNplta.png          1,380.06 kB
+dist/assets/FinancialManagerWorkspace-DfiPKuy4.css     27.69 kB │ gzip:   5.26 kB
+dist/assets/index-B9XIqFq1.css                        411.47 kB │ gzip:  71.72 kB
+dist/assets/workbox-window.prod.es5-BqEJf4Xk.js         5.71 kB │ gzip:   2.34 kB
+dist/assets/index-CbjoHEPL.js                          35.49 kB │ gzip:  10.27 kB
+dist/assets/ShopPaymentProfileEditor-BmFX0oJa.js       43.50 kB │ gzip:  13.58 kB
+dist/assets/index-wPh-uXHu.js                         133.21 kB │ gzip:  40.68 kB
+dist/assets/FinancialManagerWorkspace-C-W2mRlv.js     143.59 kB │ gzip:  37.59 kB
+dist/assets/AdminRoleWorkspace-DMvP3qMp.js            462.00 kB │ gzip: 126.81 kB
+dist/assets/index-DWUVnlPr.js                         959.92 kB │ gzip: 294.62 kB
+
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 7.38s
+
+PWA v1.3.0
+mode      generateSW
+precache  18 entries (2511.83 KiB)
+files generated
+  dist/sw.js
+  dist/workbox-3466dd45.js

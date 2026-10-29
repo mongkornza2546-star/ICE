@@ -614,7 +614,7 @@ describe('employee live shop loading', () => {
     });
   });
 
-  it('starts a new stock read after an older in-flight read completes', async () => {
+  it('supersedes an older stock read immediately when freshness is required', async () => {
     let finishOldRead!: (value: { data: DeliveryPosContext; error: null }) => void;
     const oldRead = new Promise<{ data: DeliveryPosContext; error: null }>((resolve) => {
       finishOldRead = resolve;
@@ -628,12 +628,12 @@ describe('employee live shop loading', () => {
     const gateway = createSupabaseGateway();
     const options = { destinationKind: 'regular' as const, serviceDate: '2026-08-11' };
 
-    const oldContext = gateway.loadDeliveryPosContext!('stop-1', options);
+    const oldContext = gateway.loadDeliveryPosContext!('stop-1', options).catch(error => error);
     const freshContext = gateway.loadDeliveryPosContext!('stop-1', { ...options, forceRefresh: true });
-    expect(supabaseMock.client.rpc).toHaveBeenCalledTimes(1);
+    expect(supabaseMock.client.rpc).toHaveBeenCalledTimes(2);
 
     finishOldRead({ data: posContext, error: null });
-    await oldContext;
+    expect(await oldContext).toBeInstanceOf(Error);
     expect((await freshContext).items[0].stock_quantity).toBe(79);
     expect(supabaseMock.client.rpc).toHaveBeenCalledTimes(2);
   });
@@ -910,6 +910,27 @@ describe('employee live shop loading', () => {
     expect(cards).toHaveLength(1);
     expect(cards[0]).toMatchObject({ destination_kind: 'regular', shop_id: 'shop-1' });
     expect(gateway.getEventCardsLoadError?.('round-1')).toBe('event cards unavailable');
+  });
+
+  it('starts a forced card refresh without waiting for an older stalled read', async () => {
+    let finishOld!: (value: unknown) => void; let reads = 0;
+    supabaseMock.client.rpc.mockImplementation((name: string) => {
+      if (name === 'get_event_delivery_capability') return { data: { schema_version: 3 }, error: null };
+      if (name === 'sync_daily_round_destinations') return { data: 1, error: null };
+      if (name === 'get_round_shop_cards_with_tank_history') {
+        reads++;
+        if (reads === 1) return new Promise(resolve => { finishOld = resolve; });
+        return { data: [{ ...shopCard, shop_name: 'Fresh shop' }], error: null };
+      }
+      throw new Error(name);
+    });
+    const gateway = createSupabaseGateway();
+    const old = gateway.loadShopCards('round-1');
+    await vi.waitFor(() => expect(finishOld).toBeTypeOf('function'));
+    const fresh = gateway.loadShopCards('round-1', { forceRefresh: true });
+    await expect(fresh).resolves.toMatchObject([{ shop_name: 'Fresh shop' }]);
+    finishOld({ data: [shopCard], error: null }); await old;
+    expect(await gateway.loadShopCards('round-1')).toMatchObject([{ shop_name: 'Fresh shop' }]);
   });
 
   it('refreshes event capability during a forced catalog refresh', async () => {
@@ -1875,4 +1896,22 @@ it('loads event settlement balances as well as regular shop balances for POS', a
     { queueKey: 'event:context-1', shopId: 'shop-1', eventParticipationId: 'participation-1', outstandingAmount: 160.75 },
     { queueKey: 'event:context-2', shopId: 'shop-1', eventParticipationId: 'participation-1', outstandingAmount: 90 },
   ]);
+});
+
+it('bounds a forced refresh without waiting for the preceding request deadline', async () => {
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+  try {
+    supabaseMock.client.rpc.mockReturnValue(new Promise(() => {}));
+    const gateway = createSupabaseGateway();
+    const options = { destinationKind: 'regular' as const, serviceDate: '2026-08-11' };
+    const first = gateway.loadDeliveryPosContext!('stop-1', options).catch(error => error);
+    const result = vi.fn();
+    const refresh = gateway.loadDeliveryPosContext!('stop-1', { ...options, forceRefresh: true }).then(result, result);
+    await vi.advanceTimersByTimeAsync(15_000);
+    expect(await first).toBeInstanceOf(Error);
+    expect(supabaseMock.client.rpc).toHaveBeenCalledTimes(2);
+
+    await refresh;
+    expect(result).toHaveBeenCalledWith(expect.objectContaining({ message: 'โหลดราคา สต๊อก และเงื่อนไขชำระนานเกินไป กรุณาลองใหม่' }));
+  } finally { vi.useRealTimers(); }
 });

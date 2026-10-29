@@ -1,0 +1,55 @@
+it('diagnosis: reproduces screenshot loading then raw Load failed on a first shop visit', async () => {
+  let finish!: (value: unknown) => void;
+  supabaseMock.client.rpc.mockReturnValueOnce(new Promise(resolve => { finish = resolve; }));
+  const gateway = previewGateway();
+  gateway.loadDeliveryPosContext = createSupabaseGateway().loadDeliveryPosContext;
+  render(<EmployeeDeliveryWorkspace gateway={gateway} requestScope="diagnosis-cold" serviceDate="2026-08-11" />);
+  await userEvent.setup().click(await screen.findByRole('button', { name: 'เลือกร้าน BB01 ร้านทดสอบ' }));
+  expect(screen.getByText('กำลังโหลดราคา สต๊อก และเงื่อนไขชำระ…')).toBeTruthy();
+  expect(screen.getAllByText('ยังไม่มีราคา').length).toBeGreaterThan(0);
+  await act(async () => finish({ data: null, error: { message: 'TypeError: Load failed', details: '', hint: '', code: '' } }));
+  expect(screen.getByRole('alert').textContent).toBe('TypeError: Load failed');
+  expect(screen.getByRole('button', { name: 'ลองโหลดข้อมูลอีกครั้ง' })).toBeTruthy();
+  expect(screen.getAllByText('ยังไม่มีราคา').length).toBeGreaterThan(0);
+  expect(supabaseMock.client.rpc).toHaveBeenCalledTimes(1);
+});
+
+it.each([true, false])('diagnosis: global focus refresh within five-minute cooldown (enabled: %s)', async (enableFocusCatchup) => {
+  const { initGlobalRealtimeSync } = await import('../src/lib/realtimeSync');
+  let now = Date.now();
+  const nowSpy = vi.spyOn(Date, 'now').mockImplementation(() => now);
+  const stop = initGlobalRealtimeSync({ enableFocusCatchup });
+  try {
+    const gateway = previewGateway();
+    render(<EmployeeDeliveryWorkspace gateway={gateway} requestScope="diagnosis-focus" serviceDate="2026-08-11" />);
+    await userEvent.setup().click(await screen.findByRole('button', { name: 'เลือกร้าน BB01 ร้านทดสอบ' }));
+    await screen.findByText('คงเหลือ 10 ถุง');
+    expect(gateway.loadDeliveryPosContext).toHaveBeenCalledTimes(1);
+    fireEvent.focus(window);
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 350)); });
+    expect(gateway.loadDeliveryPosContext).toHaveBeenCalledTimes(enableFocusCatchup ? 2 : 1);
+    now += 16_000;
+    fireEvent.focus(window);
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 350)); });
+    expect(gateway.loadDeliveryPosContext).toHaveBeenCalledTimes(enableFocusCatchup ? 3 : 1);
+  } finally { stop(); nowSpy.mockRestore(); }
+});
+
+it('diagnosis: forced refresh can wait for two consecutive sixty-second timeouts', async () => {
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+  try {
+    supabaseMock.client.rpc.mockReturnValue(new Promise(() => {}));
+    const gateway = createSupabaseGateway();
+    const options = { destinationKind: 'regular' as const, serviceDate: '2026-08-11' };
+    const first = gateway.loadDeliveryPosContext!('stop-1', options).catch(error => error);
+    const result = vi.fn();
+    const refresh = gateway.loadDeliveryPosContext!('stop-1', { ...options, forceRefresh: true }).then(result, result);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(await first).toBeInstanceOf(Error);
+    expect(supabaseMock.client.rpc).toHaveBeenCalledTimes(2);
+    expect(result).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(60_000);
+    await refresh;
+    expect(result).toHaveBeenCalledWith(expect.objectContaining({ message: 'โหลดราคา สต๊อก และเงื่อนไขชำระนานเกินไป กรุณาลองใหม่' }));
+  } finally { vi.useRealTimers(); }
+});

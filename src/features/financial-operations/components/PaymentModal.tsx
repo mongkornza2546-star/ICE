@@ -183,8 +183,8 @@ export function PaymentModal({
         {receipt ? (
           <div className="financial-ops__payment-complete">
             <CheckCircle aria-hidden="true" size={24} weight="fill" />
-            <span><strong>{translateUi('บันทึกรับเงินเรียบร้อย')}</strong><small>{translateUi('กดพิมพ์เมื่อร้านต้องการใบเสร็จ')}</small></span>
-            <button onClick={() => onPrintReceipt(receipt)} type="button"><Printer aria-hidden="true" size={19} />{translateUi('พิมพ์ใบเสร็จ')}</button>
+            <span><strong>{translateUi(receipt.pending ? 'บันทึกลงเครื่องแล้ว · รอซิงก์' : 'บันทึกรับเงินเรียบร้อย')}</strong><small>{receipt.pending ? `${receipt.receiptNumber} · ${translateUi('ใบรับรายการชั่วคราว ยังไม่ใช่ใบเสร็จ')}` : translateUi('กดพิมพ์เมื่อร้านต้องการใบเสร็จ')}</small></span>
+            <button disabled={receipt.pending} onClick={() => onPrintReceipt(receipt)} type="button"><Printer aria-hidden="true" size={19} />{translateUi('พิมพ์ใบเสร็จ')}</button>
             <button onClick={onClose} type="button">{translateUi('เสร็จสิ้น')}</button>
           </div>
         ) : (

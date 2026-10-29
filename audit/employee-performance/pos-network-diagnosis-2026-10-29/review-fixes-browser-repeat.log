@@ -1,0 +1,7 @@
+PASS chromium: unresolved online write survives IDB reopen, original retry releases it, stale preparation rejected
+PASS chromium: SW offline reload, close/reopen, stock/delivery/partial collection, Blob and owner isolation
+PASS chromium: lost acknowledgement, two-tab replay, dependency resolution, one receipt, mobile layout
+PASS webkit: unresolved online write survives IDB reopen, original retry releases it, stale preparation rejected
+BLOCKED WebKit offline shell: service-worker control or CacheStorage did not survive reload (https://github.com/microsoft/playwright/issues/41618). Static shell remains reachable for the independent real-IDB tests.
+PASS webkit: business transport offline, close/reopen, stock/delivery/partial collection, Blob and owner isolation
+PASS webkit: lost acknowledgement, two-tab replay, dependency resolution, one receipt, mobile layout

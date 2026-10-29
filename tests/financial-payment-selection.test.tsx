@@ -1,5 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, expect, it, vi } from 'vitest';
+import { IDBFactory } from 'fake-indexeddb';
+import { offlineSnapshot } from './helpers/offlineSnapshot';
 
 const supabaseMock = vi.hoisted(() => ({
   loadQueue: vi.fn(),
@@ -84,6 +86,29 @@ function renderFinancialOperations() {
     userRole="round_lead"
   />);
 }
+
+it('fences the online payment button against stale offline preparation until the RPC settles', async () => {
+  vi.stubGlobal('indexedDB', new IDBFactory());
+  const { offlineStore } = await import('../src/offline/runtime/client');
+  const store = offlineStore(); const snapshot = offlineSnapshot();
+  let release!: () => void;
+  try {
+    await store.install(snapshot);
+    const version = await store.preparationVersion(snapshot.ownerId, snapshot.serviceDate);
+    const response = { data: { payment_id: 'payment-guarded', receipt_number: 'REC-GUARDED',
+      recorded_at: '2026-09-30T08:00:00+07:00', allocated_amount: 125, change_amount: 0 }, error: null };
+    supabaseMock.rpc.mockImplementation(async () => { await new Promise<void>(resolve => { release = resolve; }); return response; });
+    renderFinancialOperations();
+    fireEvent.click(screen.getByRole('button', { name: 'บันทึกรับเงินทันที' }));
+    await waitFor(() => expect(release).toBeTypeOf('function'));
+    expect(await store.hasOnlineWrite()).toBe(true);
+    expect(await store.install(snapshot, version.sequence, version.revision)).toBe(false);
+    release();
+    expect(await screen.findByText('บันทึกรับเงินเรียบร้อย')).toBeTruthy();
+    expect(await store.hasOnlineWrite()).toBe(false);
+    expect(await store.install(snapshot, version.sequence, version.revision)).toBe(false);
+  } finally { release?.(); await store.close(); vi.unstubAllGlobals(); }
+});
 
 it.each(['admin', 'courier'] as const)('shows closed-day debt and disables payment for %s', async (role) => {
   // Load the manager's lazy bundle before starting Testing Library's DOM timeout.

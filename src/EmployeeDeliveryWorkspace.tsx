@@ -1,3 +1,4 @@
+import { withDeadline } from './offline/runtime/network';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { CalendarBlank, CaretDown, CheckCircle, Printer, WarningCircle } from '@phosphor-icons/react';
 import { supabase } from './lib/supabase';
@@ -129,6 +130,7 @@ export interface EmployeeStockTransferPayload {
 }
 
 export interface EmployeeDeliveryGateway {
+  offlineReady?: boolean;
   supportsProgressiveShopCardLoading?: boolean;
   loadReferenceData(serviceDate: string): Promise<{ rounds: DeliveryRound[]; iceTypes: IceTypeOption[] }>;
   loadShopCards(roundId: string, options?: {
@@ -208,7 +210,7 @@ interface EventDeliveryCardDto {
   today_totals: Array<{ ice_type_id: string; quantity: number }>;
 }
 
-const POS_CONTEXT_TIMEOUT_MS = 60_000;
+const POS_CONTEXT_TIMEOUT_MS = 15_000;
 const POS_CONTEXT_CACHE_PREFIX = 'ice-employee-pos-context:v1';
 const SHOP_CARDS_BURST_CACHE_MS = 5 * 1000;
 const FOREGROUND_REFRESH_MIN_MS = 5 * 60 * 1000;
@@ -258,6 +260,7 @@ function formatEmployeeServiceDate(serviceDate: string) {
 
 export function createSupabaseGateway(): EmployeeDeliveryGateway {
   const referenceRequests = new Map<string, Promise<{ rounds: DeliveryRound[]; iceTypes: IceTypeOption[] }>>();
+  const shopCardGenerations = new Map<string, symbol>();
   const shopCardRequests = new Map<string, Promise<ShopCard[]>>();
   const shopImageRequests = new Map<string, ReturnType<typeof getR2ObjectUrls>>();
   const posContextRequests = new Map<string, Promise<DeliveryPosContext>>();
@@ -279,7 +282,7 @@ export function createSupabaseGateway(): EmployeeDeliveryGateway {
       destinationSyncCapabilityRequest = (async (): Promise<EventDeliveryCapability | null> => {
         try {
           if (!supabase) return null;
-          const { data, error } = await supabase.rpc('get_event_delivery_capability');
+          const { data, error } = await withDeadline(() => supabase!.rpc('get_event_delivery_capability'));
           if (error) return null;
           return (data ?? null) as EventDeliveryCapability | null;
         } catch {
@@ -333,8 +336,7 @@ export function createSupabaseGateway(): EmployeeDeliveryGateway {
     },
     async loadShopCards(roundId, options) {
       if (options?.forceRefresh) {
-        const inFlight = shopCardRequests.get(roundId);
-        if (inFlight) await inFlight.catch(() => undefined);
+        shopCardRequests.delete(roundId);
         shopCardBurstCache.delete(roundId);
         if (options.refreshCapability !== false) {
           destinationSyncCapabilityRequest = null;
@@ -347,7 +349,8 @@ export function createSupabaseGateway(): EmployeeDeliveryGateway {
       if (freshCache?.imagesResolved) return freshCache.cards;
       // Share only the data request. Slow photo signing must not hold up a later
       // post-save refresh or cause it to reuse shop data from before that save.
-      const baseCards = freshCache?.cards ?? await singleFlight(shopCardRequests, roundId, async () => {
+      const baseCards = freshCache?.cards ?? await singleFlight(shopCardRequests, roundId, () => withDeadline(async signal => {
+        const generation = Symbol(); shopCardGenerations.set(roundId, generation);
         const client = supabase;
         if (!client) throw new Error('ยังไม่ได้ตั้งค่า Supabase');
         const eventCapability = await loadEventCapability();
@@ -442,9 +445,9 @@ export function createSupabaseGateway(): EmployeeDeliveryGateway {
               && Boolean(card.event_delivery_enabled),
           }));
         const destinationCards = [...baseCards, ...eventCards];
-        shopCardBurstCache.set(roundId, { cachedAt: Date.now(), cards: destinationCards, imagesResolved: false });
+        if (!signal.aborted && shopCardGenerations.get(roundId) === generation) shopCardBurstCache.set(roundId, { cachedAt: Date.now(), cards: destinationCards, imagesResolved: false });
         return destinationCards;
-      });
+      }));
       options?.onBaseCards?.(baseCards);
       const cards = await withAsyncPublicImageUrls(
         baseCards,
@@ -499,10 +502,11 @@ export function createSupabaseGateway(): EmployeeDeliveryGateway {
       const key = `${serviceDate}:${roundStopId}`;
       // Quantities change after every withdrawal and delivery. Never reuse a
       // completed context or saved stock, even when revisiting the same shop.
-      // A stock notification can arrive while an older read is still running.
-      // Wait for that read, then start a new request against the updated ledger.
+      // A forced refresh supersedes the old read. Waiting for its deadline first
+      // doubled the user's maximum wait and kept obsolete requests alive.
       if (options?.forceRefresh) {
-        await posContextRequests.get(key)?.catch(() => undefined);
+        posContextControllers.get(key)?.abort();
+        posContextRequests.delete(key);
       }
 
       return singleFlight(posContextRequests, key, async () => {
@@ -556,6 +560,11 @@ export function createSupabaseGateway(): EmployeeDeliveryGateway {
           // request before releasing single-flight for a retry.
           const { data, error } = await Promise.race([
             request,
+            new Promise<never>((_, reject) => {
+              controller.signal.addEventListener('abort', () => reject(
+                new Error('ข้อมูลร้านเปลี่ยนระหว่างโหลด กรุณาลองโหลดข้อมูลอีกครั้ง'),
+              ), { once: true });
+            }),
             new Promise<never>((_, reject) => {
               timeout = setTimeout(() => {
                 reject(new Error('โหลดราคา สต๊อก และเงื่อนไขชำระนานเกินไป กรุณาลองใหม่'));
@@ -1104,6 +1113,8 @@ export function EmployeeDeliveryWorkspace({
     return (
       <div className="employee-workspace">
         <EmployeeCasualCustomerPage
+          key={`${requestScope}:${data.selectedRound.id}`}
+          requestScope={requestScope}
           deleteEvidence={gateway.deletePaymentEvidence!}
           loadContext={gateway.loadCasualTransactionContext!}
           loadReceipt={gateway.loadCasualReceiptSnapshot!}

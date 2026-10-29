@@ -31,6 +31,15 @@ function writePendingRequests(requests: Record<string, PendingRequestIdentity>) 
   }
 }
 
+// Used after replaying a durable online request from the recovery banner. The
+// next mount must not offer the already-confirmed save as a new offline command.
+export function clearPendingRequestByKey(key: string) {
+  for (const [signature, request] of pendingRequestFallback) if (request.key === key) pendingRequestFallback.delete(signature);
+  const requests = readPendingRequests();
+  for (const [signature, request] of Object.entries(requests)) if (request.key === key) delete requests[signature];
+  writePendingRequests(requests);
+}
+
 export function usePendingRequests() {
   const getPendingRequest = useCallback((storageSignature: string) => (
     readPendingRequests()[storageSignature] ?? pendingRequestFallback.get(storageSignature)

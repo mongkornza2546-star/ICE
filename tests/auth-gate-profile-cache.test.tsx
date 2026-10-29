@@ -4,6 +4,9 @@ import type { AuthChangeEvent, Session } from '@supabase/supabase-js';
 import type { UserProfile } from '../src/types/app';
 import { readCachedUserProfile, writeCachedUserProfile } from '../src/lib/userProfileCache';
 
+const offlineSession = vi.hoisted(() => ({ read: vi.fn(async (): Promise<Session | null> => null) }));
+vi.mock('../src/offline/runtime/session', () => ({ readPreparedOfflineSession: offlineSession.read }));
+
 const authMock = vi.hoisted(() => {
   const state = {
     listener: null as ((event: AuthChangeEvent, session: Session | null) => void) | null,
@@ -57,11 +60,32 @@ const profile: UserProfile = {
 
 describe('AuthGate profile cache cleanup', () => {
   beforeEach(() => {
+    offlineSession.read.mockReset().mockResolvedValue(null);
     authMock.state.session = session;
     authMock.state.listener = null;
     authMock.client.auth.getSession.mockReset();
     authMock.client.auth.getSession.mockImplementation(async () => ({ data: { session: authMock.state.session }, error: null }));
     authMock.client.auth.signOut.mockReset();
+  });
+
+  it('keeps prepared work open after INITIAL_SESSION null while refresh stalls', async () => {
+    offlineSession.read.mockResolvedValue(session);
+    authMock.client.auth.getSession.mockImplementation(() => new Promise(() => {}));
+    render(<AuthGate />);
+    expect(await screen.findByTestId('role-router')).not.toBeNull();
+    await act(async () => authMock.state.listener?.('INITIAL_SESSION', null));
+    expect(screen.getByTestId('role-router')).not.toBeNull();
+  });
+
+  it('does not restore a delayed local identity after sign-out or switch to another user', async () => {
+    let resolve!: (s: Session | null) => void;
+    offlineSession.read.mockImplementation(() => new Promise(r => { resolve = r; }));
+    authMock.client.auth.getSession.mockImplementation(() => new Promise(() => {}));
+    render(<AuthGate />);
+    act(() => authMock.state.listener?.('SIGNED_OUT', null));
+    await act(async () => resolve(session));
+    expect(screen.queryByTestId('role-router')).toBeNull();
+    expect(screen.getByText('เข้าสู่ระบบหน้างาน')).not.toBeNull();
   });
 
   it('clears the last user profile after an automatic sign-out', async () => {

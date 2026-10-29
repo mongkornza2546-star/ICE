@@ -278,6 +278,7 @@ export type ReceiptCharge = {
 };
 
 export type PaymentReceipt = {
+  pending?: boolean;
   paymentId: string;
   receiptNumber: string;
   shopCode: string;

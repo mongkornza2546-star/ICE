@@ -1,0 +1,10 @@
+
+ RUN  v3.2.7 /Users/bhusitt./Downloads/ส่งน้ำแข็ง
+
+····································································································································································
+
+ Test Files  12 passed (12)
+      Tests  164 passed (164)
+   Start at  16:39:09
+   Duration  35.76s (transform 2.14s, setup 1.26s, collect 15.25s, tests 11.98s, environment 4.51s, prepare 843ms)
+

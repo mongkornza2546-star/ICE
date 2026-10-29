@@ -1,0 +1,39 @@
+PASS chromium: unresolved online write survives IDB reopen, original retry releases it, stale preparation rejected
+PASS chromium: SW offline reload, close/reopen, stock/delivery/partial collection, Blob and owner isolation
+PASS chromium: lost acknowledgement, two-tab replay, dependency resolution, one receipt, mobile layout
+PASS webkit: unresolved online write survives IDB reopen, original retry releases it, stale preparation rejected
+BLOCKED WebKit offline shell: service-worker control or CacheStorage did not survive reload (https://github.com/microsoft/playwright/issues/41618). Static shell remains reachable for the independent real-IDB tests.
+PASS webkit: business transport offline, close/reopen, stock/delivery/partial collection, Blob and owner isolation
+webkit [
+  { type: 'stock_transfer', status: 'applied', error: undefined },
+  { type: 'delivery', status: 'applied', error: undefined },
+  {
+    type: 'collection_payment',
+    status: 'retry_wait',
+    error: 'The object can not be found here.'
+  }
+] []
+node:internal/modules/run_main:123
+    triggerUncaughtException(
+    ^
+
+AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
++ actual - expected
+
+  [
+    'applied',
+    'applied',
++   'retry_wait'
+-   'applied'
+  ]
+
+    at file:///Users/bhusitt./Downloads/%E0%B8%AA%E0%B9%88%E0%B8%87%E0%B8%99%E0%B9%89%E0%B8%B3%E0%B9%81%E0%B8%82%E0%B9%87%E0%B8%87/tests/employee-offline-runtime.browser.mjs:110:14 {
+  generatedMessage: true,
+  code: 'ERR_ASSERTION',
+  actual: [ 'applied', 'applied', 'retry_wait' ],
+  expected: [ 'applied', 'applied', 'applied' ],
+  operator: 'deepStrictEqual',
+  diff: 'simple'
+}
+
+Node.js v22.23.2

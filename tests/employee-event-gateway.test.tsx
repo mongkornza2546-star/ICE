@@ -15,7 +15,7 @@ it('presents the cancelled-booth RPC error without the legacy role name', async 
   await expect(employeeEventGateway.createBooth({
     eventJobId: 'event-1', requestId: 'request-booth', boothNumber: 'A1', shopName: '',
     eventZone: 'Hall A', contactName: '', contactPhone: '',
-  })).rejects.toEqual(new Error('บูธนี้เคยมีและถูกยกเลิกแล้ว กรุณาติดต่อหัวหน้า'));
+  })).rejects.toMatchObject({ message: 'บูธนี้เคยมีและถูกยกเลิกแล้ว กรุณาติดต่อหัวหน้า', code: 'P0001' });
 });
 
 it('loads published events and an event without requiring a round id', async () => {

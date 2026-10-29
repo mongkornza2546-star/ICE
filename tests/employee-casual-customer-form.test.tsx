@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { EmployeeCasualCustomerPage } from '../src/features/employee-delivery/EmployeeCasualCustomerPage';
 
 function setup(available = 5, attribution = {}) {
-  const record = vi.fn().mockRejectedValue(new Error('test request'));
+  const record = vi.fn().mockRejectedValue({ code: 'P0001', message: 'test request' });
   render(<EmployeeCasualCustomerPage
     round={{ id: 'round-1', name: 'งานประจำวัน', service_date: '2026-09-25', round_type: 'daily', status: 'open', opened_at: '2026-09-25T00:00:00Z' }}
     serviceDateLabel="25 ก.ย. 2026"

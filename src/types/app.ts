@@ -75,6 +75,8 @@ export interface ShopPaymentProfile {
 }
 
 export interface DeliveryPosContext {
+  offline_snapshot?: boolean;
+  offline_collection_template?: import('../features/financial-operations/types').QueueShop;
   stock_check_required?: boolean;
   round_id: string;
   round_stop_id: string;
@@ -103,6 +105,7 @@ export interface DeliveryPosContext {
 }
 
 export interface DeliveryFinancialResult {
+  offline_pending?: boolean;
   subtotal_amount?: number | null;
   vat_rate?: number | null;
   vat_amount?: number | null;
@@ -142,10 +145,11 @@ export interface FinancialPaymentResult {
 }
 
 export interface ImmediateSaleResult {
+  offline_pending?: boolean;
   delivery: DeliveryFinancialResult;
   payment: FinancialPaymentResult;
   receipt_number: string;
-  print_document: import('../lib/salesDocumentPrint').StoredSalesDocument;
+  print_document: import('../lib/salesDocumentPrint').StoredSalesDocument | null;
 }
 
 export interface CasualTransactionItem {
@@ -344,6 +348,7 @@ export interface EmployeeStockLocation {
 }
 
 export interface EmployeeStockState {
+  offline_pending?: boolean;
   round_id: string;
   service_date: string;
   withdrawn_balances: StockBalanceItem[];

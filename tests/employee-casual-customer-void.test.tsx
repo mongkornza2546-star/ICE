@@ -53,7 +53,6 @@ describe('casual cancellation input', () => {
     expect(dialog.getByRole('textbox', { name: 'เหตุผลการยกเลิก' })).toBe(reason);
     expect(loadContext).toHaveBeenCalledTimes(1);
     expect(onDraftStateChange).not.toHaveBeenCalled();
-    await user.type(dialog.getByRole('textbox', { name: 'เลขอ้างอิงการคืน (ไม่บังคับ)' }), 'REF-21');
     // Each keystroke must not reformat/reconcile every receipt behind the modal.
     expect(historyRead.mock.calls.length).toBe(0);
   });
@@ -82,7 +81,6 @@ describe('casual cancellation input', () => {
     expect((confirm as HTMLButtonElement).disabled).toBe(true);
     await user.type(dialog.getByRole('textbox', { name: 'เหตุผลการยกเลิก' }), ' คืนสินค้า ');
     await user.click(dialog.getByRole('button', { name: 'คืนโอนเงิน' }));
-    await user.type(dialog.getByRole('textbox', { name: 'เลขอ้างอิงการคืน (ไม่บังคับ)' }), 'REF-21');
     expect((confirm as HTMLButtonElement).disabled).toBe(true);
     const evidence = new File(['refund'], 'refund.png', { type: 'image/png' });
     await user.upload(dialog.getByLabelText('หลักฐานการคืนเงิน'), evidence);
@@ -91,7 +89,7 @@ describe('casual cancellation input', () => {
     expect((dialog.getByRole('textbox', { name: 'เหตุผลการยกเลิก' }) as HTMLTextAreaElement).value).toBe(' คืนสินค้า ');
     expect(voidTransaction).toHaveBeenCalledWith({
       transactionId: 'sale-0', reason: 'คืนสินค้า', refundMethod: 'bank_transfer',
-      referenceNumber: 'REF-21', evidencePath: 'refund/evidence.png', idempotencyKey: expect.any(String),
+      referenceNumber: null, evidencePath: 'refund/evidence.png', idempotencyKey: expect.any(String),
     });
     await user.click(confirm);
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
@@ -106,13 +104,12 @@ describe('casual cancellation input', () => {
     expect(onDraftStateChange).toHaveBeenLastCalledWith({ dirty: true, submitting: false });
     await user.type(dialog.getByRole('textbox', { name: 'เหตุผลการยกเลิก' }), 'รายการแรก');
     await user.click(dialog.getByRole('button', { name: 'คืนโอนเงิน' }));
-    await user.type(dialog.getByRole('textbox', { name: 'เลขอ้างอิงการคืน (ไม่บังคับ)' }), 'REF-21');
     await user.click(dialog.getByRole('button', { name: 'กลับ', exact: true }));
     expect(onDraftStateChange).toHaveBeenLastCalledWith({ dirty: false, submitting: false });
     await user.click(screen.getAllByRole('button', { name: 'ยกเลิก', exact: true })[1]);
     const next = within(screen.getByRole('dialog'));
     expect((next.getByRole('textbox', { name: 'เหตุผลการยกเลิก' }) as HTMLTextAreaElement).value).toBe('');
-    expect((next.getByRole('textbox', { name: 'เลขอ้างอิงการคืน (ไม่บังคับ)' }) as HTMLInputElement).value).toBe('');
+    expect(next.queryByRole('textbox', { name: 'เลขอ้างอิงการคืน (ไม่บังคับ)' })).toBeNull();
     expect(next.queryByLabelText('หลักฐานการคืนเงิน')).toBeNull();
     expect(voidTransaction).not.toHaveBeenCalled();
   });
@@ -133,7 +130,6 @@ describe('casual cancellation input', () => {
     });
     const dialog = await openDialog(user);
     await user.type(dialog.getByRole('textbox', { name: 'เหตุผลการยกเลิก' }), 'คืนสินค้า');
-    await user.type(dialog.getByRole('textbox', { name: 'เลขอ้างอิงการคืน (ไม่บังคับ)' }), 'REF-21');
     if (method === 'bank_transfer') {
       await user.click(dialog.getByRole('button', { name: 'คืนโอนเงิน' }));
       await user.upload(dialog.getByLabelText('หลักฐานการคืนเงิน'), new File(['refund'], 'refund.png', { type: 'image/png' }));
@@ -145,7 +141,7 @@ describe('casual cancellation input', () => {
     const reopened = await openDialog(user);
     const reason = reopened.getByRole('textbox', { name: 'เหตุผลการยกเลิก' });
     expect((reason as HTMLTextAreaElement).value).toBe('คืนสินค้า');
-    expect((reopened.getByRole('textbox', { name: 'เลขอ้างอิงการคืน (ไม่บังคับ)' }) as HTMLInputElement).value).toBe('REF-21');
+    expect(reopened.queryByRole('textbox', { name: 'เลขอ้างอิงการคืน (ไม่บังคับ)' })).toBeNull();
     expect(reopened.getByRole('button', { name: method === 'cash' ? 'คืนเงินสด' : 'คืนโอนเงิน' }).className).toBe('is-selected');
     if (method === 'bank_transfer') expect(reopened.getByText('refund.png')).toBeTruthy();
     historyRead.mockClear();
@@ -224,4 +220,71 @@ it('records the actual cash refunder and changes retry identity when that person
   await waitFor(() => expect(voidTransaction).toHaveBeenCalledTimes(2));
   expect(voidTransaction.mock.calls[1][0].cashRefundedBy).toBe('admin');
   expect(voidTransaction.mock.calls[1][0].idempotencyKey).not.toBe(voidTransaction.mock.calls[0][0].idempotencyKey);
+});
+
+
+describe('casual cancellation dialog accessibility', () => {
+  it('shows refund failures inside the dialog and clears them for another sale', async () => {
+    const { user, voidTransaction } = setup(2);
+    voidTransaction.mockRejectedValueOnce(new Error('ลองใหม่'));
+    const dialog = await openDialog(user);
+    await user.type(dialog.getByRole('textbox', { name: 'เหตุผลการยกเลิก' }), 'คืนสินค้า');
+    await user.click(dialog.getByRole('button', { name: 'ยืนยันยกเลิก' }));
+    expect((await dialog.findByRole('alert')).textContent).toContain('ลองใหม่');
+    expect(screen.getAllByRole('alert')).toHaveLength(1);
+    await user.click(dialog.getByRole('button', { name: 'กลับ', exact: true }));
+    await user.click(screen.getAllByRole('button', { name: 'ยกเลิก', exact: true })[1]);
+    expect(within(screen.getByRole('dialog')).queryByRole('alert')).toBeNull();
+  });
+
+  it('shows oversized evidence errors inside the dialog', async () => {
+    const { user, uploadEvidence } = setup();
+    const dialog = await openDialog(user);
+    await user.click(dialog.getByRole('button', { name: 'คืนโอนเงิน' }));
+    const evidence = new File(['refund'], 'refund.png', { type: 'image/png' });
+    Object.defineProperty(evidence, 'size', { value: 5 * 1024 * 1024 + 1 });
+    await user.upload(dialog.getByLabelText('หลักฐานการคืนเงิน'), evidence);
+    expect((await dialog.findByRole('alert')).textContent).toContain('5 MB');
+    expect(uploadEvidence).not.toHaveBeenCalled();
+  });
+
+  it('cycles Tab in both directions, skips disabled controls and restores the opener', async () => {
+    const { user } = setup();
+    await screen.findByRole('heading', { name: 'ประวัติวันนี้' });
+    const opener = screen.getByRole('button', { name: 'ยกเลิก', exact: true });
+    await user.click(opener);
+    const dialog = within(screen.getByRole('dialog'));
+    const reason = dialog.getByRole('textbox', { name: 'เหตุผลการยกเลิก' });
+    const back = dialog.getByRole('button', { name: 'กลับ', exact: true });
+    const confirm = dialog.getByRole('button', { name: 'ยืนยันยกเลิก' });
+    expect(document.activeElement).toBe(reason);
+    await user.tab({ shift: true });
+    expect(document.activeElement).toBe(back);
+    await user.tab();
+    expect(document.activeElement).toBe(reason);
+    await user.type(reason, 'คืนสินค้า');
+    await user.tab({ shift: true });
+    expect(document.activeElement).toBe(confirm);
+    await user.tab();
+    expect(document.activeElement).toBe(reason);
+    opener.focus();
+    expect(screen.getByRole('dialog').contains(document.activeElement)).toBe(true);
+    await user.click(back);
+    await waitFor(() => expect(document.activeElement).toBe(opener));
+  });
+
+  it('allows Escape to close only after the pending refund finishes', async () => {
+    const { user, voidTransaction } = setup();
+    let rejectRefund!: (cause: Error) => void;
+    voidTransaction.mockImplementationOnce(() => new Promise((_, reject) => { rejectRefund = reject; }));
+    const dialog = await openDialog(user);
+    await user.type(dialog.getByRole('textbox', { name: 'เหตุผลการยกเลิก' }), 'คืนสินค้า');
+    await user.click(dialog.getByRole('button', { name: 'ยืนยันยกเลิก' }));
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog')).not.toBeNull();
+    rejectRefund(new Error('ลองใหม่'));
+    await screen.findByText('ลองใหม่');
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
 });

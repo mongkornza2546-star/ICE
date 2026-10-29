@@ -25,6 +25,8 @@ import { isAndroidApp } from '../../lib/thermalPrinter';
 import { publishDataChange } from '../../lib/dataChange';
 import { MAX_PAYMENT_EVIDENCE_SIZE } from '../../lib/paymentEvidence';
 import { getErrorMessage } from '../../lib/errorMessage';
+import { clearRecovery, readRecovery, writeRecovery } from '../../lib/recoveryStorage';
+import { isTransportFailure } from '../../offline/runtime/network';
 import { usePendingRequests } from './usePendingRequests';
 import { EmployeeDestinationTabs } from './EmployeeDestinationTabs';
 
@@ -73,6 +75,11 @@ type VoidPayload = {
   idempotencyKey: string;
 };
 
+type PendingCasualRecord = {
+  signature: string;
+  payload: RecordPayload;
+};
+
 type PendingEvidenceRequest = {
   signature: string;
   key: string;
@@ -83,7 +90,6 @@ type VoidForm = {
   cashRefundedBy: string;
   voidReason: string;
   refundMethod: PaymentMethod;
-  refundReference: string;
   refundEvidence: File | null;
 };
 
@@ -100,6 +106,7 @@ function CasualVoidDialog({
   cashReceivers,
   defaultRefunderId,
   busy,
+  error,
   initialForm,
   onBack,
   onSubmit,
@@ -107,6 +114,7 @@ function CasualVoidDialog({
   target,
 }: {
   busy: boolean;
+  error: string;
   initialForm?: VoidForm;
   onBack: () => void;
   onSubmit: (form: VoidForm) => Promise<void>;
@@ -116,29 +124,69 @@ function CasualVoidDialog({
   defaultRefunderId?: string;
 }) {
   useLanguage();
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const current = useRef({ busy, onBack });
+  current.current = { busy, onBack };
+
+  useLayoutEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const controls = () => Array.from(dialog.querySelectorAll<HTMLElement>(
+      'button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled)',
+    ));
+    const focusFirst = () => (controls()[0] ?? dialog).focus({ preventScroll: true });
+    focusFirst();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        if (!current.current.busy) current.current.onBack();
+      }
+      if (event.key !== 'Tab') return;
+      const items = controls();
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (!first) { event.preventDefault(); dialog.focus(); }
+      else if (event.shiftKey && (document.activeElement === first || document.activeElement === dialog)) {
+        event.preventDefault(); last.focus();
+      } else if (!event.shiftKey && (document.activeElement === last || document.activeElement === dialog)) {
+        event.preventDefault(); first.focus();
+      }
+    };
+    const onFocusIn = (event: FocusEvent) => {
+      if (event.target instanceof Node && !dialog.contains(event.target)) focusFirst();
+    };
+    document.addEventListener('keydown', onKeyDown);
+    document.addEventListener('focusin', onFocusIn);
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
+      document.removeEventListener('focusin', onFocusIn);
+      queueMicrotask(() => { if (opener?.isConnected) opener.focus({ preventScroll: true }); });
+    };
+  }, []);
+
   // Keep typing independent of the product grid and potentially long daily history.
   const [cashRefundedBy, setCashRefundedBy] = useState(initialForm?.cashRefundedBy ?? defaultRefunderId ?? '');
   const validCashRefunder = !cashReceivers || cashReceivers.some((person) => person.id === cashRefundedBy);
   const [voidReason, setVoidReason] = useState(initialForm?.voidReason ?? '');
   const [refundMethod, setRefundMethod] = useState<PaymentMethod>(initialForm?.refundMethod ?? 'cash');
-  const [refundReference, setRefundReference] = useState(initialForm?.refundReference ?? '');
   const [refundEvidence, setRefundEvidence] = useState<File | null>(initialForm?.refundEvidence ?? null);
 
-  return <div className="employee-casual-void" role="dialog" aria-modal="true" aria-labelledby="casual-void-title">
+  return <div className="employee-casual-void" ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="casual-void-title">
     <section>
       <h2 id="casual-void-title">{translateUi('ยกเลิกรายการขายสด')}</h2>
       <p>{target.ice_type_name} {target.fulfillment_mode === 'loose' ? translateUi('ไม่ระบุจำนวน · คำนวณยอดสะสมใหม่หลังยกเลิก') : `${Number(target.quantity).toLocaleString('th-TH')} ${target.ice_type_unit}`}{target.transaction_kind === 'paid' ? translateUi(' · คืนเงินเต็มจำนวน {0}', { 0: money.format(Number(target.sale_amount)) }) : ''}</p>
-      <label><span>{translateUi('เหตุผลการยกเลิก')}</span><textarea autoFocus onChange={(event) => setVoidReason(event.target.value)} value={voidReason} /></label>
+      {error ? <div className="employee-error" role="alert"><WarningCircle size={20} weight="fill" />{translateUi(error)}</div> : null}
+      <label><span>{translateUi('เหตุผลการยกเลิก')}</span><textarea onChange={(event) => setVoidReason(event.target.value)} value={voidReason} /></label>
       {target.transaction_kind === 'paid' ? <>
         <div className="employee-casual-methods">{(['cash', 'bank_transfer'] as PaymentMethod[]).map((method) => <button className={refundMethod === method ? 'is-selected' : ''} key={method} onClick={() => setRefundMethod(method)} type="button">{translateUi('คืน')}{translateUi(paymentLabels[method])}</button>)}</div>
         {refundMethod === 'cash' && cashReceivers ? <label><span>{translateUi('ผู้คืนเงินจริง')}</span><select disabled={busy || cashReceivers.length === 1} value={cashRefundedBy} onChange={(event) => setCashRefundedBy(event.target.value)}><option value="">{translateUi('เลือกผู้คืนเงิน')}</option>{cashReceivers.map((person) => <option key={person.id} value={person.id}>{person.name}</option>)}</select></label> : null}
-        <label><span>{translateUi('เลขอ้างอิงการคืน (ไม่บังคับ)')}</span><input onChange={(event) => setRefundReference(event.target.value)} value={refundReference} /></label>
         {refundMethod !== 'cash' ? <>
           <label><span>{translateUi('หลักฐานการคืนเงิน')}</span><input accept="image/*,application/pdf" aria-describedby={refundEvidence ? 'casual-refund-evidence-name' : undefined} onChange={(event) => selectEvidence(event.target.files?.[0] ?? null, setRefundEvidence)} type="file" /></label>
           {refundEvidence ? <small id="casual-refund-evidence-name">{refundEvidence.name}</small> : null}
         </> : null}
       </> : null}
-      <div className="employee-casual-void__actions"><button disabled={busy} onClick={onBack} type="button">{translateUi('กลับ')}</button><button disabled={!voidReason.trim() || busy || (target.transaction_kind === 'paid' && refundMethod === 'cash' && !validCashRefunder) || (target.transaction_kind === 'paid' && refundMethod !== 'cash' && !refundEvidence)} onClick={() => { void onSubmit({ voidReason, refundMethod, refundReference, refundEvidence, cashRefundedBy }); }} type="button">{translateUi('ยืนยันยกเลิก')}</button></div>
+      <div className="employee-casual-void__actions"><button disabled={busy} onClick={onBack} type="button">{translateUi('กลับ')}</button><button disabled={!voidReason.trim() || busy || (target.transaction_kind === 'paid' && refundMethod === 'cash' && !validCashRefunder) || (target.transaction_kind === 'paid' && refundMethod !== 'cash' && !refundEvidence)} onClick={() => { void onSubmit({ voidReason, refundMethod, refundEvidence, cashRefundedBy }); }} type="button">{translateUi('ยืนยันยกเลิก')}</button></div>
     </section>
   </div>;
 }
@@ -150,6 +198,7 @@ export function EmployeeCasualCustomerPage({
   onBack,
   onDraftStateChange,
   recordTransaction,
+  requestScope = 'default',
   round,
   serviceDateLabel,
   uploadEvidence,
@@ -161,6 +210,7 @@ export function EmployeeCasualCustomerPage({
   onBack: (kind: 'regular' | 'event') => void;
   onDraftStateChange?: (state: { dirty: boolean; submitting: boolean }) => void;
   recordTransaction: (payload: RecordPayload) => Promise<CasualTransactionResult>;
+  requestScope?: string;
   round: DeliveryRound;
   serviceDateLabel: string;
   uploadEvidence: (file: File, idempotencyKey: string) => Promise<string>;
@@ -168,13 +218,22 @@ export function EmployeeCasualCustomerPage({
 }) {
   useLanguage();
   const headingRef = useRef<HTMLHeadingElement>(null);
+  const evidenceInputRef = useRef<HTMLInputElement>(null);
   const recordRetryRef = useRef<PendingEvidenceRequest | null>(null);
   const voidRequestsRef = useRef(new Map<string, PendingVoidRequest>());
   const {
     clearPendingRequest,
+    getPendingRequest,
     getOrCreatePendingRequest,
     setPendingRequestEvidencePath,
   } = usePendingRequests();
+  const recoveryMode = `casual-record:${round.id}`;
+  const [recoveredRecord] = useState(() => {
+    const saved = readRecovery<PendingCasualRecord>(requestScope, round.service_date, recoveryMode)?.payload;
+    // The global recovery action can already have confirmed this request.
+    return saved && getPendingRequest(saved.signature)?.key === saved.payload.idempotencyKey ? saved : null;
+  });
+  const [pendingRecord, setPendingRecord] = useState(recoveredRecord);
   const [context, setContext] = useState<CasualTransactionContext | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -192,13 +251,14 @@ export function EmployeeCasualCustomerPage({
   const [evidence, setEvidence] = useState<File | null>(null);
   const [note, setNote] = useState('');
   const [voidTarget, setVoidTarget] = useState<CasualTransactionHistoryItem | null>(null);
+  const formLocked = busy || Boolean(pendingRecord);
 
   useLayoutEffect(() => {
     headingRef.current?.focus({ preventScroll: true });
   }, []);
 
   const dirty = Boolean(
-    busy || saleAmount || evidence || note
+    busy || pendingRecord || saleAmount || evidence || note
     || Boolean(iceTypeId) || quantity !== 0
     || voidTarget || voidRequestsRef.current.size > 0,
   );
@@ -269,6 +329,17 @@ export function EmployeeCasualCustomerPage({
         setSaleBuildingId(next.sale_buildings?.length === 1 ? next.sale_buildings[0].id : '');
         setCashReceivedBy(next.default_receiver_id ?? '');
         setIceTypeId('');
+        if (recoveredRecord) {
+          const payload = recoveredRecord.payload;
+          setSaleBuildingId(payload.saleBuildingId ?? '');
+          setCashReceivedBy(payload.cashReceivedBy ?? '');
+          setIceTypeId(payload.iceTypeId);
+          setQuantityInput(payload.quantity ? String(payload.quantity) : '');
+          setKind(payload.transactionKind);
+          setSaleAmount(payload.transactionKind === 'paid' ? String(payload.saleAmount) : '');
+          setPaymentMethod(payload.paymentMethod ?? 'cash');
+          setNote(payload.note ?? '');
+        }
       })
       .catch((cause: unknown) => {
         if (!cancelled) setError(getErrorMessage(cause, 'โหลดข้อมูลลูกค้าขายสดไม่สำเร็จ'));
@@ -277,14 +348,14 @@ export function EmployeeCasualCustomerPage({
         if (!cancelled) setLoading(false);
       });
     return () => { cancelled = true; };
-  }, [loadContext, round.id]);
+  }, [loadContext, recoveredRecord, round.id]);
 
   const selectedItem = useMemo(
     () => context?.items.find((item) => item.ice_type_id === iceTypeId) ?? null,
     [context, iceTypeId],
   );
   const available = Number(selectedItem?.available_quantity ?? 0);
-  const quantityError = quantity !== 0 && selectedItem
+  const quantityError = !pendingRecord && quantity !== 0 && selectedItem
     ? !Number.isFinite(quantity) || quantity < 0.5 || !Number.isInteger(quantity * 2)
       ? `ระบุจำนวนทีละ 0.5 ${selectedItem.unit} หรือเลือกไม่ระบุจำนวน`
       : quantity > available ? `จำนวนเกินสต๊อกคงเหลือ ${available.toLocaleString('th-TH')} ${selectedItem.unit}` : ''
@@ -294,23 +365,26 @@ export function EmployeeCasualCustomerPage({
   const validPaid = kind === 'paid'
     && Number.isInteger(sale) && sale > 0
     && (!needsEvidence || Boolean(evidence));
-  const canSubmit = !busy && !loading && Boolean(selectedItem)
+  // A replay must reach the server even if the original sale has exhausted stock
+  // or the day has since closed. Its original identity makes that replay safe.
+  const canSubmit = !busy && !loading && (Boolean(pendingRecord) || (Boolean(selectedItem)
     && !quantityError
     && (!context?.sale_buildings || context.sale_buildings.some((building) => building.id === saleBuildingId))
     && (!context?.cash_receivers || kind === 'free' || context.cash_receivers.some((receiver) => receiver.id === cashReceivedBy))
-    && (kind === 'free' || validPaid) && !context?.stock_closed;
+    && (kind === 'free' || validPaid) && !context?.stock_closed));
 
   const resetForm = () => {
     setIceTypeId('');
     setQuantityInput('');
     setSaleAmount('');
     setEvidence(null);
+    if (evidenceInputRef.current) evidenceInputRef.current.value = '';
     setNote('');
   };
 
   const submit = async () => {
     if (!canSubmit) return;
-    const signature = `casual-record:${JSON.stringify({
+    const signature = pendingRecord?.signature ?? `casual-record:${JSON.stringify({
       saleBuildingId, cashReceivedBy: kind === 'paid' ? cashReceivedBy : null,
       roundId: round.id, iceTypeId, quantity, kind, sale: kind === 'paid' ? sale : 0,
       paymentMethod: kind === 'paid' ? paymentMethod : null,
@@ -319,8 +393,12 @@ export function EmployeeCasualCustomerPage({
       note: note.trim() || null,
       evidence: needsEvidence ? fileIdentity(evidence) : null,
     })}`;
-    const { request, retry } = preparePendingRequest(recordRetryRef, signature);
+    const { request, retry } = pendingRecord ? {
+      request: { key: pendingRecord.payload.idempotencyKey, clientRecordedAt: pendingRecord.payload.clientRecordedAt },
+      retry: { signature, key: pendingRecord.payload.idempotencyKey, evidencePath: pendingRecord.payload.evidencePath },
+    } : preparePendingRequest(recordRetryRef, signature);
     let evidencePath = retry.evidencePath;
+    let submittedRecord: PendingCasualRecord | null = pendingRecord;
     let transactionRecorded = false;
     setBusy(true);
     setError('');
@@ -331,7 +409,7 @@ export function EmployeeCasualCustomerPage({
         setPendingRequestEvidencePath(signature, request.key, evidencePath);
         recordRetryRef.current = { ...retry, evidencePath };
       }
-      const result = await recordTransaction({
+      const payload: RecordPayload = pendingRecord?.payload ?? {
         ...(context?.sale_buildings ? { saleBuildingId, cashReceivedBy: kind === 'paid' ? cashReceivedBy : null } : {}),
         roundId: round.id,
         iceTypeId,
@@ -345,8 +423,17 @@ export function EmployeeCasualCustomerPage({
         note: note.trim() || null,
         clientRecordedAt: request.clientRecordedAt,
         idempotencyKey: request.key,
-      });
+      };
+      // Persist before sending: losing a response or reopening the page must not
+      // turn an uncertain sale into a new transaction with a different key.
+      submittedRecord = { signature, payload };
+      recordRetryRef.current = { ...retry, evidencePath };
+      setPendingRecord(submittedRecord);
+      writeRecovery(requestScope, round.service_date, recoveryMode, submittedRecord);
+      const result = await recordTransaction(payload);
       transactionRecorded = true;
+      setPendingRecord(null);
+      clearRecovery(requestScope, round.service_date, recoveryMode);
       clearPendingRequest(signature, request.key);
       recordRetryRef.current = null;
       publishDataChange(['accounting', 'payment', 'stock', 'pos']);
@@ -357,6 +444,13 @@ export function EmployeeCasualCustomerPage({
       resetForm();
       await refresh();
     } catch (cause) {
+      // Only an explicit server rejection proves that edits are safe. Unknown
+      // errors retain the exact submitted payload and the original retry key.
+      if (submittedRecord && !transactionRecorded && !isTransportFailure(cause)
+        && cause && typeof cause === 'object' && 'code' in cause && typeof cause.code === 'string' && cause.code) {
+        setPendingRecord(null);
+        clearRecovery(requestScope, round.service_date, recoveryMode);
+      }
       setError(transactionRecorded
         ? 'บันทึกสำเร็จแล้ว แต่โหลดสต๊อกล่าสุดไม่สำเร็จ กรุณาออกแล้วเข้าหน้านี้ใหม่'
         : getErrorMessage(cause, 'บันทึกรายการไม่สำเร็จ'));
@@ -385,7 +479,7 @@ export function EmployeeCasualCustomerPage({
   };
 
   const submitVoid = async (form: VoidForm) => {
-    const { voidReason, refundMethod, refundReference, refundEvidence, cashRefundedBy } = form;
+    const { voidReason, refundMethod, refundEvidence, cashRefundedBy } = form;
     if (!voidTarget || !voidReason.trim() || busy) return;
     const isPaid = voidTarget.transaction_kind === 'paid';
     if (isPaid && refundMethod !== 'cash' && !refundEvidence) return;
@@ -397,7 +491,7 @@ export function EmployeeCasualCustomerPage({
       transactionId: voidTarget.id,
       reason: voidReason.trim(),
       refundMethod: isPaid ? refundMethod : null,
-      referenceNumber: isPaid ? refundReference.trim() || null : null,
+      referenceNumber: null,
       evidence: isPaid && refundMethod !== 'cash' ? fileIdentity(refundEvidence) : null,
     })}`;
     // Preserve the submitted draft and retry identity across dialog remounts,
@@ -421,7 +515,7 @@ export function EmployeeCasualCustomerPage({
         transactionId: voidTarget.id,
         reason: voidReason.trim(),
         refundMethod: isPaid ? refundMethod : null,
-        referenceNumber: isPaid ? refundReference.trim() || null : null,
+        referenceNumber: null,
         evidencePath,
         idempotencyKey: request.key,
       });
@@ -464,7 +558,8 @@ export function EmployeeCasualCustomerPage({
         </div>
       </section>
 
-      {error ? <p className="employee-error" role="alert"><WarningCircle size={20} weight="fill" />{translateUi(error)}</p> : null}
+      {error && !voidTarget ? <p className="employee-error" role="alert"><WarningCircle size={20} weight="fill" />{translateUi(error)}</p> : null}
+      {pendingRecord && !busy ? <p role="status" className="employee-casual-help">{translateUi('ยังไม่ทราบผลรายการเดิม กดยืนยันอีกครั้งเพื่อตรวจสอบก่อนทำรายการใหม่')}</p> : null}
       {success ? <div aria-live="polite" className="employee-success">
         <CheckCircle size={20} weight="fill" /><span>{translateUi(success)}</span>
         {latestReceipt ? <button className="employee-success__print" onClick={() => { void printReceipt(); }} type="button"><Printer size={17} />{translateUi('พิมพ์')}</button> : null}
@@ -479,11 +574,11 @@ export function EmployeeCasualCustomerPage({
           })}
         </section> : null}
         {context.sale_buildings ? <section className="employee-entry-section employee-casual-attribution" aria-label={translateUi('พื้นที่ขายและผู้รับเงิน')}>
-          <label><span>{translateUi('ตึกที่ขาย')}</span><select aria-label={translateUi('ตึกที่ขาย')} disabled={busy || context.stock_closed} value={saleBuildingId} onChange={(event) => setSaleBuildingId(event.target.value)}>
+          <label><span>{translateUi('ตึกที่ขาย')}</span><select aria-label={translateUi('ตึกที่ขาย')} disabled={formLocked || context.stock_closed} value={saleBuildingId} onChange={(event) => setSaleBuildingId(event.target.value)}>
             <option value="">{translateUi('เลือกตึกที่ขาย')}</option>
             {context.sale_buildings.map((building) => <option key={building.id} value={building.id}>{building.name}</option>)}
           </select></label>
-          {kind === 'paid' && context.cash_receivers ? <label><span>{translateUi('ผู้รับเงินจริง')}</span><select aria-label={translateUi('ผู้รับเงินจริง')} disabled={busy || context.stock_closed || context.cash_receivers.length === 1} value={cashReceivedBy} onChange={(event) => setCashReceivedBy(event.target.value)}>
+          {kind === 'paid' && context.cash_receivers ? <label><span>{translateUi('ผู้รับเงินจริง')}</span><select aria-label={translateUi('ผู้รับเงินจริง')} disabled={formLocked || context.stock_closed || context.cash_receivers.length === 1} value={cashReceivedBy} onChange={(event) => setCashReceivedBy(event.target.value)}>
             <option value="">{translateUi('เลือกผู้รับเงินจริง')}</option>
             {context.cash_receivers.map((receiver) => <option key={receiver.id} value={receiver.id}>{receiver.name}</option>)}
           </select></label> : null}
@@ -501,7 +596,7 @@ export function EmployeeCasualCustomerPage({
                 return <button
                   aria-pressed={selected}
                   className={selected ? 'employee-pos-product--selected' : ''}
-                  disabled={busy}
+                  disabled={formLocked}
                   key={item.ice_type_id}
                   onClick={() => {
                     if (iceTypeId !== item.ice_type_id) setQuantityInput('');
@@ -530,16 +625,16 @@ export function EmployeeCasualCustomerPage({
               </div>
               {quantityError ? <p className="employee-error" role="alert">{translateUi(quantityError)}</p> : null}
               <div className="employee-keypad">
-                {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((digit) => <button disabled={busy} key={digit} onClick={() => setQuantityInput((current) => `${current}${digit}`)} type="button">{digit}</button>)}
-                <button aria-label={translateUi('ล้างจำนวน')} disabled={busy} onClick={() => setQuantityInput('')} type="button">{translateUi('ล้าง')}</button>
-                <button aria-label={translateUi('เพิ่มครึ่ง{0}', { 0: selectedItem.unit })} disabled={busy || Boolean(quantityError) || quantity + 0.5 > available} onClick={() => setQuantityInput(String(quantity + 0.5))} type="button">½ {selectedItem.unit}</button>
-                <button disabled={busy} onClick={() => setQuantityInput((current) => `${current}0`)} type="button">0</button>
-                <button aria-label={translateUi('ลบหนึ่งหลัก')} disabled={busy} onClick={() => setQuantityInput((current) => current.slice(0, -1))} type="button"><Backspace aria-hidden="true" size={24} /></button>
+                {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((digit) => <button disabled={formLocked} key={digit} onClick={() => setQuantityInput((current) => `${current}${digit}`)} type="button">{digit}</button>)}
+                <button aria-label={translateUi('ล้างจำนวน')} disabled={formLocked} onClick={() => setQuantityInput('')} type="button">{translateUi('ล้าง')}</button>
+                <button aria-label={translateUi('เพิ่มครึ่ง{0}', { 0: selectedItem.unit })} disabled={formLocked || Boolean(quantityError) || quantity + 0.5 > available} onClick={() => setQuantityInput(String(quantity + 0.5))} type="button">½ {selectedItem.unit}</button>
+                <button disabled={formLocked} onClick={() => setQuantityInput((current) => `${current}0`)} type="button">0</button>
+                <button aria-label={translateUi('ลบหนึ่งหลัก')} disabled={formLocked} onClick={() => setQuantityInput((current) => current.slice(0, -1))} type="button"><Backspace aria-hidden="true" size={24} /></button>
               </div>
             </section> : <p className="employee-casual-help">{translateUi('เลือกน้ำแข็งเพื่อกรอกจำนวน')}</p>}
             <div className="employee-casual-kind">
-              <button className={kind === 'paid' ? 'is-selected' : ''} onClick={() => setKind('paid')} type="button"><Money size={24} /><strong>{translateUi('จ่ายทันที')}</strong></button>
-              <button className={kind === 'free' ? 'is-selected' : ''} onClick={() => setKind('free')} type="button"><Gift size={24} /><strong>{translateUi('แจกฟรี')}</strong></button>
+              <button disabled={formLocked} className={kind === 'paid' ? 'is-selected' : ''} onClick={() => setKind('paid')} type="button"><Money size={24} /><strong>{translateUi('จ่ายทันที')}</strong></button>
+              <button disabled={formLocked} className={kind === 'free' ? 'is-selected' : ''} onClick={() => setKind('free')} type="button"><Gift size={24} /><strong>{translateUi('แจกฟรี')}</strong></button>
             </div>
             <p className="employee-casual-help">{quantity > 0
               ? translateUi('รายการนี้จะหักสต๊อกตามจำนวน {0} {1}', { 0: quantity.toLocaleString('th-TH'), 1: selectedItem?.unit ?? '' })
@@ -547,11 +642,11 @@ export function EmployeeCasualCustomerPage({
                 ? translateUi('ขายเล็กน้อย กรอกเฉพาะเงินที่รับได้ ยอดจะสะสมตามชนิดน้ำแข็งและนับออกเมื่อครบราคากลางต่อหน่วย')
                 : translateUi('แจกเล็กน้อย ไม่ต้องระบุจำนวน ระบบจะบันทึกแจกฟรีโดยไม่หักสต๊อก')}</p>
             {kind === 'paid' ? <div className="employee-casual-payment">
-              <label><span>{translateUi('ยอดขาย (บาท)')}</span><input inputMode="numeric" min="1" onChange={(event) => setSaleAmount(event.target.value)} step="1" type="number" value={saleAmount} /></label>
-              <div className="employee-casual-methods">{(['cash', 'bank_transfer'] as PaymentMethod[]).map((method) => <button className={paymentMethod === method ? 'is-selected' : ''} key={method} onClick={() => setPaymentMethod(method)} type="button">{translateUi(paymentLabels[method])}</button>)}</div>
-              {needsEvidence ? <label><span>{translateUi('หลักฐานการชำระ')}</span><input accept="image/*,application/pdf" onChange={(event) => selectEvidence(event.target.files?.[0] ?? null, setEvidence)} type="file" /></label> : null}
+              <label><span>{translateUi('ยอดขาย (บาท)')}</span><input disabled={formLocked} inputMode="numeric" min="1" onChange={(event) => setSaleAmount(event.target.value)} step="1" type="number" value={saleAmount} /></label>
+              <div className="employee-casual-methods">{(['cash', 'bank_transfer'] as PaymentMethod[]).map((method) => <button disabled={formLocked} className={paymentMethod === method ? 'is-selected' : ''} key={method} onClick={() => setPaymentMethod(method)} type="button">{translateUi(paymentLabels[method])}</button>)}</div>
+              {needsEvidence ? <label><span>{translateUi('หลักฐานการชำระ')}</span><input ref={evidenceInputRef} disabled={formLocked} accept="image/*,application/pdf" onChange={(event) => selectEvidence(event.target.files?.[0] ?? null, setEvidence)} type="file" /></label> : null}
             </div> : null}
-            <label className="employee-casual-note"><span>{translateUi('หมายเหตุ (ไม่บังคับ)')}</span><textarea onChange={(event) => setNote(event.target.value)} value={note} /></label>
+            <label className="employee-casual-note"><span>{translateUi('หมายเหตุ (ไม่บังคับ)')}</span><textarea disabled={formLocked} onChange={(event) => setNote(event.target.value)} value={note} /></label>
             <button className="employee-primary-action" disabled={!canSubmit} onClick={() => { void submit(); }} type="button">{busy ? translateUi('กำลังบันทึก...') : kind === 'paid' ? translateUi('ยืนยันขายและรับเงิน') : translateUi('ยืนยันแจกฟรี')}</button>
           </section>
         </div>
@@ -562,7 +657,7 @@ export function EmployeeCasualCustomerPage({
             <div><strong>{item.ice_type_name} · {item.fulfillment_mode === 'loose' ? item.transaction_kind === 'paid' ? translateUi('แบ่งขายสะสมตามยอดเงิน') : translateUi('แจกไม่ระบุจำนวน') : `${Number(item.quantity).toLocaleString('th-TH')} ${item.ice_type_unit}`}</strong><small>{dateTime.format(new Date(item.recorded_at))} · {item.transaction_kind === 'paid' ? translateUi(paymentLabels[item.payment_method!]) : translateUi('แจกฟรี')}{item.receipt_number ? ` · ${item.receipt_number}` : ''}</small>{item.status === 'voided' ? <em>{translateUi('ยกเลิกแล้ว · ')}{item.void_reason}</em> : null}</div>
             <b>{item.transaction_kind === 'paid' ? money.format(Number(item.sale_amount)) : translateUi('ฟรี')}</b>
             {item.sale_building_name ? <p className="employee-casual-history__attribution">{translateUi('ขายที่ ')}{item.sale_building_name}{item.receiver_name ? ` · ${translateUi('ผู้รับเงิน ')}${item.receiver_name}` : ''}</p> : null}
-            <div className="employee-casual-history__actions">{item.receipt_number ? <button onClick={() => { void printReceipt(item.id); }} type="button"><Printer size={16} />{translateUi('พิมพ์')}</button> : null}{item.status === 'active' && !context.stock_closed ? <button onClick={() => setVoidTarget(item)} type="button">{translateUi('ยกเลิก')}</button> : null}</div>
+            <div className="employee-casual-history__actions">{item.receipt_number ? <button onClick={() => { void printReceipt(item.id); }} type="button"><Printer size={16} />{translateUi('พิมพ์')}</button> : null}{item.status === 'active' && !context.stock_closed ? <button disabled={formLocked} onClick={() => { setError(''); setVoidTarget(item); }} type="button">{translateUi('ยกเลิก')}</button> : null}</div>
           </article>)}</div>}
         </section>
       </> : null}
@@ -572,6 +667,7 @@ export function EmployeeCasualCustomerPage({
         defaultRefunderId={context?.default_receiver_id}
         key={voidTarget.id}
         busy={busy}
+        error={error}
         initialForm={voidRequestsRef.current.get(voidTarget.id)?.form}
         onBack={() => setVoidTarget(null)}
         onSubmit={submitVoid}

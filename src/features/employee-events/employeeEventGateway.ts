@@ -1,3 +1,4 @@
+import { runOnlineOnlyEmployeeWrite } from '../../offline/runtime/client';
 import { getErrorMessage } from '../../lib/errorMessage';
 import { isMissingRpc } from '../../lib/rpc';
 import { supabase } from '../../lib/supabase';
@@ -15,10 +16,10 @@ function client() {
 }
 
 async function rpc<T>(name: string, args?: Record<string, unknown>) {
-  const { data, error } = await client().rpc(name, args);
+  const { data, error, status } = await client().rpc(name, args);
   if (error) {
     if (isMissingRpc(error)) throw new Error('ฐานข้อมูลยังไม่รองรับหน้าอีเวนต์พนักงาน กรุณาติดตั้ง migration 0197');
-    throw new Error(getErrorMessage(error));
+    throw Object.assign(new Error(getErrorMessage(error)), { code: error.code, status });
   }
   return data as T;
 }
@@ -34,7 +35,7 @@ export const employeeEventGateway: EmployeeEventGateway = {
   },
 
   async createBooth(input) {
-    return rpc<EmployeeEventBoothResult>('create_employee_event_booth', {
+    const args = {
       p_event_job_id: input.eventJobId,
       p_request_id: input.requestId,
       p_booth_number: input.boothNumber,
@@ -42,15 +43,19 @@ export const employeeEventGateway: EmployeeEventGateway = {
       p_event_zone: input.eventZone || null,
       p_contact_name: input.contactName || null,
       p_contact_phone: input.contactPhone || null,
-    });
+    };
+    return runOnlineOnlyEmployeeWrite(() => rpc<EmployeeEventBoothResult>('create_employee_event_booth', args),
+      JSON.stringify({ kind: 'rpc', rpc: 'create_employee_event_booth', args }));
   },
 
   async handoffTanks(input) {
-    return rpc<EmployeeTankHandoffResult>('record_employee_event_tank_handoff', {
+    const args = {
       p_participation_id: input.participationId,
       p_quantity: input.quantity,
       p_note: input.note,
       p_request_id: input.requestId,
-    });
+    };
+    return runOnlineOnlyEmployeeWrite(() => rpc<EmployeeTankHandoffResult>('record_employee_event_tank_handoff', args),
+      JSON.stringify({ kind: 'rpc', rpc: 'record_employee_event_tank_handoff', args }));
   },
 };

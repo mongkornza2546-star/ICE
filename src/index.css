@@ -4612,3 +4612,16 @@ fieldset.ref-section {
 .employee-casual-attribution select { width: 100%; min-height: 44px; padding: 8px; border: 1px solid #d2dfec; border-radius: 9px; background: #fff; color: #183655; font: inherit; }
 .employee-casual-attribution > small { grid-column: 1 / -1; color: #526476; }
 @media (max-width: 560px) { .employee-casual-attribution { grid-template-columns: 1fr; } }
+
+/* Durable employee work status is shared by courier and administrator shells. */
+.employee-offline-status { margin: .6rem 0; padding: .8rem 1rem; border: 1px solid #c7dceb; border-radius: 14px; background: #f1f8fd; color: #244760; overflow-wrap: anywhere; font-size: .88rem; }
+.employee-offline-status p { margin: .35rem 0; }
+.employee-offline-status > div { display: flex; flex-wrap: wrap; gap: .5rem; }
+.employee-offline-status button { min-height: 44px; padding: .4rem .7rem; margin: .25rem .25rem .25rem 0; border: 1px solid #a5c9e3; border-radius: 8px; background: white; color: #125d94; cursor: pointer; }
+.employee-offline-status button:disabled { opacity: .55; cursor: default; }
+.employee-offline-status summary { cursor: pointer; padding: .5rem 0; }
+.employee-offline-status ul { padding-left: 1.2rem; max-height: 40vh; overflow-y: auto; }
+.employee-offline-status li, .employee-offline-status article { margin: .7rem 0; border-top: 1px solid #c7dceb; padding-top: .5rem; }
+.employee-offline-status small { display: block; }
+.employee-offline-status pre { max-width: 100%; overflow: auto; white-space: pre-wrap; }
+.employee-offline-status input { display: block; width: 100%; min-height: 44px; }
