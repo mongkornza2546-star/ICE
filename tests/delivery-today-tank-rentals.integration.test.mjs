@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { createVatDatabase } from './helpers/creditVatDatabase.mjs';
 
@@ -13,7 +12,6 @@ const value = async (db, sql, args = []) => (await db.query(sql, args)).rows[0].
 test('today tank history remains readable after closing, independent of POS availability', async t => {
   const db = await createVatDatabase();
   t.after(() => db.close());
-  await db.exec(readFileSync(new URL('../supabase/migrations/20261027144838_delivery_today_tank_rentals.sql', import.meta.url), 'utf8'));
   await db.exec('grant usage on schema public to authenticated');
   await db.exec(`
     insert into auth.users(id,email,raw_user_meta_data) values
@@ -103,7 +101,7 @@ test('today tank history remains readable after closing, independent of POS avai
   assert.equal(rentals.reduce((sum, row) => sum + row.quantity, 0), 4, 'a return does not erase today’s rental history');
   assert.equal(rentals.find(row => row.id === id(40)).tank_code, 'T-TODAY');
   const eventRentals = await events();
-  assert.deepEqual(eventRentals, [{ id: id(50), quantity: 5, tank_code: null, recorded_by: 'Admin', note: '' }]);
+  assert.deepEqual(eventRentals, [{ id: id(50), quantity: 5, tank_code: null, recorded_by: 'Admin', note: '', can_cancel: true, cancelled: false }]);
   const originalRegular = (await db.query(`select * from public.get_round_shop_cards('${round}',null)`)).rows;
   const enrichedRegular = (await db.query(`select card from public.get_round_shop_cards_with_tank_history('${round}',null) card`)).rows.map(({card}) => {
     const { today_tank_rentals, ...original } = card;
@@ -115,10 +113,10 @@ test('today tank history remains readable after closing, independent of POS avai
   assert.deepEqual({ ...enrichedEvent, cards: enrichedEvent.cards.map(({today_tank_rentals, ...card}) => card) }, originalEvent);
   await db.exec(`set role authenticated; set request.jwt.claim.sub='${courier}'`);
   assert.deepEqual(await regular(), rentals, 'assigned couriers can read rental history');
-  assert.deepEqual(await events(), eventRentals);
+  assert.deepEqual(await events(), eventRentals.map(row => ({ ...row, can_cancel: false })));
   await db.exec(`reset role; update public.delivery_rounds set status='closed',closed_at=now(),closed_by='${admin}' where id='${round}'; set role authenticated`);
   assert.deepEqual(await regular(), rentals, 'closed rounds retain regular tank history');
-  assert.deepEqual(await events(), eventRentals, 'closed rounds retain event tank history');
+  assert.deepEqual(await events(), eventRentals.map(row => ({ ...row, can_cancel: false })), 'closed rounds retain event tank history');
   for (const [rpc, target] of [['get_delivery_pos_context', stop], ['get_event_delivery_pos_context', id(23)]]) {
     await assert.rejects(value(db, `select public.${rpc}($1) as value`, [target]), /already closed/i);
     await assert.rejects(value(db, `select public.${rpc}_part($1,'sale') as value`, [target]), /already closed/i);
@@ -130,4 +128,24 @@ test('today tank history remains readable after closing, independent of POS avai
   await db.exec(`reset role; set role anon; set request.jwt.claim.sub=''`);
   await assert.rejects(regular(), /permission denied/i);
   await assert.rejects(events(), /permission denied/i);
+  await db.exec(`reset role; set request.jwt.claim.sub='${admin}'`);
+  const boothBefore = (await value(db, `select public.get_employee_event_detail('${id(20)}') as value`)).booths[0];
+  assert.equal(boothBefore.tank_handoff_count, 25);
+  assert.equal(boothBefore.tank_return_count, 1);
+  assert.equal(boothBefore.tank_balance, 24);
+  await value(db, `select public.cancel_event_tank_handoff('${id(50)}','Wrong shop') as value`);
+  const boothAfter = (await value(db, `select public.get_employee_event_detail('${id(20)}') as value`)).booths[0];
+  assert.equal(boothAfter.tank_handoff_count, 20, 'cancelled handoffs are excluded from physical handoffs');
+  assert.equal(boothAfter.tank_return_count, 1, 'a cancellation is not a physical return');
+  assert.equal(boothAfter.tank_balance, 19, 'custody still subtracts the cancelled handoff');
+
+  const cancelled = (await events()).find(row => row.id === id(50));
+  assert.equal(cancelled.cancelled, true, 'cancelled rentals stay visible after the round closes');
+  assert.equal(cancelled.can_cancel, false, 'cannot cancel an already cancelled handoff');
+  assert.equal(cancelled.quantity, 5, 'original history remains intact');
+  const detail = await value(db, `select public.get_event_management_detail('${id(20)}') as value`);
+  assert.equal(detail.tank_movements.find(row => row.id === id(50)).cancelled, true);
+  const matrix = await value(db, `select public.get_accounting_shop_daily_matrix(${today}-1,${today},array['${shop}']::uuid[]) as value`);
+  const priorDay = matrix.rows[0].days[0];
+  assert.equal(priorDay.tank_quantity, 8, 'cancelled event handoff is excluded; only one registered tank plus seven regular rentals remain');
 });

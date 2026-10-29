@@ -11,6 +11,7 @@ const gatewayMethods = {
 const replayableRpcs = new Set([
   'record_shop_collection_payment', 'record_regular_collection_payment', 'record_billing_statement_payment',
   'record_event_payment', 'record_event_collection_payment', 'record_backdated_collection_payment', 'void_payment',
+  'cancel_event_tank_handoff',
   'apply_open_delivery_correction', 'apply_open_event_delivery_correction', 'create_employee_event_booth', 'record_employee_event_tank_handoff',
 ]);
 

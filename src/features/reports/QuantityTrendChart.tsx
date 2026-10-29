@@ -4,7 +4,7 @@ import { formatReportDate } from './reportDates';
 
 const number = (value: number) => new Intl.NumberFormat('th-TH', { maximumFractionDigits: 2 }).format(value);
 
-/** A single product/unit series. Missing days break the line instead of becoming zero. */
+/** A single product/unit bar series. Missing days stay empty instead of becoming zero. */
 export function QuantityTrendChart({ points, name, unit, selectedDate, onDateChange }: {
   points: Array<{ date: string; value: number | null }>;
   name: string; unit: string; selectedDate: string; onDateChange: (date: string) => void;
@@ -30,8 +30,15 @@ export function QuantityTrendChart({ points, name, unit, selectedDate, onDateCha
       const maximum = Math.max(1, ...points.map((point) => point.value ?? 0));
       const magnitude = 10 ** Math.floor(Math.log10(maximum));
       const ceiling = Math.ceil(maximum / magnitude) * magnitude;
-      const x = (index: number) => points.length === 1 ? (left + right) / 2 : left + index / (points.length - 1) * (right - left);
+      const slotWidth = (right - left) / points.length;
+      const barWidth = Math.min(36, slotWidth * 0.7);
+      const x = (index: number) => left + (index + 0.5) * slotWidth;
       const y = (value: number) => bottom - value / ceiling * (bottom - top);
+      const selectedIndex = points.findIndex((point) => point.date === selectedDate);
+      if (selectedIndex >= 0) {
+        context.fillStyle = '#edf5ff';
+        context.fillRect(left + selectedIndex * slotWidth, top, slotWidth, bottom - top);
+      }
       context.font = '12px "Noto Sans Thai", sans-serif';
       context.textAlign = 'right';
       context.textBaseline = 'middle';
@@ -43,30 +50,14 @@ export function QuantityTrendChart({ points, name, unit, selectedDate, onDateCha
         context.fillStyle = '#61758e';
         context.fillText(number(value), left - 10, y(value));
       }
-      // Fill and stroke each contiguous run; never bridge unknown observations.
-      let run: Array<{ index: number; value: number }> = [];
-      const paintRun = () => {
-        if (!run.length) return;
-        context.beginPath(); context.moveTo(x(run[0].index), bottom);
-        run.forEach((point) => context.lineTo(x(point.index), y(point.value)));
-        context.lineTo(x(run[run.length - 1].index), bottom); context.closePath();
-        context.fillStyle = '#edf5ff'; context.fill();
-        context.beginPath();
-        run.forEach((point, index) => index === 0 ? context.moveTo(x(point.index), y(point.value)) : context.lineTo(x(point.index), y(point.value)));
-        context.strokeStyle = '#0d6efd'; context.lineWidth = 2.5; context.stroke();
-        run = [];
-      };
-      points.forEach((point, index) => point.value === null ? paintRun() : run.push({ index, value: point.value }));
-      paintRun();
       points.forEach((point, index) => {
         if (point.value === null) return;
         const active = point.date === selectedDate;
-        if (active) {
-          context.setLineDash([3, 4]); context.strokeStyle = '#7baaf0'; context.lineWidth = 1;
-          context.beginPath(); context.moveTo(x(index), y(point.value)); context.lineTo(x(index), bottom); context.stroke(); context.setLineDash([]);
+        context.fillStyle = active ? '#075ed8' : '#3985f7';
+        context.fillRect(x(index) - barWidth / 2, y(point.value), barWidth, bottom - y(point.value));
+        if (point.value === 0) {
+          context.fillRect(x(index) - barWidth / 2, bottom - 1, barWidth, 2);
         }
-        context.beginPath(); context.arc(x(index), y(point.value), active ? 6 : 3, 0, Math.PI * 2);
-        context.fillStyle = '#0d6efd'; context.fill(); context.strokeStyle = '#fff'; context.lineWidth = active ? 2 : 0; if (active) context.stroke();
       });
       context.fillStyle = '#61758e'; context.textBaseline = 'top';
       const tickEvery = Math.max(1, Math.ceil(points.length / (width < 400 ? 4 : 6)));
@@ -91,7 +82,7 @@ export function QuantityTrendChart({ points, name, unit, selectedDate, onDateCha
       aria-label={`${translateUi('แนวโน้มจำนวนขาย')} · ${name} (${unit}) · ${translateUi('ใช้ปุ่มลูกศรเพื่อเลือกวัน')}`}
       onClick={(event) => {
         const width = event.currentTarget.clientWidth;
-        const index = Math.max(0, Math.min(points.length - 1, Math.round((event.clientX - event.currentTarget.getBoundingClientRect().left - 54) / Math.max(1, width - 72) * (points.length - 1))));
+        const index = Math.max(0, Math.min(points.length - 1, Math.floor((event.clientX - event.currentTarget.getBoundingClientRect().left - 54) / Math.max(1, width - 72) * points.length)));
         if (points[index]) onDateChange(points[index].date);
       }} onKeyDown={(event) => {
         if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight' && event.key !== 'Home' && event.key !== 'End') return;

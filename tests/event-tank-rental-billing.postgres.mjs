@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { readFileSync, readdirSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 
@@ -9,6 +9,35 @@ function psql(sql) {
   const result = docker(['exec', '-i', container, 'psql', '-U', 'postgres', '-v', 'ON_ERROR_STOP=1', '-At'], { input: sql });
   if (result.status !== 0) throw new Error(result.stderr || result.stdout);
   return result.stdout.trim();
+}
+
+// Keep a real transaction open after the operation so competing sessions must
+// wait on its locks, independent of scheduler timing.
+async function holdTransaction(sql) {
+  const child = spawn('docker', ['exec', '-i', container, 'psql', '-U', 'postgres', '-v', 'ON_ERROR_STOP=1', '-At']);
+  let stdout = '', stderr = '';
+  let ready;
+  const readyPromise = new Promise((resolve, reject) => {
+    ready = resolve;
+    child.on('error', reject);
+    child.on('close', code => { if (!stdout.includes('LOCKS_HELD')) reject(new Error(stderr || `early exit ${code}`)); });
+  });
+  child.stdout.on('data', chunk => { stdout += chunk; if (stdout.includes('LOCKS_HELD')) ready(); });
+  child.stderr.on('data', chunk => { stderr += chunk; });
+  const done = new Promise(resolve => child.on('close', code => resolve({ code, stdout, stderr })));
+  child.stdin.write(`begin; set request.jwt.claim.sub = '${admin}'; set statement_timeout='10s'; ${sql} select 'LOCKS_HELD';\n`);
+  await readyPromise;
+  return { release() { child.stdin.end('commit;\n'); }, done };
+}
+function concurrent(sql) {
+  return new Promise(resolve => {
+    const child = spawn('docker', ['exec', '-i', container, 'psql', '-U', 'postgres', '-v', 'ON_ERROR_STOP=1', '-At']);
+    let stdout = '', stderr = '';
+    child.stdout.on('data', chunk => { stdout += chunk; });
+    child.stderr.on('data', chunk => { stderr += chunk; });
+    child.on('close', code => resolve({ code, stdout, stderr }));
+    child.stdin.end(`set request.jwt.claim.sub='${admin}'; set statement_timeout='10s'; ${sql}`);
+  });
 }
 
 const admin = '10000000-0000-4000-8000-000000000001';
@@ -39,6 +68,7 @@ try {
     create table auth.users (
       id uuid primary key,
       email text,
+      raw_app_meta_data jsonb not null default '{}'::jsonb,
       raw_user_meta_data jsonb not null default '{}'::jsonb
     );
     create function auth.uid() returns uuid language sql stable as $$
@@ -429,6 +459,78 @@ try {
       '${employeeBooth.booth.id}', 'return', 1, ${today}, 'Unauthorized return', '${randomUUID()}'
     );
   `), /Only an active admin or round lead/);
+
+
+  // Upgrade the fixture to the current numbered schema before testing cancellation.
+  for (const name of readdirSync(directory).filter(name => /^\d{4}_.+\.sql$/.test(name) && Number(name.slice(0, 4)) > 197).sort()) {
+    psql(`begin; ${readFileSync(new URL(name, directory), 'utf8')} commit;`);
+  }
+  for (const name of ['20261027144838_delivery_today_tank_rentals.sql', '20261029135057_cancel_event_tank_handoff.sql']) {
+    psql(`begin; ${readFileSync(new URL(name, directory), 'utf8')} commit;`);
+  }
+  const cancelledMovement = JSON.parse(run(`select to_jsonb(public.record_event_tank_movement(
+    '${part1Id}', 'handoff', 1, ${today}, 'Wrong shop', '${randomUUID()}'));`));
+  const cancelSql = `select public.cancel_event_tank_handoff('${cancelledMovement.id}', 'Wrong shop');`;
+  assert.throws(() => runAs(courier, cancelSql), /เฉพาะแอดมิน/);
+  assert.throws(() => run(`select public.cancel_event_tank_handoff('${cancelledMovement.id}', '  ');`), /เหตุผล/);
+  const cancelled = JSON.parse(run(cancelSql));
+  assert.ok(cancelled.reversal_id);
+  assert.equal(JSON.parse(run(cancelSql)).reversal_id, cancelled.reversal_id, 'Retry does not reverse twice');
+  const cancelledCharge = JSON.parse(run(`select to_jsonb(c) from public.delivery_charges c where id='${cancelled.charge_id}';`));
+  assert.equal(cancelledCharge.status, 'voided');
+  assert.equal(Number(cancelledCharge.original_amount), 100, 'Original invoice amount remains immutable');
+  assert.equal(cancelledCharge.void_reason, 'Wrong shop');
+  assert.equal(run(`select count(*) from public.audit_logs where entity_id='${cancelledMovement.id}' and action='cancel_handoff';`), '1');
+  assert.equal(run(`select sum(case when movement_kind='handoff' then quantity else -quantity end)
+    from public.event_tank_register where event_participation_id='${part1Id}';`), '2');
+  const cancelledDetail = JSON.parse(run(`select public.get_event_management_detail('${jobId}');`));
+  assert.equal(cancelledDetail.tank_movements.find(m => m.id === cancelledMovement.id).cancelled, true);
+  assert.equal(cancelledDetail.tank_movements.find(m => m.id === cancelled.reversal_id).reverses_movement_id, cancelledMovement.id);
+  assert.equal(run(`select sales_amount from public.accounting_transaction_rows(${today}, ${today}) where source_id='${cancelled.charge_id}';`), '0');
+  assert.equal(run(`select public.is_charge_collectible_in_run('${cancelled.charge_id}', '${runId}');`), 'f');
+  assert.throws(() => run(`select public.cancel_event_tank_handoff('${handoff.id}', 'Paid');`), /รับเงินแล้ว/);
+  assert.throws(() => run(`select public.cancel_event_tank_handoff('${returnHandoff.id}', 'Return');`), /ไม่พบรายการส่งมอบ/);
+  // A handoff that has already been returned cannot be cancelled into negative custody.
+  run(`select public.record_event_tank_movement('${employeeBooth.booth.id}', 'return', 2, ${today}, 'Returned', '${randomUUID()}');`);
+  assert.throws(() => run(`select public.cancel_event_tank_handoff('${employeeHandoff.id}', 'Already returned');`), /ยอดถังติดลบ/);
+  assert.equal(run(`select count(*) from public.event_tank_register where reverses_movement_id='${employeeHandoff.id}';`), '0');
+  assert.equal(run(`select status from public.delivery_charges where event_tank_rental_id='${employeeHandoff.id}';`), 'active');
+  // SQL grants keep anonymous callers and direct table writes out.
+  assert.equal(run(`select has_function_privilege('anon','public.cancel_event_tank_handoff(uuid,text)','execute');`), 'f');
+  assert.equal(run(`select has_table_privilege('authenticated','public.event_tank_register','insert');`), 'f');
+
+  // Both orders of a payment/cancellation race preserve invoice/payment integrity.
+  for (const first of ['cancel', 'pay']) {
+    const movement = JSON.parse(run(`select to_jsonb(public.record_event_tank_movement(
+      '${part1Id}', 'handoff', 1, ${today}, 'Race', '${randomUUID()}'));`));
+    const charge = JSON.parse(run(`select to_jsonb(c) from public.delivery_charges c where event_tank_rental_id='${movement.id}';`));
+    const cancel = `select public.cancel_event_tank_handoff('${movement.id}', 'Race cancellation');`;
+    const pay = `select public.record_event_payment('${charge.event_settlement_context_id}', '${part1Id}', ${today},
+      '${policyFingerprint}', '${JSON.stringify([{ charge_id: charge.id, amount: 100 }])}', 'cash', 100, null, null,
+      '${runId}', 100, '${randomUUID()}');`;
+    const held = await holdTransaction(first === 'cancel' ? cancel : pay);
+    let loser;
+    try {
+      loser = concurrent(first === 'cancel' ? pay : cancel);
+      assert.equal(await Promise.race([loser.then(() => 'finished'), new Promise(resolve => setTimeout(() => resolve('waiting'), 150))]), 'waiting');
+    } finally { held.release(); }
+    assert.equal((await held.done).code, 0);
+    const losingResult = await loser;
+    assert.notEqual(losingResult.code, 0, losingResult.stdout);
+    if (first === 'pay') assert.match(losingResult.stderr, /รับเงินแล้ว/);
+    assert.equal(run(`select status from public.delivery_charges where id='${charge.id}';`), first === 'cancel' ? 'voided' : 'active');
+    assert.equal(run(`select count(*) from public.event_tank_register where reverses_movement_id='${movement.id}';`), first === 'cancel' ? '1' : '0');
+  }
+  // Concurrent retries cannot create two reversals.
+  const retryMovement = JSON.parse(run(`select to_jsonb(public.record_event_tank_movement(
+    '${part1Id}', 'handoff', 1, ${today}, 'Double click', '${randomUUID()}'));`));
+  const retrySql = `select public.cancel_event_tank_handoff('${retryMovement.id}', 'Double click');`;
+  const held = await holdTransaction(retrySql);
+  const retried = concurrent(retrySql);
+  held.release();
+  assert.equal((await held.done).code, 0);
+  assert.equal((await retried).code, 0);
+  assert.equal(run(`select count(*) from public.event_tank_register where reverses_movement_id='${retryMovement.id}';`), '1');
 
   console.log('All event tank rental billing postgres tests PASSED!');
 } finally {

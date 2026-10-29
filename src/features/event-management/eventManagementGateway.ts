@@ -1,3 +1,4 @@
+import { runOnlineOnlyEmployeeWrite } from '../../offline/runtime/client';
 import { supabase } from '../../lib/supabase';
 import { getErrorMessage } from '../../lib/errorMessage';
 import { isMissingRpc } from '../../lib/rpc';
@@ -40,6 +41,14 @@ async function rpc<T>(name: string, args?: Record<string, unknown>) {
 export const eventManagementGateway: EventManagementGateway = {
   async prepareShops(eventJobId, serviceDate, participationIds) {
     return rpc('prepare_event_shops', { p_event_job_id: eventJobId, p_service_date: serviceDate, p_participation_ids: participationIds });
+  },
+
+  async cancelTankHandoff(movementId, reason) {
+    const args = { p_movement_id: movementId, p_reason: reason };
+    const { data, error } = await runOnlineOnlyEmployeeWrite(() => client().rpc('cancel_event_tank_handoff', args),
+      JSON.stringify({ kind: 'rpc', rpc: 'cancel_event_tank_handoff', args }));
+    if (error) throw new Error(isMissingRpc(error) ? 'ระบบยังไม่พร้อมยกเลิกรายการถัง กรุณาอัปเดตฐานข้อมูลก่อน' : getErrorMessage(error));
+    return data;
   },
 
   async recordTankMovement(input) {

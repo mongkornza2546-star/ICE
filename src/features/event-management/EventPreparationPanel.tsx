@@ -1,10 +1,12 @@
 import { translateUi, useLanguage } from '../../i18n';
-import { useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { toBangkokDateString, shiftServiceDate } from '../../lib/serviceDate';
 import { supabase } from '../../lib/supabase';
 import { isAndroidApp } from '../../lib/thermalPrinter';
 import { printSalesDocumentForCurrentPlatform, salesDocumentFromStored, type StoredSalesDocument } from '../../lib/salesDocumentPrint';
-import type { EventManagementDetail, EventManagementGateway } from './types';
+import type { EventManagementDetail, EventManagementGateway, EventTankMovement } from './types';
+
+import { CancelTankHandoffDialog } from './CancelTankHandoffDialog';
 
 const money = (value: number) => Number(value).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -25,6 +27,8 @@ export function EventPreparationPanel({ detail, gateway, onSaved }: {
   const [quantity, setQuantity] = useState('1');
   const [tankDate, setTankDate] = useState(today);
   const [note, setNote] = useState('');
+  const [cancelTarget, setCancelTarget] = useState<EventTankMovement | null>(null);
+  const closeCancel = useCallback(() => setCancelTarget(null), []);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -116,17 +120,19 @@ export function EventPreparationPanel({ detail, gateway, onSaved }: {
         return <tr key={row.id}>
           <td>{row.service_date}</td>
           <td>{shop?.booth_number || '—'} · {shop?.shop_name}</td>
-          <td>{row.movement_kind === 'handoff' ? translateUi('ส่งมอบ') : translateUi('รับคืน')}{row.note ? ` · ${row.note}` : ''}</td>
+          <td>{row.cancelled ? translateUi('ส่งมอบ · ยกเลิกแล้ว') : row.reverses_movement_id ? translateUi('ย้อนรายการส่งมอบ') : row.movement_kind === 'handoff' ? translateUi('ส่งมอบ') : translateUi('รับคืน')}{row.note ? ` · ${row.note}` : ''}</td>
           <td>{row.quantity}</td>
           <td>{row.rental_start_date ?? '—'}</td>
           <td>
-            {row.charge_number ? <span>{row.charge_number}{row.outstanding_amount != null ? <small style={{ display: 'block', color: Number(row.outstanding_amount) > 0 ? '#b91c1c' : '#15803d' }}>{Number(row.outstanding_amount) > 0 ? translateUi('ค้างชำระ {0} บ.', { 0: money(row.outstanding_amount) }) : translateUi('ชำระแล้ว')}</small> : null}</span> : '—'}
+            {row.charge_number ? <span>{row.charge_number}{row.charge_status === 'voided' ? <small>{translateUi('ยกเลิกบิลแล้ว')}</small> : row.outstanding_amount != null ? <small style={{ display: 'block', color: Number(row.outstanding_amount) > 0 ? '#b91c1c' : '#15803d' }}>{Number(row.outstanding_amount) > 0 ? translateUi('ค้างชำระ {0} บ.', { 0: money(row.outstanding_amount) }) : translateUi('ชำระแล้ว')}</small> : null}</span> : '—'}
           </td>
           <td>
-            {row.charge_id ? <button type="button" className="secondary-button" disabled={busy} onClick={() => void printInvoice(row.charge_id!)}>{translateUi('พิมพ์บิล')}</button> : '—'}
+            {row.movement_kind === 'handoff' && !row.cancelled ? <button type="button" className="event-danger-button" disabled={busy} onClick={() => setCancelTarget(row)}>{translateUi('ยกเลิกรายการถัง')}</button> : null}
+            {row.charge_id && row.charge_status !== 'voided' ? <button type="button" className="secondary-button" disabled={busy} onClick={() => void printInvoice(row.charge_id!)}>{translateUi('พิมพ์บิล')}</button> : '—'}
           </td>
         </tr>;
       })}</tbody></table>{!movements.length ? <p>{translateUi('ยังไม่มีรายการส่งมอบหรือรับคืนถัง')}</p> : null}</div>
     </details>
+    {cancelTarget ? <CancelTankHandoffDialog label={participations.find((row) => row.id === cancelTarget.event_participation_id)?.shop_name ?? ''} quantity={cancelTarget.quantity} onClose={closeCancel} onCancel={(reason) => gateway.cancelTankHandoff(cancelTarget.id, reason)} onSaved={onSaved} /> : null}
   </section>;
 }

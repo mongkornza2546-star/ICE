@@ -406,7 +406,8 @@ describe('accounting shop summary', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'ตารางรายวัน' }));
     await waitFor(() => expect(screen.getByLabelText(`ลูกค้าขายสด ${date} หลอดเล็ก`).textContent).toContain('รวมจากยอดเงิน 1 ถุง'));
     expect(screen.getByLabelText(`ลูกค้าขายสด ${date} หลอดเล็ก`).textContent).toContain('รวมแจกฟรี 0.5 ถุง');
-    expect(screen.getByLabelText(`ลูกค้าขายสด ${date} เงินสด`).textContent).toContain('สุทธิ ฿100.00');
+    expect(screen.getByLabelText(`ลูกค้าขายสด ${date} เงินสด`).firstChild?.textContent).toBe('฿100.00');
+    expect(screen.getByLabelText(`ลูกค้าขายสด ${date} เงินสด`).textContent).toContain('คืนเงิน ฿10.00');
     expect(screen.getByLabelText(`ลูกค้าขายสด ${date} โอน`).textContent).toContain('0.00');
     await user.click(screen.getByRole('button', { name: 'ส่งออก Excel' }));
     await waitFor(() => expect(writeXlsxFileMock).toHaveBeenCalledTimes(1));
@@ -1310,7 +1311,7 @@ it('places new casual sales once after a building with multiple zones, keeps leg
     if (name === 'get_accounting_review_queue') return { data: { rows: [], total_count: 0 }, error: null };
     if (name === 'get_accounting_shop_daily_matrix') {
       const day = { service_date: String(args.p_from_date), items: [], sales_amount: 48,
-        cash_received: 48, cash_refunded: 0, transfer_received: 0, transaction_count: 1 };
+        cash_received: 219, cash_refunded: 59, transfer_received: 0, transaction_count: 1 };
       const group = { building_id: 'building-1', building_name: 'อาคาร A', days: [day], shop_days: [{ service_date: day.service_date, items: [], sales_amount: 1350, cash_received: 0, transfer_received: 0 }], transactions: [{
         id: 'casual-a', service_date: day.service_date, recorded_at: `${day.service_date}T12:00:00+07:00`,
         ice_type_name: 'หลอดเล็ก', quantity: 0.5, sale_amount: 48, payment_method: 'cash', status: 'active',
@@ -1332,6 +1333,8 @@ it('places new casual sales once after a building with multiple zones, keeps leg
   expect(rows.indexOf(casual.closest('tr')!)).toBeGreaterThan(rows.findIndex((row) => row.textContent?.includes('S002')));
   const total = screen.getByText('รวม อาคาร A รวมขายสดแล้ว').closest('tr')!;
   expect(total.textContent).toContain('฿1,398.00');
+  expect(within(casual.closest('tr')!).getAllByLabelText(/เงินสด$/)[0].firstChild?.textContent).toBe('฿160.00');
+  expect(total.querySelectorAll('td')[2].firstChild?.textContent).toBe('฿160.00');
   expect(screen.getByRole('button', { name: 'ขายสด — อาคาร B' })).toBeTruthy();
   await user.click(casual);
   expect(screen.getByRole('table', { name: 'ขายสด — อาคาร A รายการ' }).textContent).toContain('คนรับเงิน A');

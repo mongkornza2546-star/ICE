@@ -1,8 +1,10 @@
+import { CancelTankHandoffDialog } from '../event-management/CancelTankHandoffDialog';
+import { eventManagementGateway } from '../event-management/eventManagementGateway';
 import { CachedCatalogImage } from '../../CachedCatalogImage';
 import { deliveryLineTotal, deliverySubtotal, exclusiveVat } from '../../lib/vat';
 import { VatBreakdown } from '../financial-operations/components/VatBreakdown';
 import { translateUi, uiDateTimeFormat, useLanguage } from '../../i18n';
-import { useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent, type KeyboardEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent, type KeyboardEvent } from 'react';
 import {
   ArrowLeft,
   Bank,
@@ -163,6 +165,8 @@ export function EmployeeDeliveryReview({
   const [paymentEvidenceError, setPaymentEvidenceError] = useState<string | null>(null);
   const [correctionEventId, setCorrectionEventId] = useState<string | null>(null);
   const [slowPosContext, setSlowPosContext] = useState(false);
+  const [cancelTank, setCancelTank] = useState<{ id: string; quantity: number } | null>(null);
+  const closeCancelTank = useCallback(() => setCancelTank(null), []);
   const todayTankRentals = shopCard.today_tank_rentals ?? [];
   const todayHistoryCount = shopCard.today_history.length + todayTankRentals.length;
   useEffect(() => {
@@ -922,7 +926,7 @@ export function EmployeeDeliveryReview({
           <div className="employee-history-list">
             {todayTankRentals.map((rental) => (
               <article key={`tank-${rental.id}`}>
-                <div><strong>{translateUi('ถังเช่า')} {rental.quantity}{translateUi(' ใบ')}</strong></div>
+                <div><strong>{translateUi('ถังเช่า')} {rental.quantity}{translateUi(' ใบ')}</strong>{rental.cancelled ? <span className="status-badge status-badge--danger">{translateUi('ยกเลิกแล้ว')}</span> : rental.can_cancel ? <button type="button" className="employee-text-button" onClick={() => setCancelTank(rental)}>{translateUi('ยกเลิกรายการถัง')}</button> : null}</div>
                 <span>{rental.tank_code ? `${translateUi('รหัสถัง')}: ${rental.tank_code}` : null}{rental.tank_code && rental.note ? ' · ' : ''}{rental.note}</span>
                 <small>{rental.recorded_by}</small>
               </article>
@@ -947,6 +951,7 @@ export function EmployeeDeliveryReview({
           </div>
         )}
       </section>
+      {cancelTank ? <CancelTankHandoffDialog label={shopCard.shop_name} quantity={cancelTank.quantity} onClose={closeCancelTank} onCancel={(reason) => eventManagementGateway.cancelTankHandoff(cancelTank.id, reason)} onSaved={() => onCorrectionSuccess('ยกเลิกรายการถังและบิลค่าเช่าแล้ว')} /> : null}
       {correctionEventId ? <DeliveryCorrectionDialog
         eventId={correctionEventId}
         onClose={() => setCorrectionEventId(null)}

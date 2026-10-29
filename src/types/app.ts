@@ -549,6 +549,8 @@ export interface ShopCardHistoryEntry {
 }
 
 export interface ShopCardTankRental {
+  cancelled?: boolean;
+  can_cancel?: boolean;
   id: string;
   quantity: number;
   tank_code: string | null;

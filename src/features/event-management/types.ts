@@ -94,6 +94,9 @@ export interface EventTankMovement {
   note: string;
   charge_id?: string | null;
   charge_number?: string | null;
+  charge_status?: 'active' | 'voided' | null;
+  cancelled?: boolean;
+  reverses_movement_id?: string | null;
   outstanding_amount?: number | null;
 }
 
@@ -185,6 +188,7 @@ export interface EventNewShopsResult {
 
 export interface EventManagementGateway {
   prepareShops(eventJobId: string, serviceDate: string, participationIds: string[]): Promise<{ prepared_count: number }>;
+  cancelTankHandoff(movementId: string, reason: string): Promise<unknown>;
   recordTankMovement(input: EventTankMovementInput): Promise<EventTankMovement>;
   createEventShops(eventJobId: string, requestId: string, rows: EventNewShopInput[]): Promise<EventNewShopsResult>;
   loadCapability(): Promise<EventDeliveryCapability>;

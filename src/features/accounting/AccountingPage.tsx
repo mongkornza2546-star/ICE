@@ -999,7 +999,7 @@ function ShopDailyMatrix({ collapsedGroups, daily, data, filters, fromDate, grou
               })}
               <td className="accounting-daily-matrix__quantity" aria-label={`${label} ${date} ถัง`}>—</td>
               <td className="accounting-daily-matrix__money" aria-label={`${label} ${date} ยอดขาย`}>{day ? money.format(day.sales_amount) : '—'}</td>
-              <td className="accounting-daily-matrix__money" aria-label={`${label} ${date} เงินสด`}>{day ? money.format(day.cash_received) : '—'}{day && day.cash_refunded > 0 ? <small>{translateUi('คืนเงิน ')}{money.format(day.cash_refunded)}{translateUi(' · สุทธิ ')}{money.format(day.cash_received - day.cash_refunded)}</small> : null}</td>
+              <td className="accounting-daily-matrix__money" aria-label={`${label} ${date} เงินสด`}>{day ? money.format(day.cash_received - (day.cash_refunded ?? 0)) : '—'}{day && day.cash_refunded > 0 ? <small>{translateUi('คืนเงิน ')}{money.format(day.cash_refunded)}</small> : null}</td>
               <td className="accounting-daily-matrix__money accounting-daily-matrix__received" aria-label={`${label} ${date} โอน`}>{day ? money.format(day.transfer_received ?? 0) : '—'}{day && Number(day.transfer_refunded) > 0 ? <small>{translateUi('คืนเงิน ')}{money.format(day.transfer_refunded!)}{translateUi(' · สุทธิ ')}{money.format(Number(day.transfer_received ?? 0) - day.transfer_refunded!)}</small> : null}</td>
             </Fragment>;
           })}
@@ -1030,7 +1030,7 @@ function ShopDailyMatrix({ collapsedGroups, daily, data, filters, fromDate, grou
             {daily.ice_types.map((ice) => <td key={ice.ice_type_id}>{complete ? number.format(Number(shopDay?.items.find((item) => item.ice_type_id === ice.ice_type_id)?.quantity ?? 0) + Number(casual?.items.find((item) => item.ice_type_id === ice.ice_type_id)?.quantity ?? 0)) : '—'}</td>)}
             <td>{complete ? number.format(Number(shopDay?.tank_quantity ?? 0)) : '—'}</td>
             <td>{complete ? money.format(Number(shopDay?.sales_amount ?? 0) + Number(casual?.sales_amount ?? 0)) : '—'}</td>
-            <td>{complete ? money.format(Number(shopDay?.cash_received ?? 0) + Number(casual?.cash_received ?? 0)) : '—'}{Number(casual?.cash_refunded) > 0 ? <small>{translateUi('คืนเงินขายสด ')}{money.format(casual!.cash_refunded)}</small> : null}</td>
+            <td>{complete ? money.format(Number(shopDay?.cash_received ?? 0) + Number(casual?.cash_received ?? 0) - Number(casual?.cash_refunded ?? 0)) : '—'}{Number(casual?.cash_refunded) > 0 ? <small>{translateUi('คืนเงินขายสด ')}{money.format(casual!.cash_refunded)}</small> : null}</td>
             <td>{complete ? money.format(Number(shopDay?.transfer_received ?? 0) + Number(casual?.transfer_received ?? 0)) : '—'}{Number(casual?.transfer_refunded) > 0 ? <small>{translateUi('คืนเงินขายสด ')}{money.format(casual!.transfer_refunded!)}</small> : null}</td>
           </Fragment>;
         })}

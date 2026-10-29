@@ -97,3 +97,9 @@ it('sends the actual tank movement date and stable request ID', async () => {
     p_participation_id: 'participation-1', p_kind: 'handoff', p_quantity: 2, p_service_date: '2026-09-20', p_note: 'ตั้งถัง', p_request_id: 'request-1',
   });
 });
+
+it('cancels the exact tank movement with the supplied reason', async () => {
+  supabaseMock.client.rpc.mockResolvedValue({ data: { reversal_id: 'r1' }, error: null });
+  await eventManagementGateway.cancelTankHandoff('m1', 'ผิดร้าน');
+  expect(supabaseMock.client.rpc).toHaveBeenCalledWith('cancel_event_tank_handoff', { p_movement_id: 'm1', p_reason: 'ผิดร้าน' });
+});

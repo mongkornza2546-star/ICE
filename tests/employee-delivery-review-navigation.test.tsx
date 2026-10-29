@@ -162,6 +162,20 @@ describe('employee delivery review navigation', () => {
     expect(history.queryByRole('button', { name: 'ยกเลิกใบส่งน้ำแข็ง' })).toBeNull();
   });
 
+  it('opens cancellation from event tank history and labels already cancelled rows', async () => {
+    const user = userEvent.setup();
+    renderReview(true, { ...shopCard, today_tank_rentals: [
+      { id: 'r1', quantity: 1, tank_code: null, recorded_by: 'Admin', note: null, can_cancel: true },
+      { id: 'r2', quantity: 1, tank_code: null, recorded_by: 'Admin', note: null, cancelled: true },
+    ] });
+    expect(screen.getAllByRole('button', { name: 'ยกเลิกรายการถัง' })).toHaveLength(1);
+    expect(screen.getByText('ยกเลิกแล้ว')).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: 'ยกเลิกรายการถัง' }));
+    expect(screen.getByRole('dialog')).toBeTruthy();
+    expect(screen.getByLabelText('เหตุผลในการยกเลิก *')).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: 'กลับ', exact: true }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
   it.each([undefined, []])('keeps the empty history when no rentals started today (%s)', (today_tank_rentals) => {
     renderReview(true, { ...shopCard, today_tank_rentals });
     const history = within(screen.getByRole('heading', { name: 'ประวัติวันนี้' }).closest('section')!);
