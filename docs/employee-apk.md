@@ -6,10 +6,10 @@
 npm run android:apk:employee
 ```
 
-ไฟล์ติดตั้งปัจจุบัน: `outputs/android/ice-delivery-employee-1.0.13.apk`
+ไฟล์ติดตั้งปัจจุบัน: `outputs/android/ice-delivery-employee-1.0.14.apk`
 
 - Android 7.0 ขึ้นไป (`minSdkVersion 24`)
-- เวอร์ชัน 1.0.13 (`versionCode 14`), package `com.superice.delivery`
+- เวอร์ชัน 1.0.14 (`versionCode 15`), package `com.superice.delivery`
 - ใช้ debug signing เดิมของโปรเจกต์สำหรับแจกติดตั้งภายใน สามารถอัปเดตทับ APK เดิมที่ใช้ package และใบรับรองเดียวกัน โดยไม่ถอนการติดตั้ง/ล้างข้อมูล
 - บัญชีที่เปิดงานได้คือพนักงาน (`courier`) ที่ยังใช้งานอยู่; แอดมินและหัวหน้าใช้งานผ่านเว็บ
 - เก็บงาน POS, ลูกค้าจร, เติม/คืน/ละลายน้ำแข็ง, อีเวนต์, รับชำระตามสิทธิ์, ประวัติรับเงิน, ใบเซ็นเครดิต และเครื่องพิมพ์ Bluetooth เดิม
@@ -24,6 +24,16 @@ npm run android:apk:employee
 ขั้นตอน build ตรวจรายชื่อโมดูลที่ถูกบรรจุจริงและหยุดหากพบหน้าจัดการที่ห้ามรวม บันทึกรายชื่อไว้ใน `dist-employee/employee-build.json` ซึ่งถูกบรรจุใน APK ด้วย ไฟล์รูปพื้นหลังแอดมินและเทมเพลตนำเข้าร้านค้าไม่ถูกบรรจุในรุ่นพนักงาน
 
 คำสั่ง `npm run build` และ `npm run android:apk` ยังคงสร้างระบบเต็มตามเดิม อย่าใช้คำสั่งหลังเพื่อแจก APK เฉพาะพนักงาน
+
+## ตรวจสอบรุ่น 1.0.14 (29 ตุลาคม 2026)
+
+- สร้างจากโค้ดปัจจุบันในโปรเจกต์; TypeScript และ production build สำหรับ employee ผ่าน
+- ทดสอบ employee router, offline runtime/client/contract/write coordination, online write recovery, หน้าอีเวนต์ และหน้าตรวจรายการส่งผ่าน 156 เคส; offline contract/runtime integration และ CSS พนักงานผ่านอีก 17 เคส
+- Gradle build และ Android unit test task ผ่าน; สร้าง instrumentation test APK ได้ แต่ยังไม่ได้รันบนอุปกรณ์
+- ตรวจไฟล์เว็บใน APK ตรงกับ `dist-employee` ทั้ง 12 ไฟล์ และตรวจ employee target กับ Capacitor config ผ่าน
+- ตรวจ APK signature ผ่าน และ certificate SHA-256 ตรงกับรุ่น 1.0.13; package เดิมและ versionCode เพิ่มจาก 14 เป็น 15
+- SHA-256 ของ APK: `0ff23f6ee99a305ba42ef5c14db8b7bf1552bd865f9c15784ed4aa88e8fcc0b1`
+- ขั้นตอนนี้ไม่ได้ deploy migration และยังไม่ได้ทดสอบติดตั้งทับหรือพิมพ์ Bluetooth บนมือถือจริง
 
 ## ตรวจสอบรุ่น 1.0.13 (27 ตุลาคม 2026)
 

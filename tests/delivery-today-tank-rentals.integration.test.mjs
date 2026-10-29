@@ -148,4 +148,26 @@ test('today tank history remains readable after closing, independent of POS avai
   const matrix = await value(db, `select public.get_accounting_shop_daily_matrix(${today}-1,${today},array['${shop}']::uuid[]) as value`);
   const priorDay = matrix.rows[0].days[0];
   assert.equal(priorDay.tank_quantity, 8, 'cancelled event handoff is excluded; only one registered tank plus seven regular rentals remain');
+  // Restore card access and create real employee handoffs through the public writer.
+  await db.exec(`insert into public.delivery_round_members(round_id,user_id) values ('${round}','${courier}');
+    set role authenticated; set request.jwt.claim.sub='${courier}'`);
+  const own = await value(db, `select public.record_employee_event_tank_handoff('${id(22)}',1,'ผิดร้าน','${id(60)}') as value`);
+  let ownRow = (await events()).find(row => row.id === own.id);
+  assert.equal(ownRow.can_cancel, true, 'employee sees a cancel button for their own handoff');
+  await assert.rejects(value(db, `select public.cancel_event_tank_handoff('${id(51)}','Not mine') as value`), /เฉพาะรายการถังที่ตนเองบันทึก/);
+  await value(db, `select public.cancel_event_tank_handoff('${own.id}','ผิดร้าน') as value`);
+  ownRow = (await events()).find(row => row.id === own.id);
+  assert.equal(ownRow.can_cancel, false);
+  assert.equal(ownRow.cancelled, true);
+  const next = await value(db, `select public.record_employee_event_tank_handoff('${id(22)}',1,'Another mistake','${id(61)}') as value`);
+  await db.exec(`reset role; update public.users set is_active=false where id='${courier}'; set role authenticated`);
+  await assert.rejects(value(db, `select public.cancel_event_tank_handoff('${next.id}','Inactive') as value`), /ไม่มีสิทธิ์/);
+  await db.exec(`reset role; update public.users set is_active=true where id='${courier}';
+    insert into public.daily_aggregate_stock_closures(service_date,status,idempotency_key,closed_by)
+    values (${today},'closed','${id(62)}','${admin}'); set role authenticated`);
+  assert.equal((await events()).find(row => row.id === next.id).can_cancel, false, 'closed day requires an admin');
+  await assert.rejects(value(db, `select public.cancel_event_tank_handoff('${next.id}','Closed') as value`), /แอดมิน/);
+  await db.exec(`reset role; set request.jwt.claim.sub='${admin}'`);
+  await value(db, `select public.cancel_event_tank_handoff('${next.id}','Admin after close') as value`);
+
 });

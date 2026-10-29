@@ -465,13 +465,13 @@ try {
   for (const name of readdirSync(directory).filter(name => /^\d{4}_.+\.sql$/.test(name) && Number(name.slice(0, 4)) > 197).sort()) {
     psql(`begin; ${readFileSync(new URL(name, directory), 'utf8')} commit;`);
   }
-  for (const name of ['20261027144838_delivery_today_tank_rentals.sql', '20261029135057_cancel_event_tank_handoff.sql']) {
+  for (const name of ['20261027144838_delivery_today_tank_rentals.sql', '20261029135057_cancel_event_tank_handoff.sql', '20261029141119_courier_cancel_own_event_tank_handoff.sql']) {
     psql(`begin; ${readFileSync(new URL(name, directory), 'utf8')} commit;`);
   }
   const cancelledMovement = JSON.parse(run(`select to_jsonb(public.record_event_tank_movement(
     '${part1Id}', 'handoff', 1, ${today}, 'Wrong shop', '${randomUUID()}'));`));
   const cancelSql = `select public.cancel_event_tank_handoff('${cancelledMovement.id}', 'Wrong shop');`;
-  assert.throws(() => runAs(courier, cancelSql), /เฉพาะแอดมิน/);
+  assert.throws(() => runAs(courier, cancelSql), /เฉพาะรายการถังที่ตนเองบันทึก/);
   assert.throws(() => run(`select public.cancel_event_tank_handoff('${cancelledMovement.id}', '  ');`), /เหตุผล/);
   const cancelled = JSON.parse(run(cancelSql));
   assert.ok(cancelled.reversal_id);
@@ -531,6 +531,16 @@ try {
   assert.equal((await held.done).code, 0);
   assert.equal((await retried).code, 0);
   assert.equal(run(`select count(*) from public.event_tank_register where reverses_movement_id='${retryMovement.id}';`), '1');
+
+  // An employee cancels their own charged handoff, with the same atomic billing reversal.
+  const ownHandoff = JSON.parse(runAs(courier, `select public.record_employee_event_tank_handoff(
+    '${employeeBooth.booth.id}', 1, 'Mistaken employee handoff', '${randomUUID()}');`));
+  const ownCancel = `select public.cancel_event_tank_handoff('${ownHandoff.id}', 'Wrong booth');`;
+  const ownResult = JSON.parse(runAs(courier, ownCancel));
+  assert.equal(run(`select status from public.delivery_charges where id='${ownHandoff.charge_id}';`), 'voided');
+  assert.equal(run(`select recorded_by from public.event_tank_register where id='${ownResult.reversal_id}';`), courier);
+  assert.equal(JSON.parse(runAs(courier, ownCancel)).reversal_id, ownResult.reversal_id);
+  assert.throws(() => runAs(courier, cancelSql), /เฉพาะรายการถังที่ตนเองบันทึก/, 'Ownership is checked even on an already cancelled movement');
 
   console.log('All event tank rental billing postgres tests PASSED!');
 } finally {
