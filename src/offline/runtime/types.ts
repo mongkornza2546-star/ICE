@@ -2,7 +2,7 @@ import type { DeliveryPosContext, DeliveryRound, EmployeeStockState, IceTypeOpti
 import type { CurrentCollectionQueue } from '../../lib/collectionQueue';
 
 export type OfflineOperation = 'stock_transfer' | 'stock_return' | 'stock_damage' | 'delivery' | 'immediate_sale' | 'collection_payment';
-export type CommandStatus = 'pending' | 'syncing' | 'retry_wait' | 'auth_required' | 'conflict' | 'applied' | 'discard_approved';
+export type CommandStatus = 'pending' | 'syncing' | 'retry_wait' | 'blocked' | 'auth_required' | 'conflict' | 'applied' | 'discard_approved';
 export interface WorkSnapshot {
   version: 1;
   ownerId: string;

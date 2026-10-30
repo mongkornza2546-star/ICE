@@ -3,7 +3,7 @@ import { Blob as NodeBlob } from 'node:buffer';
 import { IDBFactory, IDBObjectStore } from 'fake-indexeddb';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { WorkStore } from '../src/offline/runtime/store';
-import { OfflineEngine } from '../src/offline/runtime/engine';
+import { OfflineEngine, type SyncResponse } from '../src/offline/runtime/engine';
 import { projectCommand, contextPolicy } from '../src/offline/runtime/project';
 import type { WorkCommand, WorkSnapshot } from '../src/offline/runtime/types';
 
@@ -110,6 +110,21 @@ describe('durable work transaction', () => {
 });
 
 describe('foreground synchronization', () => {
+  it('pauses permanent infrastructure failures until explicit retry, preserving order and identity', async () => {
+    const store = makeStore(); await store.install(snapshot());
+    const first = await store.enqueue(input(), projectCommand); await store.enqueue(input(), projectCommand);
+    const send = vi.fn(async (_command: WorkCommand): Promise<SyncResponse> => { throw { code: '42501', message: 'permission denied for table employee_offline_commands' }; });
+    const engine = new OfflineEngine(owner, day, store, { send, resolutions: async () => [] });
+    await engine.sync();
+    expect((await store.commands(owner)).map(c => c.status)).toEqual(['blocked', 'pending']);
+    vi.setSystemTime(Date.now() + 120_000); await engine.sync();
+    expect(send).toHaveBeenCalledTimes(1);
+    await expect(store.enqueue(input(), projectCommand)).rejects.toThrow('ระบบรับรายการไม่ได้');
+    send.mockResolvedValue({ status: 'applied', result: { ok: true } });
+    await engine.sync(true);
+    expect((await store.commands(owner)).map(c => c.status)).toEqual(['applied', 'applied']);
+    expect(send.mock.calls[1][0].id).toBe(first.id);
+  });
   it('replays the same command after a lost response and never projects it a second time', async () => {
     const store = makeStore(); await store.install(snapshot());
     const remote = new Map<string, Record<string, unknown>>(); let writes = 0; let lose = true;

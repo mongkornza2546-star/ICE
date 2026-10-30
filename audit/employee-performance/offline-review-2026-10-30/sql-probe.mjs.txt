@@ -1,0 +1,12 @@
+import { createVatDatabase } from '../tests/helpers/creditVatDatabase.mjs';
+import { seedOffline, courier } from '../tests/helpers/offlineFixture.mjs';
+const db = await createVatDatabase();
+try {
+ await seedOffline(db);
+ const q = (await db.query("select public.get_daily_shop_collection_queue_v2((clock_timestamp() at time zone 'Asia/Bangkok')::date) as value")).rows[0].value;
+ console.log('COURIER_QUEUE', JSON.stringify({keys:Object.keys(q),runId:!!q.collection_run_id,canRecordPayment:q.can_record_payment===true}));
+ try { await db.query("select public.get_daily_shop_collection_queue_v2((clock_timestamp() at time zone 'Asia/Bangkok')::date-1)"); } catch(e) {console.log('YESTERDAY_QUEUE',e.message);}
+ try {await db.query("select public.employee_offline_assert_expected_v2('collection_payment','record_shop_collection_payment',$1::jsonb,'{}'::jsonb,(clock_timestamp() at time zone 'Asia/Bangkok')::date-1)",[JSON.stringify({p_collection_run_id:q.collection_run_id})]);}catch(e){console.log('REPLAY_VALIDATOR_YESTERDAY',e.message);}
+ await db.exec(`update public.users set can_collect_shop_payments=false where id='${courier}'`);
+ try {await db.query("select public.get_daily_shop_collection_queue_v2((clock_timestamp() at time zone 'Asia/Bangkok')::date)");console.log('NON_COLLECTOR_QUEUE_OK');} catch(e) {console.log('NON_COLLECTOR_QUEUE_ERROR',e.message);}
+} finally { await db.close(); }

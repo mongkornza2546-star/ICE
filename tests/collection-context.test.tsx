@@ -32,8 +32,13 @@ describe('automatic collection context', () => {
     supabaseMock.rpc.mockResolvedValueOnce({
       data: { collection_run_id: 'run-1', status: 'open', queue }, error: null,
     });
-    expect(await loadCurrentCollectionQueue('2026-10-12')).toEqual({ runId: 'run-1', isClosed: false, canRecordPayment: false, queue });
+    expect(await loadCurrentCollectionQueue('2026-10-12')).toEqual({ runId: 'run-1', isClosed: false, canRecordPayment: undefined, queue });
     expect(supabaseMock.rpc).toHaveBeenLastCalledWith('get_daily_shop_collection_queue_v2', { p_service_date: '2026-10-12' });
+  });
+
+  it.each([true, false])('preserves explicit server payment permission (%s)', async allowed => {
+    supabaseMock.rpc.mockResolvedValue({ data: { collection_run_id: 'run-1', status: 'open', queue: [], can_record_payment: allowed }, error: null });
+    expect((await loadCurrentCollectionQueue('2026-10-30')).canRecordPayment).toBe(allowed);
   });
 
   it('falls back to the legacy queue only when the new RPC is not deployed', async () => {

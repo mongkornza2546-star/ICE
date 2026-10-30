@@ -136,6 +136,7 @@ export class WorkStore {
                 || state.snapshot.profile.role !== 'courier') throw new Error('ข้อมูลออฟไลน์หมดอายุ กรุณาเตรียมข้อมูลวันนี้');
               if (!Number.isFinite(Date.parse(input.recordedAt)) || toBangkokDateString(new Date(input.recordedAt)) !== input.serviceDate)
                 throw new Error('วันที่รายการไม่ตรงกับวันงาน กรุณาเปิดรายการใหม่');
+              if (pending.result.some((c: WorkCommand) => c.status === 'blocked')) throw new Error('ระบบรับรายการไม่ได้ กรุณาให้ผู้ดูแลแก้ไข แล้วลองส่งรายการค้างอีกครั้ง');
               if (pending.result.some((c: WorkCommand) => c.status === 'auth_required')) throw new Error('กรุณาเข้าสู่ระบบและซิงก์รายการเดิมก่อนทำรายการเพิ่ม');
               if (pending.result.some((c: WorkCommand) => c.status === 'conflict' || (c.serviceDate !== input.serviceDate && pendingCommand(c)))) throw new Error('มีรายการรอตรวจสอบ กรุณาติดต่อหัวหน้าก่อนทำรายการเพิ่ม');
               const command: WorkCommand = { ...input, sequence: state.sequence + 1, deviceId: state.deviceId,

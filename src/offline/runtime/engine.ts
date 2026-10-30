@@ -65,7 +65,7 @@ export class OfflineEngine {
           }
           for (const original of commands.filter(pendingCommand)) {
             if (this.disposed || !navigator.onLine || original.status === 'conflict'
-              || (!force && original.nextAttemptAt > Date.now())) break;
+              || (!force && (original.status === 'blocked' || original.nextAttemptAt > Date.now()))) break;
             if (!(await this.store.claim(this.owner, day, this.holder))) break;
             let command: WorkCommand = { ...original, status: 'syncing', attempts: original.attempts + 1 };
             await this.store.update(command); await this.reload();
@@ -113,7 +113,7 @@ export class OfflineEngine {
               const e = error as { code?: string; message?: string; status?: number };
               const auth = e.status === 401 || /^PGRST30/.test(e.code ?? '') || /jwt|session|เข้าสู่ระบบ|active courier|active user|disabled for this employee|owner mismatch/i.test(e.message ?? '');
               const retry = isTransportFailure(error);
-              await this.store.update({ ...command, status: auth ? 'auth_required' : 'retry_wait',
+              await this.store.update({ ...command, status: auth ? 'auth_required' : retry ? 'retry_wait' : 'blocked',
                 error: e.message ?? 'ซิงก์ไม่สำเร็จ', nextAttemptAt: Date.now() + Math.min(60_000, (retry ? 2_000 : 30_000) * 2 ** Math.min(command.attempts, 5)) });
               await this.reload(); break;
             }

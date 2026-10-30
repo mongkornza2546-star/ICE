@@ -28,7 +28,8 @@ export async function loadCurrentCollectionQueue(serviceDate: string): Promise<C
   return {
     runId: response.data.collection_run_id,
     isClosed: response.data.status === 'closed',
-    canRecordPayment: response.data.can_record_payment === true,
+    canRecordPayment: typeof response.data.can_record_payment === 'boolean'
+      ? response.data.can_record_payment : response.data.status === 'closed' ? false : undefined,
     queue: (response.data.queue ?? []) as QueueShop[],
   };
 }
