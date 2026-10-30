@@ -108,7 +108,7 @@ export function PwaUpdatePrompt() {
     return (
       <aside className="pwa-update-prompt pwa-update-prompt--offline" role="status" aria-live="assertive">
         <strong>{translateUi('กำลังใช้งานแบบออฟไลน์')}</strong>
-        <span>{translateUi('เปิดดูหน้าที่เคยโหลดได้ แต่ต้องเชื่อมต่ออินเทอร์เน็ตก่อนบันทึกข้อมูล')}</span>
+        <span>{translateUi('ตอนนี้ไม่มีเน็ต หากหน้าพนักงานขึ้น “พร้อมทำงาน แม้ไม่มีเน็ต” แล้ว กดส่งของได้ตามปกติ แอปจะเก็บรายการไว้และส่งเข้าระบบเมื่อมีเน็ต')}</span>
       </aside>
     );
   }

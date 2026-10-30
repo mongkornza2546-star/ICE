@@ -90,6 +90,9 @@ export function createOfflineGateway(live: EmployeeDeliveryGateway, runtime: Emp
     async loadDeliveryPosContext(id, options) {
       const s = await runtime.snapshot();
       if (s?.contexts[id]) return { ...s.contexts[id], offline_snapshot: true, client_cache: { cached_at: s.preparedAt, stale: false } };
+      if (!navigator.onLine) throw new Error(s
+        ? 'ยังไม่มีข้อมูลร้านนี้ในเครื่อง กรุณาเปิดเน็ตแล้วกด “โหลดข้อมูลอีกครั้ง”'
+        : 'ข้อมูลออฟไลน์ของวันนี้ยังไม่พร้อม กรุณาเปิดเน็ตและรอจนขึ้น “พร้อมทำงาน แม้ไม่มีเน็ต”');
       if (!live.loadDeliveryPosContext) throw new Error('ยังไม่ได้เตรียมข้อมูลร้านนี้');
       return live.loadDeliveryPosContext(id, options);
     },

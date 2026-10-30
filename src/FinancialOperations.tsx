@@ -782,7 +782,7 @@ export function FinancialOperations({
         setReceipt({ pending: true, paymentId: `local:${request.key}`, receiptNumber: `TMP-${request.key}`,
           shopCode: selectedShop.shop_code, shopName: selectedShop.shop_name, method, receivedAmount,
           allocatedAmount, changeAmount, recordedAt: request.clientRecordedAt, charges: [] });
-        setSuccess('บันทึกรับเงินลงเครื่องแล้ว · รอเซิร์ฟเวอร์ตรวจสอบและออกใบเสร็จ');
+        setSuccess('เก็บรายการรับเงินไว้ในเครื่องแล้ว · ไม่ต้องบันทึกซ้ำ ใบเสร็จจริงจะออกหลังระบบตรวจสอบ');
         void offlineRuntime.tick();
         publishDataChange(['payment', 'receivable']);
         return;

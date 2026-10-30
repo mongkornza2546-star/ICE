@@ -32,7 +32,11 @@ test('offline typed adapters preserve real stock and financial transactions', as
   const before=await stock(); const key=randomUUID();
   const args={p_round_id:round,p_items:[{ice_type_id:ice,quantity:20}],p_idempotency_key:key};
   const meta={envelope:envelope(key),expected:{truck_location_id:before.truck_location.id,holding_location_id:before.holding_location.id}};
-  const response=await call('record_employee_stock_transfer',args,meta);
+  await db.exec('grant usage on schema public, auth to authenticated; grant execute on function auth.uid() to authenticated; begin; set local role authenticated');
+  assert.equal(await value(db, 'select current_user as value'), 'authenticated');
+  let response;
+  try { response=await call('record_employee_stock_transfer',args,meta); await db.exec('commit'); }
+  finally { await db.exec('rollback; reset role'); }
   assert.equal(response.status,'applied'); assert.deepEqual(await call('record_employee_stock_transfer',args,meta),response);
   const after=await stock(); assert.equal(after.holding_location.balances.find(i=>i.ice_type_id===ice).quantity,20);
   assert.equal(after.truck_location.balances.find(i=>i.ice_type_id===ice).quantity,80);
@@ -175,6 +179,9 @@ test('offline typed adapters preserve real stock and financial transactions', as
  await t.test('private helpers and tables are not callable from the client; anonymous writes are denied',async()=>{
   for(const role of ['anon','authenticated']) {
    assert.equal(await value(db,`select has_function_privilege('${role}','public.employee_offline_finish_v2(uuid,jsonb,text)','EXECUTE') as value`),false);
+   for (const check of ['employee_offline_assert_command_issue_state_v1', 'employee_offline_assert_decision_transition_v1']) {
+    assert.equal(await value(db,`select has_function_privilege('${role}','public.${check}()','EXECUTE') as value`),false);
+   }
    assert.equal(await value(db,`select has_table_privilege('${role}','public.employee_offline_commands','INSERT') as value`),false);
   }
   await db.exec('set role anon');

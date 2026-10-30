@@ -23,6 +23,37 @@ function setup() {
     recordDelivery: vi.fn(async (_payload: unknown) => undefined) };
   return { s, live, runtime: client.createEmployeeRuntime(s.ownerId, s.serviceDate, live as unknown as EmployeeDeliveryGateway) };
 }
+it.each(['missing', 'expired'] as const)('explains %s preparation without starting a POS network read in airplane mode', async state => {
+  const { s, live, runtime: r } = setup();
+  if (state === 'expired') {
+    s.validUntil = '2026-10-28T17:00:00Z';
+    await r.engine.install(s);
+  }
+  vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+  const loadDeliveryPosContext = vi.fn(async () => s.contexts.stop);
+  const { createOfflineGateway } = await import('../src/offline/runtime/gateway');
+  const gateway = createOfflineGateway({ ...live, loadDeliveryPosContext } as unknown as EmployeeDeliveryGateway, r);
+  await expect(gateway.loadDeliveryPosContext!('stop', { destinationKind: 'regular', serviceDate: s.serviceDate }))
+    .rejects.toThrow('ข้อมูลออฟไลน์ของวันนี้ยังไม่พร้อม');
+  expect(loadDeliveryPosContext).not.toHaveBeenCalled();
+});
+it('loads prepared prices and saves a delivery durably in airplane mode without a live request', async () => {
+  const { s, live, runtime: r } = setup();
+  await r.engine.install(s);
+  vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+  const loadDeliveryPosContext = vi.fn();
+  const { createOfflineGateway } = await import('../src/offline/runtime/gateway');
+  const gateway = createOfflineGateway({ ...live, loadDeliveryPosContext } as unknown as EmployeeDeliveryGateway, r);
+  const context = await gateway.loadDeliveryPosContext!('stop', { destinationKind: 'regular', serviceDate: s.serviceDate });
+  expect(context.items[0]).toMatchObject({ unit_price: 25, stock_quantity: 10 });
+  await expect(gateway.recordDelivery({ roundStopId: 'stop', items: [{ ice_type_id: 'ice', quantity: 1 }], status: 'delivered', note: null,
+    destinationKind: 'regular', clientRecordedAt: new Date().toISOString(), idempotencyKey: crypto.randomUUID(), paymentTerm: 'end_of_day', expectedTotal: 25 }))
+    .resolves.toMatchObject({ offline_pending: true });
+  expect(await client.offlineStore().commands(s.ownerId)).toHaveLength(1);
+  expect((await client.offlineStore().read(s.ownerId, s.serviceDate))?.snapshot.contexts.stop.items[0].stock_quantity).toBe(9);
+  expect(loadDeliveryPosContext).not.toHaveBeenCalled();
+  expect(live.recordDelivery).not.toHaveBeenCalled();
+});
 it('rejects preparation fetched before a completed guarded online write', async () => {
   const { s, runtime: r } = setup();
   await r.engine.install(s);

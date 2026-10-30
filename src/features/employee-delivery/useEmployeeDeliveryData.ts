@@ -941,7 +941,7 @@ export function useEmployeeDeliveryData({
       const creditDueDate = result?.payment_term === 'credit' && result.due_date
         ? ` ครบกำหนด ${result.due_date}`
         : '';
-      setSuccess(result?.offline_pending ? 'บันทึกลงเครื่องแล้ว · รอซิงก์และตรวจสอบสต๊อก/ยอดเงิน'
+      setSuccess(result?.offline_pending ? 'เก็บรายการไว้ในเครื่องแล้ว · รอส่งเข้าระบบ ไม่ต้องกดส่งซ้ำ'
         : wasDelivery ? `บันทึกยอดออกจาก${sourceLabel} และร้านปลายทางแล้ว${creditDueDate}` : 'บันทึกเหตุส่งไม่ได้แล้ว');
       return;
     }
@@ -1555,7 +1555,7 @@ export function useEmployeeDeliveryData({
       setImmediateSaleRetry(null);
       setPaymentOpen(false);
       await handleRecorded(true, sale.delivery);
-      setSuccess(sale.offline_pending ? `บันทึกลงเครื่องแล้ว · รอซิงก์ · ${sale.receipt_number} (ใบรับรายการชั่วคราว)`
+      setSuccess(sale.offline_pending ? `เก็บรายการไว้ในเครื่องแล้ว · รอส่งเข้าระบบ · ${sale.receipt_number} (ใบรับรายการชั่วคราว)`
         : `บันทึกขายสดและออก ${sale.receipt_number} แล้ว`, sale.print_document);
     } catch (paymentError) {
       const rawMessage = paymentError instanceof Error

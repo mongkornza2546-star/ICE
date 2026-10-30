@@ -44,7 +44,7 @@ try {
   };
   const before = read(`select public.get_employee_stock_state('${round}') as value`).value;
   const transfer = makeCall('record_employee_stock_transfer', { p_round_id: round, p_items: [{ ice_type_id: ice, quantity: 20 }], p_idempotency_key: randomUUID() }, { truck_location_id: before.truck_location.id, holding_location_id: before.holding_location.id });
-  const sameKey = await Promise.all([concurrent(run(transfer)), concurrent(run(transfer))]);
+  const sameKey = await Promise.all([concurrent(run(`set local role authenticated; ${transfer}`)), concurrent(run(`set local role authenticated; ${transfer}`))]);
   assert.deepEqual(sameKey.map(JSON.parse).map(r => r.status), ['applied', 'applied']);
   assert.equal(read(`select public.get_employee_stock_state('${round}') as value`).value.holding_location.balances.find(b => b.ice_type_id === ice).quantity, 20);
   console.log('PASS concurrent identical key: one withdrawal');
