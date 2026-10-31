@@ -145,9 +145,11 @@ it('does not let an older completion unlock an in-flight replay from another con
   const { WorkStore } = await import('../src/offline/runtime/store'); const other = new WorkStore();
   await store.beginOnlineWrite('first', 'same');
   await other.beginOnlineWrite('replay', 'same');
-  await store.endOnlineWrite('first');
+  await store.endOnlineWrite('first', { value: 'older response' });
   expect(await store.install(s)).toBe(false);
-  await other.endOnlineWrite('replay'); await other.close();
+  expect(await store.onlineResult(undefined, 'same')).toBeUndefined();
+  await other.endOnlineWrite('replay', { value: 'confirmed replay' }); await other.close();
+  expect(await store.onlineResult(undefined, 'same')).toEqual({ value: 'confirmed replay' });
   expect(await store.install(s)).toBe(true);
 });
 

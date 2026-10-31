@@ -4,6 +4,8 @@ import { toBangkokDateString } from '../../lib/serviceDate';
 const DB_NAME = 'ice-employee-work-v1';
 const TABLES = ['work', 'commands', 'control'] as const;
 export interface OnlineWrite { holder: string; retryKey?: string; ownerId?: string; startedAt: number; }
+export interface OnlineWriteResult { value: unknown; }
+const onlineResultKey = (ownerId: string | undefined, retryKey: string) => ['online-result', ownerId ?? '', retryKey];
 const ONLINE_WRITE_PENDING = 'มีรายการออนไลน์ยังไม่ทราบผล กรุณาลองรายการเดิมอีกครั้งก่อนทำรายการใหม่';
 function advanceRevision(tx: IDBTransaction) {
   const control = tx.objectStore('control'); const revision = control.get('revision');
@@ -88,7 +90,10 @@ export class WorkStore {
           || (expectedSequence != null && (old.result?.sequence ?? 0) !== expectedSequence)
           || (expectedRevision != null && (revision.result ?? 0) !== expectedRevision)
           || old.result?.lease?.until > Date.now()) { done(false); return; }
-        const state: WorkState = { key, snapshot,
+        // Open payment sheets and queued commands can still refer to the old
+        // local ID after a full refresh has installed official bill IDs.
+        const state: WorkState = { key, snapshot: old.result?.snapshot.chargeAliases
+          ? { ...snapshot, chargeAliases: { ...old.result.snapshot.chargeAliases, ...snapshot.chargeAliases } } : snapshot,
           deviceId: old.result?.deviceId ?? newOfflineId(), sequence: old.result?.sequence ?? 0 };
         work.put(state);
         done(true);
@@ -174,11 +179,22 @@ export class WorkStore {
       };
     });
   }
-  async endOnlineWrite(holder: string) {
+  async onlineResult(ownerId: string | undefined, retryKey: string) {
+    return this.run<OnlineWriteResult | undefined>('readonly', (tx, done) => {
+      const request = tx.objectStore('control').get(onlineResultKey(ownerId, retryKey));
+      request.onsuccess = () => done(request.result);
+    });
+  }
+  async endOnlineWrite(holder: string, confirmed?: OnlineWriteResult) {
     return this.run<void>('readwrite', (tx, done) => {
       const control = tx.objectStore('control'); const lease = control.get('online-write');
       lease.onsuccess = () => {
-        if (lease.result?.holder === holder) { control.delete('online-write'); advanceRevision(tx); }
+        if (lease.result?.holder === holder) {
+          // Keep the acknowledgement across refresh/restart before releasing
+          // the write fence. An open draft must consume it without projecting again.
+          if (confirmed && lease.result.retryKey) control.put(confirmed, onlineResultKey(lease.result.ownerId, lease.result.retryKey));
+          control.delete('online-write'); advanceRevision(tx);
+        }
         done(undefined);
       };
     });
@@ -196,6 +212,24 @@ export class WorkStore {
   async update(command: WorkCommand) {
     return this.run<void>('readwrite', (tx, done) => {
       tx.objectStore('commands').put(command);
+      if (command.status === 'applied' && command.type === 'delivery' && typeof command.result?.charge_id === 'string') {
+        advanceRevision(tx);
+        const work = tx.objectStore('work'); const r = work.get(workKey(command.ownerId, command.serviceDate));
+        r.onsuccess = () => {
+          const state = r.result as WorkState | undefined;
+          if (!state) return;
+          const localId = `local:${command.id}`;
+          const result = command.result!;
+          state.snapshot.chargeAliases = { ...state.snapshot.chargeAliases, [localId]: result.charge_id as string };
+          for (const shop of state.snapshot.collection.queue) for (const charge of shop.charges) {
+            if (charge.charge_id !== localId) continue;
+            charge.charge_id = result.charge_id as string;
+            if (typeof result.charge_number === 'string' || result.charge_number === null) charge.charge_number = result.charge_number;
+            if (typeof result.delivery_event_id === 'string') charge.delivery_event_id = result.delivery_event_id;
+          }
+          work.put(state);
+        };
+      }
       if (command.status === 'discard_approved') {
         advanceRevision(tx);
         const work = tx.objectStore('work'); const r = work.get(workKey(command.ownerId, command.serviceDate));

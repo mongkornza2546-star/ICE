@@ -87,6 +87,18 @@ function removeCancelledDeliveries(queue: QueueShop[], cancelledEventIds: Set<st
   });
 }
 
+function confirmedReceipt(receipt: PaymentReceipt, result: Record<string, unknown>): PaymentReceipt | null {
+  const { payment_id, receipt_number, recorded_at, allocated_amount, change_amount, received_date_override, entered_at } = result;
+  if (typeof payment_id !== 'string' || !payment_id || typeof receipt_number !== 'string' || !receipt_number
+    || typeof recorded_at !== 'string' || !recorded_at
+    || allocated_amount == null || !Number.isFinite(Number(allocated_amount))
+    || change_amount == null || !Number.isFinite(Number(change_amount))) return null;
+  return { ...receipt, pending: false, paymentId: payment_id, receiptNumber: receipt_number,
+    allocatedAmount: Number(allocated_amount), changeAmount: Number(change_amount), recordedAt: recorded_at,
+    receivedDate: typeof received_date_override === 'string' ? received_date_override : null,
+    enteredAt: typeof entered_at === 'string' ? entered_at : null };
+}
+
 type PaymentHistoryPage = {
   items?: PaymentHistoryItem[];
   next_cursor?: { recorded_at: string; id: string } | null;
@@ -157,6 +169,9 @@ export function FinancialOperations({
 }) {
   useLanguage();
   const serviceDate = demoData?.serviceDate ?? propServiceDate ?? toBangkokDateString();
+  const resolveChargeId = useCallback((id?: string) => id && offlineRuntime?.engine.day === serviceDate
+    ? offlineRuntime.engine.getSnapshot().snapshot?.chargeAliases?.[id] ?? id : id, [offlineRuntime, serviceDate]);
+  const focusedChargeId = resolveChargeId(focusRequest?.chargeId);
   const isManager = import.meta.env.VITE_EMPLOYEE_ONLY !== 'true' && (userRole === 'admin' || userRole === 'round_lead');
   const initialDemoRunId = demoData
     ? demoData.runId === undefined ? 'demo-collection-run' : demoData.runId
@@ -227,6 +242,25 @@ export function FinancialOperations({
   receiptRef.current = receipt;
   selectedShopRef.current = selectedShop;
   selectedChargeIdsRef.current = selectedChargeIds;
+
+  useEffect(() => {
+    if (!receipt?.pending || !offlineRuntime || offlineRuntime.engine.day !== serviceDate) return;
+    const localPaymentId = receipt.paymentId;
+    const reconcileReceipt = () => {
+      const command = offlineRuntime.engine.getSnapshot().commands.find((candidate) => (
+        candidate.type === 'collection_payment' && `local:${candidate.id}` === localPaymentId
+      ));
+      if (command?.status !== 'applied' || !command.result) return;
+      const confirmed = confirmedReceipt(receipt, command.result);
+      if (!confirmed) return;
+      setReceipt((current) => current?.pending && current.paymentId === localPaymentId ? confirmed : current);
+      setSuccess('บันทึกรับเงินแล้ว');
+    };
+    const unsubscribe = offlineRuntime.engine.subscribe(reconcileReceipt);
+    // Sync can finish before React renders the locally saved receipt.
+    reconcileReceipt();
+    return unsubscribe;
+  }, [offlineRuntime, receipt?.pending, receipt?.paymentId, serviceDate]);
 
   const resetPaymentForm = useCallback((shop: QueueShop) => {
     const chargeIds = shop.charges.map((charge) => charge.charge_id);
@@ -309,7 +343,7 @@ export function FinancialOperations({
       if (focusLoadRequestId && focusLoadRequestId !== focusLoadRequestRef.current) return;
       const currentShop = selectedShopRef.current;
       const preferredShop = preferredQueueKey || preferredChargeId
-        ? preferredCollection(nextQueue, preferredQueueKey, preferredChargeId, preferredEvent)
+        ? preferredCollection(nextQueue, preferredQueueKey, resolveChargeId(preferredChargeId), preferredEvent)
         : null;
       const nextSelectedShop = preferredShop ?? (!preferredEvent?.eventParticipationId && currentShop
         ? nextQueue.find((shop) => queueIdentity(shop) === queueIdentity(currentShop)) ?? null
@@ -360,7 +394,7 @@ export function FinancialOperations({
 
     const todayHistory = await fetchAllPaymentHistory(serviceDate);
     setTodayPayments(todayHistory.filter((payment) => payment.status === 'active'));
-  }, [demoData, isManager, managerPage, resetPaymentForm, serviceDate, offlineRuntime]);
+  }, [demoData, isManager, managerPage, resetPaymentForm, serviceDate, offlineRuntime, resolveChargeId]);
 
   const loadPendingFocus = useCallback(async () => {
     const pendingFocus = focusRequest?.requestId !== handledFocusRequestIdRef.current
@@ -414,7 +448,7 @@ export function FinancialOperations({
       focusRequest && currentShop && (
         focusRequest.queueKey === queueIdentity(currentShop)
         || matchesEventFocus(currentShop, focusRequest)
-        || Boolean(focusRequest.chargeId && currentShop.charges.some((charge) => charge.charge_id === focusRequest.chargeId))
+        || Boolean(focusedChargeId && currentShop.charges.some((charge) => charge.charge_id === focusedChargeId))
       ),
     );
     const recordedReceipt = receiptRef.current;
@@ -434,7 +468,7 @@ export function FinancialOperations({
       shopId: focusRequest.shopId,
       paymentId: recordedReceipt?.paymentId,
     });
-  }, [focusRequest, onFocusedCollectionClose, refreshFinancialData]);
+  }, [focusRequest, focusedChargeId, onFocusedCollectionClose, refreshFinancialData]);
 
   const closeFocusedLoadError = useCallback(() => {
     if (!focusRequest) return;
@@ -725,6 +759,10 @@ export function FinancialOperations({
       const request = getOrCreatePendingRequest(signature);
       const localSnapshot = !isManager && offlineRuntime?.engine.day === serviceDate ? await offlineRuntime.snapshot() : undefined;
       if (!localSnapshot && offlineRuntime?.engine.getSnapshot().commands.some(c => !['applied', 'discard_approved'].includes(c.status))) throw new Error('มีรายการค้างซิงก์ กรุณาตรวจสอบก่อนรับเงินเพิ่ม');
+      if (!localSnapshot && allocations.some(allocation => allocation.charge_id.startsWith('local:'))) {
+        await load();
+        throw new Error('เลขบิลเปลี่ยนหลังเชื่อมต่อ กรุณาเลือกบิลและตรวจยอดอีกครั้ง');
+      }
       const evidencePath = evidence && !localSnapshot ? await uploadPaymentEvidence(evidence, request.key) : null;
       const unifiedEvent = selectedShop.destination_kind === 'event'
         && selectedShop.collection_scope === 'event_participation';
@@ -774,16 +812,20 @@ export function FinancialOperations({
             : 'record_regular_collection_payment';
       if (localSnapshot && offlineRuntime) {
         if (paymentDate !== today) throw new Error('รายการออฟไลน์ต้องเป็นวันปัจจุบัน');
-        await offlineRuntime.engine.enqueue({ id: request.key, type: 'collection_payment', rpc: paymentRpc,
+        const command = await offlineRuntime.engine.submit({ id: request.key, type: 'collection_payment', rpc: paymentRpc,
           args: paymentArgs, expected: { queueKey: queueIdentity(selectedShop), payment_profile: selectedShop.payment_profile,
             charges: selectedShop.charges.map(c => ({ charge_id: c.charge_id, outstanding_amount: c.outstanding_amount })) },
           label: `รับเงิน ${selectedShop.shop_code} ${receivedAmount} บาท`, recordedAt: request.clientRecordedAt, evidence: evidence ?? undefined });
-        clearPendingRequest(signature, request.key);
-        setReceipt({ pending: true, paymentId: `local:${request.key}`, receiptNumber: `TMP-${request.key}`,
+        const pendingReceipt: PaymentReceipt = { pending: true, paymentId: `local:${request.key}`, receiptNumber: `TMP-${request.key}`,
           shopCode: selectedShop.shop_code, shopName: selectedShop.shop_name, method, receivedAmount,
-          allocatedAmount, changeAmount, recordedAt: request.clientRecordedAt, charges: [] });
-        setSuccess('เก็บรายการรับเงินไว้ในเครื่องแล้ว · ไม่ต้องบันทึกซ้ำ ใบเสร็จจริงจะออกหลังระบบตรวจสอบ');
-        void offlineRuntime.tick();
+          allocatedAmount, changeAmount, recordedAt: request.clientRecordedAt, charges: [] };
+        const nextReceipt = command.status === 'applied' ? confirmedReceipt(pendingReceipt, command.result!) : pendingReceipt;
+        if (!nextReceipt) throw new Error('ระบบไม่ได้ส่งเลขที่หรือเวลาของใบเสร็จกลับมา');
+        clearPendingRequest(signature, request.key);
+        setReceipt(nextReceipt);
+        setSuccess(nextReceipt.pending ? 'เก็บรายการรับเงินไว้ในเครื่องแล้ว · ไม่ต้องบันทึกซ้ำ ใบเสร็จจริงจะออกหลังระบบตรวจสอบ' : 'บันทึกรับเงินแล้ว');
+        if (command.status === 'applied') void offlineRuntime.prepare(true);
+        else void offlineRuntime.tick();
         publishDataChange(['payment', 'receivable']);
         return;
       }
@@ -819,6 +861,7 @@ export function FinancialOperations({
       };
       setReceipt(nextReceipt);
       setSuccess('บันทึกรับเงินแล้ว');
+      if (!isManager) void offlineRuntime?.prepare(true);
       publishDataChange(['accounting', 'payment', 'receivable']);
     }, false);
   };
@@ -1242,7 +1285,7 @@ export function FinancialOperations({
           evidence={evidence}
           evidenceError={evidenceError}
           evidenceRequired={evidenceRequired}
-          focusedChargeId={focusRequest && (focusRequest.queueKey === queueIdentity(selectedShop) || selectedShop.charges.some((charge) => charge.charge_id === focusRequest.chargeId)) ? focusRequest.chargeId : null}
+          focusedChargeId={focusRequest && (focusRequest.queueKey === queueIdentity(selectedShop) || selectedShop.charges.some((charge) => charge.charge_id === focusedChargeId)) ? focusedChargeId : null}
           method={method}
           onAmountChange={setAmount}
           onClose={closePayment}

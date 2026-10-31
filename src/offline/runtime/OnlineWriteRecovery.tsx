@@ -29,7 +29,7 @@ export function OnlineWriteRecovery({ owner, live, onResolved = () => window.loc
     setBusy(true); setError(null);
     try {
       await retryPendingOnlineWrite(owner, live);
-      // Remount from current server data after clearing the old pending save.
+      // Refresh server data; a restored draft retains its key and confirmation.
       onResolved();
     } catch (failure) { setError(getErrorMessage(failure)); }
     finally { setBusy(false); setPending(await offlineStore().onlineWrite().catch(() => pending)); }

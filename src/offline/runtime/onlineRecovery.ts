@@ -1,5 +1,4 @@
 import type { EmployeeDeliveryGateway } from '../../EmployeeDeliveryWorkspace';
-import { clearPendingRequestByKey } from '../../features/employee-delivery/usePendingRequests';
 import { supabase } from '../../lib/supabase';
 import { offlineStore, runOnlineOnlyEmployeeWrite } from './client';
 
@@ -35,8 +34,7 @@ export async function retryPendingOnlineWrite(owner: string, live: EmployeeDeliv
     if (response.error) throw response.error;
     result = response.data;
   } else throw new Error('ไม่พบรายการเดิมสำหรับตรวจสอบ');
-  const nested = payload.p_payment_args as Record<string, unknown> | undefined;
-  const key = payload.idempotencyKey ?? payload.p_idempotency_key ?? nested?.p_idempotency_key;
-  if (typeof key === 'string') clearPendingRequestByKey(key);
+  // The originating form may still be open or restored from a saved draft.
+  // Leave its identity intact until it consumes the durable confirmation.
   return result;
 }

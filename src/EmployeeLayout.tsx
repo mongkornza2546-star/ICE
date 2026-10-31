@@ -7,11 +7,13 @@ export function EmployeeLayout({
   profileLabel,
   onSignOut,
   signOutDisabled = false,
+  headerActions,
   children,
 }: {
   profileLabel: string;
   onSignOut?: () => void;
   signOutDisabled?: boolean;
+  headerActions?: ReactNode;
   children: ReactNode;
 }) {
   const { t } = useLanguage();
@@ -27,6 +29,7 @@ export function EmployeeLayout({
         </div>
         <div className="employee-profile">
           <LanguageSwitcher />
+          {headerActions}
           <UserCircle aria-hidden="true" size={30} weight="fill" />
           <span>{profileLabel}</span>
           {onSignOut ? (

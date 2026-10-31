@@ -152,7 +152,8 @@ export function projectCommand(snapshot: WorkSnapshot, command: WorkCommand): Wo
     if (!Array.isArray(allocations) || !allocations.length || new Set(allocations.map(a => a.charge_id)).size !== allocations.length) throw new Error('รายการรับเงินไม่ถูกต้อง');
     let total = 0;
     for (const allocation of allocations) {
-      const charge = shop.charges.find(c => c.charge_id === allocation.charge_id);
+      const chargeId = snapshot.chargeAliases?.[allocation.charge_id] ?? allocation.charge_id;
+      const charge = shop.charges.find(c => c.charge_id === chargeId);
       if (!charge || !Number.isFinite(allocation.amount) || allocation.amount <= 0 || money(allocation.amount) !== allocation.amount
         || allocation.amount > charge.outstanding_amount) throw new Error('ยอดรับเกินยอดค้าง');
       charge.outstanding_amount = money(charge.outstanding_amount - allocation.amount);

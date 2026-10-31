@@ -1,7 +1,6 @@
-import { OfflineConflictReview } from './offline/runtime/OfflineConflictReview';
 import { createEmployeeRuntime, preparedProfile, hasUnsentWork } from './offline/runtime/client';
 import { createOfflineGateway } from './offline/runtime/gateway';
-import { OfflineStatus } from './offline/runtime/OfflineStatus';
+import { OfflineTools } from './offline/runtime/OfflineTools';
 import { OnlineWriteRecovery } from './offline/runtime/OnlineWriteRecovery';
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { KeepAlive } from './KeepAlive';
@@ -305,7 +304,8 @@ export function RoleRouter({
 
   if (profile.role === 'courier') {
     return (
-      <EmployeeLayout onSignOut={signOut} profileLabel={profile.display_name} signOutDisabled={deliveryDraftState.submitting}>
+      <EmployeeLayout onSignOut={signOut} profileLabel={profile.display_name} signOutDisabled={deliveryDraftState.submitting}
+        headerActions={offlineRuntime ? <OfflineTools runtime={offlineRuntime} /> : null}>
         <nav aria-label={t('employeeTasks')} className="employee-task-tabs">
           <button
             aria-current={courierView === 'withdrawal' ? 'page' : undefined}
@@ -364,7 +364,6 @@ export function RoleRouter({
           </button>
         </nav>
         {liveEmployeeGateway ? <OnlineWriteRecovery owner={session.user.id} live={liveEmployeeGateway} /> : null}
-        {offlineRuntime ? <OfflineStatus runtime={offlineRuntime} /> : null}
         <KeepAlive active={courierView === 'withdrawal' || courierView === 'pos'}>
           <EmployeeDeliveryWorkspace
             gateway={employeeGateway}
@@ -430,7 +429,6 @@ export function RoleRouter({
   return (
     <Suspense fallback={<div className="app-shell" role="status">{t('loadingPermissions')}</div>}>
       {liveEmployeeGateway ? <OnlineWriteRecovery owner={session.user.id} live={liveEmployeeGateway} /> : null}
-      {profile.role === 'admin' ? <OfflineConflictReview /> : null}
       <AdminRoleWorkspace
         profile={profile}
         activeView={activeView}

@@ -34,21 +34,26 @@ export async function runOnlineOnlyEmployeeWrite<T>(action: () => PromiseLike<T>
   const session = supabase?.auth ? await withDeadline(() => supabase!.auth.getSession()) : undefined;
   if (session?.error) throw session.error;
   if (supabase?.auth && !session?.data.session?.user.id) throw new Error('กรุณาเข้าสู่ระบบด้วยบัญชีเจ้าของรายการ');
-  await store.beginOnlineWrite(holder, retryKey, session?.data.session?.user.id);
+  const ownerId = session?.data.session?.user.id;
+  const confirmed = await store.onlineResult(ownerId, retryKey);
+  if (confirmed) return confirmed.value as T;
+  await store.beginOnlineWrite(holder, retryKey, ownerId);
   // A timeout/lost response is still unresolved even if the abandoned request
   // later completes. Replay the identical operation to obtain its authoritative
   // result before admitting fresh work (including after a browser restart).
+  let result: T;
   try {
-    const result = await withDeadline(() => Promise.resolve().then(action));
-    const error = result && typeof result === 'object' && 'error' in result ? result.error : null;
-    const status = result && typeof result === 'object' && 'status' in result ? result.status : undefined;
-    const uncertain = error && (isTransportFailure(error) || (typeof status === 'number' && isTransportFailure({ status })));
-    if (!uncertain) await store.endOnlineWrite(holder);
-    return result;
+    result = await withDeadline(() => Promise.resolve().then(action));
   } catch (error) {
     if (!isTransportFailure(error)) await store.endOnlineWrite(holder);
     throw error;
   }
+  const error = result && typeof result === 'object' && 'error' in result ? result.error : null;
+  const status = result && typeof result === 'object' && 'status' in result ? result.status : undefined;
+  const uncertain = error && (isTransportFailure(error) || (typeof status === 'number' && isTransportFailure({ status })));
+  // A failed local acknowledgement must leave the fence available for replay.
+  if (!uncertain) await store.endOnlineWrite(holder, error ? undefined : { value: result });
+  return result;
 }
 export function createEmployeeRuntime(owner: string, day: string, live: EmployeeDeliveryGateway) {
   const engine = new OfflineEngine(owner, day, offlineStore(), {
@@ -80,6 +85,7 @@ export function createEmployeeRuntime(owner: string, day: string, live: Employee
   let loaded = false;
   let lastPreparedAt = 0;
   let stopped = false;
+  let ticking: Promise<void> | undefined;
   async function prepare(force = false) {
     if (stopped) return;
     if (preparing) return preparing;
@@ -140,9 +146,22 @@ export function createEmployeeRuntime(owner: string, day: string, live: Employee
     void prepare();
     return undefined;
   }
-  async function tick() {
+  function tick(): Promise<void> {
+    if (ticking) return ticking;
+    ticking = drain().finally(() => { ticking = undefined; });
+    return ticking;
+  }
+  async function drain() {
     if (stopped || document.visibilityState === 'hidden') return;
     try {
+    // Recover older/cold online-only requests too. Leave a foreground save
+    // alone until its 15-second deadline has elapsed, and retain its identity.
+    const onlineWrite = navigator.onLine ? await engine.store.onlineWrite() : undefined;
+    if (onlineWrite?.ownerId === owner && Date.now() - onlineWrite.startedAt >= 30_000) {
+      const { retryPendingOnlineWrite } = await import('./onlineRecovery');
+      await retryPendingOnlineWrite(owner, live);
+      publishDataChange(['stock', 'pos', 'payment', 'receivable']);
+    }
     await engine.reload();
     const hadPending = engine.getSnapshot().commands.some(pendingCommand);
     await engine.sync();

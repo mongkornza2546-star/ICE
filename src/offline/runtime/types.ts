@@ -17,6 +17,7 @@ export interface WorkSnapshot {
   stocks: Record<string, EmployeeStockState>;
   contexts: Record<string, DeliveryPosContext>;
   collection: CurrentCollectionQueue;
+  chargeAliases?: Record<string, string>;
 }
 export interface WorkCommand {
   id: string;

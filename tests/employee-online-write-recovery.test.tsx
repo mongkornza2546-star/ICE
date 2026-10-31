@@ -10,10 +10,12 @@ vi.mock('../src/lib/supabase', () => ({ supabase: {
 import { hasUnsentWork, offlineStore, runOnlineOnlyEmployeeWrite } from '../src/offline/runtime/client';
 import { OnlineWriteRecovery } from '../src/offline/runtime/OnlineWriteRecovery';
 import { retryPendingOnlineWrite } from '../src/offline/runtime/onlineRecovery';
+import { employeeEventGateway } from '../src/features/employee-events/employeeEventGateway';
 
 const factory = new IDBFactory();
 beforeEach(() => { vi.stubGlobal('indexedDB', factory); mocks.owner = 'employee-1'; });
 afterEach(async () => {
+  vi.restoreAllMocks();
   await offlineStore().close();
   await new Promise<void>((resolve, reject) => {
     const request = factory.deleteDatabase('ice-employee-work-v1');
@@ -22,11 +24,50 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 
+it('isolates persisted online confirmations by owner and exact request', async () => {
+  const first = vi.fn(async () => ({ receipt: 'first-owner' }));
+  await runOnlineOnlyEmployeeWrite(first, correction);
+  await offlineStore().close();
+  expect(await runOnlineOnlyEmployeeWrite(first, correction)).toEqual({ receipt: 'first-owner' });
+  expect(first).toHaveBeenCalledTimes(1);
+  mocks.owner = 'employee-2';
+  const second = vi.fn(async () => ({ receipt: 'second-owner' }));
+  expect(await runOnlineOnlyEmployeeWrite(second, correction)).toEqual({ receipt: 'second-owner' });
+  expect(second).toHaveBeenCalledTimes(1);
+  const changed = JSON.stringify({ kind: 'rpc', rpc: 'apply_open_delivery_correction', args: { ...args, p_reason: 'changed' } });
+  await runOnlineOnlyEmployeeWrite(second, changed);
+  expect(second).toHaveBeenCalledTimes(2);
+});
+
+it('keeps an unresolved fence if saving the server confirmation fails', async () => {
+  const action = vi.fn(async () => ({ receipt: 'confirmed' }));
+  const end = vi.spyOn(offlineStore(), 'endOnlineWrite').mockRejectedValueOnce(new DOMException('Quota exceeded', 'QuotaExceededError'));
+  await expect(runOnlineOnlyEmployeeWrite(action, correction)).rejects.toThrow('Quota exceeded');
+  expect(end).toHaveBeenCalledTimes(1);
+  expect(await offlineStore().hasOnlineWrite()).toBe(true);
+  expect(await offlineStore().onlineResult('employee-1', correction)).toBeUndefined();
+  await runOnlineOnlyEmployeeWrite(action, correction);
+  expect(await offlineStore().hasOnlineWrite()).toBe(false);
+  expect(await offlineStore().onlineResult('employee-1', correction)).toEqual({ value: { receipt: 'confirmed' } });
+});
+
+it('preserves the event gateway result shape when consuming an RPC recovered in the background', async () => {
+  const input = { eventJobId: 'event', requestId: 'booth-request', boothNumber: 'A1',
+    shopName: '', eventZone: '', contactName: '', contactPhone: '' };
+  const result = { created: true, duplicate: false, booth: { id: 'booth' } };
+  mocks.rpc.mockResolvedValueOnce({ data: null, error: { message: 'Load failed' }, status: 0 })
+    .mockResolvedValue({ data: result, error: null, status: 200 });
+  await expect(employeeEventGateway.createBooth(input)).rejects.toThrow('Load failed');
+  await retryPendingOnlineWrite('employee-1', live);
+  await expect(employeeEventGateway.createBooth(input)).resolves.toEqual(result);
+  expect(mocks.rpc).toHaveBeenCalledTimes(2);
+});
+
 const args = { p_event_id: 'delivery-1', p_action: 'cancel', p_reason: 'ส่งผิด', p_idempotency_key: 'original-key' };
 const correction = JSON.stringify({ kind: 'rpc', rpc: 'apply_open_delivery_correction', args });
 const live = {} as EmployeeDeliveryGateway;
 
-it('replays the original saved cancellation after reopen, clears its pending identity, and reloads through the recovery button', async () => {
+it('replays the original saved cancellation after reopen, retains its pending identity, and reloads through the recovery button', async () => {
   let committed = false; let writes = 0;
   mocks.rpc.mockImplementation(async () => {
     if (!committed) { committed = true; writes++; return { data: null, error: { message: 'Load failed' }, status: 0 }; }
@@ -42,7 +83,11 @@ it('replays the original saved cancellation after reopen, clears its pending ide
   expect(mocks.rpc).toHaveBeenNthCalledWith(2, 'apply_open_delivery_correction', args);
   expect(writes).toBe(1);
   expect(await offlineStore().hasPending()).toBe(false);
-  expect(JSON.parse(localStorage.getItem('ice-delivery.pending-requests.v1')!)).toEqual({});
+  expect(JSON.parse(localStorage.getItem('ice-delivery.pending-requests.v1')!).oldForm.key).toBe('original-key');
+  await offlineStore().close();
+  const repeated = await runOnlineOnlyEmployeeWrite(() => mocks.rpc('apply_open_delivery_correction', args), correction);
+  expect(repeated.data).toEqual({ cancelled: true });
+  expect(mocks.rpc).toHaveBeenCalledTimes(2);
 });
 
 it('replays a saved gateway delivery with its original approval and identity', async () => {

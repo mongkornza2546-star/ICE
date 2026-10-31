@@ -4614,6 +4614,14 @@ fieldset.ref-section {
 @media (max-width: 560px) { .employee-casual-attribution { grid-template-columns: 1fr; } }
 
 /* Durable employee work status is shared by courier and administrator shells. */
+.employee-offline-trigger { position: relative; }
+.employee-offline-badge { position: absolute; top: 2px; right: 2px; min-width: 17px; height: 17px; padding: 0 3px; display: grid; place-items: center; border-radius: 9px; background: #b42318; color: #fff; font-size: 10px; font-weight: 700; line-height: 1; pointer-events: none; }
+.employee-profile .employee-offline-trigger:hover { color: #125d94; border-color: #a5c9e3; background: #f1f8fd; }
+.employee-offline-dialog { width: min(640px, calc(100% - 24px)); max-height: 85dvh; margin: auto; padding: 16px; border: 1px solid #c7dceb; border-radius: 16px; color: #244760; background: #fff; overflow-y: auto; }
+.employee-offline-dialog::backdrop { background: rgba(20, 43, 73, .4); }
+.employee-offline-dialog > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.employee-offline-dialog h2 { margin: 0; font-size: 1rem; }
+.employee-offline-dialog > header button { display: grid; place-items: center; flex: 0 0 44px; min-height: 44px; border: 1px solid #d8e3ef; border-radius: 10px; background: #fff; color: #244760; cursor: pointer; }
 .employee-offline-status { margin: .6rem 0; padding: .8rem 1rem; border: 1px solid #c7dceb; border-radius: 14px; background: #f1f8fd; color: #244760; overflow-wrap: anywhere; font-size: .88rem; }
 .employee-offline-status p { margin: .35rem 0; }
 .employee-offline-status > div { display: flex; flex-wrap: wrap; gap: .5rem; }

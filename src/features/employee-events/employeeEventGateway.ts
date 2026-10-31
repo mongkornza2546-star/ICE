@@ -15,8 +15,12 @@ function client() {
   return supabase;
 }
 
-async function rpc<T>(name: string, args?: Record<string, unknown>) {
-  const { data, error, status } = await client().rpc(name, args);
+async function rpc<T>(name: string, args?: Record<string, unknown>, guarded = false) {
+  // Store the same RPC envelope as background recovery; unwrap it only here.
+  const request = () => client().rpc(name, args);
+  const { data, error, status } = await (guarded
+    ? runOnlineOnlyEmployeeWrite(request, JSON.stringify({ kind: 'rpc', rpc: name, args }))
+    : request());
   if (error) {
     if (isMissingRpc(error)) throw new Error('ฐานข้อมูลยังไม่รองรับหน้าอีเวนต์พนักงาน กรุณาติดตั้ง migration 0197');
     throw Object.assign(new Error(getErrorMessage(error)), { code: error.code, status });
@@ -44,8 +48,7 @@ export const employeeEventGateway: EmployeeEventGateway = {
       p_contact_name: input.contactName || null,
       p_contact_phone: input.contactPhone || null,
     };
-    return runOnlineOnlyEmployeeWrite(() => rpc<EmployeeEventBoothResult>('create_employee_event_booth', args),
-      JSON.stringify({ kind: 'rpc', rpc: 'create_employee_event_booth', args }));
+    return rpc<EmployeeEventBoothResult>('create_employee_event_booth', args, true);
   },
 
   async handoffTanks(input) {
@@ -55,7 +58,6 @@ export const employeeEventGateway: EmployeeEventGateway = {
       p_note: input.note,
       p_request_id: input.requestId,
     };
-    return runOnlineOnlyEmployeeWrite(() => rpc<EmployeeTankHandoffResult>('record_employee_event_tank_handoff', args),
-      JSON.stringify({ kind: 'rpc', rpc: 'record_employee_event_tank_handoff', args }));
+    return rpc<EmployeeTankHandoffResult>('record_employee_event_tank_handoff', args, true);
   },
 };

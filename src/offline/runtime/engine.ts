@@ -37,6 +37,36 @@ export class OfflineEngine {
     await this.reload();
     return command;
   }
+  async submit(input: Parameters<OfflineEngine['enqueue']>[0]) {
+    // A foreground retry must retain the first projection and expected state,
+    // including after the server has already applied this identity.
+    const existing = (await this.store.commands(this.owner)).find(c => c.id === input.id);
+    if (existing && (existing.serviceDate !== this.day || existing.type !== input.type || existing.rpc !== input.rpc
+      || JSON.stringify(existing.args) !== JSON.stringify(input.args))) throw new Error('รหัสรายการนี้ถูกใช้กับข้อมูลอื่นแล้ว');
+    let command = existing ?? await this.enqueue(input);
+    if (existing) await this.reload();
+    if (navigator.onLine && command.status !== 'applied') {
+      await this.sync(true);
+      command = this.getSnapshot().commands.find(c => c.id === input.id)!;
+      // A drain already in progress (possibly in another tab) may have taken
+      // its command list before this save. Wait for this specific identity.
+      if (navigator.onLine && ['pending', 'syncing'].includes(command.status)) {
+        command = await withDeadline(async signal => {
+          while (!signal.aborted && navigator.onLine) {
+            await this.sync(); await this.reload();
+            const current = this.getSnapshot().commands.find(c => c.id === input.id)!;
+            if (!['pending', 'syncing'].includes(current.status)) return current;
+            await new Promise(resolve => setTimeout(resolve, 100));
+          }
+          return this.getSnapshot().commands.find(c => c.id === input.id)!;
+        });
+      }
+    }
+    if (['blocked', 'conflict', 'auth_required', 'discard_approved'].includes(command.status)) {
+      throw new Error(command.error ?? 'รายการยังไม่ยืนยัน กรุณาตรวจสอบรายการเดิม');
+    }
+    return command;
+  }
   sync(force = false) {
     if (this.running) return this.running;
     this.running = this.drain(force).finally(() => { this.running = undefined; });

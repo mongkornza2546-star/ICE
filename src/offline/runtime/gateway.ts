@@ -1,19 +1,26 @@
 import type { EmployeeDeliveryGateway, EmployeeDeliveryPayload, EmployeeImmediateSalePayload, EmployeeStockTransferPayload } from '../../EmployeeDeliveryWorkspace';
-import type { DeliveryFinancialResult, ImmediateSaleResult } from '../../types/app';
+import type { DeliveryFinancialResult, EmployeeStockState, ImmediateSaleResult } from '../../types/app';
 import { contextPolicy, stockPolicy } from './project';
 import { runOnlineOnlyEmployeeWrite, type EmployeeRuntime } from './client';
 import { pendingCommand, type OfflineOperation, type WorkCommand } from './types';
 
 export function createOfflineGateway(live: EmployeeDeliveryGateway, runtime: EmployeeRuntime): EmployeeDeliveryGateway {
   const pendingEvidence = new Map<string, File>();
-  const online = <T,>(operation: string, payload: unknown, action: () => Promise<T>) =>
-    runOnlineOnlyEmployeeWrite(action, JSON.stringify({ kind: 'gateway', operation, payload }));
+  const onlineKey = (operation: string, payload: unknown) => JSON.stringify({ kind: 'gateway', operation, payload });
+  const confirmedOnline = (operation: string, payload: unknown) => runtime.engine.store.onlineResult(runtime.engine.owner, onlineKey(operation, payload));
+  const online = async <T,>(operation: string, payload: unknown, action: () => Promise<T>) => {
+    const result = await runOnlineOnlyEmployeeWrite(action, onlineKey(operation, payload));
+    void runtime.prepare(true);
+    return result;
+  };
   async function queue(type: OfflineOperation, rpc: string, args: Record<string, unknown>, expected: Record<string, unknown>, label: string, recordedAt = new Date().toISOString()) {
     const id = String(args.p_idempotency_key);
-    const command = await runtime.engine.enqueue({ id, type, rpc, args, expected, label, recordedAt, evidence: pendingEvidence.get(id) });
+    const command = await runtime.engine.submit({ id, type, rpc, args, expected, label, recordedAt, evidence: pendingEvidence.get(id) });
     pendingEvidence.delete(id);
-    // Saving finishes at the durable local commit. Network work is independent.
-    void runtime.tick();
+    // Confirmation is independent of refreshing the full prepared snapshot.
+    // A failed refresh must not disable the already updated local projection.
+    if (command.status === 'applied') void runtime.prepare(true);
+    else void runtime.tick();
     return command;
   }
   async function snapshotForWrite() {
@@ -22,15 +29,20 @@ export function createOfflineGateway(live: EmployeeDeliveryGateway, runtime: Emp
     return snapshot;
   }
   async function stock(type: 'stock_transfer' | 'stock_return' | 'stock_damage', payload: EmployeeStockTransferPayload) {
+    const confirmed = await confirmedOnline(type, payload);
+    if (confirmed) return confirmed.value as EmployeeStockState;
     const snapshot = await snapshotForWrite();
     if (!snapshot) return online(type, payload, () => (type === 'stock_transfer' ? live.recordEmployeeStockTransfer : type === 'stock_return' ? live.recordEmployeeStockReturn : live.recordEmployeeStockDamage)(payload));
     const current = snapshot.stocks[payload.roundId];
     if (!current) throw new Error('ยังไม่ได้เตรียมสต๊อกของรอบนี้');
-    await queue(type, `record_employee_${type}`, { p_round_id: payload.roundId, p_items: payload.items, p_idempotency_key: payload.idempotencyKey },
+    const command = await queue(type, `record_employee_${type}`, { p_round_id: payload.roundId, p_items: payload.items, p_idempotency_key: payload.idempotencyKey },
       stockPolicy(current), type === 'stock_transfer' ? 'เบิกน้ำแข็ง' : type === 'stock_return' ? 'คืนน้ำแข็ง' : 'น้ำแข็งละลาย/เสีย');
+    if (command.status === 'applied') return command.result as unknown as EmployeeStockState;
     return { ...runtime.engine.getSnapshot().snapshot!.stocks[payload.roundId], offline_pending: true };
   }
   async function delivery(payload: EmployeeDeliveryPayload): Promise<DeliveryFinancialResult | void> {
+    const confirmed = await confirmedOnline('delivery', payload);
+    if (confirmed) return confirmed.value as DeliveryFinancialResult | void;
     // Approval validity/fingerprint belongs to the server. Never relax the
     // offline credit limit merely because a caller supplies an approval ID.
     if (payload.approvalId) return online('delivery', payload, () => live.recordDelivery(payload));
@@ -45,9 +57,11 @@ export function createOfflineGateway(live: EmployeeDeliveryGateway, runtime: Emp
       ...(!event ? { p_payment_term: payload.paymentTerm, p_approval_id: payload.approvalId ?? null,
         p_expected_vat_rate: payload.expectedVatRate ?? 0, p_expected_total: payload.expectedTotal ?? null } : {}),
     }, { ...contextPolicy(context), expected_total: payload.expectedTotal ?? null }, `${context.shop.code} ${context.shop.name}`, payload.clientRecordedAt);
-    return localDelivery(command, payload, snapshot.serviceDate);
+    return command.status === 'applied' ? command.result as unknown as DeliveryFinancialResult : localDelivery(command, payload, snapshot.serviceDate);
   }
   async function immediate(payload: EmployeeImmediateSalePayload): Promise<ImmediateSaleResult> {
+    const confirmed = await confirmedOnline('immediate_sale', payload);
+    if (confirmed) return confirmed.value as ImmediateSaleResult;
     const snapshot = await snapshotForWrite();
     if (!snapshot) {
       if (!live.recordImmediateSale) throw new Error('ยังไม่พร้อมรับชำระ');
@@ -72,6 +86,7 @@ export function createOfflineGateway(live: EmployeeDeliveryGateway, runtime: Emp
       p_evidence_path: payload.evidencePath?.startsWith('offline:') ? null : payload.evidencePath,
       p_expected_total: payload.expectedTotal, p_idempotency_key: payload.idempotencyKey,
     }, contextPolicy(context), `ส่งและรับเงิน ${context.shop.code}`, payload.clientRecordedAt);
+    if (command.status === 'applied') return command.result as unknown as ImmediateSaleResult;
     return { offline_pending: true, delivery: localDelivery(command, { ...payload, status: 'delivered', paymentTerm: 'immediate', destinationKind: 'regular' }, snapshot.serviceDate),
       payment: { payment_id: `local:${command.id}`, shop_id: context.shop.id, payment_method: payload.paymentMethod,
         received_amount: payload.receivedAmount, allocated_amount: payload.expectedTotal, change_amount: Math.round((payload.receivedAmount - payload.expectedTotal) * 100) / 100, status: 'active' },
@@ -102,7 +117,7 @@ export function createOfflineGateway(live: EmployeeDeliveryGateway, runtime: Emp
         eventParticipationId: shop.event_participation_id, outstandingAmount: shop.outstanding_amount })) : live.loadCollectionOutstanding?.(day) ?? [];
     },
     async loadShopCreditEligibility(shopId) { const s = await runtime.snapshot(); const c = Object.values(s?.contexts ?? {}).find(c => c.shop.id === shopId); return c ? Boolean(c.payment_profile?.allowed_payment_terms.includes('credit')) : live.loadShopCreditEligibility?.(shopId) ?? false; },
-    invalidateDeliveryPosContextCache() { if (!runtime.engine.getSnapshot().snapshot) live.invalidateDeliveryPosContextCache?.(); },
+    invalidateDeliveryPosContextCache() { if (navigator.onLine || !runtime.engine.getSnapshot().snapshot) live.invalidateDeliveryPosContextCache?.(); },
     recordDelivery: delivery, recordImmediateSale: immediate,
     recordEmployeeStockTransfer: p => stock('stock_transfer', p), recordEmployeeStockReturn: p => stock('stock_return', p), recordEmployeeStockDamage: p => stock('stock_damage', p),
     async uploadPaymentEvidence(file, id) {

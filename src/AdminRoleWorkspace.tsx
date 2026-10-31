@@ -4,6 +4,7 @@ import { ManagerDashboard } from './ManagerDashboard';
 import { ExecutiveReportsPage } from './features/reports/ExecutiveReportsPage';
 import { FactoryOrderPage } from './FactoryOrderPage';
 import { AdminReferenceSettings } from './AdminReferenceSettings';
+import { OfflineConflictReview } from './offline/runtime/OfflineConflictReview';
 import { LocationManagementSettings } from './LocationManagementSettings';
 import { ShopSettings } from './ShopSettings';
 import { RoundWorkspace } from './RoundWorkspace';
@@ -194,6 +195,7 @@ export default function AdminRoleWorkspace({
       {visitedViews.has('reference_settings') && (
         <KeepAlive active={currentView === 'reference_settings'}>
           <AdminReferenceSettings />
+          {profile.role === 'admin' ? <OfflineConflictReview /> : null}
         </KeepAlive>
       )}
       {visitedViews.has('stock_operations') && (

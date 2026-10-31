@@ -20,7 +20,6 @@ export function PwaUpdatePrompt() {
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const [hasDraft, setHasDraft] = useState(false);
   const [isOnline, setIsOnline] = useState(() => navigator.onLine);
-  const [offlineReady, setOfflineReady] = useState(false);
   const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [showIosInstallHelp, setShowIosInstallHelp] = useState(false);
   const [updateServiceWorker, setUpdateServiceWorker] = useState<(() => Promise<void>) | null>(null);
@@ -59,9 +58,6 @@ export function PwaUpdatePrompt() {
       const update = registerSW({
         onNeedRefresh() {
           setUpdateAvailable(true);
-        },
-        onOfflineReady() {
-          setOfflineReady(true);
         },
         onRegisteredSW(_serviceWorkerUrl, registration) {
           if (!registration) return;
@@ -104,14 +100,7 @@ export function PwaUpdatePrompt() {
     setShowIosInstallHelp(false);
   };
 
-  if (!isOnline) {
-    return (
-      <aside className="pwa-update-prompt pwa-update-prompt--offline" role="status" aria-live="assertive">
-        <strong>{translateUi('กำลังใช้งานแบบออฟไลน์')}</strong>
-        <span>{translateUi('ตอนนี้ไม่มีเน็ต หากหน้าพนักงานขึ้น “พร้อมทำงาน แม้ไม่มีเน็ต” แล้ว กดส่งของได้ตามปกติ แอปจะเก็บรายการไว้และส่งเข้าระบบเมื่อมีเน็ต')}</span>
-      </aside>
-    );
-  }
+  if (!isOnline) return null;
 
   if (updateAvailable) {
     return (
@@ -151,14 +140,5 @@ export function PwaUpdatePrompt() {
     );
   }
 
-  if (!offlineReady) return null;
-  return (
-    <aside className="pwa-update-prompt pwa-update-prompt--ready" role="status" aria-live="polite">
-      <strong>{translateUi('เก็บไฟล์แอปไว้ในเครื่องแล้ว')}</strong>
-      <span>{translateUi('ตรวจสถานะข้อมูลออฟไลน์ในหน้าพนักงานก่อนทำรายการเมื่อสัญญาณขาด')}</span>
-      <div className="pwa-update-prompt__actions">
-        <button onClick={() => setOfflineReady(false)} type="button">{translateUi('รับทราบ')}</button>
-      </div>
-    </aside>
-  );
+  return null;
 }
