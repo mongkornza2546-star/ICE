@@ -33,7 +33,11 @@ async function setup() {
     payment_profile: { allowed_payment_methods: ['cash'], default_payment_method: 'cash', cash_reference_required: false, cash_evidence_required: false,
       bank_transfer_reference_required: false, bank_transfer_evidence_required: false, qr_reference_required: false, qr_evidence_required: false } };
   const live = { loadReferenceData: vi.fn(async () => ({ rounds: s.rounds, iceTypes: s.iceTypes })), loadShopCards: vi.fn(async () => []),
-    loadEmployeeStockState: vi.fn(async () => s.stocks.round), recordDelivery: vi.fn(async () => result) };
+    // These cases exercise durable offline writes: the foreground reads fail
+    // even though the browser still reports online, while the replay can work.
+    loadDeliveryPosContext: vi.fn(async () => { throw new TypeError('Refresh unavailable'); }),
+    loadEmployeeStockState: vi.fn(async () => { throw new TypeError('Refresh unavailable'); }),
+    recordDelivery: vi.fn(async () => result) };
   const runtime = client.createEmployeeRuntime(s.ownerId, s.serviceDate, live as unknown as EmployeeDeliveryGateway);
   await runtime.engine.install(s);
   mocks.rpc.mockImplementation(async (name: string) => {

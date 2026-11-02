@@ -59,6 +59,74 @@ async function setup() {
 }
 const options = { destinationKind: 'regular' as const, serviceDate: '2026-10-29', forceRefresh: true };
 
+it('rechecks a cached delivery before sending and allows correcting insufficient stock without a queued conflict', async () => {
+  setRemoteStock(18);
+  const { gateway, runtime, live } = await setup();
+  vi.mocked(live.loadDeliveryPosContext!).mockRejectedValueOnce(new TypeError('Failed to fetch'));
+  expect((await gateway.loadDeliveryPosContext!('stop', options)).offline_snapshot).toBe(true);
+  setRemoteStock(3.5);
+  live.recordDelivery = vi.fn(async () => ({ delivery_event_id: 'confirmed' }) as never);
+  const payload = { destinationKind: 'regular' as const, roundStopId: 'stop', items: [{ ice_type_id: 'ice', quantity: 5 }],
+    status: 'delivered' as const, note: null, clientRecordedAt: new Date().toISOString(), idempotencyKey: crypto.randomUUID(),
+    paymentTerm: 'end_of_day' as const, expectedTotal: 125, expectedVatRate: 0 };
+  await expect(gateway.recordDelivery(payload)).rejects.toMatchObject({ stockRejectedBeforeCommit: true, message: expect.stringContaining('3.5') });
+  expect(live.recordDelivery).not.toHaveBeenCalled();
+  expect(await runtime.engine.store.commands(remote.ownerId)).toEqual([]);
+  expect(await runtime.engine.store.hasPending()).toBe(false);
+  await gateway.recordDelivery({ ...payload, idempotencyKey: crypto.randomUUID(), items: [{ ice_type_id: 'ice', quantity: 3 }], expectedTotal: 75 });
+  expect(live.recordDelivery).toHaveBeenCalledTimes(1);
+});
+
+it('rejects an immediate sale against fresh stock before recording delivery or payment', async () => {
+  setRemoteStock(18);
+  const { gateway, runtime, live } = await setup();
+  vi.mocked(live.loadDeliveryPosContext!).mockRejectedValueOnce(new TypeError('Failed to fetch'));
+  await gateway.loadDeliveryPosContext!('stop', options);
+  setRemoteStock(3.5);
+  live.recordImmediateSale = vi.fn();
+  await expect(gateway.recordImmediateSale!({ roundStopId: 'stop', items: [{ ice_type_id: 'ice', quantity: 5 }],
+    note: null, clientRecordedAt: new Date().toISOString(), idempotencyKey: crypto.randomUUID(),
+    paymentMethod: 'cash', receivedAmount: 125, expectedTotal: 125, referenceNumber: null, evidencePath: null }))
+    .rejects.toMatchObject({ stockRejectedBeforeCommit: true, message: expect.stringContaining('3.5') });
+  expect(live.recordImmediateSale).not.toHaveBeenCalled();
+  expect(await runtime.engine.store.commands(remote.ownerId)).toEqual([]);
+  expect(await runtime.engine.store.hasPending()).toBe(false);
+});
+
+it.each(['stock_transfer', 'stock_return', 'stock_damage'] as const)('checks latest source before a cached %s without queuing insufficient stock', async operation => {
+  const { gateway, runtime, live } = await setup();
+  vi.mocked(live.loadEmployeeStockState).mockRejectedValueOnce(new TypeError('Failed to fetch'));
+  await gateway.loadEmployeeStockState('round');
+  setRemoteStock(3.5); remote.stocks.round.truck_location.balances[0].quantity = 3.5;
+  const method = operation === 'stock_transfer' ? 'recordEmployeeStockTransfer'
+    : operation === 'stock_return' ? 'recordEmployeeStockReturn' : 'recordEmployeeStockDamage';
+  live[method] = vi.fn();
+  await expect(gateway[method]({ roundId: 'round', items: [{ ice_type_id: 'ice', quantity: 5 }], idempotencyKey: crypto.randomUUID() }))
+    .rejects.toMatchObject({ stockRejectedBeforeCommit: true });
+  expect(live[method]).not.toHaveBeenCalled();
+  expect(await runtime.engine.store.hasPending()).toBe(false);
+});
+
+it('returns a definitive concurrent stock rejection for editing, but replays an uncertain write before checking remaining stock', async () => {
+  const { gateway, runtime, live } = await setup();
+  live.recordDelivery = vi.fn().mockRejectedValueOnce({ code: 'P0001', message: 'Employee holding does not have enough stock' });
+  const payload = { destinationKind: 'regular' as const, roundStopId: 'stop', items: [{ ice_type_id: 'ice', quantity: 5 }],
+    status: 'delivered' as const, note: null, clientRecordedAt: new Date().toISOString(), idempotencyKey: crypto.randomUUID(),
+    paymentTerm: 'end_of_day' as const, expectedTotal: 125, expectedVatRate: 0 };
+  await expect(gateway.recordDelivery(payload)).rejects.toMatchObject({ stockRejectedBeforeCommit: true });
+  expect(await runtime.engine.store.hasPending()).toBe(false);
+  vi.mocked(live.recordDelivery).mockRejectedValueOnce(new TypeError('Load failed'));
+  await expect(gateway.recordDelivery(payload)).rejects.toThrow('Load failed');
+  expect(await runtime.engine.store.hasOnlineWrite()).toBe(true);
+  setRemoteStock(0);
+  const reads = vi.mocked(live.loadDeliveryPosContext!).mock.calls.length;
+  vi.mocked(live.recordDelivery).mockResolvedValueOnce({ delivery_event_id: 'already-committed' } as never);
+  expect(await gateway.recordDelivery(payload)).toMatchObject({ delivery_event_id: 'already-committed' });
+  expect(vi.mocked(live.loadDeliveryPosContext!).mock.calls.length).toBe(reads);
+  expect(vi.mocked(live.recordDelivery).mock.calls[2][0]).toEqual(payload);
+  expect(await runtime.engine.store.hasPending()).toBe(false);
+});
+
 it('reads POS while full preparation is stalled and receiving more changes', async () => {
   const { runtime, gateway } = await setup(); cleanup.push(runtime.start()); await runtime.tick();
   let release!: () => void;
@@ -295,6 +363,7 @@ it('shows confirmed holdings for an unacknowledged sale but prevents new stock w
   await gateway.recordDelivery({ destinationKind: 'regular', roundStopId: 'stop', items: [{ ice_type_id: 'ice', quantity: 1 }],
     status: 'delivered', note: null, clientRecordedAt: new Date().toISOString(), idempotencyKey: crypto.randomUUID(),
     paymentTerm: 'end_of_day', expectedTotal: 25, expectedVatRate: 0 });
+  await runtime.tick();
   vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true);
   setRemoteStock(3.5);
   expect((await gateway.loadEmployeeStockState('round')).holding_location.balances[0].quantity).toBe(3.5);

@@ -3,7 +3,9 @@ import type { DeliveryFinancialResult, EmployeeStockState, ImmediateSaleResult }
 import { contextPolicy, stockPolicy } from './project';
 import { runOnlineOnlyEmployeeWrite, type EmployeeRuntime } from './client';
 import { pendingCommand, type OfflineOperation, type WorkCommand, type WorkSnapshot } from './types';
-import { isTransportFailure } from './network';
+import { isTransportFailure, withDeadline } from './network';
+import { checkStockQuantities, isServerStockRejection, StockRejectedError } from './stockValidation';
+import { translateUi } from '../../i18n';
 
 export function createOfflineGateway(live: EmployeeDeliveryGateway, runtime: EmployeeRuntime): EmployeeDeliveryGateway {
   const pendingEvidence = new Map<string, File>();
@@ -43,14 +45,39 @@ export function createOfflineGateway(live: EmployeeDeliveryGateway, runtime: Emp
       return savedRead(latest, select);
     }
   }
-  const useLiveWrite = (readLive: boolean, id: string) => navigator.onLine && readLive && !pending()
-    && !runtime.engine.getSnapshot().commands.some(command => command.id === id);
+  async function useLiveWrite(id: string, check: () => Promise<void>) {
+    await runtime.engine.reload();
+    if (runtime.engine.getSnapshot().commands.some(command => command.id === id)) return false;
+    // A lost response must replay before checking stock which it may already
+    // have consumed. The online fence enforces the exact owner and payload.
+    if (await runtime.engine.store.onlineWrite()) return true;
+    if (!navigator.onLine || pending()) return false;
+    try { await withDeadline(() => check()); return true; }
+    catch (error) {
+      if (isTransportFailure(error)) return false;
+      throw error;
+    }
+  }
+  async function checkDeliveryStock(payload: Pick<EmployeeDeliveryPayload, 'roundStopId' | 'items' | 'destinationKind'>) {
+    if (!live.loadDeliveryPosContext || !payload.items.length) return;
+    const context = await live.loadDeliveryPosContext(payload.roundStopId, {
+      destinationKind: payload.destinationKind, serviceDate: runtime.engine.day, forceRefresh: true,
+    });
+    if (context.stock_check_required === false) return;
+    checkStockQuantities(payload.items, context.items.map(item => ({ ...item, quantity: item.stock_quantity })));
+  }
   const onlineKey = (operation: string, payload: unknown) => JSON.stringify({ kind: 'gateway', operation, payload });
   const confirmedOnline = (operation: string, payload: unknown) => runtime.engine.store.onlineResult(runtime.engine.owner, onlineKey(operation, payload));
   const online = async <T,>(operation: string, payload: unknown, action: () => Promise<T>) => {
-    const result = await runOnlineOnlyEmployeeWrite(action, onlineKey(operation, payload));
-    void runtime.prepare(true);
-    return result;
+    const unresolved = await runtime.engine.store.onlineWrite();
+    try {
+      const result = await runOnlineOnlyEmployeeWrite(action, onlineKey(operation, payload));
+      void runtime.prepare(true);
+      return result;
+    } catch (error) {
+      if (!unresolved && isServerStockRejection(error)) throw new StockRejectedError(translateUi('สต๊อกไม่พอ กรุณาตรวจยอดล่าสุดแล้วแก้จำนวน'));
+      throw error;
+    }
   };
   async function queue(type: OfflineOperation, rpc: string, args: Record<string, unknown>, expected: Record<string, unknown>, label: string, recordedAt = new Date().toISOString()) {
     const id = String(args.p_idempotency_key);
@@ -70,9 +97,15 @@ export function createOfflineGateway(live: EmployeeDeliveryGateway, runtime: Emp
   async function stock(type: 'stock_transfer' | 'stock_return' | 'stock_damage', payload: EmployeeStockTransferPayload) {
     const confirmed = await confirmedOnline(type, payload);
     if (confirmed) return confirmed.value as EmployeeStockState;
+    const useOnline = await useLiveWrite(payload.idempotencyKey, async () => {
+      const latest = await live.loadEmployeeStockState(payload.roundId);
+      const source = type === 'stock_transfer' ? latest.truck_location : latest.holding_location;
+      checkStockQuantities(payload.items, source.balances.map(item => ({ ...item, name: item.ice_type_name })));
+    });
+    if (useOnline) return online(type, payload, () => (type === 'stock_transfer' ? live.recordEmployeeStockTransfer : type === 'stock_return' ? live.recordEmployeeStockReturn : live.recordEmployeeStockDamage)(payload));
     const snapshot = await snapshotForWrite();
     if (liveStockRounds.has(payload.roundId) && pending()) throw new Error('มีรายการค้างซิงก์ ต้องตรวจสอบก่อนทำรายการใหม่');
-    if (!snapshot || useLiveWrite(liveStockRounds.has(payload.roundId), payload.idempotencyKey)) return online(type, payload, () => (type === 'stock_transfer' ? live.recordEmployeeStockTransfer : type === 'stock_return' ? live.recordEmployeeStockReturn : live.recordEmployeeStockDamage)(payload));
+    if (!snapshot) return online(type, payload, () => (type === 'stock_transfer' ? live.recordEmployeeStockTransfer : type === 'stock_return' ? live.recordEmployeeStockReturn : live.recordEmployeeStockDamage)(payload));
     const current = snapshot.stocks[payload.roundId];
     if (!current) throw new Error('ยังไม่ได้เตรียมสต๊อกของรอบนี้');
     const command = await queue(type, `record_employee_${type}`, { p_round_id: payload.roundId, p_items: payload.items, p_idempotency_key: payload.idempotencyKey },
@@ -85,9 +118,10 @@ export function createOfflineGateway(live: EmployeeDeliveryGateway, runtime: Emp
     if (confirmed) return confirmed.value as DeliveryFinancialResult | void;
     // Approval validity/fingerprint belongs to the server. Never relax the
     // offline credit limit merely because a caller supplies an approval ID.
-    if (payload.approvalId) return online('delivery', payload, () => live.recordDelivery(payload));
+    const useOnline = await useLiveWrite(payload.idempotencyKey, () => checkDeliveryStock(payload));
+    if (payload.approvalId || useOnline) return online('delivery', payload, () => live.recordDelivery(payload));
     const snapshot = await snapshotForWrite();
-    if (!snapshot || useLiveWrite(livePosStops.has(payload.roundStopId), payload.idempotencyKey)) return online('delivery', payload, () => live.recordDelivery(payload));
+    if (!snapshot) return online('delivery', payload, () => live.recordDelivery(payload));
     const context = snapshot.contexts[payload.roundStopId];
     if (!context) throw new Error('ยังไม่ได้เตรียมข้อมูลร้านนี้');
     const event = payload.destinationKind === 'event';
@@ -102,8 +136,11 @@ export function createOfflineGateway(live: EmployeeDeliveryGateway, runtime: Emp
   async function immediate(payload: EmployeeImmediateSalePayload): Promise<ImmediateSaleResult> {
     const confirmed = await confirmedOnline('immediate_sale', payload);
     if (confirmed) return confirmed.value as ImmediateSaleResult;
-    const snapshot = await snapshotForWrite();
-    if (!snapshot || useLiveWrite(livePosStops.has(payload.roundStopId), payload.idempotencyKey)) {
+    const useOnline = await useLiveWrite(payload.idempotencyKey, () => checkDeliveryStock({ ...payload, destinationKind: 'regular' }));
+    const snapshot = useOnline && !pendingEvidence.has(payload.idempotencyKey) ? undefined : await snapshotForWrite();
+    // An evidence upload that failed before saving still belongs to the durable
+    // offline command; it has not sent a delivery or taken payment yet.
+    if (!snapshot || (useOnline && !pendingEvidence.has(payload.idempotencyKey))) {
       if (!live.recordImmediateSale) throw new Error('ยังไม่พร้อมรับชำระ');
       let evidencePath = payload.evidencePath;
       if (evidencePath?.startsWith('offline:')) {

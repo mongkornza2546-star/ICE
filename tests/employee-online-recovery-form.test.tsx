@@ -7,6 +7,7 @@ import type { EmployeeDeliveryGateway, EmployeeDeliveryPayload } from '../src/Em
 import { useEmployeeDeliveryData } from '../src/features/employee-delivery/useEmployeeDeliveryData';
 import { offlineSnapshot } from './helpers/offlineSnapshot';
 import type { CollectionFocusRequest, DeliveryPosContext, ShopCard } from '../src/types/app';
+import { StockRejectedError } from '../src/offline/runtime/stockValidation';
 
 const { rpcMock } = vi.hoisted(() => ({ rpcMock: vi.fn() }));
 
@@ -62,7 +63,7 @@ function DeliveryHarness({
   canCollectShopPayments?: boolean;
   card?: ShopCard;
   gateway: EmployeeDeliveryGateway;
-  onOpenCollection: (request: CollectionFocusRequest) => void;
+  onOpenCollection?: (request: CollectionFocusRequest) => void;
   requestScope?: string;
 }) {
   const data = useEmployeeDeliveryData({
@@ -85,12 +86,48 @@ function DeliveryHarness({
       <button onClick={() => data.submitDeliveryChoice('end_of_day')} type="button">ส่งอย่างเดียว</button>
       <button onClick={() => data.submitDeliveryChoice('immediate')} type="button">ส่งและรับชำระ</button>
       {data.hasPendingDelivery ? <button onClick={data.retryPendingDelivery} type="button">ลองคำขอเดิมอีกครั้ง</button> : null}
+      {data.paymentOpen ? <form onSubmit={data.handlePaymentSubmit}><button type="submit">ยืนยันรับเงิน</button></form> : null}
       {data.entryError ? <p role="alert">{data.entryError}</p> : null}
     </div>
   );
 }
 
 const factory = new IDBFactory();
+it.each(['delivery', 'immediate'] as const)('refreshes stock and releases a definitively rejected %s draft so its quantity can be corrected', async mode => {
+  const gateway = createGateway();
+  let available = 10;
+  const context = offlineSnapshot().contexts.stop;
+  gateway.loadDeliveryPosContext = vi.fn(async () => ({ ...context, round_id: 'round-1', round_stop_id: 'stop-1',
+    service_date: '2026-08-19', shop: { ...context.shop, id: 'shop-1' },
+    items: [{ ...context.items[0], ice_type_id: 'ice-1', stock_quantity: available }],
+    payment_profile: { default_payment_term: 'end_of_day', allowed_payment_terms: ['end_of_day', 'immediate'],
+      default_payment_method: 'cash', allowed_payment_methods: ['cash'], credit_remaining: null },
+  } as DeliveryPosContext));
+  const record = mode === 'delivery' ? vi.mocked(gateway.recordDelivery) : vi.mocked(gateway.recordImmediateSale!);
+  record.mockImplementationOnce(async () => {
+    available = 0.5;
+    throw new StockRejectedError('เหลือ 0.5 ถุง กรุณาแก้จำนวน');
+  }).mockResolvedValueOnce(mode === 'delivery' ? undefined : { delivery: {} as never, receipt_number: 'REC-1', payment: {} as never, print_document: null });
+  render(<DeliveryHarness gateway={gateway} onOpenCollection={mode === 'delivery' ? vi.fn() : undefined} requestScope={`stock-rejection-edit-${mode}`} />);
+  fireEvent.click(await screen.findByRole('button', { name: 'เลือกร้าน' }));
+  await screen.findByText('context-ready');
+  fireEvent.click(screen.getByRole('button', { name: 'ใส่จำนวน' }));
+  const send = mode === 'delivery' ? 'ส่งอย่างเดียว' : 'ส่งและรับชำระ';
+  fireEvent.click(screen.getByRole('button', { name: send }));
+  if (mode === 'immediate') fireEvent.click(await screen.findByRole('button', { name: 'ยืนยันรับเงิน' }));
+  await screen.findByText('เหลือ 0.5 ถุง กรุณาแก้จำนวน');
+  expect(screen.queryByRole('button', { name: 'ลองคำขอเดิมอีกครั้ง' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'ยืนยันรับเงิน' })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'แก้รายการ' }));
+  fireEvent.click(screen.getByRole('button', { name: send }));
+  if (mode === 'immediate') fireEvent.click(await screen.findByRole('button', { name: 'ยืนยันรับเงิน' }));
+  await screen.findByRole('button', { name: 'เลือกร้าน' });
+  const calls = record.mock.calls;
+  expect(calls).toHaveLength(2);
+  expect(calls[1][0].items).toEqual([{ ice_type_id: 'ice-1', quantity: 0.5 }]);
+  expect(calls[1][0].idempotencyKey).not.toBe(calls[0][0].idempotencyKey);
+});
+
 it.each(['open', 'prepared', 'reopened'] as const)('consumes the original confirmation with a %s draft after automatic recovery', async state => {
   vi.stubGlobal('indexedDB', factory);
   vi.useFakeTimers({ toFake: ['Date'] });

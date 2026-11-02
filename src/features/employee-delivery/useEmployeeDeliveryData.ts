@@ -21,6 +21,7 @@ import { compareShopCodes, normalizeSearch, stockQuantity, employeeErrorMessage,
 import { clearRecovery, readRecovery, writeRecovery } from '../../lib/recoveryStorage';
 import { printSalesDocumentForCurrentPlatform, salesDocumentFromStored, type StoredSalesDocument } from '../../lib/salesDocumentPrint';
 import { publishDataChange } from '../../lib/dataChange';
+import { isStockRejectedError } from '../../offline/runtime/stockValidation';
 import { toBangkokDateString } from '../../lib/serviceDate';
 import {
   clearPosCollectionReturn,
@@ -1157,6 +1158,10 @@ export function useEmployeeDeliveryData({
       if (stockTransferMode === 'receive') onStockReceived?.();
     } catch (transferError) {
       if (requestId !== transferRequestId.current || activeStockRoundId.current !== selectedRound.id) return;
+      if (isStockRejectedError(transferError)) {
+        clearPendingRequest(transferRequestSignature, request.key);
+        await loadStockState(selectedRound.id);
+      }
       setStockError(employeeErrorMessage(transferError));
     } finally {
       if (requestId === transferRequestId.current) setTransferSubmitting(false);
@@ -1357,6 +1362,12 @@ export function useEmployeeDeliveryData({
       await handleRecorded(isDelivery, result);
       if (requestId === submissionRequestId.current) setSubmitting(false);
     } catch (submitError) {
+      if (!recorded && isStockRejectedError(submitError)) {
+        clearPendingRequest(storageSignature, request.key);
+        setApprovalId(null);
+        gateway.invalidateDeliveryPosContextCache?.();
+        await Promise.all([refreshOpenPosContext(), loadStockState(selectedRound.id)]);
+      }
       const code = typeof submitError === 'object' && submitError && 'code' in submitError
         ? String(submitError.code)
         : '';
@@ -1558,6 +1569,17 @@ export function useEmployeeDeliveryData({
       setSuccess(sale.offline_pending ? `เก็บรายการไว้ในเครื่องแล้ว · รอส่งเข้าระบบ · ${sale.receipt_number} (ใบรับรายการชั่วคราว)`
         : `บันทึกขายสดและออก ${sale.receipt_number} แล้ว`, sale.print_document);
     } catch (paymentError) {
+      if (usesAtomicSale && isStockRejectedError(paymentError)) {
+        releaseImmediateSaleRetry(atomicRetry);
+        setImmediateSaleRetry(null);
+        setPaymentOpen(false);
+        setPaymentResult(null);
+        persistRecoveryNow({ immediateSaleRetry: null, paymentOpen: false, paymentResult: null });
+        gateway.invalidateDeliveryPosContextCache?.();
+        await Promise.all([refreshOpenPosContext(), loadStockState(selectedRoundId)]);
+        setEntryError(employeeErrorMessage(paymentError));
+        return;
+      }
       const rawMessage = paymentError instanceof Error
         ? paymentError.message
         : typeof paymentError === 'object' && paymentError && 'message' in paymentError
