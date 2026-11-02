@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -66,7 +66,7 @@ describe('casual-customer POS navigation', () => {
     expect(screen.queryByRole('button', { name: 'บันทึกลูกค้าขายสด' })).toBeNull();
   });
 
-  it('keeps the entry hidden when the server does not advertise the measured RPC capability', async () => {
+  it('keeps the entry disabled when the server does not advertise the measured RPC capability', async () => {
     const gateway = createGateway();
     vi.mocked(gateway.loadCasualTransactionCapability!).mockResolvedValue(false);
     render(<EmployeeDeliveryWorkspace
@@ -77,7 +77,44 @@ describe('casual-customer POS navigation', () => {
 
     await screen.findByRole('searchbox', { name: 'ค้นหาร้าน' });
     await waitFor(() => expect(gateway.loadCasualTransactionCapability).toHaveBeenCalled());
-    expect(screen.queryByRole('button', { name: 'บันทึกลูกค้าขายสด' })).toBeNull();
+    expect((screen.getByRole('button', { name: 'บันทึกลูกค้าขายสด' }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it.each(['available', 'unavailable', 'error'] as const)('keeps three tabs while checking capability: %s', async (result) => {
+    const user = userEvent.setup();
+    const gateway = createGateway();
+    let resolveCapability!: (available: boolean) => void;
+    let rejectCapability!: (error: Error) => void;
+    vi.mocked(gateway.loadCasualTransactionCapability!).mockReturnValue(new Promise<boolean>((resolve, reject) => {
+      resolveCapability = resolve;
+      rejectCapability = reject;
+    }));
+    render(<EmployeeDeliveryWorkspace casualCustomerEnabled gateway={gateway} serviceDate="2026-08-20" />);
+
+    const tabs = await screen.findByRole('navigation', { name: 'ประเภทจุดส่ง' });
+    const button = screen.getByRole('button', { name: 'บันทึกลูกค้าขายสด' }) as HTMLButtonElement;
+    expect(tabs.querySelectorAll('button')).toHaveLength(3);
+    expect(tabs.classList.contains('employee-destination-tabs--two')).toBe(false);
+    expect(button.disabled).toBe(true);
+    expect((screen.getByRole('button', { name: 'ร้านประจำ', exact: true }) as HTMLButtonElement).disabled).toBe(false);
+    expect((screen.getByRole('button', { name: 'อีเว้น', exact: true }) as HTMLButtonElement).disabled).toBe(false);
+    await user.click(button);
+    expect(gateway.loadCasualTransactionContext).not.toHaveBeenCalled();
+
+    await act(async () => {
+      if (result === 'error') rejectCapability(new Error('Network unavailable'));
+      else resolveCapability(result === 'available');
+    });
+    expect(screen.getByRole('button', { name: 'บันทึกลูกค้าขายสด' })).toBe(button);
+    expect(tabs.querySelectorAll('button')).toHaveLength(3);
+    expect(tabs.classList.contains('employee-destination-tabs--two')).toBe(false);
+    expect(button.disabled).toBe(result !== 'available');
+    await user.click(button);
+    if (result === 'available') {
+      expect(await screen.findByRole('heading', { level: 1, name: 'ลูกค้าขายสด' })).toBeTruthy();
+    } else {
+      expect(gateway.loadCasualTransactionContext).not.toHaveBeenCalled();
+    }
   });
 
   it.each(['ร้านประจำ', 'อีเว้น'])('opens casual customers and switches directly to %s', async (destination) => {

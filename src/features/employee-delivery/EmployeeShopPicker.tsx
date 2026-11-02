@@ -107,6 +107,7 @@ function RegularShopVisual({
 export function EmployeeShopPicker({
   casualCustomerButtonRef,
   casualCustomerEntryVisible,
+  casualCustomerEntryDisabled = false,
   enableAssignedStockFlow,
   selectedRoundId,
   query,
@@ -137,6 +138,7 @@ export function EmployeeShopPicker({
 }: {
   casualCustomerButtonRef: React.RefObject<HTMLButtonElement>;
   casualCustomerEntryVisible: boolean;
+  casualCustomerEntryDisabled?: boolean;
   enableAssignedStockFlow: boolean;
   selectedRoundId: string;
   query: string;
@@ -291,6 +293,7 @@ export function EmployeeShopPicker({
         value={destinationKind}
         onChange={(kind) => kind === 'casual' ? openCasualCustomer() : setDestinationKind(kind)}
         casualVisible={casualCustomerEntryVisible}
+        casualDisabled={casualCustomerEntryDisabled}
         casualButtonRef={casualCustomerButtonRef}
       /> : null}
 

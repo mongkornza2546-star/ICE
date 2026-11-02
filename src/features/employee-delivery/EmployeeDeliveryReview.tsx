@@ -1,6 +1,6 @@
 import { CancelTankHandoffDialog } from '../event-management/CancelTankHandoffDialog';
 import { eventManagementGateway } from '../event-management/eventManagementGateway';
-import { CachedCatalogImage } from '../../CachedCatalogImage';
+import { EmployeePosProductImage } from './EmployeePosProductImage';
 import { deliveryLineTotal, deliverySubtotal, exclusiveVat } from '../../lib/vat';
 import { VatBreakdown } from '../financial-operations/components/VatBreakdown';
 import { translateUi, uiDateTimeFormat, useLanguage } from '../../i18n';
@@ -684,12 +684,7 @@ export function EmployeeDeliveryReview({
                       onClick={() => selectIceType(iceType.ice_type_id)}
                       type="button"
                     >
-                      {iceType.image_url || iceType.image_path ? (
-                        <CachedCatalogImage namespace="ice-type-images" imagePath={iceType.image_path} alt="" className="employee-pos-product-image" src={iceType.image_url ?? undefined}
-                          fallback={<span className="employee-pos-product-image"><IceCream aria-hidden="true" /></span>} />
-                      ) : (
-                        <span className="employee-pos-product-image"><IceCream aria-hidden="true" /></span>
-                      )}
+                      <EmployeePosProductImage imagePath={iceType.image_path} imageUrl={iceType.image_url} />
                       <span className="employee-pos-product-selected">{selected ? <CheckCircle aria-hidden="true" weight="fill" /> : null}</span>
                       <strong>{iceType.name}</strong>
                       <small>{iceType.unit_price == null ? translateUi('ยังไม่มีราคา') : `${money.format(iceType.unit_price)} / ${iceType.unit}`}</small>

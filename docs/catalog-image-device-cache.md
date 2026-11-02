@@ -151,3 +151,35 @@ an operation's deadline and restored workspace data arriving before persistence.
 Normal expiry, oversized files, denied storage, and OS eviction can still require
 another download; navigation alone no longer discards reusable bytes in the
 verified cases.
+
+
+Update 2026-11-02: recover POS product images
+-------------------------------------------
+The POS product grid used `CachedCatalogImage` without either `onCacheMiss` or
+`onError`. A restored path with no cached bytes could not request a URL, and a
+failed original URL left the browser's broken-image indicator visible. The
+fallback prop alone only handled a missing cache result, not a native image error.
+
+`EmployeePosProductImage` keeps the existing cache-first reader. A byte-cache miss
+uses `getR2ObjectUrl` to reuse a valid signed URL from memory/localStorage, signing
+only if needed. An image failure forces a fresh R2 catalog URL once. Failed signing,
+failed replacement images and legacy URL failures show the existing ice icon.
+Product selection remains available. Catalog source changes reset recovery and
+ignore old signing replies; returning the same signed URL still retries loading.
+This does not change cache keys, retention, storage permissions or transaction data.
+
+Three actual POS-screen regressions failed before the fix; a path-only cache-hit
+control passed. All nine recovery cases and the related cache/navigation suites
+now pass (109 tests total). The prior cache tests covered stored bytes and generic
+callbacks but did not verify that the POS caller connected recovery callbacks.
+Tests simulate image errors; the exact trigger on the reported iPhone has not
+been observed directly. The frontend must be rebuilt/deployed to deliver the fix.
+
+Review follow-up: the initial recovery handler forced signing on byte-cache
+misses too, deleting valid cached URLs. Three additional regressions failed before
+separating URL lookup from forced refresh. The five-case integration suite in
+`tests/employee-pos-product-image-cache.test.tsx` uses the real cache and R2 URL
+managers with simulated storage/network boundaries. It verifies memory and
+localStorage URL reuse while signing is unavailable, existing image bytes,
+download/persistence on a cold cache, and one forced refresh after a reused URL
+fails. Looking up a URL does not consume the forced-refresh attempt.

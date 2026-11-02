@@ -115,18 +115,18 @@ export function EventPreparationPanel({ detail, gateway, onSaved }: {
         {kind === 'handoff' ? <p>{translateUi('เริ่มค่าเช่า ')}{tankDate > event.start_date ? tankDate : event.start_date}{detail.configuration?.tank_rental_unit_price ? translateUi(' · ค่าเช่า {0} บาท/ถัง (รวม {1} บาท)', { 0: money(detail.configuration.tank_rental_unit_price), 1: money(Number(quantity || 0) * detail.configuration.tank_rental_unit_price) }) : ''}{translateUi(' · ระบบสร้างบิลค่าเช่าอัตโนมัติ')}</p> : null}
         <button className="primary-button" disabled={!tankShop || !tankOptions.length} type="submit">{busy ? translateUi('กำลังบันทึก...') : translateUi('บันทึกรายการถัง')}</button>
       </fieldset></form>
-      <div className="event-import-preview"><table><thead><tr><th>{translateUi('วันที่')}</th><th>{translateUi('ร้าน / บูธ')}</th><th>{translateUi('รายการ')}</th><th>{translateUi('จำนวน')}</th><th>{translateUi('เริ่มค่าเช่า')}</th><th>{translateUi('บิลค่าเช่า')}</th><th>{translateUi('การจัดการ')}</th></tr></thead><tbody>{[...movements].reverse().map((row) => {
+      <div className="event-import-preview event-tank-history"><table><thead><tr><th>{translateUi('วันที่')}</th><th>{translateUi('ร้าน / บูธ')}</th><th>{translateUi('รายการ')}</th><th>{translateUi('จำนวน')}</th><th>{translateUi('เริ่มค่าเช่า')}</th><th>{translateUi('บิลค่าเช่า')}</th><th>{translateUi('การจัดการ')}</th></tr></thead><tbody>{[...movements].reverse().map((row) => {
         const shop = participations.find((p) => p.id === row.event_participation_id);
         return <tr key={row.id}>
-          <td>{row.service_date}</td>
-          <td>{shop?.booth_number || '—'} · {shop?.shop_name}</td>
-          <td>{row.cancelled ? translateUi('ส่งมอบ · ยกเลิกแล้ว') : row.reverses_movement_id ? translateUi('ย้อนรายการส่งมอบ') : row.movement_kind === 'handoff' ? translateUi('ส่งมอบ') : translateUi('รับคืน')}{row.note ? ` · ${row.note}` : ''}</td>
-          <td>{row.quantity}</td>
-          <td>{row.rental_start_date ?? '—'}</td>
-          <td>
+          <td data-label={translateUi('วันที่')}>{row.service_date}</td>
+          <td data-label={translateUi('ร้าน / บูธ')}>{shop?.booth_number || '—'} · {shop?.shop_name}</td>
+          <td data-label={translateUi('รายการ')}>{row.cancelled ? translateUi('ส่งมอบ · ยกเลิกแล้ว') : row.reverses_movement_id ? translateUi('ย้อนรายการส่งมอบ') : row.movement_kind === 'handoff' ? translateUi('ส่งมอบ') : translateUi('รับคืน')}{row.note ? ` · ${row.note}` : ''}</td>
+          <td data-label={translateUi('จำนวน')}>{row.quantity}</td>
+          <td data-label={translateUi('เริ่มค่าเช่า')}>{row.rental_start_date ?? '—'}</td>
+          <td data-label={translateUi('บิลค่าเช่า')}>
             {row.charge_number ? <span>{row.charge_number}{row.charge_status === 'voided' ? <small>{translateUi('ยกเลิกบิลแล้ว')}</small> : row.outstanding_amount != null ? <small style={{ display: 'block', color: Number(row.outstanding_amount) > 0 ? '#b91c1c' : '#15803d' }}>{Number(row.outstanding_amount) > 0 ? translateUi('ค้างชำระ {0} บ.', { 0: money(row.outstanding_amount) }) : translateUi('ชำระแล้ว')}</small> : null}</span> : '—'}
           </td>
-          <td>
+          <td data-label={translateUi('การจัดการ')} className="event-tank-history__actions">
             {row.movement_kind === 'handoff' && !row.cancelled ? <button type="button" className="event-danger-button" disabled={busy} onClick={() => setCancelTarget(row)}>{translateUi('ยกเลิกรายการถัง')}</button> : null}
             {row.charge_id && row.charge_status !== 'voided' ? <button type="button" className="secondary-button" disabled={busy} onClick={() => void printInvoice(row.charge_id!)}>{translateUi('พิมพ์บิล')}</button> : '—'}
           </td>

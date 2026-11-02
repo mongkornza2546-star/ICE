@@ -116,7 +116,11 @@ export function createOfflineGateway(live: EmployeeDeliveryGateway, runtime: Emp
       return s ? s.collection.queue.map(shop => ({ queueKey: shop.queue_key ?? `regular:${shop.shop_id}`, shopId: shop.shop_id,
         eventParticipationId: shop.event_participation_id, outstandingAmount: shop.outstanding_amount })) : live.loadCollectionOutstanding?.(day) ?? [];
     },
-    async loadShopCreditEligibility(shopId) { const s = await runtime.snapshot(); const c = Object.values(s?.contexts ?? {}).find(c => c.shop.id === shopId); return c ? Boolean(c.payment_profile?.allowed_payment_terms.includes('credit')) : live.loadShopCreditEligibility?.(shopId) ?? false; },
+    async loadShopCreditEligibility(shopId, serviceDate) {
+      // Credit documents require current server invoices, not the cached payment profile.
+      if (!navigator.onLine) return false;
+      return live.loadShopCreditEligibility?.(shopId, serviceDate) ?? false;
+    },
     invalidateDeliveryPosContextCache() { if (navigator.onLine || !runtime.engine.getSnapshot().snapshot) live.invalidateDeliveryPosContextCache?.(); },
     recordDelivery: delivery, recordImmediateSale: immediate,
     recordEmployeeStockTransfer: p => stock('stock_transfer', p), recordEmployeeStockReturn: p => stock('stock_return', p), recordEmployeeStockDamage: p => stock('stock_damage', p),

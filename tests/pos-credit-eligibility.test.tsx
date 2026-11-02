@@ -16,24 +16,39 @@ beforeEach(() => {
 });
 
 it.each([
-  [['credit'], true],
-  [['end_of_day', 'immediate'], false],
+  [[{ charge_id: 'credit-invoice' }], true],
+  [[], false],
   [null, false],
-])('reads credit eligibility without delivery or stock RPCs (%j)', async (terms, expected) => {
-  database.maybeSingle.mockResolvedValue({
-    data: terms ? { allowed_payment_terms: terms } : null, error: null,
+])('enables credit documents only when the shop has invoices on the selected date (%j)', async (invoices, expected) => {
+  database.rpc.mockResolvedValue({ data: invoices, error: null });
+  expect(await createSupabaseGateway().loadShopCreditEligibility!('shop-1', '2026-09-25')).toBe(expected);
+  expect(database.rpc).toHaveBeenCalledWith('get_daily_credit_acknowledgement_details', {
+    p_shop_id: 'shop-1', p_service_date: '2026-09-25',
   });
-  const gateway = createSupabaseGateway();
-  expect(await gateway.loadShopCreditEligibility!('shop-1')).toBe(expected);
-  expect(database.from).toHaveBeenCalledWith('shop_payment_profiles');
-  expect(database.eq).toHaveBeenCalledWith('shop_id', 'shop-1');
-  expect(database.rpc).not.toHaveBeenCalled();
+  expect(database.from).not.toHaveBeenCalled();
 });
 
-it('propagates lookup failures instead of treating them as a non-credit shop', async () => {
+it('propagates credit lookup failures for retry', async () => {
   const error = new Error('Network unavailable');
-  database.maybeSingle.mockResolvedValue({ data: null, error });
-  await expect(createSupabaseGateway().loadShopCreditEligibility!('shop-1')).rejects.toBe(error);
+  database.rpc.mockResolvedValue({ data: null, error });
+  await expect(createSupabaseGateway().loadShopCreditEligibility!('shop-1', '2026-09-25')).rejects.toBe(error);
+});
+
+it.each([
+  [[{ shop_id: 'shop-1', charges: [], statements: [] }], { shop_id: 'shop-1', charges: [], statements: [] }],
+  [[{ shop_id: 'other-shop' }], null],
+  [[], null],
+  [null, null],
+])('loads reusable billing data only for the requested shop (%j)', async (accounts, expected) => {
+  database.rpc.mockResolvedValue({ data: accounts, error: null });
+  expect(await createSupabaseGateway().loadShopBillingAccount!('shop-1')).toEqual(expected);
+  expect(database.rpc).toHaveBeenCalledWith('get_employee_billing_accounts', { p_shop_id: 'shop-1' });
+});
+
+it('propagates billing lookup failures for retry', async () => {
+  const error = new Error('Network unavailable');
+  database.rpc.mockResolvedValue({ data: null, error });
+  await expect(createSupabaseGateway().loadShopBillingAccount!('shop-1')).rejects.toBe(error);
 });
 
 it('sends displayed VAT and gross total to the atomic checked delivery writer', async () => {

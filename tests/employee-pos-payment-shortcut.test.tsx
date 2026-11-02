@@ -16,6 +16,11 @@ vi.mock('../src/features/financial-operations/components/DailyCreditAcknowledgem
   </section>,
 }));
 
+vi.mock('../src/features/financial-operations/components/EmployeeBillingStatementsPanel', () => ({
+  EmployeeBillingStatementsPanel: ({ shopId, onBack }: { shopId: string; onBack: () => void }) =>
+    <section aria-label="Billing page"><p>{shopId}</p><button onClick={onBack}>กลับ POS</button></section>,
+}));
+
 const deliveredShop: ShopCard = {
   round_stop_id: 'stop-bb44',
   shop_id: 'shop-bb44',
@@ -140,7 +145,7 @@ describe('POS payment shortcut', () => {
     expect(screen.getByRole('button', { name: 'ส่งเพิ่ม' }).hasAttribute('disabled')).toBe(false);
   });
 
-  it.each([true, false])('shows the credit print shortcut only for credit shops (credit: %s)', async (credit) => {
+  it.each([true, false])('always shows the credit shortcut and enables it only for credit shops (credit: %s)', async (credit) => {
     const user = userEvent.setup();
     const gateway = createGateway(0);
     gateway.loadShopCreditEligibility = vi.fn().mockResolvedValue(credit);
@@ -148,10 +153,13 @@ describe('POS payment shortcut', () => {
     render(<EmployeeDeliveryWorkspace gateway={gateway} printerName="พนักงานทดสอบ"
       serviceDate="2026-09-25" viewMode="pos" />);
     await user.click(await screen.findByRole('button', { name: 'เลือกร้าน BB44 ร้านใหม่น้ำปั่น (ปุ้ย)' }));
-    await waitFor(() => expect(gateway.loadShopCreditEligibility).toHaveBeenCalledWith('shop-bb44'));
+    await waitFor(() => expect(gateway.loadShopCreditEligibility).toHaveBeenCalledWith('shop-bb44', '2026-09-25'));
     expect(gateway.loadDeliveryPosContext).not.toHaveBeenCalled();
     if (!credit) {
-      expect(screen.queryByRole('button', { name: 'ใบเซ็นเครดิต' })).toBeNull();
+      const button = screen.getByRole('button', { name: 'ใบเซ็นเครดิต' });
+      expect(button.hasAttribute('disabled')).toBe(true);
+      await user.click(button);
+      expect(screen.queryByRole('region', { name: 'Credit print page' })).toBeNull();
       return;
     }
     await user.click(await screen.findByRole('button', { name: 'ใบเซ็นเครดิต' }));
@@ -162,6 +170,46 @@ describe('POS payment shortcut', () => {
     expect(screen.getByRole('button', { name: 'รับชำระ' }).hasAttribute('disabled')).toBe(true);
     expect(gateway.recordDelivery).not.toHaveBeenCalled();
     expect(gateway.recordImmediateSale).not.toHaveBeenCalled();
+  });
+
+  it.each([true, false])('always shows billing and opens only an eligible shop (eligible: %s)', async (eligible) => {
+    const user = userEvent.setup();
+    const gateway = createGateway(0);
+    gateway.loadShopBillingAccount = vi.fn().mockResolvedValue(eligible ? { shop_id: 'shop-bb44', charges: [], statements: [] } : null);
+    render(<EmployeeDeliveryWorkspace gateway={gateway} serviceDate="2026-09-25" viewMode="pos" />);
+    await user.click(await screen.findByRole('button', { name: 'เลือกร้าน BB44 ร้านใหม่น้ำปั่น (ปุ้ย)' }));
+    await waitFor(() => expect(gateway.loadShopBillingAccount).toHaveBeenCalledWith('shop-bb44'));
+    const button = screen.getByRole('button', { name: 'ใบวางบิล' });
+    expect(button.hasAttribute('disabled')).toBe(!eligible);
+    await user.click(button);
+    if (eligible) {
+      expect(screen.getByRole('region', { name: 'Billing page' }).textContent).toContain('shop-bb44');
+      await user.click(screen.getByRole('button', { name: 'กลับ POS' }));
+      expect(screen.getByRole('heading', { name: deliveredShop.shop_name })).toBeTruthy();
+    } else {
+      expect(screen.queryByRole('region', { name: 'Billing page' })).toBeNull();
+    }
+    expect(gateway.recordDelivery).not.toHaveBeenCalled();
+  });
+
+  it('keeps billing disabled while checking and after a failure, then enables it after retry', async () => {
+    const user = userEvent.setup();
+    const gateway = createGateway(0);
+    let rejectLookup!: (error: Error) => void;
+    gateway.loadShopBillingAccount = vi.fn()
+      .mockImplementationOnce(() => new Promise((_, reject) => { rejectLookup = reject; }))
+      .mockResolvedValue({ shop_id: 'shop-bb44', charges: [], statements: [] });
+    render(<EmployeeDeliveryWorkspace gateway={gateway} serviceDate="2026-09-25" viewMode="pos" />);
+    await user.click(await screen.findByRole('button', { name: 'เลือกร้าน BB44 ร้านใหม่น้ำปั่น (ปุ้ย)' }));
+    expect(screen.getByRole('button', { name: 'ใบวางบิล' }).hasAttribute('disabled')).toBe(true);
+    rejectLookup(new Error('Network unavailable'));
+    expect((await screen.findByRole('alert')).textContent).toContain('ใบวางบิล');
+    const button = screen.getByRole('button', { name: 'ใบวางบิล' });
+    expect(button.hasAttribute('disabled')).toBe(true);
+    await user.click(button);
+    expect(screen.queryByRole('region', { name: 'Billing page' })).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'ลองใหม่' }));
+    await waitFor(() => expect(button.hasAttribute('disabled')).toBe(false));
   });
 
   it('reports credit lookup failures and retries without leaving the shop', async () => {

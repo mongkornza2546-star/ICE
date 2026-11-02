@@ -196,3 +196,16 @@ it('keeps approval validation online and refuses to bypass pending local work', 
   await expect(gateway.recordDelivery(payload)).rejects.toThrow('ค้างซิงก์');
   expect(live.recordDelivery).not.toHaveBeenCalled();
 });
+
+
+it.each([true, false])('uses live invoice availability for credit documents (online: %s)', async online => {
+  const { s, live, runtime } = setup();
+  await runtime.engine.install(s);
+  vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(online);
+  const loadShopCreditEligibility = vi.fn().mockResolvedValue(false);
+  const { createOfflineGateway } = await import('../src/offline/runtime/gateway');
+  const gateway = createOfflineGateway({ ...live, loadShopCreditEligibility } as unknown as EmployeeDeliveryGateway, runtime);
+  expect(await gateway.loadShopCreditEligibility!('shop', '2026-09-25')).toBe(false);
+  if (online) expect(loadShopCreditEligibility).toHaveBeenCalledWith('shop', '2026-09-25');
+  else expect(loadShopCreditEligibility).not.toHaveBeenCalled();
+});

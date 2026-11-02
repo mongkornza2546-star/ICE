@@ -24,6 +24,10 @@ export function EmployeeShopTaskChoice({
   creditEligibilityError,
   creditEligibilityLoading,
   onRetryCreditEligibility,
+  onOpenBilling,
+  billingEligibilityLoading,
+  billingEligibilityError,
+  onRetryBillingEligibility,
 }: {
   card: ShopCard;
   outstandingAmount: number | undefined;
@@ -38,6 +42,10 @@ export function EmployeeShopTaskChoice({
   creditEligibilityError?: string | null;
   creditEligibilityLoading?: boolean;
   onRetryCreditEligibility?: () => void;
+  onOpenBilling?: () => void;
+  billingEligibilityLoading?: boolean;
+  billingEligibilityError?: string | null;
+  onRetryBillingEligibility?: () => void;
 }) {
   useLanguage();
   const isEvent = card.destination_kind === 'event';
@@ -93,17 +101,25 @@ export function EmployeeShopTaskChoice({
       </div>
       {sendDisabled ? <p className="employee-task-choice__hint">{translateUi('ยังไม่เปิดบันทึกส่งน้ำแข็ง')}</p> : null}
       {disabledReason ? <p className="employee-task-choice__hint">{disabledReason}</p> : null}
-      {creditEligibilityLoading ? <p role="status">{translateUi('กำลังโหลดโปรไฟล์การชำระเงิน...')}</p> : null}
+      {creditEligibilityLoading ? <p role="status">{translateUi('กำลังโหลดใบเครดิต...')}</p> : null}
       {creditEligibilityError ? <div className="employee-task-choice__load-error" role="alert">
         <WarningCircle aria-hidden="true" size={20} weight="fill" />
         <span>{translateUi('ใบเซ็นเครดิต')}: {translateUi(creditEligibilityError)}</span>
         <button disabled={creditEligibilityLoading} onClick={onRetryCreditEligibility} type="button">{translateUi('ลองใหม่')}</button>
       </div> : null}
-      {onOpenCreditSignoff ? <div className="employee-task-choice__actions">
-        <button className="employee-secondary-action employee-task-choice__credit-signoff" onClick={onOpenCreditSignoff} type="button">
+      {billingEligibilityError ? <div className="employee-task-choice__load-error" role="alert">
+        <WarningCircle aria-hidden="true" size={20} weight="fill" />
+        <span>{translateUi('ใบวางบิล')}: {translateUi(billingEligibilityError)}</span>
+        <button disabled={billingEligibilityLoading} onClick={onRetryBillingEligibility} type="button">{translateUi('ลองใหม่')}</button>
+      </div> : null}
+      <div className="employee-task-choice__actions">
+        <button className="employee-secondary-action employee-task-choice__credit-signoff" disabled={!onOpenCreditSignoff || creditEligibilityLoading || !!creditEligibilityError} onClick={onOpenCreditSignoff} type="button">
           <FileText aria-hidden="true" size={21} weight="duotone" />{translateUi('ใบเซ็นเครดิต')}
         </button>
-      </div> : null}
+        <button className="employee-secondary-action employee-task-choice__credit-signoff" disabled={!onOpenBilling || billingEligibilityLoading || !!billingEligibilityError} onClick={onOpenBilling} type="button">
+          <FileText aria-hidden="true" size={21} weight="duotone" />{translateUi('ใบวางบิล')}
+        </button>
+      </div>
     </section>
   );
 }

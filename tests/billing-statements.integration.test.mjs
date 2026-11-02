@@ -196,6 +196,7 @@ async function createDatabase(t, { applyDateFix = true, applyCreditHistoryFix = 
   await db.exec(migration('0237_employee_billing_statements'));
   await db.exec(migration('0240_employee_billing_account_eligibility'));
   await db.exec(migration('0260_employee_billing_ice_quantities'));
+  await db.exec(migration('20261102011030_scoped_employee_billing_accounts'));
   return db;
 }
 
@@ -1225,4 +1226,29 @@ test('collection event identity survives recurring jobs, rental-only payments, a
   await assert.rejects(shopQueue(db), /active user/);
   assert.equal((await db.query(`select has_function_privilege('authenticated',
     'public.get_shop_collection_queue_for_date(date,uuid)', 'execute') as allowed`)).rows[0].allowed, false);
+});
+
+
+test('scoped employee billing preserves visibility and legacy listing without reading other shops', async (t) => {
+  const db = await createDatabase(t);
+  const scoped = async (id) => (await db.query('select public.get_employee_billing_accounts($1::uuid) as result', [id])).rows[0].result;
+  const all = (await db.query('select public.get_employee_billing_accounts() as result')).rows[0].result;
+  await db.exec("set test.role = 'courier'; set test.can_collect = 'false'; set role authenticated");
+  assert.deepEqual(await scoped(shopId), all);
+  assert.deepEqual(await scoped('20000000-0000-4000-8000-000000000099'), []);
+  await db.exec('reset role');
+  // A different shop must be filtered before its statement details are evaluated.
+  await db.exec(`create or replace function public.get_billing_statements(p_shop_id uuid)
+    returns jsonb language plpgsql stable security definer set search_path = public as $$
+    begin
+      if p_shop_id <> '${shopId}'::uuid then raise exception 'unrelated shop read'; end if;
+      return '[]'::jsonb;
+    end; $$;`);
+  assert.equal((await scoped(shopId)).length, 1);
+  await db.exec("create or replace function public.is_financial_charge_visible(uuid) returns boolean language sql as $$ select false $$");
+  assert.deepEqual(await scoped(shopId), []);
+  await db.exec("create or replace function public.is_active_user() returns boolean language sql as $$ select false $$");
+  await assert.rejects(scoped(shopId), /Only active employees/);
+  await db.exec('set role anon');
+  await assert.rejects(scoped(shopId), /permission denied/);
 });

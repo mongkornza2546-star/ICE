@@ -29,6 +29,7 @@ import { EmployeeShopPicker } from './features/employee-delivery/EmployeeShopPic
 import { EmployeeShopTaskChoice } from './features/employee-delivery/EmployeeShopTaskChoice';
 import { shopOutstandingKey } from './features/employee-delivery/utils';
 import { DailyCreditAcknowledgementPanel } from './features/financial-operations/components/DailyCreditAcknowledgementPanel';
+import { EmployeeBillingStatementsPanel, type BillingAccount } from './features/financial-operations/components/EmployeeBillingStatementsPanel';
 import { EmployeeCasualCustomerPage } from './features/employee-delivery/EmployeeCasualCustomerPage';
 import { EmployeeDeliveryReview } from './features/employee-delivery/EmployeeDeliveryReview';
 import { useEmployeeDeliveryData } from './features/employee-delivery/useEmployeeDeliveryData';
@@ -140,7 +141,8 @@ export interface EmployeeDeliveryGateway {
     onBaseCards?: (cards: ShopCard[]) => void;
   }): Promise<ShopCard[]>;
   loadCollectionOutstanding?(serviceDate: string): Promise<CollectionOutstandingSummary[]>;
-  loadShopCreditEligibility?(shopId: string): Promise<boolean>;
+  loadShopCreditEligibility?(shopId: string, serviceDate: string): Promise<boolean>;
+  loadShopBillingAccount?(shopId: string): Promise<BillingAccount | null>;
   getEventCardsLoadError?(roundId: string): string | null;
   loadDeliveryPosContext?(roundStopId: string, options: {
     destinationKind: NonNullable<ShopCard['destination_kind']>;
@@ -475,15 +477,19 @@ export function createSupabaseGateway(): EmployeeDeliveryGateway {
           outstandingAmount: Number(shop.outstanding_amount),
         }));
     },
-    async loadShopCreditEligibility(shopId) {
+    async loadShopCreditEligibility(shopId, serviceDate) {
       if (!supabase) throw new Error('ยังไม่ได้ตั้งค่า Supabase');
-      const { data, error } = await supabase
-        .from('shop_payment_profiles')
-        .select('allowed_payment_terms')
-        .eq('shop_id', shopId)
-        .maybeSingle();
+      const { data, error } = await supabase.rpc('get_daily_credit_acknowledgement_details', {
+        p_shop_id: shopId, p_service_date: serviceDate,
+      });
       if (error) throw error;
-      return Boolean(data?.allowed_payment_terms?.includes('credit'));
+      return (data ?? []).length > 0;
+    },
+    async loadShopBillingAccount(shopId) {
+      if (!supabase) throw new Error('ยังไม่ได้ตั้งค่า Supabase');
+      const { data, error } = await supabase.rpc('get_employee_billing_accounts', { p_shop_id: shopId });
+      if (error) throw error;
+      return (data as BillingAccount[] | null)?.find((account) => account.shop_id === shopId) ?? null;
     },
     getEventCardsLoadError(roundId) {
       return eventCardLoadErrors.get(roundId) ?? null;
@@ -829,6 +835,11 @@ export function EmployeeDeliveryWorkspace({
   const [creditEligibilityError, setCreditEligibilityError] = useState<string | null>(null);
   const [creditEligibilityRetry, setCreditEligibilityRetry] = useState(0);
   const [creditSignoffOpen, setCreditSignoffOpen] = useState(false);
+  const [billingOpen, setBillingOpen] = useState(false);
+  const [billingAccount, setBillingAccount] = useState<BillingAccount | null>(null);
+  const [billingEligibilityLoading, setBillingEligibilityLoading] = useState(false);
+  const [billingEligibilityError, setBillingEligibilityError] = useState<string | null>(null);
+  const [billingEligibilityRetry, setBillingEligibilityRetry] = useState(0);
   const casualCustomerButtonRef = useRef<HTMLButtonElement>(null);
   const casualCustomerBrowseScrollY = useRef(0);
   const casualCustomerReturnFocusPending = useRef(false);
@@ -856,12 +867,13 @@ export function EmployeeDeliveryWorkspace({
     let cancelled = false;
     setTaskChoiceIsCredit(false);
     setCreditSignoffOpen(false);
+    setBillingOpen(false);
     setCreditEligibilityError(null);
     setCreditEligibilityLoading(false);
     const card = data.taskChoiceCard;
     if (!isActive || !card || card.destination_kind === 'event' || !gateway.loadShopCreditEligibility) return;
     setCreditEligibilityLoading(true);
-    void gateway.loadShopCreditEligibility(card.shop_id).then((isCredit) => {
+    void gateway.loadShopCreditEligibility(card.shop_id, serviceDate).then((isCredit) => {
       if (!cancelled) setTaskChoiceIsCredit(isCredit);
     }).catch((error: unknown) => {
       if (!cancelled) setCreditEligibilityError(getErrorMessage(error));
@@ -870,6 +882,33 @@ export function EmployeeDeliveryWorkspace({
     });
     return () => { cancelled = true; };
   }, [data.taskChoiceCard?.round_stop_id, data.taskChoiceCard?.shop_id, gateway, isActive, serviceDate, creditEligibilityRetry]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setBillingAccount(null);
+    setBillingEligibilityError(null);
+    setBillingEligibilityLoading(false);
+    const card = data.taskChoiceCard;
+    if (!isActive || !card || card.destination_kind === 'event' || !gateway.loadShopBillingAccount) return;
+    setBillingEligibilityLoading(true);
+    void gateway.loadShopBillingAccount(card.shop_id).then((account) => {
+      if (!cancelled) setBillingAccount(account);
+    }).catch((error: unknown) => {
+      if (!cancelled) setBillingEligibilityError(getErrorMessage(error));
+    }).finally(() => {
+      if (!cancelled) setBillingEligibilityLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [data.taskChoiceCard?.round_stop_id, data.taskChoiceCard?.shop_id, gateway, isActive, serviceDate, billingEligibilityRetry]);
+
+  useEffect(() => {
+    if (!isActive || !data.taskChoiceCard || creditSignoffOpen || billingOpen) return;
+    const refreshDocuments = () => {
+      setCreditEligibilityRetry((attempt) => attempt + 1);
+      setBillingEligibilityRetry((attempt) => attempt + 1);
+    };
+    return subscribeToDataChange(['receivable', 'payment'], refreshDocuments);
+  }, [isActive, data.taskChoiceCard?.shop_id, creditSignoffOpen, billingOpen]);
 
   useEffect(() => {
     setCasualCustomerOpen(false);
@@ -1011,6 +1050,12 @@ export function EmployeeDeliveryWorkspace({
           printerName={printerName}
           serviceDate={serviceDate}
           shopId={data.taskChoiceCard.shop_id}
+        /> : billingOpen ? <EmployeeBillingStatementsPanel
+          key={data.taskChoiceCard.shop_id}
+          shopId={data.taskChoiceCard.shop_id}
+          initialAccount={billingAccount}
+          onAccountChange={setBillingAccount}
+          onBack={() => setBillingOpen(false)}
         /> : <EmployeeShopTaskChoice
           canCollect={canCollectShopPayments}
           card={data.taskChoiceCard}
@@ -1020,6 +1065,10 @@ export function EmployeeDeliveryWorkspace({
           onBack={data.returnFromTaskChoice}
           onCollect={data.openCollectionFromTaskChoice}
           onOpenCreditSignoff={taskChoiceIsCredit ? () => setCreditSignoffOpen(true) : undefined}
+          onOpenBilling={billingAccount?.shop_id === data.taskChoiceCard.shop_id ? () => setBillingOpen(true) : undefined}
+          billingEligibilityLoading={billingEligibilityLoading}
+          billingEligibilityError={billingEligibilityError}
+          onRetryBillingEligibility={() => setBillingEligibilityRetry((attempt) => attempt + 1)}
           onRetry={() => void data.refreshCollectionOutstanding()}
           onSend={data.sendFromTaskChoice}
           outstandingAmount={data.collectionOutstanding === null
@@ -1263,7 +1312,8 @@ export function EmployeeDeliveryWorkspace({
               return refreshR2CatalogObjectUrl('shop-images', card.image_path);
             }}
             casualCustomerButtonRef={casualCustomerButtonRef}
-            casualCustomerEntryVisible={casualCustomerAvailable}
+            casualCustomerEntryVisible={casualCustomerEnabled}
+            casualCustomerEntryDisabled={!casualCustomerAvailable}
             openCasualCustomer={() => {
               if (!casualCustomerAvailable) return;
               casualCustomerBrowseScrollY.current = window.scrollY;
