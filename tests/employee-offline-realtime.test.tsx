@@ -269,6 +269,91 @@ it('explains conflicts without replacing the projection or discarding the origin
   expect((await gateway.loadDeliveryPosContext!('stop', options)).items[0].stock_quantity).toBe(0);
 });
 
+it('reads confirmed holdings during a conflict without changing the queued command or projection', async () => {
+  const { runtime, gateway, live } = await setup();
+  const command: WorkCommand = { id: 'bb29', ownerId: remote.ownerId, serviceDate: remote.serviceDate,
+    deviceId: 'device', sequence: 1, type: 'delivery', rpc: 'record_delivery_with_vat_check', args: {}, expected: {},
+    status: 'conflict', label: 'BB29', recordedAt: remote.preparedAt, attempts: 1, nextAttemptAt: 0,
+    error: 'Employee holding does not have enough stock' };
+  await runtime.engine.store.update(command); setRemoteStock(3.5);
+  expect((await gateway.loadReferenceData(remote.serviceDate)).rounds).toEqual(remote.rounds);
+  const state = await gateway.loadEmployeeStockState('round');
+  expect(state.holding_location.balances[0].quantity).toBe(3.5);
+  expect(state.sync_pending).toBe(true);
+  expect(state.offline_pending).toBe(false);
+  expect((await runtime.engine.store.commands(remote.ownerId))[0]).toEqual(command);
+  expect((await runtime.engine.store.read(remote.ownerId, remote.serviceDate))!.snapshot.stocks.round.holding_location.balances[0].quantity).toBe(10);
+  live.recordEmployeeStockReturn = vi.fn();
+  await expect(gateway.recordEmployeeStockReturn({ roundId: 'round', items: [{ ice_type_id: 'ice', quantity: 1 }],
+    idempotencyKey: crypto.randomUUID() })).rejects.toThrow('ค้าง');
+  expect(live.recordEmployeeStockReturn).not.toHaveBeenCalled();
+});
+
+it('shows confirmed holdings for an unacknowledged sale but prevents new stock writes against them', async () => {
+  const { runtime, gateway, live } = await setup();
+  vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+  await gateway.recordDelivery({ destinationKind: 'regular', roundStopId: 'stop', items: [{ ice_type_id: 'ice', quantity: 1 }],
+    status: 'delivered', note: null, clientRecordedAt: new Date().toISOString(), idempotencyKey: crypto.randomUUID(),
+    paymentTerm: 'end_of_day', expectedTotal: 25, expectedVatRate: 0 });
+  vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true);
+  setRemoteStock(3.5);
+  expect((await gateway.loadEmployeeStockState('round')).holding_location.balances[0].quantity).toBe(3.5);
+  const before = await runtime.engine.store.commands(remote.ownerId);
+  live.recordEmployeeStockReturn = vi.fn();
+  // Starting another refresh must not remove the fence on the visible live balance.
+  let finishRead!: () => void;
+  vi.mocked(live.loadEmployeeStockState).mockImplementationOnce(async () => {
+    await new Promise<void>(resolve => { finishRead = resolve; });
+    return remote.stocks.round;
+  });
+  const refreshing = gateway.loadEmployeeStockState('round');
+  try {
+    await expect(gateway.recordEmployeeStockReturn({ roundId: 'round', items: [{ ice_type_id: 'ice', quantity: 1 }],
+      idempotencyKey: crypto.randomUUID() })).rejects.toThrow('ค้าง');
+    expect(await runtime.engine.store.commands(remote.ownerId)).toEqual(before);
+    expect(live.recordEmployeeStockReturn).not.toHaveBeenCalled();
+    expect(runtime.engine.getSnapshot().snapshot!.stocks.round.holding_location.balances[0].quantity).toBe(9);
+  } finally { finishRead(); await refreshing; }
+});
+
+it('marks fallback holdings as local and never hides a live authorization error with cached stock', async () => {
+  const { gateway, live } = await setup();
+  vi.mocked(live.loadEmployeeStockState).mockRejectedValueOnce(new TypeError('Failed to fetch'));
+  expect(await gateway.loadEmployeeStockState('round')).toMatchObject({ offline_pending: true });
+  vi.mocked(live.loadEmployeeStockState).mockRejectedValueOnce({ code: '42501', message: 'Permission denied' });
+  await expect(gateway.loadEmployeeStockState('round')).rejects.toMatchObject({ code: '42501' });
+});
+
+it('refreshes visible holdings during a conflict and unlocks only after the server approves discard', async () => {
+  remote.iceTypes = [{ id: 'ice', code: 'I', name: 'น้ำแข็ง', unit: 'ถุง' }];
+  setRemoteStock(18);
+  const { gateway, runtime } = await setup();
+  const form = render(<EmployeeDeliveryWorkspace gateway={gateway} enableAssignedStockFlow viewMode="withdrawal"
+    requestScope="conflicting-stock-refresh" serviceDate={remote.serviceDate} />);
+  cleanup.push(() => form.unmount());
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole('button', { name: 'คืนขึ้นรถ' }));
+  await screen.findByText('เหลือที่ถือ 18 ถุง');
+  const command: WorkCommand = { id: 'bb29', ownerId: remote.ownerId, serviceDate: remote.serviceDate,
+    deviceId: 'device', sequence: 1, type: 'delivery', rpc: 'record_delivery_with_vat_check', args: {}, expected: {},
+    status: 'conflict', label: 'BB29', recordedAt: remote.preparedAt, attempts: 1, nextAttemptAt: 0 };
+  await act(async () => {
+    await runtime.engine.store.update(command); setRemoteStock(3.5);
+    publishDataChange(['stock']);
+  });
+  await screen.findByText('เหลือที่ถือ 3.5 ถุง');
+  expect((screen.getByRole('button', { name: /บันทึกคืนขึ้นรถ/ }) as HTMLButtonElement).disabled).toBe(true);
+  expect(screen.getByText(/ยอดล่าสุดจากระบบ ยังไม่รวมรายการที่รอซิงก์/)).toBeTruthy();
+  mocks.rpc.mockImplementation((name: string) => ({ error: null, data: name === 'get_employee_offline_commands'
+    ? [{ id: command.id, status: 'discard_approved' }]
+    : name === 'get_employee_offline_capability'
+      ? { version: 1, enabled: true, profile: remote.profile, validUntil: remote.validUntil, aggregate: remote.aggregate }
+      : remote.contexts }));
+  await act(async () => { await runtime.engine.sync(true); await runtime.prepare(true); });
+  await vi.waitFor(() => expect((screen.getByRole('button', { name: /บันทึกคืนขึ้นรถ/ }) as HTMLButtonElement).disabled).toBe(false));
+  expect((await runtime.engine.store.commands(remote.ownerId))[0].status).toBe('discard_approved');
+});
+
 it('does not use cached POS to bypass a live authorization error, and recovers on retry', async () => {
   const { gateway, live } = await setup();
   vi.mocked(live.loadDeliveryPosContext!).mockRejectedValueOnce({ code: '42501', message: 'Permission denied' });

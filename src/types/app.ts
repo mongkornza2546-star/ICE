@@ -349,6 +349,8 @@ export interface EmployeeStockLocation {
 
 export interface EmployeeStockState {
   offline_pending?: boolean;
+  // A live overview may be read while writes remain fenced by the local queue.
+  sync_pending?: boolean;
   round_id: string;
   service_date: string;
   withdrawn_balances: StockBalanceItem[];

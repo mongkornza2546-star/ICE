@@ -17,7 +17,16 @@ export function createOfflineGateway(live: EmployeeDeliveryGateway, runtime: Emp
       : 'ข้อมูลออฟไลน์ของวันนี้ยังไม่พร้อม กรุณาเปิดเน็ตและรอจนขึ้น “พร้อมทำงาน แม้ไม่มีเน็ต”');
     return { value, snapshot };
   };
-  async function read<T>(select: (snapshot: WorkSnapshot) => T | undefined, request: () => Promise<T>) {
+  async function read<T>(select: (snapshot: WorkSnapshot) => T | undefined, request: () => Promise<T>, displayOnly = false) {
+    // Reference data and the stock overview can show server-confirmed values
+    // without installing them over an unacknowledged offline projection.
+    if (displayOnly && navigator.onLine) {
+      try { return { value: await request(), snapshot: undefined }; }
+      catch (error) {
+        if (!isTransportFailure(error)) throw error;
+        return savedRead(await runtime.snapshot(), select);
+      }
+    }
     const snapshot = await runtime.snapshot();
     // A pending projection can already include a server commit whose response
     // was lost. Never replace it with an unrelated live read.
@@ -62,6 +71,7 @@ export function createOfflineGateway(live: EmployeeDeliveryGateway, runtime: Emp
     const confirmed = await confirmedOnline(type, payload);
     if (confirmed) return confirmed.value as EmployeeStockState;
     const snapshot = await snapshotForWrite();
+    if (liveStockRounds.has(payload.roundId) && pending()) throw new Error('มีรายการค้างซิงก์ ต้องตรวจสอบก่อนทำรายการใหม่');
     if (!snapshot || useLiveWrite(liveStockRounds.has(payload.roundId), payload.idempotencyKey)) return online(type, payload, () => (type === 'stock_transfer' ? live.recordEmployeeStockTransfer : type === 'stock_return' ? live.recordEmployeeStockReturn : live.recordEmployeeStockDamage)(payload));
     const current = snapshot.stocks[payload.roundId];
     if (!current) throw new Error('ยังไม่ได้เตรียมสต๊อกของรอบนี้');
@@ -131,7 +141,7 @@ export function createOfflineGateway(live: EmployeeDeliveryGateway, runtime: Emp
     get offlineReady() { const s = runtime.engine.getSnapshot().snapshot; return Boolean(s && Date.parse(s.validUntil) > Date.now()); },
     async loadReferenceData(day) {
       if (day !== runtime.engine.day) return live.loadReferenceData(day);
-      return (await read(s => ({ rounds: s.rounds, iceTypes: s.iceTypes }), () => live.loadReferenceData(day))).value;
+      return (await read(s => ({ rounds: s.rounds, iceTypes: s.iceTypes }), () => live.loadReferenceData(day), true)).value;
     },
     async loadShopCards(roundId, options) {
       const result = await read(s => s.cards[roundId], () => live.loadShopCards(roundId, options));
@@ -139,10 +149,11 @@ export function createOfflineGateway(live: EmployeeDeliveryGateway, runtime: Emp
       return result.value;
     },
     async loadEmployeeStockState(roundId) {
-      liveStockRounds.delete(roundId);
-      const result = await read(s => s.stocks[roundId], () => live.loadEmployeeStockState(roundId));
+      const result = await read(s => s.stocks[roundId], () => live.loadEmployeeStockState(roundId), true);
+      await runtime.engine.reload();
       if (!result.snapshot) liveStockRounds.add(roundId);
-      return result.value;
+      else liveStockRounds.delete(roundId);
+      return { ...result.value, offline_pending: Boolean(result.snapshot), sync_pending: !result.snapshot && pending() };
     },
     async loadDeliveryPosContext(id, options) {
       livePosStops.delete(id);

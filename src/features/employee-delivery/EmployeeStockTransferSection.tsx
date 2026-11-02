@@ -112,6 +112,8 @@ export function EmployeeStockTransferSection({
             type="button"
           >{translateUi('ละลาย')}</button>
         </div>
+        <button className="employee-text-button" disabled={!selectedRoundId || transferSubmitting}
+          onClick={() => void loadStockState(selectedRoundId)} type="button">{translateUi('รีเฟรชยอดสต๊อก')}</button>
         {stockError ? (
           <div className="employee-error employee-error--retry" role="alert">
             <span><WarningCircle aria-hidden="true" size={22} weight="fill" />{stockErrorMessage}</span>
@@ -124,6 +126,8 @@ export function EmployeeStockTransferSection({
           <EmployeeState title={translateUi('กำลังโหลดสต๊อกของคุณ')} detail={translateUi('ตรวจยอดรถและจุดถือครอง')} />
         ) : stockState ? (
           <>
+            {stockState.sync_pending ? <p role="status">{translateUi('ยอดล่าสุดจากระบบ ยังไม่รวมรายการที่รอซิงก์ กรุณาเคลียร์รายการค้างก่อนบันทึกเพิ่ม')}</p>
+              : stockState.offline_pending ? <p role="status">{translateUi('ยอดในเครื่อง ยังไม่ได้ตรวจสอบกับระบบล่าสุด')}</p> : null}
             {isCardLayout ? (
               <div className="employee-stock-route">
                 <Truck aria-hidden="true" size={28} weight="duotone" />
@@ -145,7 +149,7 @@ export function EmployeeStockTransferSection({
                 const bags = transferQuantities[iceType.id] ?? emptyBags();
                 const quantity = bagTotal(normalizeBags(bags, iceType.allowHalf));
                 const before = stockQuantity(usesHoldingStock ? stockState.holding_location.balances : stockState.truck_location.balances, iceType.id);
-                const disabled = transferSubmitting || selectedRound?.status === 'closed';
+                const disabled = transferSubmitting || selectedRound?.status === 'closed' || Boolean(stockState.sync_pending);
                 return <StockBagQuantityCard
                   key={iceType.id}
                   name={iceType.name}
@@ -168,7 +172,7 @@ export function EmployeeStockTransferSection({
                 <button className="bag-transfer-undo" disabled={transferSubmitting || !canUndo || selectedRound?.status === 'closed'} onClick={undoTransferQuantity} type="button">
                   <ArrowClockwise aria-hidden="true" size={18} />{translateUi('ย้อนกลับ')}
                 </button>
-                <button className="employee-submit" disabled={transferSubmitting || isClosed || (hasOverstock && !canRetryTransfer)} onClick={() => void handleStockTransfer()} type="button">
+                <button className="employee-submit" disabled={transferSubmitting || isClosed || stockState.sync_pending || (hasOverstock && !canRetryTransfer)} onClick={() => void handleStockTransfer()} type="button">
                   <Check aria-hidden="true" size={18} />
                   {isClosed ? translateUi('งานประจำวันนี้ปิดแล้ว') : transferSubmitting ? translateUi('กำลังบันทึก...') : reconcilePending ? translateUi('ตรวจสอบผลรายการเดิม · {0} ถุง', { 0: formatBags(transferItems.reduce((sum, item) => sum + item.quantity, 0)) }) : translateUi('บันทึก{0} · {1} ถุง', { 0: translateUi(movementLabel), 1: formatBags(transferItems.reduce((sum, item) => sum + item.quantity, 0)) })}
                 </button>

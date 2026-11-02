@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase';
 import { translateUi } from '../../i18n';
 import type { EmployeeRuntime } from './client';
 import { pendingCommand } from './types';
+import { publishDataChange } from '../../lib/dataChange';
 
 export function OfflineStatus({ runtime }: { runtime: EmployeeRuntime }) {
   const view = useSyncExternalStore(runtime.engine.subscribe, runtime.engine.getSnapshot);
@@ -33,8 +34,8 @@ export function OfflineStatus({ runtime }: { runtime: EmployeeRuntime }) {
     {blocked ? <p role="alert">{translateUi('รายการยังอยู่ในเครื่อง ไม่ต้องบันทึกซ้ำ หลังผู้ดูแลแก้ไขแล้ว กดส่งรายการค้างเข้าระบบอีกครั้ง')}</p> : null}
     {view.notice ? <p role="alert">{translateUi(view.notice)}</p> : null}
     <div>
-      <button type="button" disabled={view.preparing || view.syncing} onClick={() => { void runtime.prepare(true); }}>{translateUi('โหลดข้อมูลอีกครั้ง')}</button>
-      <button type="button" disabled={view.syncing} onClick={() => { void runtime.engine.sync(true).then(() => runtime.prepare(true)); }}>{translateUi(view.syncing ? 'กำลังส่งเข้าระบบ…' : 'ส่งรายการค้างเข้าระบบ')}</button>
+      <button type="button" disabled={view.preparing || view.syncing} onClick={() => { void runtime.prepare(true).then(() => publishDataChange(['stock'])); }}>{translateUi('โหลดข้อมูลอีกครั้ง')}</button>
+      <button type="button" disabled={view.syncing} onClick={() => { void runtime.engine.sync(true).then(() => runtime.prepare(true)).then(() => publishDataChange(['stock'])); }}>{translateUi(view.syncing ? 'กำลังส่งเข้าระบบ…' : 'ส่งรายการค้างเข้าระบบ')}</button>
     </div>
     {view.commands.length ? <details open={paused}>
       <summary>{translateUi('ยังไม่ยืนยัน')} {pending.length} · {translateUi('ระบบยืนยันแล้ว')} {view.commands.filter(c => c.status === 'applied').length}</summary>
