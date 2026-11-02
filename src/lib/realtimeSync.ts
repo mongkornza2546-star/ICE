@@ -58,6 +58,7 @@ export function createRealtimeSync(
   let needsFullRefresh = false;
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
   let lastFocusCatchupAt = 0;
+  let disposed = false;
 
   const flush = () => {
     if (debounceTimer) {
@@ -74,6 +75,7 @@ export function createRealtimeSync(
   };
 
   const schedulePublish = (scopes: DataChangeScope[], change?: DataChangeRecord) => {
+    if (disposed) return;
     for (const scope of scopes) {
       pendingScopes.add(scope);
     }
@@ -112,7 +114,10 @@ export function createRealtimeSync(
     }
 
     if (typeof channel?.subscribe === 'function') {
-      channel.subscribe();
+      channel.subscribe((status) => {
+        // Postgres Changes does not replay events missed while disconnected.
+        if (status === 'SUBSCRIBED') schedulePublish(ALL_DATA_CHANGE_SCOPES);
+      });
     }
   } catch {
     // Graceful fallback if channel creation fails
@@ -135,6 +140,7 @@ export function createRealtimeSync(
   }
 
   return () => {
+    disposed = true;
     if (debounceTimer) {
       clearTimeout(debounceTimer);
       debounceTimer = null;

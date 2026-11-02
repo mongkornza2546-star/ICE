@@ -31,7 +31,7 @@ export function OfflineStatus({ runtime }: { runtime: EmployeeRuntime }) {
     {authRequired ? <button type="button" onClick={() => { void supabase?.auth.signOut({ scope: 'local' }); }}>{translateUi('เข้าสู่ระบบใหม่ (เก็บรายการในเครื่อง)')}</button> : null}
     {conflict ? <p role="alert">{translateUi('กดซิงก์ซ้ำจะยังทำรายการเพิ่มไม่ได้ ให้แอดมินตรวจรายการออฟไลน์ตามรายละเอียดด้านล่างก่อน แล้วกดส่งรายการค้างเข้าระบบอีกครั้ง รายการยังอยู่ในเครื่อง ไม่ต้องบันทึกซ้ำ')}</p> : null}
     {blocked ? <p role="alert">{translateUi('รายการยังอยู่ในเครื่อง ไม่ต้องบันทึกซ้ำ หลังผู้ดูแลแก้ไขแล้ว กดส่งรายการค้างเข้าระบบอีกครั้ง')}</p> : null}
-    {view.notice ? <p role="alert">{view.notice}</p> : null}
+    {view.notice ? <p role="alert">{translateUi(view.notice)}</p> : null}
     <div>
       <button type="button" disabled={view.preparing || view.syncing} onClick={() => { void runtime.prepare(true); }}>{translateUi('โหลดข้อมูลอีกครั้ง')}</button>
       <button type="button" disabled={view.syncing} onClick={() => { void runtime.engine.sync(true).then(() => runtime.prepare(true)); }}>{translateUi(view.syncing ? 'กำลังส่งเข้าระบบ…' : 'ส่งรายการค้างเข้าระบบ')}</button>

@@ -1,4 +1,4 @@
-import { publishDataChange } from '../../lib/dataChange';
+import { publishDataChange, subscribeToDataChange } from '../../lib/dataChange';
 import { supabase } from '../../lib/supabase';
 import { loadCurrentCollectionQueue } from '../../lib/collectionQueue';
 import { uploadPaymentEvidence } from '../../lib/paymentEvidence';
@@ -82,67 +82,103 @@ export function createEmployeeRuntime(owner: string, day: string, live: Employee
     },
   });
   let preparing: Promise<void> | undefined;
-  let loaded = false;
   let lastPreparedAt = 0;
+  let lastPrepareAttemptAt = 0;
   let stopped = false;
   let ticking: Promise<void> | undefined;
+  let refreshVersion = 0;
+  let installedVersion = 0;
+  const pendingRefreshMessage = 'ยอดในเครื่องยังไม่ยืนยัน มีรายการค้างซิงก์ กรุณาเปิดปุ่มซิงก์ด้านบนเพื่อตรวจสอบรายการเดิม';
+  const invalidateSnapshot = (newChange = true) => {
+    // A UI cache invalidation can accompany the same event handled by start().
+    if (newChange || refreshVersion === installedVersion) refreshVersion += 1;
+  };
   async function prepare(force = false) {
     if (stopped) return;
     if (preparing) return preparing;
+    // Realtime traffic must not continuously rebuild the entire workday.
+    // The regular tick retries a dirty snapshot after this cooldown.
+    if (!force && Date.now() - lastPrepareAttemptAt < 15_000) return;
+    lastPrepareAttemptAt = Date.now();
     preparing = (async () => {
-      if (!loaded) { await engine.reload(); loaded = true; }
-      const current = engine.getSnapshot().snapshot;
-      if (!navigator.onLine || (!force && current && Date.parse(current.validUntil) > Date.now() && Date.now() - lastPreparedAt < 5 * 60_000)) return;
-      if (engine.getSnapshot().commands.some(pendingCommand)) { await engine.sync(); return; }
-      const version = await engine.store.preparationVersion(owner, day);
-      lastPreparedAt = Date.now();
-      engine.setView({ preparing: true, notice: null });
-      try {
-        if (!supabase) return;
-        const { data: capability, error } = await withDeadline(signal => supabase!.rpc('get_employee_offline_capability', { p_service_date: day }).abortSignal(signal));
-        if (error) throw error;
-        if (capability?.version !== 1 || !capability.enabled || capability.profile?.id !== owner) {
-          await engine.store.invalidate(owner, day); await engine.reload();
-          throw new Error('เซิร์ฟเวอร์ยังไม่เปิดใช้งานออฟไลน์สำหรับบัญชีนี้');
-        }
-        const reference = await withDeadline(() => live.loadReferenceData(day));
-        const snapshot: WorkSnapshot = { version: 1, ownerId: owner, serviceDate: day, profile: capability.profile,
-          preparedAt: new Date().toISOString(), validUntil: capability.validUntil, rounds: reference.rounds, iceTypes: reference.iceTypes,
-          aggregate: capability.aggregate, cards: {}, stocks: {}, contexts: {}, collection: { runId: null, isClosed: false, queue: [] } };
-        for (const round of reference.rounds.filter(r => r.status === 'open' && !r.cancelled_at)) {
-          // Destination synchronization in loadShopCards must finish before the
-          // context batch, otherwise newly assigned shops can be absent.
-          snapshot.cards[round.id] = await withDeadline(() => live.loadShopCards(round.id));
-          const [stock, response] = await Promise.all([
-            withDeadline(() => live.loadEmployeeStockState(round.id)),
-            withDeadline(signal => supabase!.rpc('get_employee_offline_pos_contexts', { p_round_id: round.id }).abortSignal(signal)),
-          ]);
-          if (response.error) throw response.error;
-          snapshot.stocks[round.id] = stock;
-          const contexts = response.data as Record<string, DeliveryPosContext>;
-          for (const card of snapshot.cards[round.id]) {
-            if (card.destination_kind === 'event' && (!card.event_delivery_enabled || !card.is_operational)) continue;
-            if (!contexts[card.round_stop_id]) throw new Error('ข้อมูลร้านสำหรับออฟไลน์ยังไม่ครบ');
-          }
-          Object.assign(snapshot.contexts, contexts);
-        }
-        snapshot.collection = await withDeadline(() => loadCurrentCollectionQueue(day));
-        if (stopped) return;
-        if (await engine.install(snapshot, version.sequence, version.revision)) {
-          lastPreparedAt = Date.now();
-          publishDataChange(['stock', 'pos', 'payment', 'receivable']);
-        }
-        void navigator.storage?.persist?.().catch(() => false);
-      } catch (error) {
-        engine.setView({ notice: `เตรียมข้อมูลออฟไลน์ไม่สำเร็จ: ${(error as { message?: string }).message ?? 'กรุณาลองใหม่'}` });
-      } finally { engine.setView({ preparing: false }); }
+      // Retry once for a change during preparation, then leave it dirty for
+      // the next tick. Foreground POS reads never wait for this work.
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const readingVersion = refreshVersion;
+        await prepareSnapshot(force || readingVersion !== installedVersion, readingVersion);
+        if (stopped || !navigator.onLine || readingVersion === refreshVersion) break;
+        force = true;
+      }
     })().catch(error => { engine.setView({ notice: (error as Error).message, preparing: false }); }).finally(() => { preparing = undefined; });
     return preparing;
   }
-  async function snapshot() {
-    await engine.reload(); loaded = true;
+  async function prepareSnapshot(force: boolean, readingVersion: number) {
+    await engine.reload();
     const current = engine.getSnapshot().snapshot;
-    if (current && Date.parse(current.validUntil) > Date.now()) return current;
+    if (!navigator.onLine || (!force && current && Date.parse(current.validUntil) > Date.now() && Date.now() - lastPreparedAt < 5 * 60_000)) return;
+    if (engine.getSnapshot().commands.some(pendingCommand)) {
+      await engine.sync();
+      await engine.reload();
+      if (engine.getSnapshot().commands.some(pendingCommand)) {
+        engine.setView({ notice: pendingRefreshMessage });
+        return;
+      }
+    }
+    const version = await engine.store.preparationVersion(owner, day);
+    engine.setView({ preparing: true, notice: null });
+    try {
+      if (!supabase) return;
+      const { data: capability, error } = await withDeadline(signal => supabase!.rpc('get_employee_offline_capability', { p_service_date: day }).abortSignal(signal));
+      if (error) throw error;
+      if (capability?.version !== 1 || !capability.enabled || capability.profile?.id !== owner) {
+        await engine.store.invalidate(owner, day); await engine.reload();
+        throw new Error('เซิร์ฟเวอร์ยังไม่เปิดใช้งานออฟไลน์สำหรับบัญชีนี้');
+      }
+      const reference = await withDeadline(() => live.loadReferenceData(day));
+      const snapshot: WorkSnapshot = { version: 1, ownerId: owner, serviceDate: day, profile: capability.profile,
+        preparedAt: new Date().toISOString(), validUntil: capability.validUntil, rounds: reference.rounds, iceTypes: reference.iceTypes,
+        aggregate: capability.aggregate, cards: {}, stocks: {}, contexts: {}, collection: { runId: null, isClosed: false, queue: [] } };
+      for (const round of reference.rounds.filter(r => r.status === 'open' && !r.cancelled_at)) {
+        // Destination synchronization in loadShopCards must finish before the
+        // context batch, otherwise newly assigned shops can be absent.
+        snapshot.cards[round.id] = await withDeadline(() => live.loadShopCards(round.id));
+        const [stock, response] = await Promise.all([
+          withDeadline(() => live.loadEmployeeStockState(round.id)),
+          withDeadline(signal => supabase!.rpc('get_employee_offline_pos_contexts', { p_round_id: round.id }).abortSignal(signal)),
+        ]);
+        if (response.error) throw response.error;
+        snapshot.stocks[round.id] = stock;
+        const contexts = response.data as Record<string, DeliveryPosContext>;
+        for (const card of snapshot.cards[round.id]) {
+          if (card.destination_kind === 'event' && (!card.event_delivery_enabled || !card.is_operational)) continue;
+          if (!contexts[card.round_stop_id]) throw new Error('ข้อมูลร้านสำหรับออฟไลน์ยังไม่ครบ');
+        }
+        Object.assign(snapshot.contexts, contexts);
+      }
+      snapshot.collection = await withDeadline(() => loadCurrentCollectionQueue(day));
+      if (stopped || readingVersion !== refreshVersion) return;
+      if (await engine.install(snapshot, version.sequence, version.revision)) {
+        lastPreparedAt = Date.now();
+        installedVersion = readingVersion;
+        publishDataChange(['stock', 'pos', 'payment', 'receivable'], undefined, 'offline-snapshot');
+      } else {
+        engine.setView({ notice: pendingRefreshMessage });
+      }
+      void navigator.storage?.persist?.().catch(() => false);
+    } catch (error) {
+      engine.setView({ notice: `เตรียมข้อมูลออฟไลน์ไม่สำเร็จ: ${(error as { message?: string }).message ?? 'กรุณาลองใหม่'}` });
+    } finally { engine.setView({ preparing: false }); }
+  }
+  async function snapshot() {
+    await engine.reload();
+    const pending = engine.getSnapshot().commands.filter(pendingCommand);
+    if (pending.some(c => ['blocked', 'conflict', 'auth_required'].includes(c.status) || c.serviceDate !== day)) {
+      throw new Error(pendingRefreshMessage);
+    }
+    const current = engine.getSnapshot().snapshot;
+    if (current && Date.parse(current.validUntil) > Date.now()) {
+      return current;
+    }
     void prepare();
     return undefined;
   }
@@ -171,16 +207,23 @@ export function createEmployeeRuntime(owner: string, day: string, live: Employee
   const start = () => {
     stopped = false;
     engine.resume();
+    const unsubscribe = subscribeToDataChange(['stock', 'pos', 'payment', 'receivable'], detail => {
+      if (detail.source === 'offline-snapshot') return;
+      if (detail.changes?.length && detail.changes.every(change => change.serviceDate && change.serviceDate !== day)) return;
+      invalidateSnapshot();
+      void prepare();
+    });
     void tick();
     const timer = setInterval(() => { void tick(); }, 15_000);
     const resume = () => { void tick(); };
     window.addEventListener('online', resume);
     document.addEventListener('visibilitychange', resume);
     return () => {
+      unsubscribe();
       stopped = true; engine.pause(); clearInterval(timer); window.removeEventListener('online', resume);
       document.removeEventListener('visibilitychange', resume);
     };
   };
-  return { engine, snapshot, prepare, start, tick };
+  return { engine, snapshot, prepare, start, tick, invalidateSnapshot };
 }
 export type EmployeeRuntime = ReturnType<typeof createEmployeeRuntime>;

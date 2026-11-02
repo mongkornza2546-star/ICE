@@ -143,6 +143,13 @@ function renderReview(canCollectImmediatePayment = true, card = shopCard, overri
 }
 
 describe('employee delivery review navigation', () => {
+  it.each([false, true])('identifies a prepared offline balance without blocking offline delivery (%s)', (offline) => {
+    renderReview(true, shopCard, { posContext: { ...posContext, offline_snapshot: offline } });
+    const notice = screen.queryByText('ใช้ยอดในเครื่อง ระบบจะตรวจสอบอีกครั้งเมื่อซิงก์');
+    expect(Boolean(notice)).toBe(offline);
+    expect(screen.getByRole('button', { name: 'ส่งอย่างเดียว' }).hasAttribute('disabled')).toBe(false);
+  });
+
   it.each(['regular', 'event'] as const)('shows today tank rentals without an ice delivery for %s shops', (destination_kind) => {
     renderReview(true, { ...shopCard, destination_kind,
       today_tank_rentals: [{

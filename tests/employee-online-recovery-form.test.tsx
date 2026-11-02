@@ -148,11 +148,13 @@ it.each(['open', 'prepared', 'reopened'] as const)('consumes the original confir
       if (state === 'reopened') {
         form.unmount(); await offlineStore().close();
         render(<DeliveryHarness gateway={createOfflineGateway(live, runtime)} onOpenCollection={vi.fn()} />);
-        await screen.findByText('context-ready');
+        // A forced online stock read can fail after reopening. The frozen
+        // request must still be recoverable without approving a fresh cart.
+        await screen.findByRole('button', { name: 'ลองคำขอเดิมอีกครั้ง' });
       }
       online.mockReturnValue(false);
     }
-    fireEvent.click(screen.getByRole('button', { name: 'ส่งอย่างเดียว' }));
+    fireEvent.click(screen.getByRole('button', { name: 'ลองคำขอเดิมอีกครั้ง' }));
     await screen.findByRole('button', { name: 'เลือกร้าน' });
     expect(record).toHaveBeenCalledTimes(2);
     expect(committed.size).toBe(1);

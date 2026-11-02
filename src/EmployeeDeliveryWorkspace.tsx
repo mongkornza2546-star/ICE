@@ -959,14 +959,15 @@ export function EmployeeDeliveryWorkspace({
     void data.refreshOpenPosContext();
   }, [data.anySubmitting, data.loadStockState, data.selectedRoundId, data.refreshOpenPosContext, data.refreshShopCatalog, gateway, isActive]);
 
-  useEffect(() => subscribeToDataChange(['stock', 'pos'], () => {
+  useEffect(() => subscribeToDataChange(['stock', 'pos'], detail => {
     if (!isActive || data.anySubmitting) {
       catalogRefreshPending.current = true;
       return;
     }
-    gateway.invalidateDeliveryPosContextCache?.();
+    const fromSnapshot = detail?.source === 'offline-snapshot';
+    if (!fromSnapshot) gateway.invalidateDeliveryPosContextCache?.();
     data.retryLoad();
-    void data.refreshOpenPosContext();
+    void data.refreshOpenPosContext(!fromSnapshot);
   }), [data.anySubmitting, data.refreshOpenPosContext, data.retryLoad, gateway, isActive]);
 
   useEffect(() => subscribeToDataChange(['payment', 'receivable'], () => {

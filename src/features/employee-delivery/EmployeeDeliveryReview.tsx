@@ -621,6 +621,10 @@ export function EmployeeDeliveryReview({
         <p className="employee-pos-notice" role="status">
           {translateUi('ต้องตรวจสอบสต๊อกล่าสุดก่อนส่ง กรุณาลองโหลดข้อมูลอีกครั้ง')}</p>
       ) : null}
+      {posContext?.offline_snapshot && !posContext.client_cache?.stale && !loadingPosContext && !posContextError ? (
+        <p className="employee-pos-notice" role="status">
+          {translateUi('ใช้ยอดในเครื่อง ระบบจะตรวจสอบอีกครั้งเมื่อซิงก์')}</p>
+      ) : null}
       {posContextError ? <p className="employee-error" role="alert">{translateUi(posContextError)}</p> : null}
       {(posContextError || posContext?.client_cache?.refresh_failed || posContext?.client_cache?.stale) && !loadingPosContext && onRetryPosContext ? (
         <button className="employee-secondary-action" disabled={submitting}
@@ -864,7 +868,7 @@ export function EmployeeDeliveryReview({
               </div>
               {hasPendingDelivery && !submitting ? (
                 <div>
-                  <small className="employee-delivery-action-note">{translateUi('คำขอก่อนหน้ายังไม่ทราบผล ตรวจผลรายการเดิมก่อนส่งใหม่')}</small>
+                  <small className="employee-delivery-action-note">{translateUi('มีคำขอเดิมรอยืนยัน ตรวจสอบรายการเดิมก่อนส่งใหม่')}</small>
                   <button className="employee-submit" disabled={submitting} onClick={onRetryDelivery} type="button">
                     {translateUi('ตรวจผล / ลองคำขอเดิมอีกครั้ง')}</button>
                 </div>

@@ -17,13 +17,14 @@ export type DataChangeRecord = {
 export type DataChangeDetail = {
   scopes: DataChangeScope[];
   changes?: DataChangeRecord[];
+  source?: 'offline-snapshot';
 };
 
 export const DATA_CHANGE_EVENT = 'ice-data-change';
 
-export function publishDataChange(scopes: DataChangeScope[], changes?: DataChangeRecord[]) {
+export function publishDataChange(scopes: DataChangeScope[], changes?: DataChangeRecord[], source?: DataChangeDetail['source']) {
   window.dispatchEvent(new CustomEvent<DataChangeDetail>(DATA_CHANGE_EVENT, {
-    detail: { scopes: [...new Set(scopes)], ...(changes ? { changes } : {}) },
+    detail: { scopes: [...new Set(scopes)], ...(changes ? { changes } : {}), ...(source ? { source } : {}) },
   }));
 }
 

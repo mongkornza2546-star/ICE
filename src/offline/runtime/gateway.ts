@@ -2,10 +2,40 @@ import type { EmployeeDeliveryGateway, EmployeeDeliveryPayload, EmployeeImmediat
 import type { DeliveryFinancialResult, EmployeeStockState, ImmediateSaleResult } from '../../types/app';
 import { contextPolicy, stockPolicy } from './project';
 import { runOnlineOnlyEmployeeWrite, type EmployeeRuntime } from './client';
-import { pendingCommand, type OfflineOperation, type WorkCommand } from './types';
+import { pendingCommand, type OfflineOperation, type WorkCommand, type WorkSnapshot } from './types';
+import { isTransportFailure } from './network';
 
 export function createOfflineGateway(live: EmployeeDeliveryGateway, runtime: EmployeeRuntime): EmployeeDeliveryGateway {
   const pendingEvidence = new Map<string, File>();
+  const livePosStops = new Set<string>();
+  const liveStockRounds = new Set<string>();
+  const pending = () => runtime.engine.getSnapshot().commands.some(pendingCommand);
+  const savedRead = <T,>(snapshot: WorkSnapshot | undefined, select: (snapshot: WorkSnapshot) => T | undefined) => {
+    const value = snapshot && select(snapshot);
+    if (value === undefined) throw new Error(pending()
+      ? 'มีรายการค้างซิงก์ ต้องตรวจสอบก่อนโหลดข้อมูลใหม่'
+      : 'ข้อมูลออฟไลน์ของวันนี้ยังไม่พร้อม กรุณาเปิดเน็ตและรอจนขึ้น “พร้อมทำงาน แม้ไม่มีเน็ต”');
+    return { value, snapshot };
+  };
+  async function read<T>(select: (snapshot: WorkSnapshot) => T | undefined, request: () => Promise<T>) {
+    const snapshot = await runtime.snapshot();
+    // A pending projection can already include a server commit whose response
+    // was lost. Never replace it with an unrelated live read.
+    if (!navigator.onLine || pending()) return savedRead(snapshot, select);
+    try {
+      const value = await request();
+      const latest = await runtime.snapshot();
+      if (pending()) return savedRead(latest, select);
+      return { value, snapshot: undefined };
+    } catch (error) {
+      if (!isTransportFailure(error)) throw error;
+      const latest = await runtime.snapshot();
+      if (!latest || select(latest) === undefined) throw error;
+      return savedRead(latest, select);
+    }
+  }
+  const useLiveWrite = (readLive: boolean, id: string) => navigator.onLine && readLive && !pending()
+    && !runtime.engine.getSnapshot().commands.some(command => command.id === id);
   const onlineKey = (operation: string, payload: unknown) => JSON.stringify({ kind: 'gateway', operation, payload });
   const confirmedOnline = (operation: string, payload: unknown) => runtime.engine.store.onlineResult(runtime.engine.owner, onlineKey(operation, payload));
   const online = async <T,>(operation: string, payload: unknown, action: () => Promise<T>) => {
@@ -32,7 +62,7 @@ export function createOfflineGateway(live: EmployeeDeliveryGateway, runtime: Emp
     const confirmed = await confirmedOnline(type, payload);
     if (confirmed) return confirmed.value as EmployeeStockState;
     const snapshot = await snapshotForWrite();
-    if (!snapshot) return online(type, payload, () => (type === 'stock_transfer' ? live.recordEmployeeStockTransfer : type === 'stock_return' ? live.recordEmployeeStockReturn : live.recordEmployeeStockDamage)(payload));
+    if (!snapshot || useLiveWrite(liveStockRounds.has(payload.roundId), payload.idempotencyKey)) return online(type, payload, () => (type === 'stock_transfer' ? live.recordEmployeeStockTransfer : type === 'stock_return' ? live.recordEmployeeStockReturn : live.recordEmployeeStockDamage)(payload));
     const current = snapshot.stocks[payload.roundId];
     if (!current) throw new Error('ยังไม่ได้เตรียมสต๊อกของรอบนี้');
     const command = await queue(type, `record_employee_${type}`, { p_round_id: payload.roundId, p_items: payload.items, p_idempotency_key: payload.idempotencyKey },
@@ -47,7 +77,7 @@ export function createOfflineGateway(live: EmployeeDeliveryGateway, runtime: Emp
     // offline credit limit merely because a caller supplies an approval ID.
     if (payload.approvalId) return online('delivery', payload, () => live.recordDelivery(payload));
     const snapshot = await snapshotForWrite();
-    if (!snapshot) return online('delivery', payload, () => live.recordDelivery(payload));
+    if (!snapshot || useLiveWrite(livePosStops.has(payload.roundStopId), payload.idempotencyKey)) return online('delivery', payload, () => live.recordDelivery(payload));
     const context = snapshot.contexts[payload.roundStopId];
     if (!context) throw new Error('ยังไม่ได้เตรียมข้อมูลร้านนี้');
     const event = payload.destinationKind === 'event';
@@ -63,7 +93,7 @@ export function createOfflineGateway(live: EmployeeDeliveryGateway, runtime: Emp
     const confirmed = await confirmedOnline('immediate_sale', payload);
     if (confirmed) return confirmed.value as ImmediateSaleResult;
     const snapshot = await snapshotForWrite();
-    if (!snapshot) {
+    if (!snapshot || useLiveWrite(livePosStops.has(payload.roundStopId), payload.idempotencyKey)) {
       if (!live.recordImmediateSale) throw new Error('ยังไม่พร้อมรับชำระ');
       let evidencePath = payload.evidencePath;
       if (evidencePath?.startsWith('offline:')) {
@@ -99,33 +129,58 @@ export function createOfflineGateway(live: EmployeeDeliveryGateway, runtime: Emp
     voidCasualTransaction: live.voidCasualTransaction ? p => online('void_casual', p, () => live.voidCasualTransaction!(p)) : undefined,
     requestFinancialApproval: live.requestFinancialApproval ? p => online('approval', p, () => live.requestFinancialApproval!(p)) : undefined,
     get offlineReady() { const s = runtime.engine.getSnapshot().snapshot; return Boolean(s && Date.parse(s.validUntil) > Date.now()); },
-    async loadReferenceData(day) { const s = day === runtime.engine.day ? await runtime.snapshot() : undefined; return s ? { rounds: s.rounds, iceTypes: s.iceTypes } : live.loadReferenceData(day); },
-    async loadShopCards(roundId, options) { const s = await runtime.snapshot(); if (s?.cards[roundId]) { options?.onBaseCards?.(s.cards[roundId]); return s.cards[roundId]; } return live.loadShopCards(roundId, options); },
-    async loadEmployeeStockState(roundId) { const s = await runtime.snapshot(); return s?.stocks[roundId] ?? live.loadEmployeeStockState(roundId); },
+    async loadReferenceData(day) {
+      if (day !== runtime.engine.day) return live.loadReferenceData(day);
+      return (await read(s => ({ rounds: s.rounds, iceTypes: s.iceTypes }), () => live.loadReferenceData(day))).value;
+    },
+    async loadShopCards(roundId, options) {
+      const result = await read(s => s.cards[roundId], () => live.loadShopCards(roundId, options));
+      if (result.snapshot) options?.onBaseCards?.(result.value);
+      return result.value;
+    },
+    async loadEmployeeStockState(roundId) {
+      liveStockRounds.delete(roundId);
+      const result = await read(s => s.stocks[roundId], () => live.loadEmployeeStockState(roundId));
+      if (!result.snapshot) liveStockRounds.add(roundId);
+      return result.value;
+    },
     async loadDeliveryPosContext(id, options) {
-      const s = await runtime.snapshot();
-      if (s?.contexts[id]) return { ...s.contexts[id], offline_snapshot: true, client_cache: { cached_at: s.preparedAt, stale: false } };
-      if (!navigator.onLine) throw new Error(s
-        ? 'ยังไม่มีข้อมูลร้านนี้ในเครื่อง กรุณาเปิดเน็ตแล้วกด “โหลดข้อมูลอีกครั้ง”'
-        : 'ข้อมูลออฟไลน์ของวันนี้ยังไม่พร้อม กรุณาเปิดเน็ตและรอจนขึ้น “พร้อมทำงาน แม้ไม่มีเน็ต”');
-      if (!live.loadDeliveryPosContext) throw new Error('ยังไม่ได้เตรียมข้อมูลร้านนี้');
-      return live.loadDeliveryPosContext(id, options);
+      livePosStops.delete(id);
+      const result = await read(s => s.contexts[id], async () => {
+        if (!live.loadDeliveryPosContext) throw new Error('ยังไม่ได้เตรียมข้อมูลร้านนี้');
+        return live.loadDeliveryPosContext(id, options);
+      });
+      if (!result.snapshot) { livePosStops.add(id); return result.value; }
+      return { ...result.value, offline_snapshot: true, client_cache: { cached_at: result.snapshot.preparedAt, stale: false } };
     },
     async loadCollectionOutstanding(day) {
-      const s = day === runtime.engine.day ? await runtime.snapshot() : undefined;
-      return s ? s.collection.queue.map(shop => ({ queueKey: shop.queue_key ?? `regular:${shop.shop_id}`, shopId: shop.shop_id,
-        eventParticipationId: shop.event_participation_id, outstandingAmount: shop.outstanding_amount })) : live.loadCollectionOutstanding?.(day) ?? [];
+      const load = async () => live.loadCollectionOutstanding?.(day) ?? [];
+      if (day !== runtime.engine.day) return load();
+      return (await read(s => s.collection.queue.map(shop => ({ queueKey: shop.queue_key ?? `regular:${shop.shop_id}`, shopId: shop.shop_id,
+        eventParticipationId: shop.event_participation_id, outstandingAmount: shop.outstanding_amount })), load)).value;
     },
     async loadShopCreditEligibility(shopId, serviceDate) {
       // Credit documents require current server invoices, not the cached payment profile.
       if (!navigator.onLine) return false;
       return live.loadShopCreditEligibility?.(shopId, serviceDate) ?? false;
     },
-    invalidateDeliveryPosContextCache() { if (navigator.onLine || !runtime.engine.getSnapshot().snapshot) live.invalidateDeliveryPosContextCache?.(); },
+    invalidateDeliveryPosContextCache() {
+      if (navigator.onLine) runtime.invalidateSnapshot(false);
+      if (navigator.onLine || !runtime.engine.getSnapshot().snapshot) live.invalidateDeliveryPosContextCache?.();
+    },
     recordDelivery: delivery, recordImmediateSale: immediate,
     recordEmployeeStockTransfer: p => stock('stock_transfer', p), recordEmployeeStockReturn: p => stock('stock_return', p), recordEmployeeStockDamage: p => stock('stock_damage', p),
     async uploadPaymentEvidence(file, id) {
-      if (!(await runtime.snapshot())) { if (!live.uploadPaymentEvidence) throw new Error('ยังไม่พร้อมรับหลักฐาน'); return live.uploadPaymentEvidence(file, id); }
+      const snapshot = await runtime.snapshot();
+      if (!snapshot || (navigator.onLine && livePosStops.size > 0 && !pending())) {
+        if (!live.uploadPaymentEvidence) throw new Error('ยังไม่พร้อมรับหลักฐาน');
+        try { return await live.uploadPaymentEvidence(file, id); }
+        catch (error) {
+          if (!snapshot || !isTransportFailure(error)) throw error;
+          // Keep the evidence and ensuing sale together in the offline queue.
+          livePosStops.clear();
+        }
+      }
       if (file.size > 5 * 1024 * 1024) throw new Error('หลักฐานต้องมีขนาดไม่เกิน 5 MB');
       pendingEvidence.set(id, file); return `offline:${id}`;
     },

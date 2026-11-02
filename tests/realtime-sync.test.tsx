@@ -25,7 +25,7 @@ describe('realtimeSync', () => {
         handlers.set(filter.table, callback);
         return mockChannel;
       }),
-      subscribe: vi.fn().mockReturnThis(),
+      subscribe: vi.fn((_callback?: (status: string) => void) => mockChannel),
     };
 
     const mockClient = {
@@ -53,6 +53,26 @@ describe('realtimeSync', () => {
     for (const table of Object.keys(REALTIME_TABLE_SCOPES)) {
       expect(registeredTables).toContain(table);
     }
+  });
+
+  it('catches up after subscribing or reconnecting, even without a row notification', () => {
+    const { mockClient, mockChannel } = createMockSupabase();
+    const onPublish = vi.fn();
+    const stop = createRealtimeSync(mockClient, onPublish, { debounceMs: 50, enableFocusCatchup: false });
+    const status = mockChannel.subscribe.mock.calls[0][0]!;
+    expect(status).toBeTypeOf('function');
+    status('SUBSCRIBED');
+    vi.advanceTimersByTime(50);
+    expect(onPublish).toHaveBeenLastCalledWith(ALL_DATA_CHANGE_SCOPES, undefined);
+    onPublish.mockClear();
+    status('CHANNEL_ERROR');
+    status('SUBSCRIBED');
+    vi.advanceTimersByTime(50);
+    expect(onPublish).toHaveBeenCalledTimes(1);
+    stop(); onPublish.mockClear();
+    status('SUBSCRIBED');
+    vi.advanceTimersByTime(50);
+    expect(onPublish).not.toHaveBeenCalled();
   });
 
   it('debounces and publishes corresponding scopes when table change event occurs', () => {

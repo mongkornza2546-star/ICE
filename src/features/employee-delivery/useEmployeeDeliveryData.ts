@@ -958,7 +958,7 @@ export function useEmployeeDeliveryData({
     setReferenceReloadId((current) => current + 1);
   }, [loadCards, loadStockState, selectedRoundId]);
 
-  const refreshOpenPosContext = useCallback(async () => {
+  const refreshOpenPosContext = useCallback(async (forceRefresh = true) => {
     if (!selectedCard || !gateway.loadDeliveryPosContext) return;
     const requestId = ++posContextRequestId.current;
     setLoadingPosContext(true);
@@ -967,7 +967,7 @@ export function useEmployeeDeliveryData({
       const loaded = await gateway.loadDeliveryPosContext(selectedCard.round_stop_id, {
         destinationKind: selectedCard.destination_kind ?? 'regular',
         serviceDate,
-        forceRefresh: true,
+        forceRefresh,
       });
       if (requestId !== posContextRequestId.current) return;
       const context = withKnownIceTypeImages(loaded, iceTypes);
