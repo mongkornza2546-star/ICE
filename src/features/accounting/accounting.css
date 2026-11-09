@@ -57,22 +57,13 @@
 .accounting-casual-summary summary small { color: #526476; margin-left: 8px; }
 .accounting-casual-summary dl { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; padding: 0 12px 12px; margin: 0; }
 .accounting-casual-summary dd { margin: 3px 0 0; font-weight: 700; }
-.accounting-page .accounting-shop-view-switch { border-color: #cbd9e6; background: #edf2f7; }
-.accounting-page .accounting-shop-view-switch button { min-height: 44px; color: #435a70; }
-.accounting-page .accounting-shop-view-switch button[aria-pressed="true"] { color: #135fac; }
 .accounting-sort-label { display: flex; align-items: center; gap: 8px; color: #526476; font-size: .78rem; }
 .accounting-sort-label select { min-height: 44px; padding: 6px 10px; border: 1px solid #c9d7e3; border-radius: 8px; color: #273d51; background: white; font: inherit; }
 .accounting-page .accounting-table-wrap { border-color: #d9e2ea; border-radius: 10px; }
 .accounting-page .accounting-table-wrap th, .accounting-page .accounting-table-wrap td { font-size: .79rem; padding: 9px 12px; }
 .accounting-page .accounting-table-wrap thead th { background: #f0f4f9; color: #344e68; }
 .accounting-page .accounting-table-wrap th small, .accounting-page .accounting-table-wrap td small { display: block; font-weight: 400; color: #526476; margin-top: 3px; font-size: .71rem; }
-.accounting-page .accounting-shop-table th:first-child { min-width: 230px; }
-.accounting-page .accounting-shop-table tbody tr > th { position: sticky; left: 0; z-index: 1; background: #fff; }
-.accounting-page .accounting-shop-table .accounting-row--issue > th { background: #fff4e6; }
-.accounting-page .accounting-shop-table thead tr:first-child th { height: 38px; }
-.accounting-page .accounting-shop-table thead tr:nth-child(2) th { top: 38px; }
-.accounting-page .accounting-shop-table thead tr:first-child th:first-child { left: 0; z-index: 4; }
-.accounting-page .accounting-shop-table tbody td:nth-child(n+2):nth-child(-n+7), .accounting-page .accounting-transactions-table td:nth-child(n+5):nth-child(-n+7) { text-align: right; font-variant-numeric: tabular-nums; }
+.accounting-page .accounting-transactions-table td:nth-child(n+5):nth-child(-n+7) { text-align: right; font-variant-numeric: tabular-nums; }
 .accounting-page .accounting-shop-group th { background: #eaf0f7 !important; }
 .accounting-page .accounting-shop-group button { min-height: 44px; color: #304e69; padding-block: 8px; }
 .accounting-page .accounting-shop-group button > span:not(:first-child) { color: #526476; }
@@ -167,8 +158,6 @@
   .accounting-page .accounting-filters--shop-summary .accounting-filters__range, .accounting-page .accounting-filters--shop-summary .accounting-filters__search, .accounting-page .accounting-filters--shop-summary .accounting-filters__more { grid-column: auto; }
   .accounting-page .accounting-filters--shop-summary .accounting-filters__more { justify-self: start; }
   .accounting-page .accounting-table__sort { min-height: 44px; }
-  .accounting-page .accounting-shop-table thead tr:first-child th { height: 42px; }
-  .accounting-page .accounting-shop-table thead tr:nth-child(2) th { top: 42px; }
   .accounting-invoice > summary { grid-template-columns: 1fr 1fr; }
   .accounting-invoice > summary > span:first-child { grid-column: 1 / -1; }
   .accounting-invoice > summary > span:nth-child(n+2):nth-child(-n+4) { text-align: left; }
@@ -195,17 +184,11 @@
 .accounting-page .accounting-casual-summary > summary { gap: 8px; }
 .accounting-page .accounting-casual-summary summary small { display: block; margin: 2px 0 0; font-size: .67rem; }
 .accounting-page .accounting-casual-summary[open] { flex-basis: 100%; order: 3; }
-.accounting-page .accounting-shop-table tbody .accounting-shop-group th { padding: 0; }
-.accounting-page .accounting-shop-table tbody tr:not(.accounting-shop-group) > th { padding: 5px 12px; }
-.accounting-page .accounting-shop-identity { display: flex; flex-direction: column; justify-content: center; align-items: flex-start; width: 100%; text-align: left; min-height: 44px; }
-.accounting-page .accounting-shop-identity small { margin-top: 0; font-size: .67rem; text-decoration: none; }
 @media (max-width: 900px) {
   .accounting-page .accounting-casual-summary { order: 3; flex-basis: 100%; }
 }
 .accounting-page .accounting-sort-label { white-space: nowrap; flex-shrink: 0; }
 .accounting-page .accounting-sort-label select { width: auto; }
-.accounting-page .accounting-shop-table th:first-child { min-width: 0; }
-.accounting-page .accounting-shop-table thead tr:first-child th:first-child, .accounting-page .accounting-shop-table tbody tr:not(.accounting-shop-group) > th { min-width: 235px; }
 .accounting-source-context { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; background: #edf5ff; border: 1px solid #c9dcf2; border-radius: 9px; padding: 8px 12px; color: #335779; font-size: .82rem; }
 .accounting-source-context button { min-height: 44px; background: white; border: 1px solid #b5cbe5; border-radius: 7px; color: #155fa9; font: inherit; padding: 7px 12px; }
 

@@ -172,7 +172,7 @@ describe('accounting shop summary', () => {
       throw new Error(`Unexpected RPC: ${name}`);
     });
     render(<AccountingPage />);
-    fireEvent.click(await screen.findByRole('button', { name: 'ตารางรายวัน' }));
+    await screen.findByRole('columnheader', { name: 'ร้าน', exact: true });
     await screen.findByText('ค้างบิลช่วงนี้ ฿60.00');
     for (const [index, shop] of rows.entries()) {
       const row = screen.getByRole('button', { name: `${shop.shop_code} · ${shop.shop_name}` }).closest('tr')!;
@@ -304,7 +304,7 @@ describe('accounting shop summary', () => {
       expect(openWindow).toHaveBeenCalledWith('', '_blank');
       await waitFor(() => expect(slipWindow.location.href).toBe('https://example.test/signed-slip'));
       expect(signedUrlMock).toHaveBeenCalledWith(evidencePath, 3600);
-      expect(screen.getAllByText('เงินสด')).toHaveLength(2);
+      expect(within(screen.getByRole('dialog')).getByText('เงินสด')).toBeTruthy();
     } finally {
       openWindow.mockRestore();
     }
@@ -314,7 +314,7 @@ describe('accounting shop summary', () => {
     mockSuccessfulShopSummary();
     const user = userEvent.setup();
     render(<AccountingPage />);
-    await user.click(await screen.findByRole('button', { name: 'ตารางรายวัน' }));
+    await screen.findByRole('columnheader', { name: 'ร้าน', exact: true });
     await user.selectOptions(screen.getByRole('combobox', { name: 'อาคาร' }), 'building-1');
     await user.click(await screen.findByRole('button', { name: 'S001 · ร้านสมใจ' }));
     await screen.findByText('INV2608-00001');
@@ -404,7 +404,7 @@ describe('accounting shop summary', () => {
       throw new Error(`Unexpected RPC: ${name}`);
     });
     render(<AccountingPage />);
-    fireEvent.click(await screen.findByRole('button', { name: 'ตารางรายวัน' }));
+    await screen.findByRole('columnheader', { name: 'ร้าน', exact: true });
     await waitFor(() => expect(screen.getByLabelText(`ลูกค้าขายสด ${date} หลอดเล็ก`).textContent).toContain('รวมจากยอดเงิน 1 ถุง'));
     expect(screen.getByLabelText(`ลูกค้าขายสด ${date} หลอดเล็ก`).textContent).toContain('รวมแจกฟรี 0.5 ถุง');
     expect(screen.getByLabelText(`ลูกค้าขายสด ${date} เงินสด`).firstChild?.textContent).toBe('฿100.00');
@@ -435,7 +435,7 @@ describe('accounting shop summary', () => {
     const user = userEvent.setup();
     mockSuccessfulShopSummary();
     render(<AccountingPage />);
-    fireEvent.click(await screen.findByRole('button', { name: 'ตารางรายวัน' }));
+    await screen.findByRole('columnheader', { name: 'ร้าน', exact: true });
     await screen.findByRole('button', { name: /S001 · ร้านสมใจ/ });
 
     const today = bangkokDate();
@@ -500,7 +500,7 @@ describe('accounting shop summary', () => {
   it('shows missing daily cells as unavailable instead of zero or not recorded', async () => {
     mockSuccessfulShopSummary();
     render(<AccountingPage />);
-    fireEvent.click(await screen.findByRole('button', { name: 'ตารางรายวัน' }));
+    await screen.findByRole('columnheader', { name: 'ร้าน', exact: true });
     await screen.findByRole('button', { name: /S001 · ร้านสมใจ/ });
     const toDate = (screen.getByLabelText('ถึง') as HTMLInputElement).value;
 
@@ -517,7 +517,7 @@ describe('accounting shop summary', () => {
     const summaryTab = screen.getByRole('button', { name: 'สรุปรายร้าน' });
     expect(summaryTab.getAttribute('aria-current')).toBe('page');
     expect(await screen.findByText('ยอดขายรายร้านในช่วง', { selector: 'article span' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'ยอดรวมช่วงวันที่' }).getAttribute('aria-pressed')).toBe('true');
+    expect(screen.queryByRole('button', { name: 'ยอดรวมช่วงวันที่' })).toBeNull();
     expect(screen.getByText(/รับชำระแล้ว/, { selector: '.accounting-metric__breakdown span' })).toBeTruthy();
     expect(screen.getByText('ยอดค้างสะสมของร้าน', { selector: 'article span' })).toBeTruthy();
     const broadReceipts = screen.getByText('สรุปการรับเงิน', { selector: 'article span' }).closest('article');
@@ -525,9 +525,9 @@ describe('accounting shop summary', () => {
     expect(screen.getByText(/เงินสด/, { selector: '.accounting-metric--received .accounting-metric__breakdown span' })).toBeTruthy();
     expect(screen.getByText(/โอน/, { selector: '.accounting-metric--received .accounting-metric__breakdown span' })).toBeTruthy();
     expect(screen.getByRole('columnheader', { name: 'ร้าน' })).toBeTruthy();
-    expect(screen.getByRole('columnheader', { name: 'ค้างของบิลช่วงนี้' })).toBeTruthy();
-    expect(screen.getByRole('columnheader', { name: 'ค้างสะสม' })).toBeTruthy();
-    expect(screen.getByRole('columnheader', { name: 'สถานะชำระ' })).toBeTruthy();
+    expect(screen.queryByRole('columnheader', { name: 'ค้างของบิลช่วงนี้' })).toBeNull();
+    expect(screen.queryByRole('columnheader', { name: 'ค้างสะสม' })).toBeNull();
+    expect(screen.queryByRole('columnheader', { name: 'สถานะชำระ' })).toBeNull();
     expect(screen.queryByRole('columnheader', { name: 'รับชำระในช่วงนี้' })).toBeNull();
   });
 
@@ -586,7 +586,7 @@ describe('accounting shop summary', () => {
     expect((zoneSelect as HTMLSelectElement).value).toBe('zone-2');
     expect(await screen.findByRole('button', { name: /S002 · ร้านโซนสอง/ })).toBeTruthy();
     expect(screen.queryByRole('button', { name: /S001 · ร้านสมใจ/ })).toBeNull();
-    expect(screen.getByRole('button', { name: /อาคาร B \/ โซน 2.*หน้านี้/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /อาคาร B · โซน 2.*หน้านี้/ })).toBeTruthy();
 
     await user.selectOptions(zoneSelect, '');
 
@@ -623,7 +623,7 @@ describe('accounting shop summary', () => {
     });
     const user = userEvent.setup();
     render(<AccountingPage />);
-    fireEvent.click(await screen.findByRole('button', { name: 'ตารางรายวัน' }));
+    await screen.findByRole('columnheader', { name: 'ร้าน', exact: true });
 
     const fromDate = (screen.getByLabelText('จาก') as HTMLInputElement).value;
     const toDate = (screen.getByLabelText('ถึง') as HTMLInputElement).value;
@@ -667,7 +667,7 @@ describe('accounting shop summary', () => {
       throw new Error(`Unexpected RPC: ${name}`);
     });
     render(<AccountingPage />);
-    fireEvent.click(await screen.findByRole('button', { name: 'ตารางรายวัน' }));
+    await screen.findByRole('columnheader', { name: 'ร้าน', exact: true });
 
     await screen.findByRole('button', { name: /S001 · ร้านสมใจ/ });
     const groupHeader = screen.getByRole('button', { name: /อาคาร A · ชั้น 9 ปัจจุบัน/ });
@@ -698,7 +698,7 @@ describe('accounting shop summary', () => {
       p_filters: { shop_sort: 'outstanding' },
     })));
     const shops = await screen.findAllByRole('button', { name: /S00[123] · ร้าน/ });
-    expect(shops.map((shop) => shop.getAttribute('aria-label')?.replace(/\s/g, ''))).toEqual([
+    expect(shops.map((shop) => shop.textContent?.replace(/\s/g, ''))).toEqual([
       'S003·ร้านสาม', 'S001·ร้านหนึ่ง', 'S002·ร้านสอง',
     ]);
     expect(screen.queryByRole('button', { name: /อาคาร A · ชั้น 9 ปัจจุบัน/ })).toBeNull();
@@ -791,13 +791,12 @@ describe('accounting shop summary', () => {
     render(<AccountingPage />);
 
     const shop = await screen.findByRole('button', { name: /S001 · ร้านสมใจ/ });
-    await user.click(screen.getByRole('button', { name: 'ยอดรวมช่วงวันที่' }));
     expect(screen.queryByRole('columnheader', { name: 'อาคาร / โซนประจำร้าน' })).toBeNull();
     expect(screen.queryByRole('columnheader', { name: 'เงื่อนไขชำระ' })).toBeNull();
     expect((screen.getByRole('combobox', { name: 'เรียงลำดับ' }) as HTMLSelectElement).value).toBe('area');
-    expect(screen.getByText(/ลำดับส่ง 3/)).toBeTruthy();
+    expect(shop.closest('tr')?.querySelector('td')?.textContent).toBe('3');
 
-    const group = screen.getByRole('button', { name: /อาคาร A \/ ชั้น 9 ปัจจุบัน.*1 ร้าน.*ซื้อ 1/ });
+    const group = screen.getByRole('button', { name: /อาคาร A · ชั้น 9 ปัจจุบัน.*1 ร้าน/ });
     await user.click(group);
     expect(screen.queryByRole('button', { name: /S001 · ร้านสมใจ/ })).toBeNull();
 
@@ -855,19 +854,11 @@ describe('accounting shop summary', () => {
     render(<AccountingPage />);
 
     await screen.findByRole('button', { name: /S002 · ร้านไม่มีรายการวันนี้/ });
-    await user.click(screen.getByRole('button', { name: 'ยอดรวมช่วงวันที่' }));
     const shopButton = screen.getByRole('button', { name: /S002 · ร้านไม่มีรายการวันนี้/ });
     const row = shopButton.closest('tr');
     expect(row).toBeTruthy();
-    const cells = row!.querySelectorAll('td');
-    expect(cells[0].textContent).toMatch(/฿0\.00/);
-    expect(cells[1].textContent).toMatch(/฿0\.00/);
-    expect(cells[2].textContent).toMatch(/฿0\.00/);
-    expect(cells[3].textContent).toMatch(/฿200\.00/);
-    expect(cells[4].textContent).toMatch(/฿125\.00/);
-    expect(cells[5].textContent).toBe('0');
-    expect(within(row as HTMLTableRowElement).getByText('เกินกำหนด')).toBeTruthy();
-    expect(screen.queryByText('ไม่ซื้อ')).toBeNull();
+    expect(row!.classList.contains('accounting-daily-matrix__outstanding')).toBe(true);
+    expect(within(row as HTMLTableRowElement).getByText('ค้างสะสม ฿200.00')).toBeTruthy();
 
     await user.click(shopButton);
 
@@ -992,7 +983,6 @@ describe('accounting shop summary', () => {
     render(<AccountingPage />);
 
     expect(await screen.findByRole('button', { name: /S001 · ร้านสมใจ/ })).toBeTruthy();
-    await user.click(screen.getByRole('button', { name: 'ยอดรวมช่วงวันที่' }));
     const fromDate = (screen.getByLabelText('จาก') as HTMLInputElement).value;
     const toDate = (screen.getByLabelText('ถึง') as HTMLInputElement).value;
     expect(rpcMock).toHaveBeenCalledWith('get_accounting_shop_summary', {
@@ -1004,7 +994,7 @@ describe('accounting shop summary', () => {
     });
     expect(screen.getAllByText(/1,250\.00/).length).toBeGreaterThan(0);
     expect(screen.getByText('1 / 2')).toBeTruthy();
-    expect(screen.getByRole('button', { name: /อาคาร A \/ ชั้น 9 ปัจจุบัน.*หน้านี้ 1 ร้าน/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /อาคาร A · ชั้น 9 ปัจจุบัน.*หน้านี้ 1 ร้าน/ })).toBeTruthy();
 
     await user.selectOptions(screen.getByRole('combobox', { name: 'อาคาร' }), 'building-1');
     await waitFor(() => expect(rpcMock).toHaveBeenCalledWith('get_accounting_shop_summary', {
@@ -1288,15 +1278,13 @@ describe('accounting shop summary', () => {
     expect(screen.getByRole('button', { name: /รายการต้องตรวจสอบ/ }).textContent).toContain('5');
   });
 
-  it('shows the current shop location in both the row and filter facet', async () => {
-    const user = userEvent.setup();
+  it('shows the current shop location in both the group and filter facet', async () => {
     mockSuccessfulShopSummary();
     render(<AccountingPage />);
 
     await screen.findByRole('button', { name: /S001 · ร้านสมใจ/ });
-    await user.click(screen.getByRole('button', { name: 'ยอดรวมช่วงวันที่' }));
 
-    expect(screen.getAllByText('อาคาร A / ชั้น 9 ปัจจุบัน').length).toBeGreaterThan(0);
+    expect(screen.getByText('อาคาร A · ชั้น 9 ปัจจุบัน', { selector: 'strong' })).toBeTruthy();
     expect(screen.getByRole('option', { name: 'อาคาร A / ชั้น 9 ปัจจุบัน (1)' })).toBeTruthy();
   });
 });
@@ -1327,7 +1315,7 @@ it('places new casual sales once after a building with multiple zones, keeps leg
   });
   const user = userEvent.setup();
   render(<AccountingPage />);
-  await user.click(await screen.findByRole('button', { name: 'ตารางรายวัน' }));
+  await screen.findByRole('columnheader', { name: 'ร้าน', exact: true });
   const casual = await screen.findByRole('button', { name: 'ขายสด — อาคาร A' });
   expect(screen.getAllByRole('button', { name: 'ขายสด — อาคาร A' })).toHaveLength(1);
   const rows = [...document.querySelectorAll('.accounting-daily-matrix__table > tbody > tr')];
@@ -1361,7 +1349,7 @@ it('keeps full building totals constant across shop pages', async () => {
   });
   const user = userEvent.setup(); render(<AccountingPage />);
   await user.click(await screen.findByRole('button', { name: 'วันนี้', exact: true }));
-  await user.click(await screen.findByRole('button', { name: 'ตารางรายวัน' }));
+  await screen.findByRole('columnheader', { name: 'ร้าน', exact: true });
   const totalText = () => screen.getByText('รวม อาคาร A รวมขายสดแล้ว').closest('tr')!.textContent;
   await waitFor(() => expect(totalText()).toContain('฿1,060.00'));
   const first = totalText();
@@ -1385,8 +1373,8 @@ it('does not substitute visible-page amounts when full building totals are unava
     }, error: null };
     throw Error(name);
   });
-  const user = userEvent.setup(); render(<AccountingPage />);
-  await user.click(await screen.findByRole('button', { name: 'ตารางรายวัน' }));
+  render(<AccountingPage />);
+  await screen.findByRole('columnheader', { name: 'ร้าน', exact: true });
   const total = (await screen.findByText('รวม อาคาร A รวมขายสดแล้ว')).closest('tr')!;
   expect(total.textContent).toContain('ยังไม่มียอดรวมทั้งตึก');
   expect(total.textContent).not.toContain('฿');

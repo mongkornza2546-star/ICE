@@ -188,7 +188,6 @@ export function AccountingPage({ userRole = 'round_lead', demoMode = false }: { 
   const [fromDate, setFromDate] = useState(shiftDate(today, -6));
   const [toDate, setToDate] = useState(today);
   const [shopWindowMode, setShopWindowMode] = useState<ShopDateWindow>(7);
-  const [shopView, setShopView] = useState<'daily' | 'totals'>('totals');
   const [transactionFilters, setTransactionFilters] = useState<AccountingFilters>({});
   const [reviewFilters, setReviewFilters] = useState<AccountingFilters>({});
   const filters = tab === 'review' ? reviewFilters : transactionFilters;
@@ -637,8 +636,6 @@ export function AccountingPage({ userRole = 'round_lead', demoMode = false }: { 
         fromDate={fromDate}
         loading={loading}
         unavailable={unavailable}
-        view={shopView}
-        onViewChange={setShopView}
         onClearFilters={() => { setShopFilters({}); setPage(0); }}
         onOpenShop={(shop, date) => void openShopInvoices(shop, date)}
         onOpenReview={() => { setReviewFilters({}); setPages((current) => ({ ...current, review: 0 })); changeTab('review'); }}
@@ -698,13 +695,11 @@ export function AccountingPage({ userRole = 'round_lead', demoMode = false }: { 
   </section>;
 }
 
-function ShopSummaryPanel({ daily, data, loading, unavailable, view, onViewChange, filters, fromDate, onClearFilters, onOpenReview, onOpenShop, onOpenTransactions, reviewCount, setFromDate, setToDate, setWindowMode, toDate, today, updateFilter, windowMode }: {
+function ShopSummaryPanel({ daily, data, loading, unavailable, filters, fromDate, onClearFilters, onOpenReview, onOpenShop, onOpenTransactions, reviewCount, setFromDate, setToDate, setWindowMode, toDate, today, updateFilter, windowMode }: {
   daily: AccountingShopDailyResponse;
   data: AccountingShopSummaryResponse;
   loading: boolean;
   unavailable: boolean;
-  view: 'daily' | 'totals';
-  onViewChange: (view: 'daily' | 'totals') => void;
   filters: AccountingFilters;
   fromDate: string;
   onClearFilters: () => void;
@@ -814,7 +809,6 @@ function ShopSummaryPanel({ daily, data, loading, unavailable, view, onViewChang
       </div>
 
       <div className="accounting-shop-view-actions">
-        <div className="accounting-shop-view-switch" role="group" aria-label={translateUi('มุมมองสรุปรายร้าน')}><button aria-pressed={view === 'totals'} onClick={() => onViewChange('totals')} type="button">{translateUi('ยอดรวมช่วงวันที่')}</button><button aria-pressed={view === 'daily'} onClick={() => onViewChange('daily')} type="button">{translateUi('ตารางรายวัน')}</button></div>
       <details className="accounting-casual-summary"><summary><span>{translateUi('ลูกค้าขายสด ')}<small>{filters.building_id
         ? translateUi('ทั้งช่วงวันที่ · {0} · เฉพาะรายการที่ระบุตึกนี้ · ไม่ตามตัวกรองร้าน/โซน', { 0: filterLabels.building_id })
         : translateUi('ทั้งช่วงวันที่ ทุกตึก · รวมรายการไม่ระบุตึก · ไม่ตามตัวกรองร้าน/โซน')}</small></span><strong>{translateUi('ยอดขาย ')}{totals.casual_sales_amount == null ? '—' : money.format(totals.casual_sales_amount)}</strong></summary><dl>{([
@@ -822,7 +816,7 @@ function ShopSummaryPanel({ daily, data, loading, unavailable, view, onViewChang
       ] as const).map(([label, value]) => <div key={label}><dt>{translateUi(String(label))}</dt><dd>{value == null ? '—' : money.format(value)}</dd></div>)}<div><dt>{translateUi('รายการแจก')}</dt><dd>{totals.casual_free_count?.toLocaleString('th-TH') ?? '—'}{translateUi(' ครั้ง')}</dd></div></dl></details>
         <label className="accounting-sort-label">{translateUi('เรียงตาม ')}<select aria-label={translateUi('เรียงลำดับ')} onChange={(event) => updateFilter({ shop_sort: event.target.value === 'area' ? undefined : event.target.value as AccountingFilters['shop_sort'] })} value={filters.shop_sort ?? 'area'}><option value="area">{translateUi('พื้นที่ / ลำดับส่ง')}</option><option value="outstanding">{translateUi('ค้างมากสุด')}</option><option value="overdue">{translateUi('เกินกำหนดมากสุด')}</option><option value="sales">{translateUi('ยอดขายมากสุด')}</option><option value="name">{translateUi('ชื่อร้าน')}</option><option value="code">{translateUi('รหัสร้าน')}</option></select></label>
       </div>
-    {view === 'daily' ? <ShopDailyMatrix
+    <ShopDailyMatrix
       collapsedGroups={collapsedGroups}
       daily={daily}
       data={data}
@@ -858,17 +852,7 @@ function ShopSummaryPanel({ daily, data, loading, unavailable, view, onViewChang
         return next;
       })}
       toDate={toDate}
-    /> : <ShopSummaryTable
-      collapsedGroups={collapsedGroups}
-      data={data}
-      grouped={(filters.shop_sort ?? 'area') === 'area'}
-      onOpenShop={onOpenShop}
-      onToggleGroup={(key) => setCollapsedGroups((current) => {
-        const next = new Set(current);
-        if (next.has(key)) next.delete(key); else next.add(key);
-        return next;
-      })}
-    />}
+    />
     </>}
   </div>;
 }
@@ -1124,37 +1108,6 @@ function ShopDailyMatrix({ collapsedGroups, daily, data, filters, fromDate, grou
       {(Object.entries(dailyStatusLabels) as Array<[AccountingShopDailyStatus, string]>).filter(([status]) => status !== 'purchased').map(([status, label]) => <span key={status}><i className={`accounting-daily-status accounting-daily-status--${status}`} />{translateUi(label)}</span>)}
     </div>
   </div>;
-}
-
-function ShopSummaryTable({ collapsedGroups, data, grouped, onOpenShop, onToggleGroup }: {
-  collapsedGroups: Set<string>;
-  data: AccountingShopSummaryResponse;
-  grouped: boolean;
-  onOpenShop: (shop: AccountingShopSummaryRow) => void;
-  onToggleGroup: (key: string) => void;
-}) {
-  useLanguage();
-  const groups = new Map<string, AccountingShopSummaryRow[]>();
-  data.rows.forEach((row) => {
-    const key = shopGroupKey(row);
-    groups.set(key, [...(groups.get(key) ?? []), row]);
-  });
-  return <div className="accounting-table-wrap accounting-table-wrap--ledger"><table className="accounting-table accounting-shop-table"><thead><tr className="accounting-column-groups"><th rowSpan={2}>{translateUi('ร้าน')}</th><th colSpan={3}>{translateUi('บิลในช่วงที่เลือก · ยอดรับชำระปัจจุบัน')}</th><th colSpan={2}>{translateUi('หนี้สะสมปัจจุบัน')}</th><th rowSpan={2}>{translateUi('จำนวนบิล')}</th><th rowSpan={2}>{translateUi('ครบกำหนดเก่าสุด')}</th><th rowSpan={2}>{translateUi('สถานะชำระ')}</th></tr><tr><th>{translateUi('ยอดขายช่วงนี้')}</th><th>{translateUi('รับแล้วของยอดช่วงนี้')}</th><th>{translateUi('ค้างของบิลช่วงนี้')}</th><th>{translateUi('ค้างสะสม')}</th><th>{translateUi('เกินกำหนดสะสม')}</th></tr></thead><tbody>
-    {!data.rows.length ? <tr><td colSpan={9}>{translateUi('ไม่พบร้านที่ตรงกับตัวกรอง')}</td></tr>
-      : grouped ? [...groups.entries()].map(([key, rows]) => {
-        const group = derivedShopGroup(rows);
-        const collapsed = collapsedGroups.has(key);
-        return <Fragment key={key}>
-          <tr className="accounting-shop-group"><th colSpan={9}><button aria-expanded={!collapsed} onClick={() => onToggleGroup(key)} type="button"><span aria-hidden="true">{collapsed ? '▶' : '▼'}</span><strong>{formatAccountingGroupTitle(group.building_name, group.current_zone_name, ' / ')}</strong><span>{translateUi('หน้านี้ ')}{group.total_shop_count.toLocaleString('th-TH')}{translateUi(' ร้าน')}</span><span>{translateUi('ซื้อ ')}{group.purchased_shop_count.toLocaleString('th-TH')}</span>{group.recorded_no_sale_shop_count ? <span>{translateUi('มีบันทึกแต่ไม่มีการขาย ')}{group.recorded_no_sale_shop_count.toLocaleString('th-TH')}</span> : null}{group.closed_shop_count ? <span>{translateUi('ปิดร้าน ')}{group.closed_shop_count.toLocaleString('th-TH')}</span> : null}<span>{translateUi('ยังไม่มีบันทึก ')}{group.not_recorded_shop_count.toLocaleString('th-TH')}</span><span>{translateUi('ยอด ')}{money.format(group.sales_amount)}</span><span>{translateUi('ค้าง ')}{money.format(group.cumulative_outstanding_amount)}</span></button></th></tr>
-          {collapsed ? null : rows.map((row) => <ShopSummaryRow key={row.shop_id} onOpenShop={onOpenShop} row={row} />)}
-        </Fragment>;
-      }) : data.rows.map((row) => <ShopSummaryRow key={row.shop_id} onOpenShop={onOpenShop} row={row} />)}
-  </tbody></table></div>;
-}
-
-function ShopSummaryRow({ onOpenShop, row }: { onOpenShop: (shop: AccountingShopSummaryRow) => void; row: AccountingShopSummaryRow }) {
-  useLanguage();
-  return <tr className={row.payment_status === 'overdue' ? 'accounting-row--issue' : ''} onClick={() => onOpenShop(row)}><th><button aria-label={formatAccountingShopTitle(row)} aria-describedby={`accounting-shop-${row.shop_id}`} className="accounting-link accounting-shop-identity" onClick={(event) => { event.stopPropagation(); onOpenShop(row); }} type="button"><span>{formatAccountingShopTitle(row)}</span><small id={`accounting-shop-${row.shop_id}`}>{formatAccountingGroupTitle(row.building_name, row.current_zone_name, ' / ')} · {row.payment_term ? translateUi(paymentTermLabels[row.payment_term]) : translateUi('ไม่ระบุเงื่อนไข')} · {row.delivery_sequence == null ? translateUi('ยังไม่ได้กำหนดลำดับส่ง') : translateUi('ลำดับส่ง {0}', { 0: row.delivery_sequence.toLocaleString('th-TH') })}</small></button></th><td>{money.format(row.sales_amount)}</td><td>{money.format(row.paid_amount)}</td><td>{money.format(row.outstanding_amount)}</td><td>{money.format(row.cumulative_outstanding_amount)}</td><td>{money.format(row.cumulative_overdue_amount)}</td><td>{row.invoice_count.toLocaleString('th-TH')}</td><td>{row.oldest_outstanding_due_date ? accountingDate.format(new Date(`${row.oldest_outstanding_due_date}T12:00:00+07:00`)) : '—'}</td><td><span className={`accounting-payment-status accounting-payment-status--${row.payment_status}`}>{translateUi(paymentStatusLabels[row.payment_status])}</span></td></tr>;
 }
 
 function ShopInvoiceDetail({ entries, error, fromDate, loading, onClose, onOpenDocument, shop, toDate }: {

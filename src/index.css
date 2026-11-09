@@ -153,18 +153,12 @@ html[lang='my'] body, html[lang='my'] button, html[lang='my'] input, html[lang='
 .accounting-reconciliation { display: grid; gap: 18px; }
 .accounting-shop-summary { display: grid; gap: 18px; }
 .accounting-shop-view-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
-.accounting-shop-table th:first-child { min-width: 220px; }
-.accounting-shop-table th:first-child small { display: block; margin-top: 4px; color: #718079; font-weight: 500; }
-.accounting-shop-table .accounting-shop-sequence--missing { color: #a5681d; }
 .accounting-table tbody .accounting-shop-group { cursor: default; }
 .accounting-table tbody .accounting-shop-group:hover { background: transparent; }
 .accounting-shop-group th { position: sticky; z-index: 1; left: 0; padding: 0; border-bottom-color: #cadbd2; background: #e5f1eb; }
 .accounting-shop-group button { width: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 7px 12px; border: 0; background: transparent; padding: 11px 13px; color: #244b3d; text-align: left; }
 .accounting-shop-group button strong { margin-right: 6px; }
 .accounting-shop-group button > span:not(:first-child) { border-left: 1px solid #bdd0c6; padding-left: 12px; color: #526b61; font-size: .76rem; font-weight: 700; }
-.accounting-shop-view-switch { justify-self: start; display: inline-flex; gap: 3px; border: 1px solid #cbd8d1; border-radius: 11px; background: #f3f7f5; padding: 3px; }
-.accounting-shop-view-switch button { border: 0; border-radius: 8px; background: transparent; padding: 8px 14px; color: #587067; font: inherit; font-size: .82rem; font-weight: 800; cursor: pointer; }
-.accounting-shop-view-switch button[aria-pressed="true"] { background: #fff; color: #146549; box-shadow: 0 1px 5px #183f331a; }
 .accounting-shop-export { display: inline-flex; align-items: center; gap: 7px; min-height: 40px; border: 1px solid #77aa97; border-radius: 9px; background: #fff; padding: 8px 12px; color: #176d51; font: inherit; font-size: .8rem; font-weight: 800; cursor: pointer; }
 .accounting-shop-export:disabled { opacity: .55; cursor: default; }
 .accounting-zone-tabs { display: flex; overflow-x: auto; border-bottom: 1px solid #bfc8c3; background: #f5f6f5; scrollbar-width: thin; }

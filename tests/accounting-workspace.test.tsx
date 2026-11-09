@@ -196,7 +196,7 @@ describe('accounting workspace interactions', () => {
     const user = userEvent.setup();
     render(<AccountingPage />);
     const originalFrom = (screen.getByLabelText('จาก') as HTMLInputElement).value;
-    await user.click(await screen.findByRole('button', { name: 'ตารางรายวัน', exact: true }));
+    await screen.findByRole('columnheader', { name: 'ร้าน', exact: true });
     await user.click(await screen.findByRole('button', { name: /รายการต้องตรวจสอบ.*1/ }));
     await user.click(await screen.findByRole('button', { name: 'ดูเอกสารต้นทาง' }));
     await waitFor(() => expect(rpc).toHaveBeenCalledWith('get_accounting_transactions', expect.objectContaining({ p_from_date: oldDay, p_to_date: oldDay, p_filters: expect.objectContaining({ document: 'INV-OLD' }) })));
@@ -204,6 +204,6 @@ describe('accounting workspace interactions', () => {
     expect((screen.getByLabelText('จาก') as HTMLInputElement).value).toBe(originalFrom);
     expect((screen.getByLabelText('ถึง') as HTMLInputElement).value).toBe(today);
     await user.click(screen.getByRole('button', { name: 'สรุปรายร้าน', exact: true }));
-    expect((await screen.findByRole('button', { name: 'ตารางรายวัน', exact: true })).getAttribute('aria-pressed')).toBe('true');
+    expect(await screen.findByRole('columnheader', { name: 'ร้าน', exact: true })).toBeTruthy();
   });
 });

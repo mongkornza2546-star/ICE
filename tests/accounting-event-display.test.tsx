@@ -196,7 +196,7 @@ describe('AccountingPage event booth and area display', () => {
     expect(screen.queryByText(/ตึก c · ตึก c/)).toBeNull();
     expect(screen.queryByText(/1c495ba3/)).toBeNull();
 
-    fireEvent.click(screen.getByRole('button', { name: 'ตารางรายวัน' }));
+    await screen.findByRole('columnheader', { name: 'ร้าน', exact: true });
     // Totals row should say "รวมร้านในหน้านี้ ตึก c"
     expect(screen.getByText('รวมร้านในหน้านี้ ตึก c')).toBeTruthy();
   });
