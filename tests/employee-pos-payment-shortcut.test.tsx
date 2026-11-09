@@ -255,8 +255,8 @@ describe('POS payment shortcut', () => {
       render(<Harness />);
       await screen.findByText(/ยอดรอรับชำระ.*240/);
       await user.type(screen.getByRole('searchbox'), 'BB44');
-      await user.click(screen.getByRole('button', { name: 'B', exact: true }));
-      await user.click(screen.getByRole('button', { name: 'ซุ้มโดม 3', exact: true }));
+      await user.selectOptions(screen.getByRole('combobox', { name: 'ตึก' }), 'building-b');
+      await user.selectOptions(screen.getByRole('combobox', { name: 'โซน' }), 'ซุ้มโดม 3');
       await user.click(screen.getByRole('button', { name: 'เลือกร้าน BB44 ร้านใหม่น้ำปั่น (ปุ้ย)' }));
       await user.click(screen.getByRole('button', { name: 'รับชำระ' }));
       if (storageAvailable) expect(readPosCollectionReturn('employee-1')).not.toBeNull();
@@ -265,8 +265,8 @@ describe('POS payment shortcut', () => {
       const card = await screen.findByRole('button', { name: 'เลือกร้าน BB44 ร้านใหม่น้ำปั่น (ปุ้ย)' });
       await waitFor(() => expect(document.activeElement).toBe(card));
       expect((screen.getByRole('searchbox') as HTMLInputElement).value).toBe('BB44');
-      expect(screen.getByRole('button', { name: 'B', exact: true }).getAttribute('aria-pressed')).toBe('true');
-      expect(screen.getByRole('button', { name: 'ซุ้มโดม 3', exact: true }).getAttribute('aria-pressed')).toBe('true');
+      expect((screen.getByRole('combobox', { name: 'ตึก' }) as HTMLSelectElement).value).toBe('building-b');
+      expect((screen.getByRole('combobox', { name: 'โซน' }) as HTMLSelectElement).value).toBe('ซุ้มโดม 3');
       expect(await screen.findByText(status === 'completed' ? /ยอดรอรับชำระ.*0/ : /ยอดรอรับชำระ.*240/)).toBeTruthy();
       if (storageAvailable) expect(readPosCollectionReturn('employee-1')).toBeNull();
       expect(gateway.recordDelivery).not.toHaveBeenCalled();
@@ -360,8 +360,9 @@ describe('event POS outstanding balances', () => {
       await user.click(await screen.findByRole('button', { name: 'อีเว้น', exact: true }));
       await user.click(booth(number));
       expect(screen.getByText('ยอดรอรับชำระ').parentElement?.textContent).toContain(amount);
-      expect(screen.getByText(`บูธ ${number}`)).toBeTruthy();
-      expect(screen.getByText('เกษตร · ลานกิจกรรม')).toBeTruthy();
+      const taskChoice = within(screen.getByRole('region', { name: eventShop.shop_name }));
+      expect(taskChoice.getByText(`บูธ ${number}`)).toBeTruthy();
+      expect(taskChoice.getByText('เกษตร · ลานกิจกรรม')).toBeTruthy();
       expect(screen.getByRole('button', { name: 'ส่งเพิ่ม' }).hasAttribute('disabled')).toBe(false);
       await user.click(screen.getByRole('button', { name: 'รับชำระ' }));
       expect(onOpenCollection).toHaveBeenCalledWith(expect.objectContaining({ source: 'pos-shortcut', shopId: eventShop.shop_id, queueKey }));

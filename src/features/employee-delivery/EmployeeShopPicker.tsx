@@ -1,4 +1,5 @@
 import { CachedCatalogImage } from '../../CachedCatalogImage';
+import { catalogImageCacheKey } from '../../lib/catalogImageCache';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { MagnifyingGlass, Buildings, MapPin, Storefront, CaretRight, WarningCircle, X } from '@phosphor-icons/react';
 import type { ShopCard, EmployeeStockState } from '../../types/app';
@@ -18,36 +19,52 @@ const outstandingFormatter = new Intl.NumberFormat('th-TH', {
 
 function RegularShopVisual({
   card,
+  isActive,
   onPreview,
   refreshImageUrl,
 }: {
   card: ShopCard;
+  isActive: boolean;
   onPreview: (event: React.MouseEvent<HTMLButtonElement>, imageUrl: string | null | undefined) => void;
   refreshImageUrl: (card: ShopCard) => Promise<string | null>;
 }) {
   useLanguage();
   const [imageUrl, setImageUrl] = useState(card.image_url);
-  const [loadAttempt, setLoadAttempt] = useState(0);
+  const [retryGeneration, setRetryGeneration] = useState(0);
   const [imageFailed, setImageFailed] = useState(false);
   const retryRequestId = useRef(0);
   const retrying = useRef(false);
+  const retryAttempted = useRef(false);
+  const wasActive = useRef(isActive);
 
   useEffect(() => {
     retryRequestId.current += 1;
     retrying.current = false;
+    retryAttempted.current = false;
     setImageUrl(card.image_url);
-    setLoadAttempt(0);
     setImageFailed(false);
   }, [card.image_url, card.image_path]);
 
+  useEffect(() => {
+    const returning = isActive && !wasActive.current;
+    wasActive.current = isActive;
+    if (!returning || !imageFailed) return;
+    retryRequestId.current += 1;
+    retrying.current = false;
+    retryAttempted.current = false;
+    setImageFailed(false);
+    setRetryGeneration((attempt) => attempt + 1);
+  }, [isActive, imageFailed]);
+
   const retryImage = async () => {
     if (retrying.current) return;
-    if (loadAttempt > 0) {
+    if (retryAttempted.current) {
       setImageFailed(true);
       return;
     }
     const requestId = ++retryRequestId.current;
     retrying.current = true;
+    retryAttempted.current = true;
     try {
       const refreshedUrl = await refreshImageUrl(card);
       if (retryRequestId.current !== requestId) return;
@@ -55,7 +72,7 @@ function RegularShopVisual({
         setImageFailed(true);
         return;
       }
-      setLoadAttempt(1);
+      setRetryGeneration((attempt) => attempt + 1);
       setImageUrl(refreshedUrl);
     } catch {
       if (retryRequestId.current === requestId) setImageFailed(true);
@@ -90,7 +107,7 @@ function RegularShopVisual({
           alt=""
           aria-hidden="true"
           decoding="async"
-          key={`${imageUrl}:${loadAttempt}`}
+          key={JSON.stringify([imageUrl ? catalogImageCacheKey(imageUrl) ?? imageUrl : imageUrl, card.image_path, retryGeneration])}
           loading="lazy"
           onError={() => void retryImage()}
           onCacheMiss={() => void retryImage()}
@@ -105,6 +122,7 @@ function RegularShopVisual({
 }
 
 export function EmployeeShopPicker({
+  isActive = true,
   casualCustomerButtonRef,
   casualCustomerEntryVisible,
   casualCustomerEntryDisabled = false,
@@ -136,6 +154,7 @@ export function EmployeeShopPicker({
   stockState,
   shopButtonRefs,
 }: {
+  isActive?: boolean;
   casualCustomerButtonRef: React.RefObject<HTMLButtonElement>;
   casualCustomerEntryVisible: boolean;
   casualCustomerEntryDisabled?: boolean;
@@ -223,6 +242,7 @@ export function EmployeeShopPicker({
         ) : (
           <RegularShopVisual
             card={card}
+            isActive={isActive}
             onPreview={(event, imageUrl) => setPreviewImage({
               name: `${card.shop_code} · ${card.shop_name}`,
               url: imageUrl,
@@ -267,7 +287,7 @@ export function EmployeeShopPicker({
         </button>
       </article>
     );
-  }), [language, filteredCards, collectionOutstanding, collectionOutstandingError, collectionOutstandingLoading,
+  }), [isActive, language, filteredCards, collectionOutstanding, collectionOutstandingError, collectionOutstandingLoading,
     enableAssignedStockFlow, stockState, refreshShopImageUrl, openCard, shopButtonRefs]);
 
   return (

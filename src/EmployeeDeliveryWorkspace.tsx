@@ -1,5 +1,5 @@
 import { withDeadline } from './offline/runtime/network';
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { CalendarBlank, CaretDown, CheckCircle, Printer, WarningCircle } from '@phosphor-icons/react';
 import { supabase } from './lib/supabase';
 import type {
@@ -1042,8 +1042,9 @@ export function EmployeeDeliveryWorkspace({
     return <EmployeeState title={translateUi('ยังไม่มีชนิดน้ำแข็งที่ใช้งาน')} detail={translateUi('ให้แอดมินเปิดใช้งานชนิดน้ำแข็งอย่างน้อย 1 รายการก่อนบันทึกส่ง')} />;
   }
 
+  let detailPage: ReactNode = null;
   if (data.taskChoiceCard) {
-    return (
+    detailPage = (
       <div className="employee-workspace">
         {creditSignoffOpen ? <DailyCreditAcknowledgementPanel
           canPrintWithVat={canPrintCreditWithVat}
@@ -1080,10 +1081,8 @@ export function EmployeeDeliveryWorkspace({
         />}
       </div>
     );
-  }
-
-  if (data.selectedCard && data.selectedRound) {
-    return (
+  } else if (data.selectedCard && data.selectedRound) {
+    detailPage = (
       <div className="employee-workspace">
         <EmployeeDeliveryReview
         assignedStockState={enableAssignedStockFlow ? data.stockState : null}
@@ -1159,8 +1158,8 @@ export function EmployeeDeliveryWorkspace({
     && resolvedViewMode !== 'withdrawal',
   );
 
-  if (casualCustomerOpen && casualCustomerAvailable && data.selectedRound) {
-    return (
+  if (!detailPage && casualCustomerOpen && casualCustomerAvailable && data.selectedRound) {
+    detailPage = (
       <div className="employee-workspace">
         <EmployeeCasualCustomerPage
           key={`${requestScope}:${data.selectedRound.id}`}
@@ -1186,8 +1185,9 @@ export function EmployeeDeliveryWorkspace({
     );
   }
 
-  return (
-    <div className={`employee-workspace ${resolvedViewMode === 'withdrawal' ? 'employee-workspace--withdrawal' : ''}`}>
+  // Retain loaded photos while entering a delivery or collecting payment.
+  const browsePage = (
+    <div style={{ display: detailPage ? 'none' : undefined }} className={`employee-workspace ${resolvedViewMode === 'withdrawal' ? 'employee-workspace--withdrawal' : ''}`}>
       <section className="employee-intro">
         <div>
           <p className="employee-eyebrow">{isBackdatedBilling ? translateUi('ออกบิลย้อนหลัง · เฉพาะแอดมิน') : translateUi('งานพนักงาน')}</p>
@@ -1284,6 +1284,7 @@ export function EmployeeDeliveryWorkspace({
           ) : null}
 
           {resolvedViewMode === 'pos' || resolvedViewMode === 'combined' ? <EmployeeShopPicker
+            isActive={isActive && !detailPage}
             enableAssignedStockFlow={enableAssignedStockFlow}
             selectedRoundId={data.selectedRoundId}
             query={data.query}
@@ -1329,4 +1330,5 @@ export function EmployeeDeliveryWorkspace({
       )}
     </div>
   );
+  return <>{detailPage}{browsePage}</>;
 }

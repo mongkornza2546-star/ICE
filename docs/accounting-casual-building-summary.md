@@ -30,9 +30,11 @@ checks displayed totals and scope text.
 ## Combined receipt card
 
 Apply `supabase/migrations/20261026102717_accounting_combined_receipts.sql`
-before deploying the updated frontend. The card is now “ยอดรับชำระรวมในช่วง”:
-shop receipts plus casual receipts for the selected building, grouped into cash
-and transfer/QR. Its expandable details retain the separate shop/casual amounts.
+before deploying the updated frontend. The card is “สรุปการรับเงิน”, with net receipts as its main number.
+Gross receipts combine shop and casual receipts for the selected building; cash
+and transfer/QR are indented below that total, with customer refunds shown as a
+separate deduction. Collapsed details retain the separate shop/casual amounts
+and scope notes, and link to all transactions in the date range (all shops/areas).
 It uses receipt dates, not casual sales totals or the paginated daily matrix.
 
 Actual shop refund settlements and casual refund confirmations in the date range

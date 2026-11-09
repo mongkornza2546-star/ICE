@@ -642,6 +642,7 @@ export function AccountingPage({ userRole = 'round_lead', demoMode = false }: { 
         onClearFilters={() => { setShopFilters({}); setPage(0); }}
         onOpenShop={(shop, date) => void openShopInvoices(shop, date)}
         onOpenReview={() => { setReviewFilters({}); setPages((current) => ({ ...current, review: 0 })); changeTab('review'); }}
+        onOpenTransactions={() => { setTransactionFilters({}); setPages((current) => ({ ...current, transactions: 0 })); changeTab('transactions'); }}
         reviewCount={reviewCount}
         setFromDate={(date) => { setFromDate(date); setPage(0); }}
         setToDate={(date) => { setToDate(date); setPage(0); }}
@@ -697,7 +698,7 @@ export function AccountingPage({ userRole = 'round_lead', demoMode = false }: { 
   </section>;
 }
 
-function ShopSummaryPanel({ daily, data, loading, unavailable, view, onViewChange, filters, fromDate, onClearFilters, onOpenReview, onOpenShop, reviewCount, setFromDate, setToDate, setWindowMode, toDate, today, updateFilter, windowMode }: {
+function ShopSummaryPanel({ daily, data, loading, unavailable, view, onViewChange, filters, fromDate, onClearFilters, onOpenReview, onOpenShop, onOpenTransactions, reviewCount, setFromDate, setToDate, setWindowMode, toDate, today, updateFilter, windowMode }: {
   daily: AccountingShopDailyResponse;
   data: AccountingShopSummaryResponse;
   loading: boolean;
@@ -708,6 +709,7 @@ function ShopSummaryPanel({ daily, data, loading, unavailable, view, onViewChang
   fromDate: string;
   onClearFilters: () => void;
   onOpenReview: () => void;
+  onOpenTransactions: () => void;
   onOpenShop: (shop: AccountingShopSummaryRow, serviceDate?: string) => void;
   reviewCount: number | null;
   setFromDate: (date: string) => void;
@@ -778,14 +780,19 @@ function ShopSummaryPanel({ daily, data, loading, unavailable, view, onViewChang
       <div className="accounting-overview" aria-label={translateUi('สรุปยอดการเงิน')}>
         <article className="accounting-metric accounting-metric--sales"><span>{translateUi('ยอดขายรายร้านในช่วง')}</span><strong>{money.format(totals.sales_amount)}</strong><div className="accounting-metric__breakdown"><span>{translateUi('รับชำระแล้ว ')}<b>{money.format(totals.paid_amount)}</b></span><span>{translateUi('ค้างของบิลช่วงนี้ ')}<b>{money.format(totals.outstanding_amount)}</b></span></div><small>{translateUi('รับชำระและค้างเป็นยอดปัจจุบัน รวมการชำระหลังช่วงรายงาน')}</small></article>
         <article className="accounting-metric accounting-metric--received">
-          <span>{translateUi('ยอดรับชำระรวมในช่วง')}</span><strong>{receiptMoney(receivedTotal)}</strong>
-          <div className="accounting-metric__breakdown">
-            <span>{translateUi('เงินสด ')}<b>{receiptMoney(receivedCash)}</b></span>
-            <span>{translateUi('โอน / QR ')}<b>{receiptMoney(receivedTransfer)}</b></span>
-            <span>{translateUi('คืนเงินในช่วง ')}<b>{receiptMoney(refundedTotal)}</b></span>
-            <span>{translateUi('รับสุทธิหลังคืนเงิน ')}<b>{receiptMoney(receivedNet)}</b></span>
+          <span>{translateUi('สรุปการรับเงิน')}</span>
+          <small>{translateUi('ตามวันที่รับ / คืนเงินจริงในช่วงที่เลือก')}</small>
+          <span className="accounting-receipt-net-label">{translateUi('เงินรับสุทธิ')}</span>
+          <strong>{receiptMoney(receivedNet)}</strong>
+          <small>{translateUi('เงินรับทั้งหมด หลังหักเงินคืน')}</small>
+          <div className="accounting-metric__breakdown accounting-receipt-flow">
+            <span className="accounting-receipt-flow__total">{translateUi('รับเงินทั้งหมด ')}<b>{receiptMoney(receivedTotal)}</b></span>
+            <span className="accounting-receipt-flow__method">{translateUi('เงินสด ')}<b>{receiptMoney(receivedCash)}</b></span>
+            <span className="accounting-receipt-flow__method">{translateUi('โอน / QR ')}<b>{receiptMoney(receivedTransfer)}</b></span>
+            <span className="accounting-receipt-flow__refund">{translateUi('หักเงินคืนลูกค้า ')}<b>{refundedTotal != null && refundedTotal > 0 ? '−' : ''}{receiptMoney(refundedTotal)}</b></span>
           </div>
-          <details className="accounting-receipt-sources"><summary>{translateUi('รายละเอียดการรับชำระ')}</summary>
+          <details className="accounting-receipt-sources"><summary>{translateUi('ดูรายละเอียดแยกตามประเภท')}</summary>
+            <small>{translateUi('รายละเอียดของยอดด้านบน ไม่ต้องบวกเพิ่ม')}</small>
             <div className="accounting-metric__breakdown">
               <span>{translateUi('รับจากร้าน ')}<b>{receiptMoney(totals.cash_received_in_period)}</b></span>
               <span>{translateUi('รับจากขายสด ')}<b>{receiptMoney(totals.casual_received_amount)}</b></span>
@@ -796,7 +803,10 @@ function ShopSummaryPanel({ daily, data, loading, unavailable, view, onViewChang
               <small>{translateUi('ตามวันที่รับ/คืนเงินจริง รวมรับหนี้เก่าและร้านปิดใช้งาน')}</small>
               <small>{translateUi('ร้านตามตัวกรองร้าน/พื้นที่ · ไม่ตามสถานะหรือเงื่อนไขชำระ')}</small>
               <small>{translateUi('ขายสดตามตึก · ไม่ตามตัวกรองร้าน/โซน')}</small>
+              <small>{translateUi('ยอดปรับปรุงบิลไม่ใช่เงินรับเข้า ดูแยกในเอกสารและการเงิน')}</small>
             </div>
+            <button className="accounting-receipt-sources__transactions" onClick={onOpenTransactions} type="button">{translateUi('ดูธุรกรรมทั้งหมดในช่วงวันที่ →')}</button>
+            <small>{translateUi('แสดงทุกพื้นที่และทุกร้าน')}</small>
           </details>
         </article>
         <article className="accounting-metric accounting-metric--debt"><span>{translateUi('ยอดค้างสะสมของร้าน')}</span><strong>{money.format(totals.cumulative_outstanding_amount)}</strong><div className="accounting-metric__breakdown"><span>{totals.cumulative_outstanding_shop_count.toLocaleString('th-TH')}{translateUi(' ร้าน ')}<b>{translateUi('เกินกำหนด ')}{money.format(totals.cumulative_overdue_amount)}</b></span></div><small>{translateUi('หนี้ปัจจุบันทุกวันที่ขาย · เกินกำหนดรวมอยู่ในยอดค้าง')}</small></article>

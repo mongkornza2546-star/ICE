@@ -67,6 +67,19 @@ function withKnownIceTypeImages(context: DeliveryPosContext, iceTypes: IceTypeOp
   };
 }
 
+function withKnownShopImages(nextCards: ShopCard[], currentCards: ShopCard[]): ShopCard[] {
+  const currentByStop = new Map(currentCards.map((card) => [card.round_stop_id, card]));
+  return nextCards.map((card) => {
+    const current = currentByStop.get(card.round_stop_id);
+    // Base data arrives before photo signing. Keep the displayed photo only
+    // when it still belongs to this shop and the exact same image path.
+    return !card.image_url && card.image_path && current?.shop_id === card.shop_id
+      && current.image_path === card.image_path && current.image_url
+      ? { ...card, image_url: current.image_url }
+      : card;
+  });
+}
+
 function buildImmediateSalePayloadSignature(requestScope: string, payload: {
   roundStopId: string;
   items: Array<{ ice_type_id: string; quantity: number }>;
@@ -456,7 +469,7 @@ export function useEmployeeDeliveryData({
               if (requestId !== cardsRequestId.current || activeRoundId.current !== roundId) return;
               hasLoadedCardsForRound = true;
               loadedCardsRoundId.current = roundId;
-              setCards(baseCards);
+              setCards((current) => withKnownShopImages(baseCards, current));
               writeCachedEmployeeShopCards(requestScope, serviceDate, roundId, baseCards);
               setEventCardsError(gateway.getEventCardsLoadError?.(roundId) ?? null);
               setLoadingCards(false);
@@ -467,7 +480,7 @@ export function useEmployeeDeliveryData({
         );
         if (requestId !== cardsRequestId.current || activeRoundId.current !== roundId) return false;
         loadedCardsRoundId.current = roundId;
-        setCards(nextCards);
+        setCards((current) => withKnownShopImages(nextCards, current));
         writeCachedEmployeeShopCards(requestScope, serviceDate, roundId, nextCards);
         setEventCardsError(gateway.getEventCardsLoadError?.(roundId) ?? null);
         setLoadingCards(false);

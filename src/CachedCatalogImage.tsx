@@ -13,14 +13,19 @@ export function CachedCatalogImage({ src, namespace, imagePath, fallback = null,
   const imageRef = useRef<HTMLImageElement>(null);
   const cacheMissRef = useRef(onCacheMiss);
   cacheMissRef.current = onCacheMiss;
-  const identity = JSON.stringify([src, namespace, imagePath]);
+  const sourceRef = useRef(src);
+  sourceRef.current = src;
+  // Credentials may rotate while the displayed bytes still represent the
+  // same object. Keep those bytes; fallbacks and later loads use the latest URL.
+  const identity = JSON.stringify([src ? catalogImageCacheKey(src) ?? src : src, namespace, imagePath]);
   const [resolved, setResolved] = useState<{ identity: string; url: string | null } | null>(null);
   const canCache = Boolean((src && catalogImageCacheKey(src) || namespace && imagePath)
     && typeof globalThis.caches !== 'undefined' && typeof URL.createObjectURL === 'function');
 
   useEffect(() => {
+    const source = sourceRef.current;
     if (!canCache) {
-      if (!src && namespace && imagePath) {
+      if (!source && namespace && imagePath) {
         const retry = setTimeout(() => cacheMissRef.current?.(), 0);
         return () => clearTimeout(retry);
       }
@@ -34,16 +39,17 @@ export function CachedCatalogImage({ src, namespace, imagePath, fallback = null,
     const fallbackToSource = () => {
       settled = true;
       observer?.disconnect();
-      setResolved({ identity, url: src ?? null });
-      if (!src) cacheMissRef.current?.();
+      setResolved({ identity, url: sourceRef.current ?? null });
+      if (!sourceRef.current) cacheMissRef.current?.();
     };
     const load = async () => {
       if (settled || controller) return;
       const request = new AbortController();
       controller = request;
+      const currentSource = sourceRef.current;
       // Covers queue, storage and native-bridge stalls, not just HTTP timeouts.
       timeout = setTimeout(() => {
-        if (!src) {
+        if (!sourceRef.current) {
           // A restored path can be sharing a download that outlives navigation.
           // Show a placeholder, but keep listening for those bytes; requesting
           // another URL here can fail and hide a later successful download.
@@ -56,14 +62,14 @@ export function CachedCatalogImage({ src, namespace, imagePath, fallback = null,
         fallbackToSource();
       }, 8000);
       try {
-        const blob = src ? await loadCatalogImage(src, { signal: request.signal })
+        const blob = currentSource ? await loadCatalogImage(currentSource, { signal: request.signal })
           : namespace && imagePath ? await readCatalogImageByPath(namespace, imagePath, { signal: request.signal }) : null;
         if (request.signal.aborted) return;
         settled = true;
         observer?.disconnect();
         objectUrl = blob ? URL.createObjectURL(blob) : undefined;
         setResolved({ identity, url: objectUrl ?? null });
-        if (!blob && !src) cacheMissRef.current?.();
+        if (!blob && !sourceRef.current) cacheMissRef.current?.();
       } catch {
         // Unsupported CORS/storage retains native img fallback and URL retries.
         if (!request.signal.aborted) fallbackToSource();
@@ -94,10 +100,12 @@ export function CachedCatalogImage({ src, namespace, imagePath, fallback = null,
       observer?.disconnect();
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [src, namespace, imagePath, identity, canCache, loading]);
+  }, [namespace, imagePath, identity, canCache, loading]);
 
   const result = resolved?.identity === identity ? resolved : null;
-  const displayUrl = canCache ? result?.url : src;
+  const displayUrl = canCache
+    ? result?.url?.startsWith('blob:') ? result.url : result?.url ? src : result?.url
+    : src;
   if ((!canCache && !src) || (result && result.url === null)) return <>{fallback}</>;
   return <img
     {...props}

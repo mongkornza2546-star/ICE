@@ -219,14 +219,15 @@ describe('accounting shop summary', () => {
       expect(card.querySelector('dl > div:last-child')?.textContent).toContain(`รายการแจก${free} ครั้ง`);
       const receipt = container.querySelector('.accounting-metric--received')!;
       const currency = (amount: number) => new Intl.NumberFormat('th-TH', { style: 'currency', currency: 'THB' }).format(amount);
-      expect(receipt.querySelector(':scope > strong')?.textContent).toBe(currency(1100 + received));
+      expect(receipt.querySelector(':scope > strong')?.textContent).toBe(currency(1100 + received - 20 - refunded));
       for (const [label, amount] of [
         ['เงินสด', 800 + received * 0.6], ['โอน / QR', 300 + received * 0.4],
-        ['คืนเงินในช่วง', 20 + refunded], ['รับสุทธิหลังคืนเงิน', 1100 + received - 20 - refunded],
+        ['รับเงินทั้งหมด', 1100 + received],
         ['รับจากร้าน', 1100], ['รับจากขายสด', received],
       ] as const) {
         expect(within(receipt as HTMLElement).getByText(label, { exact: false, selector: '.accounting-metric__breakdown > span' }).querySelector('b')?.textContent).toBe(currency(amount));
       }
+      expect(receipt.querySelector('.accounting-receipt-flow__refund b')?.textContent).toBe(`−${currency(20 + refunded)}`);
     };
     await expectCard('ทั้งช่วงวันที่ ทุกตึก · รวมรายการไม่ระบุตึก · ไม่ตามตัวกรองร้าน/โซน', ['฿175.00', '฿215.00', '฿55.00', '฿160.00'], '4', 215, 55);
     await user.selectOptions(screen.getByRole('combobox', { name: 'อาคาร' }), 'building-1');
@@ -250,8 +251,8 @@ describe('accounting shop summary', () => {
     const { container } = render(<AccountingPage />);
     await screen.findByRole('button', { name: 'S001 · ร้านสมใจ' });
     const receipt = container.querySelector('.accounting-metric--received')!;
-    expect(receipt.querySelector(':scope > strong')?.textContent).toBe('฿1,110.00');
-    expect([...receipt.querySelectorAll(':scope > .accounting-metric__breakdown b')].map((node) => node.textContent)).toEqual(['—', '—', '—', '—']);
+    expect(receipt.querySelector(':scope > strong')?.textContent).toBe('—');
+    expect([...receipt.querySelectorAll(':scope > .accounting-metric__breakdown b')].map((node) => node.textContent)).toEqual(['฿1,110.00', '—', '—', '—']);
   });
 
   it('shows separate rental invoices without delivery events, including their items and payments', async () => {
@@ -519,7 +520,7 @@ describe('accounting shop summary', () => {
     expect(screen.getByRole('button', { name: 'ยอดรวมช่วงวันที่' }).getAttribute('aria-pressed')).toBe('true');
     expect(screen.getByText(/รับชำระแล้ว/, { selector: '.accounting-metric__breakdown span' })).toBeTruthy();
     expect(screen.getByText('ยอดค้างสะสมของร้าน', { selector: 'article span' })).toBeTruthy();
-    const broadReceipts = screen.getByText('ยอดรับชำระรวมในช่วง', { selector: 'article span' }).closest('article');
+    const broadReceipts = screen.getByText('สรุปการรับเงิน', { selector: 'article span' }).closest('article');
     expect(broadReceipts?.textContent).toMatch(/ร้านปิดใช้งาน.*ไม่ตามสถานะหรือเงื่อนไขชำระ/);
     expect(screen.getByText(/เงินสด/, { selector: '.accounting-metric--received .accounting-metric__breakdown span' })).toBeTruthy();
     expect(screen.getByText(/โอน/, { selector: '.accounting-metric--received .accounting-metric__breakdown span' })).toBeTruthy();
