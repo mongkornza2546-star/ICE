@@ -587,6 +587,7 @@ describe('casual-customer POS navigation', () => {
     expect(secondPayload.idempotencyKey).toBe(firstPayload.idempotencyKey);
     expect(secondPayload.evidencePath).toBe(firstPayload.evidencePath);
     expect(gateway.uploadPaymentEvidence).toHaveBeenCalledTimes(1);
+    expect(gateway.uploadPaymentEvidence).toHaveBeenCalledWith(proof, firstPayload.idempotencyKey, { onlineOnly: true });
   });
 
   it('rejects oversized casual payment evidence', async () => {

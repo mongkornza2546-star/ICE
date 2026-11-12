@@ -209,3 +209,32 @@ it.each([true, false])('uses live invoice availability for credit documents (onl
   if (online) expect(loadShopCreditEligibility).toHaveBeenCalledWith('shop', '2026-09-25');
   else expect(loadShopCreditEligibility).not.toHaveBeenCalled();
 });
+
+it('uploads casual-sale evidence to the server with a prepared snapshot and no shop POS read', async () => {
+  const { s, live, runtime: r } = setup();
+  await r.engine.install(s);
+  vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true);
+  const uploadPaymentEvidence = vi.fn().mockResolvedValue(`${s.ownerId}/r2/slip.webp`);
+  const recordCasualTransaction = vi.fn().mockResolvedValue({ transaction: { id: 'sale' } });
+  const { createOfflineGateway } = await import('../src/offline/runtime/gateway');
+  const gateway = createOfflineGateway({ ...live, uploadPaymentEvidence, recordCasualTransaction }, r);
+  const file = new File(['receipt'], 'receipt.jpg', { type: 'image/jpeg' });
+  const id = crypto.randomUUID();
+  const path = await gateway.uploadPaymentEvidence!(file, id, { onlineOnly: true });
+  expect(path).toBe(`${s.ownerId}/r2/slip.webp`);
+  expect(uploadPaymentEvidence).toHaveBeenCalledExactlyOnceWith(file, id);
+  expect(await r.engine.store.commands(s.ownerId)).toHaveLength(0);
+});
+
+it.each(['offline', 'connection lost'] as const)('does not return a local path for casual evidence when %s', async state => {
+  const { s, live, runtime: r } = setup();
+  await r.engine.install(s);
+  vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(state !== 'offline');
+  const uploadPaymentEvidence = vi.fn().mockRejectedValue(new TypeError('Failed to fetch'));
+  const { createOfflineGateway } = await import('../src/offline/runtime/gateway');
+  const gateway = createOfflineGateway({ ...live, uploadPaymentEvidence }, r);
+  await expect(gateway.uploadPaymentEvidence!(new File(['receipt'], 'receipt.jpg'), crypto.randomUUID(), { onlineOnly: true }))
+    .rejects.toThrow(state === 'offline' ? 'รายการนี้ต้องเชื่อมต่ออินเทอร์เน็ต' : 'Failed to fetch');
+  expect(uploadPaymentEvidence).toHaveBeenCalledTimes(state === 'offline' ? 0 : 1);
+  expect(await r.engine.store.commands(s.ownerId)).toHaveLength(0);
+});

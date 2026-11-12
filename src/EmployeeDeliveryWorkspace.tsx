@@ -162,7 +162,7 @@ export interface EmployeeDeliveryGateway {
   recordCasualTransaction?(payload: EmployeeCasualTransactionPayload): Promise<CasualTransactionResult>;
   loadCasualReceiptSnapshot?(transactionId: string): Promise<import('./lib/salesDocumentPrint').StoredSalesDocument>;
   voidCasualTransaction?(payload: EmployeeCasualVoidPayload): Promise<CasualTransactionResult>;
-  uploadPaymentEvidence?(file: File, idempotencyKey: string): Promise<string>;
+  uploadPaymentEvidence?(file: File, idempotencyKey: string, options?: { onlineOnly: boolean }): Promise<string>;
   deletePaymentEvidence?(path: string, idempotencyKey: string): Promise<void>;
   requestFinancialApproval?(payload: EmployeeApprovalPayload): Promise<{
     id: string;
@@ -1178,7 +1178,7 @@ export function EmployeeDeliveryWorkspace({
           recordTransaction={gateway.recordCasualTransaction!}
           round={data.selectedRound}
           serviceDateLabel={formatEmployeeServiceDate(data.selectedRound.service_date)}
-          uploadEvidence={gateway.uploadPaymentEvidence!}
+          uploadEvidence={(file, key) => gateway.uploadPaymentEvidence!(file, key, { onlineOnly: true })}
           voidTransaction={gateway.voidCasualTransaction!}
         />
       </div>

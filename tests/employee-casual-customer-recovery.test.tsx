@@ -164,3 +164,49 @@ it('does not restore another account\'s uncertain sale', async () => {
   expect(screen.getByLabelText('ยอดขาย (บาท)').hasAttribute('disabled')).toBe(false);
   expect(record).toHaveBeenCalledTimes(1);
 });
+
+it.each([false, true])('replays a legacy offline sale until rejected before accepting a new slip (remount: %s)', async remount => {
+  const record = vi.fn()
+    .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+    .mockRejectedValueOnce(new TypeError('Failed to fetch again'))
+    .mockRejectedValueOnce({ code: 'P0001', message: 'Payment evidence was not uploaded by the current user' })
+    .mockResolvedValue(result);
+  const first = setup(5, {}, true, record);
+  first.upload.mockResolvedValue('offline:legacy-request');
+  const proof = new File(['proof'], 'proof.png', { type: 'image/png' });
+  await selectIce(first.user);
+  await first.user.type(screen.getByLabelText('ยอดขาย (บาท)'), '50');
+  await first.user.click(screen.getByRole('button', { name: 'โอนเงิน', exact: true }));
+  await first.user.upload(screen.getByLabelText('หลักฐานการชำระ'), proof);
+  await first.user.click(screen.getByRole('button', { name: 'ยืนยันขายและรับเงิน' }));
+  await screen.findByText('Failed to fetch');
+  const original = record.mock.calls[0][0];
+  if (remount) first.view.unmount();
+
+  const second = remount ? setup(5, {}, true, record) : first;
+  second.upload.mockClear().mockResolvedValue('proof.png');
+  await screen.findByRole('heading', { name: 'เลือกน้ำแข็ง' });
+  await second.user.click(screen.getByRole('button', { name: 'ยืนยันขายและรับเงิน' }));
+  await screen.findByText('Failed to fetch again');
+  expect(screen.getByLabelText('ยอดขาย (บาท)').hasAttribute('disabled')).toBe(true);
+  expect(await offlineStore().onlineWrite()).toBeDefined();
+  await second.user.click(screen.getByRole('button', { name: 'ยืนยันขายและรับเงิน' }));
+  await screen.findByText('Payment evidence was not uploaded by the current user');
+  expect(record.mock.calls[1][0]).toEqual(original);
+  expect(record.mock.calls[2][0]).toEqual(original);
+  expect(await offlineStore().onlineWrite()).toBeUndefined();
+  expect(second.upload).not.toHaveBeenCalled();
+  expect(screen.getByLabelText('ยอดขาย (บาท)').hasAttribute('disabled')).toBe(false);
+
+  await selectIce(second.user);
+  await second.user.clear(screen.getByLabelText('ยอดขาย (บาท)'));
+  await second.user.type(screen.getByLabelText('ยอดขาย (บาท)'), '50');
+  await second.user.click(screen.getByRole('button', { name: 'โอนเงิน', exact: true }));
+  await second.user.upload(screen.getByLabelText('หลักฐานการชำระ'), proof);
+  await second.user.click(screen.getByRole('button', { name: 'ยืนยันขายและรับเงิน' }));
+  await screen.findByText(/บันทึกสำเร็จ/);
+  expect(record.mock.calls[3][0].evidencePath).toBe('proof.png');
+  expect(record.mock.calls[3][0].idempotencyKey).not.toBe(original.idempotencyKey);
+  expect(second.upload).toHaveBeenCalledTimes(1);
+  expect(await offlineStore().onlineWrite()).toBeUndefined();
+});

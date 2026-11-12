@@ -450,6 +450,12 @@ export function EmployeeCasualCustomerPage({
         && cause && typeof cause === 'object' && 'code' in cause && typeof cause.code === 'string' && cause.code) {
         setPendingRecord(null);
         clearRecovery(requestScope, round.service_date, recoveryMode);
+        // Replay legacy placeholders unchanged until the server rejects them.
+        // The guarded write has then released its fence, so a new upload is safe.
+        if (submittedRecord.payload.evidencePath?.startsWith('offline:')) {
+          clearPendingRequest(signature, request.key);
+          recordRetryRef.current = null;
+        }
       }
       setError(transactionRecorded
         ? 'บันทึกสำเร็จแล้ว แต่โหลดสต๊อกล่าสุดไม่สำเร็จ กรุณาออกแล้วเข้าหน้านี้ใหม่'
@@ -533,6 +539,11 @@ export function EmployeeCasualCustomerPage({
       setVoidTarget(null);
       await refresh();
     } catch (cause) {
+      if (!transactionVoided && evidencePath?.startsWith('offline:') && !isTransportFailure(cause)
+        && cause && typeof cause === 'object' && 'code' in cause && typeof cause.code === 'string' && cause.code) {
+        clearPendingRequest(signature, request.key);
+        pending.current = null;
+      }
       setError(transactionVoided
         ? 'ยกเลิกสำเร็จแล้ว แต่โหลดสต๊อกล่าสุดไม่สำเร็จ กรุณาเข้าหน้านี้ใหม่'
         : getErrorMessage(cause, 'ยกเลิกรายการไม่สำเร็จ'));

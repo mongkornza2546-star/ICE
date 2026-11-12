@@ -288,3 +288,28 @@ describe('casual cancellation dialog accessibility', () => {
     expect(screen.queryByRole('dialog')).toBeNull();
   });
 });
+
+it('preserves a legacy offline refund until rejected, then uploads a replacement slip', async () => {
+  const { user, voidTransaction, uploadEvidence } = setup();
+  uploadEvidence.mockResolvedValueOnce('offline:legacy-refund');
+  voidTransaction
+    .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+    .mockRejectedValueOnce({ code: 'P0001', message: 'Refund evidence was not uploaded by the current user' })
+    .mockResolvedValue({});
+  const dialog = await openDialog(user);
+  await user.type(dialog.getByRole('textbox', { name: 'เหตุผลการยกเลิก' }), 'คืนสินค้า');
+  await user.click(dialog.getByRole('button', { name: 'คืนโอนเงิน' }));
+  await user.upload(dialog.getByLabelText('หลักฐานการคืนเงิน'), new File(['refund'], 'refund.png', { type: 'image/png' }));
+  await user.click(dialog.getByRole('button', { name: 'ยืนยันยกเลิก' }));
+  await screen.findByText('Failed to fetch');
+  const original = voidTransaction.mock.calls[0][0];
+  await user.click(dialog.getByRole('button', { name: 'ยืนยันยกเลิก' }));
+  await screen.findByText('Refund evidence was not uploaded by the current user');
+  expect(voidTransaction.mock.calls[1][0]).toEqual(original);
+  expect(uploadEvidence).toHaveBeenCalledTimes(1);
+  await user.click(dialog.getByRole('button', { name: 'ยืนยันยกเลิก' }));
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  expect(uploadEvidence).toHaveBeenCalledTimes(2);
+  expect(voidTransaction.mock.calls[2][0].evidencePath).toBe('refund/evidence.png');
+  expect(voidTransaction.mock.calls[2][0].idempotencyKey).not.toBe(original.idempotencyKey);
+});

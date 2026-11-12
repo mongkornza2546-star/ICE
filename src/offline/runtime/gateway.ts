@@ -218,7 +218,14 @@ export function createOfflineGateway(live: EmployeeDeliveryGateway, runtime: Emp
     },
     recordDelivery: delivery, recordImmediateSale: immediate,
     recordEmployeeStockTransfer: p => stock('stock_transfer', p), recordEmployeeStockReturn: p => stock('stock_return', p), recordEmployeeStockDamage: p => stock('stock_damage', p),
-    async uploadPaymentEvidence(file, id) {
+    async uploadPaymentEvidence(file, id, options) {
+      // Casual sales/refunds write directly to the server and cannot consume
+      // an offline evidence placeholder, even when a prepared snapshot exists.
+      if (options?.onlineOnly) {
+        if (!navigator.onLine) throw new Error('รายการนี้ต้องเชื่อมต่ออินเทอร์เน็ต');
+        if (!live.uploadPaymentEvidence) throw new Error('ยังไม่พร้อมรับหลักฐาน');
+        return live.uploadPaymentEvidence(file, id);
+      }
       const snapshot = await runtime.snapshot();
       if (!snapshot || (navigator.onLine && livePosStops.size > 0 && !pending())) {
         if (!live.uploadPaymentEvidence) throw new Error('ยังไม่พร้อมรับหลักฐาน');

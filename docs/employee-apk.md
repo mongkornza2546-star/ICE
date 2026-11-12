@@ -6,10 +6,10 @@
 npm run android:apk:employee
 ```
 
-ไฟล์ติดตั้งปัจจุบัน: `outputs/android/ice-delivery-employee-1.0.14.apk`
+ไฟล์ติดตั้งปัจจุบัน: `outputs/android/ice-delivery-employee-1.0.18.apk`
 
 - Android 7.0 ขึ้นไป (`minSdkVersion 24`)
-- เวอร์ชัน 1.0.14 (`versionCode 15`), package `com.superice.delivery`
+- เวอร์ชัน 1.0.18 (`versionCode 19`), package `com.superice.delivery`
 - ใช้ debug signing เดิมของโปรเจกต์สำหรับแจกติดตั้งภายใน สามารถอัปเดตทับ APK เดิมที่ใช้ package และใบรับรองเดียวกัน โดยไม่ถอนการติดตั้ง/ล้างข้อมูล
 - บัญชีที่เปิดงานได้คือพนักงาน (`courier`) ที่ยังใช้งานอยู่; แอดมินและหัวหน้าใช้งานผ่านเว็บ
 - เก็บงาน POS, ลูกค้าจร, เติม/คืน/ละลายน้ำแข็ง, อีเวนต์, รับชำระตามสิทธิ์, ประวัติรับเงิน, ใบเซ็นเครดิต และเครื่องพิมพ์ Bluetooth เดิม
@@ -24,6 +24,27 @@ npm run android:apk:employee
 ขั้นตอน build ตรวจรายชื่อโมดูลที่ถูกบรรจุจริงและหยุดหากพบหน้าจัดการที่ห้ามรวม บันทึกรายชื่อไว้ใน `dist-employee/employee-build.json` ซึ่งถูกบรรจุใน APK ด้วย ไฟล์รูปพื้นหลังแอดมินและเทมเพลตนำเข้าร้านค้าไม่ถูกบรรจุในรุ่นพนักงาน
 
 คำสั่ง `npm run build` และ `npm run android:apk` ยังคงสร้างระบบเต็มตามเดิม อย่าใช้คำสั่งหลังเพื่อแจก APK เฉพาะพนักงาน
+
+## ตรวจสอบรุ่น 1.0.18 (11 พฤศจิกายน 2026)
+
+- แก้ต่อจากรีวิว 1.0.17: การขอลิงก์ล้มเหลวทำให้ failed ค้าง แม้ข้อมูลคิวถูกรีเฟรช และ cache miss ถูกส่งเข้าตัว retry ที่รองรับเฉพาะ R2
+- ใช้ withPublicShopImages สำหรับ cache miss เพื่อรองรับทั้ง R2 และ storage เดิม และใช้ลิงก์ที่ยังไม่หมดอายุจากแคชก่อน; บังคับขอลิงก์ใหม่เฉพาะเมื่อรูป R2 โหลดผิดพลาด
+- รูปที่ล้มเหลวลองใหม่เมื่อเกิด online event หรือกดรีเฟรชยอดล่าสุด โดยไม่โหลดรูปที่สำเร็จแล้วซ้ำ; กันคำขอซ้อนและผลลัพธ์เก่าทับรูปใหม่
+- ทดสอบรูป/แคช/หน้าเก็บเงินผ่าน 31 เคส รวม regression สำหรับ online recovery และการกดปุ่มรีเฟรชจาก CollectionDesk ผ่านตัวแปลงลิงก์จริง โดยจำลองเฉพาะ storage backend
+- TypeScript, employee production build และ Gradle unit test/build ผ่าน; ตรวจ assets ตรงกันทั้ง 12 ไฟล์และ employee target/config ถูกต้อง
+- ลายเซ็นตรงกับ 1.0.17; package เดิมและ versionCode เพิ่มเป็น 19
+- SHA-256: `c72db0330b55174ba44dd4265b998b6430c2aca7c8e0d0fb3d4e44c9175a4614`
+- ยังไม่ได้ทดสอบติดตั้งและเปิดรูปบนมือถือจริง และไม่ได้ deploy เว็บ
+
+## ตรวจสอบรุ่น 1.0.17 (11 พฤศจิกายน 2026)
+
+- แก้รูปร้านหน้าเก็บเงิน: local collection snapshot มี image_path แต่ไม่มี image_url; เมื่อไม่มีรูปในแคช AutoRefreshShopImage ไม่ได้รับ onCacheMiss จึงค้างที่ไอคอนร้าน เพิ่ม callback ให้ขอลิงก์รูปใหม่ผ่านกลไก retry เดิม
+- เพิ่ม regression test สำหรับข้อมูลที่มีเฉพาะ path ทั้งกรณีไม่มี Cache API, cache miss และ cache hit; เดิมชุดทดสอบครอบคลุมเฉพาะ URL โหลดล้มเหลว จึงไม่จับกรณีที่ยังไม่มี URL
+- ชุดทดสอบรูปและหน้าเก็บเงินผ่าน 26 เคส; TypeScript, employee production build และ Gradle unit test/build ผ่าน
+- ตรวจ assets ใน APK ตรงกับ dist-employee ทั้ง 12 ไฟล์ และ employee target/config ถูกต้อง
+- ตรวจลายเซ็นผ่านและ certificate ตรงกับรุ่น 1.0.16; versionCode เพิ่มจาก 17 เป็น 18
+- SHA-256: `834704f82a4d904b5e81cbbe88b6f00a21614ddc6456ae078ba2153b1c66b719`
+- ยังไม่ได้ทดสอบติดตั้งและเปิดรูปบนมือถือจริง และไม่ได้ deploy เว็บ
 
 ## ตรวจสอบรุ่น 1.0.14 (29 ตุลาคม 2026)
 

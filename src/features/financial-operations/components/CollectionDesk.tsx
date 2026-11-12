@@ -141,6 +141,7 @@ export function CollectionDesk({
   const [paymentMethod, setPaymentMethod] = useState<'all' | 'cash' | 'transfer'>('all');
   const [paymentStatus, setPaymentStatus] = useState<'all' | 'active' | 'voided'>('all');
   const [page, setPage] = useState(0);
+  const [imageRetryKey, setImageRetryKey] = useState(0);
   const [selectedPayment, setSelectedPayment] = useState<PaymentHistoryItem | null>(null);
   const [previewImage, setPreviewImage] = useState<{ name: string; url: string } | null>(null);
 
@@ -363,7 +364,7 @@ export function CollectionDesk({
             <span className="collection-desk__auto-refresh"><i aria-hidden="true" />{translateUi('อัปเดตอัตโนมัติ 30 วิ')}</span>
           </span>
         </div>
-        <button disabled={busy} onClick={onRefresh} type="button">
+        <button disabled={busy} onClick={() => { setImageRetryKey((key) => key + 1); onRefresh(); }} type="button">
           {translateUi('รีเฟรชยอดล่าสุด')}</button>
       </header>
 
@@ -512,7 +513,7 @@ export function CollectionDesk({
                   >
                     <span className="collection-history__shop">
                       <span className="collection-history__thumbnail">
-                        <AutoRefreshShopImage alt="" imagePath={payment.image_path ?? null} imageUrl={payment.image_url}
+                        <AutoRefreshShopImage retryKey={imageRetryKey} alt="" imagePath={payment.image_path ?? null} imageUrl={payment.image_url}
                           loading="lazy" fallback={<Storefront aria-hidden="true" size={22} weight="duotone" />} />
                       </span>
                       <span><strong>{row.displayTitle}</strong>{location ? <small>{location}</small> : null}</span>
@@ -555,7 +556,7 @@ export function CollectionDesk({
                       type="button"
                     >
                       <span className="financial-ops__shop-visual">
-                        <AutoRefreshShopImage
+                        <AutoRefreshShopImage retryKey={imageRetryKey}
                           alt=""
                           fallback={(
                             <span>
@@ -603,7 +604,7 @@ export function CollectionDesk({
                     type="button"
                   >
                     <span className="financial-ops__shop-visual">
-                      <AutoRefreshShopImage
+                      <AutoRefreshShopImage retryKey={imageRetryKey}
                         alt=""
                         fallback={(
                           <span>
@@ -681,7 +682,7 @@ export function CollectionDesk({
                         <CaretRight aria-hidden="true" size={18} />
                       </button>
                       {row.shop?.image_url ? (
-                        <AutoRefreshShopImage
+                        <AutoRefreshShopImage retryKey={imageRetryKey}
                           alt=""
                           fallback={null}
                           imagePath={row.shop.image_path}
