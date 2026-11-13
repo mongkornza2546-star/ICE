@@ -493,7 +493,7 @@ describe('employee delivery review navigation', () => {
     expect(onConfirmDelivery).not.toHaveBeenCalled();
   });
 
-  it('types a half-unit quantity and uses Enter to finish entry without submitting delivery', async () => {
+  it('uses Enter to confirm a half-unit quantity without changing the product or submitting delivery', async () => {
     const user = userEvent.setup();
     const { onSubmit, onConfirmDelivery } = renderReview();
     await user.click(screen.getByRole('button', { name: /หลอดเล็ก.*คงเหลือ/ }));
@@ -502,14 +502,15 @@ describe('employee delivery review navigation', () => {
     await user.type(quantity, '2.5');
     await user.keyboard('{Enter}');
     expect(screen.getByText('2.5 ถุง × ฿60.00')).toBeTruthy();
-    expect(screen.queryByRole('spinbutton', { name: 'จำนวนหลอดเล็ก' })).toBeNull();
+    expect(screen.getByRole('spinbutton', { name: 'จำนวนหลอดเล็ก' })).toBe(quantity);
+    expect(document.activeElement).toBe(quantity);
     expect(onSubmit).not.toHaveBeenCalled();
     await user.click(screen.getByRole('button', { name: 'ส่งอย่างเดียว' }));
     expect(onConfirmDelivery).toHaveBeenCalledWith('end_of_day');
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
-  it('uses Enter to save each quantity and continue through other ice types for the same shop', async () => {
+  it('uses Enter to confirm and Tab to change ice types, with Shift+Tab going back', async () => {
     const user = userEvent.setup();
     const otherItems = [
       { ...posContext.items[0], ice_type_id: 'ice-2', code: 'LARGE', name: 'หลอดใหญ่' },
@@ -523,19 +524,27 @@ describe('employee delivery review navigation', () => {
     await user.clear(screen.getByRole('spinbutton', { name: 'จำนวนหลอดเล็ก' }));
     await user.type(screen.getByRole('spinbutton', { name: 'จำนวนหลอดเล็ก' }), '2.5{Enter}');
     expect(screen.getByText('2.5 ถุง × ฿60.00')).toBeTruthy();
+    expect(document.activeElement).toBe(screen.getByRole('spinbutton', { name: 'จำนวนหลอดเล็ก' }));
+    await user.tab();
     expect(document.activeElement).toBe(screen.getByRole('spinbutton', { name: 'จำนวนหลอดใหญ่' }));
 
     await user.type(screen.getByRole('spinbutton', { name: 'จำนวนหลอดใหญ่' }), '1{Enter}');
     expect(screen.getByText('1 ถุง × ฿60.00')).toBeTruthy();
+    expect(document.activeElement).toBe(screen.getByRole('spinbutton', { name: 'จำนวนหลอดใหญ่' }));
+    await user.tab();
     expect(document.activeElement).toBe(screen.getByRole('spinbutton', { name: 'จำนวนน้ำแข็งบด' }));
 
     await user.keyboard('{Enter}');
+    expect(document.activeElement).toBe(screen.getByRole('spinbutton', { name: 'จำนวนน้ำแข็งบด' }));
+    await user.tab({ shift: true });
+    expect(document.activeElement).toBe(screen.getByRole('spinbutton', { name: 'จำนวนหลอดใหญ่' }));
+    await user.tab({ shift: true });
     expect(document.activeElement).toBe(screen.getByRole('spinbutton', { name: 'จำนวนหลอดเล็ก' }));
     expect(screen.getByText('2 รายการ')).toBeTruthy();
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
-  it('skips ice types that cannot be added when Enter advances', async () => {
+  it('skips ice types that cannot be added when Tab changes the product', async () => {
     const user = userEvent.setup();
     const unavailable = { ...posContext.items[0], ice_type_id: 'ice-2', name: 'หลอดใหญ่', unit_price: null };
     const available = { ...posContext.items[0], ice_type_id: 'ice-3', name: 'น้ำแข็งบด' };
@@ -545,8 +554,43 @@ describe('employee delivery review navigation', () => {
 
     await user.click(screen.getByRole('button', { name: /หลอดเล็ก.*คงเหลือ/ }));
     await user.click(screen.getByRole('spinbutton', { name: 'จำนวนหลอดเล็ก' }));
-    await user.keyboard('{Enter}');
+    await user.tab();
     expect(document.activeElement).toBe(screen.getByRole('spinbutton', { name: 'จำนวนน้ำแข็งบด' }));
+  });
+
+  it.each(['3.5', '1.1', '168'])('validates draft %s before Tab changes the product', async (value) => {
+    const user = userEvent.setup();
+    const onSetQuantity = vi.fn();
+    const { onSubmit, onConfirmDelivery } = renderReview(true, shopCard, {
+      onSetQuantity,
+      posContext: { ...posContext, items: [...posContext.items,
+        { ...posContext.items[0], ice_type_id: 'ice-2', name: 'หลอดใหญ่' }] },
+    });
+    await user.click(screen.getByRole('button', { name: /หลอดเล็ก.*คงเหลือ/ }));
+    const quantity = screen.getByRole('spinbutton', { name: 'จำนวนหลอดเล็ก' });
+    await user.clear(quantity);
+    await user.type(quantity, value);
+    await user.tab();
+    if (value === '3.5') {
+      expect(onSetQuantity).toHaveBeenCalledExactlyOnceWith('ice-1', 3.5);
+      expect(document.activeElement).toBe(screen.getByRole('spinbutton', { name: 'จำนวนหลอดใหญ่' }));
+    } else {
+      expect(onSetQuantity).not.toHaveBeenCalled();
+      expect(document.activeElement).toBe(quantity);
+    }
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(onConfirmDelivery).not.toHaveBeenCalled();
+  });
+
+  it('allows Tab to leave the quantity editor after the final ice type', async () => {
+    const user = userEvent.setup();
+    renderReview();
+    await user.click(screen.getByRole('button', { name: /หลอดเล็ก.*คงเหลือ/ }));
+    const quantity = screen.getByRole('spinbutton', { name: 'จำนวนหลอดเล็ก' });
+    await user.click(quantity);
+    await user.tab();
+    expect(document.activeElement).not.toBe(quantity);
+    expect(screen.getByRole('spinbutton', { name: 'จำนวนหลอดเล็ก' })).toBe(quantity);
   });
 
   it.each([[ '½', 0.5 ], [ '1', 1 ], [ '2', 2 ], [ '3', 3 ]])('sets the quick draft %s without appending digits and commits on confirmation', async (label, quantity) => {
@@ -562,7 +606,7 @@ describe('employee delivery review navigation', () => {
     expect(onSetQuantity).toHaveBeenLastCalledWith('ice-1', quantity);
   });
 
-  it.each(['', '0'])('commits an erased quantity (%s) as zero and advances on Enter', async (value) => {
+  it.each(['', '0'])('commits an erased quantity (%s) as zero on Enter and changes product only on Tab', async (value) => {
     const user = userEvent.setup();
     const onSetQuantity = vi.fn();
     const { onSubmit } = renderReview(true, shopCard, {
@@ -581,6 +625,8 @@ describe('employee delivery review navigation', () => {
     await user.keyboard('{Enter}');
     expect(onSetQuantity).toHaveBeenLastCalledWith('ice-1', 0);
     expect(screen.queryByText('2 ถุง × ฿60.00')).toBeNull();
+    expect(document.activeElement).toBe(quantity);
+    await user.tab();
     expect(document.activeElement).toBe(screen.getByRole('spinbutton', { name: 'จำนวนหลอดใหญ่' }));
     expect(onSubmit).not.toHaveBeenCalled();
   });

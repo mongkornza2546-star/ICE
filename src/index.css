@@ -2637,6 +2637,14 @@ input:disabled, select:disabled, textarea:disabled { background: #f2f5f8; color:
   .employee-pos--desktop-layout .employee-keypad button { min-height: 24px; }
 }
 
+@media (hover: hover) and (pointer: fine) {
+  @container employee-workspace (min-width: 960px) {
+    .employee-pos--desktop-layout .employee-pos-keypad { grid-template-rows: none; }
+    .employee-pos--desktop-layout .employee-pos-quick-quantities,
+    .employee-pos--desktop-layout .employee-keypad { display: none; }
+  }
+}
+
 /* Employee withdrawal workspace — mobile-first card layout */
 .employee-workspace--withdrawal {
   width: min(920px, 100%);

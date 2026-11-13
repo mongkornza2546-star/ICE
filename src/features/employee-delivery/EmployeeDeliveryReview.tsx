@@ -305,17 +305,8 @@ export function EmployeeDeliveryReview({
     setSelectedIceTypeId(iceTypeId);
   };
 
-  const finishQuantity = (advanceToNext = false) => {
+  const finishQuantity = () => {
     if (!selectedItem || !commitQuantity()) return;
-    if (advanceToNext) {
-      const currentIndex = contextItems.findIndex((item) => item.ice_type_id === selectedItem.ice_type_id);
-      const nextItem = [...contextItems.slice(currentIndex + 1), ...contextItems.slice(0, currentIndex)]
-        .find((item) => item.stock_quantity > 0 && (item.unit_price != null || !posContext));
-      if (nextItem && nextItem.ice_type_id !== selectedItem.ice_type_id) {
-        setSelectedIceTypeId(nextItem.ice_type_id);
-        return;
-      }
-    }
     layoutRef.current?.querySelector<HTMLButtonElement>('.employee-pos-product-grid button[aria-pressed="true"]')?.focus({ preventScroll: true });
     setSelectedIceTypeId('');
   };
@@ -331,7 +322,20 @@ export function EmployeeDeliveryReview({
     if (event.key === 'Enter' && target.matches('input')) {
       // An input's Enter must never implicitly submit the delivery form.
       event.preventDefault();
-      if (!event.repeat && target === quantityInputRef.current) finishQuantity(true);
+      if (!event.repeat && target === quantityInputRef.current) commitQuantity();
+      return;
+    }
+    if (event.key === 'Tab' && target === quantityInputRef.current && canEditQuantity && selectedItem) {
+      const currentIndex = contextItems.findIndex((item) => item.ice_type_id === selectedItem.ice_type_id);
+      const candidates = event.shiftKey
+        ? contextItems.slice(0, currentIndex).reverse()
+        : contextItems.slice(currentIndex + 1);
+      const nextItem = candidates.find((item) => (item.stock_quantity > 0 || (deliveryQuantities[item.ice_type_id] ?? 0) > 0)
+        && (item.unit_price != null || !posContext));
+      if (nextItem) {
+        event.preventDefault();
+        if (!event.repeat && (!hasUncommittedQuantity || commitQuantity())) setSelectedIceTypeId(nextItem.ice_type_id);
+      }
       return;
     }
     if (!canEditQuantity || !selectedItem || !target.closest('.employee-pos-entry')
@@ -746,7 +750,7 @@ export function EmployeeDeliveryReview({
                       type="number"
                       value={quantityInput}
                     />
-                    <small>{translateUi('กด Enter เพื่อบันทึกและไปสินค้าถัดไป')}</small>
+                    <small>{translateUi('Enter ยืนยันจำนวน · Tab เปลี่ยนชนิดน้ำแข็ง')}</small>
                   </label>
                   <div className="employee-pos-quick-quantities" role="group" aria-label={translateUi('เลือกจำนวนด่วน')}>
                     {[0.5, 1, 2, 3].map((quantity) => (
